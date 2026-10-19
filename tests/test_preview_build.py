@@ -197,6 +197,45 @@ def test_format_noise_after_the_preamble_is_not_a_failure_but_real_errors_are(tm
     assert _ensure(tmp_path / 'third') is None
 
 
+def test_format_build_gives_tex_forward_slashes_and_reloads_fontspecs_lua(tmp_path, monkeypatch):
+    runs = _fake_engine(monkeypatch)
+    directory = _ensure(tmp_path)
+    source, output = runs[0][-1], next(c for c in runs[0] if c.startswith('-output-directory='))
+    assert '\\' not in source and '\\' not in output        # TeX reads `\.build` in a Windows path as a command
+    assert source == (directory / 'preamble.tex').as_posix()
+    assert r'\directlua{require("fontspec")}' in (directory / 'preamble.tex').read_text()
+
+
+def test_fmt_option_names_the_file_for_miktex_and_uses_texformats_elsewhere(tmp_path, monkeypatch):
+    monkeypatch.setattr(preview_format, '_is_miktex', lambda env: True)
+    assert preview_format.fmt_option(tmp_path, {'A': '1'}) == (
+        '-fmt=' + (tmp_path / 'preamble.fmt').as_posix(), {'A': '1'})       # MiKTeX ignores TEXFORMATS
+    monkeypatch.setattr(preview_format, '_is_miktex', lambda env: False)
+    option, env = preview_format.fmt_option(tmp_path, {'A': '1'})
+    assert option == '-fmt=preamble' and env == {'A': '1', 'TEXFORMATS': str(tmp_path) + os.pathsep}
+
+
+@pytest.mark.skipif(not preview_format.shutil.which('lualatex'), reason='needs LuaLaTeX')
+def test_a_real_format_loads_and_fontspec_works_after_it(tmp_path, monkeypatch):
+    """The real engine, in a folder whose Windows path has `\\.build` in it: the format builds, loads (MiKTeX:
+    through the full path), and a slide that calls fontspec's Lua side runs without errors."""
+    monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '1')
+    (tmp_path / 'decks').mkdir()
+    preamble = '\\documentclass{article}\n\\usepackage{fontspec}\n'
+    directory = preview_format.ensure(preamble, 'real', project_root=tmp_path, build_dir=tmp_path / '.build',
+                                      env=dict(os.environ), log=lambda line: None, lock=preview_build.build_lock)
+    assert directory is not None and (directory / 'preamble.fmt').is_file()
+    (tmp_path / 'decks' / 'body.tex').write_text(
+        '\\begin{document}\\addfontfeatures{Numbers=OldStyle}0123 '
+        '\\directlua{assert(fontspec, "fontspec Lua missing")}\\end{document}\n', encoding='utf-8')
+    option, env = preview_format.fmt_option(directory, dict(os.environ))
+    import subprocess
+    done = subprocess.run(['lualatex', option, '-interaction=nonstopmode', 'body.tex'], cwd=tmp_path / 'decks',
+                          env=env, capture_output=True, text=True, errors='replace', timeout=300)
+    assert done.returncode == 0, done.stdout[-2000:]
+    assert 'attempt to' not in done.stdout and (tmp_path / 'decks' / 'body.pdf').is_file()
+
+
 def test_slide_failing_only_with_the_format_is_rebuilt_without_it_and_the_format_disabled(
         tmp_path, monkeypatch):
     _fake_engine(monkeypatch)
@@ -240,3 +279,70 @@ def test_recorder_expands_format_inputs_without_depending_on_generated_format(tm
     deps = preview_build.recorded_inputs(fls, out / 'missing.fdb_latexmk',
                                         project_root=root, cache=out, extra=[str(theme)])
     assert deps == sorted([str(source), str(theme)])
+
+
+# -- luaotfload's font-cache race (several LuaLaTeX runs starting at once) -------------------------------------------
+
+RACE_LOG = ('luaotfload | load :     x "...luaotfload-init.lua:301: system : no wr\n'
+            'iteable cache path, quiting".\n! Font \\TU/FiraSans-Light.otf(0)/m/n/6 not loadable: metric data not found')
+
+
+def test_the_font_cache_race_is_recognised_across_tex_line_breaks():
+    assert preview_build.font_cache_race(RACE_LOG)
+    assert not preview_build.font_cache_race('! Undefined control sequence.')
+
+
+def _latexmk_runs(monkeypatch, tmp_path, logs):
+    """A fake latexmk: each run returns the next log of `logs` (a clean one writes a PDF)."""
+    runs = []
+
+    def run_latexmk(command, *, jobname, outdir, **kwargs):
+        log_text = logs[len(runs)]
+        runs.append(list(command))
+        pdf = outdir / f'{jobname}.pdf'
+        if 'not loadable' not in log_text:
+            pdf.write_bytes(b'%PDF fake')
+        return compiler.Build(0 if pdf.exists() else 1, pdf, outdir / f'{jobname}.log', log_text, False)
+    monkeypatch.setattr(compiler, 'run_latexmk', run_latexmk)
+    monkeypatch.setattr(preview_build, '_pause', lambda seconds, cancel=None: None)
+    ctx = SimpleNamespace(root=tmp_path, decks_dir=tmp_path / 'decks')
+    (tmp_path / 'decks').mkdir(exist_ok=True)
+    out = tmp_path / 'out'
+    out.mkdir(exist_ok=True)
+    wrapper = tmp_path / 'decks' / 'w.tex'
+    wrapper.write_text('x')
+    call = lambda: preview_build.run_preview(ctx, wrapper, 'job', 'abc-EN-Test', out, lambda line: None, env={},  # noqa: E731
+                                             reusable=False)
+    return runs, call
+
+
+def test_a_run_that_lost_the_font_cache_race_runs_again_with_all_passes(tmp_path, monkeypatch):
+    runs, call = _latexmk_runs(monkeypatch, tmp_path, [RACE_LOG, 'Output written on job.pdf'])
+    pdf, _ = call()
+    assert pdf.is_file() and len(runs) == 2
+    assert '-g' not in runs[0] and '-g' in runs[1]
+
+
+def test_a_race_that_persists_fails_as_font_cache_busy_and_keeps_the_format(tmp_path, monkeypatch):
+    runs, call = _latexmk_runs(monkeypatch, tmp_path, [RACE_LOG] * preview_build.FONT_CACHE_ATTEMPTS)
+    with pytest.raises(preview_build.FontCacheBusy):
+        call()
+    assert len(runs) == preview_build.FONT_CACHE_ATTEMPTS
+    fmt = tmp_path / 'fmt'
+    fmt.mkdir()
+    monkeypatch.setattr(preview_format, 'ensure', lambda *a, **k: fmt)
+
+    def busy(*args, **kwargs):
+        raise preview_build.FontCacheBusy('Render failed for abc-EN-Test')
+    monkeypatch.setattr(preview_build, '_compile_cached', busy)
+    ctx = SimpleNamespace(root=tmp_path, build_dir=tmp_path / '.build')
+    with pytest.raises(preview_build.FontCacheBusy):
+        preview_build.compile_cached(r'\documentclass{beamer}\begin{document}x', 'abc-EN-Test', lambda line: None,
+                                     ctx=ctx, env={})
+    assert not (fmt / 'format.bad').exists()               # not the format's fault: still used next time
+
+
+def test_a_format_build_that_lost_the_race_is_not_marked_bad(tmp_path, monkeypatch):
+    _fake_engine(monkeypatch, log=RACE_LOG)
+    assert _ensure(tmp_path) is None
+    assert not list((tmp_path / '.build' / 'preview-formats').glob('*/format.bad'))

@@ -13,7 +13,8 @@ together with three repairs (PRELUDE_TAIL):
 * pgf reserves PDF object numbers at load time; they are re-reserved when
   the document starts.
 * Lua state (functions, callbacks) is gone; the template's \\SMLuaOnce{...}
-  blocks, recorded in \\SMLuaReplayList, run again from \\everyjob.
+  blocks, recorded in \\SMLuaReplayList, run again from \\everyjob, and so
+  does fontspec's Lua module (its font commands call it).
 * A font loaded in the preamble keeps its metrics but loses luaotfload's
   Lua-side data, so OpenType kerning and ligatures silently stop applying to
   it. The font specifications are captured when the format is dumped (see
@@ -21,6 +22,10 @@ together with three repairs (PRELUDE_TAIL):
 * graphics caches \\saveimageresource indices by file name; an image the
   preamble measured would reference a PDF object that no longer exists, so
   those cache entries are forgotten.
+
+MiKTeX does not search TEXFORMATS, so there -fmt names the format file itself
+(fmt_option). The format build and -fmt get forward slashes: TeX reads a
+Windows path's backslashes as commands.
 
 None of this is guaranteed for an arbitrary preamble, so every failure path
 returns None and the caller builds the slide the ordinary way; a run that
@@ -40,9 +45,10 @@ from .processes import no_console_kwargs
 from .preview_cache import configuration_state, file_state, search_state
 from .fileio import atomic_write
 
-SCHEMA = 3
+SCHEMA = 4           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)
 ENGINE = 'lualatex'
 NAME = 'preamble'   # the format's file name (and TeX jobname) inside its directory
+_FONT_CACHE_RACE = 'no writeable cache path'     # as preview_build.font_cache_race (which imports this module)
 
 # Runs just before the dump (a file, so TeX never tokenizes it). The captured
 # specifications are stored in a Lua bytecode register, which formats keep.
@@ -85,6 +91,9 @@ PRELUDE_TAIL = r"""
 \@ifundefined{SMLuaReplayList}{}{%
   \edef\SM@t{\the\everyjob\the\SMLuaReplayList}\global\everyjob\expandafter{\SM@t}%
 }
+\@ifpackageloaded{fontspec}{%
+  \global\everyjob\expandafter{\the\everyjob\directlua{require("fontspec")}}%
+}{}
 \directlua{dofile("__CAPTURE__")}
 \global\everyjob\expandafter{\the\everyjob\directlua{lua.bytecode[__REGISTER__]()}}
 \directlua{
@@ -153,6 +162,20 @@ def inputs(directory: Path) -> list[str]:
         return []
 
 
+def fmt_option(directory: Path, env: dict) -> tuple[str, dict]:
+    """The -fmt option and environment that load the format in `directory`. MiKTeX finds a format only in its own
+    folders (it ignores TEXFORMATS) but takes a full path; elsewhere the name is found through TEXFORMATS (a path
+    given to -fmt would name the recorder file)."""
+    if _is_miktex(env):
+        return '-fmt=' + stem(directory).with_suffix('.fmt').as_posix(), env
+    return '-fmt=' + NAME, dict(env, TEXFORMATS=str(directory) + os.pathsep)
+
+
+def _is_miktex(env: dict) -> bool:
+    engine = shutil.which(ENGINE, path=env.get('PATH'))
+    return bool(engine and 'miktex' in engine.lower()) or bool(shutil.which('initexmf', path=env.get('PATH')))
+
+
 def disable(directory: Path) -> None:
     (directory / 'format.bad').touch()
 
@@ -162,14 +185,21 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
     """Return the format's directory (its `preamble.fmt` is the format), or None.
 
     `lock` is preview_build.build_lock: formats are shared by every slide of a
-    preamble, so two previews may ask for the same one at once.
+    preamble, so two previews may ask for the same one at once. The check that
+    the format is current (about a quarter second) runs under a shared lock, so
+    renders that run at once do not queue for it; only a build is exclusive.
     """
     if os.environ.get('SLIDEMAGE_PREVIEW_FORMAT') == '0' or not shutil.which(ENGINE, path=env.get('PATH')):
         return None
     directory = build_dir / 'preview-formats' / f'{SCHEMA}-{key}'
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        with lock(directory / 'build.lock', cancel=cancel):
+        with lock(directory / 'build.lock', shared=True, cancel=cancel):
+            if (directory / 'format.bad').exists():
+                return None
+            if stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):
+                return directory
+        with lock(directory / 'build.lock', cancel=cancel):          # build it (unless another render just did)
             if (directory / 'format.bad').exists():
                 return None
             fmt = stem(directory).with_suffix('.fmt')
@@ -193,8 +223,10 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
     run_env = dict(env, TEXINPUTS=_texinputs(project_root, env))
     cwd = project_root / 'decks'
     cwd.mkdir(parents=True, exist_ok=True)
+    # The source goes in with forward slashes: TeX reads this argument as input, and a Windows path's
+    # backslashes would be commands (`\.build` is the dot accent), which stops the run on every Windows machine.
     cmd = [ENGINE, '-ini', '-recorder', '-interaction=nonstopmode', '-file-line-error',
-           f'-jobname={NAME}', f'-output-directory={directory}', '&' + ENGINE, str(source)]
+           f'-jobname={NAME}', f'-output-directory={directory.as_posix()}', '&' + ENGINE, source.as_posix()]
     kwargs = no_console_kwargs()
     log('==== Precompiling preamble (once per preamble) ====')
     with stage('format_build'):
@@ -218,6 +250,11 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
     # when the format is dumped; it does not affect the format, so it is not a failure.
     errors = [m for m in FATAL_ERROR_RE.finditer(contents)
               if 'lua-uni-' not in contents[m.start():contents.find('\n', m.start())]]
+    if _FONT_CACHE_RACE in contents.replace('\n', ''):
+        # luaotfload lost the race for its font cache to a LuaLaTeX run that started at the same moment
+        # (preview_build.font_cache_race): not the preamble's fault, so it is not marked; the next preview tries again.
+        log('    (font cache busy; the preamble is precompiled next time)')
+        return None
     if (not fmt.is_file() or errors or '\n!' in contents
             or 'Beginning to dump on file' not in contents or not fls.is_file()):
         log('    (preamble cannot be precompiled; previews build the ordinary way)')

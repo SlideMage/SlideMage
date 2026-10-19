@@ -14,6 +14,7 @@ from collections import deque
 import hashlib
 import json
 import os
+import random
 from pathlib import Path
 from typing import Optional
 import shutil
@@ -190,6 +191,8 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
         try:
             return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
                                    key_text=wrapper_text, format_dir=format_dir, cancel=cancel, force=force, workspace=workspace)
+        except FontCacheBusy:
+            raise                       # not the format's fault: keep it
         except RuntimeError as exc:
             check_cancel(cancel)
             log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
@@ -242,10 +245,8 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         options.append('-g')
     if format_dir is not None:
         # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
-        # Found through TEXFORMATS: a path given to -fmt names the recorder file.
-        options.append('-lualatex=lualatex -fmt=' + preview_format.NAME
-                       + ' -interaction=nonstopmode -file-line-error %O %S')
-        env = dict(env, TEXFORMATS=str(format_dir) + os.pathsep)
+        fmt, env = preview_format.fmt_option(format_dir, env)
+        options.append('-lualatex=lualatex ' + fmt + ' -interaction=nonstopmode -file-line-error %O %S')
     log(f'==== Rendering {id_slug} (reusable build) ====')
     pdf, rerun_limit = run_preview(ctx, wrapper, jobname, id_slug, cache, log, env=env, reusable=True,
                                    options=options, cancel=cancel)
@@ -264,6 +265,31 @@ def _is_within(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+FONT_CACHE_ATTEMPTS = 3
+_FONT_CACHE_RACE = preview_format._FONT_CACHE_RACE
+
+
+class FontCacheBusy(RuntimeError):
+    """Every attempt lost luaotfload's font-cache race (font_cache_race): a failure of the moment, not the slide's
+    or the precompiled preamble's."""
+
+
+def font_cache_race(log_text: str) -> bool:
+    """Did luaotfload give up because it found its font cache "not writable"? It tests that by creating and
+    deleting a file of one fixed name in the cache folder, so LuaLaTeX runs that start at the same moment can make
+    each other fail it (Windows refuses to open a file that is being deleted). Without luaotfload every font is
+    missing, and MiKTeX spends about a second per font trying to make one. TeX wraps log lines, so line breaks are
+    ignored."""
+    return _FONT_CACHE_RACE in log_text.replace('\r', '').replace('\n', '')
+
+
+def _pause(seconds: float, cancel=None) -> None:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        check_cancel(cancel)
+        time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
 
 def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, outdir: Path, log, *, env, reusable: bool,
@@ -299,19 +325,30 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
     else:
         command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
         run_cwd = ctx.root
-    with stage('latexmk'):
-        try:
-            build = compiler.run_latexmk(
-                command, jobname=jobname, outdir=outdir, cwd=run_cwd, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
-        except FileNotFoundError as exc:
-            raise RuntimeError('latexmk not found on PATH -- is a TeX distribution installed?') from exc
-        finish_rules()
-    check_cancel(cancel)
+    for attempt in range(1, FONT_CACHE_ATTEMPTS + 1):
+        with stage('latexmk'):
+            try:
+                build = compiler.run_latexmk(
+                    command, jobname=jobname, outdir=outdir, cwd=run_cwd, env=env, log=log, on_line=on_line, bufsize=-1, cancel=cancel)
+            except FileNotFoundError as exc:
+                raise RuntimeError('latexmk not found on PATH -- is a TeX distribution installed?') from exc
+            finish_rules()
+        check_cancel(cancel)
+        if attempt == FONT_CACHE_ATTEMPTS or not font_cache_race(build.log_text):
+            break
+        # luaotfload lost a race for its font cache (see font_cache_race): the slide is fine, the run is not. Again,
+        # all passes, after a moment so the processes that started with it are past their start.
+        log('    (font cache busy: several LuaLaTeX runs started at once; running this one again)')
+        _pause(random.uniform(0.2, 1.0), cancel)
+        if '-g' not in command:
+            command.insert(command.index('-f') + 1, '-g')
+        output_tail.clear()
     tail = ''.join(output_tail)
     rerun_limit = bool(reusable and build.returncode and pdf.exists() and pdf.stat().st_mtime_ns != previous_pdf
                        and 'Maximum runs of' in tail and 'needed too many passes' in tail)
     if not build.ok or (reusable and build.returncode and not rerun_limit):
-        raise RuntimeError(f'Render failed for {id_slug}:\n' + '\n'.join(build.log_text.splitlines()[-25:]))
+        error = FontCacheBusy if font_cache_race(build.log_text) else RuntimeError
+        raise error(f'Render failed for {id_slug}:\n' + '\n'.join(build.log_text.splitlines()[-25:]))
     return pdf, rerun_limit
 
 
