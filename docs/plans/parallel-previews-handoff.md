@@ -1,0 +1,116 @@
+# Handoff: parallel preview renders (after v8.34.0)
+
+Written 2026-10-19 before a context compaction. Read this first, then start with step 1 below.
+
+## The owner's prompts (verbatim, in order)
+
+1. "I continued the work on another PC. Now I have a new request - can the preview updating be parallelized? These
+   are many small, independent tasks, are they not?"
+2. "Go ahead and implement it. Go with the "fast" option as a default, but implement a rule to start new threads only
+   when the CPU use is below 70%, our usual threshold."
+3. (mid-work) "When the user clicks the preview update status, can the popup window list the individual threads?
+   This would be really cool."
+4. "Hmm, I was watching task manager and the CPU never seemed to rise beyond 12%. How does that square with 70%
+   being the limiting factor?"
+5. "Do we need to run them in batches at all? Can they not run independently, with one starting whenever another one
+   is done? Explain, don't implement. Furthermore, what would option 2 entail? Again, explain."
+6. **"Do option 1, then check 2a through c, finally do option 3. But first, write the necessary stuff to disk, then
+   I'll tell you to compact, read the file you wrote and then you start."**
+7. "Wait, one more thing - my PC runs at 12% CPU even if no render is running. Does that change your calculations?"
+   (Answer: it strengthens the plan; renders themselves use only ~0.1-0.2 core each on average, they mostly wait.)
+
+## Where things stand
+
+- Repo `D:\uniCLOUD\SlideMage`, branch **`feat/parallel-previews`** (from `develop` at 016b078 = v8.33.0, which the
+  owner pushed from another PC). Commits: `4fa7c7a` (v8.34.0, the parallel work), `af85227` (test fixes), and this
+  file. **Nothing pushed, not merged into develop. Pushing/merging/tagging only on the owner's go.**
+- Full suite on af85227: 2883 passed, 1 failed (the known intermittent `test_chat_gui.py::
+  test_create_slide_shows_its_returned_preview_in_the_real_window`, Windows file lock, also on older develop).
+- The owner's app: `dist\SlideMage-folder` replaced with the v8.34.0 folder build (smoke-tested); the v8.33.0 folder
+  is kept as `dist\SlideMage-folder.v8.33.0.bak`. Since v8.33.0 the release makes a single file AND a folder build;
+  `dist` now only has the folder. **Open question to the owner (unanswered):** the Start-menu shortcut
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\SlideMage.lnk` still points to the removed `dist\SlideMage.exe`
+  (broken) — repoint it to `dist\SlideMage-folder\SlideMage.exe`? Do not change it without a yes.
+- `LICENSE` showed as modified (CRLF only, from the other PC); restored with `git checkout -- LICENSE` at the owner's
+  request. Working tree was clean afterwards.
+
+### What v8.34.0 did (commit 4fa7c7a)
+- **Root cause found**: on Windows every preview compile held the project's preview maintenance lock "shared", but
+  `filelock.build_lock` used `msvcrt.locking` (exclusive only), so all preview compiles of a project ran one after
+  another. Now `LockFileEx` (shared + exclusive) in `src/slidemage/filelock.py` (`_windows_lock`/`_windows_unlock`).
+  Measured: 8 slides from scratch: 96 s one at a time -> 17 s eight at once.
+- `background_renders.PROFILES` scale with cores: gentle 1, normal cores//4, fast min(16, cores//2); default "fast".
+  `RenderScheduler` (`render_scheduler.py`): cap `workers` running jobs; a job beside running ones (not P_FOREGROUND)
+  starts only if `may_add()` -> CPU below `idle_gate.CPU_LIMIT` (0.7). `power_status.shared_cpu_meter()` (one
+  CpuMeter, min_interval 1 s) answers all CPU questions. `progress.working` follows all running jobs (`_set_working`).
+- `parallel_runs.py` (new): `run_all(tasks, workers, may_add, cancel)` worker pool (first always starts, extra only
+  with CPU room); `default_workers()` = max(2, min(16, cores//2)); `cpu_has_room()`.
+- `preview_batch.render_batch`: units run through `parallel_runs.run_all`; views with the same `image_group` are one
+  unit (in order); results keep order; `BatchProgress.done` / `DeckProgress.done` count finished ones (compile panel
+  `compile_controller._preview_progress` and the Preview's "Rendering all views · n/N done" use it).
+- `preview_raster_client.RasterPool` (up to `POOL_SIZE` = min(4, cores//6) children; `_shared` is the first).
+- Status window (`ui/workspace/background_previews.py` `StatusDialog`): "Running now: n of up to N · processor x%
+  busy (more start below 70%)" + a list (deck, slide, version, language, background/reveal steps, running time) from
+  `BackgroundRenderer.running()` / `capacity()` / `RenderScheduler.running_jobs()`.
+- Settings labels show the counts ("Fast (up to 12 at once)").
+
+### Measurements (24 logical cores, 47 GB RAM; owner's machine idles at ~12% CPU: AdobeCollabSync ~0.8 core,
+Outlook, Nextcloud, Syncovery)
+- Deck refresh (`update_all_previews.rerender_deck`), 17 slides, Instructor, cold cache: 226 s one at a time,
+  48 s parallel (4.7x). (Clear `project.preview_cache_dir(root)` between runs, or the second run is all cache hits.)
+- 8 renders at once (`C:\smrc\where_time.py`): no lock waits (<1 s total); all 8 latexmk runs truly concurrent
+  (~17 s each vs 12 s alone); one outlier render took **96 s** in one run (option 3).
+- CPU sampling (`C:\smrc\cpu_top.ps1`): two short bursts per render (pass 1, pass 2) where all LuaLaTeX processes
+  compute (~37% total, ~7 cores); between them 7-15% total: perl/latexmk ~1 core, process starts, MiKTeX, file I/O.
+  Net render share ~0.1-0.2 core per render on average: **renders mostly wait**, so the cap (not the 70% rule) limits.
+  Note: MiKTeX's engine processes are named `lualatex`/`miktex-*`; German Windows localises perf-counter names
+  (use Get-Process TotalProcessorTime deltas, as cpu_top.ps1 does).
+
+## The plan to carry out now (owner's order: 1, then 2a-c, then 3)
+
+### Step 1 — option 1: more renders at once, one shared pool
+- Raise the caps to the full logical core count (24 here): `parallel_runs.default_workers()` and
+  `background_renders.PROFILES["fast"]` (keep a hard ceiling, e.g. 32, ~300 MB per LaTeX run; normal stays a
+  quarter, gentle 1). Keep the 70% rule (CPU counts the whole machine, incl. the owner's ~12% idle load — intended).
+- **One shared pool/budget for all three sources** (background scheduler, reveal-step counting, user batches): today
+  each has its own cap. Introduce a process-wide render budget (e.g. a counting semaphore/token holder in
+  `parallel_runs`, used by `RenderScheduler._next` and `parallel_runs.run_all`), so the total never exceeds the cap
+  and the CPU rule applies to the total. The user's own single render (P_FOREGROUND) must never wait for the budget.
+- Update Settings labels/tooltips, CHANGELOG/version (next: v8.35.0), tests (`tests/test_parallel_runs.py`,
+  `tests/test_render_scheduler.py`, `tests/test_background_previews_gui.py`).
+- Re-measure with `C:\smrc\bench_deck.py` (17 slides) and `C:\smrc\bench_parallel.py`, and CPU with cpu_top.ps1.
+
+### Step 2 — check options 2a-c (measure first, then decide/implement what pays off)
+First measure how one render's ~12-17 s split: perl/latexmk start+bookkeeping, MiKTeX/LuaLaTeX start-up, pass 1,
+pass 2, raster (instrument `preview_build._compile_cached` / `compiler.run_latexmk`, latexmk `-time`, the log).
+- **2a** Skip the second pass when it changes nothing: keep the slide's helper files (`.aux .toc .nav .ovl .top`)
+  from its previous render (the reusable build dir partly does already; note benchmarks used `force_build=True`), run
+  pass 2 only on "Rerun" in the log or changed helper files. Watch SlideMage's two-pass mechanisms:
+  `\SMFinalStateForStudents` `.ovl`, Top Margin `.top`, deck context (sections/agenda), citations.
+- **2b** Call LuaLaTeX directly for previews instead of latexmk (no biber/index for single-slide previews; fixed pass
+  logic) — saves Perl/latexmk overhead. Full deck compiles keep latexmk.
+- **2c** Load more into the precompiled preamble (`preview_format.py`, `preamble.fmt`): fonts/packages loaded on
+  every run, to shorten start-up.
+- (2d, several slides per LaTeX run, is NOT in scope.)
+- Also look at file-access waiting: Windows Defender (`MsMpEng`) scanning TeX/MiKTeX files, MiKTeX file-name database.
+- The build code (`preview_build`, `preview_format`) is Jürgen's: keep changes contained and documented.
+
+### Step 3 — option 3: the outlier
+One of 8 parallel renders took 96 s instead of ~17 s (`where_time.py`, render 4; latexmk run 0.3..96.4 s). Reproduce
+(run where_time.py several times), find the stall (latexmk log, MiKTeX log
+`%LOCALAPPDATA%\MiKTeX\miktex\log`, package install prompts/locks, luaotfload cache rebuild, file locks), fix or
+guard (e.g. a timeout/kill-and-retry).
+
+## Working rules (from memory and this session)
+- Tests: `PYTHONPATH=src QT_QPA_PLATFORM=offscreen C:/smrc/v/Scripts/python.exe -m pytest -q -p no:cacheprovider`
+  from `D:\uniCLOUD\SlideMage` (full suite ~18 min; run in background; `-o faulthandler_timeout=180` to catch hangs).
+  Ruff: `C:/smrc/v/Scripts/python.exe -m ruff check src tests`.
+- Builds: `C:\smrc\src` worktree (`git -C C:/smrc/src checkout -q -f --detach <commit>`), then
+  `C:/smrc/v/Scripts/python.exe -m PyInstaller packaging/slidemage.spec --noconfirm --distpath C:/smrc/distXXX
+  --workpath C:/smrc/workXXX`; it makes `SlideMage.exe` and `SlideMage-folder/`. Smoke-test with
+  `--project D:\uniCLOUD\SlideMage\example`, stop only processes I started, replace `dist\SlideMage-folder` (keep a
+  backup) only while no SlideMage runs. Commit while the build runs.
+- Never compile the owner's Slidemaster decks; never touch `D:\uniCLOUD\Slidemaster\decks\#workdeck.tex`; benchmark
+  on scratch copies (`C:\smrc\...`). Never kill SlideMage instances I did not start. No push/merge/tag without a go.
+- Heredocs mangle backslashes in Python/TeX: write scripts with the Write tool, edit with Edit.
+- CHANGELOG entry header must not contain parentheses inside its "(...)" part (the version parser).
