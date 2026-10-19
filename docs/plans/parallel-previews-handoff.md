@@ -101,6 +101,29 @@ One of 8 parallel renders took 96 s instead of ~17 s (`where_time.py`, render 4;
 `%LOCALAPPDATA%\MiKTeX\miktex\log`, package install prompts/locks, luaotfload cache rebuild, file locks), fix or
 guard (e.g. a timeout/kill-and-retry).
 
+## Progress after the compaction (2026-10-19, same day)
+
+All three steps done on `feat/parallel-previews` (nothing pushed or merged):
+- **Step 1 = v8.35.0 (c02bb24):** `parallel_runs.default_workers()` = one per logical core (CEILING 32); one process-wide
+  `RenderBudget` (`parallel_runs.BUDGET`) used by `run_all` and `RenderScheduler(budget=...)`; the user's own render and
+  a batch's first never wait; idle renders stand back while a batch wants places. 17 slides: 48 s -> 30 s. Suite green
+  (2888 passed).
+- **Step 2/3 = v8.36.0 (1e0b2c8):** measured one render: cold 12.5 s = 3 LuaLaTeX passes of ~2.7 s + biber 1.5 s +
+  latexmk ~0.5 s per step. Found the precompiled preamble had never worked on Windows (backslash path in the `-ini`
+  command; MiKTeX ignores TEXFORMATS; fontspec's Lua module missing after the format). Fixed (`fmt_option`, forward
+  slashes, `require("fontspec")` in PRELUDE_TAIL, SCHEMA 4): pass 2.9 s -> 1.6 s, identical pixels; cold render 7.5 s.
+  The freshness check of the format now runs under a shared lock (was exclusive: renders started 0.35 s apart).
+  The 96 s outlier = luaotfload's cache-writability test (fixed file name `m_t_x_t_e_s_t.tmp`) racing between LuaLaTeX
+  runs that start together -> luaotfload quits -> fonts missing, MiKTeX maketfm ~1 s per font; reproducible at 24 at
+  once (about 1 in 100 runs). Guard: `preview_build.font_cache_race` -> latexmk again with -g (up to 3 times),
+  `FontCacheBusy` never disables the format; the format build does not mark it bad either. 17 slides: 20-24 s.
+- **Checked, not done (owner may decide):** 2a skip biber (1.4 s, but citations are only known after pass 1; json
+  image sources cite through Lua, so citing slides would get slower); latexmk's 3rd pass (pixel-identical, comes from
+  latexmk treating newly-read helper files as changed); 2b LuaLaTeX directly (saves ~2.5-3 s per cold render, but
+  replaces the latexmk dependency records the reusable builds use -- plan with Jürgen).
+- Side findings: example slide `neg-EN-Installing-LaTeX-Linux` fails to render (`\faLinux` undefined; also on old
+  code). Raster pool (4 children) is not a bottleneck (3.4 s summed for 17 slides).
+
 ## Working rules (from memory and this session)
 - Tests: `PYTHONPATH=src QT_QPA_PLATFORM=offscreen C:/smrc/v/Scripts/python.exe -m pytest -q -p no:cacheprovider`
   from `D:\uniCLOUD\SlideMage` (full suite ~18 min; run in background; `-o faulthandler_timeout=180` to catch hangs).
