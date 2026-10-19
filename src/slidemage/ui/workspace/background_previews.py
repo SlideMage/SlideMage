@@ -12,10 +12,11 @@ pause, render now, skip the open deck, retry the failed slides.
 from __future__ import annotations
 
 import os
+from weakref import WeakSet
 from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -186,12 +187,43 @@ class StatusDialog(QDialog):
 
 
 class _InputWatcher(QObject):
-    """Application-wide: every mouse, key, wheel and touch event is "the user is here"."""
+    """Watch widget input without filtering Qt WebEngine's internal QObjects.
+
+    An application event filter makes PySide wrap even private Qt Quick objects;
+    wrapping a focus object during WebEngine startup can crash in Shiboken.
+    Discover widgets periodically so dialogs and newly created controls count too.
+    """
 
     def __init__(self, on_input, parent: QObject) -> None:
         super().__init__(parent)
         self._on_input = on_input
         self._mouse = None
+        self._watched = WeakSet()
+        self._cursor = QCursor.pos()
+        self._timer = QTimer(self)
+        self._timer.setInterval(250)
+        self._timer.timeout.connect(self._watch_widgets)
+        self._watch_widgets()
+        self._timer.start()
+
+    def _watch_widgets(self) -> None:
+        # Widgets without mouse tracking discard unpressed mouse moves before
+        # their filters run. Poll movement while this application is active too.
+        cursor = QCursor.pos()
+        if cursor != self._cursor and QApplication.activeWindow() is not None:
+            self._on_input()
+        self._cursor = cursor
+        for widget in QApplication.allWidgets():
+            if widget not in self._watched:
+                widget.installEventFilter(self)
+                self._watched.add(widget)
+
+    def stop(self) -> None:
+        self._timer.stop()
+        for widget in QApplication.allWidgets():
+            if widget in self._watched:
+                widget.removeEventFilter(self)
+        self._watched.clear()
 
     def eventFilter(self, watched, event) -> bool:      # noqa: N802 -- Qt's name
         kind = event.type()
@@ -248,7 +280,6 @@ class BackgroundPreviews(QObject):
         self.renderer.gate._busy = self._busy_reasons
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
         self._watcher = _InputWatcher(self.renderer.user_active, self)
-        QApplication.instance().installEventFilter(self._watcher)
         state = window.state
         state.deck_changed.connect(self._deck_opened)
         state.focused_slide_changed.connect(self._slide_focused)
@@ -322,6 +353,8 @@ class BackgroundPreviews(QObject):
         if self._on_compiled in compiler.COMPILE_LISTENERS:
             compiler.COMPILE_LISTENERS.remove(self._on_compiled)
         self._timer.stop()
+        if hasattr(self, "_watcher"):
+            self._watcher.stop()
         if self.renderer is not None:
             self.renderer.stop()
         if self.store is not None:

@@ -46,6 +46,7 @@ def test_user_input_anywhere_in_the_application_resets_the_idle_clock(window):
 
     gate = window.background.renderer.gate
     gate.last_input = -1000.0
+    window.topbar.setMouseTracking(True)
     # Qt's own mouse moves (widgets appearing under a still cursor) are not the user: the sent event is not spontaneous
     QApplication.sendEvent(window.topbar, QMouseEvent(
         QEvent.Type.MouseMove, QPointF(3, 3), Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
@@ -75,6 +76,36 @@ def test_user_input_anywhere_in_the_application_resets_the_idle_clock(window):
     gate.last_input = -1000.0
     QApplication.sendEvent(window.topbar, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Shift, Qt.KeyboardModifier.NoModifier))
     assert gate.last_input > -1000.0
+
+
+def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(window):
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QDialog, QLineEdit
+
+    gate = window.background.renderer.gate
+    dialog = QDialog(window)
+    edit = QLineEdit(dialog)
+    dialog.show()
+    QTest.qWait(300)  # discover widgets created after the watcher started
+    try:
+        gate.last_input = -1000.0
+        QTest.keyClick(edit, Qt.Key.Key_A)
+        assert gate.last_input > -1000.0
+
+        gate.last_input = -1000.0
+        internal = QObject()
+        QApplication.sendEvent(internal, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier))
+        assert gate.last_input == -1000.0
+
+        window.background.stop()
+        QTest.keyClick(edit, Qt.Key.Key_B)
+        assert gate.last_input == -1000.0
+    finally:
+        dialog.close()
+        dialog.deleteLater()
 
 
 def test_the_chip_says_what_is_going_on_and_only_then(window):
