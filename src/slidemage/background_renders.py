@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
-from . import compile_records, power_status, preview_build, preview_target, slide_preview, slide_snapshot
+from . import compile_records, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
@@ -52,7 +52,8 @@ DEFAULT_LIMIT_GB = 2.0
 # (at most 16: about 300 MB of memory each). Each one beyond the first starts only while the CPU is below
 # idle_gate.CPU_LIMIT, so the actual number settles at what the machine can spare.
 _CORES = os.cpu_count() or 2
-PROFILES = {"gentle": (1, 0.5), "normal": (max(1, _CORES // 4), 0.25), "fast": (max(2, min(16, _CORES // 2)), 0.0)}
+PROFILES = {"gentle": (1, 0.5), "normal": (max(1, _CORES // 4), 0.25),
+            "fast": (parallel_runs.default_workers(), 0.0)}
 DEFAULT_PROFILE = "fast"
 
 
@@ -181,7 +182,7 @@ class BackgroundRenderer:
         workers, duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
         self.scheduler = RenderScheduler(self._work, can_start=self._may_start,
                                          on_change=self._changed, on_error=self._failed, workers=workers, duty=duty,
-                                         may_add=self._cpu_has_room)
+                                         may_add=self._cpu_has_room, budget=parallel_runs.BUDGET)
         self.progress = Progress()
         self._plan: list = []
         self._plan_lock = threading.RLock()

@@ -15,7 +15,9 @@ rests for `duty` times the job's duration (a cap of REST_CAP seconds), so a lapt
 
 At most `workers` jobs run at once. A job that would run beside others (not the user's own, P_FOREGROUND) starts
 only when `may_add()` allows it: the caller's CPU rule (below CPU_LIMIT), so the renders, which count towards the
-load themselves, settle at what the machine can spare.
+load themselves, settle at what the machine can spare. With a `budget` (parallel_runs.BUDGET in the app) the count and
+the CPU rule cover every render in the process, the user's batches included; an idle job then also stands back while
+a batch wants a place, and the user's own job takes a place without waiting.
 
 Free of Qt: the idle gate is a callable the caller supplies.
 """
@@ -28,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from .compiler import CancelToken
+from .parallel_runs import RenderBudget
 
 P_FOREGROUND, P_NEIGHBOURS, P_IDLE = 0, 1, 2
 PRIORITY_NAMES = {P_FOREGROUND: "foreground", P_NEIGHBOURS: "neighbours", P_IDLE: "idle"}
@@ -46,6 +49,7 @@ class Job:
     cancel: CancelToken = field(default_factory=CancelToken)
     started: float = 0.0
     cancelled_for_requeue: bool = False
+    budgeted: bool = False
 
     def order(self) -> tuple:
         return (self.priority, self.rank, self.seq)
@@ -57,10 +61,10 @@ class RenderScheduler:
                  on_change: Callable[[], None] = lambda: None,
                  on_error: Callable[[Job, BaseException], None] = lambda job, exc: None,
                  workers: int = 1, duty: float = 0.0, grace: float = 20.0,
-                 may_add: Callable[[], bool] = lambda: True,
+                 may_add: Callable[[], bool] = lambda: True, budget: Optional[RenderBudget] = None,
                  clock: Callable[[], float] = time.monotonic, sleep: Optional[Callable[[float], None]] = None) -> None:
         self._work, self._can_start, self._on_change, self._on_error = work, can_start, on_change, on_error
-        self._may_add = may_add
+        self._may_add, self._budget = may_add, budget
         self.workers, self.duty, self.grace = workers, duty, grace
         self._clock = clock
         self._cond = threading.Condition()
@@ -169,6 +173,13 @@ class RenderScheduler:
         for job in sorted(self._queue.values(), key=Job.order):
             if job.priority == P_IDLE and not self._can_start(job):
                 continue
+            if self._budget is not None:
+                if job.priority == P_FOREGROUND:
+                    self._budget.take()          # the user's own: never waits
+                elif not self._budget.try_take(self._may_add, background=job.priority == P_IDLE):
+                    return None                  # no place in the process-wide budget (or no CPU room) now
+                job.budgeted = True
+                return job
             if running and job.priority != P_FOREGROUND:
                 if adding_checked is None:
                     adding_checked = self._may_add()
@@ -196,6 +207,10 @@ class RenderScheduler:
             self._work(job, job.cancel)
         except BaseException as exc:    # noqa: BLE001 -- reported through on_error, never lost
             error = exc
+        finally:
+            if job.budgeted:
+                job.budgeted = False
+                self._budget.release()
         finished = self._clock()
         with self._cond:
             self._running.pop(job.key, None)

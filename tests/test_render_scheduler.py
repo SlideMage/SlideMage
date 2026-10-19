@@ -211,3 +211,32 @@ def test_the_users_own_render_starts_beside_others_whatever_the_cpu():
     assert s.run_next() and ("mine", P_FOREGROUND) in s.ran
     started.set()
     worker.join(5)
+
+
+# -- one budget for the whole process ---------------------------------------------------------------------------------
+
+def test_the_shared_budget_counts_renders_from_elsewhere_too():
+    from slidemage.parallel_runs import RenderBudget
+    budget = RenderBudget(3)
+    budget.take()
+    budget.take()                             # a user's batch runs two renders
+    s = make(workers=4, budget=budget)
+    for i in range(4):
+        s.submit(f"idle-{i}", None, P_IDLE, (i,))
+    assert run_in_threads(s, 4) == 1          # one place left in the budget
+    assert len(s.ran) == 4 and budget.in_use() == 2
+
+
+def test_idle_renders_stand_back_while_a_batch_waits_but_the_users_own_does_not():
+    from slidemage.parallel_runs import RenderBudget
+    budget = RenderBudget(3)
+    budget.take()
+    budget.want(1)                            # a batch is running and wants more places
+    s = make(workers=4, budget=budget)
+    s.submit("idle", None, P_IDLE)
+    assert not s.run_next()
+    s.submit("mine", None, P_FOREGROUND)
+    assert s.run_next() and s.ran == [("mine", P_FOREGROUND)]
+    budget.want(-1)
+    assert s.run_next() and ("idle", P_IDLE) in s.ran
+    assert budget.in_use() == 1               # every render gave its place back

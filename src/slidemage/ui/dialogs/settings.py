@@ -173,7 +173,9 @@ class GeneralTab(Page):
                            ("fast", f"Fast ({at_once('fast')})")):
             self.bg_profile.addItem(label, key)
         self.bg_profile.setToolTip("Each render beyond the first starts only while the processor is less than "
-                                   f"{round(bg.CPU_LIMIT * 100)}% busy.")
+                                   f"{round(bg.CPU_LIMIT * 100)}% busy. Background renders, reveal steps and "
+                                   "\"Rerender all\" share one limit, so together they never run more than "
+                                   f"{bg.PROFILES['fast'][0]} at once; your own render never waits.")
         self.bg_profile.setCurrentIndex(max(self.bg_profile.findData(app_settings.get(project, bg.PROFILE_KEY, bg.DEFAULT_PROFILE)), 0))
         self.bg_limit = QDoubleSpinBox()
         self.bg_limit.setRange(0.1, 500.0)
