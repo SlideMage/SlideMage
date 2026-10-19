@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Serialize preview raster requests through one reusable child process.
+"""Serialize preview raster requests through reusable child processes.
 
-The module-level functions use one shared child (the Preview's and the chat's). A `RasterClient` of
-its own is a second child with a lock of its own: background rendering (background_renders.py) uses
-one so that it never makes a foreground raster wait.
+The module-level functions use a small pool of children (the Preview's, the chat's, the batches'): a request takes
+a free one, a second child starts only when every one is busy, up to POOL_SIZE, so renders that run several at once
+(parallel_runs) do not queue for one child. `_shared` is the first. A `RasterClient` of its own is a child with a lock
+of its own: background rendering (background_renders.py) uses one so that it never makes a foreground raster wait.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+from contextlib import contextmanager
 
 from .processes import no_console_kwargs
 
@@ -141,14 +143,52 @@ class RasterClient:
 
 
 _shared = RasterClient()
+POOL_SIZE = max(1, min(4, (os.cpu_count() or 2) // 6))     # 4 on 24 cores: PDF to PNG is quick beside LaTeX
+
+
+class RasterPool:
+    """Up to `size` raster children: a request takes a free one, starts another while all are busy, else waits."""
+
+    def __init__(self, first: RasterClient, size: int) -> None:
+        self._clients, self._busy, self.size = [first], set(), max(1, size)
+        self._cond = threading.Condition()
+
+    @contextmanager
+    def lease(self):
+        with self._cond:
+            while True:
+                free = next((c for c in self._clients if c not in self._busy), None)
+                if free is None and len(self._clients) < self.size:
+                    free = RasterClient()
+                    self._clients.append(free)
+                if free is not None:
+                    break
+                self._cond.wait()
+            self._busy.add(free)
+        try:
+            yield free
+        finally:
+            with self._cond:
+                self._busy.discard(free)
+                self._cond.notify()
+
+    def close(self) -> None:
+        with self._cond:
+            clients = list(self._clients)
+        for client in clients:
+            client.close()
+
+
+_pool = RasterPool(_shared, POOL_SIZE)
 
 
 def close():
-    _shared.close()
+    _pool.close()
 
 
 def render(data, sizes, full_size):
-    return _shared.render(data, sizes, full_size)
+    with _pool.lease() as client:
+        return client.render(data, sizes, full_size)
 
 
 def render_sequence(data):
@@ -192,12 +232,15 @@ def render_sequence(data):
 
 
 def read_document(path, op, start=1, count=1, dpi=110, width=None):
-    return _shared.read_document(path, op, start, count, dpi, width)
+    with _pool.lease() as client:
+        return client.read_document(path, op, start, count, dpi, width)
 
 
 def read_layout(path) -> list[dict]:
-    return _shared.read_layout(path)
+    with _pool.lease() as client:
+        return client.read_layout(path)
 
 
 def _ask(request, failure, expected_images=None, timeout=None):
-    return _shared.ask(request, failure, expected_images, timeout)
+    with _pool.lease() as client:
+        return client.ask(request, failure, expected_images, timeout)

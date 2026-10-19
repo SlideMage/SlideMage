@@ -89,7 +89,8 @@ def test_deck_refresh_uses_exact_requests_and_keeps_partial_results(project):
     assert result.failed == ['abc-EN-Hello', 'abd-EN-Second']
     assert len(result.details.failed) == 2
     assert result.error == 'bad TeX'
-    assert events[-1].index == events[-1].total == 6
+    assert events[-1].done == events[-1].total == 6           # renders run several at once: the count is the order
+    assert sorted(e.index for e in events if e.status != 'rendering') == [1, 2, 3, 4, 5, 6]
     assert {r.target.frame_number for r in service.calls} == {1, 2}
 
 

@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -45,10 +47,16 @@ def on_battery() -> Optional[bool]:
 
 
 class CpuMeter:
-    """The share of the CPU busy since the previous call to load() (None the first time or when unknown)."""
+    """The share of the CPU busy since the previous measurement (None the first time or when unknown). Safe to ask
+    from several threads: a call within `min_interval` seconds of the last measurement gets that value again, so
+    workers asking at once do not measure meaninglessly short spans."""
 
-    def __init__(self) -> None:
+    def __init__(self, min_interval: float = 0.0, clock=time.monotonic) -> None:
         self._last: Optional[tuple[int, int]] = None
+        self._min_interval, self._clock = min_interval, clock
+        self._value: Optional[float] = None
+        self._measured_at: Optional[float] = None
+        self._lock = threading.Lock()
 
     def _times(self) -> Optional[tuple[int, int]]:
         if sys.platform == "win32":
@@ -68,6 +76,16 @@ class CpuMeter:
         return None
 
     def load(self) -> Optional[float]:
+        with self._lock:
+            at = self._clock()
+            if self._measured_at is not None and at - self._measured_at < self._min_interval:
+                return self._value
+            value = self._measure()
+            if value is not None:
+                self._value, self._measured_at = value, at
+            return value
+
+    def _measure(self) -> Optional[float]:
         try:
             now = self._times()
         except Exception:  # noqa: BLE001
@@ -83,6 +101,19 @@ class CpuMeter:
         if last is None or now[0] <= last[0]:
             return None
         return 1.0 - (now[1] - last[1]) / (now[0] - last[0])
+
+
+_SHARED: Optional[CpuMeter] = None
+_SHARED_LOCK = threading.Lock()
+
+
+def shared_cpu_meter() -> CpuMeter:
+    """The one meter every "may one more render start?" question uses (measured at most once a second)."""
+    global _SHARED
+    with _SHARED_LOCK:
+        if _SHARED is None:
+            _SHARED = CpuMeter(min_interval=1.0)
+        return _SHARED
 
 
 def free_bytes(path: Path) -> Optional[int]:

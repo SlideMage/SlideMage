@@ -1099,8 +1099,10 @@ def test_ui_batch_progress_partial_failure_and_close_cancellation(pane):
     view, _, _ = pane
     cancel = threading.Event()
     view._batch_cancel = cancel
-    view._on_batch_progress(BatchProgress('during-course', 2, 3, 'rendering'))
-    assert view._batch_status == 'Rendering During course · 2/3'
+    view._on_batch_progress(BatchProgress('during-course', 2, 3, 'rendering', done=1))
+    assert view._batch_status == 'Rendering all views · 1/3 done'
+    view._on_batch_progress(BatchProgress('instructor', 1, 3, 'rendered', done=2))   # views finish in any order
+    assert view._batch_status == 'Rendering all views · 2/3 done'
     view._on_batch_finished(tuple(SimpleNamespace(request=SimpleNamespace(view=key), status=status, error=error)
                                   for key, status, error in (
                                       ('instructor', 'rendered', ''), ('during-course', 'hidden', ''),

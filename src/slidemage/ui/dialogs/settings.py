@@ -165,9 +165,15 @@ class GeneralTab(Page):
         self.bg_mains_check = QCheckBox("Only when plugged in")
         self.bg_mains_check.setChecked(bool(app_settings.get(project, bg.ONLY_MAINS_KEY, True)))
         self.bg_profile = QComboBox()
-        for key, label in (("gentle", "Gentle (one process, long rests)"), ("normal", "Normal (one process)"),
-                           ("fast", "Fast (two processes)")):
+        def at_once(key: str) -> str:
+            count = bg.PROFILES[key][0]
+            return "one at a time" if count == 1 else f"up to {count} at once"
+        for key, label in (("gentle", f"Gentle ({at_once('gentle')}, long rests)"),
+                           ("normal", f"Normal ({at_once('normal')}, short rests)"),
+                           ("fast", f"Fast ({at_once('fast')})")):
             self.bg_profile.addItem(label, key)
+        self.bg_profile.setToolTip("Each render beyond the first starts only while the processor is less than "
+                                   f"{round(bg.CPU_LIMIT * 100)}% busy.")
         self.bg_profile.setCurrentIndex(max(self.bg_profile.findData(app_settings.get(project, bg.PROFILE_KEY, bg.DEFAULT_PROFILE)), 0))
         self.bg_limit = QDoubleSpinBox()
         self.bg_limit.setRange(0.1, 500.0)

@@ -13,6 +13,10 @@ cancelled (its process tree is killed) and put back in the queue, then the bette
 never a failure. User input never stops an idle job; it only keeps the next one from starting (the gate). One worker thread per allowed process; after each idle job the worker
 rests for `duty` times the job's duration (a cap of REST_CAP seconds), so a laptop does not run hot.
 
+At most `workers` jobs run at once. A job that would run beside others (not the user's own, P_FOREGROUND) starts
+only when `may_add()` allows it: the caller's CPU rule (below CPU_LIMIT), so the renders, which count towards the
+load themselves, settle at what the machine can spare.
+
 Free of Qt: the idle gate is a callable the caller supplies.
 """
 from __future__ import annotations
@@ -53,8 +57,10 @@ class RenderScheduler:
                  on_change: Callable[[], None] = lambda: None,
                  on_error: Callable[[Job, BaseException], None] = lambda job, exc: None,
                  workers: int = 1, duty: float = 0.0, grace: float = 20.0,
+                 may_add: Callable[[], bool] = lambda: True,
                  clock: Callable[[], float] = time.monotonic, sleep: Optional[Callable[[float], None]] = None) -> None:
         self._work, self._can_start, self._on_change, self._on_error = work, can_start, on_change, on_error
+        self._may_add = may_add
         self.workers, self.duty, self.grace = workers, duty, grace
         self._clock = clock
         self._cond = threading.Condition()
@@ -147,12 +153,28 @@ class RenderScheduler:
         with self._cond:
             return list(self._running)
 
+    def running_jobs(self) -> list[Job]:
+        """The jobs running now, the longest-running first (cancelled ones that are still stopping left out)."""
+        with self._cond:
+            jobs = [j for j in self._running.values() if not j.cancelled_for_requeue]
+        return sorted(jobs, key=lambda j: j.started)
+
     # -- running -----------------------------------------------------------------------
 
     def _next(self) -> Optional[Job]:
+        running = [j for j in self._running.values() if not j.cancelled_for_requeue]
+        if len(running) >= max(1, self.workers):
+            return None                          # the cap: as many at once as the profile allows
+        adding_checked = None                    # the CPU rule, asked once per pick
         for job in sorted(self._queue.values(), key=Job.order):
-            if job.priority != P_IDLE or self._can_start(job):
-                return job
+            if job.priority == P_IDLE and not self._can_start(job):
+                continue
+            if running and job.priority != P_FOREGROUND:
+                if adding_checked is None:
+                    adding_checked = self._may_add()
+                if not adding_checked:
+                    continue                     # one more beside the others only while the CPU has room
+            return job
         return None
 
     def run_next(self) -> bool:
@@ -209,8 +231,11 @@ class RenderScheduler:
                 self._cond.wait(min(0.2, deadline - time.monotonic()))
 
     def start(self) -> None:
+        """Start worker threads up to `workers` (again after `workers` grew); fewer allowed jobs need no stop: the cap
+        in _next keeps the surplus threads waiting."""
         with self._cond:
             self._stopping = False
+            self._threads = [t for t in self._threads if t.is_alive()]
         while len(self._threads) < self.workers:
             thread = threading.Thread(target=self._loop, daemon=True, name="render-scheduler")
             self._threads.append(thread)

@@ -168,11 +168,12 @@ def test_the_settings_have_the_background_controls_and_save_them(qapp, monkeypat
     general.bg_mains_check.setChecked(False)
     general.bg_limit.setValue(12.5)
     general.bg_limit.editingFinished.emit()
-    general.bg_profile.setCurrentIndex(general.bg_profile.findData("fast"))
+    assert general.bg_profile.currentData() == background_renders.DEFAULT_PROFILE == "fast"
+    general.bg_profile.setCurrentIndex(general.bg_profile.findData("normal"))
     assert app_settings.get(project, background_renders.ENABLED_KEY) is False
     assert app_settings.get(project, background_renders.ONLY_MAINS_KEY) is False
     assert app_settings.get(project, background_renders.LIMIT_GB_KEY) == 12.5
-    assert app_settings.get(project, background_renders.PROFILE_KEY) == "fast"
+    assert app_settings.get(project, background_renders.PROFILE_KEY) == "normal"
     assert len(changed) >= 4
 
 
@@ -288,6 +289,36 @@ def test_the_status_window_lists_every_deck_with_its_versions_and_state(window):
     assert controller.renderer.gate.paused and dialog.pause.text() == "Resume"
     dialog.reject()
 
+
+
+def test_the_status_window_lists_every_render_running_now(window, monkeypatch):
+    controller = window.background
+    controller.renderer.progress = progress_of(DeckProgress("todo", total=6, fresh=2), working="todo:a:instructor:EN")
+    monkeypatch.setattr(controller.renderer, "running", lambda: [
+        dict(deck="todo", slide="aaa-EN-One", view="instructor", language="EN", kind="background", seconds=75.4),
+        dict(deck="todo", slide="bbb-DE-Zwei", view="during-course", language="DE", kind="reveal steps", seconds=3.0)])
+    monkeypatch.setattr(controller.renderer, "capacity", lambda: (12, 0.83))
+    from slidemage.ui.workspace.background_previews import StatusDialog
+    dialog = StatusDialog(controller, window)
+    rows = [[dialog.running.topLevelItem(i).text(c) for c in range(6)] for i in range(dialog.running.topLevelItemCount())]
+    assert rows == [["todo", "aaa-EN-One", "Instructor", "EN", "background", "1:15"],
+                    ["todo", "bbb-DE-Zwei", "During course", "DE", "reveal steps", "0:03"]]
+    assert dialog.running_title.text() == "Running now: 2 of up to 12 · processor 83% busy (more start below 70%)"
+    monkeypatch.setattr(controller.renderer, "running", lambda: [])
+    monkeypatch.setattr(controller.renderer, "capacity", lambda: (12, None))
+    dialog.refresh()
+    assert dialog.running.isHidden() and dialog.running_title.text() == "Running now: 0 of up to 12"
+    dialog.reject()
+
+
+def test_working_names_a_running_unit_while_any_runs(window):
+    renderer = window.background.renderer
+    renderer._set_working("d:a:instructor:EN", True)
+    renderer._set_working("d:b:instructor:EN", True)
+    renderer._set_working("d:a:instructor:EN", False)        # the first one ends: the second still renders
+    assert renderer.progress.working == "d:b:instructor:EN"
+    renderer._set_working("d:b:instructor:EN", False)
+    assert renderer.progress.working is None
 
 
 def test_the_chip_stays_blue_between_two_jobs_of_one_sweep(window):

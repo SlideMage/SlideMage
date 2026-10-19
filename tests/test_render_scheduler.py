@@ -152,3 +152,62 @@ def test_worker_threads_run_jobs_and_stop():
         time.sleep(0.01)
     s.stop()
     assert s.pending() == 0
+
+
+# -- several at once: the cap and the CPU rule ---------------------------------------------------------------------
+
+def run_in_threads(scheduler, count):
+    """`count` workers at once, each running jobs until none can start; returns the largest number seen running."""
+    peak = {"n": 0}
+    lock = threading.Lock()
+    release = threading.Event()
+
+    def hold(_job):
+        with lock:
+            peak["n"] = max(peak["n"], len(scheduler.running_keys()))
+        release.wait(2)
+
+    scheduler.box["during"] = {key: hold for key in scheduler.queued_keys()}
+    threads = [threading.Thread(target=lambda: drain(scheduler)) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.3)                       # every worker that may start has started
+    release.set()
+    for thread in threads:
+        thread.join(5)
+    return peak["n"]
+
+
+def test_no_more_jobs_run_at_once_than_the_profile_allows():
+    s = make(workers=3)
+    for i in range(8):
+        s.submit(f"idle-{i}", None, P_IDLE, (i,))
+    assert run_in_threads(s, 6) == 3
+    assert len(s.ran) == 8
+
+
+def test_a_job_beside_others_starts_only_while_the_cpu_has_room():
+    room = {"ok": False}
+    s = make(workers=4, may_add=lambda: room["ok"])
+    for i in range(4):
+        s.submit(f"idle-{i}", None, P_IDLE, (i,))
+    assert run_in_threads(s, 4) == 1          # a busy CPU: the first starts, no second beside it
+    assert len(s.ran) == 4                    # one after another, nothing is lost
+    room["ok"] = True
+    for i in range(4):
+        s.submit(f"more-{i}", None, P_IDLE, (i,))
+    assert run_in_threads(s, 4) == 4          # room: all four at once
+
+
+def test_the_users_own_render_starts_beside_others_whatever_the_cpu():
+    s = make(workers=2, may_add=lambda: False)
+    started = threading.Event()
+    s.box["during"] = {"idle": lambda job: started.wait(2)}
+    s.submit("idle", None, P_IDLE)
+    worker = threading.Thread(target=s.run_next)
+    worker.start()
+    time.sleep(0.1)
+    s.submit("mine", None, P_FOREGROUND)      # the user waits for this one
+    assert s.run_next() and ("mine", P_FOREGROUND) in s.ran
+    started.set()
+    worker.join(5)

@@ -13,6 +13,7 @@ Free of Qt: the window supplies the gate's input events and the status chip read
 """
 from __future__ import annotations
 
+import os
 import json
 import shutil
 import threading
@@ -26,7 +27,7 @@ from . import compile_records, power_status, preview_build, preview_target, slid
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
-from .idle_gate import IdleGate
+from .idle_gate import CPU_LIMIT, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
 from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
@@ -47,8 +48,12 @@ DECKS_OFF_KEY = "bg_previews_decks_off"
 SECOND_LANGUAGE_KEY = "bg_previews_second_language"
 KEEP_DAYS_KEY = "bg_previews_keep_days"
 DEFAULT_LIMIT_GB = 2.0
-PROFILES = {"gentle": (1, 0.5), "normal": (1, 0.25), "fast": (2, 0.0)}      # (processes, rest / job time)
-DEFAULT_PROFILE = "normal"
+# (processes at most, rest / job time). LaTeX runs on one core: "normal" may use a quarter of the cores, "fast" half
+# (at most 16: about 300 MB of memory each). Each one beyond the first starts only while the CPU is below
+# idle_gate.CPU_LIMIT, so the actual number settles at what the machine can spare.
+_CORES = os.cpu_count() or 2
+PROFILES = {"gentle": (1, 0.5), "normal": (max(1, _CORES // 4), 0.25), "fast": (max(2, min(16, _CORES // 2)), 0.0)}
+DEFAULT_PROFILE = "fast"
 
 
 def setting(ctx: ProjectContext, key: str, default):
@@ -161,9 +166,11 @@ class BackgroundRenderer:
         self.ctx, self.store = ctx, store
         self.hashes = HashCache(store.db, store.lock)
         self.resolver = render_key.Resolver(ctx, self.hashes, store, engine_fp=engine_fp)
+        # One meter for the idle gate and the rule for one more parallel render (several workers ask at once).
+        self._cpu = power_status.shared_cpu_meter()
         self.gate = gate or IdleGate(
             enabled=lambda: self.enabled, only_on_mains=lambda: bool(setting(ctx, ONLY_MAINS_KEY, True)),
-            free_bytes=lambda: power_status.free_bytes(store.root))
+            free_bytes=lambda: power_status.free_bytes(store.root), cpu_load=self._cpu.load)
         self._decks, self._open_deck = decks, open_deck
         self._soon = soon or (lambda deck: course_schedule.session_soon(deck.course_url))
         self._render = renderer or self._render_pdf
@@ -173,7 +180,8 @@ class BackgroundRenderer:
         profile = setting(ctx, PROFILE_KEY, DEFAULT_PROFILE)
         workers, duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
         self.scheduler = RenderScheduler(self._work, can_start=self._may_start,
-                                         on_change=self._changed, on_error=self._failed, workers=workers, duty=duty)
+                                         on_change=self._changed, on_error=self._failed, workers=workers, duty=duty,
+                                         may_add=self._cpu_has_room)
         self.progress = Progress()
         self._plan: list = []
         self._plan_lock = threading.RLock()
@@ -181,6 +189,8 @@ class BackgroundRenderer:
         self._replan = threading.Event()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._working: list[str] = []
+        self._working_lock = threading.Lock()
         self._outstanding: dict[str, tuple] = {}
 
     # -- settings ------------------------------------------------------------------------
@@ -217,7 +227,14 @@ class BackgroundRenderer:
     def settings_changed(self) -> None:
         profile = setting(self.ctx, PROFILE_KEY, DEFAULT_PROFILE)
         self.scheduler.workers, self.scheduler.duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
+        if self._thread is not None:
+            self.scheduler.start()          # more workers at once when the profile allows more
         self.replan()
+
+    def _cpu_has_room(self) -> bool:
+        """One more render beside the running ones only while the CPU is below idle_gate.CPU_LIMIT (unknown: yes)."""
+        load = self._cpu.load()
+        return load is None or load < CPU_LIMIT
 
     def replan(self) -> None:
         """Something that decides what is outstanding changed (a deck opened, a setting): look again soon."""
@@ -476,7 +493,7 @@ class BackgroundRenderer:
 
     def _work(self, job: Job, cancel) -> None:
         unit, origin = job.payload
-        self.progress.working = unit.label
+        self._set_working(unit.label, True)
         try:
             if self.render_unit(unit, origin, cancel) is not None:
                 counted = self.progress.deck(unit.deck)
@@ -484,7 +501,28 @@ class BackgroundRenderer:
                     counted.fresh += 1
                     counted.count(unit.view, 1)
         finally:
-            self.progress.working = None
+            self._set_working(unit.label, False)
+
+    def _set_working(self, label: str, on: bool) -> None:
+        """`progress.working` names a unit that is rendering while any is (several run at once)."""
+        with self._working_lock:
+            (self._working.append if on else self._working.remove)(label)
+            self.progress.working = self._working[0] if self._working else None
+
+    def running(self) -> list[dict]:
+        """What renders right now, one entry per render, the longest-running first: for the status window."""
+        now = self.scheduler._clock()
+        entries = []
+        for job in self.scheduler.running_jobs():
+            unit, origin = job.payload
+            entries.append(dict(deck=unit.deck, slide=unit.id_slug, view=unit.view, language=unit.language,
+                                kind="reveal steps" if origin == ORIGIN_REVEAL else "background",
+                                seconds=max(0.0, now - job.started)))
+        return entries
+
+    def capacity(self) -> tuple[int, Optional[float]]:
+        """(how many may render at once, the processor's load now: None when unknown)."""
+        return self.scheduler.workers, self._cpu.load()
 
     def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
         """Render `unit` into the store unless a current render is there. Returns the object name, or None."""

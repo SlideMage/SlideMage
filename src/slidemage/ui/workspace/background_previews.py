@@ -115,6 +115,18 @@ class StatusDialog(QDialog):
         for column in range(1, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tree, 1)
+        self.running_title = QLabel()
+        layout.addWidget(self.running_title)
+        self.running = QTreeWidget()
+        self.running.setRootIsDecorated(False)
+        self.running.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.running.setHeaderLabels(["Deck", "Slide", "Version", "Language", "For", "Running"])
+        running_header = self.running.header()
+        running_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for column in (0, 2, 3, 4, 5):
+            running_header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.running.setMaximumHeight(170)
+        layout.addWidget(self.running)
         self.note = QLabel()
         self.note.setWordWrap(True)
         layout.addWidget(self.note)
@@ -174,11 +186,34 @@ class StatusDialog(QDialog):
             for column in range(1, 4):
                 item.setTextAlignment(column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.tree.addTopLevelItem(item)
+        self._refresh_running(renderer)
         reason = progress.paused_because
         self.note.setText(f"Waiting: {reason}." if reason and progress.left else "")
         self.pause.setText("Resume" if renderer.gate.paused else "Pause")
         self.failures.setVisible(bool(progress.failures))
         self.retry.setVisible(bool(progress.failures))
+
+    def _refresh_running(self, renderer) -> None:
+        """One row per render running now (several run at once); the title says how many may and why not more."""
+        from ... import background_renders
+
+        running = renderer.running()
+        allowed, load = renderer.capacity()
+        title = f"Running now: {len(running)} of up to {allowed}"
+        if load is not None:
+            title += f" · processor {round(load * 100)}% busy"
+            if running and len(running) < allowed and load >= background_renders.CPU_LIMIT:
+                title += f" (more start below {round(background_renders.CPU_LIMIT * 100)}%)"
+        self.running_title.setText(title)
+        labels = dict(VIEW_COLUMNS)
+        self.running.clear()
+        for entry in running:
+            seconds = int(entry["seconds"])
+            item = QTreeWidgetItem([entry["deck"] or "–", entry["slide"], labels.get(entry["view"], entry["view"]),
+                                    entry["language"], entry["kind"], f"{seconds // 60}:{seconds % 60:02d}"])
+            item.setTextAlignment(5, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.running.addTopLevelItem(item)
+        self.running.setVisible(bool(running))
 
     def done(self, result) -> None:
         self._timer.stop()

@@ -25,6 +25,7 @@ class DeckProgress:
     index: int
     total: int
     status: str
+    done: int = 0       # how many had finished (renders run several at once)
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,7 @@ def run(service, deck, requests, *, scope='all', language='EN', cancel=None,
         spec = requests[event.index - 1]
         progress(DeckProgress(spec.target.occurrence_key, spec.target.frame_number or 0,
                               spec.target.source_path, event.view, event.index,
-                              event.total, event.status))
+                              event.total, event.status, event.done))
 
     results = preview_batch.render_batch(service, requests, cancel=cancel, progress=notify,
                                          publish=publish, log=log)

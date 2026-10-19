@@ -1510,9 +1510,9 @@ class PreviewPane(Surface):
     def _on_batch_progress(self, progress) -> None:
         if self._closed or self._batch_cancel is None:
             return
-        if progress.status == 'rendering':
-            self._batch_status = f"Rendering {VIEW_LABELS[progress.view]} · {progress.index}/{progress.total}"
-            self._refresh()
+        # Several views render at once: every event moves the count of the finished ones
+        self._batch_status = f"Rendering all views · {progress.done}/{progress.total} done"
+        self._refresh()
 
     def _on_batch_finished(self, results, error: str) -> None:
         if self._closed:

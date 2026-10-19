@@ -131,7 +131,9 @@ class CompileController(QObject):
             self.settled.emit(self.run)
 
     def _preview_progress(self, event) -> None:
-        completed = event.index - (event.status == 'rendering')
+        completed = getattr(event, 'done', None)      # renders run several at once: the count, not the position
+        if completed is None:
+            completed = event.index - (event.status == 'rendering')
         self.progress = _PreviewProgress(
             fraction=completed / max(event.total, 1),
             text=f"{completed}/{event.total} previews · {event.view} · {event.status}")
