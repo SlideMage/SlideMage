@@ -91,9 +91,12 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
             elif line.startswith('INPUT '):
                 names.append(line[6:])
     if database.is_file():
-        # Recorded names are quoted, with spaces kept; unescape only quotes/backslashes.
-        for name in re.findall(r'^\s+"((?:[^"\\]|\\.)*)"\s+\d', database.read_text(errors='replace'), re.M):
-            names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
+        # Recorded names are quoted, with spaces kept; unescape only quotes/backslashes. A source latexmk recorded
+        # as missing (size -1: a bibliography biber was never run for, named as the .bcf gives it) fed nothing.
+        for name, size in re.findall(r'^\s+"((?:[^"\\]|\\.)*)"\s+[\d.]+\s+(-?\d+)', database.read_text(errors='replace'),
+                                     re.M):
+            if size != '-1':
+                names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
     formats = project_root / '.build' / 'preview-formats'
     cache_roots = (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())
