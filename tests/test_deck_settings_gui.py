@@ -40,6 +40,7 @@ def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
 
 
 def make_sheet(tmp_path, monkeypatch, text=DECK_TEXT, tab=GENERAL, **fields):
+    (tmp_path / "Slidemaster_preamble_uni-graz.tex").write_text("% SlideMage dark mode: true\n")
     monkeypatch.setattr(sheet_module.AdminSlidesTab, "start", lambda self: None)     # no network
     return DeckSettingsSheet(None, make_deck(tmp_path, text=text, **fields), TEMPLATES, tab=tab)
 
@@ -266,7 +267,7 @@ def test_admin_slides_entry_is_only_for_a_linked_course_deck(tmp_path, qapp):
     assert not enabled(make_deck(tmp_path, ["research"], course_url=COURSE_URL))  # not a course deck
 
 
-@pytest.mark.parametrize("field,value", [("footer_hide", ("id", "deck")), ("footer_text", "New footer")])
+@pytest.mark.parametrize("field,value", [("footer_hide", ("id", "deck")), ("footer_text", "New footer"), ("dark_mode", True)])
 @pytest.mark.parametrize("mode", ["preview", "split", "source"])
 def test_footer_changes_render_the_visible_preview_after_reloading(tmp_path, qapp, field, value, mode):
     deck = make_deck(tmp_path)
@@ -287,3 +288,47 @@ def test_footer_changes_render_the_visible_preview_after_reloading(tmp_path, qap
     assert deck_settings.read_settings(deck.path.read_text()).footer_hide == new.footer_hide
     assert field.replace("_", " ") in events[0]
     assert events[1:] == ["editors", "reload"] + (["render"] if mode != "source" else [])
+
+
+
+def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_path, monkeypatch, qapp):
+    sheet = make_sheet(tmp_path, monkeypatch)
+    assert sheet.dark_mode_check.isEnabled() and not sheet.dark_mode_check.isChecked()
+    sheet.dark_mode_check.setChecked(True)
+    assert sheet.dirty()
+    sheet.save_button.click()
+    assert sheet.action == SAVE and sheet.result_settings().dark_mode
+    saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, sheet.result_settings())
+    reopened = make_sheet(tmp_path, monkeypatch, text=saved)
+    assert reopened.dark_mode_check.isChecked() and not reopened.dirty()
+    reopened.dark_mode_check.setChecked(False)
+    assert reopened.dirty()
+    reopened.save_button.click()
+    assert deck_settings.apply_settings(saved, reopened.original, reopened.result_settings()) == DECK_TEXT
+
+    other = make_sheet(tmp_path, monkeypatch, text=saved)
+    other.template_combo.setCurrentIndex(other.template_combo.findData("slidemage"))
+    assert not other.dark_mode_check.isEnabled()
+    other.save_button.click()
+    assert not other.result_settings().dark_mode
+    changed = deck_settings.apply_settings(saved, other.original, other.result_settings())
+    assert r"\SMDarkMode" not in changed
+
+
+def test_dark_slide_changes_obey_the_admin_unsaved_settings_rule(tmp_path, monkeypatch, qapp):
+    sheet = make_sheet(tmp_path, monkeypatch, tab=ADMIN, course_url=COURSE_URL)
+    sheet.admin._on_loaded(CourseSchedule((GROUP,)), DETAIL)
+    assert sheet.insert_button.isEnabled()
+    sheet.dark_mode_check.setChecked(True)
+    assert not sheet.insert_button.isEnabled()
+    sheet.dark_mode_check.setChecked(False)
+    assert sheet.insert_button.isEnabled()
+
+
+def test_dark_slides_work_for_a_renamed_template(tmp_path, monkeypatch, qapp):
+    (tmp_path / "Slidemaster_preamble_custom-college.tex").write_text("% SlideMage dark mode: true\n")
+    sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("uni-graz", "custom-college"))
+    assert sheet.dark_mode_check.isEnabled()
+    sheet.dark_mode_check.setChecked(True)
+    sheet.save_button.click()
+    assert sheet.result_settings().dark_mode

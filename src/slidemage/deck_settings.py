@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A deck's deck-wide settings: the lines of its preamble the Deck settings sheet
 (ui/dialogs/deck_settings.py) reads and writes -- template, language, footer
-text, course link, output folders and the appendix TOC.
+text, course link, output folders, dark mode and the appendix TOC.
 
 Everything here is plain text in, text out, so the dialog can apply all its
 changes in one stale-checked write (deck_editor.apply). Only a live line
 (not %-commented) counts, and a setting the deck does not have yet is added
 just before \\begin{document}, after the preamble \\input{} that defines the
 (inert) macros -- the same rule deck_editor.set_deck_tags() follows.
+Dark mode is the exception: its switch goes before the template input.
 """
 from __future__ import annotations
 
@@ -29,6 +30,10 @@ from .tex_source import braced_argument, is_commented
 
 # \input{Slidemaster_preamble_<template>} -- which template the deck uses.
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{Slidemaster_preamble_([^}\s]+)\}")
+# The opt-in switch must be defined before the institution template is loaded.
+DARK_MODE_RE = re.compile(
+    r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMDarkMode\}|\\SMDarkMode\b)"
+    r"|def\s*\\SMDarkMode\b)\s*\{[^{}]*\}")
 # \decklanguage[en] -- a literal code; "\decklanguage[\decklanguageoverride]"
 # (the boilerplate's other branch) is left alone.
 LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
@@ -58,6 +63,7 @@ class DeckSettings:
     # the footer elements left out: any of FOOTER_ELEMENTS (text = the left text, id = the slide id
     # block, deck = "instructor deck" etc.)
     footer_hide: tuple[str, ...] = ()
+    dark_mode: bool = False
 
 
 def set_open_pdf(text: str, choice: str) -> str:
@@ -126,7 +132,7 @@ def _clean_path(path: str) -> str:
 def from_form(
     original: DeckSettings, *, template: str, language: str, footer_text: str, course_url: str,
     output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
-    footer_hide: tuple[str, ...] = (),
+    footer_hide: tuple[str, ...] = (), dark_mode: bool = False,
 ) -> DeckSettings:
     """The settings a form of the sheet holds, checked: a course link must be a web address
     (ValueError otherwise), an output path may not hold LaTeX specials. A path left as it was in
@@ -142,7 +148,20 @@ def from_form(
         template=template, language=language, footer_text=footer_text,
         course_url=deck_editor.normalize_course_url(url) if url else "",
         output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
-        footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide))
+        footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide),
+        dark_mode=dark_mode)
+
+
+def template_supports_dark_mode(root: Path, key: str) -> bool:
+    """Templates opt in with `% SlideMage dark mode: true` in their header."""
+    from . import slide_snapshot
+
+    try:
+        text = slide_snapshot.preamble_file(key, root).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    head = "\n".join(text.splitlines()[:30])
+    return bool(re.search(r"^%+\s*SlideMage dark mode:\s*true\s*$", head, re.MULTILINE | re.IGNORECASE))
 
 
 def template_choices(root: Path) -> list[tuple[str, str]]:
@@ -160,6 +179,8 @@ def read_settings(text: str) -> DeckSettings:
     template = _live(text, TEMPLATE_INPUT_RE)
     if template:
         settings.template = template[0].group(1)
+    settings.dark_mode = any(
+        not template or m.end() <= template[0].start() for m in _live(text, DARK_MODE_RE))
     for match in _live(text, LANGUAGE_RE):
         code = match.group(1).strip()
         if code and not code.startswith("\\"):
@@ -195,6 +216,32 @@ def set_template(text: str, template: str) -> str:
         raise ValueError(f"'{template}' is not a template name.")
     group = matches[0].span(1)
     return text[:group[0]] + name + text[group[1]:]
+
+
+def set_dark_mode(text: str, on: bool) -> str:
+    """Set the dark switch before the template input; keep comments and inline commands."""
+    templates = _live(text, TEMPLATE_INPUT_RE)
+    if on and not templates:
+        raise ValueError("This deck has no institution template input for dark mode.")
+    live = _live(text, DARK_MODE_RE)
+    if on and len(live) == 1 and live[0].end() <= templates[0].start():
+        return text
+    for match in reversed(live):
+        start, end = _line_bounds(text, match.start())
+        remaining = text[start:match.start()] + text[match.end():end]
+        if not remaining.strip():
+            text = text[:start] + text[end:]
+        else:
+            text = text[:match.start()] + text[match.end():]
+    if not on:
+        return text
+    template = _live(text, TEMPLATE_INPUT_RE)[0]
+    at = template.start()
+    start, _ = _line_bounds(text, at)
+    if not text[start:at].strip():
+        at = start
+    newline = deck_editor.eol(text)
+    return text[:at] + "\\newcommand{\\SMDarkMode}{}" + newline + text[at:]
 
 
 def set_language(text: str, code: str) -> str:
@@ -269,6 +316,8 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
     """`text` with every setting that differs between `old` and `new` written."""
     if new.template != old.template:
         text = set_template(text, new.template)
+    if new.dark_mode != old.dark_mode:
+        text = set_dark_mode(text, new.dark_mode)
     if new.language != old.language:
         text = set_language(text, new.language)
     if new.footer_text != old.footer_text:

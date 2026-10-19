@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QWidget
 
-from ... import deck_editor, deck_settings, open_path
+from ... import deck_editor, deck_settings, open_path, project
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ..ai_models import add_route_badge
@@ -44,6 +44,7 @@ class DeckSettingsSheet(ModalSheet):
         super().__init__(f"Deck settings — {deck.name}", parent, width=700)
         add_route_badge(self, parent)
         self.deck = deck
+        self._project_root = project.find_upward(deck.path.parent) or deck.path.parent
         self.original = deck_settings.read_settings(deck.text)
         self.settings = self.original
         self.action = ""
@@ -61,10 +62,12 @@ class DeckSettingsSheet(ModalSheet):
         self.insert_button.clicked.connect(self._on_insert)
 
         self._initial = self._values()
+        self.template_combo.currentIndexChanged.connect(self._sync_dark_mode)
         for widget in (self.template_combo, self.language_combo, self.open_pdf_combo):
             widget.currentIndexChanged.connect(self._sync_footer)
         for widget in (self.footer_edit, self.url_edit, *self.output_edits.values()):
             widget.textChanged.connect(self._sync_footer)
+        self.dark_mode_check.toggled.connect(self._sync_footer)
         self.appendix_check.toggled.connect(self._sync_footer)
         for check in self.footer_checks.values():
             check.toggled.connect(self._sync_footer)
@@ -102,6 +105,15 @@ class DeckSettingsSheet(ModalSheet):
             "The deck's language (\\decklanguage): hyphenation, automatic texts, "
             "the language of its transcript and of \\multilingualtext.")
         layout.addWidget(columns(Field("Template", self.template_combo), Field("Language", self.language_combo)))
+
+        self.dark_mode_check = QCheckBox("Dark slides")
+        self.dark_mode_check.setToolTip(
+            "Use a dark background for this deck's slides and PDFs. "
+            "Available when the selected template supports dark slides.")
+        self.dark_mode_check.setChecked(settings.dark_mode)
+        self._sync_dark_mode()
+        layout.addWidget(self.dark_mode_check)
+        layout.addWidget(caption("Dark slides are available when the selected template supports them."))
 
         self.footer_edit = QLineEdit(settings.footer_text)
         self.footer_edit.setPlaceholderText("Shown at the left of the footer, e.g. course | name | term")
@@ -179,7 +191,8 @@ class DeckSettingsSheet(ModalSheet):
     def _values(self) -> tuple:
         return (self.template_combo.currentData(), self.language_combo.currentData(), self.footer_edit.text(),
                 self.url_edit.text(), tuple(edit.text() for edit in self.output_edits.values()),
-                self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide())
+                self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide(),
+                self.dark_mode_check.isEnabled() and self.dark_mode_check.isChecked())
 
     def dirty(self) -> bool:
         return self._values() != self._initial
@@ -194,7 +207,12 @@ class DeckSettingsSheet(ModalSheet):
             output_folders={key: edit.text() for key, edit in self.output_edits.items()},
             appendix_toc=self.appendix_check.isChecked(),
             open_pdf=self.open_pdf_combo.currentData() or "instructor",
-            footer_hide=self._footer_hide())
+            footer_hide=self._footer_hide(),
+            dark_mode=self.dark_mode_check.isEnabled() and self.dark_mode_check.isChecked())
+
+    def _sync_dark_mode(self) -> None:
+        self.dark_mode_check.setEnabled(deck_settings.template_supports_dark_mode(
+            self._project_root, self.template_combo.currentData() or ""))
 
     def _footer_hide(self) -> tuple[str, ...]:
         return tuple(key for key, check in self.footer_checks.items() if not check.isChecked())

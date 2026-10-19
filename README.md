@@ -744,6 +744,10 @@ it is moved, copied or archived:
   (`\input{Slidemaster_preamble_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[en]` or `[de]`.
+- **Dark slides** (supported templates, including the example Graz template):
+  a charcoal background, white body text,
+  dark cards and gray code panels. Saved in the deck and applied to its previews
+  and compiled PDFs; title and footer bars keep the institution colors.
 - **Footer text**: `\FooterText`, the left part of the footer.
 - **Course link**: a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.
@@ -2149,6 +2153,14 @@ it (keep the original alongside it, as `media/` does here: the plain filename
 is the untouched source, `-cropped` is what slides actually reference).
 
 ### Color palette
+
+The Graz dark option uses `#2b2b2b` for the canvas and `#3a3a3a` for cards,
+with white text, yellow inline code, and black code listings on `#c6c6c6`.
+These two dark grays are the softened variant used in the chapter-one design
+examples. The shared TikZ styles `SMCard` and `SMProcess` follow the template;
+card headings use `\SMCardHeadingFont`. Light decks retain their existing palette.
+A template advertises dark-mode support with `% SlideMage dark mode: true` in
+its first 30 lines; copied or renamed templates keep the option without app changes.
 
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
