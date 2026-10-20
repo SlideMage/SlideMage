@@ -244,6 +244,36 @@ def test_nothing_runs_while_the_gate_says_no(project, store, raster):
     assert drain_one and len(tex.calls) == 1
 
 
+def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_waits(project, store, raster):
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    manual, copy = deck_named(r, "slidemage-manual"), deck_named(r, "slidemage-manual-copy")
+    unit = background_renders.deck_units(project, copy, "instructor", "EN")[0]
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    background_renders.app_settings.set(project, background_renders.LIMIT_GB_KEY, store.total_bytes() / 1024 ** 3)
+
+    def queued_decks():
+        return {job.group for job in r.scheduler._queue.values()}
+
+    r.tick()                                     # no deck opened yet: rendering any would push another one out
+    assert queued_decks() == set() and r.progress.left > 0
+    assert r.progress.paused_because == background_renders.STORE_FULL and not r.sweeping()
+    store.touch_deck(manual.name, opened=True)
+    r.replan()
+    r.tick()                                     # the deck in use may push out the others' renders
+    assert queued_decks() == {manual.name} and r.progress.paused_because is None
+    r.scheduler.cancel_priority(P_IDLE)
+    background_renders.app_settings.set(project, background_renders.LIMIT_GB_KEY, 1.0)
+    r.replan()
+    r.tick()                                     # room again: the sweep goes on with every deck, nothing was pushed out
+    assert r.progress.paused_because is None and store.count() == 1
+    r.scheduler.cancel_priority(P_IDLE)
+    with r._plan_lock:
+        r._plan = [item for item in r._plan if item[1].deck == copy.name]
+    r._top_up()
+    assert queued_decks() == {copy.name}
+
+
 def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, store, raster):
     tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)

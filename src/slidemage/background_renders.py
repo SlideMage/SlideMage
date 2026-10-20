@@ -36,6 +36,7 @@ from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, Rend
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
 QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
+STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
 MIN_REPLAN_SECONDS = 15.0
 JOB_TIMEOUT = 180.0
@@ -371,21 +372,46 @@ class BackgroundRenderer:
             self._planned_at = now
             self._evict()
         reason = self.gate.reason()
+        if reason is None and self._top_up() and not self.scheduler.pending():
+            reason = STORE_FULL
         self.progress.paused_because = reason if (self._plan or self.scheduler.pending()) else None
-        if reason is None:
-            self._top_up()
         self._changed()
 
-    def _top_up(self) -> None:
+    def _top_up(self) -> bool:
+        """Hand the next units of the plan to the scheduler. With the store at its limit, only those of the
+        protected decks: another deck's render would push out a render the plan then counts as outstanding again,
+        and the sweep would go round in circles. Returns whether units were held back for that."""
+        keep = self._protected_decks() if self._store_full() else None
+        held = False
         with self._plan_lock:
-            while self._plan and self.scheduler.pending(P_IDLE) < QUEUE_AHEAD:
-                rank, unit = self._plan.pop(0)
+            i = 0
+            while i < len(self._plan) and self.scheduler.pending(P_IDLE) < QUEUE_AHEAD:
+                rank, unit = self._plan[i]
+                if keep is not None and unit.deck not in keep:
+                    held = True
+                    i += 1
+                    continue
+                del self._plan[i]
                 self.scheduler.submit(unit.label, (unit, ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
+            return held or (keep is not None and any(unit.deck not in keep for _rank, unit in self._plan[i:]))
+
+    def _store_full(self) -> bool:
+        """Whether one more render of the average size would take the store past its limit."""
+        count = self.store.count()
+        total = self.store.total_bytes()
+        return bool(count) and total + total / count > self.limit_bytes()
+
+    def _protected_decks(self) -> set[str]:
+        """The decks whose renders the disk limit keeps: the open deck and the five opened most recently."""
+        protected = {u["deck"] for u in self.store.deck_usage()[:5]}
+        open_deck = self._open_deck()
+        if open_deck is not None:
+            protected.add(open_deck.name)
+        return protected
 
     def _evict(self) -> None:
-        recent = {u["deck"] for u in self.store.deck_usage()[:5]}
         names = {d.name for d in self._decks() if not d.archived}
-        self.store.enforce_limit(self.limit_bytes(), protected_decks=recent,
+        self.store.enforce_limit(self.limit_bytes(), protected_decks=self._protected_decks(),
                                  keep_days=int(setting(self.ctx, KEEP_DAYS_KEY, render_store.DEFAULT_KEEP_DAYS)),
                                  is_orphan=lambda decks: bool(decks) and not set(decks) & names)
 
