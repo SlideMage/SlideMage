@@ -551,8 +551,9 @@ class SlideList(QWidget):
         marker keeps its double click)."""
         if QGuiApplication.keyboardModifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
             return
-        if isinstance(self.tree.data_of(item), SlideRow):
-            self._open_item(item)
+        row = self.tree.data_of(item)
+        if isinstance(row, SlideRow):
+            self._open_source(row, keep_mode=True)     # in Preview it stays in Preview (Enter and a double click switch)
 
     def _open_item(self, item: Optional[QTreeWidgetItem]) -> None:
         row = self.tree.data_of(item)
@@ -561,8 +562,8 @@ class SlideList(QWidget):
         elif isinstance(row, SectionRow):
             self.tree.toggle_section(item)
 
-    def _open_source(self, row: SlideRow) -> None:
-        self.app.open_slide_editor(self.app.project.slides_dir / row.call.source_filename)
+    def _open_source(self, row: SlideRow, *, keep_mode: bool = False) -> None:
+        self.app.open_slide_editor(self.app.project.slides_dir / row.call.source_filename, keep_mode=keep_mode)
 
     def _step(self, delta: int) -> None:
         """Alt+Up/Down: the focused slide passes the item above or below it, a
