@@ -2488,3 +2488,9 @@ v8.33.1 (2026-10-20, slide clicks keep the current view): A plain click on a sli
 NEW: Clicking a slide keeps the Preview visible.
 - A plain click opens the selected slide without changing the current view.
 - Press Enter or double-click a slide to open its Source view.
+
+v8.33.2 (2026-10-20, Linux-only startup input-watcher workaround): On Linux, the background-preview input watcher uses per-widget event filters, discovers new widgets every 250 ms and polls cursor movement while the app is active, avoiding Shiboken wrapper conversion for Qt WebEngine's private focus objects during startup. Other platforms retain the application-wide event filter without polling. Stopping the watcher removes the filters for the selected mode. GUI tests cover both modes, input from new controls and cleanup.
+
+NEW: Fix a Linux startup crash while preserving input tracking on other platforms.
+- SlideMage no longer uses the application-wide input watcher that caused a crash during Linux startup.
+- Windows and macOS keep their existing input tracking without the extra widget polling.

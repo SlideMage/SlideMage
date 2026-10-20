@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 from slidemage import app_settings, background_renders
 from slidemage.background_renders import DeckProgress, Progress
 from slidemage.ui.dialogs.settings import SettingsSheet
+from slidemage.ui.workspace import background_previews
 from conftest import build_window, qapp as qapp
 from test_settings_gui import FakeApp
 
@@ -78,12 +79,14 @@ def test_user_input_anywhere_in_the_application_resets_the_idle_clock(window):
     assert gate.last_input > -1000.0
 
 
-def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(window):
+def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(qapp, monkeypatch):
     from PySide6.QtCore import QEvent, QObject
     from PySide6.QtGui import QKeyEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QDialog, QLineEdit
 
+    monkeypatch.setattr(background_previews, "USE_WIDGET_INPUT_WATCHER", True)
+    window = build_window(monkeypatch)
     gate = window.background.renderer.gate
     dialog = QDialog(window)
     edit = QLineEdit(dialog)
@@ -106,6 +109,44 @@ def test_input_watcher_tracks_new_dialogs_but_not_private_qobjects(window):
     finally:
         dialog.close()
         dialog.deleteLater()
+
+
+def test_application_input_watcher_needs_no_widget_polling_and_is_removed_on_stop(qapp, monkeypatch):
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QLineEdit
+
+    monkeypatch.setattr(background_previews, "USE_WIDGET_INPUT_WATCHER", False)
+
+    def unexpected_widget_scan():
+        raise AssertionError("The application filter must not scan widgets")
+
+    monkeypatch.setattr(QApplication, "allWidgets", unexpected_widget_scan)
+    inputs = []
+    parent = QObject()
+    watcher = background_previews._InputWatcher(lambda: inputs.append(True), parent)
+    try:
+        assert watcher._timer is None
+        receiver = QObject()
+        QApplication.sendEvent(receiver, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier))
+        assert inputs
+
+        inputs.clear()
+        edit = QLineEdit()  # created after the watcher: input is covered immediately
+        QApplication.sendEvent(edit, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_B, Qt.KeyboardModifier.NoModifier, "b"))
+        assert inputs and edit.text() == "b"
+
+        watcher.stop()
+        inputs.clear()
+        QApplication.sendEvent(receiver, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_C, Qt.KeyboardModifier.NoModifier))
+        QApplication.sendEvent(edit, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_D, Qt.KeyboardModifier.NoModifier, "d"))
+        assert not inputs and edit.text() == "bd"
+    finally:
+        watcher.stop()
 
 
 def test_the_chip_says_what_is_going_on_and_only_then(window):

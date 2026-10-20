@@ -12,6 +12,7 @@ pause, render now, skip the open deck, retry the failed slides.
 from __future__ import annotations
 
 import os
+import sys
 from weakref import WeakSet
 from typing import Optional
 
@@ -26,6 +27,7 @@ from ..kit.widgets import Chip
 
 NO_BACKGROUND_ENV = "SLIDEMAGE_NO_BACKGROUND_PREVIEWS"     # set by the tests: nothing renders by itself
 REFRESH_MS = 1000
+USE_WIDGET_INPUT_WATCHER = sys.platform.startswith("linux")
 MARGIN = 14
 INPUT_EVENTS = {QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease, QEvent.Type.KeyPress,
                 QEvent.Type.Wheel, QEvent.Type.TouchBegin}
@@ -187,11 +189,11 @@ class StatusDialog(QDialog):
 
 
 class _InputWatcher(QObject):
-    """Watch widget input without filtering Qt WebEngine's internal QObjects.
+    """Watch input application-wide, using widget filters on Linux.
 
-    An application event filter makes PySide wrap even private Qt Quick objects;
-    wrapping a focus object during WebEngine startup can crash in Shiboken.
-    Discover widgets periodically so dialogs and newly created controls count too.
+    On Linux, an application event filter can crash in Shiboken while wrapping
+    Qt WebEngine's private focus objects. Discover widgets periodically there;
+    other platforms keep the application filter without a polling timer.
     """
 
     def __init__(self, on_input, parent: QObject) -> None:
@@ -199,6 +201,10 @@ class _InputWatcher(QObject):
         self._on_input = on_input
         self._mouse = None
         self._watched = WeakSet()
+        self._timer: Optional[QTimer] = None
+        if not USE_WIDGET_INPUT_WATCHER:
+            QApplication.instance().installEventFilter(self)
+            return
         self._cursor = QCursor.pos()
         self._timer = QTimer(self)
         self._timer.setInterval(250)
@@ -219,6 +225,9 @@ class _InputWatcher(QObject):
                 self._watched.add(widget)
 
     def stop(self) -> None:
+        if self._timer is None:
+            QApplication.instance().removeEventFilter(self)
+            return
         self._timer.stop()
         for widget in QApplication.allWidgets():
             if widget in self._watched:
