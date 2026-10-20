@@ -114,10 +114,11 @@ def _insert_line(text: str, line: str, *, after: re.Match[str] | None = None) ->
 
 
 def _remove(text: str, match: re.Match[str]) -> str:
-    """The directive of `match` taken out: its whole line when nothing else
-    but whitespace stands before it, else just the directive."""
+    """The directive of `match` taken out: its whole line (with the comment
+    that explains it) when nothing else stands on it, else just the directive."""
     start, end = _line_bounds(text, match.start())
-    if not text[start:match.start()].strip():
+    after = text[match.end():end].strip()
+    if not text[start:match.start()].strip() and (not after or after.startswith("%")):
         return text[:start] + text[end:]
     return text[:match.start()] + text[match.end():]
 
@@ -219,7 +220,7 @@ def set_template(text: str, template: str) -> str:
 
 
 def set_dark_mode(text: str, on: bool) -> str:
-    """Set the dark switch before the template input; keep comments and inline commands."""
+    """Set the dark switch before the template input; other commands on its line stay."""
     templates = _live(text, TEMPLATE_INPUT_RE)
     if on and not templates:
         raise ValueError("This deck has no institution template input for dark mode.")
@@ -227,12 +228,7 @@ def set_dark_mode(text: str, on: bool) -> str:
     if on and len(live) == 1 and live[0].end() <= templates[0].start():
         return text
     for match in reversed(live):
-        start, end = _line_bounds(text, match.start())
-        remaining = text[start:match.start()] + text[match.end():end]
-        if not remaining.strip():
-            text = text[:start] + text[end:]
-        else:
-            text = text[:match.start()] + text[match.end():]
+        text = _remove(text, match)
     if not on:
         return text
     template = _live(text, TEMPLATE_INPUT_RE)[0]

@@ -226,6 +226,12 @@ def test_disabling_dark_mode_preserves_inline_comments_and_other_commands():
     assert not read(light).dark_mode
 
 
+def test_removing_a_setting_keeps_what_follows_it_on_its_line():
+    text = "\\deckappendixtoc % the comment goes with it\n\\deckoutputfolder[presenter]{out/p.pdf} \\def\\SMFooterHide{date}\n"
+    assert deck_settings.set_appendix_toc(text, False) == "\\deckoutputfolder[presenter]{out/p.pdf} \\def\\SMFooterHide{date}\n"
+    assert deck_settings.set_output_folder(text, "presenter", "") == "\\deckappendixtoc % the comment goes with it\n \\def\\SMFooterHide{date}\n"
+
+
 def test_dark_mode_form_does_not_depend_on_a_template_name():
     assert form(dark_mode=True).dark_mode
     assert form(template="custom-college", dark_mode=True).dark_mode
