@@ -169,7 +169,7 @@ class WorkspaceWindow(QMainWindow):
         self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
-            edit_slide_text=lambda path, change: self.centre.edit_slide_text(path, change),
+            edit_slide_text=lambda path, change, **kw: self.centre.edit_slide_text(path, change, **kw),
             save_source=lambda: self.centre.source.save(),
             restore_version=lambda path: self.centre.restore_version(path),
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),

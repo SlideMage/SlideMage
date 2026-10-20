@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import slide_usage
+from slidemage import slide_language, slide_usage
+from slidemage.deck_scan import scan_decks
 
 
 DECK = (
@@ -129,3 +130,22 @@ def test_ask_and_apply_deck_versions_are_the_two_halves_of_the_save_time_questio
     monkeypatch.setattr(dialogs.slide_usage, "apply_choices", lambda _ctx, *a: (_ for _ in ()).throw(ValueError("nope")))
     dialogs.apply_deck_versions(app, "abc-EN-Demo", {"follows": "keep"}, (1, 0, 0))
     assert "nope" in told[0]
+
+
+def test_the_decks_already_scanned_are_not_scanned_again_and_one_translation_scan_serves_them_all(ctx, project, monkeypatch):
+    (project / "archive" / "old.tex").write_text(DECK, encoding="utf-8", newline="")
+    decks = scan_decks(ctx)
+    expected = [(u.deck.name, u.deck.archived, u.positions, u.total) for u in slide_usage.find_usage(ctx, "abc-EN-Demo", language="EN")]
+    scans, folder = [], []
+
+    class Counting(slide_language.TranslationLinks):
+        def __init__(self, *args, **kwargs):
+            scans.append(1)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(slide_language, "TranslationLinks", Counting)
+    monkeypatch.setattr(slide_usage, "scan_decks", lambda _ctx: folder.append(1) or [])
+    usages = slide_usage.find_usage(ctx, "abc-EN-Demo", decks, language="EN")
+    assert [(u.deck.name, u.deck.archived, u.positions, u.total) for u in usages] == expected
+    assert ("old", True, [1, 2], 3) in expected                        # archived decks count, too
+    assert folder == [] and scans == [1]                               # five decks, one scan of the slides folder

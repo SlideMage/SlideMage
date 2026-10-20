@@ -37,7 +37,7 @@ class PanelActions(NamedTuple):
     edits of the slide list. Passed in, so that no panel reaches through the window to its siblings."""
     slide_text: Callable[[Path], str]                     # the text of a slide file, edits not yet written included
     is_dirty: Callable[[Path], bool]                      # the Source view holds edits of this file that could not be saved
-    edit_slide_text: Callable[..., bool]                  # change a slide's text through the Source view
+    edit_slide_text: Callable[..., bool]                  # change a slide's text through the Source view (show=True: and show it there)
     save_source: Callable[[], object]                     # Ctrl+S: write the Source view's file now and render it
     restore_version: Callable[[Path], object]
     freeze_version: Callable[[str, str], object]

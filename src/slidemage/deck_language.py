@@ -50,13 +50,15 @@ class SlideSlot:
         return slide_id in self.related_ids
 
 
-def slots(ctx: ProjectContext, calls: list[SlideCall], language: str) -> list[SlideSlot]:
+def slots(ctx: ProjectContext, calls: list[SlideCall], language: str, *,
+          links: slide_language.TranslationLinks | None = None) -> list[SlideSlot]:
     """Preserve all original occurrences; omit separately listed translations.
 
     A translation called on its own is a slot too. Repeated originals and
     different slidestep calls retain their order and their individual rules.
+    `links` is a scan of the slides folder to share between decks.
     """
-    return _slots(calls, language, slide_language.TranslationLinks(ctx.slides_dir))
+    return _slots(calls, language, links or slide_language.TranslationLinks(ctx.slides_dir))
 
 
 def _slots(calls: list[SlideCall], language: str, links: slide_language.TranslationLinks) -> list[SlideSlot]:
@@ -100,8 +102,9 @@ def active_calls(deck: Deck) -> list[SlideCall]:
     return deck_editor.parse_slide_calls(replace(deck, text=masked(deck.text)))
 
 
-def deck_slots(ctx: ProjectContext, deck: Deck, language: str) -> list[SlideSlot]:
-    return slots(ctx, active_calls(deck), language)
+def deck_slots(ctx: ProjectContext, deck: Deck, language: str, *,
+               links: slide_language.TranslationLinks | None = None) -> list[SlideSlot]:
+    return slots(ctx, active_calls(deck), language, links=links)
 
 
 def call_text(call: SlideCall) -> str:

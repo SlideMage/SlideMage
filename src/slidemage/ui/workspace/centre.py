@@ -234,10 +234,16 @@ class CentreColumn(QFrame):
         file = self.source.file_for(path)
         return file.editor.text() if file is not None else slide_source.read_slide_source(path)[0]
 
-    def edit_slide_text(self, path: Path, change: Callable[[str], str]) -> bool:
+    def edit_slide_text(self, path: Path, change: Callable[[str], str], *, show: bool = False) -> bool:
         """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
         leave it to the Source view's autosave, so that an edit made from a panel is never written by
-        another route. False when the file is not editable (a frozen version, until it is unlocked)."""
+        another route. False when the file is not editable (a frozen version, until it is unlocked).
+        The file becomes the Source view's own if `show` or it is shown already; else (a slide the focus
+        has left) it is changed off-stage and written at once (SourcePane.edit_off_stage), so the Source
+        view does not go back to it."""
+        current = self.source.current
+        if not show and (current is None or current.path != path):
+            return self.source.edit_off_stage(path, change)
         self.source.show_path(path)
         file = self.source.current
         if file is None or file.editor.is_read_only():

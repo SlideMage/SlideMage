@@ -977,3 +977,76 @@ def test_the_previews_refresh_takes_its_translation_links_from_the_outline(centr
     state.drop_outline()
     centre.preview._refresh()
     assert resolutions.scans == 1
+
+
+# -- an edit made from a panel does not move the Source view (v8.39.9) -----------------------------------------
+
+def panel_edit(text):
+    return text + "% from a panel\n"
+
+
+def test_a_panel_edit_of_the_slide_left_is_written_and_the_source_view_stays_on_the_new_slide(centre, project):
+    aaa, ccc = project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    ccc_before = ccc.read_text()
+    centre.state.set_focused_slide("ccc")                                # the focus has left aaa already
+    assert centre.edit_slide_text(aaa, panel_edit)
+    assert "% from a panel" in aaa.read_text() and ccc.read_text() == ccc_before   # aaa is written, ccc is not
+    assert centre.source.file_for(aaa) is None and centre.source.file_for(ccc) is None   # no editor stays behind
+    assert centre.source.current is None and not centre.state.dirty
+    centre.state.set_mode("source")
+    assert centre.source.current.path == ccc and "Dritte" in centre.source.current.editor.text()
+
+
+def test_a_panel_edit_of_the_slide_left_does_not_replace_the_editor_of_the_new_one(centre, project):
+    aaa, ccc = project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("ccc")
+    shown = centre.source.current
+    assert centre.edit_slide_text(aaa, panel_edit)
+    assert centre.source.current is shown and shown.path == ccc and "% from a panel" in aaa.read_text()
+
+
+def test_a_panel_edit_stays_in_its_buffer_when_the_file_cannot_be_written(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("typed ")
+    aaa.write_text(aaa.read_text(encoding="utf-8") + "% elsewhere\n", encoding="utf-8")      # a change on disk: a conflict
+    centre.state.set_focused_slide("ccc")                                # aaa stays open: its edit cannot be written
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("bbb")
+    assert centre.edit_slide_text(aaa, panel_edit)
+    file = centre.source.file_for(aaa)
+    assert file is not None and file.conflicted and "% from a panel" in file.editor.text()   # kept, not lost
+    assert "% from a panel" not in aaa.read_text() and centre.is_blocked(aaa) and centre.state.dirty
+    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+
+
+def test_a_panel_edit_of_a_frozen_version_is_refused_and_leaves_nothing_open(centre, project):
+    frozen = project / "bbb-EN-Two-v1-0-0.tex"
+    before = frozen.read_text()
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("ccc")
+    assert not centre.edit_slide_text(frozen, panel_edit)
+    assert frozen.read_text() == before and centre.source.file_for(frozen) is None
+
+
+def test_a_panel_edit_of_the_slide_in_the_source_view_is_left_to_its_autosave(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    assert centre.edit_slide_text(aaa, panel_edit)
+    file = centre.source.current
+    assert file.path == aaa and file.dirty and "% from a panel" in file.editor.text()
+    assert "% from a panel" not in aaa.read_text()                      # as before: the autosave writes it
+    assert file.write_now() and "% from a panel" in aaa.read_text()
+
+
+def test_show_makes_a_panel_edit_the_source_views_own(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    assert centre.edit_slide_text(aaa, panel_edit, show=True)           # "Save notes": Ctrl+S then writes this file
+    assert centre.source.current.path == aaa and centre.source.current.dirty

@@ -331,3 +331,31 @@ def test_the_caption_under_the_terminal_names_the_models_of_the_task_buttons(env
 def test_the_terminal_has_no_bubble_strip_or_scope_of_its_own(env):
     assert not hasattr(env.view, "_bubble_row") and not hasattr(env.view, "more")
     assert env.view.scope is area(env).scope
+
+
+# -- a change of slide waits for the selection to rest (v8.39.9) --------------------------------------------------
+
+def test_a_change_of_slide_works_the_offers_out_once_it_has_rested_and_switches_the_buttons_off_meanwhile(env, monkeypatch):
+    from slidemage.ui.workspace import assistant_header
+
+    head, state = header(env), env.window.state
+    refreshed(env)
+    buttons = head._task_buttons()
+    assert buttons
+    worked_out = []
+    real = assistant_header.bubbles
+    monkeypatch.setattr(assistant_header, "bubbles", lambda app: worked_out.append(1) or real(app))
+    for slide in ("abd", "abc", "abd"):                       # a held arrow key
+        state.set_focused_slide(slide)
+    assert worked_out == [] and head._settle.isActive()       # nothing is worked out per row
+    chosen = []
+    head.task_chosen.connect(chosen.append)
+    head.check_chosen.connect(chosen.append)
+    for button in head._task_buttons():                       # the buttons belong to a slide that was left
+        assert button.isEnabled()                             # not greyed out per click ...
+        button.click()
+    assert chosen == []                                       # ... but they do nothing
+    wait_until(lambda: not head._settle.isActive())
+    pump(0.05)
+    assert len(worked_out) == 1
+    assert head.target.full_text().startswith("abd")

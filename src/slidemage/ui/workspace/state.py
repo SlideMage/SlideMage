@@ -33,6 +33,8 @@ MODES = ("preview", "split", "source", "details")
 # "mult" marks a slide that is the same in every language: not a language to edit in.
 UI_LANGUAGES = TRANSLATION_LANGUAGES
 
+SETTLE_MS = 150   # the focus must rest this long before the side panels and the assistant's offers are worked out afresh
+
 # {deck path: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
 SETTINGS_KEY = "workspace_decks"
 
