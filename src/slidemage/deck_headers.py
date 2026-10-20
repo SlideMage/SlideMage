@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import re
 import threading
+from pathlib import Path
 
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
@@ -78,7 +79,27 @@ def regenerate_headers(ctx: ProjectContext) -> tuple[int, int]:
         return _regenerate_headers_impl(ctx)
 
 
+def regenerate_header(ctx: ProjectContext, slide_path: Path) -> bool:
+    """Rewrite one slide file's header block to match the decks now; whether the file changed. create_slide calls
+    it before it renders the new slide: the header sync after the deck edit then leaves that file alone, instead
+    of rewriting it while its preview renders (the Preview drops a render whose file changed meanwhile)."""
+    with _LOCK:
+        id_to_decks, _deck_paths = _deck_membership(ctx)
+        return _rewrite_header(slide_path, sorted(id_to_decks.get(slide_path.name.split("-")[0], [])))
+
+
 def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
+    id_to_decks, deck_paths = _deck_membership(ctx)
+    changed = 0
+    if ctx.slides_dir.is_dir():
+        for slide_path in ctx.slides_dir.glob("*-current.tex"):
+            slide_id = slide_path.name.split("-")[0]
+            changed += _rewrite_header(slide_path, sorted(id_to_decks.get(slide_id, [])))
+    return changed, len(deck_paths)
+
+
+def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Path]]:
+    """(slide id -> the names of the decks that include it, the deck files read)."""
     deck_paths = [
         p for directory in ctx.deck_folders if directory.is_dir()
         for p in directory.glob("*.tex")
@@ -98,37 +119,33 @@ def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
         for language in TRANSLATION_LANGUAGES:
             for slot in deck_language.slots(ctx, calls, language):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
+    return id_to_decks, deck_paths
 
-    changed = 0
-    if ctx.slides_dir.is_dir():
-        for slide_path in ctx.slides_dir.glob("*-current.tex"):
-            slide_id = slide_path.name.split("-")[0]
-            decks = sorted(id_to_decks.get(slide_id, []))
 
-            for _attempt in range(3):
-                text = read_text_exact(slide_path)
-                eol = "\r\n" if "\r\n" in text else "\n"
+def _rewrite_header(slide_path: Path, decks: list[str]) -> bool:
+    """Give `slide_path` the header block that lists `decks`; whether the file changed."""
+    for _attempt in range(3):
+        text = read_text_exact(slide_path)
+        eol = "\r\n" if "\r\n" in text else "\n"
 
-                listed = ", ".join(decks) if decks else "(none)"
-                new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
+        listed = ", ".join(decks) if decks else "(none)"
+        new_header = f"%% Included in decks: {listed}{eol}%%{eol}{eol}"
 
-                if HEADER_RE.search(text):
-                    new_text = HEADER_RE.sub(new_header, text, count=1)
-                else:
-                    # No existing header block -- insert after the leading
-                    # comment lines (everything up to the first blank line),
-                    # matching every hand-written slide file's own convention.
-                    m = re.search(r"\r?\n\r?\n", text)
-                    insert_at = m.end() if m else 0
-                    new_text = text[:insert_at] + new_header + text[insert_at:]
+        if HEADER_RE.search(text):
+            new_text = HEADER_RE.sub(new_header, text, count=1)
+        else:
+            # No existing header block -- insert after the leading
+            # comment lines (everything up to the first blank line),
+            # matching every hand-written slide file's own convention.
+            m = re.search(r"\r?\n\r?\n", text)
+            insert_at = m.end() if m else 0
+            new_text = text[:insert_at] + new_header + text[insert_at:]
 
-                if new_text == text:
-                    break
-                try:
-                    atomic_write(slide_path, new_text, expected_text=text)
-                except StaleFileError:
-                    continue                 # re-read the newer body; leave it alone if all retries fail
-                changed += 1
-                break
-
-    return changed, len(deck_paths)
+        if new_text == text:
+            return False
+        try:
+            atomic_write(slide_path, new_text, expected_text=text)
+        except StaleFileError:
+            continue                 # re-read the newer body; leave it alone if all retries fail
+        return True
+    return False

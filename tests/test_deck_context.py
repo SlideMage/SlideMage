@@ -3,6 +3,9 @@
 r"""Slides that need the rest of the deck: finding them, and the deck's sections and agenda records around them."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from slidemage import deck_context, deck_scan, partial_compile, preview_target, slide_preview
@@ -163,8 +166,16 @@ def test_an_unsaved_buffer_gets_the_skeleton_only_when_it_needs_the_deck(ctx, de
 
 
 def test_the_page_compile_of_a_slide_becomes_its_own_pdf(ctx, deck, monkeypatch, tmp_path):
-    out = tmp_path / "out"
+    out = tmp_path / "pages-course-instructor-0f1e"
     out.mkdir()
+    compiled = tmp_path / "compile-records"
+    compiled.mkdir()
+    (compiled / "course-instructor.aux").write_text("aux", encoding="utf-8")
+    slide = ctx.slides_dir / "1bb-EN-Contents-current.tex"
+    wrapper = ctx.decks_dir / "_slidemage_course-instructor-pages_0f1e.tex"
+    gitperl = "/" + str(out).replace(":", "").replace("\\", "/")         # D:/x as Git's Perl names it: /D/x
+    (out / "course-instructor.fls").write_text("".join(f"INPUT {name}\n" for name in (
+        slide, wrapper, out / "course-instructor.aux", gitperl + "/course-instructor.bbl")), encoding="utf-8")
 
     class Output:
         pdf = out / "pages.pdf"
@@ -176,13 +187,19 @@ def test_the_page_compile_of_a_slide_becomes_its_own_pdf(ctx, deck, monkeypatch,
         return target
 
     monkeypatch.setattr(partial_compile, "frames_for_slides", lambda *a: [2])
-    monkeypatch.setattr(partial_compile, "plan", lambda ctx_, job, frames: type("P", (), {"extra_lines": ""})())
+    monkeypatch.setattr(partial_compile, "plan", lambda ctx_, job, frames: type("P", (), {
+        "extra_lines": "", "aux": compiled, "job": type("J", (), {"jobname": "course-instructor"})})())
     monkeypatch.setattr(partial_compile, "run", lambda plan, log, cancel: Output)
     monkeypatch.setattr(partial_compile, "new_pages_of", lambda plan, output: [[3, 4]])
     monkeypatch.setattr(partial_compile, "write_pages", written)
     pdf = deck_context.render_in_deck(ctx, deck, "instructor", "1bb", "1bb-EN-Contents", print, all_steps=True)
     assert pdf is not None and written.pages == [3, 4] and deck_context.mode_of(pdf) == deck_context.DECK
     assert not out.exists()                                                  # the page compile's folder is gone
+    # What it read, as every preview records it (without it the cache kept no verified render and the Preview said
+    # "Previous render ... render to verify" after each render); nothing of the deleted build folder or wrapper.
+    inputs = json.loads(pdf.with_suffix(".inputs.json").read_text(encoding="utf-8"))
+    assert sorted(Path(name).name for name in inputs) == ["1bb-EN-Contents-current.tex", "course-instructor.aux"]
+    assert str(compiled / "course-instructor.aux") in inputs
 
 
 @pytest.mark.parametrize("failure", ["no frames", "refused", "no pages"])

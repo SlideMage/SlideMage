@@ -18,6 +18,7 @@ are rendered in one of two ways:
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -276,10 +277,30 @@ def render_in_deck(ctx: ProjectContext, deck: Deck, view: str, slide_id: str, id
         folder = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
         target = folder / f"{id_slug}-in-{job.jobname}.pdf"
         partial_compile.write_pages(output.pdf, wanted, target)
+        _write_inputs(ctx, the_plan, output, target)
         remember_mode(target, DECK)
         return target
     finally:
         shutil.rmtree(output.build_dir, ignore_errors=True)
+
+
+def _write_inputs(ctx: ProjectContext, the_plan, output, pdf: Path) -> None:
+    """What the page compile read, beside `pdf` as every preview build records it: without it the preview cache
+    keeps no verified render, and the Preview said "Previous render ... render to verify" after every render of a
+    slide that needs its deck. The deck's last compile counts with its own files (its .aux gives the numbers and
+    the agendas); the page build's folder and wrapper are deleted afterwards and are left out."""
+    from . import preview_build
+
+    jobname = the_plan.job.jobname
+    compiled = [the_plan.aux / f"{jobname}{ext}" for ext in (*partial_compile._RESTORED_EXTENSIONS, ".top")]
+    inputs = preview_build.recorded_inputs(
+        output.build_dir / f"{jobname}.fls", output.build_dir / f"{jobname}.fdb_latexmk", project_root=ctx.root,
+        cache=output.build_dir, extra=[str(path) for path in compiled if path.is_file()])
+    # By name: latexmk's database may spell the build folder as Git's Perl does (/d/...), which no path comparison
+    # with the folder matches.
+    inputs = [name for name in inputs if output.build_dir.name not in Path(name).parts
+              and not Path(name).name.startswith(f"_slidemage_{jobname}-pages_")]
+    pdf.with_suffix(".inputs.json").write_text(json.dumps(inputs), encoding="utf-8")
 
 
 def aux_titles_for(ctx: ProjectContext, deck: Deck, view: str, language: Optional[str] = None) -> dict[str, str]:

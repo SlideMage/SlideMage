@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from agent_fakes import FakeWorkspace, call
 
-from slidemage import ai_review, compiler, deck_editor, preview_target, slide_add, slide_ids, slide_snapshot
+from slidemage import ai_review, compiler, deck_editor, deck_headers, preview_target, slide_add, slide_ids, slide_snapshot
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
 from slidemage.ai.mcp_server import McpServer
 from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox
@@ -77,6 +77,16 @@ def test_one_call_creates_inserts_marks_renders_and_shows(env, deck, after):
     applied = [event for event in env.events if isinstance(event, EditApplied)]
     assert len(applied) == 2
     assert applied[-1].after == path.read_text() and not applied[-1].undoable
+
+
+def test_the_new_slide_is_rendered_with_the_header_that_names_its_deck(env):
+    # The header sync after the deck edit ran in the background while the preview rendered: it rewrote the new
+    # file, and the Preview dropped the render as out of date ("No preview ... yet" after create_slide).
+    result = create(env)
+    assert not result.is_error, result.text
+    path, = new_slides(env)
+    assert "%% Included in decks: test" in env.renders[0][1]
+    assert deck_headers.regenerate_header(env.project, path) is False      # nothing left for the sync to change
 
 
 @pytest.mark.parametrize("body, message", [

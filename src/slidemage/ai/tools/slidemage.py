@@ -18,6 +18,7 @@ from ... import (
     bibliography,
     compile_status,
     deck_editor,
+    deck_headers,
     deck_outline,
     deck_scan,
     latex_lint,
@@ -531,6 +532,9 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
             raise ToolError(f"Slide not created: {exc}. File and id rolled back; retry create_slide.") from None
         if source:
             ai_review.mark(ctx.project, source, "translation", "create_slide: translation partner", text=linked)
+        # The header that names the deck, now: the header sync after the deck edit would otherwise rewrite the
+        # new file while its preview renders, and the Preview drops a render of a file that changed meanwhile.
+        deck_headers.regenerate_header(ctx.project, created.path)
         ctx.workspace.file_changed(deck.path, deck.text)
         ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
         return created.path
