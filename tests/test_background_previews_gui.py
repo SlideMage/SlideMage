@@ -269,19 +269,30 @@ def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(windo
     for path in (target.source_path, *target.source_path.parent.glob("*")):
         os.utime(path, (old, old))
     unit = background_renders.render_key.unit_for(target, "instructor", "EN", deck.name)
-    assert controller.stored_page(target, "instructor", "EN") is None
-    assert window.centre.preview._stored_pixmap(target, "instructor", "EN") is None
+    assert controller.stored_page(target, "instructor", "EN", deck.name) is None
+    preview = window.centre.preview
+    preview.show_slide(target, None, "One", "")
+    assert preview._stored_pixmap(target, "instructor", "EN") is None
     renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    pixmap = window.centre.preview._stored_pixmap(target, "instructor", "EN")
+    deadline = time.monotonic() + 5
+    while preview._lookups and time.monotonic() < deadline:       # the first lookup (before the render) answers
+        QApplication.processEvents()
+        time.sleep(0.01)
+    preview._stored_asked = None                   # as at a poll: the store is asked again, on the display worker
+    deadline = time.monotonic() + 5
+    while preview._stored_pixmap(target, "instructor", "EN") is None and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    pixmap = preview._stored_pixmap(target, "instructor", "EN")
     assert pixmap is not None and pixmap.width() == background_renders.STORE_WIDTH
-    shown = window.centre.preview._image(target)
+    shown = preview._image(target)
     assert shown is not None and shown[1] is True and shown[2] == ""
     path = target.source_path
     try:
         original = path.read_bytes()
         path.write_bytes(original + b"\n% edited\n")
         os.utime(path, (old, old))
-        assert controller.stored_page(target, "instructor", "EN") is None      # the slide changed: never shown as current
+        assert controller.stored_page(target, "instructor", "EN", deck.name) is None      # the slide changed: never shown as current
     finally:
         path.write_bytes(original)
         os.utime(path, (old, old))

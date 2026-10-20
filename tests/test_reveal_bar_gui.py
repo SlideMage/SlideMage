@@ -4,6 +4,7 @@
 """The reveal-step bar: the widget on its own, and in the Preview (renders are faked; the PDFs are real)."""
 from __future__ import annotations
 
+import threading
 import time
 
 import pymupdf
@@ -411,10 +412,10 @@ def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_
     png = bytes(data)
 
     class Stored:                      # the background renders' store, with a current render of the slide
-        def stored_pages(self, target, view, language):
+        def stored_pages(self, target, view, language, deck_name):
             return [png] * 4
 
-        def stored_page(self, target, view, language):
+        def stored_page(self, target, view, language, deck_name):
             return None
 
         def store_steps(self, *args):
@@ -424,7 +425,8 @@ def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_
     centre.preview.app.background = Stored()
     centre.state.set_focused_slide("aaa")
     bar = centre.preview._reveal
-    assert bar.track.stops == [1, 2, 3, 4] and not steps_renders
+    wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)       # the store is asked off the GUI thread
+    assert not steps_renders
 
 
 def test_a_slide_without_reveal_commands_shows_no_bar_while_counting(centre, steps_renders):
@@ -566,3 +568,122 @@ def test_the_slide_list_edit_runs_the_cleanup_and_undo_takes_both_back(qapp, tmp
     undo = DeckUndo("the text before")
     undo.slide = (tmp_path / "x.tex", "before", "after")
     assert undo == "the text before" and ["the text before"] == [undo] and steps is not None
+
+
+# -- the count waits for the selection; the store is asked off the GUI thread ----------------------------
+
+
+def png_of(color):
+    from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+    from PySide6.QtGui import QImage
+
+    image, data = QImage(16, 9, QImage.Format.Format_RGB32), QByteArray()
+    image.fill(color)
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    return bytes(data)
+
+
+class StoredPages:
+    """app.background: a stored page for every slide, and (when `steps`) its step pages; calls are recorded."""
+
+    def __init__(self, page, steps=None):
+        self.page, self.steps, self.calls = page, steps, []
+
+    def stored_page(self, target, view, language, deck_name=""):
+        self.calls.append(("page", threading.current_thread() is threading.main_thread()))
+        return self.page
+
+    def stored_pages(self, target, view, language, deck_name=""):
+        self.calls.append(("pages", threading.current_thread() is threading.main_thread()))
+        return self.steps
+
+    def store_steps(self, *args):
+        pass
+
+
+@pytest.fixture
+def pausing(project):
+    for name in ("aaa-EN-One", "bbb-EN-Two", "ccc-DE-Drei"):
+        (project / f"{name}-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
+
+
+def foreground_asks(centre, monkeypatch):
+    """The foreground counts the pane starts: (slug, the slide image was on show). The idle prefetch is off."""
+    asked, preview = [], centre.preview
+    monkeypatch.setattr(preview_view, "PROBE_MS", 60_000)       # the idle count would race the foreground one
+    original = preview._request_steps
+
+    def request(target, key, text, draft, priority):
+        if priority == reveal_steps_priority():
+            asked.append((target.id_slug, preview._page.pixmap is not None))
+        original(target, key, text, draft, priority)
+
+    monkeypatch.setattr(preview, "_request_steps", request)
+    return asked
+
+
+def reveal_steps_priority():
+    from slidemage.step_renders import FOREGROUND
+    return FOREGROUND
+
+
+def test_selecting_a_slide_starts_no_count_until_the_selection_rests(centre, steps_renders, pausing, monkeypatch):
+    preview = centre.preview
+    preview._settle.setInterval(300)
+    asked = foreground_asks(centre, monkeypatch)
+    centre.state.set_focused_slide("aaa")
+    bar = preview._reveal
+    for _ in range(5):
+        QApplication.processEvents()
+    assert bar.isVisibleTo(preview) and bar.track.counting and not asked and not steps_renders
+    wait_for(lambda: asked, 40)
+    assert [slug for slug, _ in asked] == ["aaa-EN-One"]
+    wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)
+
+
+def test_selecting_a_b_and_c_in_a_row_counts_only_c(centre, steps_renders, pausing, monkeypatch):
+    preview = centre.preview
+    preview._settle.setInterval(300)
+    asked = foreground_asks(centre, monkeypatch)
+    for slide in ("aaa", "bbb", "ccc"):
+        centre.state.set_focused_slide(slide)
+        QApplication.processEvents()
+        assert preview._reveal.track.counting and not asked
+    wait_for(lambda: asked, 40)
+    assert [slug for slug, _ in asked] == ["ccc-DE-Drei"]
+    wait_for(lambda: preview._reveal.track.stops == [1, 2, 3, 4], 40)
+
+
+def test_the_slide_image_shows_before_the_count_starts(centre, steps_renders, pausing, monkeypatch):
+    preview = centre.preview
+    preview._settle.setInterval(300)
+    preview.app.background = StoredPages(png_of(0x00FF00))            # a stored page, but no counted steps
+    asked = foreground_asks(centre, monkeypatch)
+    centre.state.set_focused_slide("aaa")
+    wait_for(lambda: preview._page.pixmap is not None, 40)
+    assert not asked and preview._reveal.track.counting              # the image first, "Counting" meanwhile
+    wait_for(lambda: asked, 40)
+    assert asked == [("aaa-EN-One", True)]
+
+
+def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_renders, pausing, monkeypatch):
+    loads, preview = [], centre.preview
+
+    class Counting(preview_view.QPixmap):
+        def loadFromData(self, *args, **kwargs):
+            loads.append(threading.current_thread() is threading.main_thread())
+            return super().loadFromData(*args, **kwargs)
+
+    monkeypatch.setattr(preview_view, "QPixmap", Counting)
+    colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00]
+    store = StoredPages(None, [png_of(color) for color in colors])    # steps, but no whole-slide page
+    preview.app.background = store
+    centre.state.set_focused_slide("aaa")
+    bar = preview._reveal
+    wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)
+    wait_for(lambda: preview._page.pixmap is not None, 40)           # no slide page: the step bar's page is shown
+    assert not any(loads) and not steps_renders
+    assert store.calls and not any(on_main for _what, on_main in store.calls)
+    assert {what for what, _ in store.calls} == {"page", "pages"}

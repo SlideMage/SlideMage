@@ -1516,3 +1516,193 @@ def test_page_view_paints_from_a_scaled_copy_kept_until_the_size_changes(qapp):
     page.show_message("none", False)
     page.grab()
     assert page._scaled is None
+
+
+# -- the render store is asked off the GUI thread ----------------------------------------------------------
+
+class _FakeStore:
+    """app.background with a stored render per slide; every call is recorded with the thread it ran on."""
+
+    def __init__(self, pngs: dict, steps: dict = None):
+        self.pngs, self.steps = pngs, steps or {}
+        self.calls = []                  # (what, on the main thread, the deck name)
+        self.gate = {key: threading.Event() for key in pngs}
+        for gate in self.gate.values():
+            gate.set()
+        self.entered = threading.Event()
+
+    def stored_page(self, target, view, language, deck_name=""):
+        self.calls.append(("page", threading.current_thread() is threading.main_thread(), deck_name))
+        self.entered.set()
+        assert self.gate[target.key].wait(5)
+        return self.pngs.get(target.key)
+
+    def stored_pages(self, target, view, language, deck_name=""):
+        self.calls.append(("pages", threading.current_thread() is threading.main_thread(), deck_name))
+        return self.steps.get(target.key)
+
+
+@pytest.fixture
+def stored(two):
+    """`two` with the validator blocked for both slides, and a store holding a page of each."""
+    for gate in two.gate.values():
+        gate.clear()
+    store = _FakeStore({two.target_a.key: two.png["BODY"], two.target_b.key: two.png["OTHER"]})
+    two.view.app.background = store
+    two.store = store
+    return two
+
+
+def pixels(png):
+    from PySide6.QtGui import QPixmap
+    pixmap = QPixmap()
+    assert pixmap.loadFromData(png)
+    return pixmap.toImage()
+
+
+def test_a_stored_page_is_looked_up_off_the_gui_thread_and_shown_once_it_arrives(stored):
+    view, store = stored.view, stored.store
+    stored.show("A")
+    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")   # nothing yet
+    stored.pump(lambda: view._page.pixmap is not None)
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"])
+    assert view._last_pdf is None and view._displayed_spec is None             # a store page authorizes no PDF
+    assert view._selection_result_key is None                                   # shown before validation answered
+    assert preview_view.CHECKING not in view._status_chip.text()
+    assert store.calls and not any(on_main for _what, on_main, _deck in store.calls)
+    assert {what for what, _m, _d in store.calls} == {"page", "pages"}
+
+
+def test_the_deck_name_is_read_on_the_gui_thread_and_handed_to_the_store(stored):
+    stored.view.state.deck = SimpleNamespace(name="course")
+    stored.show("A")
+    stored.pump(lambda: stored.view._page.pixmap is not None)
+    assert {deck for _what, _m, deck in stored.store.calls} == {"course"}
+
+
+def test_the_stored_page_is_held_for_a_return_visit(stored):
+    view = stored.view
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    held = view._pixmaps.get(stored.key("A"))
+    assert held is not None and held.mtime == preview_view._mtime(stored.path_a)
+    stored.show("B")
+    stored.pump(lambda: view._page.pixmap is not None and view._page.pixmap.toImage() == pixels(stored.png["OTHER"]))
+    stored.store.gate[stored.target_a.key].clear()               # A's lookup is out again: the held page is what shows
+    stored.show("A")
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"])
+    assert view._status_chip.text() == preview_view.CHECKING
+    stored.store.gate[stored.target_a.key].set()
+    stored.pump(lambda: view._status_chip.text() != preview_view.CHECKING)
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"]) and view._last_pdf is None
+
+
+def test_a_stored_page_for_a_arriving_after_the_selection_moved_to_b_is_discarded(stored):
+    view, store = stored.view, stored.store
+    store.gate[stored.target_a.key].clear()
+    stored.show("A")
+    assert store.entered.wait(5)                                  # A's lookup is running, blocked in the store
+    stored.show("B")
+    seen = []
+    store.gate[stored.target_a.key].set()
+    stored.pump(lambda: seen.append(view._page.pixmap is not None and view._page.pixmap.toImage()) or
+                (view._page.pixmap is not None and view._page.pixmap.toImage() == pixels(stored.png["OTHER"])))
+    assert pixels(stored.png["BODY"]) not in seen                 # B never showed A's page
+    assert view._stored[0][0] == stored.target_b.key
+
+
+def test_with_the_store_blocked_a_new_slide_shows_its_message_never_the_previous_slide(stored):
+    view, store = stored.view, stored.store
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    store.gate[stored.target_b.key].clear()
+    stored.show("B")
+    for _ in range(10):
+        stored.qapp.processEvents()
+    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+    store.gate[stored.target_b.key].set()
+    stored.pump(lambda: view._page.pixmap is not None)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])
+
+
+def test_a_changed_file_discards_the_page_looked_up_for_the_old_one(stored):
+    import os
+    view, store = stored.view, stored.store
+    store.gate[stored.target_a.key].clear()
+    stored.show("A")
+    assert store.entered.wait(5)
+    stat = stored.path_a.stat()
+    os.utime(stored.path_a, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+    stored.show("A")                                              # the same slide, another revision of its file
+    store.gate[stored.target_a.key].set()
+    stored.pump(lambda: view._stored is not None and view._stored[0][3] == preview_view._mtime(stored.path_a))
+
+
+def test_a_stored_page_is_not_decoded_into_a_pixmap_on_the_gui_thread(stored, monkeypatch):
+    loads = []
+
+    class Counting(preview_view.QPixmap):
+        def loadFromData(self, *args, **kwargs):
+            loads.append(threading.current_thread() is threading.main_thread())
+            return super().loadFromData(*args, **kwargs)
+
+    monkeypatch.setattr(preview_view, "QPixmap", Counting)
+    stored.show("A")
+    stored.pump(lambda: stored.view._page.pixmap is not None)
+    stored.show("B")
+    stored.pump(lambda: stored.view._page.pixmap is not None and
+                stored.view._page.pixmap.toImage() == pixels(stored.png["OTHER"]))
+    assert not any(loads)
+
+
+def test_the_stored_page_is_asked_again_at_each_poll_and_only_a_changed_page_refreshes(stored, monkeypatch):
+    view, store = stored.view, stored.store
+
+    def asks():
+        return [what for what, _m, _d in store.calls].count("page")
+
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None and not view._lookups)
+    asked, refreshed = asks(), []
+    original = view._refresh
+    monkeypatch.setattr(view, "_refresh", lambda: refreshed.append(1) or original())
+    view._refresh()                                               # no poll: the page is not asked for again
+    stored.pump(lambda: not view._lookups)
+    assert asks() == asked
+    view._stored_asked = None                                     # a poll
+    view._refresh()
+    stored.pump(lambda: asks() > asked and not view._lookups)
+    assert len(refreshed) == 2                                    # the same page came back: it did not refresh again
+
+
+def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(pane, monkeypatch):
+    view, _target, _ = pane
+    built = {"chips": 0, "menus": 0}
+
+    class CountedChip(preview_view.Chip):
+        def __init__(self, *args, **kwargs):
+            built["chips"] += 1
+            super().__init__(*args, **kwargs)
+
+    class CountedMenu(preview_view.PopoverMenu):
+        def __init__(self, *args, **kwargs):
+            built["menus"] += 1
+            super().__init__(*args, **kwargs)
+
+    shown = [("info", "One", "muted", "tip")]
+    monkeypatch.setattr(preview_view, "Chip", CountedChip)
+    monkeypatch.setattr(preview_view, "PopoverMenu", CountedMenu)
+    monkeypatch.setattr(preview_view, "chips_for", lambda *a, **k: list(shown))
+    view._refresh()
+    assert built == {"chips": 1, "menus": 0}                      # other chips; the menu is what it was
+    for _ in range(3):
+        view._refresh()                                           # the poll
+    assert built == {"chips": 1, "menus": 0}
+    shown.append(("warning", "Two", "warning", "other"))          # a real change of the chips
+    view._refresh()
+    assert built == {"chips": 3, "menus": 0}
+    view._scope = "region"                                        # a real change of the menu
+    view._refresh()
+    assert built == {"chips": 3, "menus": 1}
+    view._refresh()
+    assert built == {"chips": 3, "menus": 1}
