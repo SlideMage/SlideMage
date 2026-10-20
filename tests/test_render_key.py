@@ -181,6 +181,38 @@ def test_a_preamble_layer_change_stales_every_render_that_read_it(ctx, resolver,
     assert all(resolver.lookup(u).state is Freshness.STALE for u in units)
 
 
+def test_a_new_render_of_a_stale_slide_takes_the_place_of_the_old_one_under_the_same_key(ctx, resolver, store):
+    # v8.37.0 changed a framework file, which is in the manifest and not in the key: the new render of an unchanged
+    # slide has the old render's key, and put kept the old object, so the sweep rendered the same slides again and
+    # again (the dial rose and fell back to 0 % at every replan).
+    layer = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "v1")
+    unit = unit_for(ctx)
+    write(unit.source_path, "slide")
+    key, old = make_record(resolver, ctx, unit, [unit.source_path, layer])
+    store_render(store, key, old)
+    write(layer, "v2 longer")
+    assert resolver.lookup(unit).state is Freshness.STALE
+    same_key, new = make_record(resolver, ctx, unit, [unit.source_path, layer])
+    assert same_key == key
+    store_render(store, key, new)
+    found = resolver.lookup(unit)
+    assert found.state is Freshness.FRESH and found.final
+    assert store.count() == 1
+
+
+def test_a_reveal_render_is_kept_when_the_background_render_of_its_key_is_stale(ctx, resolver, store):
+    layer = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "v1")
+    unit = unit_for(ctx)
+    write(unit.source_path, "slide")
+    key, old = make_record(resolver, ctx, unit, [unit.source_path, layer])
+    store_render(store, key, old, origin="background")
+    write(layer, "v2 longer")
+    _key, new = make_record(resolver, ctx, unit, [unit.source_path, layer])
+    assert store_render(store, key, new, origin="reveal") == key
+    found = resolver.lookup(unit)
+    assert found.state is Freshness.FRESH and found.record["origin"] == "reveal"
+
+
 def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx, frame=3)

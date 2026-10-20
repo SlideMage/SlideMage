@@ -2518,3 +2518,8 @@ NEW: Clicking a slide keeps the Preview, a Linux startup crash is fixed, and the
 - A plain click on a slide opens it without leaving the Preview; press Enter or double-click to open its Source view.
 - SlideMage no longer crashes during startup on Linux.
 - The downloaded Windows version of v8.33.0 stopped at startup; this release starts, and every release is now started once before it is published.
+
+v8.39.1 (2026-10-20, direct report "it was at 2%, then 0% again" and "the count just reset to 0 again"): Background previews rendered the same slides over and over without keeping them, so the dial rose and fell back to 0 % at every replan. v8.37.0 changed Slidemaster_preamble_base.tex, which every render's manifest names but the render key leaves out, so every render made before it became stale while keeping its key. The new render of an unchanged slide had that key, and RenderStore.put returned the stored object of the same name without writing the new one; the sweep counted the slide as done, and the next scan found the stale render again. put now keeps a stored object only when it was rendered from the same inputs (RenderStore._same_render: manifest, TeX files, page number, stability) and otherwise replaces it; a reveal render likewise gives way only to a current background render of its key. Tests in test_render_key.py; checked against a copy of the affected store, where the same four slides went from stale after every render to fresh.
+
+NEW: Background previews keep what they render again.
+- After v8.37.0 the background previews rendered the same slides again and again and the dial kept falling back to 0 %; they now keep each render and the dial climbs.

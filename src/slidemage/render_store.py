@@ -104,11 +104,13 @@ class RenderStore:
         the same key; a reveal render is not stored when the background one is there."""
         name = key + BG_SUFFIX if origin == ORIGIN_BACKGROUND else key
         with self._lock:
-            if origin == ORIGIN_REVEAL and self._exists(key + BG_SUFFIX):
+            if origin == ORIGIN_REVEAL and self._exists(key + BG_SUFFIX) and self._same_render(key + BG_SUFFIX, meta):
                 self.link_decks(key + BG_SUFFIX, decks)
                 return key + BG_SUFFIX
-            if replace:
-                self.delete(name)           # same inputs, other page number: the new render takes its place
+            if replace or (self._exists(name) and not self._same_render(name, meta)):
+                # Same inputs, other page number; or the same key with other inputs (the key leaves out the
+                # framework and the media, the manifest has them): the new render takes its place.
+                self.delete(name)
             if self._exists(name):
                 self.link_decks(name, decks)
                 return name
@@ -142,6 +144,14 @@ class RenderStore:
 
     def _exists(self, name: str) -> bool:
         return (object_dir(self.root, name) / "meta.json").is_file()
+
+    def _same_render(self, name: str, meta: dict) -> bool:
+        """Whether the stored object `name` was rendered from the inputs `meta` describes (an unreadable one: no)."""
+        try:
+            stored = json.loads((object_dir(self.root, name) / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return all(stored.get(field) == meta.get(field) for field in ("manifest", "tex_digest", "frame_number", "unstable"))
 
     def _index(self, name: str, meta: dict, tex_files: Optional[list] = None) -> None:
         now = self._clock()
