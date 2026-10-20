@@ -248,6 +248,32 @@ def test_opening_a_file_switches_to_source_and_a_slide_of_the_project_is_focused
     assert centre.state.mode == "split"               # Split stays Split
 
 
+def test_opening_the_focused_slide_keeps_the_occurrence_the_list_focused(centre, project, tmp_path):
+    from dataclasses import replace
+    from slidemage import deck_outline
+    state = centre.state
+    text = DECK.replace("\\slide{aaa-EN-One}\n", "\\slide{aaa-EN-One}\n\\slide{aaa-EN-One}\n")
+    state.set_deck(replace(state.deck, text=text, chapters=parse_chapters(text)))
+    slots = [r for r in deck_outline.resolve_slots(state.project, state.deck, state.view, state.language)
+             if r.slot.matches("aaa")]
+    assert len(slots) == 2 and slots[0].frame_number != slots[1].frame_number
+    state.set_mode("preview")
+    shown, emitted = [], []
+    real = centre.preview.show_slide
+    centre.preview.show_slide = lambda target, *args: (shown.append(target), real(target, *args))[1]
+    state.focused_slide_changed.connect(emitted.append)
+    state.set_focused_slide("aaa", occurrence_key=slots[1].key)      # the press
+    centre.open_file(project / "aaa-EN-One-current.tex", keep_mode=True)      # the release
+    assert state.focused_occurrence == slots[1].key and state.mode == "preview"
+    assert emitted == ["aaa"]
+    assert {t.frame_number for t in shown} == {slots[1].frame_number}
+    assert centre._focused_row().frame_number == slots[1].frame_number
+    centre.open_file(project / "aaa-EN-One-current.tex")                      # Enter: Source of that occurrence
+    assert state.mode == "source" and state.focused_occurrence == slots[1].key and emitted == ["aaa"]
+    centre.open_file(project / "ccc-DE-Drei-current.tex")                     # another slide is focused as before
+    assert state.focused_slide == "ccc" and state.focused_occurrence is None
+
+
 def test_a_deck_source_has_nothing_to_preview_and_ends_when_another_slide_is_focused(centre, deck, project):
     deck.path.write_text(DECK, encoding="utf-8")
     centre.state.set_focused_slide("aaa")

@@ -2535,3 +2535,8 @@ v8.39.3 (2026-10-20, direct instruction "fix the failing create_slide test here"
 NEW: Previews show up when they are rendered.
 - After the assistant created a slide, the Preview sometimes said there was no preview yet; it now shows the slide the assistant rendered.
 - Rendering a slide that needs its deck (a section overview, an agenda) now clears the "Previous render ... render to verify" notice.
+
+v8.39.4 (2026-10-20, direct instruction "start fixing", docs/SLIDE_SELECTION_RESPONSIVENESS_PLAN.md step 2): Clicking the second occurrence of a slide that the deck calls twice ended with the Preview of the first one, and every focus listener ran twice. The press focuses the row with its occurrence key (SlideList._on_current_changed); the release opens the file, and CentreColumn.open_file then called set_focused_slide(bare_id) without the key, which cleared WorkspaceState.focused_occurrence, emitted focused_slide_changed a second time and made _focused_row resolve the first occurrence. open_file now focuses the slide only when its file belongs to another slide than the focused one, so opening the focused slide keeps the occurrence and emits nothing. Opening another slide, a frozen version of a different slide or a translation partner focuses as before. Test in test_centre_gui.py (second occurrence: key, frame number of the Preview target and exactly one focus signal for press and release; Enter keeps the occurrence).
+
+NEW: Clicking the second use of a slide shows that use in the Preview.
+- A slide that appears twice in a deck now previews the one you clicked, not always the first.

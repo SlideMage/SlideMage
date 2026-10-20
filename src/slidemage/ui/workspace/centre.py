@@ -156,8 +156,8 @@ class CentreColumn(QFrame):
         the cursor there."""
         self._opening = True
         try:
-            if path.parent == self.state.project.slides_dir:
-                self.state.set_focused_slide(bare_id(path.name))
+            if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
+                self.state.set_focused_slide(bare_id(path.name))     # the focused slide keeps its occurrence
             self._set_path(path)
             if self.state.mode not in ("source", "split") and not keep_mode:
                 self.state.set_mode("source")
