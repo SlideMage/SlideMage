@@ -1060,6 +1060,18 @@ def test_a_deck_change_rebuilds_at_once(debounced):
     assert "course" in texts(panels.panels["used"])
     state.set_deck(next(d for d in deck_scan.scan_decks(state.project) if d.name == "talk"))
     assert texts(panels.panels["used"]) == ["Select a slide in the list."]       # no wait for the pause
+    # ... and the focus it resets right after asks for no second rebuild: no shield takes the next click
+    assert panels._shield.isHidden() and not panels._rebuild.isActive()
+
+
+def test_coming_back_to_the_shown_slide_before_the_pause_needs_no_rebuild(debounced):
+    panels, state, _window, builds = debounced
+    state.set_focused_slide("abc")
+    rested(panels)
+    state.set_focused_slide("xyz")
+    state.set_focused_slide("abc")
+    rested(panels)
+    assert builds == ["abc-EN-Demo"] and panels._shield.isHidden()
 
 
 # -- Used in decks: the decks the window knows, the occurrence that was clicked ---------------------------------

@@ -73,7 +73,9 @@ class SidePanels(QWidget):
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
         self.project = state.project
+        self._state = state
         self._stale = False     # the shown panel is behind the state, as the card was hidden when it was due
+        self._built_for: tuple | None = None    # the state the shown panel was last built for
         # Laid over the shown panel while its rebuild waits: it takes the clicks meant for the content of the slide
         # that was left, without greying that content out on every click (or for as long as an arrow key is held).
         self._shield = QWidget(self)
@@ -175,7 +177,13 @@ class SidePanels(QWidget):
 
     def _defer(self) -> None:
         """The slide, view or language changed: save pending edits against the old content, switch its actions
-        off so a quick click cannot change the slide that was left, and rebuild once the changes stop."""
+        off so a quick click cannot change the slide that was left, and rebuild once the changes stop. When the
+        panel already shows this state (a deck switch rebuilds at once and then reports the focus, view and
+        language it reset; or the user came back before the pause), it answers again and nothing is rebuilt."""
+        if self._panel_state() == self._built_for:
+            self._rebuild.stop()
+            self._shield.hide()
+            return
         self.flush()
         panel = self.panels[self.current]
         self._shield.setParent(panel)
@@ -198,6 +206,11 @@ class SidePanels(QWidget):
         self.picker.set_text(panel.title)
         self.suffix.setText(panel.suffix())
         panel.refresh()
+        self._built_for = self._panel_state()
+
+    def _panel_state(self) -> tuple:
+        s = self._state
+        return s.deck, s.focused_slide, s.focused_occurrence, s.view, s.language
 
     def _open_menu(self) -> None:
         menu = PopoverMenu(self, min_width=270)
