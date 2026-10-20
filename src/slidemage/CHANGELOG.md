@@ -2511,3 +2511,9 @@ v8.38.0 (2026-10-20, direct instruction: "Whenever I click a new slide, a kind o
 NEW: No more flicker when you click a slide, and a bigger preview in Split view.
 - Clicking a slide no longer flashes a small window in the middle of the screen.
 - The right-hand column can be made narrower, and the preview uses more of its width, so the slide in Split view is about a third larger.
+
+v8.39.0 (2026-10-20, Jürgen Fleiß's PRs #5 and #7, released with v8.34.0 to v8.38.0 at the direct instruction "make this final version a release"): Two changes by Jürgen Fleiß. On his branch, which started from v8.33.0 before v8.34.0 to v8.38.0 existed, they were v8.33.1 and v8.33.2; they are one release here. Slide clicks keep the current view: a plain click on a slide opens its source with keep_mode=True, preserving the centre column's current mode; Enter and a double click still open the Source view; tests cover the click and Enter paths. Linux startup crash: the app could show its window and then crash with SIGSEGV while Qt WebEngine initialised focus, in Shiboken's QObject-wrapper conversion called from the application-wide event filter of the background-preview input watcher. On Linux the watcher now uses per-widget event filters, discovers new widgets every 250 ms and polls cursor movement while the app is active, avoiding wrapper conversion for Qt WebEngine's private focus objects; other platforms keep the application-wide filter without polling. Stopping the watcher removes the filters for the selected mode. GUI tests cover both modes, input from new controls and cleanup.
+
+NEW: Clicking a slide keeps the Preview, and a Linux startup crash is fixed.
+- A plain click on a slide opens it without leaving the Preview; press Enter or double-click to open its Source view.
+- SlideMage no longer crashes during startup on Linux.

@@ -420,11 +420,13 @@ class WorkspaceWindow(QMainWindow):
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
+        *, keep_mode: bool = False,
     ) -> None:
         """Show a file in the Source view: a slide, a deck's own source or Slidemaster.bib.
-        `on_saved(previous_text)` runs after each save; `line` puts the cursor there."""
+        `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
+        the Preview on show instead of switching to the Source view."""
         self.stack.setCurrentWidget(self.centre)
-        self.centre.open_file(path, on_saved, line)
+        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode)
 
     def _on_source_closed(self, path: Path) -> None:
         """Close-side half of the open-side sort in _on_edit_bib(): the file on disk

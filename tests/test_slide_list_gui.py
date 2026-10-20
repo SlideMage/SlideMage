@@ -42,6 +42,7 @@ class FakeWindow:
         self.added = []
         self.started = []     # what the Add slide sheet was asked to start on
         self.opened = []
+        self.open_kwargs = []
         self.compiled = []
         self.edits = []
 
@@ -56,8 +57,9 @@ class FakeWindow:
         self.added.append((insert_at, indent))
         self.started.append(start)
 
-    def open_slide_editor(self, path, **_kwargs):
+    def open_slide_editor(self, path, **kwargs):
         self.opened.append(path)
+        self.open_kwargs.append(kwargs)
 
     def open_images_for_slide(self, id_slug):
         self.opened.append(("images", id_slug))
@@ -372,6 +374,15 @@ def test_arrow_keys_move_the_focus_and_enter_or_a_double_click_open_the_source(m
     slide_list.tree.itemDoubleClicked.emit(item_of(slide_list, "aaa"), 0)
     assert [p.name for p in window.opened] == ["bbb-Two-current.tex", "aaa-One-current.tex"]
 
+
+
+def test_a_plain_click_opens_the_slide_without_leaving_the_preview(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-One}\n\\slide{bbb-Two}\n")
+    focus(slide_list, "bbb")
+    slide_list.tree.itemClicked.emit(item_of(slide_list, "bbb"), 0)
+    key(slide_list, Qt.Key.Key_Return)
+    assert [p.name for p in window.opened] == ["bbb-Two-current.tex", "bbb-Two-current.tex"]
+    assert window.open_kwargs == [{"keep_mode": True}, {"keep_mode": False}]
 
 def test_alt_up_and_down_move_the_slide_past_a_slide_or_a_section_marker(make_list):
     slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
