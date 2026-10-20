@@ -2482,3 +2482,9 @@ NEW: A faster-starting folder version, one-click slide opening, and a steady pre
 - Each release now comes as a single file and as a folder (faster to start); the automatic update installs the same kind you have.
 - Click a slide to open it.
 - The preview status stays blue while previews are being prepared.
+
+v8.33.1 (2026-10-20, slide clicks keep the current view): A plain click on a slide opens its source with keep_mode=True, preserving the centre column's current mode. Enter and a double click still open the Source view. Tests cover the click and Enter paths.
+
+NEW: Clicking a slide keeps the Preview visible.
+- A plain click opens the selected slide without changing the current view.
+- Press Enter or double-click a slide to open its Source view.
