@@ -275,7 +275,7 @@ class WorkspaceWindow(QMainWindow):
         """Size either column within its limits, taking the difference from the centre."""
         sizes = self.splitter.sizes()
         left = min(max(sizes[0] if left is None else left, slide_list.MIN_WIDTH), slide_list.MAX_WIDTH)
-        right = min(max(sizes[2] if right is None else right, side_panels.WIDTH), side_panels.MAX_WIDTH)
+        right = min(max(sizes[2] if right is None else right, side_panels.MIN_WIDTH), side_panels.MAX_WIDTH)
         if self.slide_list.isHidden():
             left = 0
         if self.side_panels.isHidden():

@@ -202,7 +202,7 @@ class ChatView(Surface):
         controls.addWidget(self.stop_button)
         layout.addLayout(controls)
         model = QHBoxLayout()
-        self.route_chip = Chip("", "muted", "smart_toy")
+        self.route_chip = Chip("", "muted", "smart_toy", elide=True)    # a long model name does not widen the column
         self.route_chip.clicked.connect(self._open_route_menu)
         model.addWidget(self.route_chip)
         model.addStretch(1)
@@ -563,7 +563,8 @@ class ChatView(Surface):
         reason = resolver.problem(self.state.project, route)
         self.route_chip.set_text(route.label)
         self.route_chip.set_tone("warning" if reason else "muted")
-        self.route_chip.setToolTip("The model that answers. Click to choose another for this chat; the default is set in AI setup.")
+        self.route_chip.setToolTip(f"{route.label}: the model that answers. Click to choose another for this chat; "
+                                   "the default is set in AI setup.")   # the chip may show the name shortened
         self.route_note.setText(reason)
         self.route_note.setVisible(bool(reason))
         self.route_changed.emit()

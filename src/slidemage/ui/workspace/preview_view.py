@@ -60,6 +60,8 @@ from .reveal_bar import RevealBar, RowSpec
 from .state import VIEWS, WorkspaceState
 
 PAGE_ASPECT = 16 / 9
+PANE_SIDE_MARGIN = 12    # the Preview's margin left and right (chips, page, footer)
+PAGE_SIDE_INSET = 8      # the page inside its area, left and right: the shadow's room
 PROBE_MS = 1500          # idle time before the step bar counts a slide's steps in the background
 STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
@@ -232,7 +234,8 @@ class PageView(QWidget):
 
     def _page_rect(self) -> QRectF:
         aspect = self.pixmap.width() / self.pixmap.height() if self.pixmap else PAGE_ASPECT
-        area = QRectF(self.rect()).adjusted(24, 24, -24, -24)
+        # 8 px at the sides is room for the shadow (6 px): in a narrow Split view the width sets the page's size.
+        area = QRectF(self.rect()).adjusted(PAGE_SIDE_INSET, 24, -PAGE_SIDE_INSET, -24)
         width = min(area.width(), area.height() * aspect)
         height = width / aspect
         return QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
@@ -368,7 +371,7 @@ class PreviewPane(Surface):
         self._probe.timeout.connect(self._probe_steps)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 12, 24, 12)
+        layout.setContentsMargins(PANE_SIDE_MARGIN, 12, PANE_SIDE_MARGIN, 12)
         layout.setSpacing(8)
         self._chips = QHBoxLayout()
         self._chips.setSpacing(6)

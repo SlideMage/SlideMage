@@ -179,7 +179,8 @@ class SourceFile(Surface):
             "apply one by one. Not a compile: it can miss problems and flag fine code.")
         self.ask_ai_button.clicked.connect(self.fix_panel.run_check)
         row.addWidget(self.ask_ai_button)
-        line.setVisible(not self.is_bib)
+        if self.is_bib:
+            line.hide()     # never setVisible(True) here: the line has no parent yet, so it would open as a window
         return line
 
     def _build_conflict_bar(self) -> Surface:

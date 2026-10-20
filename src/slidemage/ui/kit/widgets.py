@@ -16,8 +16,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap, QRegion
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPixmap,
+                           QRegion)
 
 try:                    # Qt 6.8 and later; older Qt has no live announcements
     from PySide6.QtGui import QAccessibleAnnouncementEvent
@@ -67,9 +68,12 @@ def apply_shadow(widget: QWidget, name: str = "raised") -> None:
 
 
 def clear_layout(layout: QLayout) -> None:
-    """Remove everything from `layout` (nested layouts too); the widgets are gone now, not at the next event loop."""
+    """Remove everything from `layout` (nested layouts too); the widgets are gone now, not at the next event loop.
+    Each is hidden first: a widget that was never shown (built and replaced in one event) would otherwise be
+    shown as a window of its own once its parent is gone, until deleteLater runs -- a small flash on screen."""
     while (item := layout.takeAt(0)) is not None:
         if (widget := item.widget()) is not None:
+            widget.hide()
             widget.setParent(None)
             widget.deleteLater()
         elif item.layout() is not None:
@@ -491,16 +495,35 @@ class SegmentedControl(QFrame):
         return next(key for key, b in self._buttons.items() if b is button)
 
 
+class _ElidedLabel(QLabel):
+    """One line of text that ends in "…" when there is less room than it needs, and asks only for room for a few
+    characters: a long text (a model's name) does not set the width of the column it sits in."""
+
+    MIN_CHARACTERS = 6
+
+    def minimumSizeHint(self) -> QSize:     # noqa: N802 -- Qt's name
+        hint = super().minimumSizeHint()
+        return QSize(min(hint.width(), self.fontMetrics().horizontalAdvance("M" * self.MIN_CHARACTERS)), hint.height())
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        rect = self.contentsRect()
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(rect, int(self.alignment()) | int(Qt.AlignmentFlag.AlignVCenter),
+                         self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, rect.width()))
+
+
 class Chip(ClickFrame):
     """Small pill with an optional icon, e.g. "pinned 1-0-0" or "outdated".
     tone: neutral, muted, info, warning, error, ok. Emits `clicked`. A `pressable` chip is a button: a Tab stop
     (from Tab only, so the 2px focus ring is a keyboard ring) that Enter and Space press, named by its tooltip; its
-    ring is a transparent border until it has the focus (kit_qss), so the chip does not move."""
+    ring is a transparent border until it has the focus (kit_qss), so the chip does not move. An `elide` chip
+    shortens its text with "…" rather than widen its column (say the full text in its tooltip)."""
 
     RING = 2
 
     def __init__(self, text: str, tone: str = "neutral", icon: str | None = None,
-                 parent: QWidget | None = None, *, pressable: bool = False) -> None:
+                 parent: QWidget | None = None, *, pressable: bool = False, elide: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName(q.CHIP)
         self.setProperty("tone", tone)
@@ -514,9 +537,9 @@ class Chip(ClickFrame):
         layout.setSpacing(4)
         self._icon = IconLabel(icon or "", 14, self)   # parented now: setVisible on a parentless one shows a window
         self._icon.setVisible(bool(icon))
-        self._label = QLabel(text, self)
+        self._label = (_ElidedLabel if elide else QLabel)(text, self)
         layout.addWidget(self._icon)
-        layout.addWidget(self._label)
+        layout.addWidget(self._label, 1 if elide else 0)
 
     def text(self) -> str:
         return self._label.text()

@@ -28,7 +28,10 @@ from .panels import PANELS
 from .panels.base import PanelActions, SidePanel
 from .state import WorkspaceState
 
-WIDTH = 360   # the prototype's width of the column; the least it may be dragged to, and the default
+WIDTH = 360   # the prototype's width of the column: the default, and what a double-click on the handle gives back
+# The least it may be dragged to: the widest content still fits (the Visibility panel's card, 311 px; the
+# assistant's controls) -- the model chip shortens its name rather than widen the column.
+MIN_WIDTH = 312
 MAX_WIDTH = 900
 WIDTH_SETTING = "right_column_width"
 SETTING = "side_panel"
@@ -44,7 +47,7 @@ def remembered_width(project: ProjectContext) -> int:
     if value is None:   # once: this project's old width becomes the user's
         value = app_settings.get(project, WIDTH_SETTING)
         layout_settings.set(WIDTH_SETTING, value if isinstance(value, int) else WIDTH)
-    return min(max(value, WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
+    return min(max(value, MIN_WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
 class _ResetHandle(QSplitterHandle):
@@ -67,7 +70,7 @@ class _ColumnSplit(QSplitter):
 class SidePanels(QWidget):
     def __init__(self, app, state: WorkspaceState, actions: PanelActions) -> None:
         super().__init__()
-        self.setMinimumWidth(WIDTH)
+        self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
         self.project = state.project
         self.panels: dict[str, SidePanel] = {cls.key: cls(app, state, actions) for cls in PANELS}
