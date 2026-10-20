@@ -2523,3 +2523,9 @@ v8.39.1 (2026-10-20, direct report "it was at 2%, then 0% again" and "the count 
 
 NEW: Background previews keep what they render again.
 - After v8.37.0 the background previews rendered the same slides again and again and the dial kept falling back to 0 %; they now keep each render and the dial climbs.
+
+v8.39.2 (2026-10-20, direct report: "I said to update immediately. The app closed, a command window flashed open for a fraction of a second, but disappeared again immediately. Now nothing seems to happen."): The folder build's updater never put an update in place on Windows. It unpacked the release next to the installation and started a helper script to swap the folders once the app had ended; the helper was started detached, without a console and without input or output handles (the windowed app has none), and cmd ended at once with exit code 1, before it waited or moved anything, while the first console program it ran opened a window of its own (the flash). updater.start_helper now starts it with a console that is never shown and NUL as its input and output; the helper's retry count was in a ( ) block, where cmd expands %tries% only once, so a folder that stayed locked would have been retried forever; the loop is now plain lines. The Windows tests start the helper as the app does (it failed both before) and check that the retry limit ends the script. v8.33.0 to v8.39.1 have the broken helper, so a folder installation of those versions has to be replaced by hand once.
+
+NEW: Updating the downloaded Windows folder version works.
+- Installing an update closed SlideMage and then did nothing; it now puts the new version in place and starts it again.
+- If you have v8.39.1 or older, replace the SlideMage folder with the downloaded one once; later updates install by themselves.

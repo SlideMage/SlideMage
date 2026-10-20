@@ -83,9 +83,25 @@ def test_the_windows_helper_really_swaps_the_folders_once_the_process_is_gone(tm
     name, text = updater.swap_script(install, staging, "SlideMage.exe", 2_999_999, None, windows=True)   # no such process
     script = tmp_path / name
     script.write_text(text, encoding="utf-8", newline="")
-    subprocess.run(["cmd", "/c", str(script)], check=True, timeout=60)
+    # Started as the app starts it: v8.33.0 to v8.39.1 started it detached, without handles, and it ended at once.
+    assert updater.start_helper(script).wait(timeout=60) == 0
     assert (install / "SlideMage.exe").read_bytes() == b"new"
     assert (tmp_path / "SlideMage-folder.old" / "SlideMage.exe").read_bytes() == b"old"
     assert not staging.exists()
     updater.remove_leftover_folder(install)
     assert not (tmp_path / "SlideMage-folder.old").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="runs the Windows helper")
+def test_the_windows_helper_gives_up_on_a_folder_it_cannot_move_and_starts_the_old_one(tmp_path):
+    install = tmp_path / "SlideMage-folder"
+    install.mkdir()
+    staging = tmp_path / "SlideMage-folder.update"
+    staging.mkdir()
+    name, text = updater.swap_script(install, staging, "SlideMage.exe", 2_999_999, None, windows=True)
+    # Every move fails and the waits take no time: the count must reach its limit and end the script.
+    text = text.replace("ping -n 3 127.0.0.1 >NUL", "rem").replace(f'move "{install}"', 'move "nothing-here"')
+    script = tmp_path / name
+    script.write_text(text, encoding="utf-8", newline="")
+    assert updater.start_helper(script).wait(timeout=60) == 0
+    assert install.is_dir() and staging.is_dir() and not script.exists()

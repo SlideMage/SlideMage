@@ -439,7 +439,10 @@ def swap_script(install_dir: Path, staging: Path, binary_name: str, pid: int, re
             "if not errorlevel 1 (\r\n  ping -n 2 127.0.0.1 >NUL\r\n  goto wait\r\n)\r\n"
             f"set tries=0\r\n:swap\r\nif exist {quote(old)} rmdir /s /q {quote(old)}\r\n"
             f"move {quote(install_dir)} {quote(old)} >NUL 2>&1\r\n"
-            "if errorlevel 1 (\r\n  set /a tries+=1\r\n  if %tries% GEQ 20 goto launch\r\n  ping -n 3 127.0.0.1 >NUL\r\n  goto swap\r\n)\r\n"
+            # No ( ) block here: cmd expands %tries% in a block once, when it reads it, so the limit never applied.
+            "if not errorlevel 1 goto moved\r\n"
+            "set /a tries+=1\r\nif %tries% GEQ 20 goto launch\r\nping -n 3 127.0.0.1 >NUL\r\ngoto swap\r\n"
+            ":moved\r\n"
             f"move {quote(staging)} {quote(install_dir)} >NUL 2>&1\r\n"
             f"if errorlevel 1 move {quote(old)} {quote(install_dir)} >NUL 2>&1\r\n"
             f":launch\r\n{start}"
@@ -468,15 +471,24 @@ def spawn_folder_swap(install_dir: Path, staging: Path, binary_name: str, relaun
     script = Path(tempfile.mkdtemp(prefix="slidemage-swap-")) / name
     try:
         script.write_text(text, encoding="utf-8", newline="")
-        env = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
-        if os.name == "nt":
-            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            subprocess.Popen(["cmd", "/c", str(script)], env=env, creationflags=flags, close_fds=True)
-        else:
-            script.chmod(0o755)
-            subprocess.Popen(["/bin/sh", str(script)], env=env, start_new_session=True, close_fds=True)
+        start_helper(script)
     except OSError as exc:
         raise UpdateError(f"Couldn't start the update helper: {exc}") from exc
+
+
+def start_helper(script: Path) -> subprocess.Popen:
+    """Start the swap helper `script` so that it outlives this process.
+
+    On Windows it gets a console of its own that is never shown, and NUL as its input and output. A detached cmd
+    (DETACHED_PROCESS, no console) with the windowed app's missing handles ended at once with exit code 1, before
+    it swapped anything, and each console program it ran (tasklist, ping) flashed a window of its own."""
+    env = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
+    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, env=env)
+    if os.name == "nt":
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        return subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags, **quiet)
+    script.chmod(0o755)
+    return subprocess.Popen(["/bin/sh", str(script)], start_new_session=True, **quiet)
 
 
 def remove_leftover_folder(install_dir: Path) -> None:
