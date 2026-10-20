@@ -34,7 +34,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, Qt, Signal, QTimer
+from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
@@ -63,6 +63,11 @@ PAGE_ASPECT = 16 / 9
 PANE_SIDE_MARGIN = 12    # the Preview's margin left and right (chips, page, footer)
 PAGE_SIDE_INSET = 8      # the page inside its area, left and right: the shadow's room
 PROBE_MS = 1500          # idle time before the step bar counts a slide's steps in the background
+DISPLAY_WIDTH = slide_snapshot.FULL_SIZE[0]   # a page held for display is at most a render's full width: a large or
+# high-DPI pane shows that much, so a smaller copy would look softer than the current page
+DISPLAY_ENTRIES = 12     # pages held decoded for display ...
+DISPLAY_BYTES = 64 << 20 # ... and at most this much memory for them (width x height x 4 each)
+CHECKING = "Checking current source and settings…"
 STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
@@ -180,6 +185,54 @@ def _discard_job(job: _Job) -> None:
         shutil.rmtree(job.pdf.parent, ignore_errors=True)
 
 
+@dataclass
+class _Shown:
+    """A decoded whole-slide page of a saved render, as it was when it was made."""
+    pixmap: QPixmap
+    mtime: int                      # of the slide's source file
+    content_hash: Optional[str]     # of the text rendered (the saved file's)
+    image_hash: str                 # of the PNG the pixels came from: the same image is never decoded twice
+
+
+class DisplayCache:
+    """Decoded pages for display, newest last: (target.key, view, language) -> _Shown. GUI thread only. Only saved
+    whole-slide renders go in (never a draft or a part of a slide), at display size and within a byte budget. What
+    is held is not current: only the selection's validation makes a page current; the revision only says whether
+    the page may be shown, marked as being checked, while that runs."""
+
+    def __init__(self) -> None:
+        self._items: OrderedDict[tuple, _Shown] = OrderedDict()
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __contains__(self, key) -> bool:
+        return key in self._items
+
+    @property
+    def bytes(self) -> int:
+        return sum(item.pixmap.width() * item.pixmap.height() * 4 for item in self._items.values())
+
+    def get(self, key: tuple) -> Optional[_Shown]:
+        item = self._items.get(key)
+        if item is not None:
+            self._items.move_to_end(key)
+        return item
+
+    def put(self, key: tuple, pixmap: QPixmap, mtime: int, content_hash: Optional[str], image_hash: str) -> QPixmap:
+        """Keep `pixmap` at display size; the pixmap held (to show) is returned."""
+        if pixmap.width() > DISPLAY_WIDTH:
+            pixmap = pixmap.scaledToWidth(DISPLAY_WIDTH, Qt.TransformationMode.SmoothTransformation)
+        self._items[key] = _Shown(pixmap, mtime, content_hash, image_hash)
+        self._items.move_to_end(key)
+        while len(self._items) > 1 and (len(self._items) > DISPLAY_ENTRIES or self.bytes > DISPLAY_BYTES):
+            self._items.popitem(last=False)
+        return pixmap
+
+    def clear(self) -> None:
+        self._items.clear()
+
+
 class _Lifetime:
     """Plain Python receiver: it survives QObject destruction and queued results."""
 
@@ -200,6 +253,7 @@ class _Lifetime:
             owner._steps.close()
             owner._pending = None
             owner._generation += 1
+            owner._pixmaps.clear()
         if self.job is not None:
             _discard_job(self.job)
 
@@ -216,18 +270,19 @@ class PageView(QWidget):
         self._tokens = tokens
         self._wheel = 0
         self.pixmap: Optional[QPixmap] = None
+        self._scaled: Optional[tuple[QSize, QPixmap]] = None    # the pixmap at the page's size: not rescaled per paint
         self.message = ""
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
 
     def show_image(self, pixmap: QPixmap) -> None:
-        self.pixmap, self.message = pixmap, ""
+        self.pixmap, self.message, self._scaled = pixmap, "", None
         self.render_button.hide()
         self.update()
 
     def show_message(self, message: str, can_render: bool) -> None:
-        self.pixmap, self.message = None, message
+        self.pixmap, self.message, self._scaled = None, message, None
         self.render_button.setVisible(can_render)
         self._place_button()
         self.update()
@@ -239,6 +294,17 @@ class PageView(QWidget):
         width = min(area.width(), area.height() * aspect)
         height = width / aspect
         return QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
+
+    def _scaled_pixmap(self, page: QRectF) -> QPixmap:
+        """The pixmap scaled to the page (in device pixels), kept until the size or the pixmap changes."""
+        ratio = self.devicePixelRatioF()
+        size = QSize(max(1, round(page.width() * ratio)), max(1, round(page.height() * ratio)))
+        if self._scaled is None or self._scaled[0] != size:
+            scaled = self.pixmap.scaled(size, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+            scaled.setDevicePixelRatio(ratio)
+            self._scaled = (size, scaled)
+        return self._scaled[1]
 
     def _place_button(self) -> None:
         page = self._page_rect()
@@ -269,7 +335,8 @@ class PageView(QWidget):
         painter.setBrush(QColor(tokens.paper) if self.pixmap is not None else QColor(tokens.surface))
         painter.drawRoundedRect(page, 4, 4)
         if self.pixmap is not None:
-            painter.drawPixmap(page, self.pixmap, QRectF(self.pixmap.rect()))
+            scaled = self._scaled_pixmap(page)
+            painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
         elif self.message:
             painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
@@ -342,8 +409,8 @@ class PreviewPane(Surface):
         self._image_selection = None
         self._scope = "slide"
         self._overlay = 0
-        # Renders this session: (target.key, view, language) -> image.
-        self._pixmaps: OrderedDict[tuple, tuple[QPixmap, int]] = OrderedDict()
+        # Decoded pages of this session's saved renders, shown while a return visit is validated.
+        self._pixmaps = DisplayCache()
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
         self._adhoc_text: Optional[str] = None
@@ -531,8 +598,7 @@ class PreviewPane(Surface):
             # "Checking…" every few seconds made the status flicker); a check that finds it stale replaces it.
             return self._selection_result
         if retained is not None and retained.image is not None and retained.state == 'verified':
-            return replace(retained, state='previous', pdf=None,
-                           note='Checking current source and settings…')
+            return replace(retained, state='previous', pdf=None, note=CHECKING)
         return retained
 
     def _show_accepted_while_validating(self, spec, png):
@@ -600,11 +666,13 @@ class PreviewPane(Surface):
         selected = None
         self._image_selection = None
         scoped = False
-        text = None
+        text = text_hash = buffer = None
+        mtime = _mtime(target.source_path)     # before the text is read: a change in between only makes a miss
         adhoc_here = self._adhoc is not None and self._adhoc[0] == key
         try:
             buffer = self._buffer()
             text = buffer[0] if buffer is not None else target.source_path.read_text(encoding='utf-8')
+            text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
             adhoc_spec = getattr(self, '_adhoc_spec', None)
             scoped = (adhoc_here and adhoc_spec is not None
                       and (adhoc_spec.options.mode != 'slide' or adhoc_spec.options.overlay is not None))
@@ -631,20 +699,29 @@ class PreviewPane(Surface):
                 self._last_pdf = verified.pdf
                 self._displayed_spec = getattr(verified, 'request_spec', None)
                 return pixmap, True, self._adhoc[2] if adhoc_here else ''
-        if selected is not None and selected.image is not None and selected.fresh:
-            pixmap = QPixmap()
-            if isinstance(selected.image, bytes) and pixmap.loadFromData(selected.image):
+        if selected is not None and selected.image is not None and selected.fresh and isinstance(selected.image, bytes):
+            # Verified for `text`: kept for a return visit when that is the saved file's text.
+            keep = (mtime, text_hash) if buffer is None or not self._is_draft(target) else None
+            pixmap = self._decoded(key, selected.image, keep)
+            if pixmap is not None:
                 self._last_pdf = selected.pdf
                 self._displayed_spec = selected.request
                 return pixmap, True, ''
+        if background and selected is None and not scoped and text is not None and self._selection_result_key is None:
+            # Validation of this slide is still to come: the page last made from this very text and file is shown
+            # at once, as a previous one. It authorizes no PDF and counts as current only once validation says so.
+            held = self._pixmaps.get(key)
+            if held is not None and (held.mtime, held.content_hash) == (mtime, text_hash):
+                self._last_pdf = self._displayed_spec = None
+                return held.pixmap, False, CHECKING
         stored = self._stored_pixmap(target, view, language)     # a current background render (background_renders)
         if stored is not None:
             self._last_pdf = None
             self._displayed_spec = None
             return stored, True, ''
         if selected is not None and selected.state == 'previous' and isinstance(selected.image, bytes):
-            pixmap = QPixmap()
-            if pixmap.loadFromData(selected.image):
+            pixmap = self._decoded(key, selected.image)
+            if pixmap is not None:
                 self._last_pdf = selected.pdf
                 self._displayed_spec = None
                 return pixmap, False, selected.note
@@ -660,6 +737,25 @@ class PreviewPane(Surface):
             note = ('Render to verify current source and dependencies' if same_text else 'Older than the editor buffer')
             return self._adhoc[1], False, note
         return None
+
+    def _decoded(self, key: tuple, png: bytes, keep: Optional[tuple] = None) -> Optional[QPixmap]:
+        """`png` as a pixmap, decoded once: the page held for `key` is reused when it came from the same image.
+        `keep` (the source's mtime and text hash) holds a new decode in the display cache for that revision."""
+        digest = hashlib.sha256(png).hexdigest()
+        held = self._pixmaps.get(key)
+        if held is not None and held.image_hash == digest:
+            if keep is not None:
+                held.mtime, held.content_hash = keep
+            return held.pixmap
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(png):
+            return None
+        return self._pixmaps.put(key, pixmap, *keep, digest) if keep is not None else pixmap
+
+    def _remember(self, key: tuple, pixmap: QPixmap, png: bytes, mtime: int, text: Optional[str]) -> None:
+        """Hold the page of a saved render of `text` (the saved file's) for display."""
+        self._pixmaps.put(key, pixmap, mtime, hashlib.sha256(text.encode('utf-8')).hexdigest()
+                          if text is not None else None, hashlib.sha256(png).hexdigest())
 
     def _stored_pixmap(self, target: PreviewTarget, view: str, language: str) -> Optional[QPixmap]:
         """The last page of the background render of the saved slide, when one is current (background_renders.py):
@@ -1195,6 +1291,8 @@ class PreviewPane(Surface):
         self._lifetime.close()
 
     def _invalidate(self) -> None:
+        # Drops the selection and what is running, so stale completions are discarded; the decoded pages in
+        # `_pixmaps` stay for a return visit.
         self._generation += 1
         self._selection_ticket += 1
         if self._selection_pending is not None:
@@ -1340,10 +1438,7 @@ class PreviewPane(Surface):
                     else:
                         self._adhoc = None
                         self._adhoc_spec = None
-                        self._pixmaps[key] = (pixmap, job.mtime)
-                        self._pixmaps.move_to_end(key)
-                        while len(self._pixmaps) > 12:
-                            self._pixmaps.popitem(last=False)
+                        self._remember(key, pixmap, job.png, job.mtime, job.revision_text)
             self.rendered.emit()
             if not job.external:
                 self._after_render(job)
@@ -1645,7 +1740,7 @@ class PreviewPane(Surface):
         if view == 'instructor' and not target.is_frozen_alone:
             slide_snapshot.publish_preview(target.context, images, target.bare_id, target.template)
         key = (target.key, view, language)
-        self._pixmaps[key] = (pixmap, revision)
+        self._remember(key, pixmap, png, revision, text)
         try:
             remembered = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
                                         RenderOptions(saved=True))
@@ -1654,9 +1749,6 @@ class PreviewPane(Surface):
                 self._show_accepted_while_validating(remembered, png)
         except (OSError, ValueError):
             pass
-        self._pixmaps.move_to_end(key)
-        while len(self._pixmaps) > 12:
-            self._pixmaps.popitem(last=False)
         if matching:
             self._adhoc = None
             self._adhoc_spec = None
