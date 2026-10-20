@@ -701,6 +701,35 @@ def test_leaving_the_images_page_saves_a_pending_edit_and_opening_a_slide_leaves
     assert window.stack.currentWidget() is window.centre and flushed == [True, True]
 
 
+def test_a_slide_click_on_the_images_page_returns_to_the_centre_and_shows_the_slide(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    slides = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.state.set_mode("preview")
+    window.open_slide_editor(slides[0], keep_mode=True)
+    window._toggle_images()
+    shown = []
+    real = window.centre.preview.show_slide
+    monkeypatch.setattr(window.centre.preview, "show_slide", lambda *a: (shown.append(a[0]), real(*a))[1])
+    window.state.set_focused_slide(slides[1].name.split("-", 1)[0])           # the press: the centre is hidden
+    window.open_slide_editor(slides[1], keep_mode=True)                          # the release
+    assert window.stack.currentWidget() is window.centre and window.state.mode == "preview"
+    assert window.centre._path == slides[1] and window.centre.source.file_for(slides[1]) is None
+    assert shown and shown[-1].source_path == slides[1]
+    assert window.centre.preview.isVisibleTo(window.centre)
+
+
+def test_clicking_the_selected_row_after_an_explicit_file_goes_back_to_the_slide(window):
+    slide = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[0]
+    window.state.set_mode("preview")
+    window.state.set_focused_slide(slide.name.split("-", 1)[0])
+    window.open_slide_editor(slide, keep_mode=True)
+    window.open_slide_editor(window.project.bibliography_path, keep_mode=True)       # an explicit file
+    assert window.centre._path == window.project.bibliography_path
+    window.open_slide_editor(slide, keep_mode=True)       # a click on the row that is still selected
+    assert window.centre._path == slide and window.state.mode == "preview"
+    assert window.centre.preview._target.source_path == slide
+
+
 def test_the_slide_lists_images_entry_lands_on_that_slides_images(window, monkeypatch):
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     shown = []

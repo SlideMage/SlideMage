@@ -425,8 +425,11 @@ class WorkspaceWindow(QMainWindow):
         """Show a file in the Source view: a slide, a deck's own source or Slidemaster.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
         the Preview on show instead of switching to the Source view."""
+        returning = self.stack.currentWidget() is not self.centre
         self.stack.setCurrentWidget(self.centre)
         self.centre.open_file(path, on_saved, line, keep_mode=keep_mode)
+        if returning:
+            self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
 
     def _on_source_closed(self, path: Path) -> None:
         """Close-side half of the open-side sort in _on_edit_bib(): the file on disk

@@ -812,3 +812,74 @@ def test_dont_ask_again_turns_the_setting_off(centre, asked):
     assert app_settings.get(centre.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is False
     leave_after_editing(centre)
     assert len(asked.calls) == 1
+
+
+# -- a click in the Preview builds no editor (v8.39.5) ------------------------------------------------
+
+def click(centre, project, slide, name, **kwargs):
+    """The slide list's click: the press focuses the row, the release opens its file (keeping the mode)."""
+    centre.state.set_focused_slide(slide)
+    centre.open_file(project / name, keep_mode=True, **kwargs)
+
+
+def count_shows(centre):
+    shown = []
+    real = centre.preview.show_slide
+    centre.preview.show_slide = lambda *args: (shown.append(args[0]), real(*args))[1]
+    return shown
+
+
+def test_a_preview_click_builds_no_editor_and_shows_the_slide_once(centre, project):
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    shown = count_shows(centre)
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert centre.source.file_for(project / "ccc-DE-Drei-current.tex") is None
+    assert centre.source.file_for(project / "aaa-EN-One-current.tex") is None
+    assert len(shown) == 1 and shown[0].id_slug == "ccc-DE-Drei"
+    assert centre.state.mode == "preview" and centre._path == project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("source")                       # the editor is built when the Source view is shown
+    file = centre.source.current
+    assert file is not None and file.path == project / "ccc-DE-Drei-current.tex" and "Dritte" in file.editor.text()
+
+
+@pytest.mark.parametrize("mode", ["split", "source"])
+def test_a_click_in_split_or_source_shows_the_editor(centre, project, mode):
+    centre.state.set_mode(mode)
+    centre.state.set_focused_slide("aaa")
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert centre.state.mode == mode
+    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+    assert "Dritte" in centre.source.current.editor.text() and centre.source.isVisibleTo(centre)
+
+
+def test_opening_in_preview_with_a_line_or_a_callback_still_builds_the_editor(centre, project, tmp_path):
+    centre.state.set_mode("preview")
+    centre.open_file(project / "ccc-DE-Drei-current.tex", keep_mode=True, line=2)
+    file = centre.source.file_for(project / "ccc-DE-Drei-current.tex")
+    assert file is not None and file.editor.textCursor().blockNumber() == 1 and centre.state.mode == "preview"
+    saved = []
+    centre.open_file(project / "aaa-EN-One-current.tex", saved.append, keep_mode=True)
+    file = centre.source.file_for(project / "aaa-EN-One-current.tex")
+    assert file is not None and file.on_saved == saved.append and centre.state.mode == "preview"
+    file.editor.insertPlainText("x ")
+    assert file.write_now()
+    assert len(saved) == 1 and saved[0].startswith("\\setSlideVersion")      # the previous text
+
+
+def test_edits_pending_in_the_source_view_are_written_to_their_slide_by_a_preview_click(centre, project, asked):
+    ask_on_leave(centre)
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("edit ")           # waiting for its autosave
+    centre.state.set_mode("preview")
+    ccc_before = (project / "ccc-DE-Drei-current.tex").read_text()
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert "edit " in (project / "aaa-EN-One-current.tex").read_text()      # written, not lost
+    assert (project / "ccc-DE-Drei-current.tex").read_text() == ccc_before   # and not to the new slide
+    assert centre.source.file_for(project / "ccc-DE-Drei-current.tex") is None
+    QApplication.processEvents()
+    assert asked.calls == [("aaa", (1, 1, 0))]                      # the Update Version offer still runs
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    assert "edit " in centre.source.current.editor.text() and not centre.source.current.dirty

@@ -153,18 +153,25 @@ class CentreColumn(QFrame):
                   line: Optional[int] = None, *, keep_mode: bool = False) -> None:
         """Show `path` in the Source view (a slide of the project focuses the slide too), and switch to the Source
         view unless it is on show or `keep_mode`. `on_saved(previous_text)` runs after each save of it; `line` puts
-        the cursor there."""
+        the cursor there. With the Preview alone on show (`keep_mode`) the file only becomes the centre's path: its
+        editor is built when the Source view is shown (refresh()), unless `on_saved` or `line` need it now, as they
+        live on the editor. The views are refreshed unless the focus click had already put them there."""
+        changed = path != self._path
+        mode = self.state.mode
         self._opening = True
         try:
             if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
                 self.state.set_focused_slide(bare_id(path.name))     # the focused slide keeps its occurrence
+                changed = True
             self._set_path(path)
             if self.state.mode not in ("source", "split") and not keep_mode:
                 self.state.set_mode("source")
         finally:
             self._opening = False
-        self.source.show_path(path, on_saved)
-        self.refresh()
+        if self.state.mode in ("source", "split") or on_saved is not None or line is not None:
+            self.source.show_path(path, on_saved)
+        if changed or self.state.mode != mode:
+            self.refresh()
         if line is not None and self.source.current is not None:
             self.source.current.editor.go_to_line(line)
 
@@ -403,7 +410,12 @@ class CentreColumn(QFrame):
         left = self._path
         self._path = path
         if left is not None and left != path:
-            # after the switch, which also writes the edits still waiting for their autosave
+            # Its edits still waiting for their autosave are written now: the Source view does not do it
+            # when it is hidden (Preview), as it shows the new file only when it is on show.
+            file = self.source.file_for(left)
+            if file is not None:
+                file.write_now()
+            # after the switch
             QTimer.singleShot(0, lambda: self._offer_version(left))
 
     def _offer_version(self, path: Path) -> None:
