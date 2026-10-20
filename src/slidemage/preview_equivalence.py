@@ -21,8 +21,8 @@ from . import compiler, slide_preview
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
 AUDITED_FRAMEWORK = {
-    # v8.37.0: only "No file" log lines for a missing .ovl/.top; no view-dependent rule changed.
-    "Slidemaster_preamble_base.tex": "9e1fef8366f9aca3919ec77acfa6b4a728d5098ce1468aa5956d7d13166f35ab",
+    # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
+    "Slidemaster_preamble_base.tex": "eea0fce61896f21fdb863b6e69bb1a69eb922fe9dacf0cacde662e4f47b0fc2b",
     "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
@@ -37,6 +37,7 @@ AUDITED_FRAMEWORK = {
 AUDITED_PROJECT_TEMPLATES = frozenset({
     "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
     "13c039dcf2d7e9bdc38363ee782ccd5a34e14fc6786322950bd0cb22f6e11ff8",   # the same with its "template name" line
+    "527fa4a6337be2226e7f2badfa3040b9982d95f9c1e5ba760acb6febbf06fafa",   # v8.40.0: \SMDarkMode colors, per deck, not per view
 })
 AUDITED_LATEXMKRC = {
     ".latexmkrc": "b1a1ce4d46229a854d936d870af6e849af21708642c62f7e3c0242fd4625f8e4",

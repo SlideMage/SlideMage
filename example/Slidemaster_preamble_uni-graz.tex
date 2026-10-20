@@ -1,4 +1,5 @@
 % SlideMage template name: University of Graz
+% SlideMage dark mode: true
 % Slidemaster preamble variant for University of Graz decks. Institution-
 % specific content only (colors, logo, logo calibration) -- every frame
 % type, the deck-version system, footer/hyperlink/footnote styling, tikz
@@ -85,7 +86,65 @@
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
 \colorlet{SMCodeBackgroundColor}{c_tertiary_gray}
 
+% Dark mode (2026-10-19): a deck opts in by defining \SMDarkMode before
+% \input{}ing this file:
+%   \newcommand{\SMDarkMode}{}
+%   \input{Slidemaster_preamble_uni-graz}
+% Softer dark palette from HANDOVER-slidemage-ch1 and its HTML examples:
+% canvas #2B2B2B, cards #3A3A3A, white body, gray code panels with black
+% text. Yellow/black title and footer bars, and the institution logo, keep
+% the existing template layout. The two dark grays are deliberate additions
+% to the CD palette; the yellow, gray, blue, black and white stay unchanged.
+\definecolor{c_true_black}{HTML}{000000}
+\ifdefined\SMDarkMode
+	\definecolor{SMCanvasColor}{HTML}{2B2B2B}
+	\definecolor{SMCardBackgroundColor}{HTML}{3A3A3A}
+	\colorlet{SMCardBorderColor}{white}
+	\colorlet{SMProcessBorderColor}{c_primary_gray}
+	\colorlet{c_primary_dark}{white}
+	\colorlet{c_tertiary_violet}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_blue}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_green}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_red}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_orange}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_yellow}{SMCardBackgroundColor}
+	\colorlet{c_tertiary_gray}{SMCardBackgroundColor}
+	\definecolor{c_custom_gray}{HTML}{C6C6C6} % hyperlinks, quote attribution
+	\renewcommand{\SMTitleTextColor}{c_true_black}
+	\renewcommand{\SMFooterTextColor}{c_true_black}
+	% Light code panels use black throughout; inline code on the dark body is yellow.
+	\colorlet{SMCodeTextColor}{c_true_black}
+	\colorlet{SMCodeKeywordColor}{c_true_black}
+	\colorlet{SMCodeCommentColor}{c_true_black}
+	\colorlet{SMCodeBackgroundColor}{c_primary_gray}
+\fi
+
 \input{Slidemaster_preamble_base}
+
+\ifdefined\SMDarkMode
+	% Highlight inline code only in the white body context. Black text on
+	% title bars/block headings and explicitly colored text keep their color.
+	\makeatletter
+	\begingroup\color{c_primary_dark}\global\let\SMBodyColorSpec\current@color\endgroup
+	\renewcommand{\SMInlineCodeStyle}{%
+		\ifx\current@color\SMBodyColorSpec\color{c_primary_highlight}\fi}
+	\makeatother
+	\newfontfamily\SMCardMediumFont{FiraSans-Medium.otf}
+	\renewcommand{\SMCardHeadingFont}{\SMCardMediumFont}
+	\tikzset{SMProcess/.append style={draw=SMProcessBorderColor}}
+	% Built-in title pages paint normal text.bg over the slide canvas.
+	\setbeamercolor{normal text}{bg=SMCanvasColor}
+	\hypersetup{citecolor=c_primary_dark}
+	\setbeamercolor{button}{bg=c_custom_gray, fg=c_true_black}
+	\setbeamercolor{block title}{bg=c_secondary_violet, fg=c_true_black}
+	\setbeamercolor{block title example}{bg=c_secondary_green, fg=c_true_black}
+	\setbeamercolor{block title alerted}{bg=c_secondary_red, fg=c_true_black}
+	\setbeamercolor{block title reference}{bg=c_secondary_orange, fg=c_true_black}
+	\setbeamercolor{block title info}{bg=c_secondary_blue, fg=c_true_black}
+	% [standout] frames: gotham sets their text in the primary palette's fg
+	% (light), which is unreadable on the yellow page.
+	\addtobeamertemplate{standout}{}{\color{c_true_black}}
+\fi
 
 % Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): the house
 % citation format lives here, in the template, instead of being copied into

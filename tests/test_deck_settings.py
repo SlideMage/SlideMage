@@ -181,3 +181,66 @@ def test_footer_elements_left_out_are_written_and_read_back():
     assert "\\def\\SMFooterHide{id,deck}\n" in hidden
     assert deck_settings.read_settings(hidden).footer_hide == ("id", "deck")
     assert deck_settings.set_footer_hide(hidden, ()) == text
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_dark_mode_round_trip_places_switch_before_template_and_keeps_line_endings(newline):
+    text = DECK.replace("\n", newline)
+    old = read(text)
+    new = read(text)
+    new.dark_mode = True
+    dark = deck_settings.apply_settings(text, old, new)
+    assert read(dark).dark_mode
+    assert dark.index(r"\newcommand{\SMDarkMode}{}") < dark.index(r"\input{Slidemaster_preamble_")
+    if newline == "\r\n":
+        assert "\n" not in dark.replace("\r\n", "")
+    assert deck_settings.apply_settings(dark, read(dark), old) == text
+
+
+@pytest.mark.parametrize("declaration", [
+    r"\newcommand{\SMDarkMode}{}", r"\newcommand*{\SMDarkMode}{}",
+    r"\def\SMDarkMode{}", r"\providecommand\SMDarkMode{enabled}",
+])
+def test_dark_mode_reads_existing_switches_and_ignores_comments_and_body(declaration):
+    marker = r"\input{Slidemaster_preamble_uni-graz}"
+    assert read(DECK.replace(marker, declaration + "\n" + marker)).dark_mode
+    ignored = "% " + declaration + "\n" + DECK + "\n" + declaration
+    assert not read(ignored).dark_mode
+    assert deck_settings.set_dark_mode(ignored, False) == ignored
+
+
+def test_enabling_dark_mode_moves_a_late_switch_before_the_template():
+    text = DECK.replace(r"\begin{document}", "\\newcommand{\\SMDarkMode}{}\n\\begin{document}")
+    assert not read(text).dark_mode
+    dark = deck_settings.set_dark_mode(text, True)
+    assert read(dark).dark_mode
+    assert dark.count(r"\newcommand{\SMDarkMode}{}") == 1
+    assert deck_settings.set_dark_mode(dark, True) == dark
+
+
+def test_disabling_dark_mode_preserves_inline_comments_and_other_commands():
+    line = "\\def\\SMDarkMode{}\\newcommand{\\KeepMe}{yes} % keep this\n"
+    text = line + DECK
+    light = deck_settings.set_dark_mode(text, False)
+    assert light == "\\newcommand{\\KeepMe}{yes} % keep this\n" + DECK
+    assert not read(light).dark_mode
+
+
+def test_removing_a_setting_keeps_what_follows_it_on_its_line():
+    text = "\\deckappendixtoc % the comment goes with it\n\\deckoutputfolder[presenter]{out/p.pdf} \\def\\SMFooterHide{date}\n"
+    assert deck_settings.set_appendix_toc(text, False) == "\\deckoutputfolder[presenter]{out/p.pdf} \\def\\SMFooterHide{date}\n"
+    assert deck_settings.set_output_folder(text, "presenter", "") == "\\deckappendixtoc % the comment goes with it\n \\def\\SMFooterHide{date}\n"
+
+
+def test_dark_mode_form_does_not_depend_on_a_template_name():
+    assert form(dark_mode=True).dark_mode
+    assert form(template="custom-college", dark_mode=True).dark_mode
+
+
+def test_dark_mode_support_is_discovered_from_template_headers(tmp_path):
+    template = tmp_path / "Slidemaster_preamble_custom-college.tex"
+    template.write_text("% SlideMage dark mode: true\n")
+    assert deck_settings.template_supports_dark_mode(tmp_path, "custom-college")
+    template.write_text("% SlideMage dark mode: false\n")
+    assert not deck_settings.template_supports_dark_mode(tmp_path, "custom-college")
+    assert not deck_settings.template_supports_dark_mode(tmp_path, "missing")

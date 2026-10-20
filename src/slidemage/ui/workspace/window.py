@@ -157,6 +157,7 @@ class WorkspaceWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         self.topbar = TopBar(self)
+        self.topbar.set_dark(theme.dark)
         outer.addWidget(self.topbar)
         snapshot_banner = self._build_snapshot_banner()
         if snapshot_banner is not None:
@@ -635,6 +636,7 @@ class WorkspaceWindow(QMainWindow):
         """Called from the Settings sheet's Dark mode checkbox; theme.set_dark() also
         persists the choice (QSettings, per-machine -- see ui/kit/theme.py)."""
         self.theme.set_dark(checked)
+        self.topbar.set_dark(checked)
         self.assistant.refresh_colors()
         # QSS covers every ordinary widget automatically, but a
         # QSyntaxHighlighter's own tag colors live on the text document,

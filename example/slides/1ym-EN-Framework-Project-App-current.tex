@@ -13,16 +13,16 @@
 	the bookkeeping and runs LaTeX for you.
 	\par\medskip
 	\begin{tikzillustration}[
-			part/.style={draw=c_primary_dark, line width=0.6pt, fill=white, rounded corners=2pt,
+			part/.style={SMCard, line width=0.6pt, rounded corners=2pt,
 				text width=108pt, minimum height=62pt, align=left, inner sep=5pt, anchor=north west, font=\footnotesize,
 				execute at begin node={\hyphenpenalty=10000\exhyphenpenalty=10000}},
-			wstep/.style={fill=c_tertiary_gray, rounded corners=2pt, inner sep=3pt, font=\footnotesize},
+			wstep/.style={SMProcess, line width=0.4pt, rounded corners=2pt, inner sep=3pt, font=\footnotesize},
 		]{1ym-tikz}
-		\node[part] (fw) at (0,0) {\textbf{LaTeX framework}\\[2pt]
+		\node[part] (fw) at (0,0) {{\SMCardHeadingFont LaTeX framework}\\[2pt]
 			\SMCode{latex/}: the Gotham theme, the base preamble, the templates};
-		\node[part] (pj) at (150pt,0) {\textbf{Your project}\\[2pt]
+		\node[part] (pj) at (150pt,0) {{\SMCardHeadingFont Your project}\\[2pt]
 			any folder with a \SMCode{slide\_ids.csv}: slides, decks, images};
-		\node[part] (app) at (300pt,0) {\textbf{SlideMage}\\[2pt]
+		\node[part] (app) at (300pt,0) {{\SMCardHeadingFont SlideMage}\\[2pt]
 			the app: compiles decks, manages IDs, versions, images, transcripts};
 		\draw[gotham arrow, c_primary_highlight, thick] (fw.east) -- (pj.west);
 		\draw[gotham arrow, c_primary_highlight, thick] (app.west) -- (pj.east);
