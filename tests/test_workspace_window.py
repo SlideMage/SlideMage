@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QKeySequence, QShortcut, QTextLayout
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QTextLayout
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QInputDialog, QMessageBox, QWidget
 
@@ -20,8 +21,8 @@ from slidemage.deck_scan import Chapter, Deck
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
-from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, window as window_module
-from slidemage.ui.workspace.topbar import DECK_MAX_WIDTHS, DENSITIES
+from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, topbar as topbar_module, window as window_module
+from slidemage.ui.workspace.topbar import DARK_LOGO_PATH, DECK_MAX_WIDTHS, DENSITIES, LOGO_PATH
 from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
@@ -741,8 +742,12 @@ def test_theme_and_tab_width_changes_reach_the_open_editors(window, tmp_path, mo
     repainted = []
     monkeypatch.setattr(editor, "refresh_colors", lambda: repainted.append(True))
     monkeypatch.setattr(window.theme, "set_dark", lambda dark: None)     # no app-wide restyle here
+    logos = []
+    monkeypatch.setattr(topbar_module, "QIcon", lambda path: logos.append(Path(path)) or QIcon(path))
     window.set_dark_mode(True)
     assert repainted == [True]
+    window.set_dark_mode(False)
+    assert logos == [DARK_LOGO_PATH, LOGO_PATH] and QSvgRenderer(str(DARK_LOGO_PATH)).isValid()
     before = editor.tabStopDistance()
     window.set_tab_width_chars(4)
     assert editor.tabStopDistance() == pytest.approx(before * 2)

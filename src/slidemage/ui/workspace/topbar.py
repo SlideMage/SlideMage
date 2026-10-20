@@ -24,6 +24,8 @@ from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
+# Its dark front card would vanish on the dark theme's bar; this variant has a light front card.
+DARK_LOGO_PATH = FONT_DIR.parent / "logo" / "slidemage-mark-dark.svg"
 LOGO_SIZE = 32
 # The widest the deck switcher gets in each density, its name elided beyond (the full name is its tooltip):
 # wide enough in the full bar for names like "t-Uni-Masterdeck-Publishing" (1920 x 1080 shows the full bar;
@@ -90,9 +92,9 @@ class TopBar(QWidget):
         self._left_column.clicked.connect(lambda: self.command.emit("column:left"))
         add(self._left_column)
 
-        logo = QLabel()
-        logo.setPixmap(QIcon(str(LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
-        add(logo)
+        self._logo = QLabel()
+        self.set_dark(False)
+        add(self._logo)
 
         self._deck_button = DropdownButton(q.TOPBAR_DECK)
         self._deck_button.clicked.connect(self.open_deck_menu)
@@ -224,6 +226,9 @@ class TopBar(QWidget):
 
     def set_decks(self, decks: list[Deck]) -> None:
         self._decks = decks
+
+    def set_dark(self, dark: bool) -> None:
+        self._logo.setPixmap(QIcon(str(DARK_LOGO_PATH if dark else LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
 
     def set_images_open(self, is_open: bool) -> None:
         self._images.setVisible(is_open)
