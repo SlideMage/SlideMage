@@ -916,3 +916,54 @@ def test_a_source_the_panel_did_not_edit_keeps_what_another_writer_stored(ctx, c
     form.save_button.click()
     entry = alt_images.load_store(ctx)["media/pic.png"]
     assert (entry.short, entry.source, entry.source_status) == ("Edited short", "Elsewhere", alt_images.SOURCE_TO_REVIEW)
+
+
+# -- a panel shows the focused occurrence, resolved once per refresh (v8.39.6) -------------------------------
+
+@pytest.fixture
+def twice(project, column):
+    """The deck "pins" calls abc as the current file and again as the frozen v1.0.0."""
+    (project.decks / "pins.tex").write_text(
+        HEAD + "\\slide{abc-EN-Demo}\n\\slide{xyz-EN-Other}\n\\slideversion{abc-EN-Demo}{1-0-0}\n\\end{document}\n",
+        encoding="utf-8", newline="")
+    panels, state, window = column
+    state.set_deck(next(d for d in deck_scan.scan_decks(state.project) if d.name == "pins"))
+    first, second = [r for r in state.outline.rows if r.call.id == "abc"]
+    return panels, state, first, second
+
+
+def test_a_panel_shows_the_focused_occurrence_not_the_first(twice, project):
+    panels, state, first, second = twice
+    slides = project.decks.parent / "slides"
+    panels.set_panel("notes")
+    notes = panels.panels["notes"]
+    state.set_focused_slide("abc", occurrence_key=first.key)
+    assert notes.slide_path() == slides / "abc-EN-Demo-current.tex" and notes._path == notes.slide_path()
+    state.set_focused_slide("abc", occurrence_key=second.key)
+    assert notes.slide_path() == slides / "abc-EN-Demo-v1-0-0.tex" and notes._path == notes.slide_path()
+    assert notes.id_slug() == "abc-EN-Demo"
+    panels.set_panel("visibility")
+    assert [position for position, _call in panels.panels["visibility"].deck_calls()] == [1, 3]   # every call of the slide
+
+
+def test_a_panel_resolves_its_row_once_per_refresh_and_none_while_the_outline_is_current(twice, resolutions):
+    panels, state, _first, second = twice
+    panels.set_panel("notes")
+    state.set_focused_slide("abc", occurrence_key=second.key)
+    resolutions.reset()
+    panels.refresh()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+    state.drop_outline()                      # a slide file was written, the list has not rebuilt yet
+    panels.refresh()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (1, 0, 1)
+    assert panels.panels["notes"]._path.name == "abc-EN-Demo-v1-0-0.tex"
+
+
+def test_used_in_decks_still_opens_another_deck_at_the_slide_with_the_outline(twice, resolutions):
+    panels, state, _first, _second = twice
+    state.set_focused_slide("abc")
+    panels.set_panel("used")
+    course = next(r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "course")
+    course.clicked.emit()
+    assert state.deck.name == "course" and state.focused_slide == "abc" and state.current_outline() is not None
+    assert state.current_outline().deck_path == state.deck.path

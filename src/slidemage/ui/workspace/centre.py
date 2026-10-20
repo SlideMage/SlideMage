@@ -134,6 +134,7 @@ class CentreColumn(QFrame):
         self.source.written.connect(self._edited.add)
         self.source.buffer_changed.connect(self.preview.buffer_changed)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
+        self.source.written.connect(lambda _path: state.drop_outline())   # before anything below reads a row
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
@@ -267,6 +268,7 @@ class CentreColumn(QFrame):
         except slide_versioning.RestoreError as exc:
             QMessageBox.warning(self.app, "Cannot restore", str(exc))
             return
+        self.state.drop_outline()   # the slide's title may differ now
         self.app.log(
             f"Restored {frozen.name} as the current version of {id_slug}: now "
             f"v{slide_versioning.format_dot(version)}"
@@ -464,6 +466,7 @@ class CentreColumn(QFrame):
         self.refresh()
 
     def _on_saved(self, _path: Path) -> None:
+        self.state.drop_outline()
         if self.state.mode in ("preview", "split"):
             self.preview.render_after_save()
         self.refresh()
@@ -480,7 +483,7 @@ class CentreColumn(QFrame):
         if deck is None or deck.is_test_deck or state.focused_slide is None:
             return None
         return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language,
-                                      occurrence_key=state.focused_occurrence)
+                                      occurrence_key=state.focused_occurrence, outline=state.outline)
 
     def _focused_path(self) -> Optional[Path]:
         """The file of the focused slide, if it has one: what the deck's call loads, else the
@@ -557,7 +560,7 @@ class CentreColumn(QFrame):
         state = self.state
         if row is not None and (self._path is None or (id_slug == row.call.id_slug and version == row.call.version)):
             return for_call(state.project, state.deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
-                            occurrence_key=row.key, hidden=row.hidden), row, row.title, None
+                            occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
         if self._path is None:
             return None, None, "", None
         own = own_language(id_slug)
@@ -574,8 +577,7 @@ class CentreColumn(QFrame):
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return
-        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
-                for r in section.rows]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
             return
@@ -586,7 +588,7 @@ class CentreColumn(QFrame):
             return
         other = rows[index]
         target = for_call(state.project, state.deck, other.call, other.position, frame_number=other.frame_number,
-                          occurrence_key=other.key, hidden=other.hidden)
+                          occurrence_key=other.key, hidden=other.hidden, outline=state.outline)
         if target is not None:
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
@@ -597,8 +599,7 @@ class CentreColumn(QFrame):
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return []
-        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
-                for r in section.rows]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
             return []
@@ -608,7 +609,7 @@ class CentreColumn(QFrame):
         # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
         # under the same key once that slide is focused.
         return [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                          occurrence_key=r.key, hidden=r.hidden), r) for r in picks if not r.hidden]
+                          occurrence_key=r.key, hidden=r.hidden, outline=state.outline), r) for r in picks if not r.hidden]
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

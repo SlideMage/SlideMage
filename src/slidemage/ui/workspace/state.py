@@ -22,7 +22,7 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from ... import app_settings, deck_settings
+from ... import app_settings, deck_outline, deck_settings
 from ...ai import ai_profile
 from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
@@ -54,6 +54,9 @@ class WorkspaceState(QObject):
         self.deck: Optional[Deck] = None
         self.focused_slide: Optional[str] = None
         self.focused_occurrence: tuple | None = None
+        # The deck as the slide list last resolved it (deck_outline.Outline), for the centre, the side panels and the
+        # Preview to read instead of resolving it again; the list sets it, and a write to a slide file drops it.
+        self.outline: Optional[deck_outline.Outline] = None
         self.view = VIEW_INSTRUCTOR
         self.language = UI_LANGUAGES[0]
         self.selection: tuple[str, ...] = ()
@@ -92,6 +95,17 @@ class WorkspaceState(QObject):
         if before[4] != self.mode:
             self.mode_changed.emit(self.mode)
         return True
+
+    def current_outline(self) -> Optional[deck_outline.Outline]:
+        """`outline` when it describes the deck, view and language on show, else None (resolve afresh)."""
+        outline, deck = self.outline, self.deck
+        return outline if outline is not None and deck is not None and outline.matches(
+            self.project, deck, self.language, self.view) else None
+
+    def drop_outline(self) -> None:
+        """A slide file was written: the title and translation links in `outline` may be older than the file, so
+        readers resolve afresh until the list rebuilds (which the write is followed by)."""
+        self.outline = None
 
     def set_focused_slide(self, slide_id: Optional[str], *, occurrence_key: tuple | None = None) -> None:
         if slide_id != self.focused_slide or occurrence_key != self.focused_occurrence:

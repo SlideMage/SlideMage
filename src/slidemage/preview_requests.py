@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+import functools
 import json
 from pathlib import Path
 import hashlib
@@ -119,19 +120,24 @@ def resolve_requests(ctx, deck, path, view, language, *, selected_view="instruct
     return tuple(result)
 
 
+@functools.cache
+def _raster_version() -> str:
+    """The installed PyMuPDF version, read once: looking a package up scans the installed metadata."""
+    try:
+        return version('pymupdf')
+    except PackageNotFoundError:
+        return 'unavailable'
+
+
 def cache_identity(spec: PreviewRequest) -> dict:
     """Exclude creation time/force: a hit keeps the original PDF and its timestamp."""
     options = spec.options
     from .preview_raster import SEQUENCE_SCHEMA, SEQUENCE_DPI
-    try:
-        raster_version = version('pymupdf')
-    except PackageNotFoundError:
-        raster_version = 'unavailable'
     return json.loads(json.dumps({
         'schema': preview_cache.SCHEMA, 'root': str(spec.target.context.root.resolve()),
         'source': {'path': str(spec.revision.path), 'content_hash': spec.revision.content_hash},
         'target': spec.target.key, 'view': spec.view, 'language': spec.language,
-        'raster': {'renderer': raster_version, 'sequence_schema': SEQUENCE_SCHEMA,
+        'raster': {'renderer': _raster_version(), 'sequence_schema': SEQUENCE_SCHEMA,
                    'sequence_dpi': SEQUENCE_DPI, 'full_size': slide_snapshot.FULL_SIZE,
                    'thumbnail_size': slide_snapshot.THUMB_SIZE, 'display_widths': [slide_snapshot.FULL_SIZE[0], 1280]},
         'options': {'presenter': options.presenter, 'mode': options.mode, 'overlay': options.overlay,

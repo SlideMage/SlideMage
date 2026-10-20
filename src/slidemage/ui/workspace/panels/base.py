@@ -110,6 +110,7 @@ class SidePanel(Surface):
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(10)
         self.dirty = False
+        self._row_now: tuple | None = None      # (row,) while a refresh builds: it resolves the focused row once
 
     def meta(self) -> str:
         """A few words about the focused slide for the picker's menu ("3 frozen")."""
@@ -140,13 +141,17 @@ class SidePanel(Surface):
 
     def refresh(self) -> None:
         clear_layout(self.body)
-        slide = self.id_slug()
-        if slide:
-            self.build(slide)
-        else:
-            self.body.addWidget(text(
-                "This deck has no slide list." if self.state.deck is not None and self.state.deck.is_test_deck
-                else "Select a slide in the list.", q.DETAILS_LABEL))
+        self._row_now = (self._focused_row(),)
+        try:
+            slide = self.id_slug()
+            if slide:
+                self.build(slide)
+            else:
+                self.body.addWidget(text(
+                    "This deck has no slide list." if self.state.deck is not None and self.state.deck.is_test_deck
+                    else "Select a slide in the list.", q.DETAILS_LABEL))
+        finally:
+            self._row_now = None
 
     def build(self, id_slug: str) -> None:
         """Fill `self.body` for the slide `id_slug` (the full id-slug, e.g. "1y8-EN-Intro")."""
@@ -156,18 +161,22 @@ class SidePanel(Surface):
 
     def deck_calls(self) -> list[tuple[int, SlideCall]]:
         """(1-based place, call) of every call of the focused slide in the open deck."""
-        deck, slide = self.state.deck, self.state.focused_slide
-        if deck is None or deck.is_test_deck or slide is None:
+        state, slide = self.state, self.state.focused_slide
+        if state.deck is None or state.deck.is_test_deck or slide is None:
             return []
         return [(r.position, r.deck_call)
-                for section in deck_outline.build_outline(self.app.project, deck, self.state.view, self.state.language)
-                for r in section.rows if r.matches(slide)]
+                for r in deck_outline.outline_rows(self.app.project, state.deck, state.view, state.language, outline=state.outline)
+                if r.matches(slide)]
 
     def _focused_row(self):
-        deck, slide = self.state.deck, self.state.focused_slide
-        if deck is None or deck.is_test_deck or slide is None:
+        """The focused occurrence's row (the one a refresh resolved, while it builds)."""
+        if self._row_now is not None:
+            return self._row_now[0]
+        state = self.state
+        if state.deck is None or state.deck.is_test_deck or state.focused_slide is None:
             return None
-        return deck_outline.slide_row(self.app.project, deck, slide, self.state.view, self.state.language)
+        return deck_outline.slide_row(self.app.project, state.deck, state.focused_slide, state.view, state.language,
+                                      occurrence_key=state.focused_occurrence, outline=state.outline)
 
     def id_slug(self) -> str:
         """The focused slide's full id-slug: as the open deck calls it, else its current file's; "" for none."""

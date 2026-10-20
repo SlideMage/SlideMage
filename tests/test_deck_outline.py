@@ -189,6 +189,77 @@ def test_an_outline_reads_each_translation_header_once(ctx, tmp_path, project, m
         assert all(reads.count(slug) == build + 1 for slug in set(reads))
 
 
+# -- the resolved outline other views reuse (v8.39.6) -----------------------------------------------------------
+
+REUSE_BODY = ("\\slide{aaa-EN-One}\n\\conditionalslide[instructor]{bbb-EN-Two}\n"
+              "\\slidestep{ccc-EN-Three}[instructor]{1}\n\\slidestep{ccc-EN-Three}[during-course]{1}\n"
+              "\\slide{ddd-DE-Vier}\n\\slide{aaa-EN-One}\n")
+
+
+@pytest.fixture
+def reuse_deck(ctx, tmp_path, project):
+    """Repeated calls (aaa twice, ccc twice), a call hidden in the other views, and a slide with a German translation."""
+    slide(project, "aaa-EN-One", "%% DE translation: ddd-DE-Vier\n" + GOOD)
+    slide(project, "ddd-DE-Vier", "%% Translation of: aaa-EN-One\n" + GOOD)
+    for slug in ("bbb-EN-Two", "ccc-EN-Three"):
+        slide(project, slug)
+    return make_deck(tmp_path, REUSE_BODY)
+
+
+@pytest.mark.parametrize("view", ["instructor", "during-course"])
+@pytest.mark.parametrize("language", ["EN", "DE"])
+def test_a_resolved_outline_holds_what_build_outline_does_and_the_instructor_numbering(ctx, reuse_deck, view, language):
+    outline = deck_outline.resolve_outline(ctx, reuse_deck, view, language)
+    assert outline.sections == deck_outline.build_outline(ctx, reuse_deck, view, language)
+    instructor = deck_outline.resolve_slots(ctx, reuse_deck, "instructor", language)
+    assert outline.instructor_frames == {r.key: r.frame_number for r in instructor}
+    assert len(set(outline.instructor_frames)) == 5 and sorted(outline.instructor_frames.values()) == [1, 2, 3, 3, 4]
+    assert isinstance(outline.links, slide_language.TranslationLinks)
+
+
+def test_an_outline_serves_rows_by_key_and_the_first_call_by_id(ctx, reuse_deck):
+    outline = deck_outline.resolve_outline(ctx, reuse_deck, "during-course", "DE")
+    rows = outline.rows
+    assert len(rows) == 5 and rows[0].key != rows[4].key and rows[0].call.id == rows[4].call.id == "ddd"   # shown in German
+    assert outline.row("aaa") is rows[0] and outline.row("aaa", rows[4].key) is rows[4]
+    assert outline.row("ddd") is rows[0]                              # its translation folds into the same slot
+    assert outline.row("aaa", ("no", "such", "key")) is rows[0] and outline.row("zzz") is None
+    assert rows[1].hidden and not rows[0].hidden                      # conditionalslide[instructor]
+
+
+def test_an_outline_is_for_one_project_deck_view_and_language(ctx, tmp_path, reuse_deck):
+    from dataclasses import replace
+    from slidemage.project import ProjectContext
+
+    outline = deck_outline.resolve_outline(ctx, reuse_deck, "instructor", "EN")
+    assert outline.matches(ctx, reuse_deck, "EN", "instructor") and outline.matches(ctx, reuse_deck, "EN")
+    assert not outline.matches(ctx, reuse_deck, "DE") and not outline.matches(ctx, reuse_deck, "EN", "after-course")
+    assert not outline.matches(ctx, replace(reuse_deck, text=reuse_deck.text + "\n"), "EN")
+    assert not outline.matches(ctx, replace(reuse_deck, path=tmp_path / "other.tex"), "EN")
+    assert not outline.matches(ProjectContext.at(tmp_path / "other"), reuse_deck, "EN")
+    assert outline.matches(ctx, replace(reuse_deck), "EN", "instructor")        # a fresh scan of the same deck
+
+
+def test_slide_row_and_outline_rows_use_a_matching_outline_and_resolve_otherwise(ctx, reuse_deck, resolutions):
+    outline = deck_outline.resolve_outline(ctx, reuse_deck, "instructor", "EN")
+    resolutions.reset()
+    row = deck_outline.slide_row(ctx, reuse_deck, "ccc", "instructor", "EN", occurrence_key=outline.rows[3].key, outline=outline)
+    assert row is outline.rows[3] and deck_outline.outline_rows(ctx, reuse_deck, "instructor", "EN", outline=outline) == outline.rows
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+    for view, language, hidden in (("during-course", "EN", True), ("instructor", "DE", False)):       # not this outline's
+        fresh = deck_outline.slide_row(ctx, reuse_deck, "ccc", view, language, outline=outline)
+        assert fresh is not None and (fresh.call.id, fresh.hidden) == ("ccc", hidden)
+    assert resolutions.slots == 2 and resolutions.scans == 2
+
+
+@pytest.mark.parametrize("view", ["instructor", "during-course"])
+def test_the_reused_row_is_the_resolved_row(ctx, reuse_deck, view):
+    outline = deck_outline.resolve_outline(ctx, reuse_deck, view, "EN")
+    for row in outline.rows:
+        fresh = deck_outline.slide_row(ctx, reuse_deck, row.call.id, view, "EN", occurrence_key=row.key)
+        assert fresh == row
+
+
 def test_commented_out_section_is_not_a_chapter():
     from slidemage.deck_scan import parse_chapters
 

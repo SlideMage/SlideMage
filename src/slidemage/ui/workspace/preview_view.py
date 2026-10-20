@@ -681,7 +681,8 @@ class PreviewPane(Surface):
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
         clear_layout(self._chips)
         if target is not None:
-            link = translation_link(self.app.project, target.id_slug)
+            outline = self.state.current_outline()
+            link = translation_link(self.app.project, target.id_slug, links=outline.links if outline else None)
             partner = partner_link(target, link)
             mode_key = (target.key, view, language)
             for icon, text, tone, tooltip in chips_for(

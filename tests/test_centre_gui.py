@@ -15,7 +15,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from slidemage import alt_images, preview_target, slide_snapshot
+from slidemage import alt_images, deck_outline, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui.kit.theme import ThemeManager
@@ -189,10 +189,10 @@ def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
     state = centre.state
     state.set_focused_slide("bbb")
     link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: link)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: link)
     centre.preview._refresh()
     assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN + DE"]
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: None)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: None)
     centre.preview._refresh()
     assert "Translation outdated" not in chip_texts(centre)
 
@@ -883,3 +883,97 @@ def test_edits_pending_in_the_source_view_are_written_to_their_slide_by_a_previe
     centre.state.set_mode("source")
     centre.state.set_focused_slide("aaa")
     assert "edit " in centre.source.current.editor.text() and not centre.source.current.dirty
+
+
+# -- the centre reads the outline the list resolved (v8.39.6) -------------------------------------------------
+
+def resolved(centre):
+    """What the slide list does after a rebuild: publish the deck's resolved outline on the state."""
+    state = centre.state
+    state.outline = deck_outline.resolve_outline(state.project, state.deck, state.view, state.language)
+    return state.outline
+
+
+def test_selection_in_the_centre_reuses_the_resolved_outline(centre, resolutions):
+    state = centre.state
+    state.set_mode("preview")
+    outline = resolved(centre)
+    state.set_focused_slide("aaa", occurrence_key=outline.rows[0].key)
+    resolutions.reset()
+    for row in outline.rows[1:]:
+        state.set_focused_slide(row.call.id, occurrence_key=row.key)
+        assert centre._focused_row() is row and centre.preview._row is row
+        assert centre.preview._target.occurrence_key == row.key
+        assert centre.preview._target.presenter_frame_number == outline.instructor_frames[row.key]
+    assert centre._neighbour_targets()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+
+
+def test_the_centre_resolves_afresh_for_another_deck_view_or_language(centre, project, resolutions):
+    state = centre.state
+    state.set_mode("preview")
+    state.set_focused_slide("ccc")
+    resolved(centre)
+    assert centre._focused_row().hidden is False                  # \conditionalslide[instructor] in the Instructor view
+    state.set_view("during-course")
+    assert state.current_outline() is None and centre._focused_row().hidden is True
+    assert centre.preview._target.hidden and resolutions.slots
+    state.set_view("instructor")
+    resolved(centre)
+    english, german = link_german(project)
+    assert centre._focused_row().call.id == "ccc"
+    state.set_focused_slide("aaa")
+    assert centre.preview._target.id_slug == "aaa-EN-One"
+    state.set_language("DE")                                      # the outline says EN: the German row is resolved
+    assert state.current_outline() is None and centre.preview._target.id_slug == "ddd-DE-Eins"
+
+
+def test_a_deck_edit_is_seen_by_the_centre(centre, deck):
+    from dataclasses import replace
+
+    state = centre.state
+    state.set_mode("preview")
+    resolved(centre)
+    state.set_focused_slide("aaa")
+    assert centre.preview._target.position == 1
+    text = deck.text.replace("\\section{Part}\n", "\\section{Part}\n\\slide{ccc-DE-Drei}\n")
+    state.set_deck(replace(deck, text=text, chapters=parse_chapters(text)))      # a rescan of the open deck: no signal
+    assert state.current_outline() is None
+    centre.refresh()
+    assert centre.preview._target.position == 2
+
+
+def test_a_saved_title_or_translation_header_is_seen_by_the_centre_at_once(centre, project):
+    state = centre.state
+    state.set_mode("split")
+    state.set_focused_slide("aaa")
+    resolved(centre)
+    assert centre.preview._row.title == "First" and state.current_outline() is not None
+    editor = centre.source.current.editor
+    editor.replace_all_text(editor.text().replace("First", "Retitled"))
+    assert centre.source.current.write_now()                      # the autosave: the list's rebuild comes later
+    assert state.current_outline() is None
+    centre.refresh()
+    assert centre.preview._row.title == "Retitled"
+    resolved(centre)
+    german = project / "ddd-DE-Eins-current.tex"
+    german.write_text("%% Translation of: aaa-EN-One\n" + FRAME % "Erste")
+    editor.replace_all_text("%% DE translation: ddd-DE-Eins\n" + editor.text())
+    assert centre.source.current.write_now()
+    state.set_language("DE")
+    assert centre.preview._target.id_slug == "ddd-DE-Eins" and centre.preview._row.title == "Erste"
+
+
+def test_the_previews_refresh_takes_its_translation_links_from_the_outline(centre, project, resolutions):
+    english, german = link_german(project)
+    state = centre.state
+    state.set_mode("preview")
+    resolved(centre)
+    state.set_focused_slide("aaa")
+    assert "EN + DE" in chip_texts(centre)
+    resolutions.reset()
+    centre.preview._refresh()                                    # also what the 5 s validation poll runs
+    assert resolutions.scans == 0 and "EN + DE" in chip_texts(centre)
+    state.drop_outline()
+    centre.preview._refresh()
+    assert resolutions.scans == 1
