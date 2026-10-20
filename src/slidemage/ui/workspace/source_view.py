@@ -216,6 +216,21 @@ class SourcePane(Surface):
     def blocked_files(self) -> list[SourceFile]:
         return [f for f in self.dirty_files() if f.blocked]
 
+    def _add_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None) -> SourceFile:
+        file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
+        file.modified_changed.connect(self._on_modified)
+        file.conflict_changed.connect(self._on_modified)
+        file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
+        file.lint_changed.connect(self._emit_lint_errors)
+        file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        file.editor.customContextMenuRequested.connect(self._on_context_menu)
+        file.fix_panel.running_changed.connect(self._on_modified)
+        file.saved.connect(lambda p=path: self.saved.emit(p))
+        file.written.connect(lambda p=path: self.written.emit(p))
+        self._files[path] = file
+        self._stack.addWidget(file)
+        return file
+
     def show_path(self, path: Optional[Path], on_saved: Optional[Callable[[str], None]] = None) -> None:
         """Show `path` (None: nothing). An `on_saved` given for a file that is open
         replaces the one it has."""
@@ -224,18 +239,7 @@ class SourcePane(Surface):
         else:
             file = self._files.get(path)
             if file is None:
-                file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
-                file.modified_changed.connect(self._on_modified)
-                file.conflict_changed.connect(self._on_modified)
-                file.editor.text_changed.connect(lambda p=path: self.buffer_changed.emit(p))
-                file.lint_changed.connect(self._emit_lint_errors)
-                file.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-                file.editor.customContextMenuRequested.connect(self._on_context_menu)
-                file.fix_panel.running_changed.connect(self._on_modified)
-                file.saved.connect(lambda p=path: self.saved.emit(p))
-                file.written.connect(lambda p=path: self.written.emit(p))
-                self._files[path] = file
-                self._stack.addWidget(file)
+                file = self._add_file(path, on_saved)
             else:
                 file.sync()
                 if on_saved is not None:
@@ -251,6 +255,25 @@ class SourcePane(Surface):
             self._drop(stale)
         self._update_toolbar()
         self._emit_lint_errors()
+
+    def edit_off_stage(self, path: Path, change: Callable[[str], str]) -> bool:
+        """Apply `change(text) -> text` to the buffer of `path` as one undo step without making it the file
+        shown (an edit of a slide that is no longer in view). Written now under the usual rules; the file
+        stays open only if it could not be written (a conflict, an AI fix running), so that the edit is not
+        lost and the dirty state reports it. False when the buffer is read-only (a frozen version)."""
+        file = self._files.get(path)
+        opened = file is None
+        if opened:
+            file = self._add_file(path)
+        elif file is not self._current:
+            file.sync()
+        done = not file.editor.is_read_only()
+        if done:
+            file.editor.replace_all_text(change(file.editor.text()))
+            file.write_now()
+        if file is not self._current and not file.keep_open:
+            self._drop(file)
+        return done
 
     def _emit_lint_errors(self) -> None:
         lint = self._current.lint if self._current is not None else None

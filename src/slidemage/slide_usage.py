@@ -92,14 +92,17 @@ def _skipped(deck: Deck) -> bool:
 
 
 def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = None, *, language: Optional[str] = None) -> list[DeckUsage]:
-    """Every deck (archived ones too) that calls this slide, in scan order."""
+    """Every deck (archived ones too) that calls this slide, in scan order. `decks` are the ones already
+    scanned (else the folder is); with a `language` one scan of the slides folder serves all of them."""
     usages = []
+    links = None
     for deck in decks if decks is not None else scan_decks(ctx):
         if _skipped(deck):
             continue
         if language is not None:
             from . import deck_language
-            every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language)]
+            links = links or slide_language.TranslationLinks(ctx.slides_dir)
+            every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language, links=links)]
         else:
             every = deck_editor.parse_slide_calls(deck)
         places = [(c, i) for i, c in enumerate(every, start=1) if c.id_slug == id_slug]

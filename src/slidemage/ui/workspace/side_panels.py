@@ -14,7 +14,7 @@ a rescan of the open deck is no state change. A panel's pending edit (`SidePanel
 before anything it belongs to changes, and counts as an unsaved edit of the workspace."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QScrollArea, QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
 
@@ -26,7 +26,7 @@ from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
 from .assistant import AssistantArea
 from .panels import PANELS
 from .panels.base import PanelActions, SidePanel
-from .state import WorkspaceState
+from .state import SETTLE_MS, WorkspaceState
 
 WIDTH = 360   # the prototype's width of the column: the default, and what a double-click on the handle gives back
 # The least it may be dragged to: the widest content still fits (the Visibility panel's card, 311 px; the
@@ -73,6 +73,13 @@ class SidePanels(QWidget):
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
         self.project = state.project
+        self._state = state
+        self._stale = False     # the shown panel is behind the state, as the card was hidden when it was due
+        self._built_for: tuple | None = None    # the state the shown panel was last built for
+        # Laid over the shown panel while its rebuild waits: it takes the clicks meant for the content of the slide
+        # that was left, without greying that content out on every click (or for as long as an arrow key is held).
+        self._shield = QWidget(self)
+        self._shield.hide()
         self.panels: dict[str, SidePanel] = {cls.key: cls(app, state, actions) for cls in PANELS}
         remembered = app_settings.get(state.project, SETTING)
         self.current = remembered if remembered in self.panels else next(iter(self.panels))
@@ -117,12 +124,20 @@ class SidePanels(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.addWidget(self._split)
-        self.assistant.focus_toggled.connect(lambda focused: card.setVisible(not focused))
+        self.assistant.focus_toggled.connect(self._on_focus_toggled)
 
         for panel in self.panels.values():
             panel.dirty_changed.connect(lambda _dirty: state.set_dirty(bool(self.dirty_panels()), "panels"))
-        for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed):
-            signal.connect(lambda _value: self.refresh())
+        # A pending edit is saved and the old content stops answering at once; the rebuild (a project scan for
+        # Used in decks) waits for the selection to rest, so a held arrow key does not rebuild per row. A deck
+        # change and choosing a panel rebuild at once: they are single, deliberate steps.
+        self._rebuild = QTimer(self)
+        self._rebuild.setSingleShot(True)
+        self._rebuild.setInterval(SETTLE_MS)
+        self._rebuild.timeout.connect(self.refresh)
+        state.deck_changed.connect(lambda _value: self.refresh())
+        for signal in (state.focused_slide_changed, state.view_changed, state.language_changed):
+            signal.connect(lambda _value: self._defer())
         state.ai_route_changed.connect(lambda _route: [panel.refresh_route() for panel in self.panels.values()])
         self.refresh()
 
@@ -155,15 +170,47 @@ class SidePanels(QWidget):
         for panel in self.panels.values():
             panel.flush()
 
+    def _on_focus_toggled(self, focused: bool) -> None:
+        self.card.setVisible(not focused)
+        if self._stale and not focused:
+            self.refresh()
+
+    def _defer(self) -> None:
+        """The slide, view or language changed: save pending edits against the old content, switch its actions
+        off so a quick click cannot change the slide that was left, and rebuild once the changes stop. When the
+        panel already shows this state (a deck switch rebuilds at once and then reports the focus, view and
+        language it reset; or the user came back before the pause), it answers again and nothing is rebuilt."""
+        if self._panel_state() == self._built_for:
+            self._rebuild.stop()
+            self._shield.hide()
+            return
+        self.flush()
+        panel = self.panels[self.current]
+        self._shield.setParent(panel)
+        self._shield.setGeometry(panel.rect())
+        self._shield.raise_()
+        self._shield.show()
+        self._rebuild.start()
+
     def refresh(self) -> None:
-        """Bring the shown panel up to date."""
+        """Bring the shown panel up to date (at once; a hidden card is brought up to date when it is shown)."""
+        self._rebuild.stop()
+        self._shield.hide()
         self.flush()   # an edit belongs to the slide, deck and panel it was made in
+        self._stale = self.card.isHidden()
+        if self._stale:
+            return
         for key, panel in self.panels.items():
             panel.setVisible(key == self.current)
         panel = self.panels[self.current]
         self.picker.set_text(panel.title)
         self.suffix.setText(panel.suffix())
         panel.refresh()
+        self._built_for = self._panel_state()
+
+    def _panel_state(self) -> tuple:
+        s = self._state
+        return s.deck, s.focused_slide, s.focused_occurrence, s.view, s.language
 
     def _open_menu(self) -> None:
         menu = PopoverMenu(self, min_width=270)

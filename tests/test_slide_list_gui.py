@@ -978,3 +978,36 @@ def test_a_single_click_opens_a_slide_but_a_click_with_ctrl_only_selects(make_li
     finally:
         QGuiApplication.keyboardModifiers = original
     assert [p.name for p in window.opened] == ["aaa-One-current.tex"]
+
+
+# -- the list publishes what it resolved (v8.39.6) --------------------------------------------------------------
+
+def test_the_list_publishes_its_resolved_outline_and_keeps_it_with_the_rows_it_shows(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-One}\n\\slide{bbb-Two}\n\\slide{aaa-One}\n")
+    state = window.state
+    outline = state.current_outline()
+    assert outline is not None and outline.sections is slide_list._outline and len(outline.rows) == 3
+    assert outline.row("aaa", outline.rows[2].key) is outline.rows[2]
+    thumbnail = slide_list.app.project.slides_dir / "x.png"
+    patched = [replace(section, rows=[replace(row, thumbnail=thumbnail) for row in section.rows])
+               for section in slide_list._outline]
+    slide_list._set_outline(patched)                                  # a thumbnail arrived
+    assert state.current_outline().sections is slide_list._outline
+    assert state.current_outline().row("bbb").thumbnail == thumbnail
+    assert state.current_outline().links is outline.links and state.current_outline().instructor_frames == outline.instructor_frames
+    state.drop_outline()                                              # a slide file was written
+    slide_list._set_outline(patched)
+    assert state.outline is None                                      # patching rows does not bring it back
+    slide_list.rebuild()
+    assert state.current_outline() is not None and state.current_outline().links is not outline.links
+
+
+def test_the_outline_goes_with_the_deck_view_and_language(make_list):
+    slide_list, window, _path = make_list("\\slide{aaa-One}\n\\conditionalslide[instructor]{bbb-Two}\n")
+    state = window.state
+    state.set_view("during-course")
+    assert (state.current_outline().view, state.current_outline().rows[1].hidden) == ("during-course", True)
+    state.set_language("DE")
+    assert state.current_outline().language == "DE"
+    state.set_deck(None)
+    assert state.outline is None and state.current_outline() is None

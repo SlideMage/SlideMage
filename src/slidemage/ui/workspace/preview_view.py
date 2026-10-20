@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import hashlib
 from threading import Thread
 import shutil
@@ -34,8 +35,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ... import (deck_context, deck_editor, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
@@ -63,6 +64,12 @@ PAGE_ASPECT = 16 / 9
 PANE_SIDE_MARGIN = 12    # the Preview's margin left and right (chips, page, footer)
 PAGE_SIDE_INSET = 8      # the page inside its area, left and right: the shadow's room
 PROBE_MS = 1500          # idle time before the step bar counts a slide's steps in the background
+SETTLE_MS = 150          # the selection must rest this long before the step bar starts counting the slide's steps
+DISPLAY_WIDTH = slide_snapshot.FULL_SIZE[0]   # a page held for display is at most a render's full width: a large or
+# high-DPI pane shows that much, so a smaller copy would look softer than the current page
+DISPLAY_ENTRIES = 12     # pages held decoded for display ...
+DISPLAY_BYTES = 64 << 20 # ... and at most this much memory for them (width x height x 4 each)
+CHECKING = "Checking current source and settings…"
 STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
@@ -180,6 +187,74 @@ def _discard_job(job: _Job) -> None:
         shutil.rmtree(job.pdf.parent, ignore_errors=True)
 
 
+@dataclass
+class _Shown:
+    """A decoded whole-slide page of a saved render, as it was when it was made."""
+    pixmap: QPixmap
+    mtime: int                      # of the slide's source file
+    content_hash: Optional[str]     # of the text rendered (the saved file's)
+    image_hash: str                 # of the PNG the pixels came from: the same image is never decoded twice
+
+
+class DisplayCache:
+    """Decoded pages for display, newest last: (target.key, view, language) -> _Shown. GUI thread only. Only saved
+    whole-slide renders go in (never a draft or a part of a slide), at display size and within a byte budget. What
+    is held is not current: only the selection's validation makes a page current; the revision only says whether
+    the page may be shown, marked as being checked, while that runs."""
+
+    def __init__(self) -> None:
+        self._items: OrderedDict[tuple, _Shown] = OrderedDict()
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __contains__(self, key) -> bool:
+        return key in self._items
+
+    @property
+    def bytes(self) -> int:
+        return sum(item.pixmap.width() * item.pixmap.height() * 4 for item in self._items.values())
+
+    def get(self, key: tuple) -> Optional[_Shown]:
+        item = self._items.get(key)
+        if item is not None:
+            self._items.move_to_end(key)
+        return item
+
+    def put(self, key: tuple, pixmap: QPixmap, mtime: int, content_hash: Optional[str], image_hash: str) -> QPixmap:
+        """Keep `pixmap` at display size; the pixmap held (to show) is returned."""
+        if pixmap.width() > DISPLAY_WIDTH:
+            pixmap = pixmap.scaledToWidth(DISPLAY_WIDTH, Qt.TransformationMode.SmoothTransformation)
+        self._items[key] = _Shown(pixmap, mtime, content_hash, image_hash)
+        self._items.move_to_end(key)
+        while len(self._items) > 1 and (len(self._items) > DISPLAY_ENTRIES or self.bytes > DISPLAY_BYTES):
+            self._items.popitem(last=False)
+        return pixmap
+
+    def clear(self) -> None:
+        self._items.clear()
+
+
+def _stored_page_image(background, target, view: str, language: str, deck_name: str):
+    """(digest, QImage) of the stored whole-slide page, or None. Runs on the display worker."""
+    data = background.stored_page(target, view, language, deck_name)
+    image = QImage()
+    if data is None or not image.loadFromData(data):
+        return None
+    return hashlib.sha256(data).hexdigest(), image
+
+
+def _stored_step_pages(background, target, view: str, language: str, deck_name: str, choice: Optional[int]):
+    """(PNG pages, the step `choice` picks, its QImage when there are several steps) of the stored render, or None.
+    Runs on the display worker."""
+    pages = background.stored_pages(target, view, language, deck_name)
+    if not pages:
+        return None
+    step = min(max(choice if choice is not None else len(pages), 1), len(pages))
+    image = QImage()
+    return pages, step, image if len(pages) > 1 and image.loadFromData(pages[step - 1]) else None
+
+
 class _Lifetime:
     """Plain Python receiver: it survives QObject destruction and queued results."""
 
@@ -196,10 +271,15 @@ class _Lifetime:
             if owner._batch_cancel is not None:
                 owner._batch_cancel.set()
             owner._selection_executor.shutdown(wait=False, cancel_futures=True)
+            owner._display_executor.shutdown(wait=False, cancel_futures=True)
+            owner._lookups.clear()
             owner._renders.close()
             owner._steps.close()
             owner._pending = None
             owner._generation += 1
+            owner._pixmaps.clear()
+            owner._stored = None
+            owner._step_pixmap = owner._step_image = None
         if self.job is not None:
             _discard_job(self.job)
 
@@ -216,18 +296,19 @@ class PageView(QWidget):
         self._tokens = tokens
         self._wheel = 0
         self.pixmap: Optional[QPixmap] = None
+        self._scaled: Optional[tuple[QSize, QPixmap]] = None    # the pixmap at the page's size: not rescaled per paint
         self.message = ""
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
 
     def show_image(self, pixmap: QPixmap) -> None:
-        self.pixmap, self.message = pixmap, ""
+        self.pixmap, self.message, self._scaled = pixmap, "", None
         self.render_button.hide()
         self.update()
 
     def show_message(self, message: str, can_render: bool) -> None:
-        self.pixmap, self.message = None, message
+        self.pixmap, self.message, self._scaled = None, message, None
         self.render_button.setVisible(can_render)
         self._place_button()
         self.update()
@@ -239,6 +320,17 @@ class PageView(QWidget):
         width = min(area.width(), area.height() * aspect)
         height = width / aspect
         return QRectF(area.center().x() - width / 2, area.center().y() - height / 2, width, height)
+
+    def _scaled_pixmap(self, page: QRectF) -> QPixmap:
+        """The pixmap scaled to the page (in device pixels), kept until the size or the pixmap changes."""
+        ratio = self.devicePixelRatioF()
+        size = QSize(max(1, round(page.width() * ratio)), max(1, round(page.height() * ratio)))
+        if self._scaled is None or self._scaled[0] != size:
+            scaled = self.pixmap.scaled(size, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+            scaled.setDevicePixelRatio(ratio)
+            self._scaled = (size, scaled)
+        return self._scaled[1]
 
     def _place_button(self) -> None:
         page = self._page_rect()
@@ -269,7 +361,8 @@ class PageView(QWidget):
         painter.setBrush(QColor(tokens.paper) if self.pixmap is not None else QColor(tokens.surface))
         painter.drawRoundedRect(page, 4, 4)
         if self.pixmap is not None:
-            painter.drawPixmap(page, self.pixmap, QRectF(self.pixmap.rect()))
+            scaled = self._scaled_pixmap(page)
+            painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
         elif self.message:
             painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
@@ -288,6 +381,7 @@ class PreviewPane(Surface):
     _batch_finished = Signal(object, str)
     _selection_finished = Signal(object)
     _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
+    _looked_up = Signal(object, object, object, object)   # (slot, identity, arrive, found), from the display worker
 
     def __init__(self, app, state: WorkspaceState,
                  buffer: Callable[[], Optional[tuple[str, str]]]) -> None:
@@ -321,6 +415,15 @@ class PreviewPane(Surface):
         self._selection_gui_latency = 0.0
         self._background_validation = True
         self._selection_finished.connect(self._on_selection_finished)
+        # The render store's lookups, page reads and PNG decodes run here, not in the selection executor: a lookup
+        # must not wait behind a long validation. One pending lookup per slot ('page', ('steps', key)); a newer one
+        # for the slot replaces it, and a selection change drops them all.
+        self._display_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-display')
+        self._lookups: dict = {}              # slot -> (identity with the generation first, Future)
+        self._looked_up.connect(self._on_looked_up)
+        self._stored: Optional[tuple] = None  # (target key, view, language, mtime), page, digest: the last page found
+        self._stored_asked = None             # what the page was last looked up for; the poll asks again
+        self._count_after: dict[tuple, Callable[[], None]] = {}   # steps key -> the render to queue if the store has none
         self._remote = {}
         self._shown_mtime = 0
         self._debounce = QTimer(self)
@@ -342,8 +445,8 @@ class PreviewPane(Surface):
         self._image_selection = None
         self._scope = "slide"
         self._overlay = 0
-        # Renders this session: (target.key, view, language) -> image.
-        self._pixmaps: OrderedDict[tuple, tuple[QPixmap, int]] = OrderedDict()
+        # Decoded pages of this session's saved renders, shown while a return visit is validated.
+        self._pixmaps = DisplayCache()
         # The latest render of the editor buffer: (target.key, view, language) -> (pixmap, note).
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
         self._adhoc_text: Optional[str] = None
@@ -353,6 +456,7 @@ class PreviewPane(Surface):
         self._step_pages: OrderedDict[tuple, list[bytes]] = OrderedDict()
         self._step_choice: dict[Path, int] = {}      # the step picked per slide; none: the last one
         self._step_pixmap: Optional[tuple[tuple, int, QPixmap]] = None
+        self._step_image: Optional[tuple[tuple, int, QImage]] = None   # the picked step of a stored render, decoded off-thread
         self._scans: dict[tuple, reveal_steps.SlideScan] = {}
         self._step_failed: set[tuple] = set()      # page lists that did not render: not asked for again
         self._context_modes: dict[tuple, Optional[str]] = {}   # (target key, view, language) -> deck_context mode
@@ -369,6 +473,12 @@ class PreviewPane(Surface):
         self._probe.setSingleShot(True)
         self._probe.setInterval(PROBE_MS)
         self._probe.timeout.connect(self._probe_steps)
+        self._settle = QTimer(self)      # restarted by every new slide: the count waits for the selection to rest
+        self._settle.setSingleShot(True)
+        self._settle.setInterval(SETTLE_MS)
+        self._settle.timeout.connect(self._settled)
+        self._chips_built: Optional[list] = None     # what the chips were built from, and the menu: a poll finds
+        self._menu_built: Optional[tuple] = None     # them unchanged and leaves them
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(PANE_SIDE_MARGIN, 12, PANE_SIDE_MARGIN, 12)
@@ -452,6 +562,8 @@ class PreviewPane(Surface):
             self._adhoc = None
             self._adhoc_spec = None
             self._steps.drop_background()
+            if target is not None:
+                self._settle.start()
         self._target, self._row, self._title, self._message = target, row, title, message
         self._language = language
         self._shown_mtime = mtime
@@ -531,8 +643,7 @@ class PreviewPane(Surface):
             # "Checking…" every few seconds made the status flicker); a check that finds it stale replaces it.
             return self._selection_result
         if retained is not None and retained.image is not None and retained.state == 'verified':
-            return replace(retained, state='previous', pdf=None,
-                           note='Checking current source and settings…')
+            return replace(retained, state='previous', pdf=None, note=CHECKING)
         return retained
 
     def _show_accepted_while_validating(self, spec, png):
@@ -590,6 +701,7 @@ class PreviewPane(Surface):
 
     def _poll_selection(self):
         if self._target is not None and self.isVisible() and not self._closed:
+            self._stored_asked = None      # the store may have a newer page now
             self._refresh()
 
     def _image(self, target: PreviewTarget, *, background=False) -> Optional[tuple[QPixmap, bool, str]]:
@@ -600,11 +712,13 @@ class PreviewPane(Surface):
         selected = None
         self._image_selection = None
         scoped = False
-        text = None
+        text = text_hash = buffer = None
+        mtime = _mtime(target.source_path)     # before the text is read: a change in between only makes a miss
         adhoc_here = self._adhoc is not None and self._adhoc[0] == key
         try:
             buffer = self._buffer()
             text = buffer[0] if buffer is not None else target.source_path.read_text(encoding='utf-8')
+            text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
             adhoc_spec = getattr(self, '_adhoc_spec', None)
             scoped = (adhoc_here and adhoc_spec is not None
                       and (adhoc_spec.options.mode != 'slide' or adhoc_spec.options.overlay is not None))
@@ -631,20 +745,30 @@ class PreviewPane(Surface):
                 self._last_pdf = verified.pdf
                 self._displayed_spec = getattr(verified, 'request_spec', None)
                 return pixmap, True, self._adhoc[2] if adhoc_here else ''
-        if selected is not None and selected.image is not None and selected.fresh:
-            pixmap = QPixmap()
-            if isinstance(selected.image, bytes) and pixmap.loadFromData(selected.image):
+        # Kept for a return visit when `text` is the saved file's.
+        keep = (mtime, text_hash) if text is not None and (buffer is None or not self._is_draft(target)) else None
+        if selected is not None and selected.image is not None and selected.fresh and isinstance(selected.image, bytes):
+            pixmap = self._decoded(key, selected.image, keep)
+            if pixmap is not None:
                 self._last_pdf = selected.pdf
                 self._displayed_spec = selected.request
                 return pixmap, True, ''
-        stored = self._stored_pixmap(target, view, language)     # a current background render (background_renders)
+        # A current background render (background_renders), once the display worker has found it; asked for here.
+        stored = self._stored_pixmap(target, view, language, keep)
         if stored is not None:
             self._last_pdf = None
             self._displayed_spec = None
             return stored, True, ''
+        if background and selected is None and not scoped and text is not None and self._selection_result_key is None:
+            # Validation of this slide is still to come: the page last made from this very text and file is shown
+            # at once, as a previous one. It authorizes no PDF and counts as current only once validation says so.
+            held = self._pixmaps.get(key)
+            if held is not None and (held.mtime, held.content_hash) == (mtime, text_hash):
+                self._last_pdf = self._displayed_spec = None
+                return held.pixmap, False, CHECKING
         if selected is not None and selected.state == 'previous' and isinstance(selected.image, bytes):
-            pixmap = QPixmap()
-            if pixmap.loadFromData(selected.image):
+            pixmap = self._decoded(key, selected.image)
+            if pixmap is not None:
                 self._last_pdf = selected.pdf
                 self._displayed_spec = None
                 return pixmap, False, selected.note
@@ -661,17 +785,106 @@ class PreviewPane(Surface):
             return self._adhoc[1], False, note
         return None
 
-    def _stored_pixmap(self, target: PreviewTarget, view: str, language: str) -> Optional[QPixmap]:
+    def _decoded(self, key: tuple, png: bytes, keep: Optional[tuple] = None) -> Optional[QPixmap]:
+        """`png` as a pixmap, decoded once: the page held for `key` is reused when it came from the same image.
+        `keep` (the source's mtime and text hash) holds a new decode in the display cache for that revision."""
+        digest = hashlib.sha256(png).hexdigest()
+        held = self._held(key, digest, keep)
+        if held is not None:
+            return held
+        pixmap = QPixmap()
+        return self._kept(key, pixmap, digest, keep) if pixmap.loadFromData(png) else None
+
+    def _held(self, key: tuple, digest: str, keep: Optional[tuple]) -> Optional[QPixmap]:
+        """The page held for `key` if it came from the image `digest`, noted as `keep`'s revision."""
+        held = self._pixmaps.get(key)
+        if held is None or held.image_hash != digest:
+            return None
+        if keep is not None:
+            held.mtime, held.content_hash = keep
+        return held.pixmap
+
+    def _kept(self, key: tuple, pixmap: QPixmap, digest: str, keep: Optional[tuple]) -> QPixmap:
+        return self._pixmaps.put(key, pixmap, *keep, digest) if keep is not None else pixmap
+
+    def _remember(self, key: tuple, pixmap: QPixmap, png: bytes, mtime: int, text: Optional[str]) -> None:
+        """Hold the page of a saved render of `text` (the saved file's) for display."""
+        self._pixmaps.put(key, pixmap, mtime, hashlib.sha256(text.encode('utf-8')).hexdigest()
+                          if text is not None else None, hashlib.sha256(png).hexdigest())
+
+    def _stored_pixmap(self, target: PreviewTarget, view: str, language: str,
+                       keep: Optional[tuple] = None) -> Optional[QPixmap]:
         """The last page of the background render of the saved slide, when one is current (background_renders.py):
-        shown at once, nothing compiled. Not for a render of one reveal step or part of the slide."""
+        shown at once, nothing compiled. Not for a render of one reveal step or part of the slide. The store is asked
+        on the display worker (once per selection, again at each poll): this gives the page it found for this very
+        slide, file, view and language, or None while the lookup is out. `keep`: see `_decoded`."""
         background = getattr(self.app, "background", None)
         if background is None or self._overlay or self._scope != "slide":
             return None
-        data = background.stored_page(target, view, language)
-        if data is None:
-            return None
-        pixmap = QPixmap()
-        return pixmap if pixmap.loadFromData(data) else None
+        ident = (target.key, view, language, _mtime(target.source_path))
+        if self._stored_asked != (self._generation, ident):
+            self._stored_asked = (self._generation, ident)
+            self._look_up('page', ident, partial(_stored_page_image, background, target, view, language,
+                                                  self._deck_name()),
+                          lambda found: self._page_found(ident, keep, found))
+        return self._stored[1] if self._stored is not None and self._stored[0] == ident else None
+
+    def _deck_name(self) -> str:
+        deck = self.state.deck
+        return deck.name if deck is not None else ""
+
+    def _look_up(self, slot, identity: tuple, work: Callable, arrive: Callable) -> None:
+        """Run `work()` (a store lookup with its reads and decodes) on the display worker; `arrive(its result)` runs
+        on the GUI thread, if the selection is still the one asked for (the generation is part of the identity)."""
+        identity = (self._generation, identity)
+        held = self._lookups.get(slot)
+        if self._closed or (held is not None and held[0] == identity):
+            return
+        if held is not None:
+            held[1].cancel()
+        future = self._display_executor.submit(work)
+        self._lookups[slot] = (identity, future)
+        owner = weakref.ref(self)
+
+        def finished(done):
+            pane = owner()
+            if pane is None or pane._closed or done.cancelled():
+                return
+            try:
+                found = done.result()
+            except Exception:  # noqa: BLE001 -- the store is a help: a failed lookup finds nothing
+                found = None
+            try:
+                pane._looked_up.emit(slot, identity, arrive, found)
+            except RuntimeError:     # the pane is gone
+                pass
+
+        future.add_done_callback(finished)
+
+    def _on_looked_up(self, slot, identity: tuple, arrive: Callable, found) -> None:
+        held = self._lookups.get(slot)
+        if self._closed or held is None or held[0] != identity:
+            return                      # replaced or dropped since
+        del self._lookups[slot]
+        if identity[0] == self._generation:
+            arrive(found)
+
+    def _page_found(self, ident: tuple, keep: Optional[tuple], found) -> None:
+        """The display worker's answer for the whole-slide page of `ident`: shown if it is still what is selected."""
+        target = self._target
+        if target is None or (target.key, self.state.view, self.language, _mtime(target.source_path)) != ident:
+            return
+        digest = found[0] if found is not None else None
+        before = self._stored[2] if self._stored is not None and self._stored[0] == ident else None
+        pixmap = None
+        if found is not None:
+            key = ident[:3]
+            pixmap = self._held(key, digest, keep)
+            if pixmap is None:
+                pixmap = self._kept(key, QPixmap.fromImage(found[1]), digest, keep)
+        self._stored = (ident, pixmap, digest)
+        if digest != before:
+            self._refresh()
 
     def _refresh(self) -> None:
         target, row = self._target, self._row
@@ -679,9 +892,10 @@ class PreviewPane(Surface):
         job = self._pending[1] if self._pending else self._active
         busy_here = (target is not None and job is not None and job.generation == self._generation
                      and job.target_key == target.key and (job.view, job.language) == (view, language))
-        clear_layout(self._chips)
+        chips = []
         if target is not None:
-            link = translation_link(self.app.project, target.id_slug)
+            outline = self.state.current_outline()
+            link = translation_link(self.app.project, target.id_slug, links=outline.links if outline else None)
             partner = partner_link(target, link)
             mode_key = (target.key, view, language)
             for icon, text, tone, tooltip in chips_for(
@@ -689,16 +903,21 @@ class PreviewPane(Surface):
                     mode_key in self._context_modes):
                 jump = icon == "language" and partner is not None
                 compile_deck = icon == "warning" and target.needs_context and row is not None
-                chip = Chip(text, tone, icon, self, pressable=jump or compile_deck)   # made in the pane: a widget without
-                # a parent is briefly a window of its own, and that closes any open menu or popup (every 5 s, as the
-                # background check refreshes the pane)
+                chips.append((icon, text, tone, tooltip, partner.path if jump else None, view if compile_deck else None))
+        if chips != self._chips_built:       # the 5 s poll finds them as they were: nothing to rebuild
+            self._chips_built = chips
+            clear_layout(self._chips)
+            for icon, text, tone, tooltip, jump, compile_view in chips:
+                # Made in the pane: a widget without a parent is briefly a window of its own, and that closes any open
+                # menu or popup.
+                chip = Chip(text, tone, icon, self, pressable=jump is not None or compile_view is not None)
                 chip.setToolTip(tooltip)
-                if jump:
-                    chip.clicked.connect(lambda path=partner.path: self._show_partner(path))
-                elif compile_deck:
-                    chip.clicked.connect(lambda v=view: self.compile_requested.emit(v))
+                if jump is not None:
+                    chip.clicked.connect(lambda path=jump: self._show_partner(path))
+                elif compile_view is not None:
+                    chip.clicked.connect(lambda v=compile_view: self.compile_requested.emit(v))
                 self._chips.addWidget(chip)
-        self._chips.addStretch(1)
+            self._chips.addStretch(1)
 
         self._id.setText(target.bare_id if target else "")
         self._name.setText(self._title if target else "")
@@ -836,15 +1055,19 @@ class PreviewPane(Surface):
     def _request_steps(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
                        priority: int) -> None:
         """Queue the all-steps render for `key` (kind, path, target key, view, language, stamp)."""
-        view, language = key[3], key[4]
         if text is None:
             try:
                 text = target.source_path.read_text(encoding='utf-8')
             except OSError:
                 return
+        if draft:
+            self._queue_steps(target, key, text, draft, priority)
+        elif key not in self._step_pages:      # the store's pages first (off the GUI thread), a render if it has none
+            self._adopt_stored_steps(target, key, lambda: self._queue_steps(target, key, text, draft, priority))
+
+    def _queue_steps(self, target: PreviewTarget, key: tuple, text: str, draft: bool, priority: int) -> None:
+        view, language = key[3], key[4]
         service, log = self._renders, self.app.log
-        if not draft and self._adopt_stored_steps(target, key):
-            return
 
         def build(cancel):
             request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
@@ -862,20 +1085,48 @@ class PreviewPane(Surface):
 
         self._steps.submit(key, priority, build, keep)
 
-    def _adopt_stored_steps(self, target: PreviewTarget, key: tuple) -> bool:
+    def _adopt_stored_steps(self, target: PreviewTarget, key: tuple,
+                            render: Optional[Callable[[], None]] = None) -> None:
         """Take the step pages of the saved slide from a current render in the store (the background sweep's, or the
-        bar's own earlier one) instead of rendering them. True when `key` has its pages now."""
-        if key in self._step_pages:
-            return True
+        bar's own earlier one) instead of rendering them. The display worker looks (once per key and selection) and
+        the pane refreshes when it has them; `render` runs if it has none and the slide is still the one asked for."""
         background = getattr(self.app, "background", None)
-        pages = background.stored_pages(target, key[3], key[4]) if background is not None else None
-        if not pages:
-            return False
+        if key in self._step_pages:
+            return
+        if background is None:
+            if render is not None:
+                render()
+            return
+        if render is not None:
+            self._count_after[key] = render
+        choice = self._step_choice.get(target.source_path)
+        self._look_up(('steps', key), key, partial(_stored_step_pages, background, target, key[3], key[4],
+                                                    self._deck_name(), choice),
+                      lambda found: self._steps_found(target, key, choice, found))
+
+    def _steps_found(self, target: PreviewTarget, key: tuple, choice: Optional[int], found) -> None:
+        render = self._count_after.pop(key, None)
+        if key in self._step_pages or _mtime(target.source_path) != key[5]:
+            return                           # counted meanwhile, or the file changed: the store's pages are not its steps
+        if found is None:
+            if render is not None:
+                render()
+            return
+        pages, step, image = found
         self._step_pages[key] = pages
         self._step_pages.move_to_end(key)
         while len(self._step_pages) > STEP_CACHE:
             self._step_pages.popitem(last=False)
-        return True
+        if image is not None and self._step_choice.get(target.source_path) == choice:
+            self._step_image = (key, step, image)
+        self._refresh()
+
+    def _settled(self) -> None:
+        """The selection rested: the step bar may count the slide now, if it is still waiting for its steps."""
+        target = self._target
+        if target is not None and not self._closed:
+            hidden = target.hidden or (self._row is not None and self._row.hidden)
+            self._update_reveal(target, self._row, not hidden, not hidden and self._page.pixmap is not None)
 
     def _probe_steps(self) -> None:
         """Idle: count the steps of the slide on show (and of its other versions when its reveals depend on them)."""
@@ -1055,8 +1306,9 @@ class PreviewPane(Surface):
         if pages is None:
             if scan.may_reveal and key not in self._step_failed:
                 bar.show_counting()
-                # The user is looking at "Counting": do it now, ahead of any neighbour's count, not after the idle wait.
-                if not self._steps_busy():
+                # The user is looking at "Counting": do it now, ahead of any neighbour's count, not after the idle wait
+                # - once the selection has rested (`_settled`): moving through slides starts no count.
+                if not self._steps_busy() and not self._settle.isActive():
                     self._request_steps(target, key, text, draft, FOREGROUND)
             else:
                 bar.setVisible(False)
@@ -1075,25 +1327,34 @@ class PreviewPane(Surface):
                       or (scan.final_flag and view != reveal_steps.INSTRUCTOR))
         if n > 1 and (step != n or restricted or not has_image):
             if self._step_pixmap is None or self._step_pixmap[:2] != (key, step):
-                pixmap = QPixmap()
-                if pixmap.loadFromData(pages[step - 1]):
-                    self._step_pixmap = (key, step, pixmap)
+                if self._step_image is not None and self._step_image[:2] == (key, step):
+                    pixmap = QPixmap.fromImage(self._step_image[2])       # decoded by the display worker
                 else:
-                    self._step_pixmap = None
+                    pixmap = QPixmap()
+                    pixmap = pixmap if pixmap.loadFromData(pages[step - 1]) else None
+                self._step_image = None
+                self._step_pixmap = (key, step, pixmap) if pixmap is not None else None
             if self._step_pixmap is not None and self._step_pixmap[:2] == (key, step):
                 self._page.show_image(self._step_pixmap[2])
 
     def _rebuild_menu(self) -> None:
+        all_enabled = self.can_render_all
+        pdf_available = self._last_pdf is not None or (self._target is not None and self._page.pixmap is not None)
+        built = (self._target is not None and not self._target.hidden, self._batch_cancel is not None, all_enabled,
+                 self._busy, self._scope, self._overlay, pdf_available)
+        if built == self._menu_built and self._menu is not None:
+            self._menu_stale = False     # a refresh that changed nothing the menu shows
+            return
         if self._menu is not None and self._menu.isVisible():
             # Every refresh (the background checks too) lands here: replacing an open menu closed it under the cursor.
             self._menu_stale = True
             return
         self._menu_stale = False
+        self._menu_built = built
         if self._menu is not None:
             self._menu.deleteLater()
         menu = PopoverMenu(self, min_width=260)
         has_buffer = self._target is not None and self._batch_cancel is None
-        all_enabled = self.can_render_all
         reason = ("Wait for the current preview render to finish." if self._busy or self._batch_cancel is not None
                   else "All views requires Whole slide and all reveal steps.")
         menu.setToolTip(reason if not all_enabled and self._target is not None else "")
@@ -1113,7 +1374,6 @@ class PreviewPane(Surface):
         menu.add_separator()
         menu.add_item(PRESENTER, "Presenter PDF", meta="opens in the viewer", enabled=has_buffer)
         menu.add_item(TRANSCRIPT, "Render transcript", enabled=has_buffer)
-        pdf_available = self._last_pdf is not None or (self._target is not None and self._page.pixmap is not None)
         menu.add_item(OPEN_PDF, "Open PDF for this view", enabled=pdf_available and not self._busy)
         if self._batch_cancel is not None:
             menu.add_separator()
@@ -1194,10 +1454,17 @@ class PreviewPane(Surface):
         self._lifetime.close()
 
     def _invalidate(self) -> None:
+        # Drops the selection and what is running, so stale completions are discarded; the decoded pages in
+        # `_pixmaps` stay for a return visit.
         self._generation += 1
         self._selection_ticket += 1
         if self._selection_pending is not None:
             self._selection_pending.cancel()
+        for _identity, future in self._lookups.values():
+            future.cancel()
+        self._lookups.clear()
+        self._count_after.clear()
+        self._stored = None        # current only as the store answers for the selection that follows
         self._selection_pending = self._selection_pending_key = None
         self._selection_result = self._selection_result_key = None
         if self._batch_cancel is None:
@@ -1339,10 +1606,7 @@ class PreviewPane(Surface):
                     else:
                         self._adhoc = None
                         self._adhoc_spec = None
-                        self._pixmaps[key] = (pixmap, job.mtime)
-                        self._pixmaps.move_to_end(key)
-                        while len(self._pixmaps) > 12:
-                            self._pixmaps.popitem(last=False)
+                        self._remember(key, pixmap, job.png, job.mtime, job.revision_text)
             self.rendered.emit()
             if not job.external:
                 self._after_render(job)
@@ -1644,7 +1908,7 @@ class PreviewPane(Surface):
         if view == 'instructor' and not target.is_frozen_alone:
             slide_snapshot.publish_preview(target.context, images, target.bare_id, target.template)
         key = (target.key, view, language)
-        self._pixmaps[key] = (pixmap, revision)
+        self._remember(key, pixmap, png, revision, text)
         try:
             remembered = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
                                         RenderOptions(saved=True))
@@ -1653,9 +1917,6 @@ class PreviewPane(Surface):
                 self._show_accepted_while_validating(remembered, png)
         except (OSError, ValueError):
             pass
-        self._pixmaps.move_to_end(key)
-        while len(self._pixmaps) > 12:
-            self._pixmaps.popitem(last=False)
         if matching:
             self._adhoc = None
             self._adhoc_spec = None

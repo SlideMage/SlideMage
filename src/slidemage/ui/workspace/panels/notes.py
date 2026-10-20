@@ -7,8 +7,8 @@ edits of the source text are slide_source's (note_calls, replace_note, remove_no
 An edit does not write the file itself: it goes into the Source view's buffer of the slide
 (CentreColumn.edit_slide_text), and "Save notes" then saves that buffer the way Save in the
 Source view does -- with its version prompt, backup and deck questions -- so a note is never
-saved by a route that skips them. Pending text is moved to the buffer (unsaved) when the slide,
-the deck or the panel changes. A frozen version is read-only here, as in the Source view."""
+saved by a route that skips them. Pending text is put into the slide's buffer and written (off-stage, so the Source
+view stays where it is; a blocked buffer stays open) when the slide, the deck or the panel changes. A frozen version is read-only here, as in the Source view."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -85,9 +85,11 @@ class SpeakerNotes(SidePanel):
 
     # -- editing ---------------------------------------------------------------------------
 
-    def _apply(self) -> bool:
-        """Put the typed notes into the Source view's buffer of the slide. False when the slide's
-        notes are no longer the ones shown (they were edited in the Source view meanwhile)."""
+    def _apply(self, show: bool = False) -> bool:
+        """Put the typed notes into the Source view's buffer of the slide (`show`: and show that in the
+        Source view, for "Save notes"; else a slide the focus has left is written without the Source view
+        going back to it). False when the slide's notes are no longer the ones shown (they were edited in
+        the Source view meanwhile)."""
         shown, typed = self._shown, [e.toPlainText().strip() for e in self._edits]
         added = self._new.toPlainText().strip() if self._new is not None else ""
         applied = []
@@ -105,7 +107,7 @@ class SpeakerNotes(SidePanel):
             applied.append(True)
             return source
 
-        done = self.actions.edit_slide_text(self._path, change)
+        done = self.actions.edit_slide_text(self._path, change, show=show)
         if done and not applied:
             self.app.log(f"The notes of {self._path.name} changed in the Source view; the panel shows them again.")
         return done and bool(applied)
@@ -118,7 +120,7 @@ class SpeakerNotes(SidePanel):
                 self.app.log(f"The typed notes of {self._path.name} could not be applied.")
 
     def _save_notes(self) -> None:
-        if self._apply():
+        if self._apply(show=True):
             self.actions.save_source()
         self.set_dirty(False)
         self.refresh()

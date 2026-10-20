@@ -91,6 +91,7 @@ class SlideList(QWidget):
         self.state = state
         self.toast = toast
         self._outline: list[SectionRow] = []
+        self._resolved: Optional[deck_outline.Outline] = None   # what `_outline` was resolved from (state.outline)
         self._deck_path: Optional[Path] = None
         self._undo: dict[Path, list[str]] = {}
         self.setMinimumWidth(MIN_WIDTH)
@@ -355,14 +356,14 @@ class SlideList(QWidget):
 
     def _apply_preview_rows(self, outline, *, paths=None):
         if paths is None:
-            self._outline = list(outline)
+            self._set_outline(list(outline))
         else:
             affected = {path.resolve() for path in paths}
             candidates = {row.key: row for section in outline for row in section.rows}
-            self._outline = [replace(section, rows=[
+            self._set_outline([replace(section, rows=[
                 candidates.get(row.key, row) if
                 (self.app.project.slides_dir / row.call.source_filename).resolve() in affected else row
-                for row in section.rows]) for section in self._outline]
+                for row in section.rows]) for section in self._outline])
         rows = {row.key: row for section in self._outline for row in section.rows}
         affected = None if paths is None else {path.resolve() for path in paths}
         forgotten = set()
@@ -387,6 +388,15 @@ class SlideList(QWidget):
                 self.tree.viewport().update(self.tree.visualItemRect(item))
         self.tree.delegate.forget_pixmaps(forgotten)
 
+    def _set_outline(self, sections: list[SectionRow]) -> None:
+        """Show `sections` (the rows with a thumbnail or preview state patched). The workspace's resolved outline
+        follows them, unless a write has dropped it since the last rebuild: patching rows revalidates nothing."""
+        self._outline = sections
+        if self._resolved is not None:
+            self._resolved = self._resolved.with_sections(sections)
+            if self.state.outline is not None:
+                self.state.outline = self._resolved
+
     def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
@@ -408,10 +418,12 @@ class SlideList(QWidget):
         if not same_deck:
             self.tree.collapsed.clear()
         self._deck_path = path
-        self._outline = (deck_outline.build_outline(self.app.project, deck, self.state.view, self.state.language)
-                         if deck else [])
+        self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
+                          if deck else None)
+        self.state.outline = self._resolved
+        self._outline = self._resolved.sections if self._resolved else []
         if deck and not self._background_thumbnails:
-            self._outline = self._preview_images(self._outline)
+            self._set_outline(self._preview_images(self._outline))
         self._thumbnail_paths.clear()
         self._thumbnail_timer.stop()
         self.tree.blockSignals(True)

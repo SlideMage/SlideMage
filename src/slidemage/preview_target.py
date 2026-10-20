@@ -83,16 +83,22 @@ class PreviewTarget:
 
 
 def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position: int, language: Optional[str] = None, *, frame_number: Optional[int] = None,
-             occurrence_key: tuple = (), hidden: bool = False) -> PreviewTarget:
-    """`call`, the `position`-th slide call of `deck`, as the deck typesets it."""
+             occurrence_key: tuple = (), hidden: bool = False, outline=None) -> PreviewTarget:
+    """`call`, the `position`-th slide call of `deck`, as the deck typesets it. `outline` (deck_outline.Outline), when it
+    describes `deck` in `language`, supplies the translation links and the Instructor frame numbers instead of
+    another scan of the slides folder and a resolution of every slot."""
+    shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN") else None
     if language is not None:
         from .deck_language import resolve_call
-        call = resolve_call(call, language, slide_language.TranslationLinks(ctx.slides_dir))
+        call = resolve_call(call, language, shared.links if shared else slide_language.TranslationLinks(ctx.slides_dir))
     presenter_frame = None
     if occurrence_key:
-        from .deck_outline import resolve_slots
-        presenter_frame = next((r.frame_number for r in resolve_slots(ctx, deck, VIEW_INSTRUCTOR, language or "EN")
-                                if r.key == occurrence_key), None)
+        if shared:
+            presenter_frame = shared.instructor_frames.get(occurrence_key)
+        else:
+            from .deck_outline import resolve_slots
+            presenter_frame = next((r.frame_number for r in resolve_slots(ctx, deck, VIEW_INSTRUCTOR, language or "EN")
+                                    if r.key == occurrence_key), None)
     target = PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
                            position if frame_number is None else frame_number, deck.preamble_text,
                            occurrence_key=occurrence_key, hidden=hidden, presenter_frame_number=presenter_frame,

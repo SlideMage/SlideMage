@@ -80,6 +80,16 @@ def _claude_signed_in(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_raster_version():
+    """cache_identity reads the PyMuPDF version once per process; a test that patches it starts and leaves it unread."""
+    from slidemage import preview_requests
+
+    preview_requests._raster_version.cache_clear()
+    yield
+    preview_requests._raster_version.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_cache_dir(monkeypatch, tmp_path_factory):
     """The render store's index lives in the user's cache folder; a test gets one of its own."""
     from slidemage import project
@@ -246,6 +256,45 @@ def make_project(monkeypatch, root):
     (root / ".slidemage").mkdir()
     (root / ".slidemage" / "app_settings.json").write_text('{"anthropic_api_key": "sk-secret"}')
     return root.resolve()
+
+
+class Resolutions:
+    """What resolving a deck has cost since `reset()`: slots resolved (deck_outline.resolve_slots, also inside the
+    outline builders), outlines built (build_outline) and scans of the slides folder (TranslationLinks)."""
+
+    slots = outlines = scans = 0
+
+    def reset(self):
+        self.slots = self.outlines = self.scans = 0
+
+    def __repr__(self):
+        return f"Resolutions(slots={self.slots}, outlines={self.outlines}, scans={self.scans})"
+
+
+@pytest.fixture
+def resolutions(monkeypatch):
+    from slidemage import deck_outline, slide_language
+
+    count = Resolutions()
+
+    def counting(module, name, field):
+        real = getattr(module, name)
+
+        def wrapper(*args, **kwargs):
+            setattr(count, field, getattr(count, field) + 1)
+            return real(*args, **kwargs)
+        monkeypatch.setattr(module, name, wrapper)
+
+    counting(deck_outline, "resolve_slots", "slots")
+    counting(deck_outline, "build_outline", "outlines")
+
+    class CountingLinks(slide_language.TranslationLinks):
+        def __init__(self, *args, **kwargs):
+            count.scans += 1
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(slide_language, "TranslationLinks", CountingLinks)
+    return count
 
 
 @pytest.fixture

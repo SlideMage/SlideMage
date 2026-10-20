@@ -7,17 +7,22 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
-from slidemage import app_settings, deck_scan
+from conftest import build_window, make_project, wait_until
+from slidemage import app_settings, deck_scan, slide_snapshot
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
 from slidemage.ui.workspace.panels import PANELS
+from slidemage.project import ProjectContext
 from slidemage.ui.workspace.panels.base import Row
+from slidemage.ui.workspace.panels.used import UsedInDecks
+from slidemage.ui.workspace.preview_view import PreviewPane
 from slidemage.ui.workspace.side_panels import PANEL_MIN_HEIGHT, SETTING, SidePanels
 from slidemage.ui.workspace.panels.base import PanelActions
 from slidemage.ui.workspace.slide_list import SlideList
@@ -44,7 +49,8 @@ class FakeCentre:
     def is_dirty(self, path):
         return path in self.unsaved
 
-    def edit_slide_text(self, path, change):
+    def edit_slide_text(self, path, change, show=False):
+        self.shown_for_edit = show
         self.buffers[path] = change(self.slide_text(path))
         return True
 
@@ -61,6 +67,7 @@ class FakeWindow:
 
     def __init__(self, state):
         self.state = state
+        self.decks = deck_scan.scan_decks(state.project)     # kept current by the window's reload_decks
         self.theme = ThemeManager()
         self.slide_list = None
         self.panels = None
@@ -131,6 +138,7 @@ def column(project, qapp, ctx):
     holder = QWidget()
     window.slide_list = SlideList(window, state, ThemeManager(), Toast(holder))
     window.panels = SidePanels(window, state, window.actions)
+    window.panels._defer = window.panels.refresh     # these tests are about what a panel shows; `debounced` undoes this
     state.set_deck(next(d for d in deck_scan.scan_decks(ctx) if d.name == "course"))
     yield window.panels, state, window
     holder.deleteLater()
@@ -916,3 +924,254 @@ def test_a_source_the_panel_did_not_edit_keeps_what_another_writer_stored(ctx, c
     form.save_button.click()
     entry = alt_images.load_store(ctx)["media/pic.png"]
     assert (entry.short, entry.source, entry.source_status) == ("Edited short", "Elsewhere", alt_images.SOURCE_TO_REVIEW)
+
+
+# -- a panel shows the focused occurrence, resolved once per refresh (v8.39.6) -------------------------------
+
+@pytest.fixture
+def twice(project, column):
+    """The deck "pins" calls abc as the current file and again as the frozen v1.0.0."""
+    (project.decks / "pins.tex").write_text(
+        HEAD + "\\slide{abc-EN-Demo}\n\\slide{xyz-EN-Other}\n\\slideversion{abc-EN-Demo}{1-0-0}\n\\end{document}\n",
+        encoding="utf-8", newline="")
+    panels, state, window = column
+    state.set_deck(next(d for d in deck_scan.scan_decks(state.project) if d.name == "pins"))
+    first, second = [r for r in state.outline.rows if r.call.id == "abc"]
+    return panels, state, first, second
+
+
+def test_a_panel_shows_the_focused_occurrence_not_the_first(twice, project):
+    panels, state, first, second = twice
+    slides = project.decks.parent / "slides"
+    panels.set_panel("notes")
+    notes = panels.panels["notes"]
+    state.set_focused_slide("abc", occurrence_key=first.key)
+    assert notes.slide_path() == slides / "abc-EN-Demo-current.tex" and notes._path == notes.slide_path()
+    state.set_focused_slide("abc", occurrence_key=second.key)
+    assert notes.slide_path() == slides / "abc-EN-Demo-v1-0-0.tex" and notes._path == notes.slide_path()
+    assert notes.id_slug() == "abc-EN-Demo"
+    panels.set_panel("visibility")
+    assert [position for position, _call in panels.panels["visibility"].deck_calls()] == [1, 3]   # every call of the slide
+
+
+def test_a_panel_resolves_its_row_once_per_refresh_and_none_while_the_outline_is_current(twice, resolutions):
+    panels, state, _first, second = twice
+    panels.set_panel("notes")
+    state.set_focused_slide("abc", occurrence_key=second.key)
+    resolutions.reset()
+    panels.refresh()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+    state.drop_outline()                      # a slide file was written, the list has not rebuilt yet
+    panels.refresh()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (1, 0, 1)
+    assert panels.panels["notes"]._path.name == "abc-EN-Demo-v1-0-0.tex"
+
+
+def test_used_in_decks_still_opens_another_deck_at_the_slide_with_the_outline(twice, resolutions):
+    panels, state, _first, _second = twice
+    state.set_focused_slide("abc")
+    panels.set_panel("used")
+    course = next(r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "course")
+    course.clicked.emit()
+    assert state.deck.name == "course" and state.focused_slide == "abc" and state.current_outline() is not None
+    assert state.current_outline().deck_path == state.deck.path
+
+
+# -- the rebuild waits for the selection to rest (v8.39.9) ---------------------------------------------------
+
+@pytest.fixture
+def debounced(column, project):
+    """The column as the window has it: a change of slide, view or language rebuilds the shown panel after a pause."""
+    panels, state, window = column
+    del panels._defer
+    (project.decks.parent / "slides" / "new-EN-Fresh-current.tex").write_text(FRAME, encoding="utf-8")
+    builds = []
+    real = UsedInDecks.build
+    UsedInDecks.build = lambda self, id_slug: (builds.append(id_slug), real(self, id_slug))[1]
+    yield panels, state, window, builds
+    UsedInDecks.build = real
+
+
+def rested(panels):
+    wait_until(lambda: not panels._rebuild.isActive())
+
+
+def test_quick_focus_changes_rebuild_the_shown_panel_once_for_the_last_slide(debounced):
+    panels, state, _window, builds = debounced
+    for slide in ("abc", "xyz", "new"):
+        state.set_focused_slide(slide)
+    assert builds == [] and panels._rebuild.isActive()                   # nothing is rebuilt per row
+    rested(panels)
+    assert builds == ["new-EN-Fresh"] and "No deck calls this slide." in texts(panels.panels["used"])
+
+
+def test_the_old_contents_stop_answering_at_once_and_the_new_ones_follow(debounced):
+    panels, state, _window, builds = debounced
+    panels.show()                                                        # hit-testing needs widgets on show
+    state.set_focused_slide("abc")
+    rested(panels)
+    used = panels.panels["used"]
+    talk = next(r for r in rows(used) if r.findChildren(QLabel)[0].text() == "talk")
+    state.set_focused_slide("xyz")
+    hit = used.childAt(talk.mapTo(used, talk.rect().center()))           # what a click there reaches
+    assert hit is panels._shield and used.isEnabled()                    # covered, not greyed out
+    QTest.mouseClick(hit, Qt.MouseButton.LeftButton)                     # on the row of the slide that was left
+    assert state.deck.name == "course"                                   # opened no deck
+    rested(panels)
+    assert panels._shield.isHidden() and builds == ["abc-EN-Demo", "xyz-EN-Other"]
+    assert all(r.findChildren(QLabel)[0].text() == "course" for r in rows(used))
+
+
+def test_a_pending_edit_is_saved_against_the_old_slide_at_once(debounced, paths):
+    panels, state, window, _builds = debounced
+    paths.path.write_text(CITED, encoding="utf-8")
+    state.set_focused_slide("cit")
+    rested(panels)
+    panels.set_panel("notes")
+    notes = panels.panels["notes"]
+    notes._edits[0].setPlainText("Changed")
+    state.set_focused_slide("abc")
+    assert "\\note{Changed}" in window.centre.buffers[paths.path] and not notes.dirty and not state.dirty
+    assert notes._path == paths.path                                # the panel itself still shows the old slide
+    rested(panels)
+    assert notes._path.name == "abc-EN-Demo-current.tex"
+
+
+def test_a_hidden_panel_and_a_hidden_card_do_no_rebuild(debounced, monkeypatch):
+    panels, state, window, builds = debounced
+    panels.set_panel("visibility")
+    state.set_focused_slide("abc")
+    rested(panels)
+    assert builds == []                                                  # Used in decks is not shown
+    panels.set_panel("used")
+    assert builds == ["abc-EN-Demo"]                                     # choosing a panel rebuilds at once
+    panels.assistant.header.toggle_focus()                               # Focus assistant: the panels' card is hidden
+    state.set_focused_slide("xyz")
+    rested(panels)
+    assert builds == ["abc-EN-Demo"]
+    panels.assistant.header.toggle_focus()                               # ... and comes back up to date
+    assert builds == ["abc-EN-Demo", "xyz-EN-Other"]
+
+
+def test_a_deck_change_rebuilds_at_once(debounced):
+    panels, state, _window, builds = debounced
+    state.set_focused_slide("abc")
+    rested(panels)
+    assert "course" in texts(panels.panels["used"])
+    state.set_deck(next(d for d in deck_scan.scan_decks(state.project) if d.name == "talk"))
+    assert texts(panels.panels["used"]) == ["Select a slide in the list."]       # no wait for the pause
+    # ... and the focus it resets right after asks for no second rebuild: no shield takes the next click
+    assert panels._shield.isHidden() and not panels._rebuild.isActive()
+
+
+def test_coming_back_to_the_shown_slide_before_the_pause_needs_no_rebuild(debounced):
+    panels, state, _window, builds = debounced
+    state.set_focused_slide("abc")
+    rested(panels)
+    state.set_focused_slide("xyz")
+    state.set_focused_slide("abc")
+    rested(panels)
+    assert builds == ["abc-EN-Demo"] and panels._shield.isHidden()
+
+
+# -- Used in decks: the decks the window knows, the occurrence that was clicked ---------------------------------
+
+def test_a_focus_change_scans_no_decks_and_one_translation_scan_serves_the_query(column, monkeypatch):
+    from slidemage import slide_language, slide_usage
+
+    panels, state, window = column
+    scans, folder = [], []
+
+    class Counting(slide_language.TranslationLinks):
+        def __init__(self, *args, **kwargs):
+            scans.append(1)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(slide_language, "TranslationLinks", Counting)
+    monkeypatch.setattr(slide_usage, "scan_decks", lambda _ctx: folder.append(1) or [])
+    state.set_focused_slide("abc")
+    assert folder == []                                                  # the decks are the window's, not the folder's
+    scans.clear()
+    panels.panels["used"].build("abc-EN-Demo")                           # the query alone: two decks, one scan
+    assert scans == [1]
+    assert texts(panels.panels["used"])[:2] == ["course", "\\slide, follows the current version · slide 2 of 3"]
+
+
+def test_archived_decks_are_listed_from_the_decks_the_window_knows(column, project):
+    panels, state, window = column
+    (project.decks / "archive" / "old.tex").write_text(HEAD + "\\slide{abc-EN-Demo}\n\\end{document}\n", encoding="utf-8")
+    window.decks = deck_scan.scan_decks(state.project)
+    state.set_focused_slide("abc")
+    assert "old (archived)" in texts(panels.panels["used"])
+
+
+def test_clicking_the_second_use_of_a_slide_in_another_deck_focuses_that_occurrence(twice, project):
+    panels, state, first, second = twice
+    used = panels.panels["used"]
+    used.app.decks = deck_scan.scan_decks(state.project)                 # the window rescans after a new deck, too
+    state.set_deck(next(d for d in used.app.decks if d.name == "course"))
+    state.set_focused_slide("abc")
+    panels.set_panel("used")
+    pins = [r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "pins"]
+    assert len(pins) == 2
+    pins[1].clicked.emit()
+    assert state.deck.name == "pins" and state.focused_slide == "abc" and state.focused_occurrence == second.key
+    state.set_deck(next(d for d in deck_scan.scan_decks(state.project) if d.name == "course"))
+    state.set_focused_slide("abc")
+    next(r for r in rows(panels.panels["used"]) if r.findChildren(QLabel)[0].text() == "pins").clicked.emit()
+    assert state.focused_occurrence == first.key
+
+
+# -- a pending notes edit with the Preview on show (a real window) -----------------------------------------------
+
+@pytest.fixture
+def window(qapp, tmp_path, monkeypatch):
+    root = make_project(monkeypatch, tmp_path / "project")
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
+    window = build_window(monkeypatch, ProjectContext.at(root))
+    window.show()
+    window.state.set_mode("preview")
+    window.state.set_deck(next(d for d in deck_scan.scan_decks(window.project) if d.name == "test"))
+    window.state.set_focused_slide("abc")
+    window.side_panels.set_panel("notes")
+    window.root = root
+    return window
+
+
+def click_slide(window, slide, name):
+    """The slide list's click: the press focuses the row, the release opens its file (keeping the mode)."""
+    window.state.set_focused_slide(slide)
+    window.centre.open_file(window.root / "slides" / name, keep_mode=True)
+
+
+def test_a_pending_note_is_written_to_its_slide_and_the_source_view_stays_on_the_new_one(window):
+    abc, abd = (window.root / "slides" / f"{n}-current.tex" for n in ("abc-EN-Hello", "abd-EN-Second"))
+    abd_before = abd.read_bytes()
+    notes = window.side_panels.panels["notes"]
+    notes._new.setPlainText("Panel note")
+    assert window.state.dirty
+    click_slide(window, "abd", "abd-EN-Second-current.tex")
+    assert "\\note{Panel note}" in abc.read_text(encoding="utf-8") and abd.read_bytes() == abd_before
+    centre = window.centre
+    assert centre.source.file_for(abc) is None and centre.source.current is None     # no editor of the old slide
+    assert not window.state.dirty and window.state.focused_slide == "abd"
+    window.state.set_mode("source")
+    assert centre.source.current.path == abd and "Second" in centre.source.current.editor.text()
+    wait_until(lambda: not window.side_panels._rebuild.isActive())
+    assert window.side_panels.panels["notes"]._path == abd
+
+
+def test_a_pending_note_of_a_file_in_conflict_is_not_lost(window):
+    abc = window.root / "slides" / "abc-EN-Hello-current.tex"
+    window.state.set_mode("source")
+    window.centre.source.current.editor.insertPlainText("typed ")
+    abc.write_bytes(abc.read_bytes() + b"% elsewhere\r\n")                # a change on disk: the buffer is in conflict
+    window.state.set_mode("preview")
+    notes = window.side_panels.panels["notes"]
+    wait_until(lambda: not window.side_panels._rebuild.isActive())
+    notes._new.setPlainText("Panel note")
+    click_slide(window, "abd", "abd-EN-Second-current.tex")
+    file = window.centre.source.file_for(abc)
+    assert file is not None and file.conflicted and "\\note{Panel note}" in file.editor.text()
+    assert "Panel note" not in abc.read_text(encoding="utf-8") and window.state.dirty    # kept, and reported

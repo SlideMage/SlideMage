@@ -15,7 +15,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from slidemage import alt_images, preview_target, slide_snapshot
+from slidemage import alt_images, deck_outline, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui.kit.theme import ThemeManager
@@ -189,10 +189,10 @@ def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
     state = centre.state
     state.set_focused_slide("bbb")
     link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: link)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: link)
     centre.preview._refresh()
     assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN + DE"]
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug: None)
+    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: None)
     centre.preview._refresh()
     assert "Translation outdated" not in chip_texts(centre)
 
@@ -246,6 +246,32 @@ def test_opening_a_file_switches_to_source_and_a_slide_of_the_project_is_focused
     centre.state.set_mode("split")
     centre.open_file(project / "aaa-EN-One-current.tex")
     assert centre.state.mode == "split"               # Split stays Split
+
+
+def test_opening_the_focused_slide_keeps_the_occurrence_the_list_focused(centre, project, tmp_path):
+    from dataclasses import replace
+    from slidemage import deck_outline
+    state = centre.state
+    text = DECK.replace("\\slide{aaa-EN-One}\n", "\\slide{aaa-EN-One}\n\\slide{aaa-EN-One}\n")
+    state.set_deck(replace(state.deck, text=text, chapters=parse_chapters(text)))
+    slots = [r for r in deck_outline.resolve_slots(state.project, state.deck, state.view, state.language)
+             if r.slot.matches("aaa")]
+    assert len(slots) == 2 and slots[0].frame_number != slots[1].frame_number
+    state.set_mode("preview")
+    shown, emitted = [], []
+    real = centre.preview.show_slide
+    centre.preview.show_slide = lambda target, *args: (shown.append(target), real(target, *args))[1]
+    state.focused_slide_changed.connect(emitted.append)
+    state.set_focused_slide("aaa", occurrence_key=slots[1].key)      # the press
+    centre.open_file(project / "aaa-EN-One-current.tex", keep_mode=True)      # the release
+    assert state.focused_occurrence == slots[1].key and state.mode == "preview"
+    assert emitted == ["aaa"]
+    assert {t.frame_number for t in shown} == {slots[1].frame_number}
+    assert centre._focused_row().frame_number == slots[1].frame_number
+    centre.open_file(project / "aaa-EN-One-current.tex")                      # Enter: Source of that occurrence
+    assert state.mode == "source" and state.focused_occurrence == slots[1].key and emitted == ["aaa"]
+    centre.open_file(project / "ccc-DE-Drei-current.tex")                     # another slide is focused as before
+    assert state.focused_slide == "ccc" and state.focused_occurrence is None
 
 
 def test_a_deck_source_has_nothing_to_preview_and_ends_when_another_slide_is_focused(centre, deck, project):
@@ -786,3 +812,241 @@ def test_dont_ask_again_turns_the_setting_off(centre, asked):
     assert app_settings.get(centre.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is False
     leave_after_editing(centre)
     assert len(asked.calls) == 1
+
+
+# -- a click in the Preview builds no editor (v8.39.5) ------------------------------------------------
+
+def click(centre, project, slide, name, **kwargs):
+    """The slide list's click: the press focuses the row, the release opens its file (keeping the mode)."""
+    centre.state.set_focused_slide(slide)
+    centre.open_file(project / name, keep_mode=True, **kwargs)
+
+
+def count_shows(centre):
+    shown = []
+    real = centre.preview.show_slide
+    centre.preview.show_slide = lambda *args: (shown.append(args[0]), real(*args))[1]
+    return shown
+
+
+def test_a_preview_click_builds_no_editor_and_shows_the_slide_once(centre, project):
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    shown = count_shows(centre)
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert centre.source.file_for(project / "ccc-DE-Drei-current.tex") is None
+    assert centre.source.file_for(project / "aaa-EN-One-current.tex") is None
+    assert len(shown) == 1 and shown[0].id_slug == "ccc-DE-Drei"
+    assert centre.state.mode == "preview" and centre._path == project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("source")                       # the editor is built when the Source view is shown
+    file = centre.source.current
+    assert file is not None and file.path == project / "ccc-DE-Drei-current.tex" and "Dritte" in file.editor.text()
+
+
+@pytest.mark.parametrize("mode", ["split", "source"])
+def test_a_click_in_split_or_source_shows_the_editor(centre, project, mode):
+    centre.state.set_mode(mode)
+    centre.state.set_focused_slide("aaa")
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert centre.state.mode == mode
+    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+    assert "Dritte" in centre.source.current.editor.text() and centre.source.isVisibleTo(centre)
+
+
+def test_opening_in_preview_with_a_line_or_a_callback_still_builds_the_editor(centre, project, tmp_path):
+    centre.state.set_mode("preview")
+    centre.open_file(project / "ccc-DE-Drei-current.tex", keep_mode=True, line=2)
+    file = centre.source.file_for(project / "ccc-DE-Drei-current.tex")
+    assert file is not None and file.editor.textCursor().blockNumber() == 1 and centre.state.mode == "preview"
+    saved = []
+    centre.open_file(project / "aaa-EN-One-current.tex", saved.append, keep_mode=True)
+    file = centre.source.file_for(project / "aaa-EN-One-current.tex")
+    assert file is not None and file.on_saved == saved.append and centre.state.mode == "preview"
+    file.editor.insertPlainText("x ")
+    assert file.write_now()
+    assert len(saved) == 1 and saved[0].startswith("\\setSlideVersion")      # the previous text
+
+
+def test_edits_pending_in_the_source_view_are_written_to_their_slide_by_a_preview_click(centre, project, asked):
+    ask_on_leave(centre)
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("edit ")           # waiting for its autosave
+    centre.state.set_mode("preview")
+    ccc_before = (project / "ccc-DE-Drei-current.tex").read_text()
+    click(centre, project, "ccc", "ccc-DE-Drei-current.tex")
+    assert "edit " in (project / "aaa-EN-One-current.tex").read_text()      # written, not lost
+    assert (project / "ccc-DE-Drei-current.tex").read_text() == ccc_before   # and not to the new slide
+    assert centre.source.file_for(project / "ccc-DE-Drei-current.tex") is None
+    QApplication.processEvents()
+    assert asked.calls == [("aaa", (1, 1, 0))]                      # the Update Version offer still runs
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    assert "edit " in centre.source.current.editor.text() and not centre.source.current.dirty
+
+
+# -- the centre reads the outline the list resolved (v8.39.6) -------------------------------------------------
+
+def resolved(centre):
+    """What the slide list does after a rebuild: publish the deck's resolved outline on the state."""
+    state = centre.state
+    state.outline = deck_outline.resolve_outline(state.project, state.deck, state.view, state.language)
+    return state.outline
+
+
+def test_selection_in_the_centre_reuses_the_resolved_outline(centre, resolutions):
+    state = centre.state
+    state.set_mode("preview")
+    outline = resolved(centre)
+    state.set_focused_slide("aaa", occurrence_key=outline.rows[0].key)
+    resolutions.reset()
+    for row in outline.rows[1:]:
+        state.set_focused_slide(row.call.id, occurrence_key=row.key)
+        assert centre._focused_row() is row and centre.preview._row is row
+        assert centre.preview._target.occurrence_key == row.key
+        assert centre.preview._target.presenter_frame_number == outline.instructor_frames[row.key]
+    assert centre._neighbour_targets()
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+
+
+def test_the_centre_resolves_afresh_for_another_deck_view_or_language(centre, project, resolutions):
+    state = centre.state
+    state.set_mode("preview")
+    state.set_focused_slide("ccc")
+    resolved(centre)
+    assert centre._focused_row().hidden is False                  # \conditionalslide[instructor] in the Instructor view
+    state.set_view("during-course")
+    assert state.current_outline() is None and centre._focused_row().hidden is True
+    assert centre.preview._target.hidden and resolutions.slots
+    state.set_view("instructor")
+    resolved(centre)
+    english, german = link_german(project)
+    assert centre._focused_row().call.id == "ccc"
+    state.set_focused_slide("aaa")
+    assert centre.preview._target.id_slug == "aaa-EN-One"
+    state.set_language("DE")                                      # the outline says EN: the German row is resolved
+    assert state.current_outline() is None and centre.preview._target.id_slug == "ddd-DE-Eins"
+
+
+def test_a_deck_edit_is_seen_by_the_centre(centre, deck):
+    from dataclasses import replace
+
+    state = centre.state
+    state.set_mode("preview")
+    resolved(centre)
+    state.set_focused_slide("aaa")
+    assert centre.preview._target.position == 1
+    text = deck.text.replace("\\section{Part}\n", "\\section{Part}\n\\slide{ccc-DE-Drei}\n")
+    state.set_deck(replace(deck, text=text, chapters=parse_chapters(text)))      # a rescan of the open deck: no signal
+    assert state.current_outline() is None
+    centre.refresh()
+    assert centre.preview._target.position == 2
+
+
+def test_a_saved_title_or_translation_header_is_seen_by_the_centre_at_once(centre, project):
+    state = centre.state
+    state.set_mode("split")
+    state.set_focused_slide("aaa")
+    resolved(centre)
+    assert centre.preview._row.title == "First" and state.current_outline() is not None
+    editor = centre.source.current.editor
+    editor.replace_all_text(editor.text().replace("First", "Retitled"))
+    assert centre.source.current.write_now()                      # the autosave: the list's rebuild comes later
+    assert state.current_outline() is None
+    centre.refresh()
+    assert centre.preview._row.title == "Retitled"
+    resolved(centre)
+    german = project / "ddd-DE-Eins-current.tex"
+    german.write_text("%% Translation of: aaa-EN-One\n" + FRAME % "Erste")
+    editor.replace_all_text("%% DE translation: ddd-DE-Eins\n" + editor.text())
+    assert centre.source.current.write_now()
+    state.set_language("DE")
+    assert centre.preview._target.id_slug == "ddd-DE-Eins" and centre.preview._row.title == "Erste"
+
+
+def test_the_previews_refresh_takes_its_translation_links_from_the_outline(centre, project, resolutions):
+    english, german = link_german(project)
+    state = centre.state
+    state.set_mode("preview")
+    resolved(centre)
+    state.set_focused_slide("aaa")
+    assert "EN + DE" in chip_texts(centre)
+    resolutions.reset()
+    centre.preview._refresh()                                    # also what the 5 s validation poll runs
+    assert resolutions.scans == 0 and "EN + DE" in chip_texts(centre)
+    state.drop_outline()
+    centre.preview._refresh()
+    assert resolutions.scans == 1
+
+
+# -- an edit made from a panel does not move the Source view (v8.39.9) -----------------------------------------
+
+def panel_edit(text):
+    return text + "% from a panel\n"
+
+
+def test_a_panel_edit_of_the_slide_left_is_written_and_the_source_view_stays_on_the_new_slide(centre, project):
+    aaa, ccc = project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    ccc_before = ccc.read_text()
+    centre.state.set_focused_slide("ccc")                                # the focus has left aaa already
+    assert centre.edit_slide_text(aaa, panel_edit)
+    assert "% from a panel" in aaa.read_text() and ccc.read_text() == ccc_before   # aaa is written, ccc is not
+    assert centre.source.file_for(aaa) is None and centre.source.file_for(ccc) is None   # no editor stays behind
+    assert centre.source.current is None and not centre.state.dirty
+    centre.state.set_mode("source")
+    assert centre.source.current.path == ccc and "Dritte" in centre.source.current.editor.text()
+
+
+def test_a_panel_edit_of_the_slide_left_does_not_replace_the_editor_of_the_new_one(centre, project):
+    aaa, ccc = project / "aaa-EN-One-current.tex", project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("ccc")
+    shown = centre.source.current
+    assert centre.edit_slide_text(aaa, panel_edit)
+    assert centre.source.current is shown and shown.path == ccc and "% from a panel" in aaa.read_text()
+
+
+def test_a_panel_edit_stays_in_its_buffer_when_the_file_cannot_be_written(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("typed ")
+    aaa.write_text(aaa.read_text(encoding="utf-8") + "% elsewhere\n", encoding="utf-8")      # a change on disk: a conflict
+    centre.state.set_focused_slide("ccc")                                # aaa stays open: its edit cannot be written
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("bbb")
+    assert centre.edit_slide_text(aaa, panel_edit)
+    file = centre.source.file_for(aaa)
+    assert file is not None and file.conflicted and "% from a panel" in file.editor.text()   # kept, not lost
+    assert "% from a panel" not in aaa.read_text() and centre.is_blocked(aaa) and centre.state.dirty
+    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+
+
+def test_a_panel_edit_of_a_frozen_version_is_refused_and_leaves_nothing_open(centre, project):
+    frozen = project / "bbb-EN-Two-v1-0-0.tex"
+    before = frozen.read_text()
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("ccc")
+    assert not centre.edit_slide_text(frozen, panel_edit)
+    assert frozen.read_text() == before and centre.source.file_for(frozen) is None
+
+
+def test_a_panel_edit_of_the_slide_in_the_source_view_is_left_to_its_autosave(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("source")
+    centre.state.set_focused_slide("aaa")
+    assert centre.edit_slide_text(aaa, panel_edit)
+    file = centre.source.current
+    assert file.path == aaa and file.dirty and "% from a panel" in file.editor.text()
+    assert "% from a panel" not in aaa.read_text()                      # as before: the autosave writes it
+    assert file.write_now() and "% from a panel" in aaa.read_text()
+
+
+def test_show_makes_a_panel_edit_the_source_views_own(centre, project):
+    aaa = project / "aaa-EN-One-current.tex"
+    centre.state.set_mode("preview")
+    centre.state.set_focused_slide("aaa")
+    assert centre.edit_slide_text(aaa, panel_edit, show=True)           # "Save notes": Ctrl+S then writes this file
+    assert centre.source.current.path == aaa and centre.source.current.dirty

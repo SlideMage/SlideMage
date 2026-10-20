@@ -256,4 +256,21 @@ def test_cache_identity_tracks_raster_version_and_ignores_forced_stamp(tmp_path,
     forced = replace(spec, options=replace(spec.options, force=True, render_stamp='different time'))
     assert preview_requests.cache_identity(forced) == initial
     monkeypatch.setattr(preview_requests, 'version', lambda _: 'new renderer')
-    assert preview_requests.cache_identity(spec) != initial
+    preview_requests._raster_version.cache_clear()     # the version is read once per process (conftest clears it per test)
+    changed = preview_requests.cache_identity(spec)
+    assert changed != initial and changed['raster']['renderer'] == 'new renderer'
+
+
+def test_cache_identity_reads_the_raster_version_once(tmp_path, monkeypatch):
+    from importlib.metadata import version as installed
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    source = ctx.slides_dir / 'abc-EN-One-current.tex'
+    source.write_text('body')
+    spec = preview_requests.PreviewRequest(preview_target.for_path(ctx, source),
+                                           preview_requests.SourceRevision.capture(source), 'instructor', 'EN')
+    reads = []
+    monkeypatch.setattr(preview_requests, 'version', lambda name: reads.append(name) or installed(name))
+    first = preview_requests.cache_identity(spec)
+    assert preview_requests.cache_identity(spec) == first and reads == ['pymupdf']
+    assert first['raster']['renderer'] == installed('pymupdf')

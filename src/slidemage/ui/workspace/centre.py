@@ -134,6 +134,7 @@ class CentreColumn(QFrame):
         self.source.written.connect(self._edited.add)
         self.source.buffer_changed.connect(self.preview.buffer_changed)
         self.source.lint_errors_changed.connect(state.set_lint_errors)
+        self.source.written.connect(lambda _path: state.drop_outline())   # before anything below reads a row
         self.source.saved.connect(self._on_saved)
         self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
@@ -153,18 +154,25 @@ class CentreColumn(QFrame):
                   line: Optional[int] = None, *, keep_mode: bool = False) -> None:
         """Show `path` in the Source view (a slide of the project focuses the slide too), and switch to the Source
         view unless it is on show or `keep_mode`. `on_saved(previous_text)` runs after each save of it; `line` puts
-        the cursor there."""
+        the cursor there. With the Preview alone on show (`keep_mode`) the file only becomes the centre's path: its
+        editor is built when the Source view is shown (refresh()), unless `on_saved` or `line` need it now, as they
+        live on the editor. The views are refreshed unless the focus click had already put them there."""
+        changed = path != self._path
+        mode = self.state.mode
         self._opening = True
         try:
-            if path.parent == self.state.project.slides_dir:
-                self.state.set_focused_slide(bare_id(path.name))
+            if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
+                self.state.set_focused_slide(bare_id(path.name))     # the focused slide keeps its occurrence
+                changed = True
             self._set_path(path)
             if self.state.mode not in ("source", "split") and not keep_mode:
                 self.state.set_mode("source")
         finally:
             self._opening = False
-        self.source.show_path(path, on_saved)
-        self.refresh()
+        if self.state.mode in ("source", "split") or on_saved is not None or line is not None:
+            self.source.show_path(path, on_saved)
+        if changed or self.state.mode != mode:
+            self.refresh()
         if line is not None and self.source.current is not None:
             self.source.current.editor.go_to_line(line)
 
@@ -226,10 +234,16 @@ class CentreColumn(QFrame):
         file = self.source.file_for(path)
         return file.editor.text() if file is not None else slide_source.read_slide_source(path)[0]
 
-    def edit_slide_text(self, path: Path, change: Callable[[str], str]) -> bool:
+    def edit_slide_text(self, path: Path, change: Callable[[str], str], *, show: bool = False) -> bool:
         """Apply `change(text) -> text` to the Source view's buffer of `path`, as one undo step, and
         leave it to the Source view's autosave, so that an edit made from a panel is never written by
-        another route. False when the file is not editable (a frozen version, until it is unlocked)."""
+        another route. False when the file is not editable (a frozen version, until it is unlocked).
+        The file becomes the Source view's own if `show` or it is shown already; else (a slide the focus
+        has left) it is changed off-stage and written at once (SourcePane.edit_off_stage), so the Source
+        view does not go back to it."""
+        current = self.source.current
+        if not show and (current is None or current.path != path):
+            return self.source.edit_off_stage(path, change)
         self.source.show_path(path)
         file = self.source.current
         if file is None or file.editor.is_read_only():
@@ -260,6 +274,7 @@ class CentreColumn(QFrame):
         except slide_versioning.RestoreError as exc:
             QMessageBox.warning(self.app, "Cannot restore", str(exc))
             return
+        self.state.drop_outline()   # the slide's title may differ now
         self.app.log(
             f"Restored {frozen.name} as the current version of {id_slug}: now "
             f"v{slide_versioning.format_dot(version)}"
@@ -403,7 +418,12 @@ class CentreColumn(QFrame):
         left = self._path
         self._path = path
         if left is not None and left != path:
-            # after the switch, which also writes the edits still waiting for their autosave
+            # Its edits still waiting for their autosave are written now: the Source view does not do it
+            # when it is hidden (Preview), as it shows the new file only when it is on show.
+            file = self.source.file_for(left)
+            if file is not None:
+                file.write_now()
+            # after the switch
             QTimer.singleShot(0, lambda: self._offer_version(left))
 
     def _offer_version(self, path: Path) -> None:
@@ -452,6 +472,7 @@ class CentreColumn(QFrame):
         self.refresh()
 
     def _on_saved(self, _path: Path) -> None:
+        self.state.drop_outline()
         if self.state.mode in ("preview", "split"):
             self.preview.render_after_save()
         self.refresh()
@@ -468,7 +489,7 @@ class CentreColumn(QFrame):
         if deck is None or deck.is_test_deck or state.focused_slide is None:
             return None
         return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language,
-                                      occurrence_key=state.focused_occurrence)
+                                      occurrence_key=state.focused_occurrence, outline=state.outline)
 
     def _focused_path(self) -> Optional[Path]:
         """The file of the focused slide, if it has one: what the deck's call loads, else the
@@ -545,7 +566,7 @@ class CentreColumn(QFrame):
         state = self.state
         if row is not None and (self._path is None or (id_slug == row.call.id_slug and version == row.call.version)):
             return for_call(state.project, state.deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
-                            occurrence_key=row.key, hidden=row.hidden), row, row.title, None
+                            occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
         if self._path is None:
             return None, None, "", None
         own = own_language(id_slug)
@@ -562,8 +583,7 @@ class CentreColumn(QFrame):
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return
-        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
-                for r in section.rows]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
             return
@@ -574,7 +594,7 @@ class CentreColumn(QFrame):
             return
         other = rows[index]
         target = for_call(state.project, state.deck, other.call, other.position, frame_number=other.frame_number,
-                          occurrence_key=other.key, hidden=other.hidden)
+                          occurrence_key=other.key, hidden=other.hidden, outline=state.outline)
         if target is not None:
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
@@ -585,8 +605,7 @@ class CentreColumn(QFrame):
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return []
-        rows = [r for section in deck_outline.build_outline(state.project, state.deck, state.view, state.language)
-                for r in section.rows]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
             return []
@@ -596,7 +615,7 @@ class CentreColumn(QFrame):
         # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
         # under the same key once that slide is focused.
         return [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                          occurrence_key=r.key, hidden=r.hidden), r) for r in picks if not r.hidden]
+                          occurrence_key=r.key, hidden=r.hidden, outline=state.outline), r) for r in picks if not r.hidden]
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

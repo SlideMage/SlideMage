@@ -3,6 +3,7 @@
 """Newest-request publication, source/context changes, and image reuse."""
 
 import gc
+import hashlib
 from types import SimpleNamespace
 import threading
 from threading import Thread as WorkerThread
@@ -707,7 +708,7 @@ def test_session_pixmaps_are_bounded_and_keep_the_most_recent(pane, tmp_path):
     view, target, _ = pane
     pixmap = QPixmap(1, 1)
     for i in range(13):
-        view._pixmaps[(("old", i), "instructor", "EN")] = (pixmap, 0)
+        view._pixmaps.put((("old", i), "instructor", "EN"), pixmap, 0, None, "")
     pdf = pdf_at(tmp_path / "recent.pdf")
     view._start(lambda: pdf, view._job(target))
     view._run(*view.launched[0])
@@ -973,7 +974,7 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
     old_pixmap = preview_view.QPixmap()
     assert old_pixmap.loadFromData(old)
     key = (target.key, 'instructor', 'EN')
-    view._pixmaps[key] = (old_pixmap, preview_view._mtime(path))
+    view._pixmaps.put(key, old_pixmap, preview_view._mtime(path), None, '')
     from slidemage import preview_requests, preview_selection
     old_spec = preview_requests.PreviewRequest(
         target, preview_requests.SourceRevision.capture(path), 'instructor', 'EN',
@@ -1169,7 +1170,7 @@ def test_unverified_memory_image_is_not_current_even_when_source_mtime_matches(p
     png = slide_snapshot.page_png(pdf)
     pixmap = preview_view.QPixmap()
     assert pixmap.loadFromData(png)
-    view._pixmaps[(target.key, "instructor", "EN")] = (pixmap, preview_view._mtime(path))
+    view._pixmaps.put((target.key, "instructor", "EN"), pixmap, preview_view._mtime(path), None, "")
     monkeypatch.setattr(view._renders, "selected_preview", lambda *args, **kw: SimpleNamespace(
         state='missing', image=None))
 
@@ -1264,3 +1265,444 @@ def test_restart_preserves_invalidated_view_as_explicitly_older_render(pane, tmp
     assert 'Previous render' in note
     assert view._last_pdf == entry.pdf
     assert not view._pixmaps  # fresh process: this did not rely on session memory
+
+
+# -- the display cache: a return visit shows its page at once, while validation runs ----------------------
+
+class _TwoSlides:
+    """Slides A and B in the pane with a validator that waits on a gate per text and answers as `outcome` says."""
+
+    def __init__(self, view, target, path, tmp_path, monkeypatch, qapp):
+        from slidemage.preview_selection import SelectedImage
+        self.view, self.qapp, self.path_a = view, qapp, path
+        self.target_a = target
+        self.path_b = tmp_path / "slides" / "bbb-EN-Other-current.tex"
+        self.path_b.write_text("OTHER")
+        self.target_b = preview_target.for_path(view.state.project, self.path_b)
+        self.png = {text: slide_snapshot.page_png(pdf_at(tmp_path / f"{text}.pdf", text), 1280)
+                    for text in ("BODY", "OTHER", "BODY2")}
+        self.gate = {text: threading.Event() for text in self.png}
+        for gate in self.gate.values():
+            gate.set()
+        self.outcome = "verified"
+        self.pdf = pdf_at(tmp_path / "verified.pdf", "verified")
+        self.validated = []
+
+        def validate(specs, _reference):
+            spec = specs[0]
+            self.validated.append(spec.revision.text)
+            assert self.gate[spec.revision.text].wait(5)
+            if self.outcome == "missing":
+                return SelectedImage("missing", None, spec, None, None, None, "No preview"), {}
+            return SelectedImage(self.outcome, self.png[spec.revision.text], spec, spec.revision.content_hash,
+                                 spec.view, self.pdf, "Older render" if self.outcome == "previous" else "",
+                                 artifact_revision_hash=spec.revision.content_hash), {}
+
+        monkeypatch.setattr(preview_view, "validate_captured", validate)
+        view._buffer = lambda: None            # the saved files are what is on show
+        view._background_validation = True
+
+    def pump(self, condition, timeout=3):
+        import time
+        deadline = time.monotonic() + timeout
+        while not condition() and time.monotonic() < deadline:
+            self.qapp.processEvents()
+            time.sleep(.01)
+        assert condition()
+
+    def show(self, which):
+        target = self.target_a if which == "A" else self.target_b
+        self.view.show_slide(target, None, which, "")
+
+    def verified(self):
+        return self.view._image_selection is not None and self.view._image_selection.fresh
+
+    def visit(self, which):
+        """Show a slide and wait until its validation has been published."""
+        self.show(which)
+        self.pump(lambda: self.view._selection_result_key is not None and self.view._selection_pending_key is None)
+
+    def key(self, which):
+        return ((self.target_a if which == "A" else self.target_b).key, self.view.state.view, self.view.language)
+
+
+@pytest.fixture
+def two(pane, tmp_path, monkeypatch, qapp):
+    view, target, path = pane
+    return _TwoSlides(view, target, path, tmp_path, monkeypatch, qapp)
+
+
+def test_return_visit_paints_cached_page_while_validation_is_blocked_then_goes_current(two):
+    view = two.view
+    two.visit("A")
+    assert two.verified() and view._last_pdf == two.pdf and two.key("A") in view._pixmaps
+    two.visit("B")
+    two.gate["BODY"].clear()                      # validating A again waits for the test
+    two.show("A")
+    two.qapp.processEvents()
+
+    assert view._selection_pending_key is not None and view._selection_result_key is None
+    assert view._page.pixmap is not None and view._page.message == ""     # painted before validation answers
+    assert view._status_chip.text() == preview_view.CHECKING and view._status_chip.isVisibleTo(view)
+    assert view._last_pdf is None and view._displayed_spec is None        # unchecked pixels authorize nothing
+    assert view._image_selection is None
+    assert view._page.pixmap.toImage() == view._pixmaps.get(two.key("A")).pixmap.toImage()
+    view._refresh()                                                        # a poll while checking keeps it so
+    assert view._status_chip.text() == preview_view.CHECKING and view._last_pdf is None
+
+    two.gate["BODY"].set()
+    two.pump(two.verified)
+    assert view._last_pdf == two.pdf and view._displayed_spec is not None
+    assert preview_view.CHECKING not in view._status_chip.text()
+
+
+@pytest.mark.parametrize("outcome", ["missing", "previous"])
+def test_return_visit_validation_that_finds_it_stale_applies_the_existing_states(two, outcome):
+    view = two.view
+    two.visit("A")
+    two.visit("B")
+    two.gate["BODY"].clear()
+    two.show("A")
+    assert view._status_chip.text() == preview_view.CHECKING
+    two.outcome = outcome
+    two.gate["BODY"].set()
+    two.pump(lambda: view._selection_result_key is not None)
+    if outcome == "missing":
+        assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+        assert view._last_pdf is None
+    else:
+        assert view._page.pixmap is not None and view._status_chip.text() == "Older render"
+    assert view._displayed_spec is None
+
+
+def test_stale_completion_for_a_never_replaces_b(two):
+    view = two.view
+    two.visit("A")
+    two.visit("B")
+    two.gate["BODY"].clear()
+    two.gate["OTHER"].clear()
+    two.show("A")                                  # A's validation starts and waits
+    two.pump(lambda: two.validated.count("BODY") == 2)
+    two.show("B")                                  # the pane moves on: A's result is stale
+    shown = view._page.pixmap.toImage()
+    assert shown == view._pixmaps.get(two.key("B")).pixmap.toImage()
+    assert shown != view._pixmaps.get(two.key("A")).pixmap.toImage()
+    two.gate["BODY"].set()
+    for _ in range(20):
+        two.qapp.processEvents()
+        import time
+        time.sleep(.01)
+    assert view._page.pixmap.toImage() == shown and view._selection_result is None
+    assert view._status_chip.text() == preview_view.CHECKING     # B is still being checked
+    two.gate["OTHER"].set()
+    two.pump(two.verified)
+    assert view._image_selection.request.target.key == two.target_b.key
+
+
+def test_cached_page_is_not_shown_after_its_file_changed(two):
+    import os
+    view = two.view
+    two.visit("A")
+    two.visit("B")
+    two.gate["BODY"].clear()
+    stat = two.path_a.stat()
+    os.utime(two.path_a, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))   # same text, a newer file
+    two.show("A")
+    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+    assert view._status_chip.text() != preview_view.CHECKING
+    two.gate["BODY"].set()
+    two.pump(two.verified)
+    two.visit("B")
+    two.gate["BODY2"].clear()
+    two.path_a.write_text("BODY2")                 # another text
+    two.show("A")
+    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    two.gate["BODY2"].set()
+
+
+def test_cached_page_is_not_shown_for_another_view_or_language(two):
+    view = two.view
+    two.visit("A")
+    two.visit("B")
+    two.gate["BODY"].clear()
+    view.state.set_view("after-course")
+    two.show("A")
+    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    view.state.set_view("instructor")
+    two.show("B")
+    two.show("A")
+    assert view._page.pixmap is not None and view._status_chip.text() == preview_view.CHECKING
+    view._language = "DE"
+    view._refresh()
+    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    two.gate["BODY"].set()
+
+
+def test_draft_and_part_of_slide_renders_are_never_whole_slide_entries(pane, tmp_path):
+    view, target, _ = pane
+    pdf = pdf_at(tmp_path / "draft.pdf")
+    view._start(lambda: pdf, view._job(target, note="Rendered from the editor buffer, not the saved file",
+                                       buffer_text="BODY", revision_text="BODY"))
+    view._run(*view.launched[0])
+    assert view._adhoc is not None and (target.key, "instructor", "EN") not in view._pixmaps
+    view._start(lambda: pdf, view._job(target, revision_text="BODY"))
+    view._run(*view.launched[1])
+    held = view._pixmaps.get((target.key, "instructor", "EN"))
+    assert held is not None and held.mtime == preview_view._mtime(target.source_path)
+    assert held.content_hash == hashlib.sha256(b"BODY").hexdigest()
+
+
+def test_return_visit_after_validation_does_not_decode_again(two, monkeypatch):
+    loads = []
+
+    class Counting(preview_view.QPixmap):
+        def loadFromData(self, *args, **kwargs):
+            loads.append(1)
+            return super().loadFromData(*args, **kwargs)
+
+    monkeypatch.setattr(preview_view, "QPixmap", Counting)
+    view = two.view
+    two.visit("A")
+    two.visit("B")
+    decoded = len(loads)
+    assert decoded >= 2
+    two.visit("A")
+    two.show("B")
+    two.show("A")
+    two.pump(two.verified)
+    assert len(loads) == decoded
+    assert view._page.pixmap is not None and view._last_pdf == two.pdf
+
+
+def test_display_cache_holds_display_size_pages_within_its_byte_budget():
+    from PySide6.QtGui import QPixmap
+    cache = preview_view.DisplayCache()
+    big = cache.put(("a",), QPixmap(2560, 1440), 0, None, "")
+    assert big.width() == preview_view.DISPLAY_WIDTH == 1920 and big.height() == 1080
+    for i in range(10):                            # 10 MB each: the budget, not the entry limit, binds
+        cache.put((i,), QPixmap(1280, 2000), 0, None, "")
+    assert cache.bytes <= preview_view.DISPLAY_BYTES and len(cache) < preview_view.DISPLAY_ENTRIES
+    assert (9,) in cache and ("a",) not in cache and (0,) not in cache
+    cache.get((5,))                                # recently used survives eviction
+    cache.put(("new",), QPixmap(1280, 2000), 0, None, "")
+    assert (5,) in cache and cache.bytes <= preview_view.DISPLAY_BYTES
+    cache.clear()
+    assert len(cache) == 0
+
+
+def test_pane_cache_is_cleared_with_the_pane(pane):
+    from PySide6.QtGui import QPixmap
+    view, target, _ = pane
+    view._pixmaps.put((target.key, "instructor", "EN"), QPixmap(8, 8), 0, None, "")
+    view._dispose()
+    assert len(view._pixmaps) == 0
+
+
+def test_page_view_paints_from_a_scaled_copy_kept_until_the_size_changes(qapp):
+    from PySide6.QtGui import QPixmap
+    page = preview_view.PageView(lambda: ThemeManager().tokens)
+    page.resize(800, 500)
+    page.show_image(QPixmap(1280, 720))
+    page.grab()
+    first = page._scaled
+    assert first is not None and first[1].size() == first[0]
+    page.grab()
+    assert page._scaled is first                   # the second paint at the same size rescaled nothing
+    page.resize(640, 400)
+    page.grab()
+    assert page._scaled is not first and page._scaled[0] != first[0]
+    page.show_image(QPixmap(1280, 720))
+    assert page._scaled is None
+    page.show_message("none", False)
+    page.grab()
+    assert page._scaled is None
+
+
+# -- the render store is asked off the GUI thread ----------------------------------------------------------
+
+class _FakeStore:
+    """app.background with a stored render per slide; every call is recorded with the thread it ran on."""
+
+    def __init__(self, pngs: dict, steps: dict = None):
+        self.pngs, self.steps = pngs, steps or {}
+        self.calls = []                  # (what, on the main thread, the deck name)
+        self.gate = {key: threading.Event() for key in pngs}
+        for gate in self.gate.values():
+            gate.set()
+        self.entered = threading.Event()
+
+    def stored_page(self, target, view, language, deck_name=""):
+        self.calls.append(("page", threading.current_thread() is threading.main_thread(), deck_name))
+        self.entered.set()
+        assert self.gate[target.key].wait(5)
+        return self.pngs.get(target.key)
+
+    def stored_pages(self, target, view, language, deck_name=""):
+        self.calls.append(("pages", threading.current_thread() is threading.main_thread(), deck_name))
+        return self.steps.get(target.key)
+
+
+@pytest.fixture
+def stored(two):
+    """`two` with the validator blocked for both slides, and a store holding a page of each."""
+    for gate in two.gate.values():
+        gate.clear()
+    store = _FakeStore({two.target_a.key: two.png["BODY"], two.target_b.key: two.png["OTHER"]})
+    two.view.app.background = store
+    two.store = store
+    return two
+
+
+def pixels(png):
+    from PySide6.QtGui import QPixmap
+    pixmap = QPixmap()
+    assert pixmap.loadFromData(png)
+    return pixmap.toImage()
+
+
+def test_a_stored_page_is_looked_up_off_the_gui_thread_and_shown_once_it_arrives(stored):
+    view, store = stored.view, stored.store
+    stored.show("A")
+    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")   # nothing yet
+    stored.pump(lambda: view._page.pixmap is not None)
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"])
+    assert view._last_pdf is None and view._displayed_spec is None             # a store page authorizes no PDF
+    assert view._selection_result_key is None                                   # shown before validation answered
+    assert preview_view.CHECKING not in view._status_chip.text()
+    assert store.calls and not any(on_main for _what, on_main, _deck in store.calls)
+    assert {what for what, _m, _d in store.calls} == {"page", "pages"}
+
+
+def test_the_deck_name_is_read_on_the_gui_thread_and_handed_to_the_store(stored):
+    stored.view.state.deck = SimpleNamespace(name="course")
+    stored.show("A")
+    stored.pump(lambda: stored.view._page.pixmap is not None)
+    assert {deck for _what, _m, deck in stored.store.calls} == {"course"}
+
+
+def test_the_stored_page_is_held_for_a_return_visit(stored):
+    view = stored.view
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    held = view._pixmaps.get(stored.key("A"))
+    assert held is not None and held.mtime == preview_view._mtime(stored.path_a)
+    stored.show("B")
+    stored.pump(lambda: view._page.pixmap is not None and view._page.pixmap.toImage() == pixels(stored.png["OTHER"]))
+    stored.store.gate[stored.target_a.key].clear()               # A's lookup is out again: the held page is what shows
+    stored.show("A")
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"])
+    assert view._status_chip.text() == preview_view.CHECKING
+    stored.store.gate[stored.target_a.key].set()
+    stored.pump(lambda: view._status_chip.text() != preview_view.CHECKING)
+    assert view._page.pixmap.toImage() == pixels(stored.png["BODY"]) and view._last_pdf is None
+
+
+def test_a_stored_page_for_a_arriving_after_the_selection_moved_to_b_is_discarded(stored):
+    view, store = stored.view, stored.store
+    store.gate[stored.target_a.key].clear()
+    stored.show("A")
+    assert store.entered.wait(5)                                  # A's lookup is running, blocked in the store
+    stored.show("B")
+    seen = []
+    store.gate[stored.target_a.key].set()
+    stored.pump(lambda: seen.append(view._page.pixmap is not None and view._page.pixmap.toImage()) or
+                (view._page.pixmap is not None and view._page.pixmap.toImage() == pixels(stored.png["OTHER"])))
+    assert pixels(stored.png["BODY"]) not in seen                 # B never showed A's page
+    assert view._stored[0][0] == stored.target_b.key
+
+
+def test_with_the_store_blocked_a_new_slide_shows_its_message_never_the_previous_slide(stored):
+    view, store = stored.view, stored.store
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    store.gate[stored.target_b.key].clear()
+    stored.show("B")
+    for _ in range(10):
+        stored.qapp.processEvents()
+    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+    store.gate[stored.target_b.key].set()
+    stored.pump(lambda: view._page.pixmap is not None)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])
+
+
+def test_a_changed_file_discards_the_page_looked_up_for_the_old_one(stored):
+    import os
+    view, store = stored.view, stored.store
+    store.gate[stored.target_a.key].clear()
+    stored.show("A")
+    assert store.entered.wait(5)
+    stat = stored.path_a.stat()
+    os.utime(stored.path_a, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))
+    stored.show("A")                                              # the same slide, another revision of its file
+    store.gate[stored.target_a.key].set()
+    stored.pump(lambda: view._stored is not None and view._stored[0][3] == preview_view._mtime(stored.path_a))
+
+
+def test_a_stored_page_is_not_decoded_into_a_pixmap_on_the_gui_thread(stored, monkeypatch):
+    loads = []
+
+    class Counting(preview_view.QPixmap):
+        def loadFromData(self, *args, **kwargs):
+            loads.append(threading.current_thread() is threading.main_thread())
+            return super().loadFromData(*args, **kwargs)
+
+    monkeypatch.setattr(preview_view, "QPixmap", Counting)
+    stored.show("A")
+    stored.pump(lambda: stored.view._page.pixmap is not None)
+    stored.show("B")
+    stored.pump(lambda: stored.view._page.pixmap is not None and
+                stored.view._page.pixmap.toImage() == pixels(stored.png["OTHER"]))
+    assert not any(loads)
+
+
+def test_the_stored_page_is_asked_again_at_each_poll_and_only_a_changed_page_refreshes(stored, monkeypatch):
+    view, store = stored.view, stored.store
+
+    def asks():
+        return [what for what, _m, _d in store.calls].count("page")
+
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None and not view._lookups)
+    asked, refreshed = asks(), []
+    original = view._refresh
+    monkeypatch.setattr(view, "_refresh", lambda: refreshed.append(1) or original())
+    view._refresh()                                               # no poll: the page is not asked for again
+    stored.pump(lambda: not view._lookups)
+    assert asks() == asked
+    view._stored_asked = None                                     # a poll
+    view._refresh()
+    stored.pump(lambda: asks() > asked and not view._lookups)
+    assert len(refreshed) == 2                                    # the same page came back: it did not refresh again
+
+
+def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(pane, monkeypatch):
+    view, _target, _ = pane
+    built = {"chips": 0, "menus": 0}
+
+    class CountedChip(preview_view.Chip):
+        def __init__(self, *args, **kwargs):
+            built["chips"] += 1
+            super().__init__(*args, **kwargs)
+
+    class CountedMenu(preview_view.PopoverMenu):
+        def __init__(self, *args, **kwargs):
+            built["menus"] += 1
+            super().__init__(*args, **kwargs)
+
+    shown = [("info", "One", "muted", "tip")]
+    monkeypatch.setattr(preview_view, "Chip", CountedChip)
+    monkeypatch.setattr(preview_view, "PopoverMenu", CountedMenu)
+    monkeypatch.setattr(preview_view, "chips_for", lambda *a, **k: list(shown))
+    view._refresh()
+    assert built == {"chips": 1, "menus": 0}                      # other chips; the menu is what it was
+    for _ in range(3):
+        view._refresh()                                           # the poll
+    assert built == {"chips": 1, "menus": 0}
+    shown.append(("warning", "Two", "warning", "other"))          # a real change of the chips
+    view._refresh()
+    assert built == {"chips": 3, "menus": 0}
+    view._scope = "region"                                        # a real change of the menu
+    view._refresh()
+    assert built == {"chips": 3, "menus": 1}
+    view._refresh()
+    assert built == {"chips": 3, "menus": 1}

@@ -32,7 +32,7 @@ from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface, set_property
 from ..text import plural
-from .state import WorkspaceState
+from .state import SETTLE_MS, WorkspaceState
 from .task_card_model import PILL_WORDS
 from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides, selection_of
 
@@ -84,6 +84,10 @@ class AssistantHeader(Surface):
         self._soon = QTimer(self)               # the content follows what changed in the same event loop turn
         self._soon.setSingleShot(True)
         self._soon.timeout.connect(self.refresh_content)
+        self._settle = QTimer(self)             # ... but after a change of slide, view or language once that has rested
+        self._settle.setSingleShot(True)
+        self._settle.setInterval(SETTLE_MS)
+        self._settle.timeout.connect(self._settled)
         self._typing = QTimer(self)
         self._typing.setSingleShot(True)
         self._typing.setInterval(TYPING_MS)
@@ -110,9 +114,11 @@ class AssistantHeader(Surface):
         scope.changed.connect(lambda _scope: self.refresh_content())
         tasks.busy_changed.connect(self._on_busy)
         tasks.card_changed.connect(self._on_busy)
-        for signal in (state.deck_changed, state.focused_slide_changed, state.view_changed, state.language_changed,
-                       state.mode_changed, state.dirty_changed, state.lint_errors_changed, state.ai_route_changed):
+        for signal in (state.deck_changed, state.mode_changed, state.dirty_changed, state.lint_errors_changed,
+                       state.ai_route_changed):
             signal.connect(lambda _value: self.schedule())
+        for signal in (state.focused_slide_changed, state.view_changed, state.language_changed):
+            signal.connect(lambda _value: self._on_focus())
 
     # -- building ---------------------------------------------------------------------------
 
@@ -180,6 +186,21 @@ class AssistantHeader(Surface):
         self._offers.clear()
         self._soon.start(0)
 
+    def _on_focus(self) -> None:
+        """The slide, view or language changed: working out the offers (a lint of the slide, of every slide for the
+        deck) waits for the selection to rest, so a held arrow key does not do it per row. The task buttons
+        belong to the slide that was left: they do nothing until then (`_choose`), without greying out per click."""
+        self._offers.clear()
+        self._settle.start()
+
+    def _choose(self, emit, value) -> None:
+        if not self._settle.isActive():     # else a button of the slide that was left: its offers come afresh
+            emit(value)
+
+    def _settled(self) -> None:
+        self._offers.clear()    # worked out for the state of now, not of a reader that came in meanwhile
+        self.refresh_content()
+
     def _on_busy(self, _busy: bool = False) -> None:
         """A task started, moved on or ended: its pill and the buttons (none while it runs or waits) now, not a turn
         later."""
@@ -196,7 +217,11 @@ class AssistantHeader(Surface):
             self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
         return self._offers[scope]
 
+    def _task_buttons(self) -> list[QWidget]:
+        return [w for i in range(self._actions.count()) if (w := self._actions.itemAt(i).widget()) is not self.all_actions]
+
     def refresh_content(self) -> None:
+        self._settle.stop()
         self.target.set_full_text(self.target_text())
         self._seen = self._now()
         self.refresh_actions()
@@ -216,13 +241,13 @@ class AssistantHeader(Surface):
                     widget.deleteLater()
             for bubble in found:
                 button = Button(bubble.label, "secondary", compact=True)
-                button.clicked.connect(partial(self.task_chosen.emit, bubble))
+                button.clicked.connect(partial(self._choose, self.task_chosen.emit, bubble))
                 self._actions.addWidget(button)
             if check:
                 button = Button("Check readability" if check == SLIDE else "Check deck readability", "secondary",
                                 compact=True)
                 button.setToolTip("Measure whether the text and images can be read by an audience (no AI)")
-                button.clicked.connect(partial(self.check_chosen.emit, check))
+                button.clicked.connect(partial(self._choose, self.check_chosen.emit, check))
                 self._actions.addWidget(button)
         if self._actions.indexOf(self.all_actions) < 0:
             self._actions.addWidget(self.all_actions)
@@ -270,7 +295,7 @@ class AssistantHeader(Surface):
 
     def _look(self) -> None:
         """The file shown and whether it could not be saved have no signal: compare them now and then."""
-        if self._now() != self._seen:
+        if not self._settle.isActive() and self._now() != self._seen:
             self.schedule()
 
     def showEvent(self, event: QShowEvent) -> None:

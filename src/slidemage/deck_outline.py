@@ -161,18 +161,16 @@ def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
     return tuple(result)
 
 
-def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> list[SectionRow]:
-    """The sections of `deck` in file order, as seen in `view` (a deck version)
-    while editing in `language` ("EN"/"DE")."""
+def _sections(ctx: ProjectContext, deck: Deck, view: str, language: str, resolved: tuple[ResolvedSlot, ...],
+              links: slide_language.TranslationLinks) -> list[SectionRow]:
     template = slide_snapshot.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
-    links = slide_language.TranslationLinks(ctx.slides_dir)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
-    for resolved in resolve_slots(ctx, deck, view, language, links=links):
-        call = resolved.slot.original
-        row = _row(ctx, resolved.slot, resolved.key, resolved.position, template, view, language, links, unreviewed_paths)
+    for slot in resolved:
+        call = slot.slot.original
+        row = _row(ctx, slot.slot, slot.key, slot.position, template, view, language, links, unreviewed_paths)
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
-            replace(row, frame_number=resolved.frame_number))
+            replace(row, frame_number=slot.frame_number))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
     sections += [
         SectionRow(chapter, chapter.title, deck_editor.section_editable(deck.text, chapter),
@@ -182,8 +180,75 @@ def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> 
     return sections
 
 
-def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str, *, occurrence_key: tuple | None = None) -> Optional[SlideRow]:
-    """The focused occurrence, otherwise the first call of slide `slide_id` in `deck`, without building the whole outline."""
+def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> list[SectionRow]:
+    """The sections of `deck` in file order, as seen in `view` (a deck version)
+    while editing in `language` ("EN"/"DE")."""
+    links = slide_language.TranslationLinks(ctx.slides_dir)
+    return _sections(ctx, deck, view, language, resolve_slots(ctx, deck, view, language, links=links), links)
+
+
+@dataclass(frozen=True, eq=False)
+class Outline:
+    """The deck as the slide list resolved it, kept for whoever else needs a slide's row, the translation
+    links or the Instructor frame numbers (WorkspaceState.outline): resolving the deck takes a scan of the
+    slides folder and of every slot, too much to repeat for every click on a slide.
+
+    It describes one project, deck text, view and language (`matches`); a reader whose state differs
+    resolves afresh. Its rows are the list's own, thumbnails and previews that went stale included. What a
+    row says about its source file (title, translation partner) is as old as the list's last rebuild; the
+    workspace drops the outline when a slide file is written (WorkspaceState.drop_outline)."""
+    ctx: ProjectContext
+    deck_path: Path
+    deck_text: str
+    view: str
+    language: str
+    sections: list[SectionRow]
+    links: slide_language.TranslationLinks     # the scan the rows were built with
+    instructor_frames: dict[tuple, int]        # occurrence key -> frame number in the Instructor view
+
+    def matches(self, ctx: ProjectContext, deck: Deck, language: str, view: str | None = None) -> bool:
+        """Whether this is the outline of `deck` in `language` (and `view`, unless None)."""
+        return (self.ctx == ctx and self.deck_path == deck.path and self.deck_text == deck.text
+                and self.language == language and view in (None, self.view))
+
+    @property
+    def rows(self) -> list[SlideRow]:
+        """Every slide row in the order of the deck."""
+        return [row for section in self.sections for row in section.rows]
+
+    def with_sections(self, sections: list[SectionRow]) -> "Outline":
+        """The same resolution with rows the list has patched since (a thumbnail that arrived)."""
+        return replace(self, sections=sections)
+
+    def row(self, slide_id: str, occurrence_key: tuple | None = None) -> Optional[SlideRow]:
+        """The occurrence with `occurrence_key` of slide `slide_id`, otherwise its first call (see slide_row)."""
+        matches = [row for row in self.rows if row.matches(slide_id)]
+        return next((row for row in matches if row.key == occurrence_key), matches[0] if matches else None)
+
+
+def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> Outline:
+    """`build_outline`, with what resolving it learnt kept for others to reuse."""
+    links = slide_language.TranslationLinks(ctx.slides_dir)
+    resolved = resolve_slots(ctx, deck, view, language, links=links)
+    instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
+        ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links)
+    return Outline(ctx, deck.path, deck.text, view, language, _sections(ctx, deck, view, language, resolved, links), links,
+                   {r.key: r.frame_number for r in instructor})
+
+
+def outline_rows(ctx: ProjectContext, deck: Deck, view: str, language: str, *, outline: Outline | None = None) -> list[SlideRow]:
+    """Every slide row of `deck` in order: `outline`'s when it describes this deck, view and language, else resolved afresh."""
+    if outline is not None and outline.matches(ctx, deck, language, view):
+        return outline.rows
+    return [row for section in build_outline(ctx, deck, view, language) for row in section.rows]
+
+
+def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, language: str, *, occurrence_key: tuple | None = None,
+              outline: Outline | None = None) -> Optional[SlideRow]:
+    """The focused occurrence, otherwise the first call of slide `slide_id` in `deck`, without building the whole outline
+    (or, when `outline` describes this deck, view and language, without resolving anything)."""
+    if outline is not None and outline.matches(ctx, deck, language, view):
+        return outline.row(slide_id, occurrence_key)
     template = slide_snapshot.detect_template(deck.preamble_text)
     links = slide_language.TranslationLinks(ctx.slides_dir)
     unreviewed_paths = set(ai_review.unreviewed(ctx))

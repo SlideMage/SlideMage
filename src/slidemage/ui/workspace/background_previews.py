@@ -405,18 +405,18 @@ class BackgroundPreviews(QObject):
             self.store.close()
             self.store = None
 
-    def stored_page(self, target, view: str, language: str):
+    def stored_page(self, target, view: str, language: str, deck_name: str):
         """The last page (every reveal step has been shown) of the stored render of `target` as PNG bytes if a
         current one is there, else None. A slidestep call keeps its own step restriction, which a stored
-        unrestricted render does not show."""
+        unrestricted render does not show. Runs on the Preview's display worker: `deck_name` is the open deck's,
+        read by the caller on the GUI thread."""
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return None
         if target.needs_context or (target.macro == "slidestep" and target.steps):
             return None
-        deck = self.window.state.deck
         try:
-            unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
+            unit = render_key.unit_for(target, view, language, deck_name)
             found = renderer.resolver.lookup(unit)
             if not found.usable:
                 return None
@@ -424,17 +424,17 @@ class BackgroundPreviews(QObject):
         except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
             return None
 
-    def stored_pages(self, target, view: str, language: str):
+    def stored_pages(self, target, view: str, language: str, deck_name: str):
         """Every page (reveal step) of the stored render of `target` as PNG bytes if a current one is there, else
-        None. The reveal bar takes its steps from here instead of counting them with a render."""
+        None. The reveal bar takes its steps from here instead of counting them with a render. Like `stored_page`,
+        it runs on the display worker."""
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return None
         if target.needs_context or (target.macro == "slidestep" and target.steps):
             return None
-        deck = self.window.state.deck
         try:
-            unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
+            unit = render_key.unit_for(target, view, language, deck_name)
             found = renderer.resolver.lookup(unit)
             if not found.usable or found.record.get("partial"):
                 return None                 # a deck compile's page is the last step only: not the list of steps

@@ -701,6 +701,35 @@ def test_leaving_the_images_page_saves_a_pending_edit_and_opening_a_slide_leaves
     assert window.stack.currentWidget() is window.centre and flushed == [True, True]
 
 
+def test_a_slide_click_on_the_images_page_returns_to_the_centre_and_shows_the_slide(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    slides = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.state.set_mode("preview")
+    window.open_slide_editor(slides[0], keep_mode=True)
+    window._toggle_images()
+    shown = []
+    real = window.centre.preview.show_slide
+    monkeypatch.setattr(window.centre.preview, "show_slide", lambda *a: (shown.append(a[0]), real(*a))[1])
+    window.state.set_focused_slide(slides[1].name.split("-", 1)[0])           # the press: the centre is hidden
+    window.open_slide_editor(slides[1], keep_mode=True)                          # the release
+    assert window.stack.currentWidget() is window.centre and window.state.mode == "preview"
+    assert window.centre._path == slides[1] and window.centre.source.file_for(slides[1]) is None
+    assert shown and shown[-1].source_path == slides[1]
+    assert window.centre.preview.isVisibleTo(window.centre)
+
+
+def test_clicking_the_selected_row_after_an_explicit_file_goes_back_to_the_slide(window):
+    slide = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[0]
+    window.state.set_mode("preview")
+    window.state.set_focused_slide(slide.name.split("-", 1)[0])
+    window.open_slide_editor(slide, keep_mode=True)
+    window.open_slide_editor(window.project.bibliography_path, keep_mode=True)       # an explicit file
+    assert window.centre._path == window.project.bibliography_path
+    window.open_slide_editor(slide, keep_mode=True)       # a click on the row that is still selected
+    assert window.centre._path == slide and window.state.mode == "preview"
+    assert window.centre.preview._target.source_path == slide
+
+
 def test_the_slide_lists_images_entry_lands_on_that_slides_images(window, monkeypatch):
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
     shown = []
@@ -1226,3 +1255,73 @@ def test_workspace_layout_fits_the_window(qapp, monkeypatch, width, height):
     assert window.splitter.sizes() == [0, window.splitter.width(), 0]
     assert window.stack.geometry() == window.splitter.rect()
     assert window.centre.width() == window.splitter.width()
+
+
+# -- selecting resolves nothing again (v8.39.6) --------------------------------------------------------------
+
+def select(window, row):
+    """The list's click on `row`: the press focuses it, the release opens its file (keeping the Preview)."""
+    item = next(i for i in window.slide_list.tree.slide_items() if window.slide_list.tree.data_of(i).key == row.key)
+    window.slide_list.tree.setCurrentItem(item)
+    window.open_slide_editor(window.project.slides_dir / row.call.source_filename, keep_mode=True)
+
+
+def test_selecting_among_the_rows_of_an_unchanged_outline_resolves_nothing(qapp, monkeypatch, resolutions):
+    window = build_window(monkeypatch)
+    window.state.set_mode("preview")
+    window.side_panels.set_panel("visibility")     # "Used in decks" scans every deck, the one cost left (plan step 5)
+    rows = window.slide_list.rows()
+    twice = next(r for r in rows if sum(o.call.id == r.call.id for o in rows) > 1)
+    again = [o for o in rows if o.call.id == twice.call.id][1]
+    others = [r for r in rows[:6] if not r.hidden and r.call.id != twice.call.id]
+    select(window, others[0])                      # the first selection may settle what it needs
+    resolutions.reset()
+    for row in (others[1], twice, again, others[2], again):
+        select(window, row)
+        assert window.state.focused_occurrence == row.key
+        assert window.centre.preview._target.occurrence_key == row.key
+        assert window.centre.preview._row.key == row.key
+    assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
+    assert window.state.current_outline() is not None
+
+
+def test_a_refresh_of_the_preview_scans_no_translation_links(qapp, monkeypatch, resolutions):
+    window = build_window(monkeypatch)
+    window.state.set_mode("preview")
+    select(window, window.slide_list.rows()[1])
+    resolutions.reset()
+    window.centre.preview._refresh()               # what the 5 s validation poll runs
+    assert resolutions.scans == 0
+
+
+def test_the_outline_follows_a_view_and_a_language_change(qapp, monkeypatch, resolutions):
+    window = build_window(monkeypatch)
+    state = window.state
+    first = state.current_outline()
+    assert first is not None and (first.view, first.language) == (state.view, state.language)
+    state.set_view("during-course")
+    assert state.current_outline() is not first and state.current_outline().view == "during-course"
+    state.set_language("DE" if state.language == "EN" else "EN")
+    assert state.current_outline().language == state.language
+    window.slide_list.rebuild()
+    assert state.current_outline() is not None
+
+
+def test_a_written_slide_file_drops_the_outline_until_the_list_rebuilds(qapp, monkeypatch):
+    window = build_window(monkeypatch)
+    state = window.state
+    row = window.slide_list.rows()[0]
+    path = window.project.slides_dir / row.call.source_filename
+    assert state.current_outline() is not None
+    window.centre.open_file(path)                  # the Source view
+    window.centre.source.current.editor.insertPlainText("% note\n")
+    assert window.centre.source.current.write_now()
+    assert state.current_outline() is None
+    window.slide_list.rebuild()
+    assert state.current_outline() is not None
+    window.slide_list._apply_preview_rows(window.slide_list._outline)           # a thumbnail arriving
+    assert state.current_outline() is not None
+    window.centre.source.current.editor.insertPlainText("% more\n")
+    assert window.centre.source.current.write_now()
+    window.slide_list._apply_preview_rows(window.slide_list._outline)           # does not bring a dropped outline back
+    assert state.current_outline() is None

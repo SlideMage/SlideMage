@@ -169,7 +169,7 @@ class WorkspaceWindow(QMainWindow):
         self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
-            edit_slide_text=lambda path, change: self.centre.edit_slide_text(path, change),
+            edit_slide_text=lambda path, change, **kw: self.centre.edit_slide_text(path, change, **kw),
             save_source=lambda: self.centre.source.save(),
             restore_version=lambda path: self.centre.restore_version(path),
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
@@ -425,8 +425,11 @@ class WorkspaceWindow(QMainWindow):
         """Show a file in the Source view: a slide, a deck's own source or Slidemaster.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
         the Preview on show instead of switching to the Source view."""
+        returning = self.stack.currentWidget() is not self.centre
         self.stack.setCurrentWidget(self.centre)
         self.centre.open_file(path, on_saved, line, keep_mode=keep_mode)
+        if returning:
+            self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
 
     def _on_source_closed(self, path: Path) -> None:
         """Close-side half of the open-side sort in _on_edit_bib(): the file on disk

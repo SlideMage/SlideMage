@@ -248,3 +248,33 @@ def test_presenter_frame_number_is_part_of_target_identity():
 
     _, target = target_of('\\slide{aaa-EN-One}\n')
     assert replace(target, presenter_frame_number=2).key != replace(target, presenter_frame_number=3).key
+
+
+@pytest.mark.parametrize("view", ["instructor", "during-course"])
+@pytest.mark.parametrize("language", ["EN", "DE"])
+def test_for_call_with_the_resolved_outline_builds_the_target_the_resolver_does(tmp_path, view, language, resolutions):
+    """Repeated calls, a call hidden in the other view and a translation: every row of the deck."""
+    from slidemage import deck_outline
+
+    ctx = ProjectContext.at(tmp_path)
+    ctx.slides_dir.mkdir()
+    (ctx.slides_dir / 'aaa-EN-One-current.tex').write_text('%% DE translation: ddd-DE-Vier\nbody')
+    (ctx.slides_dir / 'ddd-DE-Vier-current.tex').write_text('%% Translation of: aaa-EN-One\nbody')
+    deck = make_deck('\\slide{aaa-EN-One}\n\\conditionalslide[instructor]{bbb-EN-Two}\n\\slidestep{ccc-EN-Three}[instructor]{1}\n'
+                     '\\slidestep{ccc-EN-Three}[during-course]{1}\n\\slide{ddd-DE-Vier}\n\\slide{aaa-EN-One}\n')
+    outline = deck_outline.resolve_outline(ctx, deck, view, language)
+    assert any(r.hidden for r in outline.rows)
+    for row in outline.rows:
+        args = (ctx, deck, row.call, row.position, language)
+        kwargs = dict(frame_number=row.frame_number, occurrence_key=row.key, hidden=row.hidden)
+        old = preview_target.for_call(*args, **kwargs)
+        resolutions.reset()
+        new = preview_target.for_call(*args, **kwargs, outline=outline)
+        assert (resolutions.slots, resolutions.scans) == (0, 0)
+        assert new == old and new.key == old.key and new.presenter_frame_number == old.presenter_frame_number
+        assert new.presenter_frame_number == outline.instructor_frames[row.key]
+    # an outline of another view or deck is no source for the numbers: the resolver answers
+    resolutions.reset()
+    other = 'DE' if language == 'EN' else 'EN'
+    preview_target.for_call(ctx, deck, outline.rows[0].call, 1, other, occurrence_key=outline.rows[0].key, outline=outline)
+    assert resolutions.slots == 1 and resolutions.scans == 2
