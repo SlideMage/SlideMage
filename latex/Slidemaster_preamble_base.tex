@@ -1969,8 +1969,10 @@
 	\fi
 }
 \apptocmd{\beamer@writeslidentry}{\SMRecordOverlays}{}{}
+% "No file" is the line LaTeX's own \@input prints for a missing .aux or .nav: latexmk reads it and then knows the
+% file as an input from the first run, so a second run that reads an unchanged one asks for no third.
 \AtBeginDocument{%
-	\InputIfFileExists{\jobname.ovl}{}{}%
+	\InputIfFileExists{\jobname.ovl}{}{\typeout{No file \jobname.ovl.}}%
 	\immediate\openout\SMOverlayFile=\jobname.ovl\relax
 }
 % Expands to <N> when the frame that is about to open is flagged and N is known.
@@ -3746,7 +3748,7 @@
 		end, "gotham top margin")
 	}
 	\AtBeginDocument{%
-		\InputIfFileExists{\jobname.top}{}{}%
+		\InputIfFileExists{\jobname.top}{}{\typeout{No file \jobname.top.}}%     % "No file": see \jobname.ovl
 		\immediate\openout\SM@topfile=\jobname.top\relax
 	}
 	\AtEndDocument{\directlua{gotham_layout.top_emit()}\immediate\closeout\SM@topfile}

@@ -346,3 +346,71 @@ def test_a_format_build_that_lost_the_race_is_not_marked_bad(tmp_path, monkeypat
     _fake_engine(monkeypatch, log=RACE_LOG)
     assert _ensure(tmp_path) is None
     assert not list((tmp_path / '.build' / 'preview-formats').glob('*/format.bad'))
+
+
+def test_preview_builds_read_slidemages_own_latexmk_settings(tmp_path, monkeypatch):
+    """-r names a file with PREVIEW_LATEXMKRC (rewritten when someone changed it), and the wrapper names a missing
+    .run.xml; both are part of the configuration key, so changing them starts fresh build state."""
+    commands, wrappers = [], []
+
+    def popen(cmd, **kwargs):
+        commands.append(cmd)
+        cache = Path(next(c.split('=', 1)[1] for c in cmd if c.startswith('-outdir=')))
+        job = next(c.split('=', 1)[1] for c in cmd if c.startswith('-jobname='))
+        wrappers.append((tmp_path / cmd[-1]).read_text(encoding='utf-8'))
+        (cache / (job + '.pdf')).write_bytes(b'pdf')
+        (cache / (job + '.log')).write_text('Success')
+        return SimpleNamespace(stdout=iter([]), wait=lambda: 0, returncode=0)
+
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
+    monkeypatch.setattr(preview_build.tempfile, 'mkdtemp', lambda **kw: str(tmp_path))
+    ctx = ProjectContext.at(tmp_path)
+    text = r'\documentclass{beamer}\begin{document}one\end{document}'
+    preview_build.compile_cached(text, 'abc', print, ctx=ctx, env={})
+    rc = Path(commands[0][commands[0].index('-r') + 1])
+    assert rc.read_text(encoding='utf-8') == preview_build.PREVIEW_LATEXMKRC
+    assert "$normalize_names = 0;" in preview_build.PREVIEW_LATEXMKRC
+    assert r"'^\\\\abx\@aux\@read\@bbl" in preview_build.PREVIEW_LATEXMKRC      # Perl: a literal backslash
+    assert wrappers[0].startswith(r'\documentclass{beamer}\begin{document}' + preview_build.RUN_XML_NOTE + 'one')
+    rc.write_text('edited', encoding='utf-8')
+    preview_build.compile_cached(text, 'abc', print, ctx=ctx, env={})
+    assert rc.read_text(encoding='utf-8') == preview_build.PREVIEW_LATEXMKRC
+    key = preview_build.configuration_key(text, 'abc', tmp_path, {})
+    monkeypatch.setattr(preview_build, 'PREVIEW_LATEXMKRC', preview_build.PREVIEW_LATEXMKRC + '# more\n')
+    assert preview_build.configuration_key(text, 'abc', tmp_path, {}) != key
+
+
+def test_the_framework_names_a_missing_ovl_and_top_like_latex_names_a_missing_aux():
+    base = (Path(__file__).resolve().parents[1] / 'latex' / 'Slidemaster_preamble_base.tex').read_text(encoding='utf-8')
+    for ext in ('ovl', 'top'):
+        assert rf'\InputIfFileExists{{\jobname.{ext}}}{{}}{{\typeout{{No file \jobname.{ext}.}}}}' in base
+
+
+@pytest.mark.skipif(not all(preview_format.shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
+                    reason='needs latexmk, LuaLaTeX and biber')
+def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_path):
+    r"""The real tools, in a project under the temp folder (where Git-for-Windows Perl spells the path /tmp/...): a
+    citing slide with a framework-style helper file (read at \begin{document} with a "No file" line, then rewritten)
+    needs lualatex, biber, lualatex -- latexmk ran a third LuaLaTeX before PREVIEW_LATEXMKRC and RUN_XML_NOTE."""
+    (tmp_path / 'decks').mkdir()
+    # As a project's own .latexmkrc: $do_cd puts latexmk in decks/, so it names the build folder by its full path, as
+    # the .fls does (from the project root it would name it relative to it: one more spelling of every file).
+    (tmp_path / '.latexmkrc').write_text(
+        "$do_cd = 1;\n$pdf_mode = 4;\n$lualatex = 'lualatex -interaction=nonstopmode -file-line-error %O %S';\n",
+        encoding='utf-8')
+    (tmp_path / 'decks' / 'refs.bib').write_text('@book{knuth, author={Donald Knuth}, title={The TeXbook}, year={1984}}\n',
+                                       encoding='utf-8')
+    text = '\n'.join([
+        r'\documentclass{article}', r'\usepackage[backend=biber]{biblatex}', r'\addbibresource{refs.bib}',
+        r'\newwrite\helper',
+        r'\AtBeginDocument{\InputIfFileExists{\jobname.hlp}{}{\typeout{No file \jobname.hlp.}}'
+        r'\immediate\openout\helper=\jobname.hlp\immediate\write\helper{\relax}\immediate\closeout\helper}',
+        # \fullcite, as the slides cite (a \textcite changes the .bcf in the second run: a real reason for more)
+        r'\begin{document}', r'See \fullcite{knuth}.', r'\end{document}', ''])
+    ctx = ProjectContext.at(tmp_path)
+    lines = []
+    pdf = preview_build.compile_cached(text, 'abc-EN-Test', lines.append, ctx=ctx, env=compiler.build_env(ctx),
+                                       force=True)
+    assert pdf.is_file()
+    runs = [line for line in lines if line.startswith('Run number')]
+    assert [run.split("'")[1].split()[0] for run in runs] == ['lualatex', 'biber', 'lualatex'], '\n'.join(lines[-80:])

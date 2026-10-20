@@ -22,6 +22,7 @@ import tempfile
 import time
 import re
 import threading
+from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
@@ -142,6 +143,43 @@ def prune_unused(project_root: Path, build_dir: Path):
             shutil.rmtree(cache, ignore_errors=True)
 
 
+# latexmk settings of SlideMage's own, for preview builds only (passed with -r after the project's rc files; deck
+# compiles never see them). Without them a slide's first render runs LuaLaTeX three times where two settle it:
+# * biblatex writes the checksum of the .bbl it read into the .aux ("nohash" in the first run), and the logreq flags
+#   in .run.xml flip after biber ran; latexmk saw the .aux/.run.xml change and ran once more. It tracks the .bbl
+#   itself, so those lines are left out of its checksums.
+# * latexmk's name normalisation turns the build folder into Git-for-Windows Perl's /c/..., /tmp/... spelling while
+#   LuaLaTeX's .fls says C:/...; latexmk then saw every helper file twice and the second name as newly in use.
+#   Previews give -outdir/-auxdir themselves, so nothing needs normalising.
+# Perl single quotes: '\\\\' is a regex backslash.
+PREVIEW_LATEXMKRC = r"""# Written by SlideMage (preview_build.PREVIEW_LATEXMKRC) for preview builds; rewritten when it differs.
+$hash_calc_ignore_pattern{'aux'} = '^\\\\abx\@aux\@read\@bbl(?:\@mdfivesum|rerun)';
+$hash_calc_ignore_pattern{'xml'} = '^\s*<(?:internal|external) package="biblatex"';
+$normalize_names = 0;
+"""
+# biblatex reads .run.xml silently at the end of the document, so latexmk learned of it only when the second run read
+# it, and ran a third to be safe. A missing one now prints the line LaTeX prints for a missing .aux, which latexmk
+# reads (the framework does the same for .ovl and .top). After \begin{document}: what precedes it may be the format.
+RUN_XML_NOTE = (r'\ifcsname ver@biblatex.sty\endcsname\IfFileExists{\jobname.run.xml}{}'
+                r'{\typeout{No file \jobname.run.xml.}}\fi' '\n')
+
+
+def preview_latexmkrc(build_dir: Path) -> Path:
+    """The PREVIEW_LATEXMKRC file in `build_dir`, written if missing or different."""
+    path = build_dir / 'preview.latexmkrc'
+    try:
+        current = path.read_text(encoding='utf-8')
+    except OSError:
+        current = None
+    if current != PREVIEW_LATEXMKRC:
+        atomic_write(path, PREVIEW_LATEXMKRC)
+    return path
+
+
+def with_run_xml_note(wrapper_text: str) -> str:
+    return wrapper_text.replace('\\begin{document}', '\\begin{document}' + RUN_XML_NOTE, 1)
+
+
 @measure('cache_configuration')
 def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     preamble = wrapper_text.partition(r'\begin{document}')[0]
@@ -161,7 +199,8 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
             info = path.stat()
             tools[name] = (str(path), info.st_size, info.st_mtime_ns)
     configuration = {
-        'schema': 2,
+        'schema': 3,                    # 3: PREVIEW_LATEXMKRC and RUN_XML_NOTE
+        'preview_rc': PREVIEW_LATEXMKRC, 'run_xml_note': RUN_XML_NOTE,
         'root': str(project_root.resolve()), 'slide': id_slug, 'preamble': preamble,
         'search': {name: value for name, value in env.items() if name.startswith(
             ('TEX', 'LUA', 'BIB', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
@@ -236,6 +275,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         # Start this job fresh until it manages to converge again.
         for generated in cache.glob(jobname + '.*'):
             generated.unlink(missing_ok=True)
+    wrapper_text = with_run_xml_note(wrapper_text)
     # Leave the source and outputs in place: rewriting an unchanged wrapper
     # would defeat latexmk's normal dependency check.
     if not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8'):
@@ -243,7 +283,7 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
             wrapper.write_text(wrapper_text, encoding='utf-8', newline='')
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
-    options = ['-synctex=0']
+    options = ['-synctex=0', '-r', preview_latexmkrc(ctx.build_dir).as_posix()]
     if force:
         options.append('-g')
     if format_dir is not None:

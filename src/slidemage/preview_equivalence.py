@@ -21,7 +21,8 @@ from . import compiler, slide_preview
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
 AUDITED_FRAMEWORK = {
-    "Slidemaster_preamble_base.tex": "da5161a30efa009ded7abd579fb84754a8d93cf5daea495a39024048e3fe8098",
+    # v8.37.0: only "No file" log lines for a missing .ovl/.top; no view-dependent rule changed.
+    "Slidemaster_preamble_base.tex": "9e1fef8366f9aca3919ec77acfa6b4a728d5098ce1468aa5956d7d13166f35ab",
     "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
