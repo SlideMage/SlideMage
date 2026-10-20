@@ -11,6 +11,10 @@ from pathlib import Path
 from . import project, splash
 
 CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook instead of the app (ai/claude_launch.py)
+# First argument: import everything the window needs, then exit 0, with no window. The release workflow runs
+# each build with it before uploading, so a build that stops at startup (a library missing from the bundle, as
+# PyMuPDF 2.0's layout model in v8.33.0's Windows build) is never published.
+SELF_TEST_FLAG = "--self-test"
 
 
 def _prepare_gui(project_root: Path | None) -> None:
@@ -79,6 +83,18 @@ def main(argv: list[str] | None = None) -> None:
         from .ai import claude_hook
 
         sys.exit(claude_hook.main())
+    if (sys.argv[1:] if argv is None else argv)[:1] == [SELF_TEST_FLAG]:
+        splash.close()
+        try:
+            from .ui import app  # noqa: F401 -- the import is the test: the window's modules and their libraries
+        except BaseException:
+            # Exit 1 here: an exception left to a windowed build opens a message box, which no one clicks in CI.
+            import traceback
+
+            traceback.print_exc()
+            sys.exit(1)
+        print("SlideMage self-test: ok")
+        return
     parser = argparse.ArgumentParser(
         prog="slidemage",
         description="Build, compile and manage Slidemaster slide decks.",

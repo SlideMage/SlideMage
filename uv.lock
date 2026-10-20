@@ -1207,7 +1207,7 @@ requires-dist = [
     { name = "pillow" },
     { name = "ptyprocess", marker = "sys_platform != 'win32'", specifier = ">=0.7.0" },
     { name = "pyinstaller", marker = "extra == 'build'" },
-    { name = "pymupdf" },
+    { name = "pymupdf", specifier = "<2" },
     { name = "pyside6", specifier = ">=6.5" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "python-pptx" },

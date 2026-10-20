@@ -12,7 +12,9 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSES/*", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
     "PySide6>=6.5",
-    "pymupdf",
+    # Below 2.0: PyMuPDF 2.0 loads a layout model (onnx files) when imported, which the PyInstaller build does not
+    # bundle, so every release built with it stopped at startup (v8.33.0's Windows build, 2026-10-20).
+    "pymupdf<2",
     "pillow",
     "lxml",
     "python-pptx",
