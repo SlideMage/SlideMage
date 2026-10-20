@@ -1,8 +1,8 @@
 # Instant slide selection: implementation plan
 
-Status: proposed; application code has not been changed for this work.
-Date: 20 October 2026. Revised the same day against `develop` at 7f04f94
-(v8.39.1), after a critical review of the first draft.
+Status: implemented in v8.39.4-v8.39.9 (20 October 2026); see
+"Delivery results" at the end. Revised the same day against `develop` at
+7f04f94 (v8.39.1), after a critical review of the first draft.
 
 ## Objective and acceptance criteria
 
@@ -386,3 +386,33 @@ step for review before starting the next.
 The investigation's diagnostic substitutions must not ship. Completion means
 the real selection path meets the latency target set after step 1, while
 source, sidebar and cache correctness remain covered.
+
+## Delivery results
+
+Step 1 (benchmark) was dropped at the owner's instruction, so there are no
+before/after timings; each step instead has deterministic guard tests that fail
+on the code before it.
+
+| Step | Commit | Version | What changed |
+| --- | --- | --- | --- |
+| 2 | d67f747 | v8.39.4 | A click on the second use of a slide keeps that occurrence; one focus signal per click. |
+| 3 | 66d0a02 | v8.39.5 | A Preview click builds no source editor and refreshes the centre once. |
+| 4 | ede672c | v8.39.6 | `WorkspaceState.outline`: the list's resolution is reused by the centre, panels, `for_call` and the Preview's chips; PyMuPDF version read once. |
+| 5a | 8cab807 | v8.39.7 | `DisplayCache`: a return visit shows the held page as "Checking…" while validation runs; PageView paints a scaled copy. |
+| 5b | f38d3d2 | v8.39.8 | Render-store lookups and decodes on a display worker; the step count waits 150 ms for the selection to rest; unchanged polls rebuild no chips or menu. |
+| 6 | 4438b93 | v8.39.9 | Panels and assistant offers rebuilt after 150 ms (old content shielded, not greyed); notes edits applied off-stage; Used in decks without a folder scan. |
+
+Verification (step 7): full suite 3197 passed, 13 failed, 11 skipped. All 13
+failures predate this work: 11 in `test_preview_equivalence.py` (caused by
+uncommitted `latex/`/`example/` edits in the working tree; they pass without
+them), `test_compare_rendered_gui.py::test_the_task_card_compares_in_review_and_done`
+and `test_ui_kit_gui.py::test_font_files_are_bundled_and_registered` (both fail
+before step 2 too). Ruff is clean for `src/`; `tools/streamlining_fixtures.py` has
+an older syntax error. A PyInstaller build (one file and folder) passes
+`--self-test`. Not done: a check on a physical display, Windows/macOS.
+
+Left for later: Used in decks still resolves every deck's slots synchronously
+(about 15 ms on the example project, once per rest); the Slide versions panel's
+`find_usage` still scans the folder; `terminal/tasks.py`, the Language panel and
+`details_view` build their own `TranslationLinks`; `preview_thumbnails` resolves
+slots in its worker; reveal-step pages are not in the display cache.
