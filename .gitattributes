@@ -48,6 +48,27 @@
 # of file that flips convention when the tool is upgraded or swapped.
 *.Rproj      text eol=crlf
 NAMESPACE    text eol=crlf
+# Added 2026-10-20 (direct instruction: "Close the gaps as proposed"): the text
+# files the list above missed, which therefore kept whatever ending the last
+# writer on either PC used and showed up as content-free changes (LICENSE,
+# .gitignore, the two .lua files and two .json files even stored CRLF).
+*.lua        text eol=crlf
+*.json       text eol=crlf
+*.js         text eol=crlf
+*.html       text eol=crlf
+*.css        text eol=crlf
+*.qss        text eol=crlf
+*.ps1        text eol=crlf
+*.cfg        text eol=crlf
+*.ini        text eol=crlf
+*.xml        text eol=crlf
+LICENSE      text eol=crlf
+.gitignore   text eol=crlf
+.gitattributes text eol=crlf
+# Read by Unix tools as they are: LF in the working tree too.
+*.sh         text eol=lf
+*.template   text eol=lf
+*.lock       text eol=lf
 
 # --- Binary: never touched, never sniffed ------------------------------
 *.pdf        binary
@@ -60,6 +81,15 @@ NAMESPACE    text eol=crlf
 *.docx       binary
 *.lnk        binary
 *.synctex.gz binary
+*.ttf        binary
+*.otf        binary
+*.woff       binary
+*.woff2      binary
+*.ico        binary
+*.gif        binary
+*.zip        binary
+*.gz         binary
+*.exe        binary
 *.toml       text eol=lf
 *.yml        text eol=lf
 *.spec       text eol=lf
