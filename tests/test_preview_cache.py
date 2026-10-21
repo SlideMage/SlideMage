@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
 import os
+from pathlib import Path
 
 from slidemage.preview_cache import PreviewCache
 
@@ -243,6 +244,72 @@ def test_prune_shared_blobs_honors_live_generation_and_corruption_misses(tmp_pat
     assert cache.lookup(identity, env) is None
     cache.prune(max_bytes=0)
     assert not list((cache.root / 'images').glob('*.png'))
+
+
+def count_manifest_reads(monkeypatch):
+    reads = []
+    original = Path.read_text
+
+    def read_text(self, *args, **kwargs):
+        if self.name == 'manifest.json':
+            reads.append(self)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(Path, 'read_text', read_text)
+    return reads
+
+
+def test_prune_reads_no_manifest_unless_a_generation_was_deleted(tmp_path, monkeypatch):
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    old = store(cache, identity, env, pdf, source, package)
+    survivor = store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
+    reads = count_manifest_reads(monkeypatch)
+    cache.prune()
+    assert not reads and old.pdf.exists() and survivor.pdf.exists()
+    os.utime(old.directory / 'manifest.json', (1, 1))
+    cache.prune(max_age=3600)
+    assert reads == [survivor.directory / 'manifest.json'] and not old.pdf.exists() and survivor.pdf.exists()
+
+
+def test_prune_after_deleting_one_generation_keeps_survivors_blobs(tmp_path):
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    old = store(cache, identity, env, pdf, source, package)
+    shared = store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
+    pdf.write_bytes(b'PDF')
+    only_old = cache.store({**identity, 'view': 'after-course'}, env, pdf=pdf, display_png=b'ONLY OLD',
+                           dependencies=(str(source), str(package)), before=cache.begin(env))
+    os.utime(old.directory / 'manifest.json', (1, 1))
+    os.utime(only_old.directory / 'manifest.json', (2, 2))
+    cache.prune(max_age=3600)
+    assert not old.directory.exists() and not only_old.directory.exists() and shared.directory.exists()
+    kept = json.loads((shared.directory / 'manifest.json').read_text())['blobs']
+    assert {path.stem for path in (cache.root / 'images').glob('*.png')} == set(kept.values())
+    assert cache.lookup({**identity, 'view': 'during-course'}, env).display_png == b'PNG'
+
+
+def test_maybe_prune_runs_first_then_after_the_interval_or_when_over_the_limit(tmp_path, monkeypatch):
+    from slidemage import preview_cache
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    clock = [1000.0]
+    monkeypatch.setattr(preview_cache.time, 'monotonic', lambda: clock[0])
+    runs = []
+    original = PreviewCache.prune
+    monkeypatch.setattr(PreviewCache, 'prune', lambda self, **kwargs: (runs.append(1), original(self, **kwargs)))
+    cache.maybe_prune()
+    assert len(runs) == 1
+    store(cache, identity, env, pdf, source, package)
+    clock[0] += preview_cache.PRUNE_INTERVAL - 1
+    cache.maybe_prune()
+    assert len(runs) == 1
+    clock[0] += 1
+    cache.maybe_prune()
+    assert len(runs) == 2
+    # Inside the interval, the store() estimate going over the limit forces a prune.
+    monkeypatch.setattr(preview_cache, 'MAX_BYTES', preview_cache._PRUNED[str(cache.root)][1] + 1)
+    cache.maybe_prune()
+    assert len(runs) == 2
+    store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
+    cache.maybe_prune()
+    assert len(runs) == 3
 
 
 def test_sequence_evidence_rejects_malformed_manifests():

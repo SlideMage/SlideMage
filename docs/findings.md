@@ -233,6 +233,10 @@ views) identical to the `-g` behaviour.
 5. Bench: per-render `prune` time ~0 for the common case; measure on a cache filled to ~400 generations
    (`tools/preview_bench.py --fill-cache`).
 
+Done in v8.46.0: `prune()` reads manifests only after a deletion, `maybe_prune()` (first call, then every 10 min or when the
+in-memory size estimate passes `MAX_BYTES`) replaces it in `RenderService.work()`. Linux fill-cache (400 generations):
+`prune()` 116 → 11 ms; edit render no longer prunes. `_prune_transients` measured 5.5 ms, left as is.
+
 ### Plan 3 – Fingerprint memo for system files; evidence once per render (F3, F9)
 
 1. New `preview_cache.FileStateMemo`, process-wide, thread-safe:

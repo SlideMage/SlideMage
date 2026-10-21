@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 import shutil
+import threading
 import time
 import uuid
 
@@ -28,6 +29,10 @@ from .preview_metrics import count, measure
 SCHEMA = 2
 MAX_BYTES = 512 * 1024 * 1024
 MAX_AGE = 14 * 86400
+PRUNE_INTERVAL = 600
+# Per cache root, in this process: [monotonic time of the last prune(), bytes the cache holds by estimate].
+_PRUNED = {}
+_PRUNED_LOCK = threading.Lock()
 THUMBNAIL_MAX = (320, 180)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
 
@@ -587,6 +592,7 @@ class PreviewCache:
                 directory = parent / uuid.uuid4().hex[:16]
                 directory.mkdir(parents=True)
                 shutil.copy2(pdf, directory / 'preview.pdf')
+                written = (directory / 'preview.pdf').stat().st_size
                 blobs = {'display.png': display_png, 'secondary.png': secondary_png,
                          'thumbnail.png': thumbnail_png(display_png) if display_png is not None else None}
                 pages = []
@@ -618,6 +624,7 @@ class PreviewCache:
                             deduplicated += 1
                         else:
                             atomic_write(destination, data)
+                            written += len(data)
                         references[name] = checksum
                 artifacts = {path.name: file_state(path) for path in directory.iterdir()}
                 data = {'schema': SCHEMA, 'identity': identity, 'created': time.time(),
@@ -628,8 +635,12 @@ class PreviewCache:
                 if before != self.begin(env) or inputs != input_state(dependencies):
                     shutil.rmtree(directory, ignore_errors=True)
                     return None
-                atomic_write(directory / 'manifest.json', json.dumps(data))
+                manifest = json.dumps(data)
+                atomic_write(directory / 'manifest.json', manifest)
                 atomic_write(parent / 'current.json', json.dumps({'generation': directory.name}))
+                with _PRUNED_LOCK:
+                    if str(self.root) in _PRUNED:
+                        _PRUNED[str(self.root)][1] += written + len(manifest)
                 return self._read(directory, data)
         except (OSError, ValueError, TypeError, KeyError):
             if directory is not None:
@@ -685,20 +696,51 @@ class PreviewCache:
                 lease.__exit__(None, None, None)
                 path.unlink(missing_ok=True)
 
+    def maybe_prune(self):
+        """prune() for the render path: at most every PRUNE_INTERVAL seconds, or when the cache may be over its limit.
+
+        The first call in a process prunes. Then prune() leaves an estimate of the cache size, store() adds what
+        it wrote, and the next prune() happens when the interval has passed or the estimate exceeds MAX_BYTES.
+        """
+        with _PRUNED_LOCK:
+            state = _PRUNED.get(str(self.root))
+            if state is not None and time.monotonic() - state[0] < PRUNE_INTERVAL and state[1] <= MAX_BYTES:
+                return
+        self.prune()
+
+    def _generations(self):
+        """(manifest time, bytes, folder) of every <digest>/<generation>/ folder that holds a manifest."""
+        def entries(path):
+            try:
+                with os.scandir(path) as listing:
+                    return list(listing)
+            except OSError:
+                return []
+        found = []
+        for top in entries(self.root):
+            for generation in entries(top.path) if top.is_dir() else ():
+                try:
+                    size, stamp = 0, None
+                    for item in entries(generation.path) if generation.is_dir() else ():
+                        if item.is_file():
+                            stat = item.stat()
+                            size += stat.st_size
+                            if item.name == 'manifest.json':
+                                stamp = stat.st_mtime
+                    if stamp is not None:
+                        found.append((stamp, size, Path(generation.path)))
+                except OSError:
+                    continue
+        return found, sum(item.stat().st_size for item in entries(self.root / 'images') if item.name.endswith('.png'))
+
     def prune(self, *, max_bytes=MAX_BYTES, max_age=MAX_AGE):
         """Remove oldest unleased generations. Current records may become misses."""
         with build_lock(self.root / 'maintenance.lock', blocking=False) as permitted:
             if not permitted:
                 return
-            entries = []
-            for manifest in self.root.glob('*/*/manifest.json'):
-                try:
-                    size = sum(path.stat().st_size for path in manifest.parent.iterdir() if path.is_file())
-                    entries.append((manifest.stat().st_mtime, size, manifest.parent))
-                except OSError:
-                    continue
-            image_root = self.root / 'images'
-            total = sum(size for _, size, _ in entries) + sum(path.stat().st_size for path in image_root.glob('*.png'))
+            entries, images = self._generations()
+            total = sum(size for _, size, _ in entries) + images
+            deleted = False
             for stamp, size, directory in sorted(entries):
                 if stamp >= time.time() - max_age and total <= max_bytes:
                     continue
@@ -711,6 +753,11 @@ class PreviewCache:
                 if not leased:
                     shutil.rmtree(directory, ignore_errors=True)
                     total -= size
+                    deleted = True
+            with _PRUNED_LOCK:
+                _PRUNED[str(self.root)] = [time.monotonic(), total]
+            if not deleted:
+                return  # no blob lost a reference, so reading every manifest would find nothing to remove
             # The exclusive maintenance lock excludes stores and lookups. Keep
             # blobs referenced by any surviving generation, including leases.
             referenced = set()
@@ -719,6 +766,6 @@ class PreviewCache:
                     referenced.update(json.loads(manifest.read_text())['blobs'].values())
                 except (OSError, ValueError, KeyError, TypeError):
                     return  # corrupt evidence cannot justify deleting shared data
-            for path in image_root.glob('*.png'):
+            for path in (self.root / 'images').glob('*.png'):
                 if path.stem not in referenced:
                     path.unlink(missing_ok=True)

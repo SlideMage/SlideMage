@@ -555,7 +555,7 @@ class RenderService:
                             cache.publish_group(group_key, identity, view, evidence=group[1])
                     if pdf.parent.name.startswith('slidemage_preview_'):
                         shutil.rmtree(pdf.parent, ignore_errors=True)
-                    cache.prune()
+                    cache.maybe_prune()
                     return result
                 return pdf, displays[0], images, displays[1]
             except Exception:
