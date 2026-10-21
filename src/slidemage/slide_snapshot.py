@@ -238,9 +238,14 @@ FULL_SIZE = (1920, 1080)
 THUMB_SIZE = (304, 171)
 
 
-def slide_id_of(page: "fitz.Page") -> str | None:
-    match = SLIDE_ID_RE.search(page.get_text())
+def slide_id_in(text: str) -> str | None:
+    """The slide id a page's text names (its footer, or the invisible stamp of a frame without one)."""
+    match = SLIDE_ID_RE.search(text)
     return match.group(1) if match else None
+
+
+def slide_id_of(page: "fitz.Page") -> str | None:
+    return slide_id_in(page.get_text())
 
 
 def _save_page(ctx: project.ProjectContext, page: "fitz.Page", slide_id: str, template: str,

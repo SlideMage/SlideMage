@@ -19,7 +19,9 @@ Scenarios (``--scenarios``, comma separated; default cold,unchanged,edit,view-sw
 ``unchanged`` the same text again (a cache hit); ``edit`` the text plus a unique ``%`` comment, ``--repeat`` times;
 ``view-switch`` instructor, during-course, instructor again, each with a fresh edit (one shared build folder);
 ``deck-refresh`` ``update_all_previews.rerender_deck`` of the whole deck with wall time and child-process CPU
-seconds (wall only on Windows); ``fill-cache`` ~400 copied cache generations, then the time of ``prune()``.
+seconds (wall only on Windows); ``fill-cache`` ~400 copied cache generations, then the time of ``prune()``;
+``background-batch`` the background renders of the deck in ``--view`` (``--units`` of them, default all), one document
+each against ``--batch-size`` (16) in one document, wall time and child-process CPU seconds of each.
 Run ``cold`` first for clean numbers: later scenarios render the base text once, unreported, if nothing ran before.
 
 The project is copied to a temp folder (and its preview cache removed again) unless ``--in-place``; ``--keep``
@@ -47,7 +49,7 @@ except ImportError:  # Windows
     resource = None
 
 REPO = Path(__file__).resolve().parents[1]
-SCENARIOS = ('cold', 'unchanged', 'edit', 'view-switch', 'deck-refresh', 'fill-cache')
+SCENARIOS = ('cold', 'unchanged', 'edit', 'view-switch', 'deck-refresh', 'fill-cache', 'background-batch')
 DEFAULT_SCENARIOS = 'cold,unchanged,edit,view-switch'
 VIEWS = ('instructor', 'during-course', 'after-course')
 FILL_GENERATIONS = 400
@@ -62,6 +64,8 @@ def parse_args(argv=None):
     parser.add_argument('--view', default='instructor', choices=VIEWS)
     parser.add_argument('--language', help="language (default: the deck's, upper-case)")
     parser.add_argument('--repeat', type=int, default=3, help='edit renders to repeat; medians are reported')
+    parser.add_argument('--batch-size', type=int, default=16, help='background-batch: slides per document (default: 16)')
+    parser.add_argument('--units', type=int, default=0, help='background-batch: render only this many units of the deck (default: all)')
     parser.add_argument('--in-place', action='store_true', help='work in the real project instead of a temp copy')
     parser.add_argument('--keep', action='store_true', help='keep the temp copy and its preview cache')
     parser.add_argument('--json', type=Path, help='write all results to this file')
@@ -312,6 +316,39 @@ class Bench:
             'child_cpu_seconds': (after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime) if resource else None,
             'refreshed': len(result.refreshed), 'failed': len(result.failed), 'error': result.error}
 
+    def background_batch(self):
+        from slidemage import background_renders, render_store
+        from slidemage.compiler import CancelToken
+        from slidemage.idle_gate import IdleGate
+        units = background_renders.deck_units(self.ctx, self.deck, self.args.view, self.language)
+        warm, units = units[-1], units[:self.args.units or None]
+        if units and units[-1] is warm:
+            units = units[:-1]
+        children = lambda: (resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None)  # noqa: E731
+        results = {}
+        for size in (1, self.args.batch_size):
+            local = Path(tempfile.mkdtemp(prefix='preview_bench_store_'))
+            store = render_store.RenderStore(self.ctx, local)
+            gate = IdleGate(startup_delay=0, idle_after=0, only_on_mains=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
+            renderer = background_renders.BackgroundRenderer(self.ctx, store, gate=gate, decks=lambda: [self.deck])
+            renderer.batch_size = lambda size=size: size
+            try:
+                renderer.render_unit(warm, background_renders.ORIGIN_BACKGROUND, CancelToken())     # the format, unreported
+                renderer._plan = [((n,), unit) for n, unit in enumerate(units)]
+                before, own, start = children(), time.process_time(), time.perf_counter()
+                while renderer._plan or renderer.scheduler.pending():
+                    renderer._top_up()
+                    renderer.scheduler.run_next()
+                wall, after = time.perf_counter() - start, children()
+                fresh = sum(1 for unit in units if renderer.resolver.lookup(unit).final)
+                results[size] = {'units': len(units), 'fresh': fresh, 'wall_seconds': wall, 'own_cpu_seconds': time.process_time() - own,
+                                 'child_cpu_seconds': (after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime) if resource else None}
+            finally:
+                renderer.stop()
+                store.close()
+                shutil.rmtree(local, ignore_errors=True)
+        self.results['background-batch'] = {'deck': self.deck.name, 'view': self.args.view, 'language': self.language, 'by_batch_size': results}
+
     def fill_cache(self):
         from slidemage import preview_cache
         cache = preview_cache.PreviewCache(self.root)
@@ -350,6 +387,12 @@ class Bench:
                 if groups:
                     print(summary_table(groups))
                     print('\n' + timer_table(groups))
+            elif scenario == 'background-batch':
+                for size, row in data['by_batch_size'].items():
+                    cpu = row['child_cpu_seconds']
+                    print(f'{data["deck"]} {data["view"]} {data["language"]}, batch size {size}: {row["fresh"]} of {row["units"]} slides, '
+                          f'wall {row["wall_seconds"]:.1f} s, child CPU {"n/a" if cpu is None else f"{cpu:.1f} s"}, '
+                          f'SlideMage CPU {row["own_cpu_seconds"]:.1f} s')
             elif scenario == 'deck-refresh':
                 cpu = data['child_cpu_seconds']
                 print(f'{data["deck"]}: wall {data["wall_seconds"]:.1f} s, child CPU '

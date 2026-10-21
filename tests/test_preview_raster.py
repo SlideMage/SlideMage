@@ -210,3 +210,19 @@ def test_fit_size_keeps_the_page_aspect_inside_the_box():
         preview_raster.raster(data, [(320, 180, "fit")], (1920, 1080))
     assert Image.open(io.BytesIO(wide[0])).size == (320, 180)
     assert Image.open(io.BytesIO(tall[0])).size == (90, 180)
+
+
+def test_a_range_of_pages_is_written_as_a_pdf_of_its_own(tmp_path):
+    source = tmp_path / "all.pdf"
+    with pymupdf.open() as doc:
+        for number in range(5):
+            doc.new_page(width=320, height=180).insert_text((30, 30), f"page {number + 1}")
+        doc.save(source)
+    client = preview_raster_client.RasterClient()
+    try:
+        answer = client.read_document(source, "extract_pages", 2, 3, out=tmp_path / "part.pdf")
+        texts = client.read_document(tmp_path / "part.pdf", "pdf", 1, 10)
+    finally:
+        client.close()
+    assert answer["count"] == 5 and texts["count"] == 3
+    assert [t.split()[1] for t in texts["texts"]] == ["2", "3", "4"]

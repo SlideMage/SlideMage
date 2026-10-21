@@ -419,6 +419,8 @@ of the build folder comes from the wrapper hash; use a short id (the slide-id li
 (6) Same wrapper text + same id reuses the build folder: a second identical batch is a 2.2 s one-pass run, which also
 makes a timing bench with an unchanged batch meaningless, use a fresh workspace. (7) Cancelling or a timeout now kills k slides.
 
+Done in v8.50.0 (steps 1-4, 6, 7 for background renders; deck refresh, step 5, is not done): batches of up to 16 units (`bg_previews_batch_size`) in one document through `slide_preview.render_slides_to_pdf`, split by the slide id on each page, stored like single renders; failures retry singly. Linux, `tools/preview_bench.py background-batch`, slidemage-manual-copy Instructor EN, 64 units: 248.6 s wall / 239.8 s child CPU singly, 48.2 s / 41.0 s in batches of 16 (5.2x / 5.8x). `media/alt-text.*` are kept in the unit evidence (`_unit_inputs`).
+
 ### Plan 6 – One build folder per view (F6)
 
 1. Add the view and the language to the job identity in `preview_build._compile_cached`, as a second argument to

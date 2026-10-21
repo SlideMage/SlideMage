@@ -14,6 +14,7 @@ duplicating them.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
@@ -320,6 +321,23 @@ def _deck_language_line(deck_language: Optional[str]) -> str:
     return f"\\decklanguage[{deck_language}]\n"
 
 
+def _slide_call(macro: str, id_slug: str, version: Optional[str], conditions: Optional[list], steps: Optional[str] = None) -> str:
+    """The call a preview wrapper makes. \\slidestep keeps its own reveal-step restriction, but is shown for every deck
+    version: a preview compiles as the instructor deck, which would otherwise render nothing for a call listed only
+    for the student versions."""
+    return format_call(macro, id_slug, version, None if macro == "slidestep" else conditions, steps)
+
+
+def _wrapper_text(preamble: str, deck_version: Optional[str], deck_language: Optional[str], slides: list[tuple],
+                  overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
+                  context_after: str = "") -> str:
+    """The wrapper of `slides`, [(frame_number, call)] in order: the preamble, the deck's version and language, the
+    overlay selection (once: it patches beamer for the rest of the document), then each call after its page number."""
+    calls = "".join(f"{_frame_number_line(frame_number)}\t{call}\n" for frame_number, call in slides)
+    return (f"{preamble}{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
+            f"{context_before}{_overlay_line(overlay, all_steps)}{calls}{context_after}\\end{{document}}\n")
+
+
 def _presenter_mode_line(presenter: bool) -> str:
     """`\\def\\SMPresenterModeOverride{1}`, the same hook compiler.py's
     own wrapper defines for a real "Presenter" job (CompileJob.presenter)
@@ -492,16 +510,9 @@ def render_slide_to_pdf(
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
-    # \slidestep keeps its own reveal-step restriction, but is shown for every deck
-    # version: a preview compiles as the instructor deck, which would otherwise
-    # render nothing for a call listed only for the student versions.
-    call = format_call(macro, id_slug, version, None if macro == "slidestep" else conditions, steps)
-    wrapper_text = (
-        f"{preamble}"
-        f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
-        f"\t{call}\n{context_after}\\end{{document}}\n"
-    )
+    wrapper_text = _wrapper_text(
+        preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
+        overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and overlay is None and not all_steps
@@ -511,6 +522,32 @@ def render_slide_to_pdf(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
+
+
+@measure('render')
+def render_slides_to_pdf(
+    ctx: project.ProjectContext,
+    slides: list[tuple],
+    deck_version: str,
+    deck_language: str,
+    preamble_text: Optional[str],
+    log: Optional[LogCallback] = None,
+    cancel=None,
+    workspace: Optional[Path] = None,
+) -> Path:
+    """Compile several slides of one deck, view and language in ONE document (every reveal step, as
+    render_slide_to_pdf(all_steps=True) does) and return its PDF: the pages of the slides follow one another in
+    the order of `slides`, [(macro, id_slug, version, conditions, frame_number)], each page set apart by the slide id
+    in its footer. Two LuaLaTeX passes and one biber run serve them all, which is several times less work than one
+    document each (docs/findings.md, plan 5); the pages are the same pixel for pixel. Raises RuntimeError on failure
+    of any slide. A bare slide id may appear once only (the pages of a repeated one cannot be told apart), and no slide
+    may need its deck's context (a contents or agenda slide shows its links only in a document that holds them)."""
+    calls = [(frame_number, _slide_call(macro, id_slug, version, conditions)) for macro, id_slug, version, conditions, frame_number in slides]
+    preamble = default_preamble(ctx) if preamble_text is None else preamble_text
+    wrapper_text = _wrapper_text(preamble, deck_version, deck_language, calls, all_steps=True)
+    # A short job name: the slide ids in it would make the file name too long.
+    job = 'batch-' + hashlib.sha256(''.join(f'{n}{call}' for n, call in calls).encode()).hexdigest()[:12]
+    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, workspace=workspace)
 
 
 @measure('render')
