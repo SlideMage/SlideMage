@@ -177,9 +177,17 @@ class _ArtifactLease:
 
 
 class RenderRequest:
+    """One shared build. `done` means delivered and recorded; `delivered` is set earlier, as soon as a fresh
+    render's pixels exist, and the worker then records it in the cache (store, group, prune, cleanup).
+
+    wait() returns when the request is done: the cache entry, `preview_result` and `result` are final. A consumer
+    that needs only pixels (the Preview pane) calls wait(pixels_only=True): it returns at delivery with the
+    rendered temp PDF, which stays valid for as long as the request object is alive.
+    """
     def __init__(self, work, finished):
         self.cancel = compiler.CancelToken()
         self.done = threading.Event()
+        self.delivered = threading.Event()
         self.result = None
         self.error = None
         self.metrics = None
@@ -188,6 +196,10 @@ class RenderRequest:
         self._cache_entry = None
         self._artifact_lease = None
         self._delivery = None
+        self._delivered_artifact = None     # the fresh render before it is recorded (its PDF is in the temp folder)
+        self.lent = False                   # a pixels_only waiter holds that PDF: the temp folder outlives the record
+        self._loans_closed = False          # no more loans: the temp folder is removed or the work is over (_start_lock)
+        self._collector = None
         self._representative_identity = None
         self._representative_view = None
         self._representative_evidence = None
@@ -196,29 +208,61 @@ class RenderRequest:
         self._start_lock = threading.Lock()
         self._started = False
 
+    def _result_of(self, artifact):
+        result = PreviewResult.from_artifact(self.spec, artifact)
+        if self._cache_entry is not None:
+            result = replace(result, status=self._cache_status,
+                             dependencies=tuple(Path(path) for path in self._cache_entry.dependencies),
+                             render_stamp=self._cache_entry.render_stamp, _artifact_owner=self._artifact_lease)
+        return result
+
+    def _metrics_of(self, collector):
+        metrics = collector.to_dict()
+        metrics['cache_hit'] = self._cache_entry is not None and self._cache_status == 'cached'
+        metrics['compile_avoided'] = int(metrics['cache_hit'])
+        metrics['deduplicated_images'] = (self._cache_entry.deduplicated_images
+                                          if self._cache_entry is not None and not metrics['cache_hit'] else 0)
+        return metrics
+
+    def _deliver(self, artifact):
+        """Called by the work once a fresh render's pixels exist, before it records them (worker thread)."""
+        if self.spec is not None:
+            self.preview_result = self._result_of(artifact)
+        self.metrics = self._metrics_of(self._collector)     # up to the pixels; _run replaces it when recorded
+        self._delivered_artifact = artifact
+        self.delivered.set()
+
+    def drop_temp(self, folder):
+        """Remove a render's temp folder: now, or when this request is released if a waiter was handed its PDF."""
+        with self._start_lock:
+            if self.lent:
+                weakref.finalize(self, shutil.rmtree, folder, True)
+                return
+            self._loans_closed = True
+        shutil.rmtree(folder, ignore_errors=True)
+
     def _run(self):
         with PreviewMetrics() as metrics:
+            self._collector = metrics
             try:
                 preview_build.check_cancel(self.cancel)
                 self.result = self._work(self.cancel)
+                with self._start_lock:
+                    self._loans_closed = True
+                    lent = self.lent
+                if lent:
+                    self._deliver_history()     # the pixels-only waiters left before there was a cache entry
                 if self.spec is not None:
-                    self.preview_result = PreviewResult.from_artifact(self.spec, self.result)
-                    if self._cache_entry is not None:
-                        from dataclasses import replace
-                        self.preview_result = replace(self.preview_result, status=self._cache_status,
-                            dependencies=tuple(Path(path) for path in self._cache_entry.dependencies),
-                            render_stamp=self._cache_entry.render_stamp, _artifact_owner=self._artifact_lease)
+                    self.preview_result = self._result_of(self.result)
                 preview_build.check_cancel(self.cancel)
             except Exception as exc:  # noqa: BLE001 -- forwarded to every consumer
                 self.error = exc
                 self.release_artifact()
-        self.metrics = metrics.to_dict()
-        self.metrics['cache_hit'] = self._cache_entry is not None and self._cache_status == 'cached'
-        self.metrics['compile_avoided'] = int(self.metrics['cache_hit'])
-        self.metrics['deduplicated_images'] = (self._cache_entry.deduplicated_images
-                                                if self._cache_entry is not None and not self.metrics['cache_hit'] else 0)
+        self.metrics = self._metrics_of(metrics)
+        self._collector = None
         self._finished()
         self._work = self._finished = None
+        self.delivered.set()
         self.done.set()
 
     def cancelled(self):
@@ -232,11 +276,24 @@ class RenderRequest:
                 # still start this request after a pane drops its queued job.
                 self._finished()
 
-    def wait(self, cancel=None, timeout=TIMEOUT):
+    def _await(self, event, cancel, deadline):
+        while True:
+            if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
+                raise RuntimeError('Preview cancelled')
+            if event.wait(.05):
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Preview timed out')
+
+    def wait(self, cancel=None, timeout=TIMEOUT, *, pixels_only=False):
         """Attach this consumer until completion, cancellation or timeout.
 
         Only active waiters reserve a build; merely holding a request before
         calling wait does not prevent its last active waiter from stopping it.
+        `pixels_only` returns as soon as a fresh render's pixels exist, before it is recorded in the cache:
+        the artifact's PDF is then the render's temp PDF, `preview_result` is not final, no cache entry exists
+        yet and the display history is written once the record is done. Otherwise (a cache hit, a finished
+        request) it returns what a plain wait() returns.
         """
         consumer = object()
         deadline = time.monotonic() + timeout
@@ -249,31 +306,37 @@ class RenderRequest:
                 if not self._started:
                     self._started = True
                     threading.Thread(target=self._run, daemon=True).start()
-            while True:
-                if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
-                    raise RuntimeError('Preview cancelled')
-                if self.done.wait(.05):
-                    break
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('Preview timed out')
+            early = False
+            self._await(self.delivered if pixels_only else self.done, cancel, deadline)
+            if pixels_only and self.error is None:
+                with self._start_lock:
+                    early = self._delivered_artifact is not None and not self._loans_closed
+                    self.lent = self.lent or early
+                if not early:
+                    self._await(self.done, cancel, deadline)
             if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
                 raise RuntimeError('Preview cancelled')
             if self.error is not None:
                 raise self.error
-            if self._delivery is not None:
-                try:
-                    self._delivery(self)
-                except Exception:  # noqa: BLE001 -- display history cannot fail the render
-                    pass  # Display history never changes a successful render.
+            if early:
+                return self._delivered_artifact
+            self._deliver_history()
             return self.result
         finally:
             with self._start_lock:
                 self._consumers.pop(consumer, None)
-                if not self.done.is_set() and not self._consumers:
+                if not self.delivered.is_set() and not self._consumers:    # a delivered build is only recording: let it
                     self.cancel.request_stop()
                     if not self._started and self._finished is not None:
                         self._finished()
                         self._work = self._finished = None
+
+    def _deliver_history(self):
+        if self._delivery is not None:
+            try:
+                self._delivery(self)
+            except Exception:  # noqa: BLE001 -- display history cannot fail the render
+                pass  # Display history never changes a successful render.
 
     def release_artifact(self):
         lease, self._artifact_lease = self._artifact_lease, None
@@ -316,7 +379,9 @@ class _ImageConsumer:
     def forget_unstarted(self):
         self.source.forget_unstarted()
 
-    def wait(self, cancel=None, timeout=TIMEOUT):
+    def wait(self, cancel=None, timeout=TIMEOUT, *, pixels_only=False):
+        """Always waits for the shared build to be recorded: `pixels_only` is accepted for the pane's sake only,
+        as this view's display history needs the cache entry."""
         try:
             artifact = self.source.wait(cancel, timeout)
             if ((self._group is not None and image_group(self.spec) != self._group)
@@ -480,6 +545,36 @@ class RenderService:
             return (entry.pdf if representative == view else None,
                     entry.display_png, entry.page_images, entry.secondary_png)
 
+        def record(artifact, pdf, env, stamp, displays, images, dependencies, before):
+            """Everything after the pixels: the reveal sequence, the cache entry and its group, pruning, cleanup.
+
+            Runs on the worker right after the delivery. The artifact is already valid, so a failure here is
+            logged and the delivered artifact stays the result; a cancel does not stop it (store is atomic).
+            """
+            sequence = None
+            if dependencies and before is not None and not presenter and mode == 'slide' and overlay is None:
+                try:
+                    sequence = slide_snapshot.preview_sequence(pdf)
+                except (OSError, RuntimeError, ValueError):
+                    pass  # optional equality evidence must not fail a valid preview
+            entry = cache.store(identity, env, pdf=pdf, display_png=displays[0], secondary_png=displays[1],
+                                page_images=images, dependencies=dependencies, render_stamp=stamp, before=before,
+                                raster_sequence=sequence, thumbnail=displays[2] if len(displays) > 2 else None,
+                                audited_resolution=group is not None and image_group(spec, identity) == group)
+            if entry is None:
+                return artifact
+            result = pin(entry, 'rendered')
+            if group_key is not None and not require_pdf:
+                # Recorder checks above guard TeX inputs. Reclassify
+                # as well: an included rule may have changed during
+                # the build even if the source buffer was captured.
+                if image_group(spec, identity) == group:
+                    cache.publish_group(group_key, identity, view, evidence=group[1])
+            if pdf.parent.name.startswith('slidemage_preview_'):
+                request.drop_temp(pdf.parent)
+            cache.maybe_prune()
+            return result
+
         def work(cancel):
             env = compiler.build_env(target.context)
             if not options.force:
@@ -536,33 +631,17 @@ class RenderService:
                     dependencies = ()
                 if saved and not captured and target.source_path.read_text(encoding='utf-8') != text:
                     before = None  # publication reports superseded; never persist mixed saved input
-                sequence = None
-                if dependencies and before is not None and not presenter and mode == 'slide' and overlay is None:
-                    try:
-                        sequence = slide_snapshot.preview_sequence(pdf)
-                    except (OSError, RuntimeError, ValueError):
-                        pass  # optional equality evidence must not fail a valid preview
-                entry = cache.store(identity, env, pdf=pdf, display_png=displays[0], secondary_png=displays[1],
-                                    page_images=images, dependencies=dependencies, render_stamp=stamp, before=before,
-                                    raster_sequence=sequence,
-                                    audited_resolution=group is not None and image_group(spec, identity) == group)
-                if entry is not None:
-                    result = pin(entry, 'rendered')
-                    if group_key is not None and not require_pdf:
-                        # Recorder checks above guard TeX inputs. Reclassify
-                        # as well: an included rule may have changed during
-                        # the build even if the source buffer was captured.
-                        if image_group(spec, identity) == group:
-                            cache.publish_group(group_key, identity, view, evidence=group[1])
-                    if pdf.parent.name.startswith('slidemage_preview_'):
-                        shutil.rmtree(pdf.parent, ignore_errors=True)
-                    cache.maybe_prune()
-                    return result
-                return pdf, displays[0], images, displays[1]
             except Exception:
                 if pdf.parent.name.startswith('slidemage_preview_'):
                     shutil.rmtree(pdf.parent, ignore_errors=True)
                 raise
+            artifact = pdf, displays[0], images, displays[1]
+            request._deliver(artifact)       # the pixels are what the pane waits for; the rest is bookkeeping
+            try:
+                return record(artifact, pdf, env, stamp, displays, images, dependencies, before)
+            except Exception as exc:  # noqa: BLE001 -- the delivered render stays valid
+                log(f'Preview not recorded in the cache: {exc}')
+                return artifact
 
         def finished():
             with self._lock:

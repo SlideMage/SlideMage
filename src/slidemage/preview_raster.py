@@ -25,9 +25,14 @@ def raster(data, sizes, full_size):
             return []
         page = doc[-1]
         images = {}
-        for width, height in sizes:
-            size = (width, height)
+        for size in map(tuple, sizes):
             if size in images:
+                continue
+            width, height, *fit = size
+            if fit:
+                # (width, height, "fit"): the largest size inside the box, aspect ratio kept (a list thumbnail)
+                zoom = min(width / page.rect.width, height / page.rect.height)
+                images[size] = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
                 continue
             if (
                 height is None

@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+from slidemage import preview_cache
 from slidemage.preview_cache import PreviewCache, file_state, input_state
 
 
@@ -516,3 +517,26 @@ def test_the_tool_lookup_is_remembered_per_path(tmp_path, monkeypatch):
     assert preview_cache.find_tool('lualatex', 'A') == preview_cache.find_tool('lualatex', 'A') == '/bin/lualatex'
     preview_cache.find_tool('lualatex', 'B')
     assert calls == [('lualatex', 'A'), ('lualatex', 'B')]
+
+
+def test_store_keeps_a_supplied_thumbnail_and_dedupes_blobs_without_reading_them_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(preview_cache, 'MEMO_RACY_SECONDS', 0)       # remember a blob at once
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    kwargs = dict(pdf=pdf, display_png=b'PNG', thumbnail=b'small', dependencies=(str(source), str(package)),
+                  before=cache.begin(env))
+    first = cache.store(identity, env, **kwargs)
+    assert first.deduplicated_images == 0
+    manifest = json.loads((first.directory / 'manifest.json').read_text())
+    assert (cache.root / 'images' / (hashlib.sha256(b'small').hexdigest() + '.png')).read_bytes() == b'small'
+    assert manifest['blobs']['thumbnail.png'] == hashlib.sha256(b'small').hexdigest()
+    states, original = [], preview_cache.file_state
+    cache.store(identity, env, **{**kwargs, 'before': cache.begin(env)})        # warms the memo
+    monkeypatch.setattr(preview_cache, 'file_state', lambda path: states.append(path.name) or original(path))
+    second = cache.store(identity, env, **{**kwargs, 'before': cache.begin(env)})
+    monkeypatch.setattr(preview_cache, 'file_state', original)
+    assert second.deduplicated_images == 2 and not [name for name in states if name.endswith('.png')]
+    # A damaged blob under its content-addressed name is replaced, not trusted.
+    blob = cache.root / 'images' / (hashlib.sha256(b'PNG').hexdigest() + '.png')
+    blob.write_bytes(b'broken')
+    third = cache.store(identity, env, **{**kwargs, 'before': cache.begin(env)})
+    assert third.display_png == b'PNG' and blob.read_bytes() == b'PNG'

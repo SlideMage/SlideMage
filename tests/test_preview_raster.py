@@ -197,3 +197,16 @@ def test_sequence_client_rejects_incompatible_configuration(monkeypatch, field, 
     monkeypatch.setattr(preview_raster_client, '_ask', lambda *args, **kwargs: response)
     with pytest.raises(RuntimeError, match='configuration'):
         preview_raster_client.render_sequence(pdf_bytes())
+
+
+def test_fit_size_keeps_the_page_aspect_inside_the_box():
+    import io
+    from PIL import Image
+
+    with pymupdf.open() as doc:
+        doc.new_page(width=200, height=400)         # taller than the 16:9 box
+        data = doc.tobytes()
+    wide, tall = preview_raster.raster(pdf_bytes(), [(320, 180, "fit")], (1920, 1080)), \
+        preview_raster.raster(data, [(320, 180, "fit")], (1920, 1080))
+    assert Image.open(io.BytesIO(wide[0])).size == (320, 180)
+    assert Image.open(io.BytesIO(tall[0])).size == (90, 180)

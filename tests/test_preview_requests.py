@@ -275,3 +275,104 @@ def test_cache_identity_reads_the_raster_version_once(tmp_path, monkeypatch):
     first = preview_requests.cache_identity(spec)
     assert preview_requests.cache_identity(spec) == first and reads == ['pymupdf']
     assert first['raster']['renderer'] == installed('pymupdf')
+
+
+@pytest.fixture
+def recorded(tmp_path, monkeypatch):
+    """A service whose renders land in a `slidemage_preview_` temp folder; `store` can be held back."""
+    import json
+    from slidemage import slide_snapshot
+    from slidemage.preview_cache import PreviewCache
+
+    ctx = ProjectContext.at(tmp_path / 'project')
+    ctx.slides_dir.mkdir(parents=True)
+    source = ctx.slides_dir / 'abc-EN-One-current.tex'
+    source.write_text('1.2.0+ FIRST')
+    framework = tmp_path / 'framework'
+    framework.mkdir()
+    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    monkeypatch.setattr(compiler, 'build_env', lambda _: env)
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool', b'thumb'), ()))
+    monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
+    folder = tmp_path / 'slidemage_preview_one'
+    calls = []
+
+    def render(*args, **kwargs):
+        calls.append(kwargs)
+        folder.mkdir(exist_ok=True)
+        pdf = folder / 'slide.pdf'
+        pdf.write_bytes(b'PDF')
+        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(source)]))
+        return pdf
+
+    monkeypatch.setattr(preview_target, 'render_text', render)
+    target = preview_target.for_path(ctx, source)
+    gate = SimpleNamespace(entered=threading.Event(), release=threading.Event(), fail=False, stored=[])
+    store = PreviewCache.store
+
+    def held_store(self, *args, **kwargs):
+        gate.entered.set()
+        assert gate.release.wait(10)
+        if gate.fail:
+            raise RuntimeError('disk gone')
+        gate.stored.append(kwargs)
+        return store(self, *args, **kwargs)
+
+    monkeypatch.setattr(PreviewCache, 'store', held_store)
+    service = preview_requests.RenderService()
+    yield SimpleNamespace(
+        service=service, folder=folder, calls=calls, gate=gate,
+        request=lambda: service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True))
+    gate.release.set()
+    service.close()
+
+
+def test_pixels_only_wait_returns_before_the_cache_record(recorded):
+    import gc
+    request = recorded.request()
+    pdf, display, images, secondary = request.wait(pixels_only=True, timeout=10)
+    assert recorded.gate.entered.wait(10)            # the worker is inside store()
+    assert (display, secondary) == (b'page', b'tool') and pdf == recorded.folder / 'slide.pdf' and pdf.exists()
+    assert request.delivered.is_set() and not request.done.is_set() and request._cache_entry is None
+    assert request.preview_result.status == 'rendered' and request.preview_result.pdf == pdf
+    # An identical request while the record runs shares the build; a plain wait() gets the recorded result.
+    assert recorded.request() is request
+    plain = []
+    waiter = threading.Thread(target=lambda: plain.append(request.wait(timeout=10)))
+    waiter.start()
+    recorded.gate.release.set()
+    waiter.join(10)
+    assert request.done.wait(10) and len(recorded.calls) == 1
+    assert request._cache_entry is not None and request.preview_result.status == 'rendered'
+    assert plain[0][0] == request._cache_entry.pdf != pdf
+    assert recorded.gate.stored[0]['thumbnail'] == b'thumb'
+    # The pane was handed the temp PDF, so the folder lives as long as the request does.
+    assert recorded.folder.exists()
+    request = plain = waiter = None
+    gc.collect()
+    assert not recorded.folder.exists()
+    cached = recorded.request()
+    cached.wait()
+    assert cached.preview_result.status == 'cached' and len(recorded.calls) == 1
+
+
+def test_plain_wait_removes_the_temp_folder_once_recorded(recorded):
+    recorded.gate.release.set()
+    request = recorded.request()
+    result = request.wait(timeout=10)
+    assert result[0] == request._cache_entry.pdf and not recorded.folder.exists()
+    assert request.done.is_set() and request.preview_result.status == 'rendered'
+
+
+def test_record_failure_keeps_the_delivered_render(recorded):
+    recorded.gate.fail = True
+    recorded.gate.release.set()
+    request = recorded.request()
+    request.wait(pixels_only=True, timeout=10)
+    assert request.done.wait(10) and request.error is None
+    assert request.result[1] == b'page' and request.result[0].exists() and request._cache_entry is None
+    assert request.preview_result.status == 'rendered'
+    recorded.gate.fail = False
+    again = recorded.request()
+    again.wait(timeout=10)
+    assert len(recorded.calls) == 2 and again._cache_entry is not None

@@ -59,7 +59,7 @@ def test_tables():
                                               counters={"content_bytes_read": 3_000_000})]),
               "hit": bench.summarize([render(.05, hit=True)])}
     summary = bench.summary_table(groups).splitlines()
-    assert summary[0].split() == ["render", "n", "total", "s", "latexmk", "s", "latexmk", "rules", "(s)", "content", "MB", "dep", "MB", "cache"]
+    assert summary[0].split() == ["render", "n", "pixels", "s", "total", "s", "latexmk", "s", "latexmk", "rules", "(s)", "content", "MB", "dep", "MB", "cache"]
     assert "lualatex" in summary[2] and "biber 0.50" in summary[2] and "3.0" in summary[2] and summary[3].rstrip().endswith("hit")
     timers = bench.timer_table(groups)
     assert "cache.store" in timers and "1x 133 ms" in timers and timers.splitlines()[2].rstrip().endswith("-")

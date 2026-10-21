@@ -82,7 +82,7 @@ def file_state(path: Path):
 
 MEMO_LIMIT = 20_000
 MEMO_RACY_SECONDS = 3.0
-_MEMO = OrderedDict()           # resolved path -> ((size, mtime_ns, inode, ctime_ns), [resolved, sha256])
+_MEMO = OrderedDict()           # absolute path -> ((size, mtime_ns, inode, ctime_ns), [resolved, sha256])
 _MEMO_LOCK = threading.Lock()
 
 
@@ -100,15 +100,20 @@ class FileStates:
     and bounded to MEMO_LIMIT files.
     """
     def __init__(self, roots):
-        self._roots = tuple(dict.fromkeys(path for root in roots for path in (root.absolute(), root.resolve())))
+        # String prefixes: Path.resolve()/is_relative_to() per input cost more than the hashing they save.
+        self._prefixes = tuple(dict.fromkeys(os.path.join(os.path.normcase(str(path)), '')
+                                             for root in roots for path in (root.absolute(), root.resolve())))
+
+    def _inside(self, name: str) -> bool:
+        name = os.path.join(os.path.normcase(name), '')
+        return any(name.startswith(prefix) for prefix in self._prefixes)
 
     def __call__(self, path: Path):
-        resolved, absolute = path.resolve(), path.absolute()
-        if any(absolute.is_relative_to(root) or resolved.is_relative_to(root) for root in self._roots):
+        key = os.path.abspath(path)
+        if self._inside(key):
             return file_state(path)
-        key = str(resolved)
         try:
-            info = resolved.stat()
+            info = os.stat(key)
         except FileNotFoundError:
             return None
         fingerprint = (info.st_size, info.st_mtime_ns, info.st_ino, info.st_ctime_ns)
@@ -117,6 +122,10 @@ class FileStates:
             if known is not None and known[0] == fingerprint:
                 _MEMO.move_to_end(key)
                 return list(known[1])
+        # Not known yet (or changed): a name outside the roots may still lead into them through a link. A link
+        # that is pointed elsewhere later changes the fingerprint (stat follows it), so a hit never needs this.
+        if self._inside(os.path.realpath(key)):
+            return file_state(path)
         state = file_state(path)
         if state is not None and time.time() - max(info.st_mtime, info.st_ctime) >= MEMO_RACY_SECONDS:
             with _MEMO_LOCK:
@@ -643,7 +652,8 @@ class PreviewCache:
 
     def store(self, identity, env: dict, *, pdf: Path, display_png=None, secondary_png=None,
               page_images=(), dependencies=(), render_stamp=None, before=None,
-              raster_sequence=None, audited_resolution=False) -> CachedPreview | None:
+              raster_sequence=None, audited_resolution=False, thumbnail=None) -> CachedPreview | None:
+        """Record a finished render. `thumbnail` is the list thumbnail if the rasteriser already made one."""
         from .preview_equivalence import CONTRACT
         directory = None
         try:
@@ -669,7 +679,8 @@ class PreviewCache:
                 shutil.copy2(pdf, directory / 'preview.pdf')
                 written = (directory / 'preview.pdf').stat().st_size
                 blobs = {'display.png': display_png, 'secondary.png': secondary_png,
-                         'thumbnail.png': thumbnail_png(display_png) if display_png is not None else None}
+                         'thumbnail.png': thumbnail if thumbnail is not None else
+                                          thumbnail_png(display_png) if display_png is not None else None}
                 pages = []
                 for index, (name, data) in enumerate(page_images):
                     filename = f'page-{index}.png'
@@ -695,7 +706,9 @@ class PreviewCache:
                     if data is not None:
                         checksum = hashlib.sha256(data).hexdigest()
                         destination = image_root / (checksum + '.png')
-                        if destination.exists() and destination.read_bytes() == data:
+                        # The name is the content hash: a blob that is there and still hashes to it is the same
+                        # image (FileStates memoises the check: the cache lies outside the roots).
+                        if destination.exists() and files(destination) == [str(destination.resolve()), checksum]:
                             deduplicated += 1
                         else:
                             atomic_write(destination, data)

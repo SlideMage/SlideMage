@@ -294,6 +294,14 @@ serve a format built from an edited theme). Linux, medians of 3: content read ed
 5. Bench: time from request to `wait()` return for an edit render: expect −(store + sequence + thumbnail + prune),
    i.e. ~0.2 s on Linux and more on Windows or with a large cache.
 
+Done in v8.48.0: `work()` is split into deliver (build, `prepare_preview_images`) and `record` (reveal sequence, `store`, `pin`,
+`publish_group`, temp cleanup, `maybe_prune`); `wait(pixels_only=True)` returns at delivery, a plain `wait()` after the record
+(all other consumers unchanged). The pane holds the temp PDF through its last request. Thumbnail from the raster child,
+`store()` dedupes blobs by memoised state. Linux, medians of 3: time to pixels edit 1.91 → 1.78 s (store 97 ms + sequence 22 ms moved
+after it), cold 6.43 → 6.23 s. Review fix: plan 3's `FileStates` resolved every path and compared `Path`s per root on each
+call (22 000 `lstat`s in two renders, ~120 ms per `store()`); string prefixes and `realpath` only on a memo miss bring
+`store()` to 34 ms, a cache hit to 0.03 s and an edit render to 1.84 s (pixels at 1.79 s).
+
 ### Plan 5 – Batched background and deck-refresh renders (F5)
 
 Goal: render k slides of one deck/view/language in one LuaLaTeX document (two passes + biber for the batch), and

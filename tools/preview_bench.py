@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Benchmark single-slide previews through the Preview pane's path (docs/findings.md, Plan 0).
 
-Every render goes through ``preview_requests.RenderService.request(...).wait()``, exactly like the pane. Per
-render it reports the wall time, the latexmk stage and rules (``preview_metrics``), the bytes the cache read
+Every render goes through ``preview_requests.RenderService.request(...).wait(pixels_only=True)``, exactly like the
+pane, and then waits for the cache record. Per render it reports the time until the pixels (the pane's wait returns),
+the time until the record is done (``total``), the latexmk stage and rules (``preview_metrics``), the bytes the cache read
 (``content_bytes_read``, ``dependency_bytes_read``) and call counts and seconds of the functions that make up
 SlideMage's own share (nested calls are counted in both, so the times do not add up).
 
@@ -108,6 +109,7 @@ def summarize(runs):
     names = {name for t in timers for name in t}
     return {
         'runs': len(runs),
+        'pixels': median(run.get('pixels', run['total']) for run in runs),
         'total': median(run['total'] for run in runs),
         'stages': median_by_key(run['stages'] for run in runs),
         'rules': {name: {'runs': median(r.get(name, [0, 0])[0] for r in rules),
@@ -139,11 +141,11 @@ def rules_text(rules):
 
 def summary_table(groups):
     """One row per kind of render: {label: summarize(...)}."""
-    rows = [[label, s['runs'], f'{s["total"]:.2f}', f'{s["stages"].get("latexmk", 0):.2f}', rules_text(s['rules']),
+    rows = [[label, s['runs'], f'{s["pixels"]:.2f}', f'{s["total"]:.2f}', f'{s["stages"].get("latexmk", 0):.2f}', rules_text(s['rules']),
              f'{s["counters"].get("content_bytes_read", 0) / 1e6:.1f}',
              f'{s["counters"].get("dependency_bytes_read", 0) / 1e6:.1f}', 'hit' if s['cache_hit'] else '']
             for label, s in groups.items()]
-    return format_table(['render', 'n', 'total s', 'latexmk s', 'latexmk rules (s)', 'content MB', 'dep MB', 'cache'], rows)
+    return format_table(['render', 'n', 'pixels s', 'total s', 'latexmk s', 'latexmk rules (s)', 'content MB', 'dep MB', 'cache'], rows)
 
 
 def timer_table(groups):
@@ -253,14 +255,17 @@ class Bench:
             request = self.service.request(self.target(view), text, view, self.language, lambda line: None,
                                            saved=False, force=force)
             try:
-                request.wait()
+                request.wait(pixels_only=True)
+                pixels = time.perf_counter() - start
+                request.done.wait()         # then the cache record
             except Exception as exc:  # noqa: BLE001 -- a failed render is a result too
                 error = f'{type(exc).__name__}: {exc}'
+                pixels = time.perf_counter() - start
         total = time.perf_counter() - start
         data = request.metrics or metrics.to_dict()
         with _STATS_LOCK:
             timers = {name: {'calls': calls, 'seconds': seconds} for name, (calls, seconds) in STATS.items()}
-        return {'total': total, 'stages': data.get('stages', {}), 'rules': data.get('rules', []), 'timers': timers,
+        return {'pixels': pixels, 'total': total, 'stages': data.get('stages', {}), 'rules': data.get('rules', []), 'timers': timers,
                 'counters': data.get('counters', {}), 'cache_hit': bool(data.get('cache_hit')), 'error': error}
 
     def ensure_warm(self):

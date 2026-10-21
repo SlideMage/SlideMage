@@ -69,6 +69,7 @@ from pathlib import Path
 import pymupdf as fitz
 
 from . import project, slide_language
+from .preview_cache import THUMBNAIL_MAX
 from .preview_metrics import measure
 
 
@@ -294,8 +295,12 @@ def prepare_preview(pdf_path: Path, snapshots: bool = False):
 
 
 def prepare_preview_images(pdf_path: Path, snapshots: bool, widths):
-    """Pane and tool display sizes in one raster subprocess, with optional snapshots."""
-    displays = tuple((width, None) for width in widths)
+    """Pane and tool display sizes in one raster subprocess, with optional snapshots.
+
+    The display PNGs come back in `widths` order, followed by one more: the cache's list thumbnail
+    (preview_cache.THUMBNAIL_MAX, aspect kept), so the cache need not decode and re-encode a display PNG for it.
+    """
+    displays = tuple((width, None) for width in widths) + ((*THUMBNAIL_MAX, 'fit'),)
     sizes = (FULL_SIZE, THUMB_SIZE) + displays if snapshots else displays
     images = _preview_pngs(pdf_path, sizes)
     if not images:
