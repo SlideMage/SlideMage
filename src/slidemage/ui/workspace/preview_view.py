@@ -72,6 +72,9 @@ DISPLAY_BYTES = 64 << 20 # ... and at most this much memory for them (width x he
 CHECKING = "Checking current source and settings…"
 STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
+PREFETCHED = 16          # stored pages of neighbouring slides held decoded, ready for the next slide (v8.53.0)
+SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
+LOADING = "Loading…"
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
 BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
@@ -272,6 +275,7 @@ class _Lifetime:
                 owner._batch_cancel.set()
             owner._selection_executor.shutdown(wait=False, cancel_futures=True)
             owner._display_executor.shutdown(wait=False, cancel_futures=True)
+            owner._prefetch_executor.shutdown(wait=False, cancel_futures=True)
             owner._lookups.clear()
             owner._renders.close()
             owner._steps.close()
@@ -298,17 +302,25 @@ class PageView(QWidget):
         self.pixmap: Optional[QPixmap] = None
         self._scaled: Optional[tuple[QSize, QPixmap]] = None    # the pixmap at the page's size: not rescaled per paint
         self.message = ""
+        self.dimmed = False     # the page of the slide shown before, kept faint while the new one loads
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
 
     def show_image(self, pixmap: QPixmap) -> None:
-        self.pixmap, self.message, self._scaled = pixmap, "", None
+        self.pixmap, self.message, self._scaled, self.dimmed = pixmap, "", None, False
         self.render_button.hide()
         self.update()
 
+    def keep_dimmed(self) -> None:
+        """Keep the page on show, faint: it is the slide shown before, while the new one's check is out."""
+        if self.pixmap is not None and not self.dimmed:
+            self.dimmed = True
+            self.render_button.hide()
+            self.update()
+
     def show_message(self, message: str, can_render: bool) -> None:
-        self.pixmap, self.message, self._scaled = None, message, None
+        self.pixmap, self.message, self._scaled, self.dimmed = None, message, None, False
         self.render_button.setVisible(can_render)
         self._place_button()
         self.update()
@@ -362,7 +374,10 @@ class PageView(QWidget):
         painter.drawRoundedRect(page, 4, 4)
         if self.pixmap is not None:
             scaled = self._scaled_pixmap(page)
+            if self.dimmed:
+                painter.setOpacity(0.35)
             painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
+            painter.setOpacity(1.0)
         elif self.message:
             painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
@@ -382,6 +397,7 @@ class PreviewPane(Surface):
     _selection_finished = Signal(object)
     _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
     _looked_up = Signal(object, object, object, object)   # (slot, identity, arrive, found), from the display worker
+    _prefetch_done = Signal(object, object)                # (ident, (digest, QImage) or None), from the prefetch worker
 
     def __init__(self, app, state: WorkspaceState,
                  buffer: Callable[[], Optional[tuple[str, str]]]) -> None:
@@ -423,6 +439,15 @@ class PreviewPane(Surface):
         self._looked_up.connect(self._on_looked_up)
         self._stored: Optional[tuple] = None  # (target key, view, language, mtime), page, digest: the last page found
         self._stored_asked = None             # what the page was last looked up for; the poll asks again
+        # The stored pages of the slides next to the one on show, read and decoded ahead on a worker of their own (not
+        # behind the selection's lookups): ident -> (QPixmap, digest). Keyed with the file's mtime, so they outlive a
+        # change of slide, unlike `_lookups`, and the slide scrolled to shows at once.
+        self._prefetch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-prefetch')
+        self._prefetched: OrderedDict = OrderedDict()
+        self._prefetching: dict = {}          # ident -> Future, queued or running
+        self._prefetch_done.connect(self._on_prefetched)
+        self._changed_at = 0.0                # when the slide on show last changed (time.monotonic)
+        self._defer_checks = False            # scrolling: show what is held, check once the selection rests
         self._count_after: dict[tuple, Callable[[], None]] = {}   # steps key -> the render to queue if the store has none
         self._remote = {}
         self._shown_mtime = 0
@@ -563,6 +588,11 @@ class PreviewPane(Surface):
             self._adhoc = None
             self._adhoc_spec = None
             self._steps.drop_background()
+            now = time.monotonic()
+            # Another slide within SCROLLING_MS of the last change: scrolling. Its checks would be superseded before
+            # they answer, so none starts until the selection rests (_settled); a single click checks at once.
+            self._defer_checks = target is not None and now - self._changed_at < SCROLLING_MS / 1000
+            self._changed_at = now
             if target is not None:
                 self._settle.start()
         self._target, self._row, self._title, self._message = target, row, title, message
@@ -723,7 +753,9 @@ class PreviewPane(Surface):
             adhoc_spec = getattr(self, '_adhoc_spec', None)
             scoped = (adhoc_here and adhoc_spec is not None
                       and (adhoc_spec.options.mode != 'slide' or adhoc_spec.options.overlay is not None))
-            if scoped and (buffer is None or buffer[0] == self._adhoc_text):
+            if self._defer_checks:
+                pass                           # scrolling: no check that the next slide would supersede (_settled)
+            elif scoped and (buffer is None or buffer[0] == self._adhoc_text):
                 if background:
                     selected = self._select_in_background(target, text, view, language,
                                 None, scoped_spec=adhoc_spec)
@@ -763,7 +795,8 @@ class PreviewPane(Surface):
             self._last_pdf = None
             self._displayed_spec = None
             return stored, True, ''
-        if background and selected is None and not scoped and text is not None and self._selection_result_key is None:
+        if ((background or self._defer_checks) and selected is None and not scoped and text is not None
+                and self._selection_result_key is None):
             # Validation of this slide is still to come: the page last made from this very text and file is shown
             # at once, as a previous one. It authorizes no PDF and counts as current only once validation says so.
             held = self._pixmaps.get(key)
@@ -852,6 +885,12 @@ class PreviewPane(Surface):
         if background is None or self._overlay or self._scope != "slide":
             return None
         ident = (target.key, view, language, _mtime(target.source_path))
+        if (self._stored is None or self._stored[0] != ident) and ident in self._prefetched:
+            pixmap, digest = self._prefetched[ident]           # read ahead: shown at once, the poll asks again later
+            self._stored = (ident, pixmap, digest)
+            self._stored_asked = (self._generation, ident)
+        if self._defer_checks:
+            return self._stored[1] if self._stored is not None and self._stored[0] == ident else None
         if self._stored_asked != (self._generation, ident):
             self._stored_asked = (self._generation, ident)
             self._look_up('page', ident, partial(_stored_page_image, background, target, view, language,
@@ -916,6 +955,64 @@ class PreviewPane(Surface):
         if digest != before:
             self._refresh()
 
+    def _prefetch_neighbours(self) -> None:
+        """Read and decode the stored pages of the slides next to the one on show (NEIGHBOURS of them), so that the
+        next slide shows at once when the user scrolls to it. Only what the background renders stored: nothing is
+        compiled. Queued reads of slides no longer next to it are dropped."""
+        background = getattr(self.app, "background", None)
+        if background is None or self._closed or self._overlay or self._scope != "slide":
+            return
+        view, language, deck = self.state.view, self.language, self._deck_name()
+        wanted = {}
+        for other, _row in self.neighbours()[:NEIGHBOURS]:
+            ident = (other.key, view, language, _mtime(other.source_path))
+            if ident not in self._prefetched:
+                wanted[ident] = other
+        for ident, future in list(self._prefetching.items()):
+            if ident not in wanted and future.cancel():
+                del self._prefetching[ident]
+        owner = weakref.ref(self)
+        for ident, other in wanted.items():
+            if ident in self._prefetching:
+                continue
+            future = self._prefetch_executor.submit(_stored_page_image, background, other, view, language, deck)
+            self._prefetching[ident] = future
+
+            def finished(done, ident=ident):
+                pane = owner()
+                if pane is None or pane._closed or done.cancelled():
+                    return
+                try:
+                    found = done.result()
+                except Exception:  # noqa: BLE001 -- a page read ahead is a help, not needed
+                    found = None
+                try:
+                    pane._prefetch_done.emit(ident, found)
+                except RuntimeError:
+                    pass
+
+            future.add_done_callback(finished)
+
+    def _on_prefetched(self, ident, found) -> None:
+        self._prefetching.pop(ident, None)
+        if found is None or self._closed:
+            return
+        digest, image = found
+        pixmap = QPixmap.fromImage(image)
+        if pixmap.width() > DISPLAY_WIDTH:
+            pixmap = pixmap.scaledToWidth(DISPLAY_WIDTH, Qt.TransformationMode.SmoothTransformation)
+        self._prefetched[ident] = (pixmap, digest)
+        self._prefetched.move_to_end(ident)
+        while len(self._prefetched) > PREFETCHED:
+            self._prefetched.popitem(last=False)
+        target = self._target                  # scrolled there while it was read: show it now
+        if target is not None and (target.key, self.state.view, self.language, _mtime(target.source_path)) == ident:
+            self._refresh()
+
+    def _checking(self) -> bool:
+        """Whether a check of the slide on show is still out (or waits for the selection to rest)."""
+        return self._defer_checks or self._selection_pending is not None or 'page' in self._lookups
+
     def _refresh(self) -> None:
         target, row = self._target, self._row
         view, language = self.state.view, self.language
@@ -968,7 +1065,15 @@ class PreviewPane(Surface):
         else:
             found = self._image(target, background=self._background_validation)
             has_image = found is not None
-            if found is None:
+            if found is None and not busy_here and self._checking():
+                # Its check is out: the last page stays with "Loading…" until the answer, not a flash of "No preview"
+                # for every slide scrolled past (v8.53.0).
+                if self._page.pixmap is None:
+                    self._page.show_message(LOADING, False)
+                else:
+                    self._page.keep_dimmed()
+                status, tone, icon = LOADING, "info", "autorenew"
+            elif found is None:
                 self._page.show_message(
                     f"No preview for the {VIEW_LABELS[view]} view yet." if not busy_here else "Rendering…",
                     not busy_here)
@@ -1154,9 +1259,14 @@ class PreviewPane(Surface):
     def _settled(self) -> None:
         """The selection rested: the step bar may count the slide now, if it is still waiting for its steps."""
         target = self._target
+        if self._defer_checks:
+            self._defer_checks = False         # the selection rests: check the slide on show now
+            if target is not None and not self._closed:
+                self._refresh()
         if target is not None and not self._closed:
             hidden = target.hidden or (self._row is not None and self._row.hidden)
             self._update_reveal(target, self._row, not hidden, not hidden and self._page.pixmap is not None)
+            self._prefetch_neighbours()
 
     def _probe_steps(self) -> None:
         """Idle: count the steps of the slide on show (and of its other versions when its reveals depend on them)."""
@@ -1330,7 +1440,7 @@ class PreviewPane(Surface):
             bar.setVisible(False)
             return
         key, text, draft, scan = self._current_steps(target)
-        if key not in self._step_pages and not draft and key not in self._step_failed:
+        if key not in self._step_pages and not draft and key not in self._step_failed and not self._defer_checks:
             self._adopt_stored_steps(target, key)           # a current render in the store: no counting at all
         pages = self._step_pages.get(key)
         if pages is None:

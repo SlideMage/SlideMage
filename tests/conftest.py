@@ -90,6 +90,14 @@ def _fresh_raster_version():
 
 
 @pytest.fixture(autouse=True)
+def _no_scrolling(monkeypatch):
+    """Tests change slides faster than anyone scrolls: the Preview would take that as scrolling and hold its checks
+    back (preview_view.SCROLLING_MS). The tests of scrolling set it themselves."""
+    from slidemage.ui.workspace import preview_view
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 0)
+
+
+@pytest.fixture(autouse=True)
 def _fresh_tool_lookups():
     """The preview remembers where `which` found the TeX tools; a test that patches `which` or PATH starts and leaves it empty."""
     from slidemage import preview_cache
