@@ -174,3 +174,18 @@ def test_fetch_releases_skips_drafts_and_prereleases(monkeypatch):
     [release] = updater.fetch_releases(limit=5)
     assert (release.tag, release.body) == ("v4.1.0", "BREAKING: x")
     assert requested == [f"{updater.RELEASES_URL}?per_page=5"]
+
+
+def test_a_release_without_this_installations_file_is_not_offered_yet():
+    def ready(tag, body=""):
+        return updater.Release(tag, f"https://example.invalid/{tag}", f"https://api.example.invalid/{tag}", 1, body)
+
+    # v4.3.0 is listed, but this platform's build is still running: v4.2.0 is the update for now.
+    releases = [_release("v4.3.0"), ready("v4.2.0")]
+    plan = updater.plan_update(releases, "v4.1.0", need_asset=True)
+    assert plan.latest.tag == "v4.2.0" and plan.safe.tag == "v4.2.0"
+    assert updater.plan_update([_release("v4.2.0")], "v4.1.0", need_asset=True).latest is None
+    assert updater.plan_update(releases, "v4.1.0").latest.tag == "v4.3.0"      # a copy run from source: every release
+    # An older release without the file (built before this kind existed) still counts as one passed over.
+    plan = updater.plan_update([ready("v4.3.0"), _release("v4.2.0", "BREAKING: x")], "v4.1.0", need_asset=True)
+    assert plan.latest.tag == "v4.3.0" and [r.tag for r in plan.breaking] == ["v4.2.0"]

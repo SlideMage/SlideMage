@@ -203,14 +203,23 @@ def is_breaking(release: Release, current_tag: str) -> bool:
     return new is not None and current is not None and new[0] > current[0]
 
 
-def plan_update(releases: list[Release], current_tag: str) -> UpdatePlan:
+def plan_update(releases: list[Release], current_tag: str, *, need_asset: bool = False) -> UpdatePlan:
     """Decide what to offer. Every release between the running version and
     the newest one counts: skipping over a breaking release to a later,
-    unmarked one still breaks with the past."""
+    unmarked one still breaks with the past.
+
+    `need_asset` (a copy that installs updates itself): a release without
+    this installation's file is not offered yet. GitHub lists a release as
+    soon as its first file is attached, and the builds of the platforms
+    finish minutes apart; offered then, the download failed with "has no
+    download for this platform". The next check finds it."""
     newer = sorted(
         (r for r in releases if is_newer(r.tag, current_tag)),
         key=lambda r: parse_version(r.tag),
     )
+    if need_asset:
+        while newer and newer[-1].asset_url is None:
+            newer.pop()            # an older one without the file still counts as one passed over
     if not newer:
         return UpdatePlan(latest=None, breaking=[], safe=None)
     breaking = [r for r in newer if is_breaking(r, current_tag)]

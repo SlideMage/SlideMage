@@ -2666,3 +2666,8 @@ NEW: SlideMage stays quick while you use it.
 - Background previews render when you switch to another window, or after a minute without using SlideMage.
 - Coming back, scrolling or typing stops them at once; they never run during a presentation.
 - The previews chip says why they are waiting.
+
+v8.52.1 (2026-10-21, direct request: "make the updater treat a release without this platform's file as no update yet"): GitHub lists a release as the latest as soon as its first file is attached, and the platforms' builds finish minutes apart (v8.52.0: the Linux folder after 2.5 min, the Windows folder after 5 min). A copy that checked in between was offered the release and the download failed with "Release ... has no download for this platform". `updater.plan_update(need_asset=True)` (the start-up check, and "Check for updates" in a copy that installs updates itself) leaves out the newest releases that do not have this installation's file yet; an older newer one is offered meanwhile, and the next check finds the new one. A release in between without the file (one built before that kind of file existed) still counts as passed over, so its breaking-change note is not lost. A copy run from source still hears of every release. Tests: tests/test_updater.py.
+
+NEW: The updater offers a new version once its download is ready.
+- Right after a release it no longer offers a version whose file for your computer is still being built.
