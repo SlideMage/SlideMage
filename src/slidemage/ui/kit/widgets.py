@@ -12,7 +12,7 @@ IconLabel("expand_more"); fonts.load_fonts() must have run first.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import shiboken6
@@ -278,6 +278,24 @@ def columns(*widgets: QWidget) -> QWidget:
     layout.setSpacing(12)
     for widget in widgets:
         layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignTop)
+    return box
+
+
+def action_row(title: str, note: str, button: QWidget) -> QWidget:
+    """A name with a one-line caption under it and its `button` at the right: one thing a sheet lets
+    you run (Maintenance of Deck settings, the rows of Settings' Project and About tabs)."""
+    box = Surface()
+    layout = QHBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    texts = QVBoxLayout()
+    texts.setSpacing(1)
+    name = QLabel(title)
+    name.setObjectName(q.ROW_NAME)
+    texts.addWidget(name)
+    texts.addWidget(caption(note))
+    layout.addLayout(texts, 1)
+    layout.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
     return box
 
 
@@ -893,7 +911,11 @@ class PopoverMenu(Popover):
 
     add_column() starts a further column and add_footer() a footer row below the columns (items and a
     right-hand add_note()); then the menu is the compact columns layout, ↑/↓ move within a column or the
-    footer and ←/→ switch between them. `focus_first` opens it with the first enabled item current."""
+    footer and ←/→ switch between them. `focus_first` opens it with the first enabled item current.
+
+    add_submenu() is a row that opens a flyout, a second popup menu left of this one (right if the screen has no
+    room), top aligned with the row; one at a time, and an item of it is `triggered` here. Opening it by
+    keyboard (▸/Enter, ◂/Esc) is not supported yet. Hovering another row leaves an open flyout alone."""
 
     triggered = Signal(str)
 
@@ -906,12 +928,22 @@ class PopoverMenu(Popover):
         self._focus_first = focus_first
         self.current_key = ""             # the item the menu opens on (the deck switcher's current deck)
         self._entries: list[tuple] = []  # queued by add_*, built on popup
+        self._submenus: dict[str, tuple[str, Callable[[PopoverMenu], PopoverMenu]]] = {}   # key -> (title, build)
+        self._flyout: PopoverMenu | None = None
+        self._flyout_key = ""             # the row whose flyout is open, or was just closed by a mouse press on it
 
     def add_item(self, key: str, text: str, *, meta: str = "", icon: str = "",
                  tone: str = "", enabled: bool = True, swatch: str = "") -> None:
         """tone "danger" colors the text as an error; `swatch` is a color ("#rrggbb")
         shown as a small square before the text."""
         self._entries.append(("item", key, text, meta, icon, tone, enabled, swatch))
+
+    def add_submenu(self, key: str, text: str, build: Callable[[PopoverMenu], PopoverMenu], *,
+                    enabled: bool = True) -> None:
+        """A row with a trailing ▸ that shows the flyout `build(this menu)` returns, filled with its items and
+        titled `text`; `key` only tells the rows apart."""
+        self._submenus[key] = (text, build)
+        self.add_item(key, text, meta="▸", enabled=enabled)
 
     def add_header(self, text: str) -> None:
         self._entries.append(("header", text))
@@ -934,6 +966,7 @@ class PopoverMenu(Popover):
         self._rows.clear()
         self._row_group.clear()
         self._current = -1
+        self._flyout_key = ""
         columns = any(e[0] in ("column", "footer") for e in self._entries)
         set_property(self, "columns", columns)
         margin = 6 if columns else 4
@@ -998,8 +1031,48 @@ class PopoverMenu(Popover):
         return box
 
     def _on_activated(self, key: str) -> None:
+        if key in self._submenus:
+            self._toggle_flyout(key)
+            return
         self.close()
         self.triggered.emit(key)
+
+    def _toggle_flyout(self, key: str) -> None:
+        was_open = self._flyout_key == key
+        self._close_flyout()
+        self._flyout_key = ""
+        if was_open:
+            return
+        title, build = self._submenus[key]
+        flyout = build(self)
+        flyout._entries.insert(0, ("header", title))
+        flyout.triggered.connect(self._on_activated)    # an item of the flyout is one of this menu
+        flyout.closed.connect(self._on_flyout_closed)
+        flyout._prepare()
+        flyout.adjustSize()
+        row = next(r for r in self._rows if r.key == key)
+        left = self.mapToGlobal(QPoint(0, 0)).x()
+        screen = QGuiApplication.screenAt(self.pos()) or QGuiApplication.primaryScreen()
+        x = left - flyout.width()
+        if screen is not None and x < screen.availableGeometry().left():
+            x = left + self.width()
+        self._flyout, self._flyout_key = flyout, key
+        flyout._show_at(QPoint(x, row.mapToGlobal(QPoint(0, 0)).y()))
+
+    def _close_flyout(self) -> None:
+        if self._flyout is not None:
+            self._flyout.close()
+
+    def _on_flyout_closed(self) -> None:
+        flyout, self._flyout = self._flyout, None
+        if flyout is not None:
+            flyout.deleteLater()
+        if not QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+            self._flyout_key = ""     # else the press that closed it is on a row of this menu: its release must not reopen it
+
+    def hideEvent(self, event) -> None:
+        self._close_flyout()
+        super().hideEvent(event)
 
     def _set_current(self, index: int) -> None:
         if 0 <= self._current < len(self._rows):

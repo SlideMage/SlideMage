@@ -3,7 +3,6 @@
 """Transparent Qt wizard overlay. No video codecs or extra runtime dependencies.
 
 Call play_wizard(window) on the GUI thread; connect overlay.cast to a visual change.
-The preview command only animates a sample slide, never writes project data.
 """
 from __future__ import annotations
 
@@ -13,8 +12,8 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QRadialGradient
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QRadialGradient
+from PySide6.QtWidgets import QWidget
 
 
 def ease(value):
@@ -34,12 +33,11 @@ class WizardPortal(QWidget):
     duration = 6.8
     cast_time = 3.55
 
-    def __init__(self, parent, *, demo=True):
+    def __init__(self, parent):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.demo = demo
         asset = Path(__file__).parents[2] / "assets" / "wizard-poses.png"
         if not asset.is_file():
             asset = Path(__file__).with_name("wizard-poses.png")
@@ -152,8 +150,6 @@ class WizardPortal(QWidget):
                      sprite, QRectF(sprite.rect()))
         p.restore()
 
-        if self.demo:
-            self._slide(p, t)
         # Curved wand sweep, then a stream of golden magic into the target.
         if 3.05 < t < 4.8:
             trail = ease((t - 3.05) / .5)
@@ -191,31 +187,13 @@ class WizardPortal(QWidget):
         p.drawLine(QPointF(x, y - radius), QPointF(x, y + radius))
         p.restore()
 
-    def _slide(self, p, t):
-        p.save()
-        p.setOpacity((1 - ease((t - 5.65) / 1.15)) * ease((t - 1.8) / .5))
-        p.setPen(QPen(color("#ba98ed", .7), 1.5))
-        p.setBrush(color("#20182f", .96))
-        p.drawRoundedRect(QRectF(645, 270, 260, 175), 14, 14)
-        p.setFont(QFont("Sans Serif", 13, QFont.Weight.DemiBold))
-        p.setPen(color("#f4eafa"))
-        p.drawText(QRectF(666, 283, 215, 30), "A little slide magic")
-        changed = ease((t - self.cast_time) / .65)
-        for i, target in enumerate((48, 76, 62, 101)):
-            height = 27 + (target - 27) * changed
-            p.setBrush(color(("#9d6bf0", "#b68af4", "#e6b65c", "#ffda8b")[i]))
-            p.setPen(Qt.PenStyle.NoPen)
-            p.drawRoundedRect(QRectF(670 + i * 53, 420 - height, 33, height), 4, 4)
-        p.restore()
 
-
-def play_wizard(window, *, demo=True):
-    """Replay one owned overlay. Use demo=False and cast.connect for real UI changes."""
+def play_wizard(window):
+    """Replay one owned overlay; connect its cast signal to a real UI change."""
     overlay = getattr(window, "_wizard_portal", None)
     if overlay is None:
-        overlay = WizardPortal(window, demo=demo)
+        overlay = WizardPortal(window)
         window._wizard_portal = overlay
-    overlay.demo = demo
     overlay.play()
     return overlay
 
@@ -244,7 +222,7 @@ def note_ai_edit(window, path, before, after):
         window._wizard_last_play = now
         window._wizard_edits = []
         try:
-            play_wizard(window, demo=False)
+            play_wizard(window)
         except FileNotFoundError:
             pass  # Optional artwork must never interrupt a successful AI edit.
 
@@ -274,13 +252,3 @@ def note_review_updates(window):
             continue
         note_ai_edit(window, path, before, after)
 
-
-if __name__ == "__main__":
-    app = QApplication.instance() or QApplication([])
-    window = QWidget()
-    window.setWindowTitle("SlideMage — Portal animation preview")
-    window.resize(1000, 650)
-    window.setStyleSheet("background: #13111b;")
-    window.show()
-    play_wizard(window)
-    app.exec()

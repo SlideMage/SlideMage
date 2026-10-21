@@ -9,22 +9,34 @@ Save closes the sheet with `action == "save"`; `result_settings()` is then the e
 settings (a bad value shows under the form instead). On the Admin slides tab the button is Insert
 slides (`action == "insert"`; `admin` has the slides and the position). Both edit the deck file, so
 Insert waits until the form has no unsaved changes. The caller writes whichever it was.
+
+The Maintenance rows of General run a window command (`action == "command:<id>"`, see `COMMAND`): the
+sheet is modal, so it closes first, asks about unsaved changes before, and the caller runs the command
+through the command registry, which also says whether its button is enabled.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 
 from ... import deck_editor, deck_settings, open_path, project
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ..ai_models import add_route_badge
-from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, caption, columns, row, set_property
+from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, row, set_property
 from .admin_slides import AdminSlidesTab
 
 GENERAL, OUTPUT, ADMIN = range(3)
-SAVE, INSERT = "save", "insert"
+SAVE, INSERT, COMMAND = "save", "insert", "command:"
+MAINTENANCE = (       # (command id, name, what it does, button)
+    ("create_snapshot", "Deck snapshot", "A dated, self-contained copy of the deck that compiles as it does today.",
+     "Create snapshot…"),
+    ("rerender_deck_previews", "Previews", "Render every slide preview of this deck again.", "Rerender all"),
+    ("update_deck_versions", "Slide versions", "Raise the version of every slide changed since its last version.",
+     "Update changed…"),
+)
 LANGUAGE_LABELS = {"en": "English", "de": "Deutsch"}
 OUTPUT_LABELS = {
     None: "All outputs",
@@ -148,6 +160,20 @@ class DeckSettingsSheet(ModalSheet):
         self.appendix_check = QCheckBox("Always add the slide-preview appendix (\\deckappendixtoc)")
         self.appendix_check.setChecked(settings.appendix_toc)
         layout.addWidget(self.appendix_check)
+
+        commands = getattr(self.parent(), "commands", None)
+        group = Surface()
+        rows = QVBoxLayout(group)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(10)
+        self.maintenance_buttons: dict[str, Button] = {}
+        for command_id, title, note, label in MAINTENANCE:
+            button = Button(label, compact=True)
+            button.setEnabled(commands is not None and commands[command_id].enabled(self.parent()))
+            button.clicked.connect(lambda _checked=False, cid=command_id: self._on_command(cid))
+            self.maintenance_buttons[command_id] = button
+            rows.addWidget(action_row(title, note, button))
+        layout.addWidget(Field("Maintenance", group))
         layout.addStretch(1)
         return page
 
@@ -258,6 +284,15 @@ class DeckSettingsSheet(ModalSheet):
             self._say(str(exc), "error")
             return
         self.action = SAVE
+        self.accept()
+
+    def _on_command(self, command_id: str) -> None:
+        if self.dirty() and QMessageBox.question(
+                self, "Unsaved changes", "You have unsaved changes to the deck settings. Discard them and continue?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Discard:
+            return
+        self.action = COMMAND + command_id
         self.accept()
 
     def _on_insert(self) -> None:

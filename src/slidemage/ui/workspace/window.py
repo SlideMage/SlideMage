@@ -167,6 +167,7 @@ class WorkspaceWindow(QMainWindow):
         self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.toast = Toast(central)
+        self.toast.action_triggered.connect(compile_actions.on_toast_action)
         self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
@@ -606,6 +607,8 @@ class WorkspaceWindow(QMainWindow):
             self.local_models.fill(sheet.installed)
         else:
             self.refresh_ai_models()
+        if sheet.after is not None:
+            sheet.after()
 
     # -- the AI route ------------------------------------------------------------------------
 
@@ -760,7 +763,7 @@ class WorkspaceWindow(QMainWindow):
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
         source mode, like "Edit .bib" does for Slidemaster.bib."""
-        path = self.project.decks_dir / "test-slides.tex"
+        path = self.project.test_slides_path
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return

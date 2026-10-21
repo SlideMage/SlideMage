@@ -48,9 +48,12 @@ deck switcher offers the rest). From top to bottom and left to right:
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details**, the **Compile PDF** split button, and
-  the **⋮** menu (one popover in two columns, *This deck* | *Project, Housekeeping, Info*, with Settings… in
-  its footer -- what the old menu bar and the deck table's per-row buttons held; the rest, such as the
-  column toggles, Import, Refresh, Log, Open latest PDF and Exit, is in `Ctrl+K`).
+  the **⋮** menu (one popover in two columns, *This deck* | *Project*, with Settings… in its footer: Present,
+  Deck settings… (`Ctrl+,`), Export ▸ (Export PPTX…, Export LaTeX…), Duplicate deck… and Archive deck…; Image descriptions, Open project…,
+  New deck… and Housekeeping ▸ (Housekeeping…, Archive unused…); a ▸ row opens a flyout left of the menu). Everything else the old menu bar and the deck table's
+  per-row buttons held is in `Ctrl+K`, and some of it also in a sheet: snapshot, previews and slide versions
+  under Deck settings → General → Maintenance; the .bib file, test slides and project compatibility under
+  Settings → Project; version history and the update check under Settings → About.
 - **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
   every version the old deck table's checkboxes made (Instructor, During course, After
   course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
@@ -206,7 +209,7 @@ way without deleting them.
 
 ## Updates
 
-**⋮ → Info → Check for updates…** compares this copy's version with the
+**Settings… → About → Check for updates…** (also in `Ctrl+K`) compares this copy's version with the
 releases of `stpalan/SlideMage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
@@ -646,6 +649,19 @@ What matters when touching *this code*:
   network; the window refreshes the open pickers when the sheet closes. The
   "Slide rewrite" prompt page and the "AI drafting" model went away with the old AI draft
   dialog: whole-slide changes are the chat's job now (`ai/`, below).
+  Two more tabs hold what is about the project and the program (v8.41.0,
+  `docs/MENU_UPDATE_PLAN.md` step M1): **Project** (*Bibliography file* and *Test slides*, each
+  with an **Edit** button that opens the file in Source and shows "not found" instead of the
+  name when it is missing, and *Project compatibility* → **Check…**) and **About** (the version,
+  *Version history* → **Open…**, *Check for updates* → **Check…**). Their buttons close the
+  sheet first (it asks about unsaved prompt text as always), then the window runs the action.
+- [`ui/dialogs/deck_settings.py`](../src/slidemage/ui/dialogs/deck_settings.py) -- the **Deck
+  settings…** sheet. Its **General** tab ends with a **Maintenance** group of three rows with
+  a button each: *Deck snapshot* → **Create snapshot…**, *Previews* → **Rerender all** and
+  *Slide versions* → **Update changed…** (the commands `create_snapshot`,
+  `rerender_deck_previews` and `update_deck_versions`). A button is greyed out when its
+  command is not available; otherwise it asks about unsaved changes of the sheet, closes the
+  sheet and runs the command through the command registry.
 - [`ui/dialogs/housekeeping.py`](../src/slidemage/ui/dialogs/housekeeping.py) --
   the **Housekeeping…** sheet and the *Archive unused slides and media files* sheet
   (2026-09-27, direct instruction, after a real batch run archived far more than expected --
@@ -891,7 +907,7 @@ What matters when touching *this code*:
   - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands
     are registered in `ui/workspace/actions.py` (`build_registry()`), and the menus in
     `menus.py` are lists of command ids (the ⋮ menu's two columns and footer are `MORE_COLUMNS`, drawn by
-    `PopoverMenu.add_column()`/`add_footer()`), so the top bar, the ⋮ menu, the context menus and the
+    `PopoverMenu.add_column()`/`add_footer()`; a `Submenu` entry is `add_submenu()`, a flyout), so the top bar, the ⋮ menu, the context menus and the
     palette share one definition (`slide:*`, `section:*`, `compile:*`, ...). A new feature
     registers its command there.
   - `ui/workspace/` -- `window.py` (`WorkspaceWindow`) with `state.py` (`WorkspaceState`: the

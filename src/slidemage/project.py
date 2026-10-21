@@ -502,6 +502,7 @@ class ProjectContext:
     claude_hook_dir = _Under(".slidemage", "claude-hooks")
     slide_ids_csv = _Under(MARKER)
     bibliography_path = _Under("Slidemaster.bib")
+    test_slides_path = _Under("decks", "test-slides.tex")
     slide_template_path = _Under(".scripts", "R_Slidemaster", "inst", "templates", "slide-template.tex")
 
     def __post_init__(self) -> None:

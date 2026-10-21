@@ -18,7 +18,7 @@ def test_small_edits_stay_quiet_complex_edits_trigger_once(monkeypatch):
     wizard.note_ai_edit(w, 'one.tex', 'hello', 'world')
     assert not play.called
     wizard.note_ai_edit(w, 'one.tex', '', '\n'.join(str(i) for i in range(12)))
-    play.assert_called_once_with(w, demo=False)
+    play.assert_called_once_with(w)
     wizard.note_ai_edit(w, 'two.tex', '', '\n'.join(str(i) for i in range(30)))
     assert play.call_count == 1
 
@@ -51,7 +51,7 @@ def test_old_review_records_do_not_replay_new_records_do(root, monkeypatch):
     path.write_text(next_text)
     ai_review.mark(ctx, path, 'edit', 'terminal hook', before=after)
     wizard.note_review_updates(w)
-    play.assert_called_once_with(w, demo=False)
+    play.assert_called_once_with(w)
     wizard.note_review_updates(w)
     assert play.call_count == 1
 

@@ -148,6 +148,139 @@ def test_popover_menu_triggers_and_skips_disabled(theme):
     assert seen == ["b", "a"]
 
 
+def submenu_pair(x: int = 600) -> tuple[PopoverMenu, list]:
+    """A menu with a row, a submenu row ("sub", flyout Ex / Why) and a row; shown at (x, 100)."""
+    def build(menu: PopoverMenu) -> PopoverMenu:
+        flyout = PopoverMenu(menu, min_width=280)
+        flyout.add_item("x", "Ex")
+        flyout.add_item("y", "Why")
+        return flyout
+
+    menu = PopoverMenu()
+    menu.add_item("a", "A")
+    menu.add_submenu("sub", "Sub", build)
+    menu.add_item("b", "B")
+    seen: list = []
+    menu.triggered.connect(seen.append)
+    menu.popup_at(QPoint(x, 100))
+    return menu, seen
+
+
+def click_row(menu: PopoverMenu, key: str) -> None:
+    QTest.mouseClick(next(r for r in menu._rows if r.key == key), Qt.MouseButton.LeftButton)
+
+
+def test_submenu_row_shows_an_arrow_and_opens_the_flyout_instead_of_triggering(theme):
+    menu, seen = submenu_pair()
+    try:
+        row = menu._rows[1]
+        assert row.findChild(QLabel, kit_qss.MENU_META).text() == "▸"
+        QTest.keyClick(menu, Qt.Key.Key_Down)
+        QTest.keyClick(menu, Qt.Key.Key_Down)      # a normal row for the arrows
+        assert menu._current == 1
+        click_row(menu, "sub")
+        flyout = menu._flyout
+        assert menu.isVisible() and flyout.isVisible() and seen == []
+        assert [r.key for r in flyout._rows] == ["x", "y"]
+        assert flyout.findChildren(QLabel, kit_qss.MENU_HEADER)[0].text() == "Sub"     # its title row
+        assert flyout.width() >= 280 and flyout.windowFlags() & Qt.WindowType.Popup
+    finally:
+        menu.close()
+
+
+def test_flyout_is_left_of_the_menu_with_its_top_at_the_row(theme):
+    menu, _ = submenu_pair()
+    try:
+        click_row(menu, "sub")
+        flyout = menu._flyout
+        assert flyout.geometry().right() < menu.geometry().left()
+        assert flyout.y() == menu._rows[1].mapToGlobal(QPoint(0, 0)).y()
+    finally:
+        menu.close()
+
+
+def test_flyout_goes_right_when_the_screen_has_no_room_on_the_left(theme):
+    menu, _ = submenu_pair(x=100)           # 100 px from the left edge, the flyout is 280 wide
+    try:
+        click_row(menu, "sub")
+        assert menu._flyout.x() >= menu.geometry().right()
+    finally:
+        menu.close()
+
+
+def test_one_flyout_at_a_time_and_the_same_row_again_closes_it(theme):
+    seen = []
+    menu = PopoverMenu()
+    for key in ("one", "two"):
+        menu.add_submenu(key, key, lambda m, k=key: _flyout_of(m, k))
+    menu.triggered.connect(seen.append)
+    menu.popup_at(QPoint(600, 100))
+    try:
+        click_row(menu, "one")
+        first = menu._flyout
+        click_row(menu, "two")
+        assert not first.isVisible() and menu._flyout.isVisible() and menu._flyout is not first
+        second = menu._flyout
+        click_row(menu, "two")
+        assert not second.isVisible() and menu.isVisible() and seen == []
+        click_row(menu, "two")
+        assert menu._flyout.isVisible()
+    finally:
+        menu.close()
+
+
+def _flyout_of(menu: PopoverMenu, key: str) -> PopoverMenu:
+    flyout = PopoverMenu(menu, min_width=280)
+    flyout.add_item(f"{key}:item", "Item")
+    return flyout
+
+
+def test_an_item_of_the_flyout_is_triggered_on_the_menu_and_closes_both(theme):
+    menu, seen = submenu_pair()
+    click_row(menu, "sub")
+    flyout = menu._flyout
+    click_row(flyout, "y")
+    assert seen == ["y"] and not flyout.isVisible() and not menu.isVisible()
+
+
+def test_escape_in_the_flyout_closes_only_the_flyout(theme):
+    menu, seen = submenu_pair()
+    try:
+        click_row(menu, "sub")
+        flyout = menu._flyout
+        QTest.keyClick(flyout, Qt.Key.Key_Escape)
+        assert not flyout.isVisible() and menu.isVisible() and seen == []
+        click_row(menu, "b")                          # the menu still works
+        assert seen == ["b"]
+    finally:
+        menu.close()
+
+
+def test_closing_the_menu_or_clicking_outside_closes_the_flyout_too(theme, qapp):
+    menu, _ = submenu_pair()
+    click_row(menu, "sub")
+    flyout = menu._flyout
+    menu.close()
+    assert not flyout.isVisible()
+    menu, _ = submenu_pair()
+    outside = QWidget()
+    outside.setGeometry(0, 0, 100, 100)
+    outside.show()
+    click_row(menu, "sub")
+    flyout = menu._flyout
+    QTest.mouseClick(outside, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert not flyout.isVisible() and not menu.isVisible()
+
+
+def test_clicking_another_row_of_the_menu_while_the_flyout_is_open_works(theme):
+    menu, seen = submenu_pair()
+    click_row(menu, "sub")
+    flyout = menu._flyout
+    click_row(menu, "a")
+    assert seen == ["a"] and not flyout.isVisible() and not menu.isVisible()
+
+
 def test_split_button_main_and_caret(theme):
     split = SplitButton("Compile")
     menu = PopoverMenu()

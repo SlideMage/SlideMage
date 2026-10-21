@@ -257,7 +257,7 @@ def build_registry() -> CommandRegistry:
         meta="full-screen, with notes", enabled=_active_deck)
     add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
-        enabled=lambda w: _has_deck(w) and not _keeps_group(w))
+        shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
     add("admin_slides", "Admin slides…", DECK, lambda w: deck_actions.on_admin_slides(w, w.state.deck), meta="course page",
         enabled=_admin_slides_possible)
     add("deck_source", "Edit deck source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
@@ -266,6 +266,8 @@ def build_registry() -> CommandRegistry:
     add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)
     add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
     add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
+    add("export_latex", "Export LaTeX…", DECK, lambda w: compile_actions.export_latex(w, w.state.deck),
+        meta="self-contained · with media folder", enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,
@@ -284,8 +286,6 @@ def build_registry() -> CommandRegistry:
     add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
     add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
-    from .wizard_portal import play_wizard
-    add("wizard_preview", "Preview wizard magic", PROJECT, lambda w: play_wizard(w), icon="auto_awesome")
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))
     add("open_project", "Open project…", PROJECT, _window("_on_open_project"))
     add("settings", "Settings…", PROJECT, _window("_on_open_settings"))

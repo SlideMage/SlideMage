@@ -86,7 +86,7 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck | project incl. Images, housekeeping, info; Settings… at the bottom; everything else is in `Ctrl+K`).
+  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck, with Export ▸ | project incl. Images and Housekeeping ▸; Settings… at the bottom; everything else is in `Ctrl+K`, and snapshot, previews, slide versions, the .bib file, project compatibility, version history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About).
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
   Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
@@ -221,7 +221,7 @@ the log. A breaking release -- a `BREAKING:` paragraph in its notes, or a
 higher major number -- is **always asked about, even in automatic mode**:
 the dialog shows the `BREAKING:` paragraphs and offers *Install anyway*,
 *Stay on vN.x* (installs the newest non-breaking release instead, if there
-is one) or *Not now*. **Check for updates…** (⋮ menu, *Info*) works in every mode.
+is one) or *Not now*. **Check for updates…** (Settings → About) works in every mode.
 Because the repository is private, all of this needs a GitHub token with
 read access to it (Settings → General → Updates, or
 `$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with `git pull`
@@ -276,7 +276,7 @@ registry with the version whose changes you have dealt with (kept in
   **Show report**, **Not now** (nothing is recorded, so the dialog is back the next time
   the project is opened) and **Don't ask again** (remembered per change).
 - Changes that only make slides **look different** never open a dialog; they are
-  listed under ⋮ → Info → Project compatibility… (**Mark all as read** stops listing them).
+  listed under Settings → Project → Project compatibility (**Mark all as read** stops listing them).
 - A change with a detector is pending only while the detector finds something in the
   project, so fixing it by hand makes it disappear. Where no automatic fix exists, the
   report says what to do.
@@ -306,7 +306,7 @@ framework next to the project has the new command.
 
 A snapshot is a self-contained copy of a deck that compiles exactly as the deck
 compiles today, whatever later happens to the project, the framework or SlideMage.
-**⋮ → This deck → Create deck snapshot…** takes one or more decks (each gets its own
+**Deck settings → General → Maintenance → Create snapshot…** (also `Ctrl+K`) takes one or more decks (each gets its own
 snapshot; they are made one after the other), **Folder** or **.zip file**, and whether
 to **include the LaTeX package files** and **the SlideMage app**. Archiving a deck asks
 first: **Snapshot, then archive** / **Archive only** / Cancel (the snapshot uses the
@@ -449,7 +449,7 @@ copied package files in `texmf/` record the exact originals.
   `22s-MyUniversity-1920-1080.png` and `22s-MyUniversity-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
   a side effect of any compile that touches that slide, for one deck via
-  **⋮ → This deck → Rerender all previews for this deck**, or for the whole project via
+  **Deck settings → General → Maintenance → Rerender all**, or for the whole project via
   SlideMage's "Update slide previews" (⋮ → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
@@ -707,6 +707,20 @@ python-pptx itself has no animation API, so the click-triggered timing is
 hand-assembled OOXML, verified directly against a real PowerPoint
 installation (see the module's own docstring for how).
 
+### Exporting as LaTeX
+
+**Export LaTeX…** (⋮ menu, *This deck*, under Export ▸) writes the open deck as a folder that
+compiles on its own, on a machine that has only a TeX distribution: pick a folder, and SlideMage
+creates `<deck name>-latex/` in it (asking before it replaces one that is already there). The folder
+holds the deck at its top level, the slides it uses under `slides/`, only the images those slides use
+under `media/`, and everything else the build reads: the institution template and
+`Slidemaster_preamble_base.tex` with the theme files, logos and schemes they name, the `.bib`, the
+code files of `snippets/` and the image descriptions. Build it with `latexmk <deck name>.tex`; the
+`.latexmkrc` in the folder selects LuaLaTeX. A file the deck names that the project does not have is
+listed in the Log (and counted in the toast); the rest is exported anyway. It copies the sources, so
+it needs no compile and no LaTeX on the machine that exports; a deck snapshot, by contrast, freezes
+what a real compile read.
+
 ### Deck tags (`\decktags`)
 
 SlideMage's deck switcher (top left) groups decks under headings -- the workdeck on top,
@@ -723,7 +737,7 @@ defines it as an inert no-op like `\deckoutputfolder`). The group tags are
 `work`, `course`, `research` and `test`; a deck with none of them is a
 course deck, and if it carries several the first in that order wins. Other
 tags are allowed and ignored for now. Set it from SlideMage rather than by
-hand: **Tags…** in the ⋮ menu (*This deck*), or the group choice in the
+hand: **Tags…** in `Ctrl+K`, or the group choice in the
 **Duplicate deck…** sheet when creating a copy.
 
 The SlideMage manual (`decks/slidemage-manual.tex`) carries a fifth group
@@ -735,7 +749,7 @@ manual can't be moved into another group by accident. A copy made with
 
 ### Deck settings and course links
 
-**Deck settings…** (⋮ menu, *This deck*) opens a sheet with the deck-wide settings
+**Deck settings…** (⋮ menu, *This deck*; `Ctrl+,`) opens a sheet with the deck-wide settings
 (General, PDF output and Admin slides tabs). They are written into the deck's own
 .tex file, all in one go when you press **Save**, so they stay with the deck when
 it is moved, copied or archived:
@@ -1210,8 +1224,9 @@ which does the same as Update version from there.
 
 **Settings → General → Render the Preview after each autosave** (off by
 default) renders the slide again a moment after each autosave while the
-Preview or Split view shows it. **⋮ → This deck → Update version of all changed
-slides** asks major / minor / patch once and makes a version of every slide of
+Preview or Split view shows it. **Deck settings → General → Maintenance → Update changed…**
+(or "Update version of all changed slides" in `Ctrl+K`)
+asks major / minor / patch once and makes a version of every slide of
 the deck that has a **+**; a snapshot or PowerPoint export warns when a deck
 has such slides. An edit made outside the app (Claude Code in the terminal)
 gets the **+** too, the next time the slide is shown. Select multiple slides and
@@ -2998,8 +3013,8 @@ institution). This is one long compile (well over an hour is plausible
 for the whole project) that occupies the compile slot until it finishes,
 so no other compile can start in the meantime.
 
-To refresh only the current deck's previews, choose **⋮ → This deck → Rerender all
-previews for this deck** (also in ⌘K / Ctrl+K). Choose the selected course view or
+To refresh only the current deck's previews, choose **Deck settings → General →
+Maintenance → Rerender all** (also "Rerender all previews for this deck" in ⌘K / Ctrl+K). Choose the selected course view or
 all views; it refreshes the exact occurrences in the selected language through
 the shared preview cache and reports progress in the job panel and Log. It
 deletes nothing. It is

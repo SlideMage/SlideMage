@@ -21,7 +21,7 @@ from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
 from ..dialogs.admin_slides import AdminSlidesTab
 from ..dialogs.deck_group import DeckGroupSheet
-from ..dialogs.deck_settings import ADMIN, GENERAL, INSERT, DeckSettingsSheet
+from ..dialogs.deck_settings import ADMIN, COMMAND, GENERAL, INSERT, DeckSettingsSheet
 from ..dialogs.snapshot import SnapshotSheet
 from . import compile_actions
 
@@ -152,6 +152,8 @@ def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
         return
     if sheet.action == INSERT:
         insert_admin_slides(window, deck, sheet.admin)
+    elif sheet.action.startswith(COMMAND):
+        window.commands.run(sheet.action.removeprefix(COMMAND), window)
     else:
         save_deck_settings(window, deck, sheet.original, sheet.result_settings())
 

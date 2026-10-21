@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
-from ... import compile_log, compile_progress, compiler, deck_snapshot, latex_lint, open_path, partial_compile
+from ... import compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
 from ... import pptx_export, slide_language, slide_snapshot, slide_versioning, update_all_previews
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
@@ -358,6 +358,41 @@ def start_snapshots(
     window.compile.start(texts, specs, work, on_done=after or (
         lambda results: snapshot_sheets.show_summary(window, window.project, results)))
     return True
+
+
+# -- Export LaTeX ------------------------------------------------------------------------
+
+OPEN_FOLDER = "folder:"     # the toast action that opens a folder; its key carries the path
+
+
+def on_toast_action(key: str) -> None:
+    """The window toast's "Open folder" action (export_latex)."""
+    if key.startswith(OPEN_FOLDER):
+        open_path.open_in_default_app(key[len(OPEN_FOLDER):])
+
+
+def export_latex(window, deck: Deck) -> None:
+    """Writes `deck` as a folder that compiles on its own (latex_export.py) into a folder the user picks,
+    asking before it replaces an earlier export. Copying files is quick, so it runs here, not as a compile run."""
+    chosen = QFileDialog.getExistingDirectory(window, f"Export {deck.name} as LaTeX to", str(window.project.root))
+    if not chosen:
+        return
+    target = Path(chosen) / f"{deck.name}{latex_export.FOLDER_SUFFIX}"
+    if target.exists() and QMessageBox.question(
+            window, "Replace folder", f"{target.name} already exists in {chosen}. Replace it?",
+    ) != QMessageBox.StandardButton.Yes:
+        return
+    window.centre.source.flush_all()
+    try:
+        result = latex_export.export_deck(window.project, deck, Path(chosen), window.log)
+    except OSError as exc:
+        window.log(f"*** Export LaTeX failed: {exc} ***")
+        QMessageBox.critical(window, "Export LaTeX", f"Couldn't export {deck.name}: {exc}")
+        return
+    text = f"Exported to {result.folder}"
+    if result.missing:
+        text += f" · {len(result.missing)} referenced file(s) not found, see the Log"
+    window.toast.show_message(text, [(OPEN_FOLDER + str(result.folder), "Open folder")], timeout_ms=12000)
 
 
 # -- Export PPTX -------------------------------------------------------------------------
