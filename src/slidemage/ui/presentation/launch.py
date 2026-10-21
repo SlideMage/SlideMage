@@ -101,5 +101,8 @@ def start(window, pdf: DeckPdf, deck: Optional[Deck] = None) -> Optional[Present
         save_settings=lambda changed: changed.save())
     window.presentation = controller
     controller.finished.connect(lambda: setattr(window, "presentation", None))
+    renderer = getattr(getattr(window, "background", None), "renderer", None)
+    if renderer is not None:
+        renderer.presentation_started()          # no background render during the talk
     controller.start()
     return controller

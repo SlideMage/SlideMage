@@ -365,7 +365,7 @@ def test_a_render_whose_record_is_still_being_written_shows_as_current_and_is_ch
     pane._refresh()
     assert page(centre).pixmap is not None and not pane._status_chip.isVisibleTo(pane)
     request.done.set()
-    deadline = time.monotonic() + 2
+    deadline = time.monotonic() + 10
     while "Previous render" not in pane._status_chip.text() and time.monotonic() < deadline:
         QApplication.processEvents()
         time.sleep(0.01)

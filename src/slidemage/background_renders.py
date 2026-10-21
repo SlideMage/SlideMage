@@ -270,8 +270,25 @@ class BackgroundRenderer:
         return progress.left > 0 and not progress.paused_because and self.gate.sweeping()
 
     def user_active(self) -> None:
-        """The user did something: no new background job starts for a while. Nothing running is stopped."""
+        """The user did something: no new background job starts for a while. In front of the window (the only place
+        input reaches) the running ones stop too, so the app answers at once."""
         self.gate.note_input()
+        if self.gate.in_front and not self.gate.forced():
+            self.scheduler.interrupt(P_IDLE)
+
+    def presentation_started(self) -> None:
+        """No background render during a presentation (idle_gate.PRESENTING): the running ones stop."""
+        self.scheduler.interrupt(P_IDLE)
+        self.replan()
+
+    def window_focus(self, active: bool) -> None:
+        """SlideMage's window got or lost the focus. Coming to the front stops the running background renders (they
+        are put back and run again later), so that the app answers at once; "Render now" keeps them going. In front,
+        rendering may start again after idle_gate.IN_FRONT_IDLE without input; out of focus after LEAVE_GRACE."""
+        self.gate.note_focus(active)
+        if active and not self.gate.forced():
+            self.scheduler.interrupt(P_IDLE)
+        self.replan()
 
     def _may_start(self, job) -> bool:
         if not self.gate.allowed():

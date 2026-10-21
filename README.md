@@ -1235,8 +1235,9 @@ Patch / Minor / Major choice; existing deck calls keep following current or thei
 
 ### Previews prepared in the background
 
-When you have not touched SlideMage for 30 seconds, it renders the slides of your decks
-in the background, with every reveal step, so they are ready when you open a deck. The
+When you switch to another window, or leave SlideMage untouched for a minute, it renders the
+slides of your decks in the background (never during a presentation; coming back to SlideMage
+stops it at once, so the app answers right away), with every reveal step, so they are ready when you open a deck. The
 decks go in the order you used them (the open deck first; a deck whose course session is
 coming up, from the schedule SlideMage already fetched, counts as used), within a deck the
 instructor version comes first, then During course and After course, and within a version

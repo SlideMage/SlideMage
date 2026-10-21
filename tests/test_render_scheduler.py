@@ -240,3 +240,16 @@ def test_idle_renders_stand_back_while_a_batch_waits_but_the_users_own_does_not(
     budget.want(-1)
     assert s.run_next() and ("idle", P_IDLE) in s.ran
     assert budget.in_use() == 1               # every render gave its place back
+
+
+def test_interrupting_a_class_puts_its_running_jobs_back_and_leaves_the_others_running():
+    s = make()
+    s.box["during"] = {"idle-1": lambda job: s.box["during"].pop("idle-1") and None or s.box.__setitem__(
+        "stopped", (s.interrupt(P_IDLE), s.interrupt(P_NEIGHBOURS)))}
+    s.submit("idle-1", None, P_IDLE)
+    assert s.run_next()                         # the window comes to the front while idle-1 renders
+    assert s.box["stopped"] == (1, 0)
+    assert s.failed == 0 and not s.errors and s.completed == 0
+    assert s.queued_keys() == ["idle-1"]        # put back, it renders again later
+    drain(s)
+    assert [k for k, _ in s.ran] == ["idle-1", "idle-1"] and s.completed == 1

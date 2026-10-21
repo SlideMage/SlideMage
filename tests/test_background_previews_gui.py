@@ -419,3 +419,47 @@ def test_the_chip_stays_blue_between_two_jobs_of_one_sweep(window):
     renderer.progress.paused_because = "waiting for a compile"             # something holds it back: now it is waiting
     assert controller.summary() == ("Previews paused (waiting for a compile) · 6 left", "muted")
     assert controller.dial_state() == "waiting"
+
+
+def test_the_window_in_front_stops_background_renders_and_the_chip_says_why(window, monkeypatch):
+    from slidemage import idle_gate
+    controller = window.background
+    renderer = controller.renderer
+    stopped = []
+    monkeypatch.setattr(renderer.scheduler, "interrupt", lambda priority: stopped.append(priority) or 1)
+    app = QApplication.instance()
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationInactive)
+    assert renderer.gate.in_front is False and stopped == []
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+    assert renderer.gate.in_front is True and renderer.gate.reason() == idle_gate.IN_USE
+    assert stopped == [background_renders.P_IDLE]               # the running renders stop and go back in the queue
+    renderer.gate.force(60)                                      # "Render now" keeps them going
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+    assert stopped == [background_renders.P_IDLE]
+    progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0, paused_because=idle_gate.IN_USE)
+    monkeypatch.setattr(type(renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
+                        raising=False)
+    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
+    assert idle_gate.IN_USE_EXPLAINED in controller.hover_text()
+    assert "switch to another window" in idle_gate.IN_USE_EXPLAINED
+
+
+def test_input_in_front_and_a_presentation_stop_background_renders(window, monkeypatch):
+    from slidemage import idle_gate
+    renderer = window.background.renderer
+    stopped = []
+    monkeypatch.setattr(renderer.scheduler, "interrupt", lambda priority: stopped.append(priority) or 1)
+    renderer.gate.note_focus(False)
+    renderer.user_active()                                      # the mouse over the window behind: nothing stops
+    assert stopped == []
+    renderer.gate.note_focus(True)
+    renderer.user_active()                                      # a scroll after a minute of reading
+    assert stopped == [background_renders.P_IDLE]
+    renderer.gate.force(60)
+    renderer.user_active()                                      # "Render now" keeps them going
+    assert stopped == [background_renders.P_IDLE]
+    window.presentation = object()
+    renderer.presentation_started()
+    assert stopped == [background_renders.P_IDLE] * 2 and renderer.gate.reason() == idle_gate.PRESENTING
+    window.presentation = None
+    assert renderer.gate.reason() != idle_gate.PRESENTING

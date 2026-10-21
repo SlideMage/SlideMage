@@ -203,9 +203,10 @@ class GeneralTab(Page):
         self.bg_caption = caption("")
         layout.addWidget(self.bg_caption)
         layout.addWidget(caption(
-            "When you have not touched SlideMage for 30 seconds, it renders the slides of your decks, with all their "
+            "When you switch to another window, or leave SlideMage untouched for a minute, it renders the slides of "
+            "your decks, with all their "
             "reveal steps, most recently used decks first and the instructor version first, so they are ready when you "
-            "open them. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
+            "open them. Coming back to SlideMage stops it at once, and it never runs during a presentation. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
             "a deck can be left out in the chip that shows the progress."))
         self._background_size()
 
