@@ -253,3 +253,25 @@ def test_interrupting_a_class_puts_its_running_jobs_back_and_leaves_the_others_r
     assert s.queued_keys() == ["idle-1"]        # put back, it renders again later
     drain(s)
     assert [k for k, _ in s.ran] == ["idle-1", "idle-1"] and s.completed == 1
+
+
+def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monkeypatch):
+    # The GUI stopped ten renders one after the other, each waiting for taskkill, under the queue's lock: the window
+    # froze for seconds when the user came back (v8.52.5).
+    from types import SimpleNamespace
+    from slidemage.compiler import CancelToken
+    killed = threading.Event()
+
+    def slow_kill(proc):
+        time.sleep(0.5)
+        killed.set()
+
+    monkeypatch.setattr(CancelToken, "_kill", staticmethod(slow_kill))
+    s = make()
+    token = CancelToken()
+    token._proc = SimpleNamespace(poll=lambda: None)
+    s._running["idle-1"] = SimpleNamespace(key="idle-1", priority=P_IDLE, cancelled_for_requeue=False, cancel=token)
+    started = time.monotonic()
+    assert s.interrupt(P_IDLE) == 1
+    assert time.monotonic() - started < 0.2 and token.is_set() and not killed.is_set()
+    assert killed.wait(2)                                         # the kill still happens, on a thread of its own

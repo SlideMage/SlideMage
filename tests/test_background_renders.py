@@ -671,10 +671,15 @@ def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(projec
                                              working="a:1jh:instructor:EN", scanned_at=1.0)
     r.gate.sweep_until = 0.0
     assert not r.sweeping()
-    r._set_working("b:2:instructor:EN", True)
+    from slidemage.compiler import CancelToken
+    from slidemage.render_scheduler import Job
+    job = Job("b:2:instructor:EN", None, background_renders.P_IDLE)
+    job.cancel, job.started, job.cancelled_for_requeue = CancelToken(), 0.0, False
+    r.scheduler._running[job.key] = job                         # a render runs
     assert r.sweeping()
-    r._set_working("b:2:instructor:EN", False)
-    assert not r.sweeping()
+    assert r.scheduler.interrupt(background_renders.P_IDLE) == 1 and job.cancel.is_set()
+    assert not r.sweeping()                                      # told to stop: no longer "Preparing", however long it takes
+    del r.scheduler._running[job.key]
     r.scan()
     assert r.progress.working is None                          # the new progress names what runs, from the workers
     r._trace = background_renders.Trace(tmp_path / "trace.log")

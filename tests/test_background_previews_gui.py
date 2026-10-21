@@ -158,9 +158,9 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)], scanned_at=1.0)
     controller.renderer.progress = progress
     assert controller.summary() == ("Previews · 11 left", "muted")
-    controller.renderer._set_working("a:1jh:instructor:EN", True)      # a worker renders (what runs is the workers')
+    rendering(controller.renderer, True)                             # a render runs (the scheduler's, not stopping)
     assert controller.summary() == ("Preparing previews · 11 left", "info")
-    controller.renderer._set_working("a:1jh:instructor:EN", False)
+    rendering(controller.renderer, False)
     progress.paused_because = "you are working"
     assert controller.summary() == ("Previews paused (you are working) · 11 left", "muted")
     controller.refresh()
@@ -307,6 +307,14 @@ def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(windo
 
 # -- the dial and the status window ---------------------------------------------------------------
 
+def rendering(renderer, on: bool) -> None:
+    """Make the scheduler report one render running (that has not been told to stop), or none."""
+    if on:
+        renderer.scheduler.running_jobs = lambda: [object()]
+    else:
+        renderer.scheduler.__dict__.pop("running_jobs", None)
+
+
 def progress_of(*decks, **kwargs):
     return Progress(list(decks), scanned_at=1.0, **kwargs)
 
@@ -331,10 +339,10 @@ def test_the_dial_shows_the_share_of_up_to_date_renders_and_explains_it(window):
     controller.refresh()
     assert controller.dial.state == "failed" and "1 slide cannot be rendered" in controller.dial.toolTip()
     controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
-    controller.renderer._set_working("a:x:instructor:EN", True)
+    rendering(controller.renderer, True)
     controller.refresh()
     assert controller.dial.state == "working" and "Rendering now" in controller.dial.toolTip()
-    controller.renderer._set_working("a:x:instructor:EN", False)
+    rendering(controller.renderer, False)
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
     controller.refresh()
     assert controller.dial.isHidden()

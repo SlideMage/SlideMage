@@ -145,7 +145,8 @@ class RenderScheduler:
             for job in self._running.values():
                 if job.priority == priority and not job.cancelled_for_requeue:
                     job.cancelled_for_requeue = True
-                    job.cancel.request_stop()
+                    # Not waiting for the kill: the caller is the GUI (focus, input), and this holds the queue's lock.
+                    job.cancel.request_stop(wait=False)
                     stopped += 1
             self._cond.notify_all()
         if stopped:

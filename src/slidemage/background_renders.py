@@ -288,9 +288,10 @@ class BackgroundRenderer:
         and nothing holds it back. The status chip shows that as one piece of work, not a flicker of "preparing" and
         "waiting"."""
         progress = self.progress
-        with self._working_lock:
-            if self._working:
-                return True
+        if self.scheduler.running_jobs():
+            # Renders told to stop are left out (running_jobs, as in the status window): one that takes a while to
+            # end kept the chip at "Preparing previews" after the user came back (v8.52.5).
+            return True
         return progress.left > 0 and not self.waiting_because() and self.gate.sweeping()
 
     def waiting_because(self) -> Optional[str]:
@@ -332,7 +333,6 @@ class BackgroundRenderer:
         if not self.gate.allowed():
             return False
         self.gate.note_started()
-        self.trace(f"start {job.key}")
         return True
 
     def trace(self, event: str) -> None:
@@ -635,6 +635,7 @@ class BackgroundRenderer:
     def _work(self, job: Job, cancel) -> None:
         units, origin = job.payload
         self._set_working(job.key, True)
+        self.trace(f"start {job.key}")
         try:
             if len(units) > 1:
                 self.render_batch(units, job.rank, cancel)

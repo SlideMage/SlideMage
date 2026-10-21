@@ -2689,3 +2689,9 @@ v8.52.4 (2026-10-21, direct report: "Even selecting a slide did not cause the re
 NEW: The previews count and chip are right.
 - The chip no longer says "Preparing previews" when nothing renders.
 - The number left only goes down when a slide is done, and no longer jumps back up.
+
+v8.52.5 (2026-10-21, direct report with a screenshot: "When I click into the window, background rendering stops, but the status bar does not reflect that"; the status window said "Running now: 0" while its first lines said "Rendering now"): From the trace (background-trace.log) of the user's machine. Coming back stopped ten renders, but each stop waited for taskkill on its process tree (a few tenths of a second), one after the other, on the GUI thread and under the scheduler's lock: the window froze for about 2.6 s and the workers could not finish meanwhile. `CancelToken.request_stop(wait=False)` sets the stop at once and kills on a thread of its own; `RenderScheduler.interrupt` uses it. The chip, the dial and the status window's first lines counted a render as running until its worker had ended, which took up to 20 s for one in the middle of rasterising; they now count, as the status window's list does, only renders that have not been told to stop (`sweeping()` asks `scheduler.running_jobs()`). The trace logged "start" every time the scheduler asked whether a job may start (dozens a second while it waited for a place); it now logs when a render really starts. Tests: tests/test_render_scheduler.py (a stop does not wait for the kill), tests/test_background_renders.py (a render told to stop is no longer "Preparing"), tests/test_background_previews_gui.py.
+
+NEW: Coming back to SlideMage is instant again.
+- The window no longer freezes for a few seconds while background renders stop.
+- The chip shows at once that previews wait, even while a stopped render is still ending.
