@@ -27,7 +27,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import slide_snapshot
+from . import compile_records, slide_snapshot
 from .dep_hash import HashCache, norm
 from .preview_target import PreviewTarget
 from .project import ProjectContext
@@ -40,6 +40,45 @@ KIND_PROJECT = "project"        # under the project folder: rel path from the ro
 KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it
 
 _SKIPPED_PARTS = ("luatex-cache", ".build", ".previews", "slidemage_preview_", "_slidemage_")
+EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
+
+
+def unit_inputs(ctx: ProjectContext, paths, source_path: Path, text: Optional[str] = None) -> list[Path]:
+    """The files among `paths`, what a document of several slides read, that the pages of the slide at `source_path`
+    depend on: not the other slides, and of the media and snippets those whose name its text (`text`, else the
+    file's) or a snippet it uses mentions (a name without its extension too), and the alt texts every render reads."""
+    if text is None:
+        try:
+            text = source_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+    slides, optional = ctx.slides_dir, (ctx.root / "media", ctx.root / "snippets")
+    kept, maybe = [], []
+    for path in paths:
+        key = norm(path)
+        if any(part in key for part in _SKIPPED_PARTS):
+            continue
+        if compile_records.is_within(path, slides):
+            if key == norm(source_path):
+                kept.append(path)                       # another slide does not change this one's page
+        elif any(compile_records.is_within(path, folder) for folder in optional):
+            (kept if path.name in EVERY_RENDER_READS else maybe).append(path)
+        else:
+            kept.append(path)
+    grown = True
+    while grown:                                        # a snippet may name the picture
+        grown = False
+        for path in maybe[:]:
+            if path.stem in text:
+                maybe.remove(path)
+                kept.append(path)
+                grown = True
+                if path.suffix == ".tex":
+                    try:
+                        text += path.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        pass
+    return kept
 
 
 class Freshness(Enum):

@@ -149,6 +149,11 @@ class RenderScheduler:
             jobs = list(self._queue.values()) + list(self._running.values())
         return sum(1 for j in jobs if priority is None or j.priority == priority)
 
+    def jobs(self, priority: int) -> list[Job]:
+        """The jobs of class `priority` that are queued or running (one that is stopping to be requeued counts once)."""
+        with self._cond:
+            return [j for j in {**self._running, **self._queue}.values() if j.priority == priority]
+
     def queued_keys(self) -> list[str]:
         with self._cond:
             return [j.key for j in sorted(self._queue.values(), key=Job.order)]

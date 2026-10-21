@@ -54,13 +54,16 @@ class RasterClient:
         request = dict(pdf=base64.b64encode(data).decode("ascii"), sizes=sizes, full_size=full_size)
         return tuple(self.ask(request, "Cannot prepare preview images", len(sizes))["images"])
 
-    def read_document(self, path, op, start=1, count=1, dpi=110, width=None):
+    def read_document(self, path, op, start=1, count=1, dpi=110, width=None, out=None):
         """Ask the child to read a file for the chat (ops of preview_raster.document): the response with
         "count", and "texts" (str) or "images" (PNG bytes). `width` (op "pdf_images" only) sets the pixel
-        width of every page instead of `dpi`. RuntimeError when it cannot."""
+        width of every page instead of `dpi`; op "extract_pages" writes the pages to the PDF `out`.
+        RuntimeError when it cannot."""
         request = dict(op=op, path=str(path), start=start, count=count, dpi=dpi)
         if width is not None:
             request["width"] = width
+        if out is not None:
+            request["out"] = str(out)
         return self.ask(request, "Cannot read the file")
 
     def read_layout(self, path) -> list[dict]:
@@ -231,9 +234,9 @@ def render_sequence(data):
         raise RuntimeError(f"Cannot prepare preview sequence: {exc}") from exc
 
 
-def read_document(path, op, start=1, count=1, dpi=110, width=None):
+def read_document(path, op, start=1, count=1, dpi=110, width=None, out=None):
     with _pool.lease() as client:
-        return client.read_document(path, op, start, count, dpi, width)
+        return client.read_document(path, op, start, count, dpi, width, out)
 
 
 def read_layout(path) -> list[dict]:

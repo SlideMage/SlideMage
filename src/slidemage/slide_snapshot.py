@@ -69,6 +69,7 @@ from pathlib import Path
 import pymupdf as fitz
 
 from . import project, slide_language
+from .preview_cache import THUMBNAIL_MAX
 from .preview_metrics import measure
 
 
@@ -237,9 +238,14 @@ FULL_SIZE = (1920, 1080)
 THUMB_SIZE = (304, 171)
 
 
-def slide_id_of(page: "fitz.Page") -> str | None:
-    match = SLIDE_ID_RE.search(page.get_text())
+def slide_id_in(text: str) -> str | None:
+    """The slide id a page's text names (its footer, or the invisible stamp of a frame without one)."""
+    match = SLIDE_ID_RE.search(text)
     return match.group(1) if match else None
+
+
+def slide_id_of(page: "fitz.Page") -> str | None:
+    return slide_id_in(page.get_text())
 
 
 def _save_page(ctx: project.ProjectContext, page: "fitz.Page", slide_id: str, template: str,
@@ -294,8 +300,12 @@ def prepare_preview(pdf_path: Path, snapshots: bool = False):
 
 
 def prepare_preview_images(pdf_path: Path, snapshots: bool, widths):
-    """Pane and tool display sizes in one raster subprocess, with optional snapshots."""
-    displays = tuple((width, None) for width in widths)
+    """Pane and tool display sizes in one raster subprocess, with optional snapshots.
+
+    The display PNGs come back in `widths` order, followed by one more: the cache's list thumbnail
+    (preview_cache.THUMBNAIL_MAX, aspect kept), so the cache need not decode and re-encode a display PNG for it.
+    """
+    displays = tuple((width, None) for width in widths) + ((*THUMBNAIL_MAX, 'fit'),)
     sizes = (FULL_SIZE, THUMB_SIZE) + displays if snapshots else displays
     images = _preview_pngs(pdf_path, sizes)
     if not images:
@@ -354,6 +364,15 @@ def slide_runs(slide_ids) -> list[tuple[str, list[int]]]:
         else:
             runs.append((slide_id, [index]))
     return runs
+
+
+def batch_runs(texts, bare_ids) -> list[list[int]]:
+    """The page indexes of each of `bare_ids` in a PDF of several slides whose pages have the texts `texts`, in order.
+    RuntimeError unless the slide ids of the pages are exactly those slides, in that order, each on a run of its own."""
+    runs = slide_runs([slide_id_in(text) for text in texts])
+    if [bare for bare, _pages in runs] != list(bare_ids) or sum(len(pages) for _bare, pages in runs) != len(texts):
+        raise RuntimeError("the pages of the batch are not those of its slides")
+    return [pages for _bare, pages in runs]
 
 
 def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,

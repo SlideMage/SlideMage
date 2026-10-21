@@ -3,6 +3,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import os
+import shutil
 import sys
 import time
 
@@ -149,7 +150,7 @@ def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.f
 
     monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '1')
     # an executable that exists everywhere: the build's configuration key stats what `which` found
-    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: sys.executable)
+    monkeypatch.setattr(shutil, 'which', lambda *a, **k: sys.executable)
     monkeypatch.setattr(preview_format.subprocess, 'run', run)
     return runs
 
@@ -215,7 +216,7 @@ def test_fmt_option_names_the_file_for_miktex_and_uses_texformats_elsewhere(tmp_
     assert option == '-fmt=preamble' and env == {'A': '1', 'TEXFORMATS': str(tmp_path) + os.pathsep}
 
 
-@pytest.mark.skipif(not preview_format.shutil.which('lualatex'), reason='needs LuaLaTeX')
+@pytest.mark.skipif(not shutil.which('lualatex'), reason='needs LuaLaTeX')
 def test_a_real_format_loads_and_fontspec_works_after_it(tmp_path, monkeypatch):
     """The real engine, in a folder whose Windows path has `\\.build` in it: the format builds, loads (MiKTeX:
     through the full path), and a slide that calls fontspec's Lua side runs without errors."""
@@ -386,12 +387,13 @@ def test_the_framework_names_a_missing_ovl_and_top_like_latex_names_a_missing_au
         assert rf'\InputIfFileExists{{\jobname.{ext}}}{{}}{{\typeout{{No file \jobname.{ext}.}}}}' in base
 
 
-@pytest.mark.skipif(not all(preview_format.shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
-                    reason='needs latexmk, LuaLaTeX and biber')
-def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_path):
-    r"""The real tools, in a project under the temp folder (where Git-for-Windows Perl spells the path /tmp/...): a
-    citing slide with a framework-style helper file (read at \begin{document} with a "No file" line, then rewritten)
-    needs lualatex, biber, lualatex -- latexmk ran a third LuaLaTeX before PREVIEW_LATEXMKRC and RUN_XML_NOTE."""
+needs_tex_tools = pytest.mark.skipif(not all(shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
+                                     reason='needs latexmk, LuaLaTeX and biber')
+
+
+def _citing_project(tmp_path):
+    """A project under the temp folder (where Git-for-Windows Perl spells the path /tmp/...) and the text of a citing
+    slide with a framework-style helper file (read at \\begin{document} with a "No file" line, then rewritten)."""
     (tmp_path / 'decks').mkdir()
     # As a project's own .latexmkrc: $do_cd puts latexmk in decks/, so it names the build folder by its full path, as
     # the .fls does (from the project root it would name it relative to it: one more spelling of every file).
@@ -407,10 +409,80 @@ def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_pat
         r'\immediate\openout\helper=\jobname.hlp\immediate\write\helper{\relax}\immediate\closeout\helper}',
         # \fullcite, as the slides cite (a \textcite changes the .bcf in the second run: a real reason for more)
         r'\begin{document}', r'See \fullcite{knuth}.', r'\end{document}', ''])
-    ctx = ProjectContext.at(tmp_path)
+    return ProjectContext.at(tmp_path), text
+
+
+def _rules_run(text, ctx, *, force):
+    """The rules latexmk ran for one cached build, from the 'Run number' lines of its log."""
     lines = []
     pdf = preview_build.compile_cached(text, 'abc-EN-Test', lines.append, ctx=ctx, env=compiler.build_env(ctx),
-                                       force=True)
+                                       force=force)
     assert pdf.is_file()
     runs = [line for line in lines if line.startswith('Run number')]
-    assert [run.split("'")[1].split()[0] for run in runs] == ['lualatex', 'biber', 'lualatex'], '\n'.join(lines[-80:])
+    return [run.split("'")[1].split()[0] for run in runs], lines
+
+
+@needs_tex_tools
+def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_path):
+    r"""The real tools: a citing slide needs lualatex, biber, lualatex -- latexmk ran a third LuaLaTeX before
+    PREVIEW_LATEXMKRC and RUN_XML_NOTE."""
+    ctx, text = _citing_project(tmp_path)
+    rules, lines = _rules_run(text, ctx, force=True)
+    assert rules == ['lualatex', 'biber', 'lualatex'], '\n'.join(lines[-80:])
+
+
+@needs_tex_tools
+def test_a_forced_render_reruns_every_rule_only_when_the_text_is_unchanged(tmp_path):
+    """-g only for what latexmk cannot see (an input edited with its time restored): a slide edit makes it run
+    LuaLaTeX alone, no biber."""
+    ctx, text = _citing_project(tmp_path)
+    _rules_run(text, ctx, force=True)
+    rules, lines = _rules_run(text.replace('See', 'Also see'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])
+    rules, lines = _rules_run(text.replace('See', 'Also see'), ctx, force=True)
+    assert 'lualatex' in rules and 'biber' in rules, '\n'.join(lines[-80:])
+
+
+def _in_view(text, view):
+    r"""`text` as the framework runs a view: \deckversion after \begin{document}, and a helper file that holds the
+    view the previous run ended in (read at \begin{document}, rewritten at the end), so it differs between views."""
+    return text.replace(r'\begin{document}', '\n'.join([
+        r'\newcommand{\deckversion}[1][]{\gdef\viewname{#1}}\newwrite\viewfile',
+        r'\AtBeginDocument{\InputIfFileExists{\jobname.vw}{}{\typeout{No file \jobname.vw.}}}',
+        r'\AtEndDocument{\immediate\openout\viewfile=\jobname.vw\immediate\write\viewfile{\noexpand\gdef\noexpand\seen{\viewname}}'
+        r'\immediate\closeout\viewfile}',
+        r'\begin{document}', f'\\deckversion[{view}]']), 1)
+
+
+def test_each_view_and_language_has_a_build_folder_of_its_own(tmp_path, monkeypatch):
+    caches = []
+    monkeypatch.setattr(preview_build, '_compile_reserved', lambda *a, **k: caches.append(k['cache']) or tmp_path)
+    ctx = ProjectContext.at(tmp_path)
+
+    def folder(view, language='', text='one'):
+        wrapper = '\\documentclass{beamer}\n\\deckversion[instructor]\n\\begin{document}\n' + view
+        wrapper += language + f'\\setSlideID{{abc}}\n{text} \\deckversion[inside]\n'
+        preview_build.compile_cached(wrapper, 'abc', lambda _: None, ctx=ctx, env={})
+        return caches[-1]
+
+    instructor, course = folder('\\deckversion[instructor]\n'), folder('\\deckversion[during-course]\n')
+    german = folder('\\deckversion[during-course]\n', '\\decklanguage[DE]\n')
+    assert len({instructor, course, german}) == 3
+    # the same view with other slide text, and the cache folder of the wrapper's name, stay the same
+    assert folder('\\deckversion[instructor]\n', text='two') == instructor
+    assert folder('\\deckversion[during-course]\n', text='two') == course
+    assert folder('') != instructor
+
+
+@needs_tex_tools
+def test_returning_to_a_view_runs_lualatex_once(tmp_path):
+    """Instructor -> During course -> Instructor, each with a new text: the helper file of a view is the one its own
+    build folder wrote, so the return is an ordinary edit render (they shared one folder, and the flip ran LuaLaTeX
+    twice)."""
+    ctx, text = _citing_project(tmp_path)
+    for step, view in enumerate(('instructor', 'during-course', 'instructor')):
+        _rules_run(_in_view(text, view).replace('See', f'See {step}'), ctx, force=True)
+    rules, lines = _rules_run(_in_view(text, 'instructor').replace('See', 'See once more'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])
+    rules, lines = _rules_run(_in_view(text, 'during-course').replace('See', 'See once more'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])

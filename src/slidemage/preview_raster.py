@@ -25,9 +25,14 @@ def raster(data, sizes, full_size):
             return []
         page = doc[-1]
         images = {}
-        for width, height in sizes:
-            size = (width, height)
+        for size in map(tuple, sizes):
             if size in images:
+                continue
+            width, height, *fit = size
+            if fit:
+                # (width, height, "fit"): the largest size inside the box, aspect ratio kept (a list thumbnail)
+                zoom = min(width / page.rect.width, height / page.rect.height)
+                images[size] = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
                 continue
             if (
                 height is None
@@ -74,10 +79,11 @@ def sequence(data):
     return dict(**evidence, signature=signature, images=images)
 
 
-def document(path, op, start=1, count=1, dpi=110, width=None):
+def document(path, op, start=1, count=1, dpi=110, width=None, out=None):
     """The chat's file reads: op "pdf" gives the page count and the text of `count` pages from page
-    `start`; "pdf_images" the same pages as PNGs; "drawing" an SVG or EPS file as one PNG; "layout" what the
-    readability check reads of every page (readability_pdf.read_pages)."""
+    `start`; "pdf_images" the same pages as PNGs; "extract_pages" those pages as a PDF of their own, written to `out`;
+    "drawing" an SVG or EPS file as one PNG; "layout" what the readability check reads of every page
+    (readability_pdf.read_pages)."""
     import pymupdf
 
     if op == "layout":
@@ -90,6 +96,11 @@ def document(path, op, start=1, count=1, dpi=110, width=None):
             return dict(count=1, images=[doc[0].get_pixmap(dpi=dpi).tobytes("png")])
     with pymupdf.open(path) as doc:
         pages = range(start, min(start + count, doc.page_count + 1))
+        if op == "extract_pages":
+            total = doc.page_count
+            doc.select([n - 1 for n in pages])
+            doc.save(out, garbage=3, deflate=True)
+            return dict(count=total)
         if op == "pdf_images":
             if width is not None:   # every page `width` pixels wide, at its own aspect ratio
                 return dict(count=doc.page_count, images=[

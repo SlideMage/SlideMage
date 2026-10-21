@@ -36,13 +36,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 from .compiler import FATAL_ERROR_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
-from .preview_cache import configuration_state, file_state, search_state
+from .preview_cache import FileStates, configuration_state, find_tool, search_roots, search_state
 from .fileio import atomic_write
 
 SCHEMA = 4           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)
@@ -112,9 +111,9 @@ PRELUDE_TAIL = r"""
 """
 
 
-def _stamp(path: Path):
+def _stamp(path: Path, states: FileStates):
     try:
-        state = file_state(path)
+        state = states(path)
     except OSError:
         return None
     return [str(path), state] if state is not None else None
@@ -136,9 +135,10 @@ def _fls_inputs(fls: Path, cwd: Path, skip: Path) -> list[str]:
 def _fresh(manifest: Path, project_root: Path, env: dict) -> bool:
     try:
         data = json.loads(manifest.read_text(encoding='utf-8'))
+        states = FileStates(search_roots(project_root, env))
         return (data['search'] == search_state(project_root, env)
                 and data['configuration'] == configuration_state(project_root, env)
-                and all(_stamp(Path(item[0])) == item for item in data['inputs']))
+                and all(_stamp(Path(item[0]), states) == item for item in data['inputs']))
     except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError):
         return False
 
@@ -172,8 +172,8 @@ def fmt_option(directory: Path, env: dict) -> tuple[str, dict]:
 
 
 def _is_miktex(env: dict) -> bool:
-    engine = shutil.which(ENGINE, path=env.get('PATH'))
-    return bool(engine and 'miktex' in engine.lower()) or bool(shutil.which('initexmf', path=env.get('PATH')))
+    engine = find_tool(ENGINE, env.get('PATH'))
+    return bool(engine and 'miktex' in engine.lower()) or bool(find_tool('initexmf', env.get('PATH')))
 
 
 def disable(directory: Path) -> None:
@@ -189,7 +189,7 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
     the format is current (about a quarter second) runs under a shared lock, so
     renders that run at once do not queue for it; only a build is exclusive.
     """
-    if os.environ.get('SLIDEMAGE_PREVIEW_FORMAT') == '0' or not shutil.which(ENGINE, path=env.get('PATH')):
+    if os.environ.get('SLIDEMAGE_PREVIEW_FORMAT') == '0' or not find_tool(ENGINE, env.get('PATH')):
         return None
     directory = build_dir / 'preview-formats' / f'{SCHEMA}-{key}'
     try:
@@ -260,8 +260,9 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
         log('    (preamble cannot be precompiled; previews build the ordinary way)')
         disable(directory)
         return None
-    stamps = [_stamp(Path(name)) for name in _fls_inputs(fls, cwd, directory)]
     try:
+        states = FileStates(search_roots(project_root, env))
+        stamps = [_stamp(Path(name), states) for name in _fls_inputs(fls, cwd, directory)]
         inventory = search_state(project_root, env)
         configuration = configuration_state(project_root, env)
     except (OSError, ValueError):

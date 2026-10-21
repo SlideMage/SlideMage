@@ -7,7 +7,8 @@ runs when), the idle gate (when the machine is free), and a planner that lists w
 owner's order -- decks by recency (the open deck first), within a deck the instructor version, then the
 other versions, within a version the slides from the last one looked at -- and feeds the scheduler a few
 at a time. A render is one unrestricted latexmk run of the slide in the deck's preamble (every overlay step
-is a page), rasterised by a raster process of its own and stored with the files it read.
+is a page), rasterised by a raster process of its own and stored with the files it read. Units of one deck, view and
+language are rendered several at a time in one document (`render_batch`) and split into the same records.
 
 Free of Qt: the window supplies the gate's input events and the status chip reads `progress`.
 """
@@ -48,7 +49,10 @@ PROFILE_KEY = "bg_previews_profile"
 DECKS_OFF_KEY = "bg_previews_decks_off"
 SECOND_LANGUAGE_KEY = "bg_previews_second_language"
 KEEP_DAYS_KEY = "bg_previews_keep_days"
+BATCH_SIZE_KEY = "bg_previews_batch_size"
 DEFAULT_LIMIT_GB = 2.0
+DEFAULT_BATCH_SIZE = 16         # slides rendered in one document (docs/findings.md, plan 5); 1: one document each
+ALL_PAGES = 100000
 # (processes at most, rest / job time). LaTeX runs on one core: "normal" may use a quarter of the cores, "fast" half
 # (at most 16: about 300 MB of memory each). Each one beyond the first starts only while the CPU is below
 # idle_gate.CPU_LIMIT, so the actual number settles at what the machine can spare.
@@ -63,6 +67,14 @@ def setting(ctx: ProjectContext, key: str, default):
         return app_settings.get(ctx, key, default)
     except OSError:
         return default
+
+
+def batch_size(ctx: ProjectContext) -> int:
+    """How many slides of a deck are rendered in one document (setting `bg_previews_batch_size`; 1: one each)."""
+    try:
+        return max(1, int(setting(ctx, BATCH_SIZE_KEY, DEFAULT_BATCH_SIZE)))
+    except (TypeError, ValueError):
+        return DEFAULT_BATCH_SIZE
 
 
 def deck_language_code(deck: Deck) -> str:
@@ -163,7 +175,8 @@ class BackgroundRenderer:
     def __init__(self, ctx: ProjectContext, store: RenderStore, *, gate: Optional[IdleGate] = None,
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
-                 raster: Optional[RasterClient] = None, on_change: Callable[[], None] = lambda: None,
+                 raster: Optional[RasterClient] = None, batch_renderer: Optional[Callable] = None,
+                 on_change: Callable[[], None] = lambda: None,
                  soon: Optional[Callable[[Deck], bool]] = None, clock: Callable[[], float] = time.time) -> None:
         self.ctx, self.store = ctx, store
         self.hashes = HashCache(store.db, store.lock)
@@ -176,6 +189,7 @@ class BackgroundRenderer:
         self._decks, self._open_deck = decks, open_deck
         self._soon = soon or (lambda deck: course_schedule.session_soon(deck.course_url))
         self._render = renderer or self._render_pdf
+        self._render_batch = batch_renderer or self._render_batch_pdf
         self._raster = raster
         self._on_change = on_change
         self._clock = clock
@@ -194,12 +208,16 @@ class BackgroundRenderer:
         self._working: list[str] = []
         self._working_lock = threading.Lock()
         self._outstanding: dict[str, tuple] = {}
+        self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
 
     # -- settings ------------------------------------------------------------------------
 
     @property
     def enabled(self) -> bool:
         return bool(setting(self.ctx, ENABLED_KEY, True))
+
+    def batch_size(self) -> int:
+        return batch_size(self.ctx)
 
     def decks_off(self) -> set[str]:
         return set(setting(self.ctx, DECKS_OFF_KEY, []) or [])
@@ -302,6 +320,7 @@ class BackgroundRenderer:
         decks_progress: list[DeckProgress] = []
         first: list = []
         numbering: list = []
+        single: set[str] = set()
         usage = {u["deck"]: u for u in self.store.deck_usage()}
         for deck_rank, deck in enumerate(self.ordered_decks()):
             progress = DeckProgress(deck.name)
@@ -323,6 +342,7 @@ class BackgroundRenderer:
                         elif found.state is render_key.Freshness.FAILED:
                             if found.failure and self.store.may_retry(found.failure):
                                 first.append(((deck_rank, language_rank, view_rank, order), unit))
+                                single.add(unit.label)          # a batch holding it would fail again
                             else:
                                 progress.failed += 1
                                 progress.count(view, 2)
@@ -336,6 +356,7 @@ class BackgroundRenderer:
         decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
                            if not d.archived and not d.is_test_deck and d.name in off]
         plan = first + [((1000 + k[0],) + k[1:], u) for k, u in numbering]
+        self._single = single
         self.progress = Progress(decks_progress, self.progress.working, None,
                                  self.store_failures_count(), self._clock())
         return plan
@@ -378,22 +399,52 @@ class BackgroundRenderer:
         self._changed()
 
     def _top_up(self) -> bool:
-        """Hand the next units of the plan to the scheduler. With the store at its limit, only those of the
-        protected decks: another deck's render would push out a render the plan then counts as outstanding again,
-        and the sweep would go round in circles. Returns whether units were held back for that."""
+        """Hand the next units of the plan to the scheduler, up to `batch_size()` of a deck, view and language in
+        one job. With the store at its limit, only those of the protected decks: another deck's render would push out
+        a render the plan then counts as outstanding again, and the sweep would go round in circles. Returns whether
+        units were held back for that."""
         keep = self._protected_decks() if self._store_full() else None
+        size = self.batch_size()
+        ahead = QUEUE_AHEAD if size == 1 else min(QUEUE_AHEAD, self.scheduler.workers + 2)      # a job is many units
         held = False
         with self._plan_lock:
+            on_its_way = {u.label for job in self.scheduler.jobs(P_IDLE) for u in job.payload[0]} if size > 1 else set()
             i = 0
-            while i < len(self._plan) and self.scheduler.pending(P_IDLE) < QUEUE_AHEAD:
+            while i < len(self._plan) and self.scheduler.pending(P_IDLE) < ahead:
                 rank, unit = self._plan[i]
                 if keep is not None and unit.deck not in keep:
                     held = True
                     i += 1
                     continue
-                del self._plan[i]
-                self.scheduler.submit(unit.label, (unit, ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
+                if unit.label in on_its_way:
+                    del self._plan[i]
+                    continue
+                batch = self._take_batch(i, size, on_its_way)
+                key = batch[0].label if len(batch) == 1 else f"{batch[0].label}+{len(batch) - 1}"
+                self.scheduler.submit(key, (tuple(batch), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
             return held or (keep is not None and any(unit.deck not in keep for _rank, unit in self._plan[i:]))
+
+    def _take_batch(self, i: int, size: int, on_its_way: set) -> list[render_key.Unit]:
+        """Remove from the plan, beginning at index `i`, the unit there and the units after it that are rendered in one
+        document with it: the same deck, view, language and preamble, the next ones in the plan (those on their way
+        already are dropped), at most one per bare slide id, none that failed before. Call under `_plan_lock`."""
+        first = self._plan.pop(i)[1]
+        batch = [first]
+        if first.label in self._single:
+            return batch
+        ids = {slide_language.bare_id(first.id_slug)}
+        same = lambda u: (u.deck, u.view, u.language, u.preamble_text) == (first.deck, first.view, first.language, first.preamble_text)
+        while len(batch) < size and i < len(self._plan) and same(self._plan[i][1]):
+            unit = self._plan[i][1]
+            bare = slide_language.bare_id(unit.id_slug)
+            if unit.label in on_its_way:
+                del self._plan[i]
+            elif bare in ids or unit.label in self._single:
+                i += 1                  # waits for a later batch, or for its own job
+            else:
+                ids.add(bare)
+                batch.append(self._plan.pop(i)[1])
+        return batch
 
     def _store_full(self) -> bool:
         """Whether one more render of the average size would take the store past its limit."""
@@ -419,7 +470,7 @@ class BackgroundRenderer:
 
     def submit_neighbours(self, unit: render_key.Unit, rank: tuple = ()) -> None:
         """The reveal slider's render of a unit (class P_NEIGHBOURS): it runs before any idle job and never waits for one."""
-        self.scheduler.submit(unit.label, (unit, ORIGIN_REVEAL), P_NEIGHBOURS, rank, group="reveal")
+        self.scheduler.submit(unit.label, ((unit,), ORIGIN_REVEAL), P_NEIGHBOURS, rank, group="reveal")
 
     def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
         """Keep the all-steps render the reveal bar made (its PDF and page images) as a provisional store object, so
@@ -430,9 +481,7 @@ class BackgroundRenderer:
         found = self.resolver.lookup(unit, key)
         if found.state is render_key.Freshness.FRESH and not (found.record or {}).get("partial"):
             return None
-        inputs_file = pdf.with_suffix(".inputs.json")
-        inputs = json.loads(inputs_file.read_text(encoding="utf-8")) if inputs_file.is_file() else []
-        manifest = self.resolver.build_manifest(inputs)
+        manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
         if not manifest.stable or not pages:
             return None
         meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=manifest.entries,
@@ -491,23 +540,11 @@ class BackgroundRenderer:
 
     def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
         """What a slide's page in a deck compile depends on, from the compile record's hashes."""
-        try:
-            text = unit.source_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        slides, optional = self.ctx.slides_dir, (self.ctx.root / "media", self.ctx.root / "snippets")
         entries = []
-        for key, (path, sha) in recorded.items():
-            if any(part in key for part in render_key._SKIPPED_PARTS):
-                continue
-            if compile_records.is_within(path, slides):
-                if key != norm(unit.source_path):
-                    continue                            # another slide: it does not change this one's page
-            elif any(compile_records.is_within(path, folder) for folder in optional) and path.name not in text:
-                continue                                # a picture or snippet this slide does not use
+        for path in render_key.unit_inputs(self.ctx, [path for path, _sha in recorded.values()], unit.source_path):
             where = self.resolver._relative(path)
             if where is not None:
-                entries.append([where[0], where[1], sha])
+                entries.append([where[0], where[1], recorded[norm(path)][1]])
         entries.sort()
         return entries
 
@@ -519,16 +556,21 @@ class BackgroundRenderer:
     # -- the work ----------------------------------------------------------------------------
 
     def _work(self, job: Job, cancel) -> None:
-        unit, origin = job.payload
-        self._set_working(unit.label, True)
+        units, origin = job.payload
+        self._set_working(job.key, True)
         try:
-            if self.render_unit(unit, origin, cancel) is not None:
-                counted = self.progress.deck(unit.deck)
-                if counted is not None and counted.fresh < counted.total:
-                    counted.fresh += 1
-                    counted.count(unit.view, 1)
+            if len(units) > 1:
+                self.render_batch(units, job.rank, cancel)
+            elif self.render_unit(units[0], origin, cancel) is not None:
+                self._count_fresh(units[0])
         finally:
-            self._set_working(unit.label, False)
+            self._set_working(job.key, False)
+
+    def _count_fresh(self, unit: render_key.Unit) -> None:
+        counted = self.progress.deck(unit.deck)
+        if counted is not None and counted.fresh < counted.total:
+            counted.fresh += 1
+            counted.count(unit.view, 1)
 
     def _set_working(self, label: str, on: bool) -> None:
         """`progress.working` names a unit that is rendering while any is (several run at once)."""
@@ -541,8 +583,10 @@ class BackgroundRenderer:
         now = self.scheduler._clock()
         entries = []
         for job in self.scheduler.running_jobs():
-            unit, origin = job.payload
-            entries.append(dict(deck=unit.deck, slide=unit.id_slug, view=unit.view, language=unit.language,
+            units, origin = job.payload
+            unit = units[0]
+            entries.append(dict(deck=unit.deck, slide=unit.id_slug if len(units) == 1 else f"{len(units)} slides",
+                                view=unit.view, language=unit.language,
                                 kind="reveal steps" if origin == ORIGIN_REVEAL else "background",
                                 seconds=max(0.0, now - job.started)))
         return entries
@@ -568,18 +612,11 @@ class BackgroundRenderer:
             pdf = self._render(unit, cancel)
             if cancel.is_set():
                 raise Cancelled("Preview cancelled")
-            inputs = json.loads(pdf.with_suffix(".inputs.json").read_text(encoding="utf-8")) if pdf.with_suffix(".inputs.json").is_file() else []
-            manifest = self.resolver.build_manifest(inputs)
+            manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
             pages = self._rasterise(pdf, cancel)
             if not pages:
                 raise _deterministic("the render has no pages (the slide is not typeset in this view)")
-            meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - started) * 1000),
-                        manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
-                        machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number,
-                        unstable=not manifest.stable, width=STORE_WIDTH)
-            replace = (found.record is not None and found.state is render_key.Freshness.FRESH_NUMBERING_DIFFERS
-                       and found.record.get("origin") == origin)
-            return self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
+            return self._store_render(unit, key, found, origin, pdf, pages, manifest, started)
         except BaseException as exc:
             if cancel.is_set():
                 raise
@@ -588,6 +625,90 @@ class BackgroundRenderer:
         finally:
             if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
                 shutil.rmtree(pdf.parent, ignore_errors=True)
+
+    def _store_render(self, unit: render_key.Unit, key: str, found: render_key.Lookup, origin: str, pdf: Path,
+                      pages: list[bytes], manifest: render_key.Manifest, started: float) -> str:
+        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - started) * 1000),
+                    manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
+                    machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number,
+                    unstable=not manifest.stable, width=STORE_WIDTH)
+        replace = (found.record is not None and found.state is render_key.Freshness.FRESH_NUMBERING_DIFFERS
+                   and found.record.get("origin") == origin)
+        return self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
+
+    @staticmethod
+    def _recorded_inputs(pdf: Path) -> list[str]:
+        """The files the render of `pdf` read (preview_build.write_inputs)."""
+        inputs_file = pdf.with_suffix(".inputs.json")
+        return json.loads(inputs_file.read_text(encoding="utf-8")) if inputs_file.is_file() else []
+
+    def render_batch(self, units: tuple, rank: tuple, cancel) -> None:
+        """Render `units` (one deck, view, language and preamble, one per bare slide id) in one document and store
+        each one's pages with the record `render_unit` would make. A unit that is current already is left out. If the
+        document does not compile or its pages cannot be told apart, nothing is stored and the units are queued singly,
+        so a broken slide is found and remembered by its own render. A unit edited meanwhile is left for the next plan."""
+        todo, singly = [], []
+        for unit in units:
+            key = self.resolver.fast_key(unit)
+            found = self.resolver.lookup(unit, key) if key is not None else None
+            if found is None:
+                singly.append(unit)                     # the file is being written: its own job raises "transient"
+            elif found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
+                continue
+            elif found.state is render_key.Freshness.FRESH and found.final:
+                self.store.link_decks(found.record["name"], [unit.deck])
+                self._count_fresh(unit)
+            else:
+                todo.append((unit, key, found))
+        if len(todo) == 1:
+            singly += [todo.pop()[0]]
+        done: set[str] = set()
+        started, pdf = time.time(), None
+        if todo:
+            try:
+                pdf = self._render_batch([unit for unit, _key, _found in todo], cancel)
+                if cancel.is_set():
+                    raise Cancelled("Preview cancelled")
+                self._store_batch(pdf, todo, started, cancel, done)
+            except Exception:  # noqa: BLE001 -- whatever went wrong, the units are tried one by one
+                if cancel.is_set():
+                    raise
+            finally:
+                if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
+                    shutil.rmtree(pdf.parent, ignore_errors=True)
+            singly += [unit for unit, _key, _found in todo if unit.label not in done]
+        for unit in singly:
+            self.scheduler.submit(unit.label, ((unit,), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
+
+    def _store_batch(self, pdf: Path, todo: list, started: float, cancel, done: set[str]) -> None:
+        """Split the batch PDF by slide (the slide id on each page) and store every unit; `done` collects the labels
+        of the units dealt with. RuntimeError when the pages are not the planned slides'."""
+        raster = self._raster or self._shared_raster()
+        response = raster.read_document(pdf, "pdf", 1, ALL_PAGES)
+        runs = slide_snapshot.batch_runs(response["texts"], [slide_language.bare_id(unit.id_slug) for unit, _key, _found in todo])
+        inputs = [Path(name) for name in self._recorded_inputs(pdf)]
+        for number, ((unit, key, found), pages) in enumerate(zip(todo, runs)):
+            if cancel.is_set():
+                raise Cancelled("Preview cancelled")
+            if self.resolver.fast_key(unit) != key:
+                done.add(unit.label)                    # edited since it was planned
+                continue
+            own = pdf.parent / f"unit-{number}.pdf"
+            raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
+            images = self._rasterise(own, cancel)
+            if len(images) != len(pages):
+                raise RuntimeError("the pages of a slide were not all rendered")
+            manifest = self.resolver.build_manifest([str(path) for path in render_key.unit_inputs(self.ctx, inputs, unit.source_path)])
+            self._store_render(unit, key, found, ORIGIN_BACKGROUND, own, images, manifest, started)
+            done.add(unit.label)
+            self._count_fresh(unit)
+
+    def _render_batch_pdf(self, units: list, cancel) -> Path:
+        first = units[0]
+        return slide_preview.render_slides_to_pdf(
+            self.ctx, [(u.macro, u.id_slug, u.version, u.render_conditions, u.frame_number) for u in units],
+            first.view, first.language.lower(), first.preamble_text, log=lambda line: None, cancel=cancel,
+            workspace=self.store.work_dir)
 
     def _render_pdf(self, unit: render_key.Unit, cancel) -> Path:
         return slide_preview.render_slide_to_pdf(
@@ -636,11 +757,12 @@ class BackgroundRenderer:
 
     def _failed(self, job: Job, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()
-        counted = self.progress.deck(job.payload[0].deck)
+        unit = job.payload[0][0]
+        counted = self.progress.deck(unit.deck)
         if counted is not None and getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed"):
             if counted is not None:
                 counted.failed += 1
-                counted.count(job.payload[0].view, 2)
+                counted.count(unit.view, 2)
 
     def _changed(self) -> None:
         try:

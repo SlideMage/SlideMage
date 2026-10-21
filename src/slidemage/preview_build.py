@@ -26,6 +26,7 @@ from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
+from .preview_cache import find_tool
 from .project import ProjectContext
 
 _ACTIVE_LOCK = threading.RLock()
@@ -180,6 +181,18 @@ def with_run_xml_note(wrapper_text: str) -> str:
     return wrapper_text.replace('\\begin{document}', '\\begin{document}' + RUN_XML_NOTE, 1)
 
 
+# The view and language lines of a slide wrapper (slide_preview._deck_version_line, _deck_language_line). Instructor
+# writes no .ovl, the student views do, so a view change flips helper files and makes latexmk run LuaLaTeX again.
+_VIEW_LINES = re.compile(r'^\\deck(?:version|language)\[[^\]\n]*\]$', re.M)
+
+
+def view_variant(wrapper_text: str) -> str:
+    """The view and language a wrapper sets after \\begin{document}, ahead of its \\setSlideID: with the slide,
+    the identity of a build folder. (The presenter mode is a line before the preamble, so the preamble's key has it.)"""
+    body = wrapper_text.partition(r'\begin{document}')[2]
+    return '|'.join(_VIEW_LINES.findall(body.partition(r'\setSlideID')[0]))
+
+
 @measure('cache_configuration')
 def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     preamble = wrapper_text.partition(r'\begin{document}')[0]
@@ -193,7 +206,7 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
         rc_paths.append(Path(env['LATEXMKRCSYS']))
     tools = {}
     for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
-        executable = shutil.which(name, path=env.get('PATH'))
+        executable = find_tool(name, env.get('PATH'))
         if executable:
             path = Path(executable).resolve()
             info = path.stat()
@@ -217,6 +230,10 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
 
     A run that fails only with the format is repeated without it, so a preamble
     the format cannot reproduce costs one slower build, never a wrong preview.
+
+    `force` makes latexmk rerun every rule (-g), but only when the slide's wrapper is unchanged: a changed wrapper
+    reruns LuaLaTeX alone, which reads every input again. Accepted edge case: a .bib (or other input) edited with
+    its time and size restored in the same render as a slide text change is not seen by biber, as with latexmk itself.
     """
     check_cancel(cancel)
     if workspace is not None:
@@ -248,7 +265,9 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
 
 def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None,
                     force=False, workspace: Optional[Path] = None):
-    key = configuration_key(key_text, id_slug, ctx.root, env)
+    # One build folder per view: the format key (compile_cached) stays per preamble.
+    variant = view_variant(key_text)
+    key = configuration_key(key_text, id_slug + '|' + variant if variant else id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
         # dependency list (only the slide's) cannot see: use fresh state.
@@ -278,13 +297,16 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
     wrapper_text = with_run_xml_note(wrapper_text)
     # Leave the source and outputs in place: rewriting an unchanged wrapper
     # would defeat latexmk's normal dependency check.
-    if not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8'):
+    changed = not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8')
+    if changed:
         with stage('wrapper_write'):
             wrapper.write_text(wrapper_text, encoding='utf-8', newline='')
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
     options = ['-synctex=0', '-r', preview_latexmkrc(ctx.build_dir).as_posix()]
-    if force:
+    if force and not changed:
+        # Go mode: a changed wrapper makes latexmk run LuaLaTeX, which reads every input again, so only an
+        # unchanged one needs -g to see an input edited with its time and size restored.
         options.append('-g')
     if format_dir is not None:
         # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.

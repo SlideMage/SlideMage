@@ -441,6 +441,7 @@ class PreviewPane(Surface):
         self.destroyed.connect(self._lifetime.close)
         self._error = ""
         self._last_pdf: Optional[Path] = None
+        self._last_request = None      # keeps a render's temp PDF alive (see RenderRequest.wait(pixels_only=True))
         self._displayed_spec = None
         self._image_selection = None
         self._scope = "slide"
@@ -1511,7 +1512,8 @@ class PreviewPane(Surface):
         with PreviewMetrics() as metrics:
             try:
                 if job.request is not None:
-                    job.pdf, job.png, job.images, _ = job.request.wait()
+                    # The pixels are enough to show the slide; the cache record follows on the request's worker.
+                    job.pdf, job.png, job.images, _ = job.request.wait(pixels_only=True)
                 else:
                     job.pdf = work()
                 if job.request is None and not job.external and not self._closed and job.generation == self._generation:
@@ -1577,7 +1579,7 @@ class PreviewPane(Surface):
                     slide_snapshot.publish_preview(self.app.project, job.images, self._target.bare_id, job.snapshot_template)
                 except Exception as exc:
                     self.app.log(f"    (preview snapshot not updated: {exc})")
-            self._last_pdf = job.pdf
+            self._last_pdf, self._last_request = job.pdf, job.request
             if self._target is not None and self._target.needs_context and not job.external:
                 self._context_modes[(job.target_key, job.view, job.language)] = deck_context.mode_of(job.pdf)
                 while len(self._context_modes) > 64:
@@ -1592,7 +1594,8 @@ class PreviewPane(Surface):
                             self._target, SourceRevision.capture(job.source, job.revision_text),
                             job.view, job.language, RenderOptions(saved=job.buffer_text is None))
                         cached = (job.request is not None and job.request.preview_result is not None
-                                  and job.request.preview_result._artifact_owner is not None)
+                                  and (job.request.preview_result._artifact_owner is not None
+                                       or getattr(job.request, 'lent', False)))      # the record follows
                         remember_transient(spec, job.png, job.pdf, cached=cached)
                         self._show_accepted_while_validating(spec, job.png)
                     except (OSError, ValueError):
