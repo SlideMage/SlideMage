@@ -968,12 +968,14 @@ def test_async_thumbnail_rejects_same_mtime_external_source_edit(make_list, monk
 
 def test_a_single_click_opens_a_slide_but_a_click_with_ctrl_only_selects(make_list):
     slide_list, window, _path = make_list("\\slide{aaa-One}\n\\slide{bbb-Two}\n")
-    slide_list.tree.itemClicked.emit(item_of(slide_list, "aaa"), 0)
-    assert [p.name for p in window.opened] == ["aaa-One-current.tex"]
     from PySide6.QtGui import QGuiApplication
     original = QGuiApplication.keyboardModifiers
-    QGuiApplication.keyboardModifiers = staticmethod(lambda: Qt.KeyboardModifier.ControlModifier)
+    # Both clicks name their modifiers: an earlier test's key events can leave Qt's own state at Ctrl or Shift.
     try:
+        QGuiApplication.keyboardModifiers = staticmethod(lambda: Qt.KeyboardModifier.NoModifier)
+        slide_list.tree.itemClicked.emit(item_of(slide_list, "aaa"), 0)
+        assert [p.name for p in window.opened] == ["aaa-One-current.tex"]
+        QGuiApplication.keyboardModifiers = staticmethod(lambda: Qt.KeyboardModifier.ControlModifier)
         slide_list.tree.itemClicked.emit(item_of(slide_list, "bbb"), 0)
     finally:
         QGuiApplication.keyboardModifiers = original
