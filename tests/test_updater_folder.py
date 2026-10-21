@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Updating a folder installation: which asset, unpacking next to the folder, the helper that swaps the folders."""
 import os
-import subprocess
 import sys
 import zipfile
 
