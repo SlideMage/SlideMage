@@ -5,6 +5,7 @@ states and renders (the renderer is faked), and unsaved edits across slides."""
 from __future__ import annotations
 
 import os
+import threading
 import time
 from types import SimpleNamespace
 
@@ -345,6 +346,30 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     assert page(centre).pixmap is not None                  # the first one is remembered
     state.set_language("DE")
     assert page(centre).pixmap is None
+
+
+def test_a_render_whose_record_is_still_being_written_shows_as_current_and_is_checked_once_it_is(
+        centre, renders, monkeypatch):
+    # The pixels come before the cache record (v8.48.0). A check in between called the new page "Previous
+    # render … render to verify" for about a second after every render.
+    monkeypatch.setattr(preview_view, 'legacy_reference', lambda *args: None)
+    state = centre.state
+    state.set_focused_slide("aaa")
+    page(centre).render_button.click()
+    wait_idle(centre)
+    pane = centre.preview
+    assert "Previous render" in pane._status_chip.text()      # fake PDF: no record ever comes
+    request = SimpleNamespace(done=threading.Event())
+    pane._last_request = request
+    pane._check_when_recorded(request)
+    pane._refresh()
+    assert page(centre).pixmap is not None and not pane._status_chip.isVisibleTo(pane)
+    request.done.set()
+    deadline = time.monotonic() + 2
+    while "Previous render" not in pane._status_chip.text() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert "Previous render" in pane._status_chip.text() and page(centre).pixmap is not None
 
 
 def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current(centre, renders, project):

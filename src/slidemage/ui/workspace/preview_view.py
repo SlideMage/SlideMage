@@ -740,6 +740,9 @@ class PreviewPane(Surface):
                 self._image_selection = selected
         except (OSError, ValueError):
             pass
+        recording = self._render_being_recorded(key, mtime, text_hash)
+        if recording is not None:
+            return recording, True, ''
         if verified is not None and verified.display_png is not None:
             pixmap = QPixmap()
             if pixmap.loadFromData(verified.display_png):
@@ -807,6 +810,32 @@ class PreviewPane(Surface):
 
     def _kept(self, key: tuple, pixmap: QPixmap, digest: str, keep: Optional[tuple]) -> QPixmap:
         return self._pixmaps.put(key, pixmap, *keep, digest) if keep is not None else pixmap
+
+    def _render_being_recorded(self, key: tuple, mtime: int, text_hash: Optional[str]) -> Optional[QPixmap]:
+        """The page of the render just made of this very text, while its cache record is still being written.
+        The pixels come first (v8.48.0); a check in between finds no verified record and would call the new
+        page an older one ("Previous render … render to verify") for a moment."""
+        done = getattr(self._last_request, 'done', None)
+        if done is None or done.is_set() or text_hash is None:
+            return None
+        held = self._pixmaps.get(key)
+        if held is None or (held.mtime, held.content_hash) != (mtime, text_hash):
+            return None
+        return held.pixmap
+
+    def _check_when_recorded(self, request) -> None:
+        """Check the page again as soon as `request`'s record is written (see _render_being_recorded)."""
+        def poll():
+            if self._closed or self._last_request is not request:
+                return
+            if not request.done.is_set():
+                QTimer.singleShot(50, poll)
+                return
+            self._selection_validated_at = 0.0     # what was checked before the record is no longer current
+            self._stored_asked = None
+            self._refresh()
+        if getattr(request, 'done', None) is not None and not request.done.is_set():
+            QTimer.singleShot(50, poll)
 
     def _remember(self, key: tuple, pixmap: QPixmap, png: bytes, mtime: int, text: Optional[str]) -> None:
         """Hold the page of a saved render of `text` (the saved file's) for display."""
@@ -1580,6 +1609,7 @@ class PreviewPane(Surface):
                 except Exception as exc:
                     self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_pdf, self._last_request = job.pdf, job.request
+            self._check_when_recorded(job.request)
             if self._target is not None and self._target.needs_context and not job.external:
                 self._context_modes[(job.target_key, job.view, job.language)] = deck_context.mode_of(job.pdf)
                 while len(self._context_modes) > 64:
