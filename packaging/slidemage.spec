@@ -5,6 +5,7 @@
 # Output lands in dist/SlideMage(.exe) and dist/SlideMage-folder/. The exe finds its project via
 # --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
 # last project opened, or a folder picker.
+import os
 import sys
 from pathlib import Path
 
@@ -100,35 +101,41 @@ if sys.platform == "win32":
     )
     splash_parts = [splash, splash.binaries]
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    *splash_parts,
-    a.binaries,
-    a.datas,
-    [],
-    name="SlideMage",
-    console=False,
-    icon=icon,
-)
+# SLIDEMAGE_BUILD=folder or =onefile builds just that one (the release builds the folder first and publishes
+# it before the single file); unset, both.
+BUILD = os.environ.get("SLIDEMAGE_BUILD", "")
 
 # The same program as a folder (dist/SlideMage-folder/: SlideMage[.exe] and _internal/). It does not unpack itself
 # at every start, so it starts in about a quarter of the time (v8.33.0); the release publishes both and an
 # installation updates itself with the build it is (updater.install_flavour()).
-folder_exe = EXE(
-    pyz,
-    a.scripts,
-    *([splash] if splash_parts else []),
-    [],
-    exclude_binaries=True,
-    name="SlideMage",
-    console=False,
-    icon=icon,
-)
-folder = COLLECT(
-    folder_exe,
-    a.binaries,
-    a.datas,
-    *([splash.binaries] if splash_parts else []),
-    name="SlideMage-folder",
-)
+if BUILD != "onefile":
+    folder_exe = EXE(
+        pyz,
+        a.scripts,
+        *([splash] if splash_parts else []),
+        [],
+        exclude_binaries=True,
+        name="SlideMage",
+        console=False,
+        icon=icon,
+    )
+    folder = COLLECT(
+        folder_exe,
+        a.binaries,
+        a.datas,
+        *([splash.binaries] if splash_parts else []),
+        name="SlideMage-folder",
+    )
+
+if BUILD != "folder":
+    exe = EXE(
+        pyz,
+        a.scripts,
+        *splash_parts,
+        a.binaries,
+        a.datas,
+        [],
+        name="SlideMage",
+        console=False,
+        icon=icon,
+    )
