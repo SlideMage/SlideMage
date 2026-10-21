@@ -309,3 +309,26 @@ def test_set_calls_visibility_rewrites_the_call_per_view(tmp_path):
     only_after = text.replace("[instructor]", "[after-course]")
     with pytest.raises(ValueError, match="at least one view"):
         set_visibility(only_after, [2], "after-course", False)
+
+
+def test_a_section_goes_with_its_slide_calls_and_its_other_lines_stay(tmp_path):
+    text = ("\\begin{document}\n\\section{One}\n\\slide{aaa-EN-First}\n% a note\n\\slide{bbb-EN-Second}\n"
+            "\\section{Two}\n\\slide{ccc-EN-Third}\n\\end{document}\n")
+    deck = _deck(tmp_path / "deck.tex", text)
+    calls = [c for c in deck_editor.parse_slide_calls(deck) if c.id_slug in ("aaa-EN-First", "bbb-EN-Second")]
+    removed = deck_editor.remove_section_and_calls(deck.path, text, deck.chapters[0], calls)
+    assert removed == "\\begin{document}\n% a note\n\\section{Two}\n\\slide{ccc-EN-Third}\n\\end{document}\n"
+    assert deck.path.read_text(encoding="utf-8") == removed
+
+
+def test_all_sections_go_and_every_slide_stays_or_nothing_changes(tmp_path):
+    text = ("\\begin{document}\n\\section{One}\n\\slide{aaa-EN-First}\n  \\section{Two}  % second\n"
+            "\\slide{bbb-EN-Second}\n\\end{document}\n")
+    deck = _deck(tmp_path / "deck.tex", text)
+    removed = deck_editor.remove_all_sections(deck.path, text, deck.chapters)
+    assert removed == "\\begin{document}\n\\slide{aaa-EN-First}\n\\slide{bbb-EN-Second}\n\\end{document}\n"
+    inline = "\\begin{document}\n\\section{One}\n\\slide{aaa-EN-First}\n\\slide{x} \\section{Two}\n\\end{document}\n"
+    deck = _deck(tmp_path / "inline.tex", inline)
+    with pytest.raises(ValueError):                       # one marker shares its line: none is removed
+        deck_editor.remove_all_sections(deck.path, inline, deck.chapters)
+    assert deck.path.read_text(encoding="utf-8") == inline

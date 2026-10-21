@@ -248,7 +248,7 @@ def build_registry() -> CommandRegistry:
             ("rename", "Rename", "", ""), ("add_slide", "Add slide here", "", ""),
             ("section_before", "Add section before", "", ""), ("section_up", "Move section up", "", ""),
             ("section_down", "Move section down", "", ""),
-            ("remove_section", "Remove section", "danger", "keeps its slides")):
+            ("remove_section", "Remove section…", "danger", "")):
         add(f"section:{name}", label, SECTION, _run_section(name), tone=tone, meta=meta,
             visible=section_chosen, enabled=_section_enabled(name))
 

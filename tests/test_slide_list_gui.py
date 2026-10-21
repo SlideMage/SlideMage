@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QStyleOptionViewItem
 from slidemage import deck_editor, deck_outline
 from slidemage.fileio import read_text_exact as read
 from slidemage.deck_scan import Deck, parse_chapters
+from slidemage.ui.dialogs import remove_section
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Toast
@@ -257,6 +258,22 @@ def test_a_slide_that_shares_its_line_is_locked(make_list):
     choose_section(slide_list, "T")
     section_menu = slide_list._section_menu()
     assert not _entry(section_menu, "section:rename")[6] and not _entry(section_menu, "section:remove_section")[6]
+
+
+def removing(monkeypatch, choice):
+    """The Remove section sheet, answered with `choice`; returns what it was asked (title, slides, sections)."""
+    asked = []
+
+    class Sheet:
+        def __init__(self, _parent, title, slides, sections):
+            asked.append((title, slides, sections))
+            self.choice = choice
+
+        def exec(self):
+            return True
+
+    monkeypatch.setattr(slide_list_module, "RemoveSectionSheet", Sheet)
+    return asked
 
 
 def choose_section(slide_list, title):
@@ -724,6 +741,7 @@ def test_sections_are_added_removed_and_get_slides(make_list, monkeypatch):
     slide_list.run_section("section_before")
     assert deck_lines(path)[2:5] == ["\\slide{bbb-One}", "\\section{New}", "\\section{Empty}"]
     choose_section(slide_list, "One")
+    removing(monkeypatch, remove_section.HEADING)
     slide_list.run_section("remove_section")                              # its slides stay
     assert "\\section{One}" not in read(path) and "bbb" in ids(slide_list)
     choose_section(slide_list, "Two")
@@ -1013,3 +1031,22 @@ def test_the_outline_goes_with_the_deck_view_and_language(make_list):
     assert state.current_outline().language == "DE"
     state.set_deck(None)
     assert state.outline is None and state.current_outline() is None
+
+
+def test_remove_section_asks_and_takes_the_section_with_its_slides_out_of_the_deck(make_list, monkeypatch):
+    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    choose_section(slide_list, "Two")
+    asked = removing(monkeypatch, remove_section.WITH_SLIDES)
+    slide_list.run_section("remove_section")
+    assert asked == [("Two", 2, 3)]
+    assert deck_lines(path) == ["\\slide{aaa-Front}", "\\section{One}", "\\slide{bbb-One}", "\\section{Empty}"]
+    assert ids(slide_list) == ["aaa", "bbb"]
+
+
+def test_remove_section_can_take_out_every_section_and_keep_every_slide(make_list, monkeypatch):
+    slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
+    choose_section(slide_list, "One")
+    removing(monkeypatch, remove_section.ALL_SECTIONS)
+    slide_list.run_section("remove_section")
+    assert deck_lines(path) == ["\\slide{aaa-Front}", "\\slide{bbb-One}", "\\slide{ccc-Two}", "\\slide{ddd-Two}"]
+    assert ids(slide_list) == ["aaa", "bbb", "ccc", "ddd"]

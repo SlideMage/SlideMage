@@ -2712,3 +2712,9 @@ v8.54.1 (2026-10-21, direct report: "when I duplicated a deck - p-Doctoral-Schoo
 
 NEW: Duplicating a deck works again.
 - A duplicated deck shows up in the deck switcher at once, with the group you chose (for example Workdeck).
+
+v8.55.0 (2026-10-21, direct requests: "When I right-click a section and select Remove section, I want to be asked whether I just want to remove this section, this section and all of its slides - remove from the deck, not delete the slides, obviously -, or remove all sections from the deck" and, on where the deck source is, "deck source needs to be wired in somewhere"): The slide list's Remove section… asks now (dialogs/remove_section.RemoveSectionSheet): only the section, its slides staying in the deck (as before, and the choice it starts on); the section and its slides (deck_editor.remove_section_and_calls: the marker and every slide call of the section, folded calls included, in one stale-checked write; other lines of the section, comments for instance, stay; the slide files stay in the project); or every section of the deck, all slides staying (deck_editor.remove_all_sections, offered when the deck has more than one; refused as a whole when one marker shares its line with other text). Each is one deck edit, which Undo takes back. Edit deck source is in the ⋮ menu under This deck, not only in Ctrl+K. Tests in test_section_editor.py, test_slide_list_gui.py and test_more_menu_gui.py.
+
+NEW: Removing a section asks what to remove, and the deck source is in the ⋮ menu.
+- Remove section asks whether to remove only the section, the section with its slides (they leave the deck, their files stay), or all sections of the deck.
+- Edit deck source is now in the ⋮ menu under This deck.

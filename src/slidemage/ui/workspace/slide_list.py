@@ -42,6 +42,7 @@ from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
 from .. import layout_settings
+from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionSheet
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
@@ -774,8 +775,25 @@ class SlideList(QWidget):
         elif name in ("section_up", "section_down"):
             self._step_section(section, -1 if name == "section_up" else 1)
         elif name == "remove_section":
+            self._remove_section(section)
+
+    def _remove_section(self, section: SectionRow) -> None:
+        """Ask whether the heading alone goes, the section with its slides, or every section of the deck."""
+        deck = self.deck
+        sheet = RemoveSectionSheet(self, section.title, len(section.rows), len(deck.chapters))
+        if not sheet.exec():
+            return
+        if sheet.choice == ALL_SECTIONS:
+            self.edit("Remove sections failed", f"Removed all {len(deck.chapters)} sections from {deck.name}",
+                      lambda path, text: deck_editor.remove_all_sections(path, text, list(deck.chapters)))
+        elif sheet.choice == WITH_SLIDES:
+            calls = list({c.call_start: c for r in section.rows for c in (r.deck_call, *r.folded_calls)}.values())
+            self.edit("Remove section failed",
+                      f"Removed section {section.title} and its {len(calls)} slide calls from {deck.name}",
+                      lambda path, text: deck_editor.remove_section_and_calls(path, text, section.chapter, calls))
+        else:
             self.edit("Remove section failed", f"Removed section {section.title} from {deck.name}",
-                       lambda path, text: deck_editor.remove_section(path, text, section.chapter))
+                      lambda path, text: deck_editor.remove_section(path, text, section.chapter))
 
     def _step_section(self, section: SectionRow, delta: int) -> None:
         chapters = self.deck.chapters
