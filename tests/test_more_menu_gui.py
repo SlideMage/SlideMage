@@ -13,18 +13,21 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QFrame, QLabel
 
-from conftest import build_window, command_context, qapp as qapp
+from conftest import build_window, command_context, more_menu_ids, qapp as qapp
 from slidemage.ui.kit import kit_qss as q
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.kit.widgets import PopoverMenu
-from slidemage.ui.workspace.menus import MORE_COLUMNS, MORE_FOOTER, MORE_NOTE, build_more_menu
+from slidemage.ui.workspace.menus import MORE_NOTE, build_more_menu
 from slidemage.ui.workspace.palette import command_entries
 
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course",
                          course_url="https://example.org/course", supports_version=True)
 
-LEFT = [("header", "This deck"), "present", "deck_settings", "export_pptx", "duplicate_deck", ("sep",), "archive_deck"]
-RIGHT = [("header", "Project"), "images", "open_project", "new_deck", ("sep",), "housekeeping", "archive_unused"]
+LEFT = [("header", "This deck"), "present", "deck_settings", "submenu:export", "duplicate_deck", ("sep",), "archive_deck"]
+RIGHT = [("header", "Project"), "images", "open_project", "new_deck", ("sep",), "submenu:housekeeping"]
+# The flyouts: the row's key, the title of the flyout and the commands in it.
+FLYOUTS = {"submenu:export": ("Export", ["export_pptx"]),
+           "submenu:housekeeping": ("Housekeeping", ["housekeeping", "archive_unused"])}
 
 # Every entry the old menus had and this has not: they are ⌘K commands (the first three groups are also in
 # Deck settings → General → Maintenance and Settings → Project / About).
@@ -69,12 +72,14 @@ def test_two_columns_with_their_sections_and_a_footer_in_order(qapp):
 
 def test_every_listed_command_exists_once_and_a_shortcut_shows_in_place_of_a_hint(qapp):
     menu = build_more_menu(None, command_context(COURSE))
-    keys = [e[1] for e in menu._entries if e[0] == "item"]
-    ids = [i for sections in MORE_COLUMNS for _header, ids in sections for i in ids] + list(MORE_FOOTER)
-    assert keys == ids and len(set(keys)) == len(keys)
+    ids = more_menu_ids()
+    assert len(set(ids)) == len(ids)
+    registry = command_context(COURSE).commands
+    assert all(i in registry for i in ids)
     meta = {e[1]: e[3] for e in menu._entries if e[0] == "item"}
     assert meta["deck_settings"] == QKeySequence("Ctrl+,").toString(QKeySequence.SequenceFormat.NativeText)
-    assert [k for k, m in meta.items() if m] == ["present", "deck_settings"]   # shortcuts only, no hints like "full-screen, with notes"
+    assert [k for k, m in meta.items() if m == "▸"] == list(FLYOUTS)
+    assert [k for k, m in meta.items() if m and m != "▸"] == ["present", "deck_settings"]   # shortcuts only, no hints like "full-screen, with notes"
 
 
 def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_below(qapp):
@@ -101,7 +106,7 @@ def test_archive_deck_is_red_and_both_columns_end_after_a_separator(qapp):
     rows = rows_of(menu)
     assert rows["archive_deck"].property("tone") == "danger"
     assert [r.property("tone") for k, r in rows.items() if k != "archive_deck"] == [""] * (len(rows) - 1)
-    for after, before in (("archive_deck", "duplicate_deck"), ("housekeeping", "new_deck")):
+    for after, before in (("archive_deck", "duplicate_deck"), ("submenu:housekeeping", "new_deck")):
         layout = rows[after].parentWidget().layout()
         index = layout.indexOf(rows[after])
         separator = layout.itemAt(index - 2).widget()      # spacing, separator, spacing, the row
@@ -112,7 +117,48 @@ def test_archive_deck_is_red_and_both_columns_end_after_a_separator(qapp):
 def test_commands_not_available_now_are_disabled(qapp):
     rows = rows_of(build_more_menu(None, command_context(None)))
     assert [k for k, r in rows.items() if not r.isEnabled()] == [
-        "present", "deck_settings", "export_pptx", "duplicate_deck", "archive_deck"]
+        "present", "deck_settings", "submenu:export", "duplicate_deck", "archive_deck"]
+
+
+def test_each_submenu_is_a_row_with_a_flyout_titled_and_filled_by_its_commands(qapp):
+    menu = build_more_menu(None, command_context(COURSE))
+    menu.popup_at(QPoint(600, 100))
+    try:
+        for key, (title, ids) in FLYOUTS.items():
+            QTest.mouseClick(rows_of_open(menu)[key], Qt.MouseButton.LeftButton)
+            flyout = menu._flyout
+            assert [e[0] for e in flyout._entries][:1] == ["header"] and flyout._entries[0][1] == title
+            assert shape(flyout)[1:] == ids and flyout.minimumWidth() == 280
+            assert all(r.isEnabled() for r in flyout._rows)
+    finally:
+        menu.close()
+
+
+def rows_of_open(menu) -> dict:
+    return {row.key: row for row in menu._rows}
+
+
+def test_a_submenu_without_a_visible_command_is_left_out_and_one_without_an_available_one_is_disabled(qapp):
+    ctx = command_context(COURSE)
+
+    def patch(command_id: str, **changes) -> None:
+        ctx.commands._commands[command_id] = replace(ctx.commands[command_id], **changes)
+
+    patch("export_pptx", visible=lambda _ctx: False)
+    assert "submenu:export" not in shape(build_more_menu(None, ctx))
+    assert "submenu:housekeeping" in shape(build_more_menu(None, ctx))
+    patch("housekeeping", enabled=lambda _ctx: False)
+    assert rows_of(build_more_menu(None, ctx))["submenu:housekeeping"].isEnabled()      # one command is still on
+    patch("archive_unused", enabled=lambda _ctx: False)
+    menu = build_more_menu(None, ctx)
+    menu.popup_at(QPoint(600, 100))
+    try:
+        row = rows_of(menu)["submenu:housekeeping"]
+        assert not row.isEnabled()
+        QTest.mouseClick(row, Qt.MouseButton.LeftButton)
+        assert menu._flyout is None                  # disabled: nothing opens
+    finally:
+        menu.close()
 
 
 # -- using it ------------------------------------------------------------------------
@@ -122,12 +168,15 @@ def test_clicking_each_item_closes_the_menu_and_runs_that_command(window, monkey
     monkeypatch.setattr(window.commands, "run", lambda command_id, _ctx: ran.append(command_id) or True)
     course = next(d for d in window.decks if d.group == "course")
     window.state.set_deck(replace(course, course_url="https://example.org/course"))
-    keys = [i for sections in MORE_COLUMNS for _h, ids in sections for i in ids] + list(MORE_FOOTER)
-    for key in keys:
+    for key in more_menu_ids():
         menu = open_menu(window)
+        for submenu, (_title, ids) in FLYOUTS.items():
+            if key in ids:                                                        # an item of a flyout: open it first
+                QTest.mouseClick(next(r for r in menu._rows if r.key == submenu), Qt.MouseButton.LeftButton)
+                menu = menu._flyout
         QTest.mouseClick(next(r for r in menu._rows if r.key == key), Qt.MouseButton.LeftButton)
-        assert ran[-1] == key and not menu.isVisible()
-    assert ran == keys
+        assert ran[-1] == key and not menu.isVisible() and not window.topbar.findChildren(PopoverMenu)[-1].isVisible()
+    assert ran == more_menu_ids()
 
 
 def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_columns(qapp):
@@ -140,7 +189,7 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
         assert current() == "present"                                     # focus on the first item
         QTest.keyClick(menu, Qt.Key.Key_Down)
         QTest.keyClick(menu, Qt.Key.Key_Down)
-        assert current() == "export_pptx"
+        assert current() == "submenu:export"
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # the same position, one column on
         assert current() == "new_deck"
         QTest.keyClick(menu, Qt.Key.Key_Up)
@@ -200,7 +249,7 @@ def test_a_click_outside_closes_it(window, qapp):
 # -- what is left out ----------------------------------------------------------------
 
 def test_every_entry_the_old_menu_had_and_this_has_not_is_a_command_in_the_palette(window):
-    in_menu = {i for sections in MORE_COLUMNS for _h, ids in sections for i in ids} | set(MORE_FOOTER)
+    in_menu = set(more_menu_ids())
     assert not in_menu & set(LEFT_OUT)
     listed = {e.label for e in command_entries(window, [])}
     for command_id in LEFT_OUT:

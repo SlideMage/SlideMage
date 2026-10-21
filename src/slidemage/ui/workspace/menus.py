@@ -13,7 +13,7 @@ the ⋮ menu's sections or ⌘K commands, and the deck table's per-deck buttons 
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from PySide6.QtWidgets import QWidget
 
@@ -70,17 +70,41 @@ def _add_deck(menu: PopoverMenu, deck: Deck, current: Optional[Deck]) -> None:
     menu.add_item(deck_key(deck), deck.name, icon="check" if is_current else "")
 
 
-def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str], header: str = "", *,
+class Submenu(NamedTuple):
+    """An entry of a menu's command ids that is a row opening a flyout with the commands `ids`."""
+
+    title: str
+    ids: tuple[str, ...]
+
+
+def add_commands(menu: PopoverMenu, ctx: Context, ids: Iterable[str | Submenu], header: str = "", *,
                  hints: bool = True) -> None:
     """The visible commands `ids` as items (disabled where they are not available now), under
     `header` if any of them is shown; `hints` False leaves the commands' meta texts out, so only
-    the shortcuts show."""
-    commands = [c for c in (ctx.commands[i] for i in ids) if c.visible(ctx)]
-    if commands and header:
+    the shortcuts show. A Submenu is a flyout row, shown if any of its commands is visible and
+    disabled if none is available."""
+    entries = [e for e in ids if (_visible(ctx, e.ids) if isinstance(e, Submenu) else ctx.commands[e].visible(ctx))]
+    if entries and header:
         menu.add_header(header)
-    for command in commands:
-        menu.add_item(command.id, command.title(ctx), meta=command.info(ctx) if hints else command.key_text(),
-                      tone=command.tone, enabled=command.enabled(ctx))
+    for entry in entries:
+        if isinstance(entry, Submenu):
+            menu.add_submenu(f"submenu:{entry.title.lower()}", entry.title,
+                             lambda parent, sub=entry: _flyout(parent, ctx, sub.ids),
+                             enabled=any(c.enabled(ctx) for c in _visible(ctx, entry.ids)))
+        else:
+            command = ctx.commands[entry]
+            menu.add_item(command.id, command.title(ctx), meta=command.info(ctx) if hints else command.key_text(),
+                          tone=command.tone, enabled=command.enabled(ctx))
+
+
+def _visible(ctx: Context, ids: Iterable[str]) -> list:
+    return [c for c in (ctx.commands[i] for i in ids) if c.visible(ctx)]
+
+
+def _flyout(parent: PopoverMenu, ctx: Context, ids: Iterable[str]) -> PopoverMenu:
+    flyout = PopoverMenu(parent, min_width=280)
+    add_commands(flyout, ctx, ids, hints=False)
+    return flyout
 
 
 def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
@@ -104,13 +128,12 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 # by a separator. Only what is used often is here, the rest is a ⌘K command: Admin slides, Tags, Edit deck
 # source, Find anything, the View toggles, Decks, Log and Exit. The deck's snapshot, previews and slide
 # versions are Deck settings → General → Maintenance; the .bib and test slides, project compatibility,
-# version history and the update check are Settings → Project / About. (Step M3 may turn the Export
-# and Housekeeping rows into flyouts.)
+# version history and the update check are Settings → Project / About. A Submenu is a row with a flyout.
 MORE_COLUMNS = (
-    (("This deck", ("present", "deck_settings", "export_pptx", "duplicate_deck")),
+    (("This deck", ("present", "deck_settings", Submenu("Export", ("export_pptx",)), "duplicate_deck")),
      ("", ("archive_deck",))),
     (("Project", ("images", "open_project", "new_deck")),
-     ("", ("housekeeping", "archive_unused"))),
+     ("", (Submenu("Housekeeping", ("housekeeping", "archive_unused")),))),
 )
 MORE_FOOTER = ("settings",)
 MORE_NOTE = "Everything here is also in ⌘K / Ctrl+K"

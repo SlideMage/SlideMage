@@ -49,8 +49,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details**, the **Compile PDF** split button, and
   the **⋮** menu (one popover in two columns, *This deck* | *Project*, with Settings… in its footer: Present,
-  Deck settings… (`Ctrl+,`), Export PPTX…, Duplicate deck… and Archive deck…; Image descriptions, Open project…,
-  New deck…, Housekeeping… and Archive unused…). Everything else the old menu bar and the deck table's
+  Deck settings… (`Ctrl+,`), Export ▸ (Export PPTX…), Duplicate deck… and Archive deck…; Image descriptions, Open project…,
+  New deck… and Housekeeping ▸ (Housekeeping…, Archive unused…); a ▸ row opens a flyout left of the menu). Everything else the old menu bar and the deck table's
   per-row buttons held is in `Ctrl+K`, and some of it also in a sheet: snapshot, previews and slide versions
   under Deck settings → General → Maintenance; the .bib file, test slides and project compatibility under
   Settings → Project; version history and the update check under Settings → About.
@@ -907,7 +907,7 @@ What matters when touching *this code*:
   - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands
     are registered in `ui/workspace/actions.py` (`build_registry()`), and the menus in
     `menus.py` are lists of command ids (the ⋮ menu's two columns and footer are `MORE_COLUMNS`, drawn by
-    `PopoverMenu.add_column()`/`add_footer()`), so the top bar, the ⋮ menu, the context menus and the
+    `PopoverMenu.add_column()`/`add_footer()`; a `Submenu` entry is `add_submenu()`, a flyout), so the top bar, the ⋮ menu, the context menus and the
     palette share one definition (`slide:*`, `section:*`, `compile:*`, ...). A new feature
     registers its command there.
   - `ui/workspace/` -- `window.py` (`WorkspaceWindow`) with `state.py` (`WorkspaceState`: the

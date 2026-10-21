@@ -550,12 +550,12 @@ def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
 @pytest.mark.parametrize("deck, disabled", [
     (COURSE, []),
     (MANUAL, ["deck_settings"]),                            # the manual keeps its settings and group
-    (OLD, ["duplicate_deck", "export_pptx", "archive_deck"]),
-    (None, ["deck_settings", "duplicate_deck", "export_pptx", "archive_deck"]),
+    (OLD, ["duplicate_deck", "submenu:export", "archive_deck"]),
+    (None, ["deck_settings", "duplicate_deck", "submenu:export", "archive_deck"]),
 ])
 def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
     enabled = items(build_more_menu(None, command_context(deck)))
-    deck_keys = ["deck_settings", "duplicate_deck", "export_pptx", "archive_deck"]
+    deck_keys = ["deck_settings", "duplicate_deck", "submenu:export", "archive_deck"]
     assert [key for key in deck_keys if not enabled[key]] == disabled
 
 

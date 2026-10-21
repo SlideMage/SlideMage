@@ -86,7 +86,7 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck | project incl. Images and housekeeping; Settings… at the bottom; everything else is in `Ctrl+K`, and snapshot, previews, slide versions, the .bib file, project compatibility, version history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About).
+  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck, with Export ▸ | project incl. Images and Housekeeping ▸; Settings… at the bottom; everything else is in `Ctrl+K`, and snapshot, previews, slide versions, the .bib file, project compatibility, version history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About).
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
   Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);

@@ -142,6 +142,14 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
                            left_column_hidden=False, right_column_hidden=False)
 
 
+def more_menu_ids() -> list[str]:
+    """Every command id the ⋮ menu lists: its columns (the flyouts' commands included) and its footer."""
+    from slidemage.ui.workspace.menus import MORE_COLUMNS, MORE_FOOTER, Submenu
+
+    return [j for sections in MORE_COLUMNS for _h, ids in sections for i in ids
+            for j in (i.ids if isinstance(i, Submenu) else (i,))] + list(MORE_FOOTER)
+
+
 @pytest.fixture(autouse=True)
 def _restore_app_stylesheet():
     """`ThemeManager.apply()` sets the stylesheet of the whole application, and a test that calls it would leave
