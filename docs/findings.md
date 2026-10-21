@@ -214,6 +214,10 @@ The Windows baseline is still to do: run the tool at this commit and at the bran
    without the change. Compare pixels per page (the harness of the third-pass plan, §1.4). Expect identical.
 6. Bench: edit render −0.5 s (Linux 2.44 → 1.90 s measured with the change applied from outside).
 
+Done in v8.45.0: `-g` only when the wrapper text is unchanged (`_compile_reserved`). Linux, medians of 3: edit 2.41 →
+1.91 s (rules `lualatex` only), view switch 3.85 → 3.35 s and 3.90 → 3.46 s; 30 of 30 display images (10 slides × 3
+views) identical to the `-g` behaviour.
+
 ### Plan 2 – `prune()` off the per-render path (F2)
 
 1. Add `PreviewCache.maybe_prune()`, which prunes at most once per N minutes per process (a module-level

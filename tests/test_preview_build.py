@@ -386,12 +386,13 @@ def test_the_framework_names_a_missing_ovl_and_top_like_latex_names_a_missing_au
         assert rf'\InputIfFileExists{{\jobname.{ext}}}{{}}{{\typeout{{No file \jobname.{ext}.}}}}' in base
 
 
-@pytest.mark.skipif(not all(preview_format.shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
-                    reason='needs latexmk, LuaLaTeX and biber')
-def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_path):
-    r"""The real tools, in a project under the temp folder (where Git-for-Windows Perl spells the path /tmp/...): a
-    citing slide with a framework-style helper file (read at \begin{document} with a "No file" line, then rewritten)
-    needs lualatex, biber, lualatex -- latexmk ran a third LuaLaTeX before PREVIEW_LATEXMKRC and RUN_XML_NOTE."""
+needs_tex_tools = pytest.mark.skipif(not all(preview_format.shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
+                                     reason='needs latexmk, LuaLaTeX and biber')
+
+
+def _citing_project(tmp_path):
+    """A project under the temp folder (where Git-for-Windows Perl spells the path /tmp/...) and the text of a citing
+    slide with a framework-style helper file (read at \\begin{document} with a "No file" line, then rewritten)."""
     (tmp_path / 'decks').mkdir()
     # As a project's own .latexmkrc: $do_cd puts latexmk in decks/, so it names the build folder by its full path, as
     # the .fls does (from the project root it would name it relative to it: one more spelling of every file).
@@ -407,10 +408,35 @@ def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_pat
         r'\immediate\openout\helper=\jobname.hlp\immediate\write\helper{\relax}\immediate\closeout\helper}',
         # \fullcite, as the slides cite (a \textcite changes the .bcf in the second run: a real reason for more)
         r'\begin{document}', r'See \fullcite{knuth}.', r'\end{document}', ''])
-    ctx = ProjectContext.at(tmp_path)
+    return ProjectContext.at(tmp_path), text
+
+
+def _rules_run(text, ctx, *, force):
+    """The rules latexmk ran for one cached build, from the 'Run number' lines of its log."""
     lines = []
     pdf = preview_build.compile_cached(text, 'abc-EN-Test', lines.append, ctx=ctx, env=compiler.build_env(ctx),
-                                       force=True)
+                                       force=force)
     assert pdf.is_file()
     runs = [line for line in lines if line.startswith('Run number')]
-    assert [run.split("'")[1].split()[0] for run in runs] == ['lualatex', 'biber', 'lualatex'], '\n'.join(lines[-80:])
+    return [run.split("'")[1].split()[0] for run in runs], lines
+
+
+@needs_tex_tools
+def test_a_first_render_with_a_bibliography_settles_in_two_lualatex_runs(tmp_path):
+    r"""The real tools: a citing slide needs lualatex, biber, lualatex -- latexmk ran a third LuaLaTeX before
+    PREVIEW_LATEXMKRC and RUN_XML_NOTE."""
+    ctx, text = _citing_project(tmp_path)
+    rules, lines = _rules_run(text, ctx, force=True)
+    assert rules == ['lualatex', 'biber', 'lualatex'], '\n'.join(lines[-80:])
+
+
+@needs_tex_tools
+def test_a_forced_render_reruns_every_rule_only_when_the_text_is_unchanged(tmp_path):
+    """-g only for what latexmk cannot see (an input edited with its time restored): a slide edit makes it run
+    LuaLaTeX alone, no biber."""
+    ctx, text = _citing_project(tmp_path)
+    _rules_run(text, ctx, force=True)
+    rules, lines = _rules_run(text.replace('See', 'Also see'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])
+    rules, lines = _rules_run(text.replace('See', 'Also see'), ctx, force=True)
+    assert 'lualatex' in rules and 'biber' in rules, '\n'.join(lines[-80:])

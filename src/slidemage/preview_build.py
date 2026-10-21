@@ -217,6 +217,10 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
 
     A run that fails only with the format is repeated without it, so a preamble
     the format cannot reproduce costs one slower build, never a wrong preview.
+
+    `force` makes latexmk rerun every rule (-g), but only when the slide's wrapper is unchanged: a changed wrapper
+    reruns LuaLaTeX alone, which reads every input again. Accepted edge case: a .bib (or other input) edited with
+    its time and size restored in the same render as a slide text change is not seen by biber, as with latexmk itself.
     """
     check_cancel(cancel)
     if workspace is not None:
@@ -278,13 +282,16 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
     wrapper_text = with_run_xml_note(wrapper_text)
     # Leave the source and outputs in place: rewriting an unchanged wrapper
     # would defeat latexmk's normal dependency check.
-    if not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8'):
+    changed = not wrapper.exists() or wrapper.read_bytes() != wrapper_text.encode('utf-8')
+    if changed:
         with stage('wrapper_write'):
             wrapper.write_text(wrapper_text, encoding='utf-8', newline='')
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
     options = ['-synctex=0', '-r', preview_latexmkrc(ctx.build_dir).as_posix()]
-    if force:
+    if force and not changed:
+        # Go mode: a changed wrapper makes latexmk run LuaLaTeX, which reads every input again, so only an
+        # unchanged one needs -g to see an input edited with its time and size restored.
         options.append('-g')
     if format_dir is not None:
         # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
