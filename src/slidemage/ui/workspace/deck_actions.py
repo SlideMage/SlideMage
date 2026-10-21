@@ -19,6 +19,7 @@ from ... import archive as archive_mod
 from ...compiler import deck_pdfs, pdf_to_open
 from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
+from ...fileio import read_text_exact
 from ..dialogs.admin_slides import AdminSlidesTab
 from ..dialogs.deck_group import DeckGroupSheet
 from ..dialogs.deck_settings import ADMIN, COMMAND, GENERAL, INSERT, DeckSettingsSheet
@@ -272,7 +273,7 @@ def on_duplicate_deck(window, deck: Deck) -> None:
     if group != deck.group or group not in deck.tags:
         try:
             deck_editor.set_deck_tags(
-                dest, deck_editor.read(dest), tags_with_group(deck.tags, group))
+                dest, read_text_exact(dest), tags_with_group(deck.tags, group))
             window.log(f"Tagged {dest.stem} as {group}")
         except (deck_editor.StaleFileError, ValueError, OSError) as exc:
             QMessageBox.warning(

@@ -2707,3 +2707,8 @@ v8.54.0 (2026-10-21, direct instruction: "let's implement your earlier plan, kee
 
 NEW: The whole deck is prepared for scrolling.
 - SlideMage keeps the stored previews of every slide of the open deck ready, so jumping to any slide shows it at once, not only the next one.
+
+v8.54.1 (2026-10-21, direct report: "when I duplicated a deck (p-Doctoral-School-2026-11-16), I needed to restart the app for it to show up in the deck list. I also believe it did not get the workdeck tag even though I chose it"): Duplicate deck… stopped right after copying the file whenever the copy was to get another group than the original's: it read the copy for the tag write with deck_editor.read, which v8.3.7 (shared file I/O) had renamed to fileio.read_text_exact without updating this caller. The AttributeError was not among the errors the action catches, so the group was never written and the decks were not scanned again: the copy came up only after a restart, without the group chosen. deck_actions.on_duplicate_deck now reads it with read_text_exact. Test in tests/test_duplicate_deck_gui.py (the copy is in the deck switcher at once, with the group chosen).
+
+NEW: Duplicating a deck works again.
+- A duplicated deck shows up in the deck switcher at once, with the group you chose (for example Workdeck).
