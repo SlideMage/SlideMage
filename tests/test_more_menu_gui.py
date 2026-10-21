@@ -23,7 +23,7 @@ from slidemage.ui.workspace.palette import command_entries
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course",
                          course_url="https://example.org/course", supports_version=True)
 
-LEFT = [("header", "This deck"), "present", "deck_settings", "submenu:export", "duplicate_deck", ("sep",), "archive_deck"]
+LEFT = [("header", "This deck"), "present", "deck_settings", "deck_source", "submenu:export", "duplicate_deck", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "images", "open_project", "new_deck", ("sep",), "submenu:housekeeping"]
 # The flyouts: the row's key, the title of the flyout and the commands in it.
 FLYOUTS = {"submenu:export": ("Export", ["export_pptx", "export_latex"]),
@@ -32,7 +32,7 @@ FLYOUTS = {"submenu:export": ("Export", ["export_pptx", "export_latex"]),
 # Every entry the old menus had and this has not: they are ⌘K commands (the first three groups are also in
 # Deck settings → General → Maintenance and Settings → Project / About).
 LEFT_OUT = ["create_snapshot", "rerender_deck_previews", "update_deck_versions", "edit_bib", "edit_test_slides",
-            "project_compat", "version_history", "check_updates", "admin_slides", "deck_tags", "deck_source", "palette",
+            "project_compat", "version_history", "check_updates", "admin_slides", "deck_tags", "palette",
             "column:left", "column:right", "open_pdf", "import_presentation", "refresh_decks", "log", "empty_pdf",
             "remove_temp", "update_previews", "sync_links", "exit"]
 
@@ -117,7 +117,7 @@ def test_archive_deck_is_red_and_both_columns_end_after_a_separator(qapp):
 def test_commands_not_available_now_are_disabled(qapp):
     rows = rows_of(build_more_menu(None, command_context(None)))
     assert [k for k, r in rows.items() if not r.isEnabled()] == [
-        "present", "deck_settings", "submenu:export", "duplicate_deck", "archive_deck"]
+        "present", "deck_settings", "deck_source", "submenu:export", "duplicate_deck", "archive_deck"]
 
 
 def test_each_submenu_is_a_row_with_a_flyout_titled_and_filled_by_its_commands(qapp):
@@ -191,7 +191,7 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
         assert current() == "present"                                     # focus on the first item
         QTest.keyClick(menu, Qt.Key.Key_Down)
         QTest.keyClick(menu, Qt.Key.Key_Down)
-        assert current() == "submenu:export"
+        assert current() == "deck_source"
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # the same position, one column on
         assert current() == "new_deck"
         QTest.keyClick(menu, Qt.Key.Key_Up)
