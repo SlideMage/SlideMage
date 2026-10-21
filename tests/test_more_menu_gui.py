@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QFrame, QLabel
 
@@ -22,14 +23,14 @@ from slidemage.ui.workspace.palette import command_entries
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course",
                          course_url="https://example.org/course", supports_version=True)
 
-LEFT = [("header", "This deck"), "present", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
-        "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions", ("sep",), "archive_deck"]
-RIGHT = [("header", "Project"), "palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck",
-         ("header", "Housekeeping"), "housekeeping", "archive_unused",
-         ("header", "Info"), "wizard_preview", "version_history", "check_updates", "project_compat"]
+LEFT = [("header", "This deck"), "present", "deck_settings", "export_pptx", "duplicate_deck", ("sep",), "archive_deck"]
+RIGHT = [("header", "Project"), "images", "open_project", "new_deck", ("sep",), "housekeeping", "archive_unused"]
 
-# Every entry the old one-column menu had and the new one has not: they are ⌘K commands.
-LEFT_OUT = ["column:left", "column:right", "open_pdf", "import_presentation", "refresh_decks", "log", "empty_pdf",
+# Every entry the old menus had and this has not: they are ⌘K commands (the first three groups are also in
+# Deck settings → General → Maintenance and Settings → Project / About).
+LEFT_OUT = ["create_snapshot", "rerender_deck_previews", "update_deck_versions", "edit_bib", "edit_test_slides",
+            "project_compat", "version_history", "check_updates", "admin_slides", "deck_tags", "deck_source", "palette",
+            "column:left", "column:right", "open_pdf", "import_presentation", "refresh_decks", "log", "empty_pdf",
             "remove_temp", "update_previews", "sync_links", "exit"]
 
 
@@ -72,7 +73,8 @@ def test_every_listed_command_exists_once_and_a_shortcut_shows_in_place_of_a_hin
     ids = [i for sections in MORE_COLUMNS for _header, ids in sections for i in ids] + list(MORE_FOOTER)
     assert keys == ids and len(set(keys)) == len(keys)
     meta = {e[1]: e[3] for e in menu._entries if e[0] == "item"}
-    assert meta["palette"] == "Ctrl+K" and [k for k, m in meta.items() if m] == ["present", "palette"]   # shortcuts only, no hints like "course page"
+    assert meta["deck_settings"] == QKeySequence("Ctrl+,").toString(QKeySequence.SequenceFormat.NativeText)
+    assert [k for k, m in meta.items() if m] == ["present", "deck_settings"]   # shortcuts only, no hints like "full-screen, with notes"
 
 
 def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_below(qapp):
@@ -94,22 +96,23 @@ def test_the_popover_is_520_wide_with_the_right_column_divided_and_the_footer_be
         menu.close()
 
 
-def test_archive_deck_is_red_after_a_separator_in_the_left_column(qapp):
+def test_archive_deck_is_red_and_both_columns_end_after_a_separator(qapp):
     menu = build_more_menu(None, command_context(COURSE))
     rows = rows_of(menu)
     assert rows["archive_deck"].property("tone") == "danger"
     assert [r.property("tone") for k, r in rows.items() if k != "archive_deck"] == [""] * (len(rows) - 1)
-    layout = rows["archive_deck"].parentWidget().layout()
-    index = layout.indexOf(rows["archive_deck"])
-    separator = layout.itemAt(index - 2).widget()      # spacing, separator, spacing, the row
-    assert separator.objectName() == q.MENU_SEPARATOR and separator.height() == 1
-    assert layout.itemAt(index - 4).widget() is rows["update_deck_versions"]
+    for after, before in (("archive_deck", "duplicate_deck"), ("housekeeping", "new_deck")):
+        layout = rows[after].parentWidget().layout()
+        index = layout.indexOf(rows[after])
+        separator = layout.itemAt(index - 2).widget()      # spacing, separator, spacing, the row
+        assert separator.objectName() == q.MENU_SEPARATOR and separator.height() == 1
+        assert layout.itemAt(index - 4).widget() is rows[before]
 
 
 def test_commands_not_available_now_are_disabled(qapp):
     rows = rows_of(build_more_menu(None, command_context(None)))
     assert [k for k, r in rows.items() if not r.isEnabled()] == [
-        "present", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck", "export_pptx", "rerender_deck_previews", "update_deck_versions", "archive_deck"]
+        "present", "deck_settings", "export_pptx", "duplicate_deck", "archive_deck"]
 
 
 # -- using it ------------------------------------------------------------------------
@@ -118,7 +121,7 @@ def test_clicking_each_item_closes_the_menu_and_runs_that_command(window, monkey
     ran: list = []
     monkeypatch.setattr(window.commands, "run", lambda command_id, _ctx: ran.append(command_id) or True)
     course = next(d for d in window.decks if d.group == "course")
-    window.state.set_deck(replace(course, course_url="https://example.org/course"))   # Admin slides needs the page
+    window.state.set_deck(replace(course, course_url="https://example.org/course"))
     keys = [i for sections in MORE_COLUMNS for _h, ids in sections for i in ids] + list(MORE_FOOTER)
     for key in keys:
         menu = open_menu(window)
@@ -137,11 +140,11 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
         assert current() == "present"                                     # focus on the first item
         QTest.keyClick(menu, Qt.Key.Key_Down)
         QTest.keyClick(menu, Qt.Key.Key_Down)
-        assert current() == "admin_slides"
+        assert current() == "export_pptx"
         QTest.keyClick(menu, Qt.Key.Key_Right)                            # the same position, one column on
-        assert current() == "edit_bib"
+        assert current() == "new_deck"
         QTest.keyClick(menu, Qt.Key.Key_Up)
-        assert current() == "images"
+        assert current() == "open_project"
         QTest.keyClick(menu, Qt.Key.Key_Left)
         assert current() == "deck_settings"
         QTest.keyClick(menu, Qt.Key.Key_Up)
@@ -159,14 +162,14 @@ def test_it_opens_on_the_first_item_and_the_arrows_move_within_and_between_the_c
 
 
 def test_the_arrows_skip_disabled_items(qapp):
-    menu = build_more_menu(None, command_context(None))                    # no deck: only the snapshot is on, on the left
+    menu = build_more_menu(None, command_context(None))                    # no deck: nothing on the left is on
     menu.popup_at(QPoint(10, 10))
     try:
-        assert menu._rows[menu._current].key == "create_snapshot"
+        assert menu._rows[menu._current].key == "images"
         QTest.keyClick(menu, Qt.Key.Key_Down)
-        assert menu._rows[menu._current].key == "create_snapshot"
-        QTest.keyClick(menu, Qt.Key.Key_Right)
-        assert menu._rows[menu._current].key == "palette"
+        assert menu._rows[menu._current].key == "open_project"
+        QTest.keyClick(menu, Qt.Key.Key_Left)                              # the empty left column is skipped
+        assert menu._rows[menu._current].key == "settings"
     finally:
         menu.close()
 

@@ -549,15 +549,13 @@ def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
 
 @pytest.mark.parametrize("deck, disabled", [
     (COURSE, []),
-    (MANUAL, ["deck_settings", "deck_tags"]),              # the manual keeps its settings and group
-    (OLD, ["deck_source", "deck_tags", "duplicate_deck", "export_pptx", "archive_deck"]),
-    (None, ["deck_settings", "deck_source", "deck_tags", "duplicate_deck", "export_pptx",
-            "archive_deck"]),
+    (MANUAL, ["deck_settings"]),                            # the manual keeps its settings and group
+    (OLD, ["duplicate_deck", "export_pptx", "archive_deck"]),
+    (None, ["deck_settings", "duplicate_deck", "export_pptx", "archive_deck"]),
 ])
 def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
     enabled = items(build_more_menu(None, command_context(deck)))
-    deck_keys = ["deck_settings", "deck_source", "deck_tags", "duplicate_deck",
-                 "export_pptx", "archive_deck"]
+    deck_keys = ["deck_settings", "duplicate_deck", "export_pptx", "archive_deck"]
     assert [key for key in deck_keys if not enabled[key]] == disabled
 
 
@@ -567,8 +565,8 @@ def test_the_more_button_opens_the_menu_and_forwards_the_choice(window):
     window.topbar._more.click()
     menu = window.topbar.findChildren(PopoverMenu)[-1]
     assert menu.isVisible()
-    menu._on_activated("edit_bib")
-    assert seen == ["edit_bib"] and not menu.isVisible()
+    menu._on_activated("images")         # opens a page, no modal dialog
+    assert seen == ["images"] and not menu.isVisible()
 
 
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):

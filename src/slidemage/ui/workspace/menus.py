@@ -101,15 +101,16 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 
 
 # The ⋮ menu: two columns of (header, command ids) and a footer; a section without a header is set off
-# by a separator. The View toggles, Decks, Log, Exit and the single housekeeping jobs (they are in the
-# Housekeeping dialog) are ⌘K commands only.
+# by a separator. Only what is used often is here, the rest is a ⌘K command: Admin slides, Tags, Edit deck
+# source, Find anything, the View toggles, Decks, Log and Exit. The deck's snapshot, previews and slide
+# versions are Deck settings → General → Maintenance; the .bib and test slides, project compatibility,
+# version history and the update check are Settings → Project / About. (Step M3 may turn the Export
+# and Housekeeping rows into flyouts.)
 MORE_COLUMNS = (
-    (("This deck", ("present", "deck_settings", "admin_slides", "deck_source", "deck_tags", "duplicate_deck",
-                    "export_pptx", "create_snapshot", "rerender_deck_previews", "update_deck_versions")),
+    (("This deck", ("present", "deck_settings", "export_pptx", "duplicate_deck")),
      ("", ("archive_deck",))),
-    (("Project", ("palette", "images", "edit_bib", "edit_test_slides", "open_project", "new_deck")),
-     ("Housekeeping", ("housekeeping", "archive_unused")),
-     ("Info", ("wizard_preview", "version_history", "check_updates", "project_compat"))),
+    (("Project", ("images", "open_project", "new_deck")),
+     ("", ("housekeeping", "archive_unused"))),
 )
 MORE_FOOTER = ("settings",)
 MORE_NOTE = "Everything here is also in ⌘K / Ctrl+K"

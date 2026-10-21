@@ -103,5 +103,12 @@ def test_a_menu_entry_shows_the_commands_label_tone_shortcut_and_availability(qa
     entries = {e[1]: e for e in build_more_menu(None, context)._entries if e[0] == "item"}
     archive = entries["archive_deck"]
     assert (archive[2], archive[5], archive[6]) == ("Archive deck…", "danger", False)
-    assert entries["palette"][3] == "Ctrl+K" and "deck_settings" in entries and "log" not in entries
-    assert entries["create_snapshot"][6]
+    assert entries["present"][3] == "F5" and "deck_settings" in entries and "log" not in entries
+    assert entries["housekeeping"][6]
+
+
+def test_deck_settings_has_the_preferences_shortcut_and_no_other_command_uses_it(qapp):
+    registry = build_registry()
+    assert registry["deck_settings"].shortcut == "Ctrl+,"
+    assert [c.id for c in registry if c.shortcut == "Ctrl+,"] == ["deck_settings"]
+

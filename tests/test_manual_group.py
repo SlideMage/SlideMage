@@ -57,11 +57,11 @@ def menu_rows(menu):
     return {row.key: row for row in menu._rows}
 
 
-def test_manual_has_a_disabled_tags_entry_and_its_own_switcher_section(qapp):
+def test_manual_has_a_disabled_deck_settings_entry_and_its_own_switcher_section(qapp):
     course, manual = make_deck("course-deck", ["course"]), make_deck("slidemage-manual", ["manual"])
-    tags = {deck.name: menu_rows(build_more_menu(None, command_context(deck)))["deck_tags"].isEnabled()
-            for deck in (course, manual)}
-    assert tags == {"course-deck": True, "slidemage-manual": False}
+    settings = {deck.name: menu_rows(build_more_menu(None, command_context(deck)))["deck_settings"].isEnabled()
+                for deck in (course, manual)}
+    assert settings == {"course-deck": True, "slidemage-manual": False}
     menu = build_deck_menu(None, [course, manual], course)
     menu._build()
     headings = [entry[1] for entry in menu._entries if entry[0] == "header"]

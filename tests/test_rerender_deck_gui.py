@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 from slidemage import update_all_previews
 from slidemage.ui.workspace import compile_actions
 from slidemage.ui.workspace.actions import DECK, build_registry
-from slidemage.ui.workspace.menus import MORE_COLUMNS, build_more_menu
+from slidemage.ui.workspace.menus import build_more_menu
 from slidemage.ui.workspace.palette import command_entries
 
 from test_workspace_window import COURSE, window as window  # noqa: F401 -- fixture
@@ -65,13 +65,9 @@ def test_the_command_is_a_deck_command_in_the_palette_and_needs_a_deck(window):
     assert LABEL in {e.label for e in command_entries(window, [])}
 
 
-def test_the_menu_item_follows_create_deck_snapshot_and_is_enabled_with_a_deck(qapp):
-    left = next(ids for header, ids in MORE_COLUMNS[0] if header == "This deck")
-    assert left[left.index("create_snapshot") + 1] == "rerender_deck_previews"
-    for deck, enabled in ((None, False), (COURSE, True)):
-        entries = {e[1]: e for e in build_more_menu(None, command_context(deck))._entries if e[0] == "item"}
-        assert (entries["rerender_deck_previews"][2], entries["rerender_deck_previews"][6]) == (LABEL, enabled)
-    assert "update_previews" not in left and "rerender_deck_previews" in build_registry()     # the project-wide one stays apart
+def test_the_command_is_not_in_the_menu_any_more_the_sheet_and_the_palette_have_it(qapp):
+    entries = {e[1] for e in build_more_menu(None, command_context(COURSE))._entries if e[0] == "item"}
+    assert not entries & {"rerender_deck_previews", "update_previews"} and "rerender_deck_previews" in build_registry()
 
 
 # -- the action ----------------------------------------------------------------------

@@ -48,9 +48,12 @@ deck switcher offers the rest). From top to bottom and left to right:
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details**, the **Compile PDF** split button, and
-  the **⋮** menu (one popover in two columns, *This deck* | *Project, Housekeeping, Info*, with Settings… in
-  its footer -- what the old menu bar and the deck table's per-row buttons held; the rest, such as the
-  column toggles, Import, Refresh, Log, Open latest PDF and Exit, is in `Ctrl+K`).
+  the **⋮** menu (one popover in two columns, *This deck* | *Project*, with Settings… in its footer: Present,
+  Deck settings… (`Ctrl+,`), Export PPTX…, Duplicate deck… and Archive deck…; Image descriptions, Open project…,
+  New deck…, Housekeeping… and Archive unused…). Everything else the old menu bar and the deck table's
+  per-row buttons held is in `Ctrl+K`, and some of it also in a sheet: snapshot, previews and slide versions
+  under Deck settings → General → Maintenance; the .bib file, test slides and project compatibility under
+  Settings → Project; version history and the update check under Settings → About.
 - **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
   every version the old deck table's checkboxes made (Instructor, During course, After
   course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
@@ -206,7 +209,7 @@ way without deleting them.
 
 ## Updates
 
-**⋮ → Info → Check for updates…** compares this copy's version with the
+**Settings… → About → Check for updates…** (also in `Ctrl+K`) compares this copy's version with the
 releases of `stpalan/SlideMage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
