@@ -17,7 +17,6 @@ from slidemage.ui.dialogs import deck_settings as sheet_module
 from slidemage.ui.dialogs.deck_settings import ADMIN, GENERAL, INSERT, OUTPUT, SAVE, DeckSettingsSheet
 from slidemage.ui.workspace import deck_actions
 from conftest import EXAMPLE_PROJECT, command_context
-from slidemage.ui.workspace.menus import build_more_menu
 from test_admin_slides import DETAIL, GROUP
 
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
@@ -257,9 +256,9 @@ def test_settings_action_refuses_while_the_deck_source_has_edits_that_could_not_
 
 
 def test_admin_slides_entry_is_only_for_a_linked_course_deck(tmp_path, qapp):
-    def enabled(deck):
-        menu = build_more_menu(None, command_context(deck))
-        return next(e for e in menu._entries if e[0] == "item" and e[1] == "admin_slides")[6]
+    def enabled(deck):           # a ⌘K command since v8.42.0, no longer in the ⋮ menu
+        ctx = command_context(deck)
+        return ctx.commands["admin_slides"].enabled(ctx)
 
     course = make_deck(tmp_path, ["course"], course_url=COURSE_URL)
     assert enabled(course)
