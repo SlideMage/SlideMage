@@ -60,7 +60,7 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from . import ai_review
 from .project import ProjectContext
@@ -108,21 +108,30 @@ def _deck_texts(ctx: ProjectContext) -> list[str]:
     return texts
 
 
+def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
+    """Every slides/*.tex filename the \\slide{}-family calls of this deck text load, the
+    translation partners (any language) of each included. The text is read as it is: a deck's
+    commented-out calls count unless the comments were stripped first."""
+    from types import SimpleNamespace
+    from . import deck_editor, deck_language
+    used: set[str] = set()
+    calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
+    # Keep explicit pins even when a translation call is folded into another slot.
+    used.update(call.source_filename for call in calls)
+    for language in TRANSLATION_LANGUAGES:
+        for slot in deck_language.slots(ctx, calls, language):
+            used.add(slot.call.source_filename)
+            if slot.related_ids:
+                # Current headers identify the partner even when the call pins a version.
+                used.add(current_name(slot.original.id_slug))
+    return used
+
+
 def find_used_slide_filenames(ctx: ProjectContext) -> set[str]:
     """Every slides/*.tex filename actually referenced from any deck."""
     used: set[str] = set()
-    from types import SimpleNamespace
-    from . import deck_editor, deck_language
     for text in _deck_texts(ctx):
-        calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
-        # Keep explicit pins even when a translation call is folded into another slot.
-        used.update(call.source_filename for call in calls)
-        for language in TRANSLATION_LANGUAGES:
-            for slot in deck_language.slots(ctx, calls, language):
-                used.add(slot.call.source_filename)
-                if slot.related_ids:
-                    # Current headers identify the partner even when the call pins a version.
-                    used.add(current_name(slot.original.id_slug))
+        used |= slide_filenames_in(ctx, text)
     return used
 
 
@@ -134,30 +143,20 @@ def find_unused_slides(ctx: ProjectContext) -> list[Path]:
     return sorted(p for p in ctx.slides_dir.glob("*.tex") if p.name not in used)
 
 
-def find_used_media_filenames(ctx: ProjectContext) -> set[str]:
-    """Every media/ filename actually referenced (directly, or via a bare
-    stem, or by sharing a stem with a file that is -- see module
-    docstring) by a slide that is itself in use. A slide that is about to
-    be archived does not keep its images (v5.14.2, direct report: one
-    click archived the unused slides, and the next click found an image
-    only one of those slides had used -- the media scan read every slide
-    file, the ones being archived in the same run included)."""
-    if not ctx.media_dir.is_dir() or not ctx.slides_dir.is_dir():
-        return set()
-
-    media_files = [p for p in ctx.media_dir.iterdir() if p.is_file()]
+def media_references(ctx: ProjectContext, texts: Iterable[str]) -> tuple[set[str], set[str]]:
+    """(the media/ filenames these texts use, the "media/<name>" references that match no file).
+    Used means referenced directly, via a bare stem, or by sharing a stem with a file that is --
+    see module docstring."""
+    media_files = [p for p in ctx.media_dir.iterdir() if p.is_file()] if ctx.media_dir.is_dir() else []
     by_name = {p.name: p for p in media_files}
     by_stem: dict[str, list[Path]] = {}
     for p in media_files:
         by_stem.setdefault(p.stem, []).append(p)
 
     directly_used: set[str] = set()
-    used_slides = find_used_slide_filenames(ctx)
-    for path in ctx.slides_dir.glob("*.tex"):
-        if path.name not in used_slides:
-            continue
-        text = _strip_comments(path.read_text(encoding="utf-8", errors="replace"))
-        for token in MEDIA_REF_RE.findall(text):
+    missing: set[str] = set()
+    for text in texts:
+        for token in MEDIA_REF_RE.findall(_strip_comments(text)):
             if token in by_name:
                 directly_used.add(token)
             elif token in by_stem:
@@ -165,12 +164,29 @@ def find_used_media_filenames(ctx: ProjectContext) -> set[str]:
                 # could be the one LaTeX's default-extension search picks,
                 # so treat them all as used rather than guessing which.
                 directly_used.update(p.name for p in by_stem[token])
+            else:
+                missing.add(f"media/{token}")
 
     used: set[str] = set()
     for siblings in by_stem.values():
         if any(p.name in directly_used for p in siblings):
             used.update(p.name for p in siblings)
-    return used
+    return used, missing
+
+
+def find_used_media_filenames(ctx: ProjectContext) -> set[str]:
+    """Every media/ filename actually referenced by a slide that is itself in
+    use. A slide that is about to be archived does not keep its images
+    (v5.14.2, direct report: one click archived the unused slides, and the
+    next click found an image only one of those slides had used -- the media
+    scan read every slide file, the ones being archived in the same run
+    included)."""
+    if not ctx.slides_dir.is_dir():
+        return set()
+    used_slides = find_used_slide_filenames(ctx)
+    return media_references(ctx, (
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in ctx.slides_dir.glob("*.tex") if path.name in used_slides))[0]
 
 
 def find_unused_media(ctx: ProjectContext) -> list[Path]:

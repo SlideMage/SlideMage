@@ -26,7 +26,7 @@ COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group
 LEFT = [("header", "This deck"), "present", "deck_settings", "submenu:export", "duplicate_deck", ("sep",), "archive_deck"]
 RIGHT = [("header", "Project"), "images", "open_project", "new_deck", ("sep",), "submenu:housekeeping"]
 # The flyouts: the row's key, the title of the flyout and the commands in it.
-FLYOUTS = {"submenu:export": ("Export", ["export_pptx"]),
+FLYOUTS = {"submenu:export": ("Export", ["export_pptx", "export_latex"]),
            "submenu:housekeeping": ("Housekeeping", ["housekeeping", "archive_unused"])}
 
 # Every entry the old menus had and this has not: they are ⌘K commands (the first three groups are also in
@@ -145,6 +145,8 @@ def test_a_submenu_without_a_visible_command_is_left_out_and_one_without_an_avai
         ctx.commands._commands[command_id] = replace(ctx.commands[command_id], **changes)
 
     patch("export_pptx", visible=lambda _ctx: False)
+    assert "submenu:export" in shape(build_more_menu(None, ctx))                  # Export LaTeX is still there
+    patch("export_latex", visible=lambda _ctx: False)
     assert "submenu:export" not in shape(build_more_menu(None, ctx))
     assert "submenu:housekeeping" in shape(build_more_menu(None, ctx))
     patch("housekeeping", enabled=lambda _ctx: False)

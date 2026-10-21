@@ -266,6 +266,8 @@ def build_registry() -> CommandRegistry:
     add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)
     add("duplicate_deck", "Duplicate deck…", DECK, lambda w: deck_actions.on_duplicate_deck(w, w.state.deck), enabled=_active_deck)
     add("export_pptx", "Export PPTX…", DECK, lambda w: compile_actions.export_pptx(w, w.state.deck), enabled=_active_deck)
+    add("export_latex", "Export LaTeX…", DECK, lambda w: compile_actions.export_latex(w, w.state.deck),
+        meta="self-contained · with media folder", enabled=_active_deck)
     add("archive_deck", "Archive deck…", DECK, lambda w: deck_actions.archive_deck(w, w.state.deck), tone="danger", enabled=_active_deck)
     add("create_snapshot", "Create deck snapshot…", DECK, deck_actions.on_create_deck_snapshot)
     add("rerender_deck_previews", "Rerender all previews for this deck", DECK, compile_actions.rerender_deck_previews,

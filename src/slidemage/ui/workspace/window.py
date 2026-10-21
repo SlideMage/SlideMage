@@ -167,6 +167,7 @@ class WorkspaceWindow(QMainWindow):
         self.splitter = _ColumnSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(True)
         self.toast = Toast(central)
+        self.toast.action_triggered.connect(compile_actions.on_toast_action)
         self.slide_list = SlideList(self, self.state, theme, self.toast)
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),

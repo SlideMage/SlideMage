@@ -130,7 +130,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
 # versions are Deck settings → General → Maintenance; the .bib and test slides, project compatibility,
 # version history and the update check are Settings → Project / About. A Submenu is a row with a flyout.
 MORE_COLUMNS = (
-    (("This deck", ("present", "deck_settings", Submenu("Export", ("export_pptx",)), "duplicate_deck")),
+    (("This deck", ("present", "deck_settings", Submenu("Export", ("export_pptx", "export_latex")), "duplicate_deck")),
      ("", ("archive_deck",))),
     (("Project", ("images", "open_project", "new_deck")),
      ("", (Submenu("Housekeeping", ("housekeeping", "archive_unused")),))),

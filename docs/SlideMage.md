@@ -49,7 +49,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details**, the **Compile PDF** split button, and
   the **⋮** menu (one popover in two columns, *This deck* | *Project*, with Settings… in its footer: Present,
-  Deck settings… (`Ctrl+,`), Export ▸ (Export PPTX…), Duplicate deck… and Archive deck…; Image descriptions, Open project…,
+  Deck settings… (`Ctrl+,`), Export ▸ (Export PPTX…, Export LaTeX…), Duplicate deck… and Archive deck…; Image descriptions, Open project…,
   New deck… and Housekeeping ▸ (Housekeeping…, Archive unused…); a ▸ row opens a flyout left of the menu). Everything else the old menu bar and the deck table's
   per-row buttons held is in `Ctrl+K`, and some of it also in a sheet: snapshot, previews and slide versions
   under Deck settings → General → Maintenance; the .bib file, test slides and project compatibility under

@@ -17,6 +17,10 @@ Agents get a hard token cap: "when you reach ~N tokens, finish the current chang
 
 Total ~28% plus orchestrator review and commits, ~30–35%.
 
+**Status (21 October 2026): all four steps done** (v8.41.0–v8.44.0). M4 follows the sources instead of reusing the
+deck snapshot's compile-based file list (that needs LaTeX and about a minute per deck); the export of the manual deck
+compiles to the same 97 pages.
+
 ## Already done: README section 1 (wording)
 All three strings already match `develop`: "the Ollama address of Settings" (`ui/workspace/ai_setup.py:32`),
 " · not saved" (`ui/workspace/assistant_header.py:264`), "Claude Code default" (`ui/workspace/ai_setup.py:160`).

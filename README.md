@@ -707,6 +707,20 @@ python-pptx itself has no animation API, so the click-triggered timing is
 hand-assembled OOXML, verified directly against a real PowerPoint
 installation (see the module's own docstring for how).
 
+### Exporting as LaTeX
+
+**Export LaTeX…** (⋮ menu, *This deck*, under Export ▸) writes the open deck as a folder that
+compiles on its own, on a machine that has only a TeX distribution: pick a folder, and SlideMage
+creates `<deck name>-latex/` in it (asking before it replaces one that is already there). The folder
+holds the deck at its top level, the slides it uses under `slides/`, only the images those slides use
+under `media/`, and everything else the build reads: the institution template and
+`Slidemaster_preamble_base.tex` with the theme files, logos and schemes they name, the `.bib`, the
+code files of `snippets/` and the image descriptions. Build it with `latexmk <deck name>.tex`; the
+`.latexmkrc` in the folder selects LuaLaTeX. A file the deck names that the project does not have is
+listed in the Log (and counted in the toast); the rest is exported anyway. It copies the sources, so
+it needs no compile and no LaTeX on the machine that exports; a deck snapshot, by contrast, freezes
+what a real compile read.
+
 ### Deck tags (`\decktags`)
 
 SlideMage's deck switcher (top left) groups decks under headings -- the workdeck on top,
