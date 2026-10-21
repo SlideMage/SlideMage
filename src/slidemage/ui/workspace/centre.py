@@ -96,6 +96,7 @@ class CentreColumn(QFrame):
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
         self.preview.neighbours = self._neighbour_targets
+        self.preview.deck_targets = self._deck_targets
         self.preview.slide_requested.connect(self._go_adjacent)
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
@@ -642,6 +643,23 @@ class CentreColumn(QFrame):
                              occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in picks if not r.hidden]
         if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
             self._neighbours_cache = (key, state.outline, targets)
+        return targets
+
+    def _deck_targets(self) -> list:
+        """[(target, row)] of every slide of the open deck that the view typesets, in deck order: the Preview reads
+        their stored pages ahead. Built once per deck text, view, language and outline (about 50 ms for 400 slides)."""
+        state = self.state
+        if state.deck is None or state.outline is None:
+            return []
+        key = (id(state.outline), state.deck.path, state.view, state.language)
+        cached = getattr(self, "_deck_targets_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
+        frames = self._english_frames(state)
+        targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in rows if not r.hidden]
+        self._deck_targets_cache = (key, state.outline, targets)
         return targets
 
     def _no_preview_message(self, fallback: str) -> str:

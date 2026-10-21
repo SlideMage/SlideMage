@@ -1750,3 +1750,71 @@ def test_the_neighbours_stored_pages_are_read_ahead_and_the_next_slide_shows_at_
     assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])     # at once, from what was read ahead
     assert not view._page.dimmed and view._status_chip.text() != preview_view.LOADING
     store.gate[stored.target_b.key].set()
+
+
+def test_the_pages_read_ahead_go_outward_from_the_slide_on_show_through_the_whole_deck(stored):
+    view = stored.view
+    rows = [SimpleNamespace(position=i) for i in range(6)]
+    targets = [SimpleNamespace(key=("slide", i)) for i in range(6)]
+    view.deck_targets = lambda: list(zip(targets, rows))
+    view._row = rows[2]
+    assert [t.key[1] for t in view._preload_order()] == [3, 1, 4, 0, 5]
+    view._row, view._target = None, targets[4]                   # not a slide of the deck's list: all but itself
+    assert [t.key[1] for t in view._preload_order()] == [0, 1, 2, 3, 5]
+
+
+def test_beyond_the_nearest_pages_the_deck_is_held_compressed_and_decoded_when_shown(stored, monkeypatch):
+    view, store = stored.view, stored.store
+    monkeypatch.setattr(preview_view, "PREFETCHED", 0)            # B is not among the nearest decoded pages
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._compressed)
+    assert ident not in view._prefetched and view._compressed[ident][0] == stored.png["OTHER"]
+    store.gate[stored.target_b.key].clear()                       # B's own lookup would wait now
+    stored.show("B")
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])     # decoded from the PNG held, at once
+    store.gate[stored.target_b.key].set()
+
+
+def test_a_slide_whose_store_has_no_page_is_not_asked_again_at_every_rest(stored):
+    view, store = stored.view, stored.store
+    store.pngs.pop(stored.target_b.key)
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._preload_missing)
+    def pages_asked():
+        return sum(1 for what, _m, _d in store.calls if what == "page")
+
+    asked = pages_asked()
+    view._settled()
+    assert not view._prefetching and pages_asked() == asked
+
+
+def test_another_view_drops_the_pages_read_ahead_and_the_farthest_give_way_at_the_limit(stored, monkeypatch):
+    view = stored.view
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._compressed)
+    view.state.set_view("during-course")
+    view._settled()
+    assert ident not in view._compressed and ident not in view._prefetched and view._compressed_bytes == 0
+    monkeypatch.setattr(preview_view, "PRELOAD_BYTES", 10)
+    view._preload_rank = {"near": 0, "far": 1, "farther": 2}
+    view._keep_compressed("far", b"123456", "f")
+    view._keep_compressed("farther", b"1234", "g")
+    view._keep_compressed("near", b"12345", "n")                   # the farther pages give way to a nearer one
+    assert set(view._compressed) == {"near"} and view._compressed_bytes == 5
+    view._keep_compressed("farther", b"1234", "g")
+    view._keep_compressed("far", b"12", "f")                      # nearer than "farther": that one gives way
+    assert set(view._compressed) == {"near", "far"} and view._compressed_bytes == 7
+    view._keep_compressed("farther", b"1234", "g")                # the farthest, with no room: not kept
+    assert set(view._compressed) == {"near", "far"}
