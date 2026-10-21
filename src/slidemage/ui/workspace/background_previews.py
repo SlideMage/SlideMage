@@ -327,6 +327,11 @@ class BackgroundPreviews(QObject):
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
             on_change=self.changed.emit)
         self.renderer.gate._busy = self._busy_reasons
+        if autostart is None and not os.environ.get(NO_BACKGROUND_ENV):
+            # The trace file of what background rendering decided (background_renders.Trace), in the cache folder.
+            from ...project import cache_dir
+            self.renderer._trace = background_renders.Trace(cache_dir() / "background-trace.log")
+        self._chip_said = None
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
         self._watcher = _InputWatcher(self.renderer.user_active, self)
         # Background renders only while SlideMage is not in front; coming back stops the running ones (v8.52.0).
@@ -537,6 +542,9 @@ class BackgroundPreviews(QObject):
         self.dial.setToolTip(self.hover_text())
         self.dial.setAccessibleDescription(self.hover_text())
         text, tone = self.summary()
+        if text != self._chip_said:
+            self._chip_said = text
+            self.renderer.trace(f"chip: {text or '(hidden)'} · dial {self.dial_state()}")
         if text:
             self.chip.set_text(text)
             self.chip.set_tone(tone)

@@ -158,9 +158,9 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)], scanned_at=1.0)
     controller.renderer.progress = progress
     assert controller.summary() == ("Previews · 11 left", "muted")
-    progress.working = "a:1jh:instructor:EN"
+    controller.renderer._set_working("a:1jh:instructor:EN", True)      # a worker renders (what runs is the workers')
     assert controller.summary() == ("Preparing previews · 11 left", "info")
-    progress.working = None
+    controller.renderer._set_working("a:1jh:instructor:EN", False)
     progress.paused_because = "you are working"
     assert controller.summary() == ("Previews paused (you are working) · 11 left", "muted")
     controller.refresh()
@@ -330,9 +330,11 @@ def test_the_dial_shows_the_share_of_up_to_date_renders_and_explains_it(window):
     controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=3, failed=1), failures=1)
     controller.refresh()
     assert controller.dial.state == "failed" and "1 slide cannot be rendered" in controller.dial.toolTip()
-    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1), working="a:x:instructor:EN")
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
+    controller.renderer._set_working("a:x:instructor:EN", True)
     controller.refresh()
     assert controller.dial.state == "working" and "Rendering now" in controller.dial.toolTip()
+    controller.renderer._set_working("a:x:instructor:EN", False)
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
     controller.refresh()
     assert controller.dial.isHidden()

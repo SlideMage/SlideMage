@@ -167,6 +167,28 @@ class Progress:
         return next((d for d in self.decks if d.deck == name), None)
 
 
+class Trace:
+    """A small text file of what background rendering decided and when (focus, input, starts, stops, the chip), for
+    finding out on a user's machine why it rendered or waited. Kept below MAX_BYTES: the older half goes to .1."""
+    MAX_BYTES = 512 * 1024
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._lock = threading.Lock()
+
+    def write(self, line: str) -> None:
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S") + f".{int(time.time() * 1000) % 1000:03d}"
+        with self._lock:
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                if self.path.is_file() and self.path.stat().st_size > self.MAX_BYTES:
+                    os.replace(self.path, self.path.with_suffix(self.path.suffix + ".1"))
+                with open(self.path, "a", encoding="utf-8") as out:
+                    out.write(f"{stamp} {line}\n")
+            except OSError:
+                pass
+
+
 class Cancelled(RuntimeError):
     pass
 
@@ -209,6 +231,7 @@ class BackgroundRenderer:
         self._working_lock = threading.Lock()
         self._outstanding: dict[str, tuple] = {}
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
+        self._counted: set[str] = set()         # labels the plan counts as fresh already (only their page number differs)
 
     # -- settings ------------------------------------------------------------------------
 
@@ -265,8 +288,9 @@ class BackgroundRenderer:
         and nothing holds it back. The status chip shows that as one piece of work, not a flicker of "preparing" and
         "waiting"."""
         progress = self.progress
-        if progress.working is not None:
-            return True
+        with self._working_lock:
+            if self._working:
+                return True
         return progress.left > 0 and not self.waiting_because() and self.gate.sweeping()
 
     def waiting_because(self) -> Optional[str]:
@@ -284,11 +308,13 @@ class BackgroundRenderer:
         input reaches) the running ones stop too, so the app answers at once."""
         self.gate.note_input()
         if self.gate.in_front and not self.gate.forced():
-            self.scheduler.interrupt(P_IDLE)
+            stopped = self.scheduler.interrupt(P_IDLE)
+            if stopped:
+                self.trace(f"input: stopped {stopped}")
 
     def presentation_started(self) -> None:
         """No background render during a presentation (idle_gate.PRESENTING): the running ones stop."""
-        self.scheduler.interrupt(P_IDLE)
+        self.trace(f"presentation: stopped {self.scheduler.interrupt(P_IDLE)}")
         self._changed()
 
     def window_focus(self, active: bool) -> None:
@@ -296,8 +322,8 @@ class BackgroundRenderer:
         are put back and run again later), so that the app answers at once; "Render now" keeps them going. In front,
         rendering may start again after idle_gate.IN_FRONT_IDLE without input; out of focus after LEAVE_GRACE."""
         self.gate.note_focus(active)
-        if active and not self.gate.forced():
-            self.scheduler.interrupt(P_IDLE)
+        stopped = self.scheduler.interrupt(P_IDLE) if active and not self.gate.forced() else 0
+        self.trace(f"focus {'in' if active else 'out'}: stopped {stopped}")
         # No replan: what is outstanding did not change, and a rescan of every deck at each switch of windows
         # kept the planner (and the chip's reason) busy. The planner's next step, within 2 s, tops up again.
         self._changed()
@@ -306,7 +332,20 @@ class BackgroundRenderer:
         if not self.gate.allowed():
             return False
         self.gate.note_started()
+        self.trace(f"start {job.key}")
         return True
+
+    def trace(self, event: str) -> None:
+        """One line in the trace file (render_trace.Trace): the event and what the gate knows at that moment."""
+        tracer = getattr(self, "_trace", None)
+        if tracer is None:
+            return
+        gate = self.gate
+        with self._working_lock:
+            running = len(self._working)
+        since = gate._clock() - gate.last_input
+        tracer.write(f"{event} | in_front={gate.in_front} input {since:.0f} s ago forced={gate.forced()} "
+                     f"running={running} planner={self.progress.paused_because!r}")
 
     # -- what is outstanding ---------------------------------------------------------------
 
@@ -386,8 +425,14 @@ class BackgroundRenderer:
                            if not d.archived and not d.is_test_deck and d.name in off]
         plan = first + [((1000 + k[0],) + k[1:], u) for k, u in numbering]
         self._single = single
-        self.progress = Progress(decks_progress, self.progress.working, None,
-                                 self.store_failures_count(), self._clock())
+        self._counted = {unit.label for _rank, unit in numbering}
+        failures = self.store_failures_count()
+        with self._working_lock:
+            # What runs now, from the workers' own list under their lock: copied from the old progress, a render that
+            # ended during the scan stayed "working" until the next one started, and in front of the window none does:
+            # the chip said "Preparing previews" with nothing running (v8.52.4).
+            self.progress = Progress(decks_progress, self._working[0] if self._working else None, None,
+                                     failures, self._clock())
         return plan
 
     def store_failures_count(self) -> int:
@@ -424,7 +469,10 @@ class BackgroundRenderer:
         reason = self.gate.reason()
         if reason is None and self._top_up() and not self.scheduler.pending():
             reason = STORE_FULL
+        before = self.progress.paused_because
         self.progress.paused_because = reason if (self._plan or self.scheduler.pending()) else None
+        if self.progress.paused_because != before:
+            self.trace(f"planner: {self.progress.paused_because or 'may render'}")
         self._changed()
 
     def _top_up(self) -> bool:
@@ -594,8 +642,14 @@ class BackgroundRenderer:
                 self._count_fresh(units[0])
         finally:
             self._set_working(job.key, False)
+            self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
 
     def _count_fresh(self, unit: render_key.Unit) -> None:
+        if unit.label in self._counted:
+            # Counted as fresh by the plan (right apart from its page number) and refreshed now: counted again, the
+            # number left ran ahead by a batch and the next plan put it back up (582 -> 598, v8.52.4).
+            self._counted.discard(unit.label)
+            return
         counted = self.progress.deck(unit.deck)
         if counted is not None and counted.fresh < counted.total:
             counted.fresh += 1
