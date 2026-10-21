@@ -281,6 +281,24 @@ def columns(*widgets: QWidget) -> QWidget:
     return box
 
 
+def action_row(title: str, note: str, button: QWidget) -> QWidget:
+    """A name with a one-line caption under it and its `button` at the right: one thing a sheet lets
+    you run (Maintenance of Deck settings, the rows of Settings' Project and About tabs)."""
+    box = Surface()
+    layout = QHBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    texts = QVBoxLayout()
+    texts.setSpacing(1)
+    name = QLabel(title)
+    name.setObjectName(q.ROW_NAME)
+    texts.addWidget(name)
+    texts.addWidget(caption(note))
+    layout.addLayout(texts, 1)
+    layout.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+    return box
+
+
 class Button(_EnterPresses, QPushButton):
     """Text button. kind: "primary" (inverse fill), "secondary" (bordered),
     "ghost" (flat). `compact` is the smaller padding of toolbars. It takes the focus from the Tab key only, so the

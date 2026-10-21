@@ -9,13 +9,14 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
-from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater
+from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater, version
 from slidemage import translation_prompts as tp
 from slidemage.ai import credentials, ollama_admin
 from slidemage.ai.providers import (
     AnthropicProvider, InstalledModel, OllamaProvider)
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.dialogs.settings import AI, CLOUD, GENERAL, OLLAMA, PROMPTS, SettingsSheet
+from slidemage.ui.kit.widgets import Button
+from slidemage.ui.dialogs.settings import ABOUT, AI, CLOUD, GENERAL, OLLAMA, PROJECT, PROMPTS, SettingsSheet
 from conftest import EXAMPLE_PROJECT, wait_until
 from test_templates import _framework, _project
 from slidemage.project import ProjectContext
@@ -35,6 +36,7 @@ class FakeApp(QWidget):
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
         self.set_tab_width_chars = lambda value: self.calls.append(("tab width", value))
         self.log = self.logged.append
+        self.commands = SimpleNamespace(run=lambda command_id, ctx: self.calls.append((command_id, ctx)))
 
     def try_start_ollama_task(self, label, provider=None):
         if self.slot_free:
@@ -82,7 +84,7 @@ def answer(monkeypatch, button_text):
 
 def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qapp):
     sheet = open_sheet(qapp)
-    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts", "Presentation"]
+    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts", "Presentation", "Project", "About"]
     sheet.show()
     qapp.processEvents()
     assert sheet.width() < 1000            # unwrapped notes once made this ~2200 px wide
@@ -178,7 +180,7 @@ def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch,
 
     filled, refreshed = [], []
     app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: SimpleNamespace(exec=lambda: 0, loaded=False))
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: SimpleNamespace(exec=lambda: 0, loaded=False, after=None))
     window_module.WorkspaceWindow.open_settings(app)
     assert filled == [] and refreshed == [True]       # nothing was found; the keys and defaults may have changed
 
@@ -588,3 +590,82 @@ def test_asking_about_update_version_on_leaving_is_off_by_default_and_saved(tmp_
     assert not check.isChecked()
     check.setChecked(True)
     assert app_settings.get(context, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is True
+
+
+# -- Project and About -------------------------------------------------------------------------
+
+def project_with_files(tmp_path, *names):
+    project = ProjectContext.at(tmp_path / "project")
+    for name in names:
+        path = project.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    return project
+
+
+def test_edit_closes_settings_and_opens_the_file_in_source_afterwards(tmp_path, qapp):
+    app = FakeApp(project_with_files(tmp_path, "Slidemaster.bib", "decks/test-slides.tex"))
+    sheet = open_sheet(qapp, app, tab=PROJECT)
+    buttons = sheet.project_tab.edit_buttons
+    assert tab_names(sheet)[PROJECT] == "Project" and all(b.isEnabled() for b in buttons.values())
+    assert any(label.text() == "Slidemaster.bib" for label in sheet.project_tab.findChildren(QLabel))
+
+    buttons["bib"].click()
+    assert sheet.result() == sheet.DialogCode.Accepted and app.calls == []      # closed first, nothing run yet
+    sheet.after()
+    assert app.calls == [("edit_bib", app)]
+
+    sheet = open_sheet(qapp, app, tab=PROJECT)
+    sheet.project_tab.edit_buttons["test_slides"].click()
+    sheet.after()
+    assert app.calls == [("edit_bib", app), ("edit_test_slides", app)]
+
+
+def test_a_missing_file_says_not_found_and_cannot_be_edited(tmp_path, qapp):
+    sheet = open_sheet(qapp, FakeApp(project_with_files(tmp_path, "Slidemaster.bib")), tab=PROJECT)
+    assert sheet.project_tab.edit_buttons["bib"].isEnabled()
+    assert not sheet.project_tab.edit_buttons["test_slides"].isEnabled()
+    texts = [label.text() for label in sheet.project_tab.findChildren(QLabel)]
+    assert "test-slides.tex — not found" in texts and "Slidemaster.bib — not found" not in texts
+
+
+def test_unsaved_prompt_text_is_asked_about_before_edit_closes_settings(tmp_path, monkeypatch, qapp):
+    app = FakeApp(project_with_files(tmp_path, "Slidemaster.bib"))
+    sheet = open_sheet(qapp, app, tab=PROJECT)
+    sheet.show()
+    sheet.prompts.image.editor.edit.setPlainText("Mine")
+    answer(monkeypatch, "Cancel")
+    sheet.project_tab.edit_buttons["bib"].click()
+    assert sheet.isVisible() and sheet.after is None            # it stayed, and runs nothing when closed later
+
+    answer(monkeypatch, "Discard")
+    sheet.project_tab.edit_buttons["bib"].click()
+    assert not sheet.isVisible()
+    sheet.after()
+    assert app.calls == [("edit_bib", app)]
+
+
+def test_the_project_and_about_buttons_run_their_commands(qapp):
+    app = FakeApp()
+    for tab, page, text in ((PROJECT, "project_tab", "Check…"), (ABOUT, "about", "Open…"), (ABOUT, "about", "Check…")):
+        sheet = open_sheet(qapp, app, tab=tab)
+        next(b for b in getattr(sheet, page).findChildren(Button) if b.text() == text).click()
+        assert sheet.result() == sheet.DialogCode.Accepted
+        sheet.after()
+    assert app.calls == [(name, app) for name in ("project_compat", "version_history", "check_updates")]
+
+
+def test_the_window_runs_what_the_sheet_leaves_after_it_has_closed(monkeypatch, qapp):
+    from slidemage.ui.workspace import window as window_module
+
+    order = []
+    sheet = SimpleNamespace(exec=lambda: order.append("closed"), loaded=False, after=lambda: order.append("action"))
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: sheet)
+    app = SimpleNamespace(refresh_ai_models=lambda: order.append("refreshed"))
+    window_module.WorkspaceWindow.open_settings(app)
+    assert order == ["closed", "refreshed", "action"]
+
+
+def test_about_shows_the_version(qapp):
+    sheet = open_sheet(qapp, tab=ABOUT)
+    assert any(label.text() == f"SlideMage {version.VERSION_NUMBER}" for label in sheet.about.findChildren(QLabel))

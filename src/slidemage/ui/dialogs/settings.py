@@ -15,6 +15,10 @@
   ui/dialogs/settings_prompts.py.
 * Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
   ui/presentation/settings_page.py.
+* Project: the .bib file and test-slides.tex (Edit opens them in Source) and the project compatibility check.
+* About: the version, the version history and the check for updates.
+The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
+it when the sheet has closed).
 
 Every control applies when it changes and is saved at once, as before; only a prompt has its own
 Save button, and closing the sheet asks about prompt text not yet saved. The installed Ollama models come
@@ -24,23 +28,25 @@ that are open from `installed` when the sheet closes with `loaded` set.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from functools import partial
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLineEdit, QMessageBox, QSpinBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
-from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater
+from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
 from ...ai import credentials, translation_style
 from ...ai.providers import InstalledModel, OllamaProvider
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...project import ProjectContext
 from .. import background
 from ..ai_models import add_route_badge
-from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, caption, columns, row
+from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from .settings_ollama import OllamaTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
 
-GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION = range(6)
+GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT = range(8)
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
@@ -340,6 +346,51 @@ class CloudTab(Page):
         self._on_cloud_changed()
 
 
+def _command_row(app, leave, command_id: str, title: str, note: str, text: str, *,
+                 enabled: bool = True) -> tuple[QWidget, Button]:
+    """A row whose button closes the sheet (`leave`), then runs the window command `command_id`."""
+    button = Button(text, compact=True)
+    button.setEnabled(enabled)
+    button.clicked.connect(lambda: leave(partial(app.commands.run, command_id, app)))
+    return action_row(title, note, button), button
+
+
+class ProjectTab(Page):
+    """The project's .bib file and test slides, which open in Source, and its compatibility check."""
+
+    def __init__(self, app, leave) -> None:
+        super().__init__()
+        layout = self.body
+        self.edit_buttons: dict[str, Button] = {}
+        for key, title, path, command_id in (
+                ("bib", "Bibliography file", app.project.bibliography_path, "edit_bib"),
+                ("test_slides", "Test slides", app.project.test_slides_path, "edit_test_slides")):
+            found = path.is_file()
+            line, self.edit_buttons[key] = _command_row(
+                app, leave, command_id, title, path.name if found else f"{path.name} — not found", "Edit",
+                enabled=found)
+            layout.addWidget(line)
+        layout.addWidget(_command_row(
+            app, leave, "project_compat", "Project compatibility",
+            "Whether this project's files fit this version of SlideMage.", "Check…")[0])
+        layout.addStretch(1)
+
+
+class AboutTab(Page):
+    """The version, its history and the update check."""
+
+    def __init__(self, app, leave) -> None:
+        super().__init__()
+        layout = self.body
+        layout.addWidget(Field("Version", QLabel(f"SlideMage {version.VERSION_NUMBER}")))
+        layout.addWidget(_command_row(
+            app, leave, "version_history", "Version history", "What changed in each release; the license is there too.",
+            "Open…")[0])
+        layout.addWidget(_command_row(
+            app, leave, "check_updates", "Check for updates", "Look for a newer release now.", "Check…")[0])
+        layout.addStretch(1)
+
+
 class SettingsSheet(ModalSheet):
     def __init__(self, app, tab: int = GENERAL) -> None:
         """`app` is the window (its theme, tab width, log and the Ollama slot)."""
@@ -356,9 +407,13 @@ class SettingsSheet(ModalSheet):
         self.ollama = OllamaTab(app)
         self.prompts = PromptsTab(app)
         self.presentation = PresentationTab()
+        self.after: Callable[[], None] | None = None     # what the window runs once the sheet has closed
+        self.project_tab = ProjectTab(app, self.close_then)
+        self.about = AboutTab(app, self.close_then)
         for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
                                   ("Ollama", self.ollama), ("Prompts", self.prompts),
-                                  ("Presentation", self.presentation)):
+                                  ("Presentation", self.presentation), ("Project", self.project_tab),
+                                  ("About", self.about)):
             self.add_tab(label, tab_widget)
         self.add_button("Close", kind="primary", role="accept")
         self.cloud.cloud_changed.connect(self.reload_models)
@@ -388,9 +443,16 @@ class SettingsSheet(ModalSheet):
             self._reload_pending = False
             self.reload_models()
 
+    def close_then(self, action: Callable[[], None]) -> None:
+        """Close the sheet, and let the window run `action` after it (the sheet is modal)."""
+        self.after = action
+        self.accept()
+
     def done(self, result: int) -> None:
         """Closing asks first about prompt text that is not saved."""
         if self.prompts.confirm_close():
             self._loader = None          # a late answer is not for this sheet any more
             self._reload_pending = False
             super().done(result)
+        else:
+            self.after = None

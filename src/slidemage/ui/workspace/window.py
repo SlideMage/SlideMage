@@ -606,6 +606,8 @@ class WorkspaceWindow(QMainWindow):
             self.local_models.fill(sheet.installed)
         else:
             self.refresh_ai_models()
+        if sheet.after is not None:
+            sheet.after()
 
     # -- the AI route ------------------------------------------------------------------------
 
@@ -760,7 +762,7 @@ class WorkspaceWindow(QMainWindow):
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
         source mode, like "Edit .bib" does for Slidemaster.bib."""
-        path = self.project.decks_dir / "test-slides.tex"
+        path = self.project.test_slides_path
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return

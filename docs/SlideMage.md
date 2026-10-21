@@ -646,6 +646,19 @@ What matters when touching *this code*:
   network; the window refreshes the open pickers when the sheet closes. The
   "Slide rewrite" prompt page and the "AI drafting" model went away with the old AI draft
   dialog: whole-slide changes are the chat's job now (`ai/`, below).
+  Two more tabs hold what is about the project and the program (v8.41.0,
+  `docs/MENU_UPDATE_PLAN.md` step M1): **Project** (*Bibliography file* and *Test slides*, each
+  with an **Edit** button that opens the file in Source and shows "not found" instead of the
+  name when it is missing, and *Project compatibility* → **Check…**) and **About** (the version,
+  *Version history* → **Open…**, *Check for updates* → **Check…**). Their buttons close the
+  sheet first (it asks about unsaved prompt text as always), then the window runs the action.
+- [`ui/dialogs/deck_settings.py`](../src/slidemage/ui/dialogs/deck_settings.py) -- the **Deck
+  settings…** sheet. Its **General** tab ends with a **Maintenance** group of three rows with
+  a button each: *Deck snapshot* → **Create snapshot…**, *Previews* → **Rerender all** and
+  *Slide versions* → **Update changed…** (the commands `create_snapshot`,
+  `rerender_deck_previews` and `update_deck_versions`). A button is greyed out when its
+  command is not available; otherwise it asks about unsaved changes of the sheet, closes the
+  sheet and runs the command through the command registry.
 - [`ui/dialogs/housekeeping.py`](../src/slidemage/ui/dialogs/housekeeping.py) --
   the **Housekeeping…** sheet and the *Archive unused slides and media files* sheet
   (2026-09-27, direct instruction, after a real batch run archived far more than expected --
