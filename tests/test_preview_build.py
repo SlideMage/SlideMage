@@ -441,3 +441,48 @@ def test_a_forced_render_reruns_every_rule_only_when_the_text_is_unchanged(tmp_p
     assert rules == ['lualatex'], '\n'.join(lines[-80:])
     rules, lines = _rules_run(text.replace('See', 'Also see'), ctx, force=True)
     assert 'lualatex' in rules and 'biber' in rules, '\n'.join(lines[-80:])
+
+
+def _in_view(text, view):
+    r"""`text` as the framework runs a view: \deckversion after \begin{document}, and a helper file that holds the
+    view the previous run ended in (read at \begin{document}, rewritten at the end), so it differs between views."""
+    return text.replace(r'\begin{document}', '\n'.join([
+        r'\newcommand{\deckversion}[1][]{\gdef\viewname{#1}}\newwrite\viewfile',
+        r'\AtBeginDocument{\InputIfFileExists{\jobname.vw}{}{\typeout{No file \jobname.vw.}}}',
+        r'\AtEndDocument{\immediate\openout\viewfile=\jobname.vw\immediate\write\viewfile{\noexpand\gdef\noexpand\seen{\viewname}}'
+        r'\immediate\closeout\viewfile}',
+        r'\begin{document}', f'\\deckversion[{view}]']), 1)
+
+
+def test_each_view_and_language_has_a_build_folder_of_its_own(tmp_path, monkeypatch):
+    caches = []
+    monkeypatch.setattr(preview_build, '_compile_reserved', lambda *a, **k: caches.append(k['cache']) or tmp_path)
+    ctx = ProjectContext.at(tmp_path)
+
+    def folder(view, language='', text='one'):
+        wrapper = '\\documentclass{beamer}\n\\deckversion[instructor]\n\\begin{document}\n' + view
+        wrapper += language + f'\\setSlideID{{abc}}\n{text} \\deckversion[inside]\n'
+        preview_build.compile_cached(wrapper, 'abc', lambda _: None, ctx=ctx, env={})
+        return caches[-1]
+
+    instructor, course = folder('\\deckversion[instructor]\n'), folder('\\deckversion[during-course]\n')
+    german = folder('\\deckversion[during-course]\n', '\\decklanguage[DE]\n')
+    assert len({instructor, course, german}) == 3
+    # the same view with other slide text, and the cache folder of the wrapper's name, stay the same
+    assert folder('\\deckversion[instructor]\n', text='two') == instructor
+    assert folder('\\deckversion[during-course]\n', text='two') == course
+    assert folder('') != instructor
+
+
+@needs_tex_tools
+def test_returning_to_a_view_runs_lualatex_once(tmp_path):
+    """Instructor -> During course -> Instructor, each with a new text: the helper file of a view is the one its own
+    build folder wrote, so the return is an ordinary edit render (they shared one folder, and the flip ran LuaLaTeX
+    twice)."""
+    ctx, text = _citing_project(tmp_path)
+    for step, view in enumerate(('instructor', 'during-course', 'instructor')):
+        _rules_run(_in_view(text, view).replace('See', f'See {step}'), ctx, force=True)
+    rules, lines = _rules_run(_in_view(text, 'instructor').replace('See', 'See once more'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])
+    rules, lines = _rules_run(_in_view(text, 'during-course').replace('See', 'See once more'), ctx, force=True)
+    assert rules == ['lualatex'], '\n'.join(lines[-80:])

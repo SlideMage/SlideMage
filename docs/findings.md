@@ -343,6 +343,8 @@ split the PDF into per-slide units with the same keys and evidence as single ren
    (no rerun from flipped helper files); folders differ per view.
 4. Bench: the view-switch scenario of plan 0.
 
+Done in v8.49.0: `preview_build.view_variant` reads the `\deckversion[...]`/`\decklanguage[...]` lines of the wrapper body (before `\setSlideID`) and `_compile_cached` adds it to the per-slide key only; the format key and `prune_unused` are unchanged. Linux, medians of 3: During course 3.39 → 1.85 s, back to Instructor 3.35 → 1.83 s (LuaLaTeX once instead of twice); an edit is 1.87 s.
+
 ### Not planned now
 
 - **Option 2b** (direct LuaLaTeX instead of latexmk): latexmk's own share was ~0.15 s per edit on Linux. Redo its

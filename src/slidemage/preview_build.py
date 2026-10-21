@@ -181,6 +181,18 @@ def with_run_xml_note(wrapper_text: str) -> str:
     return wrapper_text.replace('\\begin{document}', '\\begin{document}' + RUN_XML_NOTE, 1)
 
 
+# The view and language lines of a slide wrapper (slide_preview._deck_version_line, _deck_language_line). Instructor
+# writes no .ovl, the student views do, so a view change flips helper files and makes latexmk run LuaLaTeX again.
+_VIEW_LINES = re.compile(r'^\\deck(?:version|language)\[[^\]\n]*\]$', re.M)
+
+
+def view_variant(wrapper_text: str) -> str:
+    """The view and language a wrapper sets after \\begin{document}, ahead of its \\setSlideID: with the slide,
+    the identity of a build folder. (The presenter mode is a line before the preamble, so the preamble's key has it.)"""
+    body = wrapper_text.partition(r'\begin{document}')[2]
+    return '|'.join(_VIEW_LINES.findall(body.partition(r'\setSlideID')[0]))
+
+
 @measure('cache_configuration')
 def configuration_key(wrapper_text, id_slug, project_root: Path, env):
     preamble = wrapper_text.partition(r'\begin{document}')[0]
@@ -253,7 +265,9 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
 
 def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None,
                     force=False, workspace: Optional[Path] = None):
-    key = configuration_key(key_text, id_slug, ctx.root, env)
+    # One build folder per view: the format key (compile_cached) stays per preamble.
+    variant = view_variant(key_text)
+    key = configuration_key(key_text, id_slug + '|' + variant if variant else id_slug, ctx.root, env)
     if format_dir is not None:
         # A rebuilt format means changed preamble inputs, which latexmk's own
         # dependency list (only the slide's) cannot see: use fresh state.
