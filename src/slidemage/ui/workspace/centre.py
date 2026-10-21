@@ -30,7 +30,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
-from ... import app_settings, deck_outline, slide_language, slide_source, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, slide_language, slide_source, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
@@ -599,12 +599,35 @@ class CentreColumn(QFrame):
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
 
+    def _english_frames(self, state) -> Optional[deck_outline.Outline]:
+        """An outline for for_call without a language, which takes the Instructor frame numbers of the English
+        resolution: the state's own when it is English, else one resolution kept for the deck text. Without it each
+        neighbour resolved every slot of the deck again (in German, six times after every Preview refresh)."""
+        outline = state.outline
+        if outline is not None and outline.matches(state.project, state.deck, "EN"):
+            return outline
+        cached = getattr(self, "_english_frames_cache", None)
+        if cached is not None and cached.matches(state.project, state.deck, "EN"):
+            return cached
+        links = slide_language.TranslationLinks(state.project.slides_dir)
+        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links)
+        cached = deck_outline.Outline(state.project, state.deck.path, state.deck.text, deck_editor.VIEW_INSTRUCTOR, "EN",
+                                      [], links, {r.key: r.frame_number for r in slots})
+        self._english_frames_cache = cached
+        return cached
+
     def _neighbour_targets(self) -> list:
         """[(target, row)] of the slides nearest to the focused one in the deck (one before, one after, two before,
         two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle."""
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return []
+        # Kept while the slide, the view and the resolved outline stay: building them reads every slide's language
+        # header of the deck six times, on this thread, and the Preview asks after every refresh (v8.52.2).
+        key = (id(state.outline), state.outline is not None, state.deck.path, row.position, state.view, state.language)
+        cached = getattr(self, "_neighbours_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
         rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
@@ -614,8 +637,12 @@ class CentreColumn(QFrame):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
         # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
         # under the same key once that slide is focused.
-        return [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                          occurrence_key=r.key, hidden=r.hidden, outline=state.outline), r) for r in picks if not r.hidden]
+        frames = self._english_frames(state)
+        targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in picks if not r.hidden]
+        if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
+            self._neighbours_cache = (key, state.outline, targets)
+        return targets
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

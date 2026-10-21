@@ -118,6 +118,26 @@ def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, ca
         fls, database, project_root=project_root, cache=cache, extra=extra)), encoding='utf-8')
 
 
+PRUNE_EVERY = 600.0      # seconds between two prune_unused passes over one folder (maybe_prune_unused)
+_PRUNED: dict[str, float] = {}
+_PRUNED_LOCK = threading.Lock()
+
+
+def maybe_prune_unused(project_root: Path, build_dir: Path, *, clock=time.monotonic) -> bool:
+    """prune_unused, at most once per PRUNE_EVERY for a folder; whether it ran. A render ran it before every compile:
+    a pass looks at every wrapper under a lock each (the background workspace holds hundreds, three per slide since
+    v8.49.0), so the background workers queued behind one another there, could not stop when told to, and took the
+    time the window needed (v8.52.2). Wrappers become old in UNUSED_DAYS: once in ten minutes loses nothing."""
+    key, now = str(project_root), clock()
+    with _PRUNED_LOCK:
+        last = _PRUNED.get(key)
+        if last is not None and now - last < PRUNE_EVERY:
+            return False
+        _PRUNED[key] = now
+    prune_unused(project_root, build_dir)
+    return True
+
+
 @measure('prune')
 def prune_unused(project_root: Path, build_dir: Path):
     """Delete the wrappers in decks/ (and build caches) of previews not rendered for UNUSED_DAYS,
@@ -274,7 +294,8 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
         key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
     cache = ctx.build_dir / 'preview-cache' / key
-    prune_unused(workspace if workspace is not None else ctx.root, ctx.build_dir)
+    maybe_prune_unused(workspace if workspace is not None else ctx.root, ctx.build_dir)
+    check_cancel(cancel)            # told to stop while waiting: before the build, not after it
     jobname = 'preview-' + key
     wrapper = (workspace if workspace is not None else ctx.root) / 'decks' / ('_slidemage_' + jobname + '.tex')
     with active_build(cache, wrapper, cancel):

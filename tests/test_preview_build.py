@@ -486,3 +486,18 @@ def test_returning_to_a_view_runs_lualatex_once(tmp_path):
     assert rules == ['lualatex'], '\n'.join(lines[-80:])
     rules, lines = _rules_run(_in_view(text, 'during-course').replace('See', 'See once more'), ctx, force=True)
     assert rules == ['lualatex'], '\n'.join(lines[-80:])
+
+
+def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, monkeypatch):
+    # Every render ran it: the background workers queued behind one another over hundreds of wrappers (v8.52.2).
+    ran = []
+    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build: ran.append(root))
+    now = {"t": 1000.0}
+    clock = lambda: now["t"]
+    one, two = tmp_path / "one", tmp_path / "two"
+    assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert not preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert preview_build.maybe_prune_unused(two, tmp_path, clock=clock)            # another folder has its own time
+    now["t"] += preview_build.PRUNE_EVERY + 1
+    assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert ran == [one, two, one]

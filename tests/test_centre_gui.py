@@ -934,6 +934,23 @@ def test_selection_in_the_centre_reuses_the_resolved_outline(centre, resolutions
     assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
 
 
+def test_the_neighbours_of_a_german_slide_resolve_the_deck_once_not_on_every_refresh(centre, resolutions):
+    # Profiled in the app (v8.52.0): in German every Preview refresh resolved every slot of the deck six times on
+    # the GUI thread, for the Instructor frame numbers of the neighbours.
+    state = centre.state
+    state.set_mode("preview")
+    state.set_language("DE")
+    outline = resolved(centre)
+    state.set_focused_slide(outline.rows[0].call.id, occurrence_key=outline.rows[0].key)
+    resolutions.reset()
+    first = centre._neighbour_targets()
+    assert first and resolutions.slots <= 1
+    for _ in range(5):
+        assert centre._neighbour_targets() is first
+    state.set_focused_slide(outline.rows[1].call.id, occurrence_key=outline.rows[1].key)
+    assert centre._neighbour_targets() and resolutions.slots <= 1      # another slide: the English frames are kept
+
+
 def test_the_centre_resolves_afresh_for_another_deck_view_or_language(centre, project, resolutions):
     state = centre.state
     state.set_mode("preview")
