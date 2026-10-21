@@ -17,7 +17,10 @@ from test_settings_gui import FakeApp
 
 @pytest.fixture
 def window(qapp, monkeypatch):
-    return build_window(monkeypatch)
+    window = build_window(monkeypatch)
+    if window.background.renderer is not None:
+        window.background.renderer.gate.in_front = None     # as without a window that reports its focus; the tests
+    return window                                           # of the focus rules report it themselves
 
 
 def test_nothing_is_started_by_a_window_under_test_and_the_chip_is_hidden(window):
@@ -460,6 +463,24 @@ def test_input_in_front_and_a_presentation_stop_background_renders(window, monke
     assert stopped == [background_renders.P_IDLE]
     window.presentation = object()
     renderer.presentation_started()
-    assert stopped == [background_renders.P_IDLE] * 2 and renderer.gate.reason() == idle_gate.PRESENTING
+    assert stopped == [background_renders.P_IDLE] * 2 and renderer.waiting_because() == idle_gate.PRESENTING
     window.presentation = None
-    assert renderer.gate.reason() != idle_gate.PRESENTING
+    assert renderer.waiting_because() != idle_gate.PRESENTING
+
+
+def test_the_chip_says_the_renders_wait_as_soon_as_the_user_is_back_not_a_planner_step_later(window):
+    # The chip took its reason from the planner, a step (and a rescan of every deck) late: it said "Preparing
+    # previews" for that long after the renders had stopped.
+    from slidemage import idle_gate
+    controller = window.background
+    renderer = controller.renderer
+    progress = renderer.progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0)
+    renderer.gate.note_started()                                 # a sweep was under way
+    renderer.gate.note_focus(False)
+    renderer.gate.left_at -= idle_gate.LEAVE_GRACE + 1
+    assert renderer.sweeping() and controller.summary()[0].startswith("Preparing previews")
+    renderer.gate.note_focus(True)                               # back; the planner has not stepped yet
+    assert progress.paused_because is None
+    assert not renderer.sweeping() and renderer.waiting_because() == idle_gate.IN_USE
+    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
+    assert controller.dial_state() == "waiting"

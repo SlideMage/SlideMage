@@ -2677,3 +2677,9 @@ v8.52.2 (2026-10-21, direct report: "SlideMage appears very delayed, not reactin
 NEW: SlideMage reacts at once again while previews are prepared.
 - With German selected, clicking around no longer makes the window lag.
 - Background previews make progress again and stop promptly when you come back.
+
+v8.52.3 (2026-10-21, direct report: "SlideMage does not stop background rendering when I move the mouse over the active window, or even when I select different slides"): The renders did stop (checked on Windows with real input events through the app's input watcher, BackgroundRenderer.user_active and the scheduler), but the chip and the dial went on saying "Preparing previews". They took the reason for waiting from the planner (`progress.paused_because`), which is a planner step old, and coming back to the window asked the planner for a rescan of every deck first, which took long in a large project; meanwhile `sweeping()` held for 60 s after the last start. `BackgroundRenderer.waiting_because()` now asks the gate directly whether the user is at the window or presenting (else the planner's reason); `sweeping()`, the chip, the dial's tooltip and the status window use it. A change of window focus and the start of a presentation no longer ask for a rescan (what is outstanding did not change); they refresh the display at once. Tests: tests/test_background_previews_gui.py (the chip says the renders wait as soon as the user is back; the earlier tests run as without a window that reports its focus).
+
+NEW: The previews chip shows at once that rendering stopped.
+- When you come back to SlideMage or use it, the chip says the previews wait, instead of "Preparing previews".
+- Switching windows no longer makes SlideMage look through all decks again.

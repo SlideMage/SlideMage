@@ -28,7 +28,7 @@ from . import compile_records, parallel_runs, power_status, preview_build, previ
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
-from .idle_gate import CPU_LIMIT, IdleGate
+from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
 from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
@@ -267,7 +267,17 @@ class BackgroundRenderer:
         progress = self.progress
         if progress.working is not None:
             return True
-        return progress.left > 0 and not progress.paused_because and self.gate.sweeping()
+        return progress.left > 0 and not self.waiting_because() and self.gate.sweeping()
+
+    def waiting_because(self) -> Optional[str]:
+        """Why nothing renders: the user at the window or a presentation, asked now (the planner's
+        `progress.paused_because` is up to a planner step old, and a step can take long when it rescans the decks:
+        the chip said "Preparing previews" for that long after the renders had stopped), else the planner's reason."""
+        if self.gate.presenting():
+            return PRESENTING
+        if self.gate.in_use():
+            return IN_USE
+        return self.progress.paused_because
 
     def user_active(self) -> None:
         """The user did something: no new background job starts for a while. In front of the window (the only place
@@ -279,7 +289,7 @@ class BackgroundRenderer:
     def presentation_started(self) -> None:
         """No background render during a presentation (idle_gate.PRESENTING): the running ones stop."""
         self.scheduler.interrupt(P_IDLE)
-        self.replan()
+        self._changed()
 
     def window_focus(self, active: bool) -> None:
         """SlideMage's window got or lost the focus. Coming to the front stops the running background renders (they
@@ -288,7 +298,9 @@ class BackgroundRenderer:
         self.gate.note_focus(active)
         if active and not self.gate.forced():
             self.scheduler.interrupt(P_IDLE)
-        self.replan()
+        # No replan: what is outstanding did not change, and a rescan of every deck at each switch of windows
+        # kept the planner (and the chip's reason) busy. The planner's next step, within 2 s, tops up again.
+        self._changed()
 
     def _may_start(self, job) -> bool:
         if not self.gate.allowed():

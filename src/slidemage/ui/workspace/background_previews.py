@@ -195,7 +195,7 @@ class StatusDialog(QDialog):
                 item.setTextAlignment(column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.tree.addTopLevelItem(item)
         self._refresh_running(renderer)
-        reason = progress.paused_because
+        reason = renderer.waiting_because()
         self.note.setText(waiting_text(reason) if reason and progress.left else "")
         self.pause.setText("Resume" if renderer.gate.paused else "Pause")
         self.failures.setVisible(bool(progress.failures))
@@ -485,7 +485,7 @@ class BackgroundPreviews(QObject):
         if left > 0:
             if renderer.sweeping():
                 return f"Preparing previews · {left} left", "info"
-            reason = progress.paused_because
+            reason = renderer.waiting_because()
             if reason == idle_gate.IN_USE:
                 return f"Previews wait while you use SlideMage · {left} left", "muted"
             return (f"Previews paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
@@ -509,8 +509,8 @@ class BackgroundPreviews(QObject):
             lines.append(f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered.")
         if renderer.sweeping():
             lines.append("Rendering now.")
-        elif progress.left and progress.paused_because:
-            lines.append(waiting_text(progress.paused_because))
+        elif progress.left and renderer.waiting_because():
+            lines.append(waiting_text(renderer.waiting_because()))
         elif not progress.left:
             lines.append("Everything is ready.")
         lines.append("Click for the decks.")
