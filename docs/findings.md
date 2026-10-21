@@ -165,6 +165,24 @@ on Linux and on the owner's Windows machine.
 
 ### Plan 0 – A committed benchmark (prerequisite)
 
+Done: `tools/preview_bench.py` (`--project --framework --deck --slide --view --language --repeat --in-place --keep --json --scenarios cold,unchanged,edit,view-switch,deck-refresh,fill-cache`), a temp copy of the project unless `--in-place`, a
+table per scenario (medians over `--repeat`) and everything in `--json`; steps 1 and 2 below are met, step 3 (the recorded baselines) is still to do. `fill-cache` replaces the planned `--fill-cache`, `deck-refresh` the planned `--deck-refresh`.
+
+**Linux baseline (before plan 1)**, `example/`, deck `slidemage-manual-copy`, slide `1an-EN-Slide-Versions`, Instructor,
+medians of 3, Python 3.14, LuaHBTeX 1.22 (TeX Live 2025), Latexmk 4.87, 16 CPUs:
+
+| scenario | total s | latexmk s | rules | content read |
+|---|---|---|---|---|
+| cold (forced) | 6.26 | 3.55 | lualatex ×2, biber | 143 MB |
+| unchanged (hit) | 0.07 | – | – | 44 MB |
+| edit | 2.41 | 2.07 | biber 0.52, lualatex 1.41 | 143 MB |
+| view switch: during course | 3.85 | 3.51 | biber, lualatex ×2 | 143 MB |
+| view switch: back to instructor | 3.90 | 3.54 | biber, lualatex ×2 | 143 MB |
+| prune(), 400 generations | 0.114 | – | – | 41 MB manifests |
+| deck refresh (79 renders) | 168.9 wall | – | – | child CPU 1071 s |
+
+The Windows baseline is still to do: run the tool at this commit and at the branch tip on the owner's machine.
+
 1. Move the harness to `tools/preview_bench.py`: arguments `--project`, `--deck`, `--slide`, `--view`,
    `--repeat N`. It copies the project to a temp folder unless `--in-place`. Scenarios: cold (forced), unchanged,
    edit ×N, view switch (Instructor → During course → Instructor), and a deck rerender
