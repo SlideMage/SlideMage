@@ -914,11 +914,18 @@ def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, de
         assert started.wait(2)
     ws = FakeWorkspace(tmp_path, WorkspaceContext(path=path))
 
-    def service():
-        release.set()
-        return view._renders
+    joined = view._renders.request
 
-    monkeypatch.setattr(ws, 'preview_service', service)
+    def request(*a, **kw):
+        # Release the build only once the tool's request has joined it: a release before that is a race the
+        # pane's render can win, and then the tool asks after the shared request has finished.
+        try:
+            return joined(*a, **kw)
+        finally:
+            release.set()
+
+    monkeypatch.setattr(view._renders, 'request', request)
+    monkeypatch.setattr(ws, 'preview_service', lambda: view._renders)
     server = McpServer(lambda: build_toolbox(ws, lambda _: None, compiler.CancelToken()))
     response = server.handle(dict(jsonrpc='2.0', id=1, method='tools/call', params=dict(
         name='render_preview', arguments={})))['result']
