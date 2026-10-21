@@ -338,6 +338,39 @@ def _wrapper_text(preamble: str, deck_version: Optional[str], deck_language: Opt
             f"{context_before}{_overlay_line(overlay, all_steps)}{calls}{context_after}\\end{{document}}\n")
 
 
+def _text_slide(id_slug: str, slide_body: str, frame_number: Optional[int], steps: Optional[str] = None,
+                slide_version: Optional[str] = None, omitted: bool = False, final: bool = False,
+                whole_slide: bool = True) -> str:
+    """One slide of an editor-style wrapper (render_slide_text_to_pdf): its page number, \\setSlideID{} and
+    \\setSlideLanguageFromSlug{} (what \\slide{} does before it loads the file), the state its call sets, and
+    `slide_body` pasted in verbatim where \\input{} would splice the file in. A region or element preview
+    (`whole_slide` False) sets no call state."""
+    if final and whole_slide:
+        slide_body = ("\\begingroup\n\\renewcommand{\\conditionalpause}[1][instructor]{}\n"
+                      + slide_body + "\n\\endgroup\n")
+    call_state = ""
+    if whole_slide:
+        call_state = (f"\\setSlideVersion{{{slide_version}}}\n" if slide_version is not None
+                      else "\\global\\SMSlideVersionSetfalse\n")
+        if steps is not None:
+            call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
+        if omitted:
+            call_state += "\\global\\SMOmittedSlidetrue\n"
+    return (f"{_frame_number_line(frame_number)}"
+            f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n{call_state}{slide_body}\n")
+
+
+def _text_wrapper(preamble: str, deck_version: Optional[str], deck_language: Optional[str], slides: str,
+                  overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
+                  context_after: str = "") -> str:
+    """The editor-style wrapper of `slides`, one or several `_text_slide`s: the preamble, the deck's sections before
+    them, the overlay selection (once: it patches beamer for the rest of the document), the deck's version and
+    language, then the slides."""
+    return (f"{preamble}{context_before}{_overlay_line(overlay, all_steps)}"
+            f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
+            f"{slides}{context_after}\\end{{document}}\n")
+
+
 def _presenter_mode_line(presenter: bool) -> str:
     """`\\def\\SMPresenterModeOverride{1}`, the same hook compiler.py's
     own wrapper defines for a real "Presenter" job (CompileJob.presenter)
@@ -551,6 +584,30 @@ def render_slides_to_pdf(
 
 
 @measure('render')
+def render_slide_texts_to_pdf(
+    ctx: project.ProjectContext,
+    slides: list[tuple],
+    deck_version: str,
+    deck_language: str,
+    preamble_text: Optional[str],
+    log: Optional[LogCallback] = None,
+    cancel=None,
+) -> Path:
+    """Compile several slides of one deck, view and language in ONE document, each as render_slide_text_to_pdf
+    typesets it (a whole slide, every overlay a page), and return its PDF: the pages of the slides follow one another
+    in the order of `slides`, [(id_slug, text, frame_number, steps, slide_version, omitted, final)], each page set
+    apart by the slide id in its footer. Two LuaLaTeX passes and one biber run serve them all (docs/findings.md,
+    plan 5); the pages are the same pixel for pixel. Raises RuntimeError on failure of any slide. A bare slide id may
+    appear once only (the pages of a repeated one cannot be told apart), and no slide may need its deck's context (a
+    contents or agenda slide shows its links only in a document that holds them)."""
+    wrapper_text = _text_wrapper(default_preamble(ctx) if preamble_text is None else preamble_text, deck_version,
+                                 deck_language, "".join(_text_slide(*slide) for slide in slides))
+    # A short job name: the slide ids in it would make the file name too long.
+    job = 'batch-' + hashlib.sha256(wrapper_text.encode()).hexdigest()[:12]
+    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True)
+
+
+@measure('render')
 def render_slide_text_to_pdf(
     ctx: project.ProjectContext,
     id_slug: str,
@@ -631,24 +688,10 @@ def render_slide_text_to_pdf(
     if presenter and preview_mode == "element":
         raise ValueError("Use Instructor instead of Presenter for an element preview")
     preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
-    if final and preview_mode == "slide":
-        slide_body = ("\\begingroup\n\\renewcommand{\\conditionalpause}[1][instructor]{}\n"
-                      + slide_body + "\n\\endgroup\n")
-    call_state = ""
-    if preview_mode == "slide":
-        call_state = (f"\\setSlideVersion{{{slide_version}}}\n" if slide_version is not None
-                      else "\\global\\SMSlideVersionSetfalse\n")
-        if steps is not None:
-            call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
-        if omitted:
-            call_state += "\\global\\SMOmittedSlidetrue\n"
-    wrapper_text = (
-        f"{_presenter_mode_line(presenter)}{preamble}"
-        f"{context_before}{_frame_number_line(frame_number)}{_overlay_line(overlay, all_steps)}"
-        f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
-        f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n"
-        f"{call_state}{slide_body}\n{context_after}\\end{{document}}\n"
-    )
+    wrapper_text = _text_wrapper(
+        f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
+        _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
+        overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and not presenter

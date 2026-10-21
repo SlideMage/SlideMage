@@ -234,9 +234,9 @@ def render_sequence(data):
         raise RuntimeError(f"Cannot prepare preview sequence: {exc}") from exc
 
 
-def read_document(path, op, start=1, count=1, dpi=110, width=None):
+def read_document(path, op, start=1, count=1, dpi=110, width=None, out=None):
     with _pool.lease() as client:
-        return client.read_document(path, op, start, count, dpi, width)
+        return client.read_document(path, op, start, count, dpi, width, out)
 
 
 def read_layout(path) -> list[dict]:

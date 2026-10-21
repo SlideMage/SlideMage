@@ -294,7 +294,7 @@ def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, can
     Completed cache hits count as refreshed. No project-wide pruning is performed.
     ``details`` retains every occurrence/view outcome, including hidden/cancelled ones.
     """
-    from . import deck_preview_refresh, deck_settings
+    from . import background_renders, deck_preview_refresh, deck_settings
     from .preview_requests import RenderService
     language = language or deck_settings.read_settings(deck.text).language.upper()
     requests = deck_preview_refresh.plan(ctx, deck, scope=scope, selected_view=selected_view,
@@ -318,7 +318,8 @@ def rerender_deck(ctx: project.ProjectContext, deck: Deck, log: LogCallback, can
     try:
         details = deck_preview_refresh.run(service, deck, requests, scope=scope, language=language,
                                           cancel=cancel, progress=notify,
-                                          publish=publish or publish_legacy, log=log)
+                                          publish=publish or publish_legacy, log=log,
+                                          batch_size=background_renders.batch_size(ctx))
         failures = {r.request.target.id_slug for r in details.results
                     if r.status in ('failed', 'cancelled') or r.publication_status in ('failed', 'superseded')}
         slugs = sorted({r.request.target.id_slug for r in details.results})

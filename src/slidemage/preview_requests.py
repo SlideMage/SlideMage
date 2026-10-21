@@ -161,6 +161,15 @@ def image_group(spec: PreviewRequest, identity=None):
     return 'group-' + key, classified.evidence
 
 
+class PrebuiltRender:
+    """A slide's PDF made by a document of several slides (batch_render): RenderService.request records it like a
+    render of its own. `dependencies` are the files its pages depend on, `before` the cache's guard taken before the
+    document was compiled. `used` tells the maker whether the request took it (a request already in flight does not)."""
+    def __init__(self, pdf: Path, dependencies, before):
+        self.pdf, self.dependencies, self.before = pdf, tuple(dependencies), before
+        self.used = False
+
+
 class _ArtifactLease:
     """Shared by the future and immutable results, without a reference cycle."""
     def __init__(self, context):
@@ -446,6 +455,18 @@ class RenderService:
             previous.__exit__(None, None, None)
         return entry
 
+    def is_cached(self, spec) -> bool:
+        """Whether a verified entry of `spec`, its own or its image group's, exists now: what a request would find. Nothing
+        is retained or changed."""
+        cache = preview_cache.PreviewCache(spec.target.context.root)
+        identity = cache_identity(spec)
+        env = compiler.build_env(spec.target.context)
+        validation = preview_cache.ValidationPass()
+        group = image_group(spec, identity)
+        if group is not None and cache.group_lookup(group[0], env, validation=validation) is not None:
+            return True
+        return cache.lookup(identity, env, validation=validation) is not None
+
     def cached_spec(self, spec):
         cache = preview_cache.PreviewCache(spec.target.context.root)
         identity = cache_identity(spec)
@@ -502,7 +523,9 @@ class RenderService:
 
     def request(self, target, text, view, language, log, *, saved=False,
                 presenter=False, mode='slide', overlay=None, spec=None, force=False, render_stamp=None,
-                require_pdf=False, all_steps=False):
+                require_pdf=False, all_steps=False, prebuilt=None):
+        """`prebuilt` (PrebuiltRender): the slide's PDF is made already, by a document of several slides: record it
+        instead of looking it up and rendering."""
         captured = spec is not None
         spec = spec or PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
                                       RenderOptions(saved, presenter, mode, overlay, force, render_stamp, all_steps))
@@ -577,7 +600,9 @@ class RenderService:
 
         def work(cancel):
             env = compiler.build_env(target.context)
-            if not options.force:
+            if prebuilt is not None:
+                prebuilt.used = True
+            elif not options.force:
                 validation = preview_cache.ValidationPass()    # the two lookups share one evidence and one read per file
                 if group_key is not None and not require_pdf:
                     found = cache.group_lookup(group_key, env, validation=validation)
@@ -593,14 +618,16 @@ class RenderService:
                         return pin(entry, 'cached')
                     except OSError:
                         pass  # eviction won the interval between lookup and pin
-            before = cache.begin(env)
+            before = cache.begin(env) if prebuilt is None else prebuilt.before
             stamp = options.render_stamp or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             if saved and not captured:
                 if target.source_path.read_text(encoding='utf-8') != text:
                     raise RuntimeError('Preview superseded: saved source changed before rendering')
             # Saved and draft requests execute the same immutable captured text.
             # The saved flag controls publication guards, never TeX semantics.
-            if saved and target.needs_context and not presenter and mode == 'slide' and overlay is None:
+            if prebuilt is not None:
+                pdf = prebuilt.pdf
+            elif saved and target.needs_context and not presenter and mode == 'slide' and overlay is None:
                 # A slide that needs its deck is typeset in the deck's last compile when there is one
                 # (deck_context.render_in_deck), which reads the saved file, not the captured text.
                 pdf = preview_target.render(target, view, language, log=log,
@@ -626,7 +653,8 @@ class RenderService:
                 else:
                     displays, images = slide_snapshot.prepare_preview_images(pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
                 try:
-                    dependencies = json.loads(pdf.with_suffix('.inputs.json').read_text())
+                    dependencies = (prebuilt.dependencies if prebuilt is not None
+                                    else json.loads(pdf.with_suffix('.inputs.json').read_text()))
                 except (OSError, ValueError):
                     dependencies = ()
                 if saved and not captured and target.source_path.read_text(encoding='utf-8') != text:

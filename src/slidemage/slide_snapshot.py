@@ -366,6 +366,15 @@ def slide_runs(slide_ids) -> list[tuple[str, list[int]]]:
     return runs
 
 
+def batch_runs(texts, bare_ids) -> list[list[int]]:
+    """The page indexes of each of `bare_ids` in a PDF of several slides whose pages have the texts `texts`, in order.
+    RuntimeError unless the slide ids of the pages are exactly those slides, in that order, each on a run of its own."""
+    runs = slide_runs([slide_id_in(text) for text in texts])
+    if [bare for bare, _pages in runs] != list(bare_ids) or sum(len(pages) for _bare, pages in runs) != len(texts):
+        raise RuntimeError("the pages of the batch are not those of its slides")
+    return [pages for _bare, pages in runs]
+
+
 def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
                  sizes: tuple[tuple[int, int], ...] = (FULL_SIZE, THUMB_SIZE),
                  ) -> int:

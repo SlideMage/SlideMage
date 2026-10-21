@@ -19,7 +19,8 @@ Scenarios (``--scenarios``, comma separated; default cold,unchanged,edit,view-sw
 ``unchanged`` the same text again (a cache hit); ``edit`` the text plus a unique ``%`` comment, ``--repeat`` times;
 ``view-switch`` instructor, during-course, instructor again, each with a fresh edit (one shared build folder);
 ``deck-refresh`` ``update_all_previews.rerender_deck`` of the whole deck with wall time and child-process CPU
-seconds (wall only on Windows); ``fill-cache`` ~400 copied cache generations, then the time of ``prune()``;
+seconds (wall only on Windows), ``--batch-size`` slides per document (1: one each); ``fill-cache`` ~400 copied
+cache generations, then the time of ``prune()``;
 ``background-batch`` the background renders of the deck in ``--view`` (``--units`` of them, default all), one document
 each against ``--batch-size`` (16) in one document, wall time and child-process CPU seconds of each.
 Run ``cold`` first for clean numbers: later scenarios render the base text once, unreported, if nothing ran before.
@@ -64,7 +65,7 @@ def parse_args(argv=None):
     parser.add_argument('--view', default='instructor', choices=VIEWS)
     parser.add_argument('--language', help="language (default: the deck's, upper-case)")
     parser.add_argument('--repeat', type=int, default=3, help='edit renders to repeat; medians are reported')
-    parser.add_argument('--batch-size', type=int, default=16, help='background-batch: slides per document (default: 16)')
+    parser.add_argument('--batch-size', type=int, default=16, help='background-batch and deck-refresh: slides per document (default: 16)')
     parser.add_argument('--units', type=int, default=0, help='background-batch: render only this many units of the deck (default: all)')
     parser.add_argument('--in-place', action='store_true', help='work in the real project instead of a temp copy')
     parser.add_argument('--keep', action='store_true', help='keep the temp copy and its preview cache')
@@ -306,13 +307,14 @@ class Bench:
             self.record('view-switch', f'{step + 1}. {view}', [r[step] for r in rounds])
 
     def deck_refresh(self):
-        from slidemage import update_all_previews
+        from slidemage import background_renders, update_all_previews
+        background_renders.batch_size = lambda ctx: self.args.batch_size       # slides per document; 1: one each
         children = lambda: (resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None)  # noqa: E731
         before, own, start = children(), time.process_time(), time.perf_counter()
         result = update_all_previews.rerender_deck(self.ctx, self.deck, lambda line: None, service=self.service, force=True)
         wall, after = time.perf_counter() - start, children()
         self.results['deck-refresh'] = {
-            'deck': self.deck.name, 'wall_seconds': wall, 'own_cpu_seconds': time.process_time() - own,
+            'deck': self.deck.name, 'batch_size': self.args.batch_size, 'wall_seconds': wall, 'own_cpu_seconds': time.process_time() - own,
             'child_cpu_seconds': (after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime) if resource else None,
             'refreshed': len(result.refreshed), 'failed': len(result.failed), 'error': result.error}
 
@@ -395,7 +397,7 @@ class Bench:
                           f'SlideMage CPU {row["own_cpu_seconds"]:.1f} s')
             elif scenario == 'deck-refresh':
                 cpu = data['child_cpu_seconds']
-                print(f'{data["deck"]}: wall {data["wall_seconds"]:.1f} s, child CPU '
+                print(f'{data["deck"]}, batch size {data["batch_size"]}: wall {data["wall_seconds"]:.1f} s, child CPU '
                       f'{"n/a" if cpu is None else f"{cpu:.1f} s"}, SlideMage CPU {data["own_cpu_seconds"]:.1f} s, '
                       f'{data["refreshed"]} refreshed, {data["failed"]} failed' + (f' ({data["error"]})' if data['error'] else ''))
             else:

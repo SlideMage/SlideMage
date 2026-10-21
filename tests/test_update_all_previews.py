@@ -94,6 +94,19 @@ def test_deck_refresh_uses_exact_requests_and_keeps_partial_results(project):
     assert {r.target.frame_number for r in service.calls} == {1, 2}
 
 
+@pytest.mark.parametrize("setting,expected", [(None, 16), (4, 4), (1, 1), (0, 1), ("x", 16)])
+def test_deck_refresh_renders_the_background_batch_size_slides_in_one_document(project, monkeypatch, setting, expected):
+    from slidemage import app_settings, background_renders, deck_preview_refresh
+    from test_preview_batch import Service
+    if setting is not None:
+        app_settings.set(project, background_renders.BATCH_SIZE_KEY, setting)
+    sizes = []
+    real = deck_preview_refresh.run
+    monkeypatch.setattr(deck_preview_refresh, "run", lambda *args, batch_size, **kwargs: sizes.append(batch_size) or real(*args, **kwargs))
+    update_all_previews.rerender_deck(project, deck_named(project, "test"), lambda _: None, service=Service(), publish=lambda _: "cached")
+    assert sizes == [expected]
+
+
 def test_selected_scope_and_hidden_calls_do_not_compile(project):
     from test_preview_batch import Service
     from dataclasses import replace

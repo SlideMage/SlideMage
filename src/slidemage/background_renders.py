@@ -21,7 +21,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Optional
+from typing import Callable, Optional
 
 from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
 from . import compile_records, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
@@ -52,7 +52,6 @@ KEEP_DAYS_KEY = "bg_previews_keep_days"
 BATCH_SIZE_KEY = "bg_previews_batch_size"
 DEFAULT_LIMIT_GB = 2.0
 DEFAULT_BATCH_SIZE = 16         # slides rendered in one document (docs/findings.md, plan 5); 1: one document each
-EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
 ALL_PAGES = 100000
 # (processes at most, rest / job time). LaTeX runs on one core: "normal" may use a quarter of the cores, "fast" half
 # (at most 16: about 300 MB of memory each). Each one beyond the first starts only while the CPU is below
@@ -68,6 +67,14 @@ def setting(ctx: ProjectContext, key: str, default):
         return app_settings.get(ctx, key, default)
     except OSError:
         return default
+
+
+def batch_size(ctx: ProjectContext) -> int:
+    """How many slides of a deck are rendered in one document (setting `bg_previews_batch_size`; 1: one each)."""
+    try:
+        return max(1, int(setting(ctx, BATCH_SIZE_KEY, DEFAULT_BATCH_SIZE)))
+    except (TypeError, ValueError):
+        return DEFAULT_BATCH_SIZE
 
 
 def deck_language_code(deck: Deck) -> str:
@@ -210,10 +217,7 @@ class BackgroundRenderer:
         return bool(setting(self.ctx, ENABLED_KEY, True))
 
     def batch_size(self) -> int:
-        try:
-            return max(1, int(setting(self.ctx, BATCH_SIZE_KEY, DEFAULT_BATCH_SIZE)))
-        except (TypeError, ValueError):
-            return DEFAULT_BATCH_SIZE
+        return batch_size(self.ctx)
 
     def decks_off(self) -> set[str]:
         return set(setting(self.ctx, DECKS_OFF_KEY, []) or [])
@@ -537,48 +541,12 @@ class BackgroundRenderer:
     def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
         """What a slide's page in a deck compile depends on, from the compile record's hashes."""
         entries = []
-        for path in self._unit_inputs([path for path, _sha in recorded.values()], unit):
+        for path in render_key.unit_inputs(self.ctx, [path for path, _sha in recorded.values()], unit.source_path):
             where = self.resolver._relative(path)
             if where is not None:
                 entries.append([where[0], where[1], recorded[norm(path)][1]])
         entries.sort()
         return entries
-
-    def _unit_inputs(self, paths: Iterable[Path], unit: render_key.Unit) -> list[Path]:
-        """The files among `paths`, what a document of several slides read, that the pages of `unit` depend on: not
-        the other slides, and of the media and snippets those whose name its text or a snippet it uses mentions (a
-        name without its extension too), and the alt texts every render reads."""
-        try:
-            text = unit.source_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        slides, optional = self.ctx.slides_dir, (self.ctx.root / "media", self.ctx.root / "snippets")
-        kept, maybe = [], []
-        for path in paths:
-            key = norm(path)
-            if any(part in key for part in render_key._SKIPPED_PARTS):
-                continue
-            if compile_records.is_within(path, slides):
-                if key == norm(unit.source_path):
-                    kept.append(path)                   # another slide does not change this one's page
-            elif any(compile_records.is_within(path, folder) for folder in optional):
-                (kept if path.name in EVERY_RENDER_READS else maybe).append(path)
-            else:
-                kept.append(path)
-        grown = True
-        while grown:                                    # a snippet may name the picture
-            grown = False
-            for path in maybe[:]:
-                if path.stem in text:
-                    maybe.remove(path)
-                    kept.append(path)
-                    grown = True
-                    if path.suffix == ".tex":
-                        try:
-                            text += path.read_text(encoding="utf-8", errors="replace")
-                        except OSError:
-                            pass
-        return kept
 
     def deck_archived(self, deck: Deck) -> None:
         self.scheduler.cancel_group(deck.name)
@@ -717,12 +685,9 @@ class BackgroundRenderer:
         of the units dealt with. RuntimeError when the pages are not the planned slides'."""
         raster = self._raster or self._shared_raster()
         response = raster.read_document(pdf, "pdf", 1, ALL_PAGES)
-        runs = slide_snapshot.slide_runs([slide_snapshot.slide_id_in(text) for text in response["texts"]])
-        if ([bare for bare, _pages in runs] != [slide_language.bare_id(unit.id_slug) for unit, _key, _found in todo]
-                or sum(len(pages) for _bare, pages in runs) != response["count"]):
-            raise RuntimeError("the pages of the batch are not those of its slides")
+        runs = slide_snapshot.batch_runs(response["texts"], [slide_language.bare_id(unit.id_slug) for unit, _key, _found in todo])
         inputs = [Path(name) for name in self._recorded_inputs(pdf)]
-        for number, ((unit, key, found), (_bare, pages)) in enumerate(zip(todo, runs)):
+        for number, ((unit, key, found), pages) in enumerate(zip(todo, runs)):
             if cancel.is_set():
                 raise Cancelled("Preview cancelled")
             if self.resolver.fast_key(unit) != key:
@@ -733,7 +698,7 @@ class BackgroundRenderer:
             images = self._rasterise(own, cancel)
             if len(images) != len(pages):
                 raise RuntimeError("the pages of a slide were not all rendered")
-            manifest = self.resolver.build_manifest([str(path) for path in self._unit_inputs(inputs, unit)])
+            manifest = self.resolver.build_manifest([str(path) for path in render_key.unit_inputs(self.ctx, inputs, unit.source_path)])
             self._store_render(unit, key, found, ORIGIN_BACKGROUND, own, images, manifest, started)
             done.add(unit.label)
             self._count_fresh(unit)

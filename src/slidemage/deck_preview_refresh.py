@@ -87,8 +87,9 @@ def plan(ctx, deck, *, scope='all', selected_view='instructor', language='EN',
 
 
 def run(service, deck, requests, *, scope='all', language='EN', cancel=None,
-        progress=None, publish=None, log=None) -> DeckRefreshResult:
-    """Use the common scheduler/cache and report every occurrence/view outcome."""
+        progress=None, publish=None, log=None, batch_size=1) -> DeckRefreshResult:
+    """Use the common scheduler/cache and report every occurrence/view outcome. `batch_size` slides still to render
+    share one document (preview_batch.render_batch)."""
     requests = tuple(requests)
 
     def notify(event: preview_batch.BatchProgress):
@@ -100,5 +101,5 @@ def run(service, deck, requests, *, scope='all', language='EN', cancel=None,
                               event.total, event.status, event.done))
 
     results = preview_batch.render_batch(service, requests, cancel=cancel, progress=notify,
-                                         publish=publish, log=log)
+                                         publish=publish, log=log, batch_size=batch_size)
     return DeckRefreshResult(deck.name, scope, language, results)
