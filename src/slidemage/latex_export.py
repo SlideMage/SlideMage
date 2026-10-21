@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -194,6 +195,19 @@ def _copy(source: Path, dest: Path, root_paths: bool) -> None:
         shutil.copy2(source, dest)
 
 
+def _rename(source: Path, target: Path, tries: int = 50) -> None:
+    """os.replace, tried again for a few seconds while Windows denies it: a virus scanner or the search indexer
+    briefly holds files that were just written."""
+    for attempt in range(tries):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.1)
+
+
 def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
                 log: Optional[Callable[[str], None]] = None) -> ExportResult:
     """Write ``<dest_dir>/<deck.name>-latex/``, replacing a folder of that name. The files are written into a
@@ -206,16 +220,28 @@ def export_deck(ctx: ProjectContext, deck: Deck, dest_dir: Path,
     files = collector.files
     target = Path(dest_dir) / f"{deck.name}{FOLDER_SUFFIX}"
     scratch = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=dest_dir))
+    old = None
     try:
         for dest, source in sorted(files.items()):
             _copy(source, scratch / dest, source.parent == ctx.decks_dir or source == deck.path)
         (scratch / ".latexmkrc").write_text(LATEXMKRC, encoding="utf-8", newline="\n")
-        if target.exists():
-            shutil.rmtree(target)
-        os.replace(scratch, target)
+        # The old folder goes aside and is deleted only once the new one is in place, so a failure keeps it.
+        old = Path(tempfile.mkdtemp(prefix=f".{target.name}-old-", dir=dest_dir)) / "old" if target.exists() else None
+        if old is not None:
+            _rename(target, old)
+        try:
+            _rename(scratch, target)
+        except BaseException:
+            if old is not None:
+                _rename(old, target)
+            raise
     except BaseException:
         shutil.rmtree(scratch, ignore_errors=True)
+        if old is not None and not old.exists():          # put back; one that could not be is left where it is
+            shutil.rmtree(old.parent, ignore_errors=True)
         raise
+    if old is not None:
+        shutil.rmtree(old.parent, ignore_errors=True)
     result = ExportResult(target, sorted([*files, ".latexmkrc"]), sorted(collector.missing))
     if log is not None:
         for name in result.missing:

@@ -443,7 +443,10 @@ def test_a_file_inside_the_roots_is_always_read(settled, tmp_path):
     linked = tmp_path / 'elsewhere.sty'                 # outside, but reached through a link in the project
     linked.write_text('LINKED')
     link = root / 'linked.sty'
-    link.symlink_to(linked)
+    try:
+        link.symlink_to(linked)
+    except OSError:                                     # Windows without the privilege (or developer mode) for links
+        pytest.skip("this account cannot create symbolic links")
     assert bytes_read(states, link)[1] == bytes_read(states, link)[1] == len('LINKED')
 
 
@@ -482,7 +485,7 @@ def test_configuration_state_reads_the_tool_binaries_once(settled, tmp_path):
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
-    latexmk = bin_dir / 'latexmk'
+    latexmk = bin_dir / ('latexmk.exe' if os.name == 'nt' else 'latexmk')     # `which` needs the extension on Windows
     latexmk.write_bytes(b'x' * 5000)
     latexmk.chmod(0o755)
     env = dict(env, PATH=str(bin_dir))

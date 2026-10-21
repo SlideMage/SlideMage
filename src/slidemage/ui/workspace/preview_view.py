@@ -1593,9 +1593,10 @@ class PreviewPane(Surface):
                         spec = job.request.spec if job.request is not None else PreviewRequest(
                             self._target, SourceRevision.capture(job.source, job.revision_text),
                             job.view, job.language, RenderOptions(saved=job.buffer_text is None))
+                        # Cached only once the record is there: a record still being written (the pixels come
+                        # first, v8.48.0) may never come (no recorded inputs), and then this picture is all there is.
                         cached = (job.request is not None and job.request.preview_result is not None
-                                  and (job.request.preview_result._artifact_owner is not None
-                                       or getattr(job.request, 'lent', False)))      # the record follows
+                                  and job.request.preview_result._artifact_owner is not None)
                         remember_transient(spec, job.png, job.pdf, cached=cached)
                         self._show_accepted_while_validating(spec, job.png)
                     except (OSError, ValueError):

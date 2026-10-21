@@ -432,7 +432,9 @@ def swap_script(install_dir: Path, staging: Path, binary_name: str, pid: int, re
     if windows:
         quote = lambda path: f'"{path}"'
         args = " ".join(f'"{a}"' for a in relaunch or [])
-        start = f'start "" {quote(install_dir / binary_name)} {args}\r\n' if relaunch is not None else ""
+        # Started from its own folder, as Explorer starts it: the next update's helper must not inherit it.
+        start = (f'cd /d {quote(install_dir)}\r\nstart "" {quote(install_dir / binary_name)} {args}\r\n'
+                 if relaunch is not None else "")
         text = (
             "@echo off\r\n"
             f":wait\r\ntasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL\r\n"
@@ -481,9 +483,14 @@ def start_helper(script: Path) -> subprocess.Popen:
 
     On Windows it gets a console of its own that is never shown, and NUL as its input and output. A detached cmd
     (DETACHED_PROCESS, no console) with the windowed app's missing handles ended at once with exit code 1, before
-    it swapped anything, and each console program it ran (tasklist, ping) flashed a window of its own."""
+    it swapped anything, and each console program it ran (tasklist, ping) flashed a window of its own.
+
+    It runs in the script's own folder. Started from Explorer, the app's working folder is the installation, and a
+    helper that inherited it could never move that folder (v8.39.2 to v8.51.0: every try failed and the old version
+    started again)."""
     env = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
-    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, env=env)
+    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, env=env,
+                 cwd=str(script.parent))
     if os.name == "nt":
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         return subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags, **quiet)

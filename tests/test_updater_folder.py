@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Updating a folder installation: which asset, unpacking next to the folder, the helper that swaps the folders."""
 import os
+import subprocess
 import sys
+import textwrap
+import time
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -64,7 +68,7 @@ def test_the_helper_script_waits_for_the_process_swaps_and_starts_the_new_versio
     install, staging = tmp_path / "SlideMage-folder", tmp_path / "SlideMage-folder.update"
     name, text = updater.swap_script(install, staging, "SlideMage.exe", 4242, ["--project", "D:/p"], windows=True)
     assert name.endswith(".cmd") and 'PID eq 4242' in text and "SlideMage-folder.old" in text
-    assert f'start "" "{install / "SlideMage.exe"}" "--project" "D:/p"' in text
+    assert f'cd /d "{install}"\r\nstart "" "{install / "SlideMage.exe"}" "--project" "D:/p"' in text
     _name, quiet = updater.swap_script(install, staging, "SlideMage.exe", 4242, None, windows=True)
     assert "start " not in quiet
     name, text = updater.swap_script(install, staging, "SlideMage", 4242, ["--project", "/p"], windows=False)
@@ -89,6 +93,34 @@ def test_the_windows_helper_really_swaps_the_folders_once_the_process_is_gone(tm
     assert not staging.exists()
     updater.remove_leftover_folder(install)
     assert not (tmp_path / "SlideMage-folder.old").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="runs the Windows helper")
+def test_the_windows_helper_swaps_the_folder_the_app_was_started_in(tmp_path):
+    # Started from Explorer, the app's working folder is the installation. Up to v8.51.0 the helper inherited it,
+    # so it could never move that folder and started the old version again.
+    install = tmp_path / "SlideMage-folder"
+    install.mkdir()
+    (install / "SlideMage.exe").write_bytes(b"old")
+    staging = tmp_path / "SlideMage-folder.update"
+    staging.mkdir()
+    (staging / "SlideMage.exe").write_bytes(b"new")
+    app = textwrap.dedent(f"""
+        import os, sys
+        from pathlib import Path
+        sys.path.insert(0, {str(Path(updater.__file__).parents[1])!r})
+        from slidemage import updater
+        name, text = updater.swap_script(Path({str(install)!r}), Path({str(staging)!r}), "SlideMage.exe", os.getpid(), None)
+        script = Path({str(tmp_path)!r}) / name
+        script.write_text(text, encoding="utf-8", newline="")
+        updater.start_helper(script)
+    """)
+    subprocess.run([sys.executable, "-c", app], cwd=install, check=True, timeout=60)
+    deadline = time.monotonic() + 60
+    while (install / "SlideMage.exe").read_bytes() != b"new" or staging.exists():
+        assert time.monotonic() < deadline, "the helper did not swap the folders"
+        time.sleep(0.2)
+    assert (tmp_path / "SlideMage-folder.old" / "SlideMage.exe").read_bytes() == b"old"
 
 
 @pytest.mark.skipif(os.name != "nt", reason="runs the Windows helper")

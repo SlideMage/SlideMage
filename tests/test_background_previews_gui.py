@@ -172,9 +172,12 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     assert controller.summary()[0] == ""
 
 
-def test_the_menu_lists_the_decks_and_pauses_renders_now_and_skips_the_open_deck(window):
+def test_the_menu_lists_the_decks_and_pauses_renders_now_and_skips_the_open_deck(window, monkeypatch):
     controller = window.background
-    controller.renderer.progress = Progress([DeckProgress("slidemage-manual", total=10, fresh=4, failed=1)], failures=1)
+    # The renderer's planning thread replaces its progress at any time; this one stays for the test.
+    progress = Progress([DeckProgress("slidemage-manual", total=10, fresh=4, failed=1)], failures=1)
+    monkeypatch.setattr(type(controller.renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
+                        raising=False)
     texts = [a.text() for a in controller.menu().actions()]
     assert "slidemage-manual: 4 of 10 ready, 1 failed" in texts
     assert any(t.startswith("Stored:") for t in texts) and "Pause" in texts and "Render now" in texts
