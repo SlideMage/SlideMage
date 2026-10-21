@@ -333,6 +333,92 @@ split the PDF into per-slide units with the same keys and evidence as single ren
 7. Bench: 17-slide deck refresh, CPU-seconds and wall time, single vs batch. Expected order of magnitude: ~60
    CPU-s → ~10 CPU-s (2 passes × (1.1 s + 8 × 0.13 s) per batch of 8, plus biber once).
 
+**Plan 5, step 1: feasibility (21 October 2026).** Scripts in the session scratchpad (`batch/`), run on a temp copy of
+`example/` + `latex/`; nothing under `src/`, `latex/`, `example/`, `tests/` was touched. Deck `slidemage-manual-copy`,
+Instructor, EN (65 background units). Single = `render_slide_to_pdf(..., all_steps=True, workspace=...)` exactly as
+`BackgroundRenderer._render_pdf` calls it, each in its own cold build folder; batch = one wrapper (the unit's
+preamble, `\deckversion`/`\decklanguage`, the all-steps `_overlay_line` **once**, then per slide
+`\setcounter{framenumber}{n-1}` + the unit's call, one `\end{document}`) through `preview_build.compile_cached`
+(latexmk: lualatex, biber, lualatex). Pixels: PyMuPDF at 1920 px width, exact equality of the RGB samples.
+
+**Go for steps 2–7.** Every page of every slide tried is pixel-identical to its single render, and the page counts match.
+
+| What was compared | Slides | Pages single = batch | Identical |
+|---|---|---|---|
+| batch A: 8 consecutive units (1bb … 1cx; 1cx has citations in its code) | 8 | 8 = 8 | yes |
+| batch B: 1vh, 1u5 (TikZ `remember picture`), 1nz (citation, biber), 1dk, 1th, 1t2 (reveals), 1mu twice (`\slidestep`) | 8 | 20 = 20 | yes |
+| the whole deck in 9 batches of 8 (units 0–64: title, text slides, TikZ, figures, tables, columns, reveals, `\slidestep`) | 65 | 80 = 80 | yes |
+| one batch of 16 and one of 32 | 16 + 32 | – | yes |
+| synthetic: `\slideversion`, `\slidefinal`, `\conditionalslide`, `\omitslide`, then plain `\slide` of the same ids (does a final-state flag or version leak?) | 7 | 23 = 23 | yes |
+| During course and After course (reveal slides), DE (title slide, translated slides) | 8 + 8 + 8 + 8 | = | yes |
+
+Differences found: none for deck-order slides without context. Two causes are known and avoided or removed:
+
+1. **The navigation bar.** `\SMNavigationLinks` shows its links only when the `.aux` holds `\SMAgendaDeckTarget` (written
+   by `\SMDeckAgenda`, i.e. by a contents slide) or a chapter target (written by a chapter agenda). A single render
+   prints just "Navigation:". A batch that contains the contents slide gets "Contents · Chapter contents" on **all**
+   its slides after pass 2 (shown: batch of 1bb, 1r2, 1us, 1y9, neg, dkf: every normal page differs). Units that need
+   context (`needs_context`: contents, chapter agendas) are not background units (`deck_units` skips them), so the
+   case does not occur. If they are ever batched: one wrapper line before every slide,
+   `\makeatletter\global\let\SM@ag@decktarget\@undefined\makeatother` (no `\section` is written either, so chapter
+   targets stay unused). **Verified:** with it, the normal pages in that batch are identical to their single renders.
+   No framework change is needed.
+2. **Same bare id twice in one batch** (the two `\slidestep` calls of `1mu`): pixels are identical, but a split by slide id
+   cannot tell the runs apart (6 consecutive pages of `1mu`), and `\hypertarget` is defined once. Planner rule: at most
+   one unit per bare id per batch (the second has the same pixels anyway: its steps are dropped).
+
+Not causes (checked): frame numbers (explicit `\setcounter` per slide), footer text and `v1.0.0EN` version tag
+(`\ifSMSlideVersionSet` is reset by every `\slide`), hyperref anchors, overlay counters (page k is overlay k, as the
+single path), `\SMSlideSteps`, pgf `remember picture` marks (second pass), bibliography (biber once for the union of cites).
+
+**Splitting pages.** `\SMSlideStart` does not exist. Two markers exist already, both worked on all 65 slides:
+- the **slide id on every page**: the footer's "(slide id: X …)" or, on frames without a footer (`\titleframe`,
+  `\fullbleedframe`), `\SMInvisibleSlideIDStamp`. `slide_snapshot.slide_id_of(page)` + `slide_snapshot.slide_runs(...)`
+  (what `ingest_compile` uses) gave the right runs in order in every batch; no page returned `None`;
+- the **named destination** `\hypertarget{<bare id>}` that `\setSlideID` writes: `doc.resolve_names()[id]["page"]` is the
+  first page of the slide in every batch tried (1dk → page 3 of 4 pages, 1mu, 1i4 …). It survives a page without a stamp.
+
+Production: take `slide_runs` over the batch PDF, then **check** that the run ids equal the planned ids in the planned
+order and that the pages add up; otherwise do not store and retry the units singly. `ingest_compile` gives the page
+mapping (the loop over `slide_runs` / `runs.setdefault`) and the manifest filter `_compile_manifest`, but stores only
+the **last** page as a partial record (`ORIGIN_COMPILE`, one image); a batch needs all pages of a run (`pages[a:b]`)
+with a full record like `render_unit` (`store.put(key, origin, pdf_of_the_pages, pages, meta)`), so extract the unit's
+page range into its own PDF (PyMuPDF `select`) or store the images without a PDF.
+
+**Evidence per unit.** The batch's `.inputs.json` is the union (383 entries vs 366–368 for a single). Filtered with
+`_compile_manifest`'s rule (drop other slides, drop media/snippets the slide's text does not name), the project-side set
+equals the single's **exactly**, with two exceptions: the extras are TeX-distribution font files (`cmmi6.tfm`,
+`FontAwesome5Brands-Regular-400.otf`: other slides of the batch; they go to `tex_files`, which only makes the record
+stale a little more often), and the filter drops `media/alt-text.csv` that every render reads (the media rule drops it
+because no slide names it). Exempt it when step 4 reuses the filter (a bug of `ingest_compile`'s records too: an edit of
+`alt-text.csv` would not stale them).
+
+**Timing** (Linux, cold build folders, format warm; child-process CPU = latexmk + lualatex + biber):
+
+| | singles wall / CPU | batch wall / CPU | factor |
+|---|---|---|---|
+| 8 consecutive slides (A) | 29.5 s / 29.1 s | 4.7–5.0 s / 4.7–4.9 s | 6× |
+| 8 slides, 20 pages with TikZ, citation, reveals (B) | 35.6 s / 35.2 s | 10.1 s / 10.0 s | 3.5× |
+| units 4–19, k = 16 | 62.0 s / 61.4 s | 8.7 s / 8.5 s | 7× |
+| units 0–31, k = 32 | 124.3 s / 123.0 s | 13.7 s / 13.6 s | 9× |
+| whole deck, 65 units | 264.7 s / 262.0 s | 9 batches of 8: 64 s | 4× |
+
+Model: ≈ 2.7 s fixed per batch (2 × 1.1 s + biber 0.5 s) + ≈ 0.35 s per slide (both passes), but heavy slides cost
+more (2v9: 8.0 s single, 7.7 s as a batch of one; TikZ/tcolorbox slides ~0.5–1 s per pass). The expected "~10×" holds
+only for large k; **k = 16 is a better default than 8** (7× against 4–6×), at the price of more work lost on a failure.
+
+**Risks.** (1) One bad slide (`\undefinedmacro` → latexmk fails, the PDF is still written; a missing `\input` stops the
+run) fails the whole batch: retry singly, as planned; the RuntimeError carries only the last 25 log lines, and the
+offending `slides/<id>-current.tex:N:` is wrapped at 79 columns in the log, so do not parse it, retry singles. (2) A slide
+that relies on global state of earlier slides is not different here (a deck compile has the same leakage and all 65
+slides pass), but a slide file that `\newcommand`s/`\newcounter`s a name twice will error in a batch only if another
+slide of the batch defines the same name: not seen in the manual deck, covered by the singles retry. (3) A slide
+edited while the batch runs: record only units whose source hash still equals the one planned (as `ingest_compile` does).
+(4) The unit list for one batch must share preamble text, view and language (the wrapper asserts it). (5) The job name
+of the build folder comes from the wrapper hash; use a short id (the slide-id list in a name hit "File name too long").
+(6) Same wrapper text + same id reuses the build folder: a second identical batch is a 2.2 s one-pass run, which also
+makes a timing bench with an unchanged batch meaningless, use a fresh workspace. (7) Cancelling or a timeout now kills k slides.
+
 ### Plan 6 – One build folder per view (F6)
 
 1. Add the view and the language to the job identity in `preview_build._compile_cached`, as a second argument to
