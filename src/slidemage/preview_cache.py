@@ -8,8 +8,10 @@ Unsupported search expressions deliberately disable reuse.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
+import functools
 import hashlib
 from io import BytesIO
 import json
@@ -78,13 +80,75 @@ def file_state(path: Path):
         return None
 
 
-def input_state(paths) -> dict:
-    return {str(Path(path).absolute()): file_state(Path(path)) for path in sorted(set(map(str, paths)))}
+MEMO_LIMIT = 20_000
+MEMO_RACY_SECONDS = 3.0
+_MEMO = OrderedDict()           # resolved path -> ((size, mtime_ns, inode, ctime_ns), [resolved, sha256])
+_MEMO_LOCK = threading.Lock()
 
 
-def dependency_state(paths):
+class FileStates:
+    """file_state() that does not re-read the TeX distribution: the states of one lookup, store or validation.
+
+    A file inside one of `roots` (the trees users edit: search_roots()) is always read, so an edit that restores
+    the modification time is still seen. Any other file (TeX Live's or MiKTeX's own trees, the tool binaries, the
+    cache's own artifacts) is read once per process and again only when (size, mtime, inode, ctime) changes,
+    which a package update or a repair always does. ctime is when the file's metadata last changed and cannot
+    be set from userland on Linux and macOS; on Windows it is the creation time, but a rewritten file still
+    changes size or mtime (or its inode: an installer replaces files). A file changed less than MEMO_RACY_SECONDS
+    ago is read every time, as its timestamps may not have moved yet. A missing file is never remembered.
+    The result is what file_state() returns, so stored states stay valid. The memo is shared by every thread
+    and bounded to MEMO_LIMIT files.
+    """
+    def __init__(self, roots):
+        self._roots = tuple(dict.fromkeys(path for root in roots for path in (root.absolute(), root.resolve())))
+
+    def __call__(self, path: Path):
+        resolved, absolute = path.resolve(), path.absolute()
+        if any(absolute.is_relative_to(root) or resolved.is_relative_to(root) for root in self._roots):
+            return file_state(path)
+        key = str(resolved)
+        try:
+            info = resolved.stat()
+        except FileNotFoundError:
+            return None
+        fingerprint = (info.st_size, info.st_mtime_ns, info.st_ino, info.st_ctime_ns)
+        with _MEMO_LOCK:
+            known = _MEMO.get(key)
+            if known is not None and known[0] == fingerprint:
+                _MEMO.move_to_end(key)
+                return list(known[1])
+        state = file_state(path)
+        if state is not None and time.time() - max(info.st_mtime, info.st_ctime) >= MEMO_RACY_SECONDS:
+            with _MEMO_LOCK:
+                _MEMO[key] = (fingerprint, state)
+                _MEMO.move_to_end(key)
+                while len(_MEMO) > MEMO_LIMIT:
+                    _MEMO.popitem(last=False)
+        return state
+
+
+_TOOLS = {}
+TOOL_SECONDS = 30
+
+
+def find_tool(name: str, path: str | None):
+    """shutil.which(name, path=path), looked up again at most every TOOL_SECONDS for the same PATH (a scan of
+    PATH is slow on Windows; the preview asks for six tools several times a render)."""
+    now = time.monotonic()
+    known = _TOOLS.get((name, path))
+    if known is None or now - known[1] >= TOOL_SECONDS:
+        known = _TOOLS[name, path] = (shutil.which(name, path=path), now)
+    return known[0]
+
+
+def input_state(paths, states=None) -> dict:
+    states = states or file_state
+    return {str(Path(path).absolute()): states(Path(path)) for path in sorted(set(map(str, paths)))}
+
+
+def dependency_state(paths, states=None):
     paths = tuple(paths)
-    result = input_state(paths)
+    result = input_state(paths, states)
     for path in paths:
         try:
             count('dependency_bytes_read', Path(path).stat().st_size)
@@ -164,10 +228,11 @@ def configuration_state(project_root: Path, env: dict) -> dict:
           Path(env.get('XDG_CONFIG_HOME', str(home / '.config'))) / 'latexmk/latexmkrc', Path('/etc/LatexMk')]
     if env.get('LATEXMKRCSYS'):
         rc.append(Path(env['LATEXMKRCSYS']))
+    states = FileStates(search_roots(project_root, env))
     tools = {}
     for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
-        executable = shutil.which(name, path=env.get('PATH'))
-        tools[name] = file_state(Path(executable)) if executable else None
+        executable = find_tool(name, env.get('PATH'))
+        tools[name] = states(Path(executable)) if executable else None
     relevant = {name: value for name, value in env.items() if name.startswith(
         ('TEX', 'LUA', 'BIB', 'BST', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
         ('SLIDEMASTER_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
@@ -238,14 +303,15 @@ class ValidationPass:
         self.stability_seconds = 0.0
         self.stability_bytes = 0
 
-    def inputs(self, paths):
+    def inputs(self, paths, states=None):
+        states = states or file_state
         result = {}
         for path in paths:
             path = Path(path).absolute()
             key = str(path)
             if key not in self._files:
                 start = time.perf_counter()
-                self._files[key] = file_state(path)
+                self._files[key] = states(path)
                 self.dependency_seconds += time.perf_counter() - start
                 try:
                     self.hashed_bytes += path.stat().st_size
@@ -254,9 +320,9 @@ class ValidationPass:
             result[key] = self._files[key]
         return result
 
-    def dependency_inputs(self, paths):
+    def dependency_inputs(self, paths, states=None):
         before = self.hashed_bytes
-        result = self.inputs(paths)
+        result = self.inputs(paths, states)
         self.dependency_bytes += self.hashed_bytes - before
         return result
 
@@ -272,9 +338,10 @@ class ValidationPass:
         """Reject a result if an input changed while this validation batch ran."""
         start = time.perf_counter()
         try:
+            states = FileStates(search_roots(cache.project_root, env))
             for path, state in self._files.items():
                 candidate = Path(path)
-                current = file_state(candidate)
+                current = states(candidate)
                 try:
                     self.stability_bytes += candidate.stat().st_size
                 except OSError:
@@ -315,8 +382,8 @@ class PreviewCache:
         except (OSError, ValueError):
             return None
 
-    def lookup(self, identity, env: dict) -> CachedPreview | None:
-        return self._lookup(identity, env)
+    def lookup(self, identity, env: dict, *, validation=None) -> CachedPreview | None:
+        return self._lookup(identity, env, validation=validation)
 
     def group_lookup(self, group: str, env: dict, *, validation=None, thumbnail=False, display_only=False):
         """Validated image-group representative and its own PDF view.
@@ -487,8 +554,10 @@ class PreviewCache:
     @measure('cache_validation')
     def _lookup(self, identity, env, *, validation=None, thumbnail=False, display_only=False, historical=False):
         from .preview_equivalence import CONTRACT
-        states = validation.inputs if validation is not None else input_state
         try:
+            files = FileStates(search_roots(self.project_root, {} if historical else env))   # historical: no inputs checked
+            states = (functools.partial(validation.inputs, states=files) if validation is not None
+                      else functools.partial(input_state, states=files))
             identity = json.loads(json.dumps(identity))
             with build_lock(self.root / 'maintenance.lock', shared=True):
                 index = json.loads((self.root / digest(identity) / 'current.json').read_text())
@@ -505,8 +574,8 @@ class PreviewCache:
                             data['audited_resolution'] == CONTRACT and
                             same_pinned_resolution(data['evidence'], evidence, data['inputs'], identity)):
                         return None
-                    inputs = (validation.dependency_inputs(data['inputs']) if validation is not None
-                              else dependency_state(data['inputs']))
+                    inputs = (validation.dependency_inputs(data['inputs'], files) if validation is not None
+                              else dependency_state(data['inputs'], files))
                     if data['inputs'] != inputs:
                         return None
                 if data.get('raster_sequence') is not None and not valid_sequence(data['raster_sequence']):
@@ -579,13 +648,19 @@ class PreviewCache:
         directory = None
         try:
             identity = json.loads(json.dumps(identity))
-            if before is None or before != self.begin(env):
+            current = self.begin(env)
+            if before is None or before != current:
                 return None
             # A missing recorder is not evidence of an input-free TeX document.
             if not dependencies:
                 return None
-            inputs = dependency_state(dependencies)
-            evidence = self._evidence(env)
+            files = FileStates(search_roots(self.project_root, env))
+            inputs = dependency_state(dependencies, files)
+            # What _evidence() would give right now: `current` without the stability fields. The check below
+            # (begin() again) rejects the result unless nothing moved in between.
+            evidence = {'configuration': current['configuration'],
+                        'search': {root: None if entries is None else [entry[:2] for entry in entries]
+                                   for root, entries in current['search'].items()}}
             with build_lock(self.root / 'maintenance.lock', shared=True):
                 parent = self.root / digest(identity)
                 # Short names: the cache sits several folders deep in a project, and Windows paths stop at 260.
@@ -632,7 +707,7 @@ class PreviewCache:
                         'pages': pages, 'render_stamp': render_stamp, 'blobs': references,
                         'raster_sequence': sequence_evidence, 'deduplicated_images': deduplicated,
                         'audited_resolution': CONTRACT if audited_resolution else None}
-                if before != self.begin(env) or inputs != input_state(dependencies):
+                if before != self.begin(env) or inputs != input_state(dependencies, files):
                     shutil.rmtree(directory, ignore_errors=True)
                     return None
                 manifest = json.dumps(data)

@@ -3,6 +3,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import os
+import shutil
 import sys
 import time
 
@@ -149,7 +150,7 @@ def _fake_engine(monkeypatch, log='Success\nBeginning to dump on file preamble.f
 
     monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '1')
     # an executable that exists everywhere: the build's configuration key stats what `which` found
-    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: sys.executable)
+    monkeypatch.setattr(shutil, 'which', lambda *a, **k: sys.executable)
     monkeypatch.setattr(preview_format.subprocess, 'run', run)
     return runs
 
@@ -215,7 +216,7 @@ def test_fmt_option_names_the_file_for_miktex_and_uses_texformats_elsewhere(tmp_
     assert option == '-fmt=preamble' and env == {'A': '1', 'TEXFORMATS': str(tmp_path) + os.pathsep}
 
 
-@pytest.mark.skipif(not preview_format.shutil.which('lualatex'), reason='needs LuaLaTeX')
+@pytest.mark.skipif(not shutil.which('lualatex'), reason='needs LuaLaTeX')
 def test_a_real_format_loads_and_fontspec_works_after_it(tmp_path, monkeypatch):
     """The real engine, in a folder whose Windows path has `\\.build` in it: the format builds, loads (MiKTeX:
     through the full path), and a slide that calls fontspec's Lua side runs without errors."""
@@ -386,7 +387,7 @@ def test_the_framework_names_a_missing_ovl_and_top_like_latex_names_a_missing_au
         assert rf'\InputIfFileExists{{\jobname.{ext}}}{{}}{{\typeout{{No file \jobname.{ext}.}}}}' in base
 
 
-needs_tex_tools = pytest.mark.skipif(not all(preview_format.shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
+needs_tex_tools = pytest.mark.skipif(not all(shutil.which(tool) for tool in ('latexmk', 'lualatex', 'biber')),
                                      reason='needs latexmk, LuaLaTeX and biber')
 
 

@@ -265,6 +265,11 @@ in-memory size estimate passes `MAX_BYTES`) replaces it in `RenderService.work()
 7. Bench: `content_bytes_read` per edit render from ~100 MB to < 2 MB. On Windows, report the SlideMage-side time
    before and after. Also watch idle CPU with the Preview open (the 5 s revalidation).
 
+Done in v8.47.0: `FileStates(roots)` memoises the state of files outside the roots (stat fingerprint, racy files and
+misses not kept), `find_tool` memoises `shutil.which`, `work()` shares one `ValidationPass` between its two lookups,
+`store()` derives its evidence from the `begin()` it compares. No verdict cache for `_fresh` (35 ms, and 2 s could
+serve a format built from an edited theme). Linux, medians of 3: content read edit 143 → 2.0 MB, unchanged 44 → 1.1 MB.
+
 ### Plan 4 – Pixels first, bookkeeping after (F4)
 
 1. Split `RenderService.work()` into **deliver** (build, `prepare_preview_images`, set the request's result so

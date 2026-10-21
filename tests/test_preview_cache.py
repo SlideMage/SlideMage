@@ -1,10 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
+import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 
-from slidemage.preview_cache import PreviewCache
+import pytest
+
+from slidemage.preview_cache import PreviewCache, file_state, input_state
 
 
 def fixture(tmp_path):
@@ -350,3 +354,165 @@ def test_historical_display_is_exact_and_integrity_checked_but_never_a_fresh_hit
     assert cache.previous({**identity, 'view': 'during-course'}) is None
     result.pdf.write_bytes(b'corrupt')
     assert cache.previous(identity) is None
+
+
+
+# ---- system files: remembered by their stat; the user's own files: always read ----------------------------------
+
+@pytest.fixture
+def settled(monkeypatch):
+    """Files written by a test are 'racy' (changed so recently that their stat could still move) and never
+    remembered; these tests act as if they had been there for a while."""
+    from slidemage import preview_cache
+
+    monkeypatch.setattr(preview_cache, 'MEMO_RACY_SECONDS', -1)
+
+
+def later(path, seconds):
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + seconds * 10 ** 9))
+
+
+def bytes_read(function, *args):
+    from slidemage.preview_metrics import PreviewMetrics
+
+    with PreviewMetrics() as metrics:
+        result = function(*args)
+    return result, metrics.counters.get('content_bytes_read', 0)
+
+
+def states_for(tmp_path):
+    from slidemage.preview_cache import FileStates
+
+    root = tmp_path / 'project'
+    root.mkdir(exist_ok=True)
+    system = tmp_path / 'texlive'
+    system.mkdir(exist_ok=True)
+    return FileStates([root]), root, system
+
+
+def test_a_file_outside_the_roots_is_read_once_while_its_stat_is_unchanged(settled, tmp_path):
+    states, _, system = states_for(tmp_path)
+    package = system / 'beamer.sty'
+    package.write_text('PACKAGE')
+    first, read = bytes_read(states, package)
+    assert read == len('PACKAGE')
+    second, read = bytes_read(states, package)
+    assert (second, read) == (first, 0)
+
+
+def test_a_file_outside_the_roots_is_hashed_again_when_its_size_or_mtime_changes(settled, tmp_path):
+    states, _, system = states_for(tmp_path)
+    package = system / 'beamer.sty'
+    package.write_text('PACKAGE')
+    first = states(package)
+    package.write_text('PACKAGE 2')                 # another size
+    second, read = bytes_read(states, package)
+    assert second != first and second == file_state(package) and read == len('PACKAGE 2')
+    package.write_text('PACKAGE 3')                 # the same size, another mtime
+    later(package, 10)
+    third, read = bytes_read(states, package)
+    assert third != second and third == file_state(package) and read == len('PACKAGE 3')
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='ctime is the creation time on Windows')
+def test_a_file_outside_the_roots_changed_with_its_mtime_restored_is_hashed_again(settled, tmp_path):
+    states, _, system = states_for(tmp_path)
+    package = system / 'beamer.sty'
+    package.write_text('PACKAGE 1')
+    first = states(package)
+    old = package.stat()
+    package.write_text('PACKAGE 2')
+    os.utime(package, ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert states(package) != first
+
+
+def test_a_file_changed_a_moment_ago_is_not_remembered(tmp_path):
+    states, _, system = states_for(tmp_path)
+    package = system / 'cache.luc'
+    package.write_text('LUA')
+    assert bytes_read(states, package)[1] == bytes_read(states, package)[1] == 3
+
+
+def test_a_file_inside_the_roots_is_always_read(settled, tmp_path):
+    states, root, _ = states_for(tmp_path)
+    theme = root / 'theme.sty'
+    theme.write_text('THEME ONE')
+    assert bytes_read(states, theme)[1] == bytes_read(states, theme)[1] == len('THEME ONE')
+    linked = tmp_path / 'elsewhere.sty'                 # outside, but reached through a link in the project
+    linked.write_text('LINKED')
+    link = root / 'linked.sty'
+    link.symlink_to(linked)
+    assert bytes_read(states, link)[1] == bytes_read(states, link)[1] == len('LINKED')
+
+
+def test_a_missing_file_has_no_state_and_is_not_remembered(settled, tmp_path):
+    states, _, system = states_for(tmp_path)
+    package = system / 'later.sty'
+    assert states(package) is None
+    package.write_text('LATER')
+    assert states(package) == file_state(package)
+
+
+def test_remembered_states_have_the_stored_shape(settled, tmp_path):
+    states, root, system = states_for(tmp_path)
+    package = system / 'beamer.sty'
+    package.write_text('PACKAGE')
+    states(package)
+    assert states(package) == file_state(package) == [str(package.resolve()), hashlib.sha256(b'PACKAGE').hexdigest()]
+    assert input_state([package], states) == input_state([package])
+
+
+def test_the_memo_is_bounded(settled, tmp_path, monkeypatch):
+    from slidemage import preview_cache
+
+    monkeypatch.setattr(preview_cache, 'MEMO_LIMIT', 2)
+    states, _, system = states_for(tmp_path)
+    for index in range(4):
+        package = system / f'{index}.sty'
+        package.write_text('x')
+        states(package)
+    assert len(preview_cache._MEMO) <= 2
+
+
+def test_configuration_state_reads_the_tool_binaries_once(settled, tmp_path):
+    from slidemage.preview_cache import configuration_state
+
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    latexmk = bin_dir / 'latexmk'
+    latexmk.write_bytes(b'x' * 5000)
+    latexmk.chmod(0o755)
+    env = dict(env, PATH=str(bin_dir))
+    first, read = bytes_read(configuration_state, cache.project_root, env)
+    assert read >= 5000 and first['tools']['latexmk'] == file_state(latexmk)
+    again, read = bytes_read(configuration_state, cache.project_root, env)
+    assert again == first and read < 5000
+    latexmk.write_bytes(b'y' * 5001)
+    assert configuration_state(cache.project_root, env) != first
+
+
+def test_a_dependency_outside_the_roots_hits_until_it_changes(settled, tmp_path):
+    cache, identity, env, pdf, source, package = fixture(tmp_path)
+    system = tmp_path / 'texlive'
+    system.mkdir()
+    beamer = system / 'beamer.sty'
+    beamer.write_text('BEAMER 1')
+    assert cache.store(identity, env, pdf=pdf, display_png=b'PNG', dependencies=(str(source), str(beamer)),
+                       before=cache.begin(env))
+    entry, read = bytes_read(cache.lookup, identity, env)
+    assert entry is not None and read < 1000 and str(beamer) in entry.dependencies
+    assert PreviewCache(cache.project_root).lookup(identity, env) is not None
+    beamer.write_text('BEAMER 2 (an update)')
+    assert cache.lookup(identity, env) is None
+
+
+def test_the_tool_lookup_is_remembered_per_path(tmp_path, monkeypatch):
+    from slidemage import preview_cache
+
+    calls = []
+    monkeypatch.setattr(preview_cache.shutil, 'which', lambda name, path=None: calls.append((name, path)) or f'/bin/{name}')
+    assert preview_cache.find_tool('lualatex', 'A') == preview_cache.find_tool('lualatex', 'A') == '/bin/lualatex'
+    preview_cache.find_tool('lualatex', 'B')
+    assert calls == [('lualatex', 'A'), ('lualatex', 'B')]

@@ -26,6 +26,7 @@ from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
+from .preview_cache import find_tool
 from .project import ProjectContext
 
 _ACTIVE_LOCK = threading.RLock()
@@ -193,7 +194,7 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
         rc_paths.append(Path(env['LATEXMKRCSYS']))
     tools = {}
     for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
-        executable = shutil.which(name, path=env.get('PATH'))
+        executable = find_tool(name, env.get('PATH'))
         if executable:
             path = Path(executable).resolve()
             info = path.stat()

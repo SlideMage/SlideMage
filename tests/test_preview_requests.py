@@ -3,6 +3,7 @@
 """Cancellation reaches lock waits and the complete TeX process tree, without sockets."""
 from types import SimpleNamespace
 import os
+import shutil
 import sys
 import threading
 
@@ -141,7 +142,7 @@ def test_cancel_preamble_build_propagates_and_releases_format_lock(tmp_path, mon
     from slidemage import preview_format
 
     monkeypatch.delenv('SLIDEMAGE_PREVIEW_FORMAT', raising=False)
-    monkeypatch.setattr(preview_format.shutil, 'which', lambda *a, **k: '/fake/lualatex')
+    monkeypatch.setattr(shutil, 'which', lambda *a, **k: '/fake/lualatex')
     cancel = compiler.CancelToken()
 
     def run(*a, **kw):

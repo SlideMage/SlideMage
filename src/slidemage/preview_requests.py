@@ -483,15 +483,16 @@ class RenderService:
         def work(cancel):
             env = compiler.build_env(target.context)
             if not options.force:
+                validation = preview_cache.ValidationPass()    # the two lookups share one evidence and one read per file
                 if group_key is not None and not require_pdf:
-                    found = cache.group_lookup(group_key, env)
+                    found = cache.group_lookup(group_key, env, validation=validation)
                     if found is not None and image_group(spec, identity) == group:
                         try:
                             return pin(found[0], 'cached', representative=found[1],
                                        representative_identity=found[2], evidence=found[3])
                         except OSError:
                             pass
-                entry = cache.lookup(identity, env)
+                entry = cache.lookup(identity, env, validation=validation)
                 if entry is not None:
                     try:
                         return pin(entry, 'cached')

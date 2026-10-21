@@ -90,6 +90,16 @@ def _fresh_raster_version():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_tool_lookups():
+    """The preview remembers where `which` found the TeX tools; a test that patches `which` or PATH starts and leaves it empty."""
+    from slidemage import preview_cache
+
+    preview_cache._TOOLS.clear()
+    yield
+    preview_cache._TOOLS.clear()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_cache_dir(monkeypatch, tmp_path_factory):
     """The render store's index lives in the user's cache folder; a test gets one of its own."""
     from slidemage import project
