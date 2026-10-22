@@ -4,7 +4,7 @@
 the window, defined once.
 
 A `Command` says what an action is called, where it belongs, when it is available and
-what it does. The top bar's buttons, the Compile and ⋮ menus, the slide list's context
+what it does. The top bar's buttons, the menu bar, the Compile menu, the slide list's context
 menus and the command palette (⌘K) all build their entries from the registry, so a
 label, a shortcut or an enabled rule is written in one place. The commands themselves
 are listed in workspace/actions.py.
@@ -38,6 +38,7 @@ class Command:
     run: Callable[[Context], None]
     icon: str = ""            # a Material icon name, shown in the palette
     shortcut: str = ""        # "Ctrl+K": installed on the window and shown next to the entry
+    hint: str = ""            # a key that is bound elsewhere (a view's own shortcut, the system's Alt+F4): shown only
     meta: Text = ""           # a second text: a count, a hint
     tone: str = ""            # "danger" for what destroys something
     enabled: Callable[[Context], bool] = _always   # shown greyed out when False
@@ -47,8 +48,9 @@ class Command:
         return self.label(ctx) if callable(self.label) else self.label
 
     def key_text(self) -> str:
-        """The shortcut as the platform writes it."""
-        return QKeySequence(self.shortcut).toString(QKeySequence.SequenceFormat.NativeText) if self.shortcut else ""
+        """The shortcut, else the hint, as the platform writes it."""
+        key = self.shortcut or self.hint
+        return QKeySequence(key).toString(QKeySequence.SequenceFormat.NativeText) if key else ""
 
     def info(self, ctx: Context) -> str:
         """The metadata column: the meta text, else the shortcut."""

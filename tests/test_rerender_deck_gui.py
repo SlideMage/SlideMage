@@ -8,13 +8,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from conftest import command_context, qapp as qapp, wait_until  # noqa: F401 -- fixture
+from conftest import command_context, filled_menu, menu_actions, qapp as qapp, wait_until  # noqa: F401 -- fixture
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from slidemage import update_all_previews
 from slidemage.ui.workspace import compile_actions
-from slidemage.ui.workspace.actions import DECK, build_registry
-from slidemage.ui.workspace.menus import build_more_menu
+from slidemage.ui.workspace.actions import DECK
 from slidemage.ui.workspace.palette import command_entries
 
 from test_workspace_window import COURSE, window as window  # noqa: F401 -- fixture
@@ -65,9 +64,10 @@ def test_the_command_is_a_deck_command_in_the_palette_and_needs_a_deck(window):
     assert LABEL in {e.label for e in command_entries(window, [])}
 
 
-def test_the_command_is_not_in_the_menu_any_more_the_sheet_and_the_palette_have_it(qapp):
-    entries = {e[1] for e in build_more_menu(None, command_context(COURSE))._entries if e[0] == "item"}
-    assert not entries & {"rerender_deck_previews", "update_previews"} and "rerender_deck_previews" in build_registry()
+def test_the_command_is_in_the_deck_menu_and_update_previews_in_housekeeping(qapp):
+    context = command_context(COURSE)
+    assert menu_actions(filled_menu(context, "Deck"))["rerender_deck_previews"].isEnabled()
+    assert "update_previews" in menu_actions(filled_menu(context, "Housekeeping"))
 
 
 # -- the action ----------------------------------------------------------------------

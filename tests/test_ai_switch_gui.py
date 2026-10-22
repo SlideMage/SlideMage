@@ -410,8 +410,8 @@ def test_images_is_not_a_top_bar_button_any_more_but_a_close_button_while_it_is_
     assert not bar._images.isHidden() and bar._images.text() == "Close images" and bar._images.property("kind") == "primary"
     bar._images.click()
     assert bar._images.isHidden()
-    from slidemage.ui.workspace.menus import MORE_COLUMNS
-    assert "images" in dict(MORE_COLUMNS[1])["Project"]
+    from conftest import filled_menu, menu_actions
+    assert "images" in menu_actions(filled_menu(window, "View"))
 
 
 def test_the_busy_query_lists_ask_ai_to_fix_and_the_ollama_slot(window):

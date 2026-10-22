@@ -27,12 +27,11 @@ from slidemage.ui.workspace.actions import VIEW_AND_BUILD
 from slidemage.ui.workspace.menus import (
     build_compile_menu,
     build_deck_menu,
-    build_more_menu,
     deck_key,
 )
 from slidemage.ui.workspace.palette import command_entries
 
-from conftest import EXAMPLE_PROJECT, build_window, command_context, qapp as qapp
+from conftest import EXAMPLE_PROJECT, build_window, command_context, filled_menu, menu_actions, qapp as qapp
 from slidemage.project import ProjectContext
 
 
@@ -220,10 +219,9 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     assert bar._compile.toolTip() == "Compile PDF · Instructor"
     assert ("compile:instructor", "Compile PDF · Instructor", True) in entries(bar._compile_menu)
     monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
-    bar._more.click()
-    menu = bar.findChildren(PopoverMenu)[-1]
-    assert ("images", "Image descriptions", True) in entries(menu)      # Images is in ⋮ → Project at every width
-    menu._on_activated("images")
+    images = menu_actions(filled_menu(window, "View"))["images"]     # Images is in the menu bar at every width
+    assert images.isEnabled() and images.text() == "Image descriptions"
+    images.trigger()
     assert window.stack.currentWidget() is window.images_page and not bar._images.isHidden()
     bar._images.click()
     assert window.stack.currentWidget() is window.centre and bar._images.isHidden()
@@ -554,19 +552,21 @@ def test_a_deck_command_runs_with_the_current_deck(window, monkeypatch):
     (None, ["deck_settings", "duplicate_deck", "submenu:export", "archive_deck"]),
 ])
 def test_deck_actions_are_disabled_where_the_old_row_had_no_such_button(qapp, deck, disabled):
-    enabled = items(build_more_menu(None, command_context(deck)))
+    actions = menu_actions(filled_menu(command_context(deck), "Deck"))
     deck_keys = ["deck_settings", "duplicate_deck", "submenu:export", "archive_deck"]
-    assert [key for key in deck_keys if not enabled[key]] == disabled
+    assert [key for key in deck_keys if not actions[key].isEnabled()] == disabled
 
 
-def test_the_more_button_opens_the_menu_and_forwards_the_choice(window):
-    seen: list = []
-    window.topbar.command.connect(seen.append)
-    window.topbar._more.click()
-    menu = window.topbar.findChildren(PopoverMenu)[-1]
-    assert menu.isVisible()
-    menu._on_activated("images")         # opens a page, no modal dialog
-    assert seen == ["images"] and not menu.isVisible()
+def test_the_menu_bar_has_its_nine_menus_and_runs_the_choice(window, monkeypatch):
+    monkeypatch.setattr(window.images_page, "ensure_loaded", lambda: None)
+    bar = window.menuBar()
+    assert [a.text() for a in bar.actions()] == [
+        "&File", "&Edit", "&Deck", "&Slide", "&View", "&Build", "&AI", "H&ousekeeping", "&Help"]
+    assert not hasattr(window.topbar, "_more")                          # the ⋮ button is gone
+    view = bar.findChild(type(filled_menu(window, "View")), "menu:view")
+    view.aboutToShow.emit()                                              # filled as it opens
+    menu_actions(view)["images"].trigger()                               # opens a page, no modal dialog
+    assert window.stack.currentWidget() is window.images_page
 
 
 def test_all_views_compiles_every_view_the_deck_has(window, monkeypatch):

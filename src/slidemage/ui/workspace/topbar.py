@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The workspace's top bar (prototype v6): logo, deck switcher, the AI switch (ai_switch.py), "View as",
-EN/DE, save status, Preview/Split/Source/Details, Compile and ⋮. While the Images page is open, a "Close images"
-button stands before ⋮ (Images itself is in ⋮ and ⌘K).
+EN/DE, save status, Preview/Split/Source/Details and Compile, under the window's menu bar (menus.py), which has
+every other command. While the Images page is open, a "Close images" button follows Compile (Images itself is in
+View and ⌘K).
 
 The bar changes the shared WorkspaceState for the things that are state (deck,
 view, language, mode) and reports every other click as a command id through
@@ -20,7 +21,7 @@ from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .ai_switch import AiSwitch
-from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
+from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
@@ -132,9 +133,6 @@ class TopBar(QWidget):
         self._images.clicked.connect(lambda: self.command.emit("images"))
         self._images.hide()
         add(self._images)
-        self._more = IconButton("more_vert", "More")
-        self._more.clicked.connect(self._open_more_menu)
-        add(self._more)
         self._right_column = IconButton("last_page")
         self._right_column.setCheckable(True)
         self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
@@ -166,7 +164,7 @@ class TopBar(QWidget):
         switch = self.ai_switch
         stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
                  *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
-                 self._images, self._more, self._right_column]
+                 self._images, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
 
@@ -301,11 +299,3 @@ class TopBar(QWidget):
             if deck_key(deck) == key:
                 self._state.set_deck(deck)
                 return
-
-    def _open_more_menu(self) -> None:
-        menu = build_more_menu(self, self._window)
-        menu.triggered.connect(self.command)
-        menu.closed.connect(lambda: self._more.set_active(False))
-        menu.closed.connect(menu.deleteLater)
-        self._more.set_active(True)
-        menu.popup_below(self._more, align_right=True)

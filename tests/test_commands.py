@@ -8,10 +8,10 @@ import pytest
 from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QWidget
 
-from conftest import command_context, more_menu_ids
+from conftest import command_context, filled_menu, menu_actions, menu_bar_ids
 from slidemage.ui.commands import Command, CommandRegistry
 from slidemage.ui.workspace.actions import build_registry
-from slidemage.ui.workspace.menus import build_compile_menu, build_more_menu
+from slidemage.ui.workspace.menus import build_compile_menu
 
 
 # -- the registry ---------------------------------------------------------------------
@@ -89,22 +89,23 @@ def test_every_action_of_the_former_menu_bar_and_deck_row_is_in_the_registry():
 
 def test_every_command_a_menu_lists_exists_and_every_command_is_in_a_menu_or_the_palette(qapp):
     registry = build_registry()
-    listed = set(more_menu_ids())
+    listed = set(menu_bar_ids())
     assert [i for i in listed if i not in registry] == []
+    # Every command is in the menu bar; Switch deck… is its Deck → Switch deck submenu there.
+    assert {c.id for c in registry} - listed == {"switch_deck"}
     context = command_context()
-    assert {k for menu in (build_more_menu(None, context), build_compile_menu(None, context))
-            for k in (e[1] for e in menu._entries if e[0] == "item") if not k.startswith("submenu:")} <= {c.id for c in registry}
+    assert {k for k in (e[1] for e in build_compile_menu(None, context)._entries if e[0] == "item")
+            if not k.startswith("submenu:")} <= {c.id for c in registry}
 
 
 # -- the menus come from the registry ------------------------------------------------------
 
 def test_a_menu_entry_shows_the_commands_label_tone_shortcut_and_availability(qapp):
     context = command_context()   # no deck
-    entries = {e[1]: e for e in build_more_menu(None, context)._entries if e[0] == "item"}
-    archive = entries["archive_deck"]
-    assert (archive[2], archive[5], archive[6]) == ("Archive deck…", "danger", False)
-    assert entries["present"][3] == "F5" and "deck_settings" in entries and "log" not in entries
-    assert entries["submenu:housekeeping"][6]
+    deck = menu_actions(filled_menu(context, "Deck"))
+    assert (deck["archive_deck"].text(), deck["archive_deck"].isEnabled()) == ("Archive deck…", False)
+    assert deck["present"].text() == "Present deck\tF5" and "deck_settings" in deck and "log" not in deck
+    assert menu_actions(filled_menu(context, "Housekeeping"))["housekeeping"].isEnabled()
 
 
 def test_deck_settings_has_the_preferences_shortcut_and_no_other_command_uses_it(qapp):

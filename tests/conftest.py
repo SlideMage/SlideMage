@@ -160,12 +160,39 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
                            left_column_hidden=False, right_column_hidden=False)
 
 
-def more_menu_ids() -> list[str]:
-    """Every command id the ⋮ menu lists: its columns (the flyouts' commands included) and its footer."""
-    from slidemage.ui.workspace.menus import MORE_COLUMNS, MORE_FOOTER, Submenu
+def menu_bar_ids() -> list[str]:
+    """Every command id the menu bar can show (menus.py MENU_BAR), its submenus included."""
+    from slidemage.ui.workspace.menus import menu_bar_ids as ids
 
-    return [j for sections in MORE_COLUMNS for _h, ids in sections for i in ids
-            for j in (i.ids if isinstance(i, Submenu) else (i,))] + list(MORE_FOOTER)
+    return ids(command_context())
+
+
+_FILLED_MENUS: list = []     # kept, so the actions a test holds on to outlive the expression that built their menu
+
+
+def filled_menu(ctx, title: str):
+    """The menu bar's menu `title` ("Deck"), filled for `ctx` as when it opens."""
+    from PySide6.QtWidgets import QMenu
+
+    from slidemage.ui.workspace.menus import MENU_BAR, fill_menu
+
+    menu = QMenu()
+    _FILLED_MENUS.append(menu)
+    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in MENU_BAR}[title])
+    return menu
+
+
+def menu_actions(menu) -> dict:
+    """A filled menu's actions by name: command ids, "submenu:<title>" for a submenu's row, submenus included."""
+    found = {}
+    for action in menu.actions():
+        sub = action.menu()
+        if sub is not None:
+            found[sub.objectName()] = action
+            found.update(menu_actions(sub))
+        elif action.objectName():
+            found[action.objectName()] = action
+    return found
 
 
 @pytest.fixture(autouse=True)

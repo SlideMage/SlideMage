@@ -47,13 +47,14 @@ deck switcher offers the rest). From top to bottom and left to right:
   (active decks under their group headings, archived decks at the foot), *View as*
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
-  **Preview | Split | Source | Details**, the **Compile PDF** split button, and
-  the **⋮** menu (one popover in two columns, *This deck* | *Project*, with Settings… in its footer: Present,
-  Deck settings… (`Ctrl+,`), Export ▸ (Export PPTX…, Export LaTeX…), Duplicate deck… and Archive deck…; Image descriptions, Open project…,
-  New deck… and Housekeeping ▸ (Housekeeping…, Archive unused…); a ▸ row opens a flyout left of the menu). Everything else the old menu bar and the deck table's
-  per-row buttons held is in `Ctrl+K`, and some of it also in a sheet: snapshot, previews and slide versions
-  under Deck settings → General → Maintenance; the .bib file, test slides and project compatibility under
-  Settings → Project; version history and the update check under Settings → About.
+  **Preview | Split | Source | Details** and the **Compile PDF** split button.
+- **Menu bar** (v8.56, `menus.py` `MENU_BAR`, `build_menu_bar`): File, Edit, Deck, Slide, View, Build, AI,
+  Housekeeping and Help list every command of the registry (Deck → Switch deck is a submenu of the decks), each
+  menu filled from the registry when it opens. An item shows its key after a tab and binds none; the window's
+  `QShortcut`s are the only bindings, and the keys are those of the system SlideMage runs on (`actions.MAC_KEYS`).
+  Some commands are also in a sheet: snapshot, previews and slide versions under Deck settings → General →
+  Maintenance; the .bib file, test slides and project compatibility under Settings → Project; version history and
+  the update check under Settings → About.
 - **Compile PDF** compiles the deck for the view chosen in the top bar; its arrow lists
   every version the old deck table's checkboxes made (Instructor, During course, After
   course, *All views*, *After course, one PDF per chapter*, *Presenter*), the pages of the
@@ -184,7 +185,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   that run or configure AI show the route as a `ModeBadge` under their title (`ai_models.add_route_badge`).
 - **Top bar Tab order** (v8.15.1): Tab (Shift+Tab) follows the bar from left to right -- ⇤ slide list, deck switcher,
   the AI switch, View as, EN | DE, Preview | Split | Source | Details, Compile PDF and its ▾, Close images (when the
-  Images page is open), ⋮, ⇥ -- and goes on into the slide list, the centre and the assistant (`TopBar._set_tab_order`).
+  Images page is open), ⇥ -- and goes on into the slide list, the centre and the assistant (`TopBar._set_tab_order`).
   A segmented control is one stop (**←/→** change it); the deck switcher opens on the current deck with **Enter**,
   **Space** or **↓**, and **Esc** returns to it.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
@@ -218,7 +219,7 @@ until the next start deletes it. A copy running from source only reports
 the new version -- update it with `git pull`.
 
 Since v4.1.0 the packaged app also checks by itself, three seconds after
-it starts, as chosen under **⋮ → Settings… → General → Updates**:
+it starts, as chosen under **File → Settings… → General → Updates**:
 *Don't check for updates*, *Check for updates and ask before installing*
 (the default; the question also offers "Always install automatically" and
 "Stop checking for updates") or *Check for updates and install them
@@ -251,7 +252,7 @@ check reports that no release was found.
    (`github_pat_…`) -- GitHub shows it only once. When it expires, the
    update check reports that no release was found until a new one is
    saved.
-2. **Add it in SlideMage.** ⋮ → Settings… → General → Updates:
+2. **Add it in SlideMage.** File → Settings… → General → Updates:
    paste the token into "GitHub token" and press Enter. It's saved for
    your user account only -- in `~/.config/slidemage/github_token`
    (readable only by you) or `%APPDATA%\SlideMage\github_token` -- never
@@ -285,7 +286,7 @@ this repository public -- then no token is needed.
 
 ## Images page
 
-Since 6.0 a full-window page (`ui/pages/images.py`; opened by ⋮ → Project → *Image descriptions*, `Ctrl+K`, or a slide
+Since 6.0 a full-window page (`ui/pages/images.py`; opened by View → *Image descriptions*, `Ctrl+K`, or a slide
 row's *Images* entry, and closed by the top bar's **Close images** button) that
 replaces the workspace's columns -- before, the third permanent tab (added 2026-08-14,
 labelled "Image descriptions" until 2026-08-15). It is where every image in the
@@ -573,12 +574,12 @@ What matters when touching *this code*:
   bare ID no longer resolves to a `-current.tex` file, same as
   `alt_images.SyncReport.missing`. Wired in three places: automatically
   after a rename, automatically after the Add slide sheet's "Translate"
-  flow, and as **⋮ → Housekeeping… → Reestablish broken translation
+  flow, and as **Housekeeping → Housekeeping… → Reestablish broken translation
   links** (a plain toolbar button until 2026-08-25) for running by hand
   any time.
 - [`translation_prompts.py`](../src/slidemage/translation_prompts.py) -- per-(model, source
   language, target language) prompt configuration for
-  `alt_draft.OllamaTranslationBackend`, editable from **⋮ → Settings…
+  `alt_draft.OllamaTranslationBackend`, editable from **File → Settings…
   → Prompts** (`ui/dialogs/settings_prompts.py`). Different
   Ollama models expect very different prompt shapes -- a dedicated MT model
   wants a short bare instruction with an exact blank-line count before the
@@ -625,7 +626,7 @@ What matters when touching *this code*:
   read, so it moves per pass), Update previews (one 4-pass megadeck per template)
   and Export PPTX; a job of unknown size shows the busy animation. The status
   label shows e.g. "pass 2/4, slide 137/395".
-- [`ui/dialogs/settings.py`](../src/slidemage/ui/dialogs/settings.py) -- the **⋮ → Settings…**
+- [`ui/dialogs/settings.py`](../src/slidemage/ui/dialogs/settings.py) -- the **File → Settings…**
   sheet (step 9c of the redesign; first a Preferences dialog, 2026-08-25). Tabs:
   **General** (dark mode, the Source editor's tab width, the template single slides render
   with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
@@ -810,7 +811,7 @@ What matters when touching *this code*:
   Single-slide renders run on a worker thread through
   `preview_build.py`'s cached latexmk graph (see "Interactive preview builds" in the
   README).
-- [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- **Duplicate deck…** (⋮ menu, *This deck*). A plain `shutil.copy2` under a new filename stem, no
+- [`deck_duplicate.py`](../src/slidemage/deck_duplicate.py) -- **Duplicate deck…** (Deck menu). A plain `shutil.copy2` under a new filename stem, no
   content rewriting needed (unlike `archive.py`'s `archive_deck()`): a
   deck's name is derived purely from its filename, never embedded in the
   `.tex` content itself. `is_valid_deck_name()` is exposed separately from
@@ -906,8 +907,8 @@ What matters when touching *this code*:
     ThumbnailGrid, ...); `python -m slidemage.ui.kit.gallery` shows them all.
   - `ui/commands.py` -- `Command`, `CommandRegistry`, `bind_shortcuts`; the ~95 commands
     are registered in `ui/workspace/actions.py` (`build_registry()`), and the menus in
-    `menus.py` are lists of command ids (the ⋮ menu's two columns and footer are `MORE_COLUMNS`, drawn by
-    `PopoverMenu.add_column()`/`add_footer()`; a `Submenu` entry is `add_submenu()`, a flyout), so the top bar, the ⋮ menu, the context menus and the
+    `menus.py` are lists of command ids (the menu bar is `MENU_BAR`, its sections drawn into `QMenu`s by
+    `fill_menu`; a `Submenu` entry is a submenu), so the top bar, the menu bar, the context menus and the
     palette share one definition (`slide:*`, `section:*`, `compile:*`, ...). A new feature
     registers its command there.
   - `ui/workspace/` -- `window.py` (`WorkspaceWindow`) with `state.py` (`WorkspaceState`: the

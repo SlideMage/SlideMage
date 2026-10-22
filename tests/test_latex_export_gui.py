@@ -67,11 +67,11 @@ def test_the_toast_action_opens_the_exported_folder(monkeypatch, tmp_path):
 
 
 def test_the_command_is_in_the_export_flyout_and_the_palette(window):
-    from slidemage.ui.workspace.menus import MORE_COLUMNS, Submenu
+    from conftest import filled_menu, menu_actions
     from slidemage.ui.workspace.palette import command_entries
 
-    flyouts = {s.title: s.ids for sections in MORE_COLUMNS for _h, ids in sections for s in ids if isinstance(s, Submenu)}
-    assert flyouts["Export"] == ("export_pptx", "export_latex")
+    export = menu_actions(filled_menu(window, "Deck"))["submenu:export"].menu()
+    assert [a.objectName() for a in export.actions()] == ["export_pptx", "export_latex"]
     command = window.commands["export_latex"]
     assert command.title(window) == "Export LaTeX…" and command.info(window) == "self-contained · with media folder"
     assert [e.label for e in command_entries(window, ["export", "latex"])] == ["Export LaTeX…"]
