@@ -1,0 +1,33 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, chapter "Working in SlideMage": presenting a deck from SlideMage (v8.24.0, v8.28.0;
+% ui/presentation/controller.py has the keys, Settings -> Presentation the choices).
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Presenting}
+	\small
+	\emph{Deck} $\rightarrow$ \emph{Present deck} (\SMCode{F5}) shows the deck's presenter PDF: the projector shows the slide, your screen the current and next slide, your notes and a clock or timer. Without a presenter PDF, SlideMage offers to compile it first.
+	\par\medskip
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\textbf{Moving}
+			\shrinklists{1}
+			\begin{itemize}
+				\item Arrows, \SMCode{Space}, the mouse wheel and clickers step through the reveal steps
+				\item \SMCode{Home}, \SMCode{End}; a slide number and \SMCode{Enter} jump there, \SMCode{Alt+Left} jumps back
+				\item \SMCode{P} switches your screen's layout; \SMCode{Esc} ends
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\textbf{Showing}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \SMCode{B} blacks out the projector, \SMCode{F} freezes it
+				\item \SMCode{Ctrl} + click is a laser pointer; \SMCode{D} draws, \SMCode{E} erases, \SMCode{Delete} clears; \emph{Pen} sets colour and width
+				\item \SMCode{T} starts or stops the timer
+			\end{itemize}
+		\end{column}
+	\end{columns}
+	\par\medskip
+	\emph{Settings} $\rightarrow$ \emph{Presentation} sets the layout, colours, timer and projector screen. On the start screen, \emph{Present a PDF\ldots} shows any PDF without opening a project.
+\end{standardframe}

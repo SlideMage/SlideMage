@@ -3,10 +3,10 @@
 
 % SlideMage manual, chapter "Working in SlideMage": slide previews, with the Preview view
 % (tools/manual/make_screenshots.py, shot workspace-preview).
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-0-0+}
 \begin{standardframe}{Slide previews}
 	\small
-	SlideMage keeps a small picture of every slide, taken from its last compile, so you recognize slides at a glance: as thumbnails in the slide list and in \emph{Preview}. Previews belong to a template: a slide compiled in two templates has two.
+	SlideMage keeps a picture of every slide for the slide list and the \emph{Preview}, rendered in the background while you are not using it, so decks open with their previews ready.
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.37\linewidth}
@@ -16,9 +16,10 @@
 			\shrinklists{2}
 			\begin{itemize}
 				\item \emph{Preview} shows the saved picture at once; chips say what it is not showing: a pinned version, another language, a missing translation, a view that skips the slide
-				\item A list row says \emph{preview old} when the source is newer; \emph{Render} makes a fresh one in the chosen view and language
-				\item Every compile that includes the slide refreshes it: a cache, not a live view
-				\item Three-dot menu $\rightarrow$ \emph{Housekeeping} $\rightarrow$ \emph{Update slide previews} compiles every slide once
+				\item \emph{preview old} in a list row: the source is newer; \emph{Render} makes a fresh one
+				\item \emph{Background previews}: the dial under the slide shows how much is ready, the chip what is left; \emph{Settings} $\rightarrow$ General sets speed and disk limit
+				\item The mouse wheel steps through reveal steps, then slides; the bar under the slide shows each deck version's steps
+				\item \emph{Housekeeping} $\rightarrow$ \emph{Update slide previews} renders all slides
 			\end{itemize}
 		\end{column}
 	\end{columns}

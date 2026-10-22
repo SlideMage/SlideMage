@@ -47,19 +47,19 @@ PLACEHOLDER_DECKS = {"#workdeck": "work", "course-example-2027s": "course", "tal
 # is (left, top, right, bottom) as fractions of the shot, None for all of it.
 MANUAL_IMAGES = {
     "main-window": ("workspace-preview", None),
-    "slide-list": ("slide-list", (0.004, 0.118, 0.209, 1.0)),
+    "slide-list": ("slide-list", (0.004, 0.163, 0.209, 1.0)),
     "slide-editor": ("workspace-source", None),
-    "slide-details": ("workspace-details", (0.1525, 0.105, 0.6725, 0.405)),
-    "slide-preview": ("workspace-preview", (0.139, 0.08, 0.685, 0.99)),
-    "side-panel": ("panel-visibility", (0.6875, 0.08, 0.9925, 0.265)),
-    "deck-switcher": ("menu-deck", (0.0, 0.0, 0.245, 0.27)),
+    "slide-details": ("workspace-details", (0.19, 0.14, 0.765, 0.535)),
+    "slide-preview": ("workspace-preview", (0.176, 0.113, 0.778, 0.99)),
+    "side-panel": ("panel-visibility", (0.785, 0.125, 0.9925, 0.25)),
+    "deck-switcher": ("menu-deck", (0.0, 0.033, 0.245, 0.303)),
     "tags-dialog": ("deck-group", None),
     "images-page": ("images-page", None),
     "images-toolbar": ("images-page", (0.0, 0.745, 0.2, 0.985)),
     "save-dialog": ("save-prompt", None),
     "transcript": ("transcript", None),
-    "chat": ("chat", (0.6875, 0.434, 0.995, 0.99)),
-    "palette": ("palette-search", (0.3175, 0.1154, 0.6825, 0.503)),
+    "chat": ("chat", (0.782, 0.462, 0.995, 0.99)),
+    "palette": ("palette-search", (0.3175, 0.1145, 0.6825, 0.608)),
 }
 
 
@@ -106,15 +106,14 @@ class Shooter:
         print(f"{path.name}  {image.width()} x {image.height()}")
 
     def show_cached_preview(self) -> None:
-        from slidemage.ui.workspace.preview_view import _mtime
-
         """Show the focused slide's cached snapshot as a finished render, without the "Cached preview" note
-        (a real render needs a full LaTeX build, which a throwaway copy has not got)."""
+        (a real render needs a full LaTeX build, which a throwaway copy has not got). The Preview's own lookup
+        answers with that page as current for this slide (since v8.54.0 a held page is checked first)."""
         preview = self.window.centre.preview
         target = preview._target
-        image = preview._image(target)
-        key = (target.key, self.window.state.view, preview.language)
-        preview._pixmaps[key] = (image[0], _mtime(target.source_path))
+        pixmap = preview._image(target)[0]
+        lookup = preview._image
+        preview._image = lambda shown, **kw: (pixmap, True, '') if shown.key == target.key else lookup(shown, **kw)
         preview._refresh()
         self.settle(10)
 
@@ -380,7 +379,9 @@ def run(args: argparse.Namespace, work: Path) -> None:
     project = prepare_project(work)
     os.environ["SLIDEMASTER_PROJECT"] = str(project)
     os.environ["QT_SCALE_FACTOR"] = str(args.scale)
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # On Windows the offscreen platform no longer matches the bundled Roboto weights (v8.27.3: every weight is its own
+    # file), and labels fall back to the icon font; the native platform draws them, the window is never on screen.
+    os.environ.setdefault("QT_QPA_PLATFORM", "windows" if sys.platform == "win32" else "offscreen")
     sys.path.insert(0, str(REPO / "src"))
 
     from PySide6.QtCore import QCoreApplication, Qt
@@ -412,6 +413,7 @@ def run(args: argparse.Namespace, work: Path) -> None:
     theme = ThemeManager(dark=args.dark)
     theme.apply()
     window = WorkspaceWindow(theme, ProjectContext.at(project))
+    window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)     # not on screen, so not cut to the screen's size
     window.resize(*WINDOW)
     window.show()
     window.state.set_deck(next(deck for deck in window.decks if deck.name == MANUAL))
@@ -438,7 +440,8 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         raise SystemExit(f"unknown shot(s): {', '.join(sorted(unknown))}; --list names them")
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="slidemage-shots-") as work:
+    # A background render may still hold a lock in the throwaway copy when it is removed; that is no failure.
+    with tempfile.TemporaryDirectory(prefix="slidemage-shots-", ignore_cleanup_errors=True) as work:
         run(args, Path(work))
     make_manual_images(args.out_dir)
     return 0

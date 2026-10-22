@@ -89,7 +89,7 @@ screenshots.
   options) and a **Local | Cloud** AI switch (see below).
 - **Menu bar** above it: File, Edit, Deck, Slide, View, Build, AI, Housekeeping and Help hold every command, each
   with its shortcut (Help → *Keyboard shortcuts…* lists them all; on a Mac some differ, e.g. ⌘, for Settings and
-  ⌥⌘P to present). New in v8.56: `Ctrl+1/2/3` switch the view, `Ctrl+Shift+B` compiles the view shown, `F1`
+  ⌥⌘P to present). New in v8.57: `Ctrl+1/2/3` switch the view, `Ctrl+Shift+B` compiles the view shown, `F1`
   opens the SlideMage manual. Snapshot, previews, slide versions, the .bib file, project compatibility, version
   history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About.
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
@@ -1207,8 +1207,11 @@ SPslide(refresh = TRUE)
 
 From SlideMage (the normal day-to-day path): edits in the Source view are
 **saved as you type** (a moment after you stop, and before you switch slides,
-compile or close the window; **Ctrl+S** writes at once and renders). There is
-no Save button and no unsaved state to lose. A slide changed since its last
+compile or close the window; **Ctrl+S** writes at once and renders). With
+AutoSave on (the default) there is no unsaved state to lose. Switched off (the
+top bar's **AutoSave**, Settings → General, or File → *Turn AutoSave off*), only
+Ctrl+S saves, and SlideMage points out unsaved files before you leave them or
+close the window. A slide changed since its last
 version shows a **+** after its version number (`\setSlideVersion{1-2-0+}`,
 footer `v1.2.0+`): the content is no longer exactly that version. The first
 time a slide is edited, the content as it was is frozen as its version (a slide

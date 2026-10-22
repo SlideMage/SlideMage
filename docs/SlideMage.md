@@ -48,7 +48,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   **Instructor / During course / After course** and **EN / DE** (the version and language
   the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
   **Preview | Split | Source | Details** and the **Compile PDF** split button.
-- **Menu bar** (v8.56, `menus.py` `MENU_BAR`, `build_menu_bar`): File, Edit, Deck, Slide, View, Build, AI,
+- **Menu bar** (v8.57, `menus.py` `MENU_BAR`, `build_menu_bar`): File, Edit, Deck, Slide, View, Build, AI,
   Housekeeping and Help list every command of the registry (Deck → Switch deck is a submenu of the decks), each
   menu filled from the registry when it opens. An item shows its key after a tab and binds none; the window's
   `QShortcut`s are the only bindings, and the keys are those of the system SlideMage runs on (`actions.MAC_KEYS`).
@@ -71,7 +71,7 @@ deck switcher offers the rest). From top to bottom and left to right:
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
   line, Insert, Cite, Tools and the conflict bar when a file changes on disk under edits
-  that are not yet written; edits are autosaved, 1.5 s after the last keystroke), **Split**, **Details** (`details_view.py`), and the **Images page**
+  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56, `source_file.autosave_on`: the top bar's switch, Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
@@ -1296,7 +1296,7 @@ it) -- never the real course decks
 - GUI launched and screenshotted (via a PowerShell `System.Drawing`
   screen-capture, since there's no browser-based way to inspect a native
   Tkinter window here) -- table renders with the right tabs/columns. (Since 6.0 the
-  screenshots are made offscreen by `tools/manual/make_screenshots.py`; the 6.0
+  screenshots are made by `tools/manual/make_screenshots.py`, offscreen, on Windows with the native platform and the window kept off screen since v8.57; the 6.0
   one-file build was started on Linux with the example project, and
   `SlideMage --claude-hook` blocked a header edit and a frozen version.)
 - Whole-deck compile of `test.tex`: PASS, `pdf/test.pdf` produced,

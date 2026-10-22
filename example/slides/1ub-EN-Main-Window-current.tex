@@ -4,7 +4,7 @@
 % SlideMage manual, chapter "Working in SlideMage": the workspace, with numbered
 % callouts drawn over the screenshot (media/screenshot-slidemage-main-window.png, made by
 % tools/manual/make_screenshots.py).
-\setSlideVersion{1-3-1}
+\setSlideVersion{1-3-1+}
 \providecommand{\callout}[2]{\node[circle, fill=c_primary_highlight, text=white, inner sep=1pt, minimum size=9pt, font=\tiny\bfseries] at (#1) {#2};}
 \begin{standardframe}{The workspace}
 	\begin{columns}[T,onlytextwidth]
@@ -15,17 +15,18 @@
 					% beside each element, as fractions of the picture (a 1700 x 950 window;
 					% a callout must stay inside the picture: one past its edge widens the
 					% column -- overfull box)
-					\callout{0.080,0.950}{1}
-					\callout{0.250,0.950}{2}
-					\callout{0.714,0.950}{3}
-					\callout{0.850,0.950}{4}
-					\callout{0.957,0.950}{5}
-					\callout{0.161,0.900}{6}
-					\callout{0.161,0.678}{7}
-					\callout{0.089,0.029}{8}
-					\callout{0.777,0.732}{9}
-					\callout{0.879,0.892}{10}
-					\callout{0.895,0.548}{11}
+					\callout{0.290,0.984}{1}
+					\callout{0.065,0.917}{2}
+					\callout{0.267,0.917}{3}
+					\callout{0.605,0.917}{4}
+					\callout{0.690,0.917}{5}
+					\callout{0.845,0.917}{6}
+					\callout{0.161,0.867}{7}
+					\callout{0.161,0.600}{8}
+					\callout{0.089,0.030}{9}
+					\callout{0.777,0.740}{10}
+					\callout{0.879,0.859}{11}
+					\callout{0.895,0.524}{12}
 				\end{scope}
 			\end{tikzpicture}
 		\end{column}
@@ -35,11 +36,12 @@
 			\par\smallskip
 			\scriptsize
 			\begin{enumerate}
+				\item Menu bar: all commands and keys
 				\item Deck switcher
 				\item \emph{View as} (Instructor, During or After course) and language
+				\item \emph{AutoSave} (off: \SMCode{Ctrl+S})
 				\item Preview, Split, Source or Details
 				\item \emph{Compile PDF}; the arrow offers more
-				\item \emph{Images}, and the three-dot menu
 				\item \emph{Find slide} by ID or title
 				\item The slide list
 				\item \emph{+ Slide}, \emph{+ Section}

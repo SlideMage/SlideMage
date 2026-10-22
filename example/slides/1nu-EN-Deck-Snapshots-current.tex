@@ -2,14 +2,14 @@
 %%
 
 % SlideMage manual, chapter "Decks and deck versions": deck snapshots (v5.33.0).
-\setSlideVersion{1-0-1}
+\setSlideVersion{1-0-1+}
 \begin{standardframe}{Deck snapshots}
 	\small
 	A snapshot freezes a deck: a folder (or \SMCode{.zip}) with everything it needs to compile exactly as it does today -- whatever later changes in the project, the framework or SlideMage.
 	\par\medskip
 	\shrinklists{1}
 	\begin{itemize}
-		\item \textbf{Create}: three-dot menu $\rightarrow$ \emph{Decks} $\rightarrow$ \emph{Create deck snapshot\ldots} -- one or more decks, folder or \SMCode{.zip}, optionally with the LaTeX package files and the SlideMage app; \textbf{Archive} offers one first
+		\item \textbf{Create}: \emph{Deck} $\rightarrow$ \emph{Create deck snapshot\ldots} -- one or more decks, folder or \SMCode{.zip}, optionally with the LaTeX package files and the SlideMage app; \textbf{Archive} offers one first
 		\item \textbf{Where}: \SMCode{snapshots/<deck>\_<date>\_<time>}, as many as you like; SlideMage asks whether older ones go to the Recycle Bin
 		\item \textbf{Checked}: each version is compiled (unless nothing it uses changed since its last compile; then that PDF is used), what it reads is copied, and the snapshot is rendered from its own folder and compared page by page
 		\item \textbf{Use}: \SMCode{render.bat} or \SMCode{render.sh}; \SMCode{reference-pdf/} holds the original PDFs. Only the TeX installation itself is not frozen
