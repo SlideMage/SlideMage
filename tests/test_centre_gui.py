@@ -111,12 +111,30 @@ def centre(qapp, project, deck, monkeypatch, ctx):
 
 
 def wait_idle(centre):
+    """Until the Preview has rendered, its render's record is written and the check that follows it has run: until
+    then the new page counts as current (the pixels come before the record, v8.48.0), and the status would depend on
+    how fast the record's thread was."""
+    preview = centre.preview
+
+    def recording():
+        done = getattr(preview._last_request, "done", None)
+        return done is not None and not done.is_set()
+
     deadline = time.monotonic() + 5
-    while (centre.preview._busy or centre.preview._selection_pending is not None) and time.monotonic() < deadline:
+    recorded = False
+    while time.monotonic() < deadline:
+        recorded = recorded or recording()
+        if not (preview._busy or preview._selection_pending is not None or recording()):
+            break
         QApplication.processEvents()
         time.sleep(0.01)
+    if recorded:                         # the check runs on the next poll of _check_when_recorded (every 50 ms)
+        end = time.monotonic() + 0.15
+        while time.monotonic() < end:
+            QApplication.processEvents()
+            time.sleep(0.01)
     QApplication.processEvents()
-    assert not centre.preview._busy
+    assert not preview._busy and not recording()
 
 
 def link_german(project):
