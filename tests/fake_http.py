@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -117,3 +118,18 @@ def ollama_ndjson(pieces=(), tool_calls=(), done_reason: str = "stop") -> str:
     lines.append({"model": "m", "message": {"role": "assistant", "content": ""}, "done": True,
                   "done_reason": done_reason, "prompt_eval_count": 12, "eval_count": 5})
     return "".join(json.dumps(line) + "\n" for line in lines)
+
+
+def api_key_of(request) -> str:
+    """The key a request carries: the anthropic SDK sends it as x-api-key up to 1.x, as a Bearer token from 2.0."""
+    headers = request["headers"]
+    return headers.get("x-api-key") or headers.get("authorization", "").removeprefix("Bearer ")
+
+
+def wait_for_first_piece(thread, texts, seconds=5.0):
+    """Until the streaming thread has handed over its first text; fails instead of spinning when it ended without."""
+    end = time.monotonic() + seconds
+    while not texts:
+        assert thread.is_alive(), "the stream ended before its first piece"
+        assert time.monotonic() < end, "no first piece in time"
+        thread.join(0.01)

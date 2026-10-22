@@ -11,7 +11,7 @@ import threading
 import pytest
 from agent_fakes import FakeWorkspace
 from conftest import make_project
-from fake_http import ollama_ndjson
+from fake_http import ollama_ndjson, wait_for_first_piece
 
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import (
@@ -145,8 +145,7 @@ def test_abort_ends_a_stream_that_went_quiet(server):
 
     thread = threading.Thread(target=run)
     thread.start()
-    while not texts:
-        thread.join(0.01)
+    wait_for_first_piece(thread, texts)
     p.abort()
     thread.join(4)
     assert not thread.is_alive() and texts == ["Hello"]

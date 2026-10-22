@@ -9,7 +9,7 @@ import base64
 import threading
 
 import pytest
-from fake_http import message_sse
+from fake_http import api_key_of, message_sse, wait_for_first_piece
 
 from slidemage.ai.agent_types import (
     AssistantMessage,
@@ -48,7 +48,7 @@ def test_the_request_has_tools_system_caching_and_effort(server, model, effort):
     texts = []
     reply = turn(provider(server, model), [UserMessage("hi")], texts)
     body = server.requests[0]["body"]
-    assert server.requests[0]["path"] == "/v1/messages" and server.requests[0]["headers"]["x-api-key"] == "sk-test"
+    assert server.requests[0]["path"] == "/v1/messages" and api_key_of(server.requests[0]) == "sk-test"
     assert body["stream"] is True and body["system"] == "Be brief."
     assert body["cache_control"] == {"type": "ephemeral"}
     if effort:
@@ -140,8 +140,7 @@ def test_stop_ends_a_stream_that_went_quiet(server):
 
     thread = threading.Thread(target=run)
     thread.start()
-    while not texts:                       # the first piece arrived; now the server says nothing more
-        thread.join(0.01)
+    wait_for_first_piece(thread, texts)    # the first piece arrived; now the server says nothing more
     p.abort()
     thread.join(4)
     assert not thread.is_alive() and texts == ["Hello"]
