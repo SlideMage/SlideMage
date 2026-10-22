@@ -33,6 +33,7 @@ from ... import (
     slide_versioning,
 )
 from ...slide_language import bare_id
+from .. import layout_settings
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
@@ -43,6 +44,13 @@ LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
 SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
+AUTOSAVE_KEY = "autosave"   # this user's choice (layout_settings), on unless switched off
+
+
+def autosave_on() -> bool:
+    """Whether edits are saved as you type. Off, a file is written only by Ctrl+S (or when the user says so on
+    leaving it or closing the window): its edits stay in the buffer, which stays open, reported as unsaved."""
+    return bool(layout_settings.get(AUTOSAVE_KEY, True))
 
 
 def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str]:
@@ -156,6 +164,11 @@ class SourceFile(Surface):
         buffer, the conflict bar up, or an AI fix running. (Plain `dirty` is also true between a keystroke
         and its autosave.)"""
         return self.dirty and (self.editor.is_read_only() or self.conflicted or self.fix_panel.running)
+
+    @property
+    def unsaved(self) -> bool:
+        """The buffer has edits that will not be written by themselves: `blocked`, or AutoSave is off."""
+        return self.blocked or (self.dirty and not autosave_on())
 
     @property
     def keep_open(self) -> bool:
@@ -325,7 +338,7 @@ class SourceFile(Surface):
         self._schedule_autosave()
 
     def _schedule_autosave(self) -> None:
-        if self.dirty and not self.editor.is_read_only():
+        if self.dirty and not self.editor.is_read_only() and autosave_on():
             self._autosave_timer.start()
 
     def _on_fix_running(self, running: bool) -> None:
@@ -333,18 +346,20 @@ class SourceFile(Surface):
         if not running:
             self._schedule_autosave()   # what the fix applied meanwhile
 
-    def write_now(self, explicit: bool = False) -> bool:
+    def write_now(self, explicit: bool = False, *, force: bool = False) -> bool:
         """Write the buffer's edits to the file now: the autosave, a flush before another file is
         shown or a run starts, and Ctrl+S (`explicit`, which also emits `saved`, so the Preview
-        renders it). Returns whether the file holds the buffer: False while saving is paused (a
-        read-only buffer, the conflict bar up, an AI fix running), when the file changed on disk
-        meanwhile (the conflict bar then shows) or the write failed."""
+        renders it). With AutoSave off only `explicit` or `force` (an action that changes the file
+        itself and needs the edits in it first) write. Returns whether the file holds the buffer:
+        False while saving is paused (a read-only buffer, the conflict bar up, an AI fix running,
+        AutoSave off), when the file changed on disk meanwhile (the conflict bar then shows) or the
+        write failed."""
         self._autosave_timer.stop()
         if not self.dirty:
             if explicit:
                 self.saved.emit()
             return True
-        if self.blocked:
+        if self.blocked or not (explicit or force or autosave_on()):
             return False
         raw_text = self.editor.text()
         previous_text = self.text

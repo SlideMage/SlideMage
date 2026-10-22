@@ -34,6 +34,7 @@ class FakeApp(QWidget):
         self.theme = ThemeManager()
         self.calls, self.logged, self.slots, self.slot_free = [], [], [], True
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
+        self.set_autosave = lambda value: self.calls.append(("autosave", value))
         self.set_tab_width_chars = lambda value: self.calls.append(("tab width", value))
         self.log = self.logged.append
         self.commands = SimpleNamespace(run=lambda command_id, ctx: self.calls.append((command_id, ctx)))

@@ -42,6 +42,7 @@ from ...project import ProjectContext
 from .. import background
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..workspace.source_file import autosave_on
 from .settings_ollama import OllamaTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
@@ -87,6 +88,13 @@ class GeneralTab(Page):
         self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
+        self.autosave_check.setChecked(autosave_on())
+        self.autosave_check.toggled.connect(app.set_autosave)
+        layout.addWidget(Field("Saving", self.autosave_check))
+        layout.addWidget(caption("Off, a file is saved with Ctrl+S; its edits stay in the editor until then, and "
+                                 "leaving them is asked about. The same switch is in the top bar."))
 
         self.live_render_check = QCheckBox("Render the Preview after each autosave")
         self.live_render_check.setChecked(bool(app_settings.get(app.project, LIVE_RENDER_SETTING_KEY, False)))

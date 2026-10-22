@@ -31,6 +31,7 @@ from .panels import PANELS
 from ...ai import ai_profile
 from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
+from .source_file import autosave_on
 from .terminal.tasks import DECK_TASKS, SLIDE_TASKS, selection_of
 from .state import MODES, UI_LANGUAGES, VIEWS
 
@@ -284,6 +285,9 @@ def build_registry() -> CommandRegistry:
 
     # Project --------------------------------------------------------------------------
     add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
+    add("autosave", lambda _w: "Turn AutoSave off" if autosave_on() else "Turn AutoSave on", PROJECT,
+        lambda w: w.set_autosave(not autosave_on()), icon="save",
+        meta="Save edits as you type; off, Ctrl+S saves")
     add("images", "Image descriptions", PROJECT, _window("_toggle_images"), icon="image", meta="every slide with images")
     add("edit_bib", "Edit .bib", PROJECT, _window("_on_edit_bib"))
     add("edit_test_slides", "Edit test-slides.tex", PROJECT, _window("_on_edit_test_slides"))

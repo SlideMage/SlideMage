@@ -54,7 +54,7 @@ from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
-from . import compile_actions, side_panels, slide_list
+from . import compile_actions, side_panels, slide_list, source_file
 from .actions import build_registry
 from .ai_fix import AiFixPanel
 from .ai_route import AiRoute
@@ -646,6 +646,14 @@ class WorkspaceWindow(QMainWindow):
         # outside the stylesheet mechanism entirely -- each open editor's
         # highlighter needs an explicit nudge to pick up the new palette and re-run.
         self.centre.refresh_colors()
+
+    def set_autosave(self, on: bool) -> None:
+        """The top bar's AutoSave switch, Settings -> General and Ctrl+K: this user's choice (layout_settings).
+        Switched on, edits waiting in open files are saved shortly; off, they stay until Ctrl+S."""
+        layout_settings.set(source_file.AUTOSAVE_KEY, bool(on))
+        self.centre.source.autosave_changed()
+        self.topbar.refresh_autosave()
+        self.log(f"AutoSave {'on' if on else 'off: Ctrl+S saves'}")
 
     def set_tab_width_chars(self, chars: int) -> None:
         """Called from the Settings sheet's tab-width spinbox, like set_dark_mode() above: persist

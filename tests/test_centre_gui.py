@@ -19,8 +19,9 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from slidemage import alt_images, deck_outline, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace import preview_view, render_check
+from slidemage.ui.workspace import preview_view, render_check, source_file
 from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.state import WorkspaceState
 
@@ -594,8 +595,10 @@ def test_details_follow_the_focused_slide(centre):
         "Select a slide in the list. Click it to open its source."]
     centre.state.deck.path.write_text(DECK, encoding="utf-8")
     centre.open_file(centre.state.deck.path)
-    state.set_mode("details")
-    assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
+    state.set_mode("details")                       # closes the deck's source (v8.56.0): back to the focus
+    assert centre.path is None and state.mode == "details"
+    assert [label.text() for label in centre.details.findChildren(QLabel)] == [
+        "Select a slide in the list. Click it to open its source."]
 
 
 def test_moving_a_slide_with_edits_that_cannot_be_saved_is_refused(centre, project, monkeypatch):
@@ -1110,3 +1113,42 @@ def test_show_makes_a_panel_edit_the_source_views_own(centre, project):
     centre.state.set_focused_slide("aaa")
     assert centre.edit_slide_text(aaa, panel_edit, show=True)           # "Save notes": Ctrl+S then writes this file
     assert centre.source.current.path == aaa and centre.source.current.dirty
+
+
+# -- a deck's source and the .bib: the "x", and Preview closes them (v8.56.0) -----------------------------
+
+def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centre, project, deck):
+    deck.path.write_text(DECK, encoding="utf-8")
+    state = centre.state
+    state.set_mode("preview")
+    state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    assert state.mode == "source" and centre.source.current.path == deck.path
+    centre.source._close_button.click()
+    assert state.mode == "preview" and centre.path.name == "aaa-EN-One-current.tex"
+
+
+def test_preview_closes_the_bib_and_asks_about_changes_autosave_would_not_save(centre, project, monkeypatch):
+    bib = centre.state.project.bibliography_path
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    state = centre.state
+    state.set_focused_slide("aaa")
+    centre.open_file(bib)
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.source.current.editor.insertPlainText("% mine\n")
+    answers = [None, "save"]
+    monkeypatch.setattr(centre, "_ask_save", lambda _name: answers.pop(0))
+    state.set_mode("preview")                                     # Cancel: it stays, in the Source view
+    assert state.mode == "source" and centre.path == bib and "% mine" not in bib.read_text(encoding="utf-8")
+    state.set_mode("preview")                                     # Save
+    assert state.mode == "preview" and "% mine" in bib.read_text(encoding="utf-8")
+    assert centre.path.name == "aaa-EN-One-current.tex"
+
+
+def test_with_autosave_on_closing_saves_without_asking(centre, project, deck, monkeypatch):
+    deck.path.write_text(DECK, encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    centre.source.current.editor.insertPlainText("% quick\n")       # its autosave has not run yet
+    monkeypatch.setattr(centre, "_ask_save", lambda _name: pytest.fail("asked"))
+    assert centre.close_explicit_file() and "% quick" in deck.path.read_text(encoding="utf-8")

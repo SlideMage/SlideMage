@@ -18,9 +18,10 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QSizePolicy,
 from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
-from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
+from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton, ToggleChip
 from .ai_switch import AiSwitch
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
+from .source_file import autosave_on
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
@@ -116,6 +117,12 @@ class TopBar(QWidget):
         add(self._languages)
 
         layout.addStretch()
+        # As in Office: AutoSave on or off at a glance, beside what it means for the edits.
+        self._autosave = ToggleChip("AutoSave")
+        self._autosave.setChecked(autosave_on())
+        self._autosave.setToolTip("Save edits as you type. Off, Ctrl+S saves.")
+        self._autosave.clicked.connect(lambda: self.command.emit("autosave"))
+        add(self._autosave)
         self._save = QLabel("Saved")
         self._save.setObjectName(q.TOPBAR_SAVE)
         add(self._save)
@@ -165,7 +172,8 @@ class TopBar(QWidget):
         policy, whatever the density."""
         switch = self.ai_switch
         stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
-                 *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
+                 *self._views.buttons(), *self._languages.buttons(), self._autosave, *self._modes.buttons(),
+                 *self._compile.buttons(),
                  self._images, self._more, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
@@ -199,6 +207,8 @@ class TopBar(QWidget):
         self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
         self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
         self.ai_switch.set_shrink({"tight": 1, "tiny": 2}.get(density, 0))
+        # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.
+        self._autosave.setVisible(full)
         self._update_deck_label()
         self._update_save_label()
         self._update_compile_label()
@@ -247,6 +257,9 @@ class TopBar(QWidget):
         name = deck.name if deck is not None else "No deck"
         self._deck_button.set_text(name, max_width=DECK_MAX_WIDTHS[self._density])
         self._deck_button.setToolTip(name)
+
+    def refresh_autosave(self) -> None:
+        self._autosave.setChecked(autosave_on())
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         self._update_save_label()

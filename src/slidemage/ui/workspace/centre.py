@@ -39,7 +39,7 @@ from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
-from .source_file import RELOADED, prompt_version_level
+from .source_file import RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -81,6 +81,14 @@ def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version
     return box.clickedButton() is update, stop.isChecked()
 
 
+def _is_slide_file(path: Path) -> bool:
+    try:
+        slide_language.call_for_slide_path(path)
+    except ValueError:
+        return False
+    return True
+
+
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
     duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
@@ -92,6 +100,8 @@ class CentreColumn(QFrame):
         self._path: Optional[Path] = None   # the file the Source view shows
         self._opening = False               # open_file() is changing the focus itself
         self._edited: set[Path] = set()     # files written from the Source view since they were last left
+        self._return_mode: Optional[str] = None   # the mode before a deck's source or the .bib was opened
+        self._mode_shown = state.mode       # the mode last shown (to go back to when leaving one is cancelled)
 
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
@@ -141,12 +151,13 @@ class CentreColumn(QFrame):
         self.source.restore_requested.connect(self.restore_version)
         self.source.version_requested.connect(self.update_version)
         self.source.file_requested.connect(self.open_file)
+        self.source.close_requested.connect(self.close_explicit_file)
         self.preview.partner_requested.connect(lambda path: self.open_file(path, keep_mode=True))
         state.deck_changed.connect(self._on_deck_changed)
         state.focused_slide_changed.connect(self._on_focus)
         state.view_changed.connect(lambda _view: self.refresh())
         state.language_changed.connect(self._on_language)
-        state.mode_changed.connect(lambda _mode: self.refresh())
+        state.mode_changed.connect(self._on_mode)
         self.refresh()
 
     # -- what the window asks ----------------------------------------------------------
@@ -160,6 +171,8 @@ class CentreColumn(QFrame):
         live on the editor. The views are refreshed unless the focus click had already put them there."""
         changed = path != self._path
         mode = self.state.mode
+        if not _is_slide_file(path) and (self._path is None or _is_slide_file(self._path)):
+            self._return_mode = mode           # where its "x" goes back to
         self._opening = True
         try:
             if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
@@ -199,7 +212,7 @@ class CentreColumn(QFrame):
         """Whether the Source view holds edits of `path` that could not be saved (a conflict with a change
         on disk, a read-only buffer, an AI fix running). The edits that can be are written first."""
         file = self.source.file_for(path)
-        return file is not None and not file.write_now() and file.dirty
+        return file is not None and not file.write_now(force=True) and file.dirty
 
     def sync_source(self, path: Path) -> None:
         """Show the file again if it changed on disk elsewhere in the app, unless it has unsaved edits."""
@@ -287,7 +300,7 @@ class CentreColumn(QFrame):
 
     def _written(self, file) -> bool:
         """Write an open file's edits first; False (and say why) when they cannot be."""
-        if file is None or file.write_now():
+        if file is None or file.write_now(force=True):
             return True
         QMessageBox.warning(self.app, "Edits not saved",
                             f"{file.path.name} has edits that could not be saved"
@@ -458,6 +471,54 @@ class CentreColumn(QFrame):
 
     def _on_deck_changed(self, _deck) -> None:
         self._set_path(None)
+        self.refresh()
+
+    def _showing_explicit_file(self) -> bool:
+        """A deck's own source or Slidemaster.bib (no slide's file) is the Source view's file."""
+        return self._path is not None and not _is_slide_file(self._path)
+
+    def close_explicit_file(self, *, keep_mode: bool = False) -> bool:
+        """Close a deck's source or Slidemaster.bib (its "x", or a switch to Preview or Details) and go back to the
+        focused slide, in the mode before it was opened unless `keep_mode`. Edits that would be lost are asked
+        about: Save, Discard or Cancel (False: it stays open)."""
+        if not self._showing_explicit_file():
+            return True
+        file = self.source.file_for(self._path)
+        if file is not None and file.dirty and not (autosave_on() and file.write_now(force=True)):
+            answer = self._ask_save(file.path.name)
+            if answer == "save":
+                if not file.write_now(force=True):
+                    return False               # a conflict with a change on disk: its notice says so
+            elif answer == "discard":
+                file.reload()
+            else:
+                return False
+        mode, self._return_mode = self._return_mode or "preview", None
+        self._set_path(self._focused_path())
+        if not keep_mode and self.state.mode != mode:
+            self.state.set_mode(mode)          # refreshes
+        else:
+            self.refresh()
+        return True
+
+    def _ask_save(self, name: str) -> Optional[str]:
+        """"save", "discard" or None (Cancel) for the unsaved changes of the file `name`."""
+        box = QMessageBox(QMessageBox.Icon.Question, "Unsaved changes", f"Save the changes to {name}?",
+                          parent=self.app)
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(save)
+        box.exec()
+        return "save" if box.clickedButton() is save else "discard" if box.clickedButton() is discard else None
+
+    def _on_mode(self, mode: str) -> None:
+        """Preview and Details leave a deck's source or the .bib: it is closed (asked about if it has edits that
+        would be lost); cancelled, the mode before comes back."""
+        if mode in ("preview", "details") and self._showing_explicit_file()                 and not self.close_explicit_file(keep_mode=True):
+            self.state.set_mode(self._mode_shown)
+            return
+        self._mode_shown = mode
         self.refresh()
 
     def _on_focus(self, _slide_id: Optional[str]) -> None:
