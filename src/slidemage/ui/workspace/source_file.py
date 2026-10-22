@@ -17,6 +17,7 @@ conflict bar asks.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -51,6 +52,9 @@ def autosave_on() -> bool:
     """Whether edits are saved as you type. Off, a file is written only by Ctrl+S (or when the user says so on
     leaving it or closing the window): its edits stay in the buffer, which stays open, reported as unsaved."""
     return bool(layout_settings.get(AUTOSAVE_KEY, True))
+
+# Replace in the file shown: Ctrl+H, but ⌥⌘F on a Mac, where ⌘H (what Qt makes of Ctrl+H) hides the app.
+REPLACE_KEY = "Ctrl+Alt+F" if sys.platform == "darwin" else "Ctrl+H"
 
 
 def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str]:
@@ -144,7 +148,7 @@ class SourceFile(Surface):
         # Scoped to this file's widgets, so the shortcuts of the files in the
         # same window never clash.
         for sequence, action in ((QKeySequence.StandardKey.Find, self.find_bar.show_find),
-                                 (QKeySequence("Ctrl+H"), self.find_bar.show_replace)):
+                                 (QKeySequence(REPLACE_KEY), self.find_bar.show_replace)):
             shortcut = QShortcut(sequence, self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(action)

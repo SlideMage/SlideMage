@@ -66,6 +66,7 @@ from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
 from .background_previews import BackgroundPreviews
 from .compile_display import CompileDisplay
+from .menus import build_menu_bar
 from .palette import CommandPalette
 from .panels.base import PanelActions
 from .side_panels import SidePanels
@@ -217,6 +218,7 @@ class WorkspaceWindow(QMainWindow):
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
+        self.setMenuBar(build_menu_bar(self, self))
         self.ai_route = AiRoute(self)
         self.topbar.ai_switch.requested.connect(self.ai_route.request)
         self.topbar.ai_switch.setup_requested.connect(self.ai_route.open_setup)

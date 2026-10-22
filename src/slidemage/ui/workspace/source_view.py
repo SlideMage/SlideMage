@@ -36,7 +36,7 @@ from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
-from .source_file import SourceFile, autosave_on
+from .source_file import REPLACE_KEY, SourceFile, autosave_on
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -117,7 +117,8 @@ class SourcePane(Surface):
         self._elsewhere_chip = Chip("", "warning")
         self._elsewhere_chip.clicked.connect(self._show_other_dirty)
         top.addWidget(self._elsewhere_chip)
-        self._find_button = IconButton("search", "Find and replace (Ctrl+F, Ctrl+H)")
+        keys = ", ".join(QKeySequence(k).toString(QKeySequence.SequenceFormat.NativeText) for k in ("Ctrl+F", REPLACE_KEY))
+        self._find_button = IconButton("search", f"Find and replace ({keys})")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
         self._version_button = Button("Update version", "primary", compact=True)
@@ -401,6 +402,10 @@ class SourcePane(Surface):
         if new == base:     # not frozen yet, but unchanged: the first edit freezes it by itself
             return False, f"No changes since v{slide_versioning.format_dot(base)}."
         return True, ""
+
+    def show_find(self, replace: bool = False) -> None:
+        """The find bar of the file shown, with the replace field when `replace` (Edit → Find / Replace in source)."""
+        self._with_file(lambda f: f.find_bar.show_replace() if replace else f.find_bar.show_find())
 
     def _with_file(self, action: Callable[[SourceFile], None]) -> None:
         if self._current is not None:

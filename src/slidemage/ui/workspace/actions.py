@@ -4,20 +4,21 @@
 
 `build_registry()` is called once by the window. A command runs with the window
 as its context and says, with the same context, whether it is visible and enabled
-now; the top bar's buttons and menus (menus.py), the slide list's context menus
+now; the menu bar, the top bar's buttons and menus (menus.py), the slide list's context menus
 and the palette (palette.py) all show these entries and nothing else.
 
 The ids are the keys the menus have always used (`compile:instructor`,
 `deck_settings`, ...), plus `slide:` and `section:` for what acts on the slides
 and the section chosen in the list. The group is the palette's heading.
 
-Where the old menu bar's actions went: the "Open Project…", "Settings…" and
-"Exit SlideMage" of System, the Decks menu, the housekeeping and info menus are
-all commands below, in the groups Deck and Project; "Images" and the archived
-decks of the Tabs menu are `images` and `archived_decks`. `images` is also the way out of the Images page, and the AI
-switch's moves and setup are the group AI.
+A command has at most one shortcut, the one of the system SlideMage runs on (MAC_KEYS), which the window binds;
+`hint` is a key shown in the menus that something else binds (the Source view's Ctrl+F, the system's Alt+F4).
+`images` is also the way out of the Images page, and the AI switch's moves and setup are the group AI.
 """
 from __future__ import annotations
+
+import sys
+from dataclasses import replace
 
 from ... import ai_review
 from ...deck_scan import TAG_COURSE, TAG_MANUAL
@@ -31,13 +32,22 @@ from .panels import PANELS
 from ...ai import ai_profile
 from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
-from .source_file import autosave_on
+from .source_file import REPLACE_KEY, autosave_on
 from .terminal.tasks import DECK_TASKS, SLIDE_TASKS, selection_of
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
 AI = "AI"
 LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
+# On a Mac, where Qt reads Ctrl as ⌘: ⌘, is the app's settings, so Deck settings moves to ⌥⌘,; F5 needs the fn key,
+# so Present is Keynote's ⌥⌘P; F1 is not help there (the Help menu has its own search); Quit (⌘Q) comes with QuitRole.
+MAC_KEYS = {
+    "settings": {"shortcut": "Ctrl+,"},
+    "deck_settings": {"shortcut": "Ctrl+Alt+,"},
+    "present": {"shortcut": "Ctrl+Alt+P"},
+    "open_manual": {"shortcut": ""},
+    "exit": {"hint": ""},
+}
 
 
 # -- when a command is available -------------------------------------------------------
@@ -136,13 +146,31 @@ def _window(method: str):
     return lambda w: getattr(w, method)()
 
 
+def _manual_deck(w):
+    return next((deck for deck in w.decks if deck.group == TAG_MANUAL and not deck.archived), None)
+
+
+def _find_in_source(w, replace: bool) -> None:
+    """The find bar of the Source view, which the Preview and Details views first give way to Split for."""
+    if w.state.mode not in ("source", "split"):
+        w.state.set_mode("split")
+    w.centre.source.show_find(replace)
+
+
+def _show_shortcuts(w) -> None:
+    from ..dialogs.shortcuts import ShortcutsSheet
+    ShortcutsSheet(w.commands, w).exec()
+
+
 # -- the registry ----------------------------------------------------------------------
 
-def build_registry() -> CommandRegistry:
+def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
+    """`mac` puts in the keys of MAC_KEYS, so the menus show and bind only the keys of the system SlideMage runs on."""
     registry = CommandRegistry()
 
     def add(*args, **kwargs) -> None:
-        registry.add(Command(*args, **kwargs))
+        command = Command(*args, **kwargs)
+        registry.add(replace(command, **MAC_KEYS[command.id]) if mac and command.id in MAC_KEYS else command)
 
     # View & build -----------------------------------------------------------------
     add("preview:all-saved", "Render all preview views · saved file", VIEW_AND_BUILD,
@@ -161,9 +189,10 @@ def build_registry() -> CommandRegistry:
         add(f"column:{side}",
             lambda w, s=side, text=label: f"{'Show' if getattr(w, s + '_column_hidden') else 'Hide'} {text}",
             VIEW_AND_BUILD, lambda w, s=side: w._toggle_column(s), icon="view_sidebar", shortcut=shortcut)
-    for view in VIEWS:
+    for number, view in enumerate(VIEWS, 1):
         add(f"view:{view}", f"View as {VIEW_LABELS[view]}", VIEW_AND_BUILD,
-            lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v))
+            lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v),
+            shortcut=f"Ctrl+{number}")
     for language in UI_LANGUAGES:
         add(f"language:{language}", f"Show {LANGUAGE_NAMES.get(language, language)} ({language})", VIEW_AND_BUILD,
             lambda w, lang=language: w.state.set_language(lang), icon="translate",
@@ -175,6 +204,10 @@ def build_registry() -> CommandRegistry:
         add(f"compile:{view}", f"Compile PDF · {VIEW_LABELS[view]}", VIEW_AND_BUILD,
             lambda w, v=view: compile_actions.compile_current(w, v), icon="picture_as_pdf", enabled=_has_deck,
             visible=lambda w, v=view: v == VIEWS[0] or _versioned(w))
+    # The Compile button's own command: the PDF of the view shown (the instructor one where a deck has no versions).
+    add("compile:current", "Compile PDF · current view", VIEW_AND_BUILD,
+        lambda w: w.commands.run(f"compile:{w.state.view if _versioned(w) else VIEWS[0]}", w), icon="picture_as_pdf",
+        shortcut="Ctrl+Shift+B", enabled=_has_deck)
     add("compile:all", "All views of this deck", VIEW_AND_BUILD, lambda w: compile_actions.compile_current(w, "all"),
         enabled=_has_deck)
     add("compile:chapters", "After course, one PDF per chapter", VIEW_AND_BUILD,
@@ -199,6 +232,13 @@ def build_registry() -> CommandRegistry:
         enabled=lambda w: w.compiling)
     add("build_options", "Build options…", VIEW_AND_BUILD, lambda w: w.build_options.exec())
     add("log", "Log", VIEW_AND_BUILD, lambda w: w.compile_display.drawer.toggle(), icon="terminal", shortcut="Ctrl+L")
+    # Keys the window and the Source view bind themselves (window.py, source_file.py): the commands only show them.
+    add("render_buffer", "Render editor buffer", VIEW_AND_BUILD, lambda w: w.centre.render_buffer(), icon="preview",
+        hint="Ctrl+Enter")
+    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.source.save(), icon="save", hint="Ctrl+S")
+    add("find", "Find in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, False), icon="search", hint="Ctrl+F")
+    add("replace", "Replace in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, True), icon="find_replace",
+        hint=REPLACE_KEY)
 
     # Slide: the focused slide, or the selected ones ---------------------------------------
     for name, label in (("open", "Open source"), ("preview", "Preview"), ("images", "Images")):
@@ -237,7 +277,7 @@ def build_registry() -> CommandRegistry:
         visible=lambda w: bool(_slide_targets(w)), enabled=_editable_slides)
     add("slide:update_versions", "Update versions…", SLIDE,
         lambda w: w.centre.update_selected_versions(), visible=lambda w: len(_slide_targets(w)) > 1)
-    add("slide:clear", "Clear selection", SLIDE, _run_slide("clear"), meta="Esc",
+    add("slide:clear", "Clear selection", SLIDE, _run_slide("clear"), meta="Esc", hint="Esc",
         visible=lambda w: len(_slide_targets(w)) > 1)
     for panel in PANELS:
         add(f"panel:{panel.key}", f"Show {panel.title}", SLIDE, lambda w, key=panel.key: w.side_panels.set_panel(key),
@@ -282,6 +322,7 @@ def build_registry() -> CommandRegistry:
     add("refresh_decks", "Refresh decks", DECK, _window("_on_refresh_decks_clicked"))
     add("archived_decks", "Archived decks…", DECK, lambda w: w.topbar.open_deck_menu(),
         visible=lambda w: any(deck.archived for deck in w.decks))
+    add("switch_deck", "Switch deck…", DECK, lambda w: w.topbar.open_deck_menu(), icon="swap_horiz")
 
     # Project --------------------------------------------------------------------------
     add("palette", "Find anything…", PROJECT, lambda w: w.palette.toggle(), icon="search", shortcut="Ctrl+K")
@@ -303,7 +344,10 @@ def build_registry() -> CommandRegistry:
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
-    add("exit", "Exit SlideMage", PROJECT, lambda w: w.close())
+    add("exit", "Exit SlideMage", PROJECT, lambda w: w.close(), hint="Alt+F4")
+    add("open_manual", "SlideMage manual", PROJECT, lambda w: w.state.set_deck(_manual_deck(w)), icon="menu_book",
+        shortcut="F1", enabled=lambda w: _manual_deck(w) is not None)
+    add("shortcuts", "Keyboard shortcuts…", PROJECT, _show_shortcuts, icon="keyboard")
 
     # AI: the switch of the top bar, through its request flow (popovers included) ---------------
     for mode, label, icon in ((ai_profile.LOCAL, "Use Local AI", "computer"), (ai_profile.CLOUD, "Use Cloud AI", "cloud")):

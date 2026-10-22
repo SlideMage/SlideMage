@@ -52,7 +52,7 @@ LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render th
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
-    updater.UPDATE_MODE_OFF: "SlideMage does not check for updates by itself. ⋮ → Check for updates… "
+    updater.UPDATE_MODE_OFF: "SlideMage does not check for updates by itself. Help → Check for updates… "
                              "always works.",
     updater.UPDATE_MODE_ASK: "Checked when SlideMage starts; a newer release is offered, and you decide "
                              "whether to install it.",

@@ -73,6 +73,7 @@ TOPBAR = "kitTopbar"
 TOPBAR_STRIP = "kitTopbarStrip"
 TOPBAR_DECK = "kitTopbarDeck"
 TOPBAR_LABEL = "kitTopbarLabel"
+MENU_HEADER = "kitMenuHeader"   # a section title in a menu of the menu bar
 TOPBAR_SAVE = "kitTopbarSave"
 # Slide list (ui/workspace/slide_list.py, slide_tree.py).
 SLIDES_FIND = "kitSlidesFind"
@@ -289,6 +290,33 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             height: 1px;
             background-color: {t.line};
             margin: 4px 6px;
+        }}
+        QMenuBar {{
+            {font}
+            font-size: 13px;
+            background-color: {t.surface};
+            color: {t.text};
+            border-bottom: 1px solid {t.line};
+            padding: 2px 8px;
+        }}
+        QMenuBar::item {{
+            background: transparent;
+            padding: 4px 10px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QMenuBar::item:selected {{
+            background-color: {t.hover};
+        }}
+        QMenuBar::item:pressed {{
+            background-color: {t.info_bg};
+            color: {t.info_fg};
+        }}
+        QLabel#{MENU_HEADER} {{
+            {font}
+            font-size: 11px;
+            font-weight: 500;
+            color: {t.text_3};
+            padding: 6px 12px 2px 12px;
         }}
 
         /* Form controls, everywhere: a field on the page color with a line
@@ -590,6 +618,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text_4};
             border-color: {t.line};
         }}
+        QPushButton#{TOGGLE_CHIP}:focus {{ border: 2px solid {t.focus}; padding: 3px 11px; }}
 
         /* Buttons. "primary" is the dark/inverse fill, "secondary" a bordered
            surface button, "ghost" a flat one. */

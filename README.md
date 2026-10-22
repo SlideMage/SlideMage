@@ -86,7 +86,12 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options), a **Local | Cloud** AI switch (see below) and the ⋮ menu (two columns: this deck, with Export ▸ | project incl. Images and Housekeeping ▸; Settings… at the bottom; everything else is in `Ctrl+K`, and snapshot, previews, slide versions, the .bib file, project compatibility, version history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About).
+  options) and a **Local | Cloud** AI switch (see below).
+- **Menu bar** above it: File, Edit, Deck, Slide, View, Build, AI, Housekeeping and Help hold every command, each
+  with its shortcut (Help → *Keyboard shortcuts…* lists them all; on a Mac some differ, e.g. ⌘, for Settings and
+  ⌥⌘P to present). New in v8.56: `Ctrl+1/2/3` switch the view, `Ctrl+Shift+B` compiles the view shown, `F1`
+  opens the SlideMage manual. Snapshot, previews, slide versions, the .bib file, project compatibility, version
+  history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About.
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
   Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
@@ -168,7 +173,7 @@ screenshots.
   terminal. **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
-- **Settings** (⋮ → Settings…): General, AI (German address of translations), Cloud (the API
+- **Settings** (File → Settings…): General, AI (German address of translations), Cloud (the API
   key), Ollama (models, updating, deleting), Prompts (image-description and translation
   prompts). The model of each task is in AI setup, not here.
 
@@ -205,7 +210,7 @@ starting `BREAKING:` that says what changes and what to do about it. The release
 workflow refuses a major bump without that paragraph. Try it before
 tagging: `python packaging/release_notes.py vX.Y.Z`.
 
-A downloaded executable can update itself. **⋮ → Settings… → General →
+A downloaded executable can update itself. **File → Settings… → General →
 Updates** chooses what happens when SlideMage starts (per user and
 machine, stored next to the token, not in the project):
 
@@ -450,7 +455,7 @@ copied package files in `texmf/` record the exact originals.
   first, to sort/glob-match by slide before institution), refreshed as
   a side effect of any compile that touches that slide, for one deck via
   **Deck settings → General → Maintenance → Rerender all**, or for the whole project via
-  SlideMage's "Update slide previews" (⋮ → *Housekeeping…*). A best-effort cache for
+  SlideMage's "Update slide previews" (Housekeeping → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
   guaranteed-fresh one. Gitignored, same category as `transcripts/`.
 - `.previews/render-results/` — verified per-view/group preview artifacts, dependency
@@ -689,7 +694,7 @@ too):
 
 ### Exporting to PowerPoint
 
-**Export PPTX…** (⋮ menu, *This deck*) compiles the open deck (instructor version)
+**Export PPTX…** (Deck menu) compiles the open deck (instructor version)
 and writes a real `.pptx` next to its PDF in `pdf/`. Every beamer overlay/reveal step belonging to one
 `\slide{}` call is stacked full-page onto a *single* PowerPoint slide
 (topmost = first reveal step) instead of getting its own slide, with each
@@ -709,7 +714,7 @@ installation (see the module's own docstring for how).
 
 ### Exporting as LaTeX
 
-**Export LaTeX…** (⋮ menu, *This deck*, under Export ▸) writes the open deck as a folder that
+**Export LaTeX…** (Deck menu, under Export ▸) writes the open deck as a folder that
 compiles on its own, on a machine that has only a TeX distribution: pick a folder, and SlideMage
 creates `<deck name>-latex/` in it (asking before it replaces one that is already there). The folder
 holds the deck at its top level, the slides it uses under `slides/`, only the images those slides use
@@ -749,7 +754,7 @@ manual can't be moved into another group by accident. A copy made with
 
 ### Deck settings and course links
 
-**Deck settings…** (⋮ menu, *This deck*; `Ctrl+,`) opens a sheet with the deck-wide settings
+**Deck settings…** (Deck menu; `Ctrl+,`) opens a sheet with the deck-wide settings
 (General, PDF output and Admin slides tabs). They are written into the deck's own
 .tex file, all in one go when you press **Save**, so they stay with the deck when
 it is moved, copied or archived:
@@ -1365,7 +1370,7 @@ older, not-yet-tagged slide), select it and use the
 **Language** panel's language choice — this renames the file (and any frozen
 versions) and rewrites every deck reference for you; it asks for
 confirmation first, naming how many references will change. **Reestablish broken
-translation links** (⋮ → *Housekeeping…*) refreshes every `Translation
+translation links** (Housekeeping → *Housekeeping…*) refreshes every `Translation
 of:`/`... translation:` comment from current disk state — safe to run
 any time, e.g. after a manual rename elsewhere.
 
@@ -1408,7 +1413,7 @@ all…**. As of 2026-08-25 every existing image has a German translation.
 
 Exactly what gets sent to the model — the instruction text, and how many
 blank lines separate it from the text to translate — is configurable per
-model and per language pair from **⋮ → Settings… → Prompts**, since different models expect different prompt shapes (a
+model and per language pair from **File → Settings… → Prompts**, since different models expect different prompt shapes (a
 dedicated MT model wants a short bare instruction; a general
 instruction-tuned model tolerates a longer one). A model/pair with no
 specific entry there falls back to that same tab's single editable
@@ -2745,7 +2750,7 @@ embedded Markdown table. JSON has no such limit, so the split no longer
 earns its complexity. `media/alt-text.csv` still exists, but only as a
 generated compile-time projection — see "Repository layout" above.)
 
-**The workflow**, all on SlideMage's **Images** page (**Image descriptions** in the ⋮ menu (Project)
+**The workflow**, all on SlideMage's **Images** page (**Image descriptions** in the View menu
 and the palette; the list on its left is
 slide-centric, filtered by state, and the top bar's **Close images** returns to the deck):
 
@@ -3004,7 +3009,7 @@ unsaved (or even a saved but never recompiled) edit. **Render ▾ → Render the
 always compiles your current text directly and is unaffected by any of this.
 
 To refresh every slide's preview in one pass (e.g. after a preamble/theme
-change), choose **Update slide previews** (⋮ → *Housekeeping…*) and confirm — no
+change), choose **Update slide previews** (Housekeeping → *Housekeeping…*) and confirm — no
 institution to pick any more: it scans every deck (active and archived)
 for which slides it actually uses under which template, compiles one
 throwaway deck per template containing exactly that template's own

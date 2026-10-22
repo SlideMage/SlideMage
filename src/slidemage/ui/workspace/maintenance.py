@@ -364,7 +364,7 @@ def apply_update_choice(window, choice: str, release: updater.Release) -> None:
                 "Updates will be installed automatically (Settings → General)"
                 if choice == "auto" else
                 "SlideMage will no longer check for updates on start "
-                "(Settings → General; ⋮ → Check for updates… still works)")
+                "(Settings → General; Help → Check for updates… still works)")
     if choice in ("install", "auto"):
         download_and_install_update(window, release)
     elif choice == "later":
