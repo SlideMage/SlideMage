@@ -205,7 +205,8 @@ def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:
 
 def on_edit_deck_tags(window, deck: Deck) -> None:
     """⋮ -> "Tags…": choose the groups the deck appears
-    in. Written into the deck's own file as \\decktags{...}."""
+    in. Written into the deck's own file as \\decktags{...}. Its "Edit groups…" opens Settings at the
+    project's groups and then asks again, so a group just added can be chosen."""
     if window.centre.unsaved(deck.path):
         QMessageBox.information(
             window, "Tags",
@@ -215,8 +216,15 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
         return
     if deck.group == TAG_MANUAL:
         return  # its Tags button is disabled; the manual keeps its section
-    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.groups, groups=window.deck_groups)
+    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.groups, groups=window.deck_groups,
+                           edit_groups=True)
     if not sheet.exec():
+        if sheet.edit_groups_requested:
+            window.open_deck_groups()
+            # Settings may have rescanned the decks or rewritten this one's tags: ask again on a fresh scan.
+            fresh = next((d for d in window.decks if d.path == deck.path), None)
+            if fresh is not None:
+                on_edit_deck_tags(window, fresh)
         return
     tags = tags_with_groups(deck.tags, sheet.chosen_groups, window.deck_groups)
     if tags == list(deck.tags):

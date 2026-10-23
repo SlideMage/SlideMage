@@ -314,4 +314,4 @@ def test_settings_opens_at_the_deck_groups_and_the_deck_switcher_follows_a_saved
     sheet.project_tab.deck_groups.add_group()
     assert [h for h, decks in menus.deck_sections(window.decks, window.deck_groups) if decks] == ["Workshops"]
     assert window.topbar._deck_groups == window.deck_groups
-    assert "workshops" in DeckGroupSheet(window, "Tags", "course", groups=window.deck_groups)._radios
+    assert "workshops" in DeckGroupSheet(window, "Tags", ("course",), groups=window.deck_groups)._checks

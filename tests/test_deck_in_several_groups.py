@@ -8,7 +8,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox
+from PySide6.QtWidgets import QCheckBox, QPushButton
 
 from conftest import EXAMPLE, build_window, command_context, filled_menu, qapp as qapp  # noqa: F401 -- a fixture
 from slidemage import deck_editor, deck_scan
@@ -203,6 +203,39 @@ def test_tags_writes_the_checked_groups_and_keeps_other_tags(qapp, monkeypatch, 
     monkeypatch.setattr(deck_actions, "DeckGroupSheet", lambda *a, **k: _Sheet([]))
     deck_actions.on_edit_deck_tags(window, deck)
     assert _tags(deck.path) == "intro"
+
+
+def test_edit_groups_closes_the_tags_sheet_with_the_request(qapp):
+    plain = DeckGroupSheet(None, "Duplicate", ["course"], groups=OWN_GROUPS)
+    assert "Edit groups…" not in [b.text() for b in plain.findChildren(QPushButton)]
+    plain.deleteLater()
+    sheet = DeckGroupSheet(None, "Tags", ["course"], groups=OWN_GROUPS, edit_groups=True)
+    next(b for b in sheet.findChildren(QPushButton) if b.text() == "Edit groups…").click()
+    assert sheet.edit_groups_requested and sheet.result() == 0
+    sheet.deleteLater()
+
+
+def test_tags_opens_the_deck_groups_and_then_asks_again(qapp, monkeypatch, tmp_path):
+    window, root, deck = _window(monkeypatch, tmp_path)
+    opened = []
+    monkeypatch.setattr(window, "open_deck_groups", lambda: opened.append(True))
+
+    class _EditFirst(_Sheet):
+        def exec(self):
+            return False
+
+    sheets = iter([_EditFirst([]), _Sheet(["research"])])
+
+    def make(*_a, **kw):
+        assert kw.get("edit_groups") is True
+        sheet = next(sheets)
+        sheet.edit_groups_requested = isinstance(sheet, _EditFirst)
+        return sheet
+
+    monkeypatch.setattr(deck_actions, "DeckGroupSheet", make)
+    deck_actions.on_edit_deck_tags(window, deck)
+    assert opened == [True]
+    assert _tags(deck.path) == "research,intro"
 
 
 def test_duplicate_deck_with_two_groups_and_with_none(qapp, monkeypatch, tmp_path):
