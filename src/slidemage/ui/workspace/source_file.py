@@ -58,20 +58,23 @@ REPLACE_KEY = "Ctrl+Alt+F" if sys.platform == "darwin" else "Ctrl+H"
 
 
 NEW_SLIDE = "new_slide"
+OVERWRITE = "overwrite"      # Update version: the changes go into the version they were made to, keeping its number
 
 
 def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str]:
     """Update Version's "how significant is the change since `base`?" prompt.
-    Returns "major", "minor", "patch", NEW_SLIDE (the changes become a slide of their own, slide_branch.py), or
-    None if the user cancelled."""
+    Returns "major", "minor", "patch", OVERWRITE (the changes replace `base`, which keeps its number), NEW_SLIDE
+    (the changes become a slide of their own, slide_branch.py), or None if the user cancelled."""
+    old = f"v{slide_versioning.format_dot(base)}"
     box = QMessageBox(parent)
     box.setWindowTitle("Update version")
-    box.setText(f"Changed since v{slide_versioning.format_dot(base)}.\n\nHow significant is the change? "
-                "Or keep this slide as it was and make the changes a new slide.")
+    box.setText(f"Changed since {old}.\n\nHow significant is the change? Or overwrite {old} with it (decks that "
+                f"keep {old} get the change too), or keep this slide as it was and make the changes a new slide.")
     level_buttons: dict[str, QPushButton] = {}
     for level in ("major", "minor", "patch"):
         target = slide_versioning.format_dot(slide_versioning.bump(base, level))
         level_buttons[level] = box.addButton(f"{level.capitalize()} (→ {target})", QMessageBox.ButtonRole.AcceptRole)
+    level_buttons[OVERWRITE] = box.addButton(f"Overwrite {old}", QMessageBox.ButtonRole.AcceptRole)
     level_buttons[NEW_SLIDE] = box.addButton("New slide…", QMessageBox.ButtonRole.AcceptRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(level_buttons["minor"])

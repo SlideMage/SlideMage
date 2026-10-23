@@ -33,7 +33,7 @@ from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_L
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
+from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import REPLACE_KEY, SourceFile, autosave_on
@@ -108,12 +108,12 @@ class SourcePane(Surface):
 
         top = QHBoxLayout()
         top.setSpacing(6)
-        self._name = QLabel()
+        # Cut with … where the pane is narrow (Split view); the whole name is its tooltip.
+        self._name = ElidedLabel()
         self._name.setObjectName(q.SOURCE_FILE_NAME)
-        top.addWidget(self._name)
+        top.addWidget(self._name, 1)
         self._unsaved_chip = Chip("", "muted")
         top.addWidget(self._unsaved_chip)
-        top.addStretch(1)
         self._elsewhere_chip = Chip("", "warning")
         self._elsewhere_chip.clicked.connect(self._show_other_dirty)
         top.addWidget(self._elsewhere_chip)
@@ -355,7 +355,7 @@ class SourcePane(Surface):
         file = self._current
         has = file is not None
         read_only = has and file.editor.is_read_only()
-        self._name.setText(file.path.name if has else "")
+        self._name.set_full_text(file.path.name if has else "")
         self._unsaved_chip.setVisible(has and file.dirty)
         if has and file.conflicted:
             self._unsaved_chip.set_text("Not saved: changed on disk")

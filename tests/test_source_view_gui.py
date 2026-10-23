@@ -449,3 +449,14 @@ def test_switching_autosave_on_saves_what_waits(pane, slides):
     layout_settings.set(source_file.AUTOSAVE_KEY, True)
     pane.autosave_changed()
     assert file._autosave_timer.isActive() and pane.blocked_files() == []
+
+
+def test_a_long_file_name_is_cut_in_a_narrow_pane_and_whole_in_its_tooltip(pane, slides):
+    path = slides / "xyz-EN-A-Very-Long-Slide-Title-That-Does-Not-Fit-current.tex"
+    path.write_text(BODY, encoding="utf-8")
+    pane.resize(320, 400)
+    pane.show()
+    pane.show_path(path)
+    QApplication.processEvents()
+    assert pane._name.toolTip() == path.name and pane._name.full_text() == path.name
+    assert pane._name.text() != path.name and pane._name.text().endswith("…")

@@ -340,6 +340,27 @@ def update_version(ctx: ProjectContext, current_path: Path, id_slug: str, level:
     return frozen, new, base
 
 
+def overwrite_version(ctx: ProjectContext, current_path: Path, id_slug: str) -> Version:
+    """Update version -> Overwrite (v8.59.0): the slide's current content replaces the frozen version it was changed
+    from (the version its "+" is on), which keeps its number; the current file is written without the "+". Decks
+    pinned to that version get the change too. Returns the version. Raises ValueError when nothing changed since."""
+    from . import slide_source
+
+    text, eol = slide_source.read_slide_source(current_path)
+    marker = parse_marker(text)
+    base = marker[0] if marker is not None else DEFAULT_BASELINE
+    base_path = frozen_path(current_path, id_slug, base)
+    changed = marker is not None and marker[1] or (
+        base_path.exists() and _changed_since(slide_source.read_slide_source(base_path)[0], text))
+    if not changed:
+        raise ValueError(f"{id_slug} has not changed since v{format_dot(base)}.")
+    new_text = set_marker(text, base)
+    if new_text != text:
+        slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=text)
+    shutil.copy2(str(current_path), str(base_path))
+    return base
+
+
 def revert_to_version(ctx: ProjectContext, current_path: Path, id_slug: str) -> Version:
     """Give the slide back the content of the version it was changed from (the version its "+" is on), keeping
     its own header and dropping the "+": the edits are elsewhere now (Update version → New slide, v8.58.0). No

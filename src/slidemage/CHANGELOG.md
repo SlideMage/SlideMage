@@ -2745,3 +2745,9 @@ NEW: Claude Code works in the Windows download, changes can become a new slide, 
 - The Claude Code terminal works in the Windows download: it ended at once with exit code -1073741510.
 - Update version can save your changes as a new slide instead, used in this deck (and others you tick), while the slide itself stays as it was.
 - The SlideMage manual (F1) is up to date.
+
+v8.59.0 (2026-10-23, direct requests: "When I hover over a slide title in the split view's source window, show the full title in the hover text" and "When clicking Update slide, also offer an overwrite option"): The Source view's file name, the slide's id and title, is cut with an ellipsis where the pane is narrow, the Split view, and shown whole in its tooltip (an ElidedLabel that takes the header's free width; it was a plain label that the layout clipped). Update version offers Overwrite vX.Y.Z beside Major, Minor, Patch and New slide: the changes go into the version they were made to, which keeps its number, and the slide is written without its "+" (slide_versioning.overwrite_version, CentreColumn.overwrite_version); decks pinned to that version get the change too, as the question says. Nothing changed since that version: refused, as before. Tests in test_slide_versions_gui.py and test_source_view_gui.py.
+
+NEW: Update version can overwrite the version, and long slide names show whole on hover.
+- Update version offers Overwrite: the changes go into the current version number instead of a new one.
+- Hovering over the slide name at the top of the Source view shows the whole name when it is cut off, e.g. in Split view.

@@ -40,7 +40,7 @@ from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
-from .source_file import NEW_SLIDE, RELOADED, autosave_on, prompt_version_level
+from .source_file import NEW_SLIDE, OVERWRITE, RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -323,8 +323,28 @@ class CentreColumn(QFrame):
         level = prompt_version_level(self.app, base) if new != base else "patch"
         if level == NEW_SLIDE:
             self.save_as_new_slide(id_slug)
+        elif level == OVERWRITE:
+            self.overwrite_version(id_slug)
         elif level is not None:
             self.freeze_version(id_slug, level)
+
+    def overwrite_version(self, id_slug: str) -> None:
+        """Update version -> Overwrite: the changes go into the version they were made to, which keeps its number
+        (slide_versioning.overwrite_version); decks pinned to it get them too."""
+        current = self.state.project.slides_dir / slide_language.current_name(id_slug)
+        open_current = self.source.file_for(current)
+        if not self._written(open_current):
+            return
+        try:
+            version = slide_versioning.overwrite_version(self.state.project, current, id_slug)
+        except (ValueError, OSError, slide_source.StaleFileError) as exc:
+            QMessageBox.warning(self.app, "Cannot overwrite the version", str(exc))
+            return
+        self.app.log(f"Overwrote v{slide_versioning.format_dot(version)} of {id_slug} with its current content")
+        if open_current is not None:
+            open_current.adopt_disk()
+        self.refresh()
+        self.versions_changed.emit()
 
     def save_as_new_slide(self, id_slug: str) -> None:
         """Update version → New slide…: the changes become a slide of their own (slide_branch.py), which the decks

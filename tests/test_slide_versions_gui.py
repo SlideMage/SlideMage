@@ -263,3 +263,28 @@ def test_the_new_slide_sheet_ticks_the_edited_deck_and_checks_the_name(qapp):
     sheet.name_edit.setText("Demo-2")
     sheet._on_ok()
     assert sheet.slug == "Demo-2" and sheet.decks == ["talk"]
+
+
+def test_update_version_can_overwrite_the_version_the_changes_were_made_to(ctx, qapp, versioned_slide, monkeypatch):
+    from slidemage.ui.workspace import centre as centre_module
+
+    app = FakeApp(ctx)
+    centre = CentreColumn(app, WorkspaceState(ctx))
+    current = versioned_slide / "abc-EN-Demo-current.tex"
+    centre.freeze_version("abc-EN-Demo", "minor")      # 1.2.0 frozen as it is
+    centre.open_file(current)
+    editor = centre.source.current.editor
+    editor.moveCursor(QTextCursor.MoveOperation.End)
+    editor.insertPlainText("% a typo fixed\n")
+    asked = []
+    monkeypatch.setattr(centre_module, "prompt_version_level", lambda _parent, base: asked.append(base) or "overwrite")
+    centre.update_version("abc-EN-Demo")
+    expected = "\\setSlideVersion{1-2-0}\n" + BODY + "% a typo fixed\n"
+    assert asked == [(1, 2, 0)] and current.read_text(encoding="utf-8") == expected            # no "+"
+    assert (versioned_slide / "abc-EN-Demo-v1-2-0.tex").read_text(encoding="utf-8") == expected   # same number
+    assert not (versioned_slide / "abc-EN-Demo-v1-2-1.tex").exists() and not editor.is_modified()
+    assert app.logged[-1] == "Overwrote v1.2.0 of abc-EN-Demo with its current content"
+    told = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *args: told.append(args[2]))
+    centre.update_version("abc-EN-Demo")                 # nothing changed since: nothing to overwrite
+    assert told and "has not changed since v1.2.0" in told[0] and len(asked) == 1

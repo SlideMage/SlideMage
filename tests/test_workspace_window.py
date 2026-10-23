@@ -20,7 +20,6 @@ from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import Chapter, Deck
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.fonts import load_fonts
-from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import compile_actions, deck_actions, maintenance, side_panels, slide_list, topbar as topbar_module, window as window_module
 from slidemage.ui.workspace.topbar import DARK_LOGO_PATH, DECK_MAX_WIDTHS, DENSITIES, LOGO_PATH
 from slidemage.ui.workspace.actions import VIEW_AND_BUILD
