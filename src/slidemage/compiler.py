@@ -30,6 +30,7 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +47,8 @@ PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
 from .deck_editor import VIEWS
-from .deck_scan import DOCUMENT_END_RE, GROUP_ORDER, Chapter, Deck
+from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
+from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
 from .processes import no_console_kwargs
 
 
@@ -979,17 +981,18 @@ def job_stage(job: CompileJob) -> int:
     return {"during-course": 2, "after-course": 3}.get(job.version, 1)
 
 
-def order_jobs(jobs: list[CompileJob]) -> list[CompileJob]:
+def order_jobs(jobs: list[CompileJob], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[CompileJob]:
     """The order a batch of jobs is compiled in (2026-10-03, direct
     instruction): version by version -- Presenter, Instructor, During-course,
     After-course, After-course per chapter -- and within each version deck by
-    deck, by the deck table's groups: work decks, course decks, research
-    presentations, the manual, test decks. Decks of one group, and the chapters of one
+    deck, by the deck switcher's groups (`groups`, the project's list; by
+    default work decks, course decks, research presentations, the manual,
+    test decks), each deck under its first group. Decks of one group, and the chapters of one
     deck, stay in the order the jobs came in (the table's order): the sort is
     stable. Selecting During-course and Presenter for #workdeck and IA2
     compiles #workdeck Presenter, IA2 Presenter, #workdeck During-course,
     IA2 During-course."""
-    group_rank = {tag: i for i, tag in enumerate(GROUP_ORDER)}
+    group_rank = {tag: i for i, tag in enumerate(switcher_order(groups))}
     return sorted(jobs, key=lambda job: (
         job_stage(job), group_rank.get(job.deck.group, len(group_rank))))
 

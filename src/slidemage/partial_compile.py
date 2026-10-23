@@ -50,7 +50,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_log, compile_records, compiler, deck_scan, project
+from . import compile_log, compile_records, compiler, deck_groups, deck_scan, project
 from .compiler import CancelToken, CompileJob
 from .deck_editor import SlideCall
 from .fileio import replace_with_retry, write_json
@@ -216,7 +216,7 @@ def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
     if job.chapter is not None:
         raise PartialError("Page compiles work on whole-deck versions, not per-chapter PDFs.")
     # The deck as it is on disk now (the deck table's copy may be older).
-    fresh = next((d for d in deck_scan.scan_dir(job.deck.path.parent, job.deck.archived)
+    fresh = next((d for d in deck_scan.scan_dir(job.deck.path.parent, job.deck.archived, deck_groups.load(ctx))
                   if compile_records.norm(d.path) == compile_records.norm(job.deck.path)), None)
     if fresh is None:
         raise PartialError(f"{job.deck.path.name} is no longer a deck file.")

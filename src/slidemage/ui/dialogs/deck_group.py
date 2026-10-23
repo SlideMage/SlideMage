@@ -12,25 +12,23 @@ from typing import Callable, Optional
 
 from PySide6.QtWidgets import QButtonGroup, QComboBox, QLineEdit, QRadioButton, QVBoxLayout
 
-from ...deck_scan import SELECTABLE_GROUP_TAGS, TAG_COURSE, TAG_RESEARCH, TAG_TEST, TAG_WORK
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, fallback_tag, labels, selectable_tags
 from ..kit.widgets import Field, ModalSheet, Surface, caption, set_property
 
-GROUP_LABELS = {
-    TAG_WORK: "Workdeck (pinned to the top of the deck switcher)",
-    TAG_COURSE: "Course deck",
-    TAG_RESEARCH: "Research presentation",
-    TAG_TEST: "Test deck",
-}
+# The default groups' labels; a project's own list has deck_groups.labels(groups).
+GROUP_LABELS = labels()
 
 
 class DeckGroupSheet(ModalSheet):
     def __init__(self, parent, title: str, current_group: str, *, ok_text: str = "Save",
                  name_prompt: Optional[str] = None, default_name: str = "",
                  validate_name: Optional[Callable[[str], Optional[str]]] = None,
-                 templates: Optional[Sequence[tuple[str, str]]] = None, current_template: str = "") -> None:
+                 templates: Optional[Sequence[tuple[str, str]]] = None, current_template: str = "",
+                 groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
         """After exec(), `name` ("" without `name_prompt`), `group` and `template` ("" without `templates`) hold
         the choice. `validate_name` returns the reason a name is unusable, shown in the sheet, or None.
-        `templates` is (key, label) pairs: a deck's institution template is asked for too."""
+        `templates` is (key, label) pairs: a deck's institution template is asked for too. `groups` is the
+        project's list of deck groups, the choices offered."""
         super().__init__(title, parent, width=480)
         self._validate_name = validate_name
         body = Surface()
@@ -57,12 +55,13 @@ class DeckGroupSheet(ModalSheet):
         group_layout.setSpacing(6)
         buttons = QButtonGroup(self)
         self._radios: dict[str, QRadioButton] = {}
-        # The manual's own group is never offered (deck_scan.TAG_MANUAL): a copy of the manual
-        # starts out as a course deck.
-        if current_group not in SELECTABLE_GROUP_TAGS:
-            current_group = TAG_COURSE
-        for tag in SELECTABLE_GROUP_TAGS:
-            radio = QRadioButton(GROUP_LABELS[tag])
+        # The manual's own group is never offered (deck_groups.TAG_MANUAL): a copy of the manual
+        # starts out in the fallback group (by default a course deck).
+        selectable, group_labels = selectable_tags(groups), labels(groups)
+        if current_group not in selectable:
+            current_group = fallback_tag(groups) or next(iter(selectable), "")
+        for tag in selectable:
+            radio = QRadioButton(group_labels[tag])
             radio.setChecked(tag == current_group)
             buttons.addButton(radio)
             self._radios[tag] = radio
@@ -80,7 +79,9 @@ class DeckGroupSheet(ModalSheet):
         ok = self.add_button(ok_text, kind="primary")
         ok.setDefault(True)
         ok.clicked.connect(self._on_ok)
-        (self.name_edit or next(iter(self._radios.values()))).setFocus()
+        focus = self.name_edit or next(iter(self._radios.values()), None)
+        if focus is not None:
+            focus.setFocus()
         self.name = ""
         self.group = current_group
         self.template = ""
@@ -97,7 +98,7 @@ class DeckGroupSheet(ModalSheet):
             self._show_problem(reason)
             return
         self.name = name
-        self.group = next(tag for tag, radio in self._radios.items() if radio.isChecked())
+        self.group = next((tag for tag, radio in self._radios.items() if radio.isChecked()), self.group)
         if self.template_box is not None:
             self.template = self.template_box.currentData()
         self.accept()

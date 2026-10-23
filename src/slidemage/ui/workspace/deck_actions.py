@@ -8,6 +8,7 @@ provides `project`, `state`, `compiling`, `log` and `reload_decks()`.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
@@ -17,7 +18,8 @@ from ... import (
     transcript)
 from ... import archive as archive_mod
 from ...compiler import deck_pdfs, pdf_to_open
-from ...deck_scan import GROUP_TAGS, TAG_MANUAL, Deck
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, group_tags
+from ...deck_scan import TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
 from ...fileio import read_text_exact
 from ..dialogs.admin_slides import AdminSlidesTab
@@ -103,9 +105,10 @@ def on_create_deck_snapshot(window) -> None:
     compile_actions.start_snapshots(window, sheet.selected_decks(), sheet.options())
 
 
-def tags_with_group(deck_tags: list[str], group: str) -> list[str]:
-    """`group` as the deck's group tag, keeping any other tags it has."""
-    return [group] + [t for t in deck_tags if t not in GROUP_TAGS]
+def tags_with_group(deck_tags: list[str], group: str, groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[str]:
+    """`group` as the deck's group tag, keeping any other tags it has that name no group of `groups`."""
+    named = group_tags(groups)
+    return [group] + [t for t in deck_tags if t not in named]
 
 
 def on_open_latest_pdf(window, deck: Deck) -> None:
@@ -206,7 +209,7 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
         return
     if deck.group == TAG_MANUAL:
         return  # its Tags button is disabled; the manual keeps its section
-    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.group)
+    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.group, groups=window.deck_groups)
     if not sheet.exec():
         return
     group = sheet.group
@@ -214,7 +217,7 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
         return  # already exactly that
     try:
         deck_editor.set_deck_tags(
-            deck.path, deck.text, tags_with_group(deck.tags, group))
+            deck.path, deck.text, tags_with_group(deck.tags, group, window.deck_groups))
     except (deck_editor.StaleFileError, ValueError, OSError) as exc:
         QMessageBox.critical(window, "Tags failed", str(exc))
         return
@@ -235,7 +238,7 @@ def on_new_deck(window) -> None:
         name_prompt="Name of the new deck (the file decks/<name>.tex)",
         default_name="new-deck",
         validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, window.project.decks_dir),
-        templates=labels, current_template=template,
+        templates=labels, current_template=template, groups=window.deck_groups,
     )
     if not sheet.exec():
         return
@@ -260,6 +263,7 @@ def on_duplicate_deck(window, deck: Deck) -> None:
         name_prompt=f"Name for the copy of {deck.name}.tex",
         default_name=f"{deck.name}-copy",
         validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, deck.path.parent),
+        groups=window.deck_groups,
     )
     if not sheet.exec():
         return
@@ -273,7 +277,7 @@ def on_duplicate_deck(window, deck: Deck) -> None:
     if group != deck.group or group not in deck.tags:
         try:
             deck_editor.set_deck_tags(
-                dest, read_text_exact(dest), tags_with_group(deck.tags, group))
+                dest, read_text_exact(dest), tags_with_group(deck.tags, group, window.deck_groups))
             window.log(f"Tagged {dest.stem} as {group}")
         except (deck_editor.StaleFileError, ValueError, OSError) as exc:
             QMessageBox.warning(

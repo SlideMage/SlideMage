@@ -81,7 +81,7 @@ def compile_current(window, kind: str, pages: Optional[list[int]] = None) -> Non
 def compile_several(window) -> None:
     """Compile -> "Several decks…": the PDFs and transcripts ticked in
     MultiCompileSheet, on one compile run."""
-    sheet = MultiCompileSheet(window, [deck for deck in window.decks if not deck.archived])
+    sheet = MultiCompileSheet(window, [deck for deck in window.decks if not deck.archived], window.deck_groups)
     if not sheet.exec():
         return
     chosen = sheet.chosen()
@@ -165,7 +165,7 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
         job.run_id = run_id
         output_dir, output_stem = resolve_output_location(window.project, job)
         outputs[job.jobname] = output_dir / f"{output_stem}.pdf"
-    jobs = order_jobs(jobs)   # version by version, then deck by deck
+    jobs = order_jobs(jobs, window.deck_groups)   # version by version, then deck by deck
     jobs, empty_descriptions = _drop_empty_jobs(window.project, jobs)
     if not jobs:
         QMessageBox.critical(

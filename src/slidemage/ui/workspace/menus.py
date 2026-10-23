@@ -11,13 +11,14 @@ and the ⌘K palette stay as quick ways to the same commands.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import NamedTuple, Optional
 
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QLabel, QMenu, QMenuBar, QWidget, QWidgetAction
 
-from ...deck_scan import GROUP_ORDER, TAG_COURSE, TAG_MANUAL, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, headings, switcher_order
+from ...deck_scan import Deck
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Context
 from ..kit import kit_qss as q
@@ -30,31 +31,28 @@ VIEW_LABELS = {
     "after-course": "After course",
 }
 
-# Deck switcher sections in GROUP_ORDER; the work deck stands on its own, unlabelled.
-GROUP_HEADINGS = {
-    TAG_WORK: None,
-    TAG_COURSE: "Course decks",
-    TAG_RESEARCH: "Research presentations",
-    TAG_MANUAL: "SlideMage manual",
-    TAG_TEST: "Test decks",
-}
+def deck_sections(decks: Iterable[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[tuple[str, list[Deck]]]:
+    """The deck switcher's sections top to bottom, (heading, decks) per group of the project's list and the
+    manual's, empty ones included; a pinned group has no heading ("")."""
+    decks = list(decks)
+    titles = headings(groups)
+    return [(titles[tag], [d for d in decks if d.group == tag]) for tag in switcher_order(groups)]
 
 
 def deck_key(deck: Deck) -> str:
     return str(deck.path)
 
 
-def build_deck_menu(parent: QWidget, decks: list[Deck], current: Optional[Deck]) -> PopoverMenu:
-    """Active decks by group, then the archived decks in a footer section."""
+def build_deck_menu(parent: QWidget, decks: list[Deck], current: Optional[Deck],
+                    groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> PopoverMenu:
+    """Active decks by group (`groups`, the project's list), then the archived decks in a footer section."""
     menu = PopoverMenu(parent, min_width=300)
     menu.current_key = deck_key(current) if current is not None else ""
-    active = [d for d in decks if not d.archived]
-    for tag in GROUP_ORDER:
-        group = [d for d in active if d.group == tag]
+    for heading, group in deck_sections((d for d in decks if not d.archived), groups):
         if not group:
             continue
-        if GROUP_HEADINGS[tag]:
-            menu.add_header(GROUP_HEADINGS[tag])
+        if heading:
+            menu.add_header(heading)
         for deck in group:
             _add_deck(menu, deck, current)
     archived = [d for d in decks if d.archived]
@@ -276,8 +274,8 @@ def _add_decks(menu: QMenu, ctx: Context) -> None:
     sub.setObjectName("submenu:switch deck")
     current = ctx.state.deck
     group = QActionGroup(sub)
-    active = [d for d in ctx.decks if not d.archived]
-    sections = [(GROUP_HEADINGS[tag] or "", [d for d in active if d.group == tag]) for tag in GROUP_ORDER]
+    groups = getattr(ctx, "deck_groups", DEFAULT_GROUPS)    # a stand-in context may not have the project's list
+    sections = deck_sections((d for d in ctx.decks if not d.archived), groups)
     sections.append(("Archived decks", [d for d in ctx.decks if d.archived]))
     first = True
     for heading, decks in sections:

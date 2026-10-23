@@ -10,12 +10,15 @@ the choice on the normal compile slot, which orders it version by version
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QScrollArea, QWidget
 
-from ...deck_scan import GROUP_ORDER, Deck
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup
+from ...deck_scan import Deck
 from ...transcript import STUDENT_VERSIONS
 from ..kit.widgets import ModalSheet
-from .menus import GROUP_HEADINGS, VIEW_LABELS
+from .menus import VIEW_LABELS, deck_sections
 from .state import VIEWS
 
 COLUMNS = [(view, VIEW_LABELS[view]) for view in VIEWS] + [
@@ -31,7 +34,7 @@ def offered(deck: Deck, kind: str) -> bool:
 
 
 class MultiCompileSheet(ModalSheet):
-    def __init__(self, parent: QWidget, decks: list[Deck]) -> None:
+    def __init__(self, parent: QWidget, decks: list[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
         super().__init__("Compile several decks", parent, width=900)
         self.boxes: dict[tuple[str, str], QCheckBox] = {}
         self._decks = {deck.name: deck for deck in decks}
@@ -40,10 +43,9 @@ class MultiCompileSheet(ModalSheet):
         for col, (_kind, label) in enumerate(COLUMNS, start=1):
             grid.addWidget(QLabel(label), 0, col)
         row = 1
-        for tag in GROUP_ORDER:
-            group = [d for d in decks if d.group == tag]
-            if group and GROUP_HEADINGS[tag]:
-                grid.addWidget(QLabel(f"<b>{GROUP_HEADINGS[tag]}</b>"), row, 0)
+        for heading, group in deck_sections(decks, groups):
+            if group and heading:
+                grid.addWidget(QLabel(f"<b>{heading}</b>"), row, 0)
                 row += 1
             for deck in group:
                 grid.addWidget(QLabel(deck.name), row, 0)

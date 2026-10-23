@@ -41,6 +41,7 @@ from ... import app_settings, bibliography, deck_headers, deck_outline, latex_ed
 from ... import version as version_mod
 from ...ai import ai_profile, resolver
 from ...ai.providers import ChatProvider
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
 from ...deck_scan import Deck, scan_decks
 from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
@@ -115,6 +116,7 @@ class _CurrentPageStack(QStackedWidget):
 
 class WorkspaceWindow(QMainWindow):
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
+    deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
     def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
         super().__init__()
@@ -346,8 +348,9 @@ class WorkspaceWindow(QMainWindow):
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
         that was open last time, else the first active deck."""
+        self.deck_groups = load_deck_groups(self.project)
         self.decks = scan_decks(self.project)
-        self.topbar.set_decks(self.decks)
+        self.topbar.set_decks(self.decks, self.deck_groups)
         self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()

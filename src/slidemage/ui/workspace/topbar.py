@@ -12,10 +12,13 @@ registry of the window it is given.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QSizePolicy, QVBoxLayout, QWidget
 
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup
 from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
@@ -60,6 +63,7 @@ class TopBar(QWidget):
         self._window = window
         self._state = state = window.state
         self._decks: list[Deck] = []
+        self._deck_groups: Sequence[DeckGroup] = DEFAULT_GROUPS
         self._compile_menu = None
         self._density = DENSITIES[0][0]
         self._available_width: int | None = None
@@ -228,8 +232,9 @@ class TopBar(QWidget):
             button.set_icon(show_icon if hidden else hide_icon)
             button.setToolTip(f"{command.title(self._window)} ({command.info(self._window)})")
 
-    def set_decks(self, decks: list[Deck]) -> None:
+    def set_decks(self, decks: list[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
         self._decks = decks
+        self._deck_groups = groups
 
     def set_dark(self, dark: bool) -> None:
         self._logo.setPixmap(QIcon(str(DARK_LOGO_PATH if dark else LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
@@ -299,7 +304,7 @@ class TopBar(QWidget):
     # -- menus -------------------------------------------------------------
 
     def open_deck_menu(self) -> None:
-        menu = build_deck_menu(self, self._decks, self._state.deck)
+        menu = build_deck_menu(self, self._decks, self._state.deck, self._deck_groups)
         menu.triggered.connect(self._on_deck_picked)
         menu.closed.connect(lambda: self._deck_button.set_active(False))
         menu.closed.connect(menu.deleteLater)

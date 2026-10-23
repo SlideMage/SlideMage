@@ -10,10 +10,11 @@ decks/test-slides.tex (no \\documentclass of its own).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import project
+from . import deck_groups, project
 from .tex_source import is_commented
 
 
@@ -44,30 +45,25 @@ ADDBIBRESOURCE_RE = re.compile(r"\\addbibresource")
 OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 
 # \decktags{tag1,tag2} -- a deck's own tags (see Slidemaster_preamble_base.tex's
-# inert \decktags). The deck tables group decks by whichever of GROUP_TAGS a
-# deck carries; a deck carrying none is a course deck. When a deck carries
-# several, the first one in GROUP_TAGS' order wins.
+# inert \decktags). The tags that name one of the project's deck groups
+# (deck_groups.py) put the deck into those groups; a deck naming none is in
+# the fallback group.
 DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
 # \deckappendixtoc in the preamble: always generate the appendix TOC for
 # this deck (whole-deck compiles), whatever the toolbar checkbox says.
 DECKAPPENDIXTOC_RE = re.compile(r"\\deckappendixtoc(?![a-zA-Z@])")
 COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
-TAG_WORK = "work"
-TAG_COURSE = "course"
-TAG_RESEARCH = "research"
-TAG_TEST = "test"
-# The SlideMage manual's own group (2026-10-05, direct instruction: "Give the
-# manual its own tag, but do not let the user select that tag, so that it
-# always stays in a dedicated section"). It wins over every other group tag
-# and is never offered in the Tags/Duplicate dialogs.
-TAG_MANUAL = "manual"
-# Precedence: a deck carrying several group tags is in the first one's group.
-GROUP_TAGS = (TAG_MANUAL, TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
-# The groups a user can choose for a deck (Tags button, Duplicate dialog).
-SELECTABLE_GROUP_TAGS = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_TEST)
-# The deck table's order of the groups, top to bottom -- also the order a
-# compile run works through the decks of one version (compiler.order_jobs()).
-GROUP_ORDER = (TAG_WORK, TAG_COURSE, TAG_RESEARCH, TAG_MANUAL, TAG_TEST)
+# The default groups' tags and the manual's (deck_groups.py).
+TAG_WORK = deck_groups.TAG_WORK
+TAG_COURSE = deck_groups.TAG_COURSE
+TAG_RESEARCH = deck_groups.TAG_RESEARCH
+TAG_TEST = deck_groups.TAG_TEST
+TAG_MANUAL = deck_groups.TAG_MANUAL
+# The default groups' values of deck_groups.group_tags(), selectable_tags() and
+# switcher_order(): with a project's own list, ask deck_groups.
+GROUP_TAGS = deck_groups.group_tags()
+SELECTABLE_GROUP_TAGS = deck_groups.selectable_tags()
+GROUP_ORDER = deck_groups.switcher_order()
 
 
 @dataclass
@@ -109,22 +105,37 @@ class Deck:
     # which PDF "Open pdf" opens by default (parse_open_pdf(); None = instructor)
     open_pdf: str | None = None
 
+    # The deck's groups in switcher order and their roles (deck_groups.groups_of(),
+    # roles_of()), from the project's list at scan time; a Deck made without them
+    # gets them from its tags and the default groups.
+    groups: tuple[str, ...] | None = None
+    roles: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.groups is None:
+            self.groups = deck_groups.groups_of(self.tags)
+        if self.roles is None:
+            self.roles = deck_groups.roles_of(self.groups)
+
     @property
     def group(self) -> str:
-        """Which deck-table group this deck belongs to: the first of
-        GROUP_TAGS it carries, else TAG_COURSE."""
-        for tag in GROUP_TAGS:
-            if tag in self.tags:
-                return tag
-        return TAG_COURSE
+        """The first of the deck's groups ("" for a deck in none): the one
+        it is listed and compiled under."""
+        return self.groups[0] if self.groups else ""
+
+    @property
+    def is_pinned(self) -> bool:
+        """In a group with the `pinned` role: first in the deck switcher."""
+        return deck_groups.ROLE_PINNED in self.roles
 
     @property
     def is_test_deck(self) -> bool:
-        """Tagged `test`: layout regression fixtures (decks/test*.tex,
-        verify_accessibility.tex) whose slides come from a shared fragment
-        rather than \\slide{} calls of their own, so there is no slide list
-        or source to open for them in the GUI."""
-        return self.group == TAG_TEST
+        """In a group with the `test` role (by default `test`): layout
+        regression fixtures (decks/test*.tex, verify_accessibility.tex) whose
+        slides come from a shared fragment rather than \\slide{} calls of
+        their own, so there is no slide list or source to open for them in
+        the GUI, and no background previews."""
+        return deck_groups.ROLE_TEST in self.roles
 
     @property
     def has_chapters(self) -> bool:
@@ -260,8 +271,10 @@ def parse_open_pdf(text: str) -> str | None:
     return value if value in OPEN_PDF_CHOICES else None
 
 
-def read_deck(path: Path, archived: bool = False) -> Deck:
-    """Read one deck or body fragment, preserving its literal line endings."""
+def read_deck(path: Path, archived: bool = False,
+              groups: Sequence[deck_groups.DeckGroup] = deck_groups.DEFAULT_GROUPS) -> Deck:
+    """Read one deck or body fragment, preserving its literal line endings.
+    Its groups and roles come from `groups`, the project's list."""
     # newline="" passes CRLF through untouched, matching every other
     # reader in this package (archive.py, slide_source.py, ...) --
     # without it, Path.read_text()'s universal-newlines default silently
@@ -273,6 +286,8 @@ def read_deck(path: Path, archived: bool = False) -> Deck:
     with open(path, encoding="utf-8", errors="replace", newline="") as f:
         text = f.read()
     doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
+    tags = parse_tags(text)
+    in_groups = deck_groups.groups_of(tags, groups)
     return Deck(
         name=path.stem,
         path=path,
@@ -283,10 +298,12 @@ def read_deck(path: Path, archived: bool = False) -> Deck:
         preamble_end=doc_begin_match.end() if doc_begin_match else None,
         chapters=parse_chapters(text),
         output_folders=_parse_output_folders(text),
-        tags=parse_tags(text),
+        tags=tags,
         course_url=parse_course_url(text),
         appendix_toc=parse_appendix_toc(text),
         open_pdf=parse_open_pdf(text),
+        groups=in_groups,
+        roles=deck_groups.roles_of(in_groups, groups),
     )
 
 
@@ -295,14 +312,17 @@ def is_generated_wrapper(name: str) -> bool:
     return name.startswith("_") and name.lower().endswith(".tex")
 
 
-def scan_dir(directory: Path, archived: bool) -> list[Deck]:
+def scan_dir(directory: Path, archived: bool,
+             groups: Sequence[deck_groups.DeckGroup] = deck_groups.DEFAULT_GROUPS) -> list[Deck]:
+    """The decks directly in `directory`, their groups from `groups` (the
+    project's list; scan_decks() loads it)."""
     decks: list[Deck] = []
     if not directory.is_dir():
         return decks
     for path in sorted(directory.glob("*.tex")):
         if is_generated_wrapper(path.name):
             continue
-        deck = read_deck(path, archived)
+        deck = read_deck(path, archived, groups)
         if not DOCUMENTCLASS_RE.search(deck.text):
             continue  # a fragment (e.g. test-slides.tex), not a deck
         decks.append(deck)
@@ -311,8 +331,10 @@ def scan_dir(directory: Path, archived: bool) -> list[Deck]:
 
 def scan_decks(ctx: project.ProjectContext) -> list[Deck]:
     """Every discovered deck: active decks first, then archived ones, each
-    group sorted by filename."""
-    return scan_dir(ctx.decks_dir, archived=False) + scan_dir(ctx.archive_dir, archived=True)
+    group sorted by filename. The project's deck groups are read once, for
+    every deck's groups and roles."""
+    groups = deck_groups.load(ctx)
+    return scan_dir(ctx.decks_dir, archived=False, groups=groups) + scan_dir(ctx.archive_dir, archived=True, groups=groups)
 
 
 if __name__ == "__main__":
