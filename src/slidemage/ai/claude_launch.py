@@ -122,13 +122,25 @@ def settings(hook: str) -> dict:
 
 
 def build_command(claude: Path, url: str, hook: str | None = None, *,
-                  model: str = "", effort: str | None = None) -> list[str]:
-    """Start with the saved chat choice, or inherit Claude Code's defaults when no choice is saved."""
-    return [str(claude), *(["--model", model] if model else []),
+                  model: str = "", effort: str | None = None, session_id: str = "", resume: bool = False) -> list[str]:
+    """Start with the saved chat choice, or inherit Claude Code's defaults when no choice is saved. `session_id`
+    names the conversation (--session-id), or with `resume` continues it (--resume): --model and --effort apply to
+    this session only, so a new default reaches a running conversation this way without becoming Claude Code's own
+    default, as /model would make it."""
+    session = (["--resume", session_id] if resume else ["--session-id", session_id]) if session_id else []
+    return [str(claude), *session, *(["--model", model] if model else []),
             *(["--effort", effort] if effort else []),
             "--mcp-config", json.dumps(mcp_config(url)),
             "--settings", json.dumps(settings(hook or hook_command())),
             "--append-system-prompt", ORIENTATION]
+
+
+def has_transcript(session_id: str, base: dict[str, str] | None = None) -> bool:
+    """Whether Claude Code saved the conversation `session_id` (CLAUDE_CONFIG_DIR, else ~/.claude, then
+    projects/<folder>/<id>.jsonl), so that --resume can continue it: a session where nothing was sent has none."""
+    env = os.environ if base is None else base
+    home = Path(env.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    return bool(session_id) and any((home / "projects").glob(f"*/{session_id}.jsonl"))
 
 
 # Claude Code settings of the user that survive the clean-up of `environment`: a subscription token from

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt, QThread, Signal
+from PySide6.QtCore import QCoreApplication, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPalette, QShowEvent
 from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout
 
@@ -33,6 +33,8 @@ from ..state import WorkspaceState
 from .tasks import TaskRunner, bubbles
 
 SETUP, TERMINAL = 0, 1
+# switch_session: the pause between the two Esc of Esc Esc, and the time Claude Code gets to save the draft.
+ESC_GAP_MS, SAVE_DRAFT_MS = 250, 600
 NEVER_SENT = "Cloud stays selected. Nothing is sent and no other model is used"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
@@ -154,7 +156,7 @@ class ClaudeCodeView(Surface):
         self.restart_button = Button("Restart", "ghost", compact=True)
         self.restart_button.setToolTip("End Claude Code and start it again in this project (the conversation "
                                        "can be continued with /resume).")
-        self.restart_button.clicked.connect(self.restart)
+        self.restart_button.clicked.connect(lambda: self.restart())     # a new conversation
         row.addWidget(self.restart_button)
         return row
 
@@ -208,13 +210,16 @@ class ClaudeCodeView(Surface):
         self.session.write((f'@"{rel}" ' if " " in rel else f"@{rel} ").encode("utf-8"))
         self.terminal.focus_terminal()
 
-    def switch_model(self, model: str) -> bool:
-        """Type `/model <model>` and Enter at Claude Code's prompt: the running session moves to `model` and keeps its
-        conversation (the effort level is a start option: it needs a restart). False without a running session."""
-        if not self.session_live or not model:
+    def switch_session(self) -> bool:
+        """Move the running Claude Code onto the saved default model and effort, keeping its conversation: Esc Esc
+        first, which puts a half-typed prompt into Claude Code's input history (Up brings it back) and stops a reply
+        that is running, then a restart with --resume (ClaudeCodeSession.start). /model would also make the model
+        Claude Code's own default for every session, which SlideMage leaves alone. False without a running session."""
+        if not self.session_live:
             return False
-        self.session.write(f"/model {model}\r".encode("utf-8"))
-        self.session.model = model
+        self.session.write(b"\x1b")
+        QTimer.singleShot(ESC_GAP_MS, lambda: self.session_live and self.session.write(b"\x1b"))
+        QTimer.singleShot(ESC_GAP_MS + SAVE_DRAFT_MS, lambda: self.restart(resume=True))
         return True
 
     def _set_attachable(self) -> None:
@@ -310,9 +315,9 @@ class ClaudeCodeView(Surface):
         if self.session is not None:
             self.session.resize(cols, rows)
 
-    def _spawn(self) -> None:
+    def _spawn(self, resume: bool = False) -> None:
         try:
-            self.session.start(*self._size)
+            self.session.start(*self._size, resume=resume)
         except Exception as exc:  # noqa: BLE001 -- the MCP server could not bind, the program could not start
             self.status.set_text("Could not start")
             self.status.set_tone("error")
@@ -324,12 +329,13 @@ class ClaudeCodeView(Surface):
         self._set_attachable()
         self.terminal.focus_terminal()
 
-    def restart(self) -> None:
+    def restart(self, resume: bool = False) -> None:
+        """Start Claude Code again: a new conversation, or with `resume` the same one (switch_session)."""
         if self.session is not None:
             self.session.stop()
             self.terminal.reset()
             self._set_attachable()
-            self._spawn()
+            self._spawn(resume)
 
     @property
     def session_live(self) -> bool:

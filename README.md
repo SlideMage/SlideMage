@@ -171,9 +171,11 @@ screenshots.
   what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
   in the project folder (permissions are Claude Code's). In **AI setup → Chat**, choose a
   saved model and effort for new sessions. While Claude Code is running, a changed default asks
-  what to do with it: **Switch now** types `/model …` into the session and keeps the conversation
-  (offered when only the model changed: the effort level is set when Claude Code starts),
-  **Restart Claude Code** starts a new session on it, **Later** leaves the session as it is.
+  what to do with it: **Switch now** restarts Claude Code on it in the same conversation (SlideMage
+  starts each one with `--session-id` and resumes it with `--resume`; text not yet sent is put into
+  Claude Code's input history first, so Up brings it back, and a reply being written stops),
+  **New conversation** restarts it afresh, **Later** leaves it. Claude Code's own default model is
+  never changed (`/model` would change it).
   **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.

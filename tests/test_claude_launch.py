@@ -175,3 +175,20 @@ def test_image_description_language_instructions_reach_both_chats_and_guide():
         assert "short_de and long_de" in prompt and "in German" in prompt
         assert "EN/DE segment" in prompt and "deck's editing language" in prompt
         assert "Preserve existing descriptions in the other language" in prompt
+
+
+def test_a_session_id_names_the_conversation_or_resumes_it(tmp_path):
+    command = claude_launch.build_command(tmp_path / "claude", URL, model="opus", session_id="abc")
+    assert command[1:5] == ["--session-id", "abc", "--model", "opus"]
+    command = claude_launch.build_command(tmp_path / "claude", URL, model="opus", session_id="abc", resume=True)
+    assert command[1:5] == ["--resume", "abc", "--model", "opus"]
+    assert "--resume" not in claude_launch.build_command(tmp_path / "claude", URL, resume=True)     # no id, no flag
+
+
+def test_a_transcript_is_found_in_any_project_folder_of_the_config_dir(tmp_path):
+    env = {"CLAUDE_CONFIG_DIR": str(tmp_path)}
+    assert not claude_launch.has_transcript("abc", env)
+    (tmp_path / "projects" / "D--some-project").mkdir(parents=True)
+    (tmp_path / "projects" / "D--some-project" / "abc.jsonl").write_text("{}\n", encoding="utf-8")
+    assert claude_launch.has_transcript("abc", env) and not claude_launch.has_transcript("abd", env)
+    assert not claude_launch.has_transcript("", env)

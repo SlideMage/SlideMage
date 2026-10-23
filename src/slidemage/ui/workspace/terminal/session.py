@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import tempfile
 import threading
+import uuid
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -41,6 +42,7 @@ class ClaudeCodeSession(QObject):
         self._window = window
         self.scope = claude_scope.SLIDE             # how far a request may reach (the view's switch)
         self.model, self.effort = "", None          # what the process was started on ("": Claude Code's default)
+        self.session_id = ""                        # the conversation's id (--session-id), for --resume
         self._focus_file: Path | None = None        # what the hooks read: the focus and the scope
         self._published: tuple | None = None
         self._timer = QTimer(self)                  # the focus also moves without a signal (a file opened)
@@ -64,8 +66,10 @@ class ClaudeCodeSession(QObject):
     def mcp_url(self) -> str:
         return self._server.url if self._server is not None else ""
 
-    def start(self, cols: int, rows: int) -> None:
-        """(Re)start Claude Code in the project folder with a terminal of `cols` x `rows`."""
+    def start(self, cols: int, rows: int, *, resume: bool = False) -> None:
+        """(Re)start Claude Code in the project folder with a terminal of `cols` x `rows`, on the saved default
+        model. With `resume` it continues the conversation it had (a changed default reaches it this way), when
+        Claude Code saved one; else, and always without `resume`, a new conversation starts."""
         self.stop()
         with self._lock:
             self._cancel = compiler.CancelToken()
@@ -81,7 +85,11 @@ class ClaudeCodeSession(QObject):
         self._timer.start()
         route = ai_profile.route_for(self._window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT)
         self.model, self.effort = route.model, route.effort
-        command = claude_launch.build_command(self.claude, self._server.url, model=route.model, effort=route.effort)
+        resume = resume and claude_launch.has_transcript(self.session_id)
+        if not resume:
+            self.session_id = str(uuid.uuid4())
+        command = claude_launch.build_command(self.claude, self._server.url, model=route.model, effort=route.effort,
+                                              session_id=self.session_id, resume=resume)
         env = claude_launch.environment(self._server.token, self._window.project.root, self.claude, focus_file=self._focus_file)
         with self._lock:
             self._generation += 1

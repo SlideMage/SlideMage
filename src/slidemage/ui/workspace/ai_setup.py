@@ -31,25 +31,25 @@ POLICIES = ((LOCAL, "Local"), (CLOUD, "Cloud"))
 NOTE = ("Saved as your defaults. Each side keeps its own models; switching back to Local restores these Ollama "
         "models and the Ollama address of Settings. Pickers elsewhere (Images page, chat) start on these.")
 NO_MODEL = "(none chosen)"
-SWITCH, RESTART = "switch", "restart"      # what ask_session_model() answers, else None (Later)
+SWITCH, NEW_CONVERSATION = "switch", "new"      # what ask_session_model() answers, else None (Later)
 
 
-def ask_session_model(parent, label: str, can_switch: bool) -> str | None:
-    """A running Claude Code session and a new default model (`label`): SWITCH (type /model in it, keeping the
-    conversation; offered when `can_switch`), RESTART (a new session on the new default) or None (Later)."""
+def ask_session_model(parent, label: str) -> str | None:
+    """A running Claude Code session and a new default (`label`): SWITCH (restart it on the new default in the
+    same conversation), NEW_CONVERSATION (restart it on the new default, starting afresh) or None (Later)."""
     box = QMessageBox(QMessageBox.Icon.Question, "Claude Code is running",
                       f"Claude Code is running in the terminal. Use {label} there now?", parent=parent)
     box.setInformativeText(
-        ("Switch now changes the model of the running session and keeps the conversation. " if can_switch else
-         "The running session can take this only by restarting (the effort level is set when Claude Code starts). ")
-        + "Restart starts a new conversation.")
-    switch = box.addButton("Switch now", QMessageBox.ButtonRole.AcceptRole) if can_switch else None
-    restart = box.addButton("Restart Claude Code", QMessageBox.ButtonRole.DestructiveRole)
-    later = box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(switch or later)
+        "Switch now restarts Claude Code on it and continues the same conversation; a reply that is still being "
+        "written stops, and text you have not sent comes back with the Up key. New conversation starts afresh. "
+        "Either way, Claude Code's own default model stays as it is.")
+    switch = box.addButton("Switch now", QMessageBox.ButtonRole.AcceptRole)
+    fresh = box.addButton("New conversation", QMessageBox.ButtonRole.DestructiveRole)
+    box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(switch)
     box.exec()
     clicked = box.clickedButton()
-    return SWITCH if switch is not None and clicked is switch else RESTART if clicked is restart else None
+    return SWITCH if clicked is switch else NEW_CONVERSATION if clicked is fresh else None
 
 
 def fit_list_to_items(combo: QComboBox) -> None:
@@ -210,21 +210,20 @@ class AiSetup(Popover):
 
     def _apply_to_session(self, label: str) -> str:
         """The default Claude Code chat model changed while the terminal's Claude Code may be running: ask whether
-        the running session switches to it now (`/model`, the conversation stays; only for a changed model, as the
-        effort level is a start option) or restarts on it (a new conversation). Returns the end of the toast."""
+        the running session moves to it in the same conversation (ClaudeCodeView.switch_session: a restart with
+        --resume, model and effort alike) or in a new one. Returns the end of the toast."""
         view = self._window.assistant.claude_code
         if not view.session_live:
             return ". Claude Code starts on it."
         new, session = ai_profile.route_for(self._project, CLAUDE_CODE, CHAT), view.session
         if (new.model, new.effort) == (session.model, session.effort):
             return "."
-        can_switch = bool(new.model) and new.model != session.model and new.effort == session.effort
-        answer = ask_session_model(self._window, label, can_switch)
-        if answer == SWITCH and view.switch_model(new.model):
-            return ". The running Claude Code switched to it."
-        if answer == RESTART:
+        answer = ask_session_model(self._window, label)
+        if answer == SWITCH and view.switch_session():
+            return ". Claude Code switches to it and continues the conversation."
+        if answer == NEW_CONVERSATION:
             view.restart()
-            return ". Claude Code restarted on it."
+            return ". Claude Code restarted on it with a new conversation."
         return ". The running Claude Code keeps its model until it is restarted."
 
     # -- the settings under the grid ---------------------------------------------------------------

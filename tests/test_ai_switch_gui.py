@@ -331,33 +331,49 @@ class _Session:
         self.typed.append(data)
 
 
-def test_a_new_claude_code_default_asks_a_running_session_to_switch_or_restart(window, monkeypatch):
+def test_a_new_claude_code_default_asks_a_running_session_to_switch_or_start_afresh(window, monkeypatch):
     from slidemage.ui.workspace import ai_setup
     view = window.assistant.claude_code
     session = _Session("sonnet", "high")
-    restarted, asked = [], []
+    switched, restarted, asked = [], [], []
     monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
     monkeypatch.setattr(view, "session", session)
-    monkeypatch.setattr(view, "restart", lambda: restarted.append(True))
+    monkeypatch.setattr(view, "switch_session", lambda: switched.append(True) or True)
+    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
     setup = open_setup(window)
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
 
     def pick(choice, answer):
-        monkeypatch.setattr(ai_setup, "ask_session_model",
-                            lambda _parent, label, can_switch: asked.append((label, can_switch)) or answer)
+        monkeypatch.setattr(ai_setup, "ask_session_model", lambda _parent, label: asked.append(label) or answer)
         cloud_chat.setCurrentIndex(cloud_chat.findData(choice))
         cloud_chat.activated.emit(cloud_chat.currentIndex())
         return window.toast.findChildren(QLabel)[0].text()
 
-    assert pick("opus:high", ai_setup.SWITCH).endswith("The running Claude Code switched to it.")
-    assert asked[-1] == ("Opus · high", True) and session.typed == [b"/model opus\r"] and session.model == "opus"
-    assert pick("opus:low", ai_setup.RESTART).endswith("Claude Code restarted on it.")    # effort: restart only
-    assert asked[-1] == ("Opus · low", False) and restarted == [True] and len(session.typed) == 1
-    session.effort = "low"
+    assert pick("opus:high", ai_setup.SWITCH).endswith("switches to it and continues the conversation.")
+    assert asked == ["Opus · high"] and switched == [True] and not restarted
+    assert pick("opus:low", ai_setup.NEW_CONVERSATION).endswith("restarted on it with a new conversation.")
+    assert asked[-1] == "Opus · low" and restarted == [False] and switched == [True]     # an effort level too
+    session.model, session.effort = "opus", "low"
     asked.clear()
-    assert pick("opus:low", None).endswith(".") and not asked                               # what it runs on already
+    assert pick("opus:low", None).endswith(".") and not asked                            # what it runs on already
     assert pick("haiku:low", None).endswith("keeps its model until it is restarted.")
-    assert session.model == "opus" and len(session.typed) == 1
+    assert switched == [True] and restarted == [False]
+
+
+def test_switch_session_saves_the_draft_with_esc_esc_then_resumes(window, monkeypatch, qapp):
+    from slidemage.ui.workspace.terminal import view as view_mod
+    view = window.assistant.claude_code
+    session = _Session("sonnet", "high")
+    restarted = []
+    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
+    monkeypatch.setattr(view, "session", session)
+    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
+    assert view.switch_session()
+    assert session.typed == [b"\x1b"] and not restarted
+    QTest.qWait(view_mod.ESC_GAP_MS + view_mod.SAVE_DRAFT_MS + 200)
+    assert session.typed == [b"\x1b", b"\x1b"] and restarted == [True]
+    monkeypatch.setattr(type(view), "session_live", property(lambda self: False))
+    assert not view.switch_session()
 
 
 def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
