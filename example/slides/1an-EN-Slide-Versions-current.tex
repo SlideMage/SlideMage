@@ -6,22 +6,21 @@
 \setSlideVersion{1-0-1+}
 \begin{standardframe}{Slide versions}
 	\small
-	A slide used in several courses changes over the years, but last year's deck
-	should still compile as it was. So SlideMage keeps old versions: the file
-	\SMCode{...-current.tex} is the live slide, and every \SMCode{...-v1-2-0.tex}
-	beside it is a frozen copy that is never edited again. Edits are saved as you type,
-	and the footer shows a ``+'' after the number (v1.2.0+) until you press \emph{Update version}
-	in the Source view, which asks how big the change is:
+	A slide changes over the years, but last year's deck should still compile as it was. So SlideMage keeps
+	old versions: \SMCode{...-current.tex} is the live slide, every \SMCode{...-v1-2-0.tex} beside it a frozen
+	copy. Edits are saved as you type, and the footer shows a ``+'' (v1.2.0+) until \emph{Update version} in
+	the Source view asks how big the change is:
 	\par\medskip
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.42\linewidth}
+		\begin{column}{0.36\linewidth}
 			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-save-dialog.png}}}
 		\end{column}
-		\begin{column}{0.54\linewidth}
+		\begin{column}{0.60\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item \emph{Major}, \emph{Minor}, \emph{Patch}: the slide as it is now is frozen under the higher number
-				\item Typo fixes need no version (the \emph{+} stays); reveal steps alone are a \emph{Patch}
+				\item \emph{Major}, \emph{Minor}, \emph{Patch}: frozen under the higher number
+				\item \emph{New slide\ldots}: the changes become a new slide for this deck (and others you tick); this one stays as it was
+				\item Typos need no version; reveal steps alone are a \emph{Patch}
 				\item Several: select, right-click $\rightarrow$ \emph{Update versions\ldots}
 				\item A deck keeps an old one with \SMCmd{slideversion} (\emph{Six ways to put a slide into a deck})
 			\end{itemize}

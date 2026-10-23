@@ -148,6 +148,15 @@ def _isolated_layout_settings(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(layout_settings, "STORE_PATH", store)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_machine_ai_settings(monkeypatch, tmp_path_factory):
+    """The AI settings of this machine (app_settings.MACHINE_KEYS, v8.58.0): tests must not read or change the
+    user's own."""
+    from slidemage import app_settings
+
+    monkeypatch.setattr(app_settings, "MACHINE_STORE_PATH", tmp_path_factory.mktemp("machine") / "ai_settings.json")
+
+
 def command_context(deck=None, *, compiling=False, selected=(), decks=()):
     """Stands in for the window as the context of the command registry, for the menus and
     predicates that only read the deck, the selection and whether a compile run is going."""

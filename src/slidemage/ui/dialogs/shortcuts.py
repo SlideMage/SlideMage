@@ -19,7 +19,8 @@ from ..kit.widgets import ModalSheet
 # The keys of the editor and the slide list that are not commands: (heading, ((what, key), ...)).
 OWN_KEYS = (
     ("Source view", (("Bold", "Ctrl+B"), ("Italic", "Ctrl+I"), ("Underline", "Ctrl+U"),
-                     ("Comment or uncomment the lines", "Ctrl+/"), ("Render the buffer", "Ctrl+R"))),
+                     ("Comment or uncomment the lines", "Ctrl+/"), ("Indent the selected lines", "Tab"),
+                     ("Unindent the lines", "Shift+Tab"), ("Render the buffer", "Ctrl+R"))),
     ("Slide list", (("Move the slide up", "Alt+Up"), ("Move the slide down", "Alt+Down"))),
 )
 

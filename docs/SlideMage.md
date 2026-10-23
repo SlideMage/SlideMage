@@ -71,7 +71,7 @@ deck switcher offers the rest). From top to bottom and left to right:
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
   line, Insert, Cite, Tools and the conflict bar when a file changes on disk under edits
-  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56, `source_file.autosave_on`: the top bar's switch, Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
+  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56, `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker

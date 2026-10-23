@@ -319,15 +319,15 @@ class CloudTab(Page):
         if key is None:
             return "No API key set. " + (
                 "A key you save is stored in the system keychain." if keychain else
-                "A key you save is stored in the settings file (.slidemage/app_settings.json inside the project "
-                "folder, which may be synced), because no system keychain is available. Install the optional "
+                "A key you save is stored in SlideMage's settings file on this computer (ai_settings.json, "
+                "outside the project), because no system keychain is available. Install the optional "
                 "'keyring' package to use it.")
         return {
             credentials.SOURCE_ENV: f"Using the key from the {credentials.ENV_VAR} environment variable "
                                     "(it takes precedence over a saved key).",
             credentials.SOURCE_KEYCHAIN: "Key stored in the system keychain.",
-            credentials.SOURCE_FILE: "Key stored in the settings file (.slidemage/app_settings.json inside the "
-                                     "project folder, which may be synced). " + (
+            credentials.SOURCE_FILE: "Key stored in SlideMage's settings file on this computer (ai_settings.json, "
+                                     "outside the project). " + (
                                          "Save it again to move it to the system keychain." if keychain else
                                          "Install the optional 'keyring' package to use the system keychain instead."),
         }[key.source]

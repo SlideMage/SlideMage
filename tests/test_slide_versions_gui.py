@@ -193,3 +193,73 @@ def test_selected_versions_share_one_choice_and_leave_other_slides_alone(ctx, qa
     assert (slides / f"{slugs[2]}-current.tex").read_text() == original
     assert len(updated) == (2 if level is not None else 0)
     centre.deleteLater()
+
+
+# -- Update version → New slide… (v8.58.0) ---------------------------------------------------------------------
+
+class BranchApp(FakeApp):
+    def __init__(self, project):
+        super().__init__(project)
+        self.refreshed = []
+
+    def after_version_updates(self, paths):
+        self.refreshed.append(("versions", [p.name for p in paths]))
+
+    def after_deck_edit(self, path, summary, previous_text=None):
+        self.refreshed.append(("deck", path.name))
+
+    def refresh_open_deck_editors(self):
+        self.refreshed.append(("decks",))
+
+
+@pytest.fixture
+def branchable(ctx, versioned_slide):
+    """abc is edited since 1.2.0 (frozen), and the deck talk follows it."""
+    (versioned_slide / "abc-EN-Demo-v1-2-0.tex").write_text("\setSlideVersion{1-2-0}\n" + BODY, encoding="utf-8")
+    (versioned_slide / "abc-EN-Demo-current.tex").write_text("\setSlideVersion{1-2-0+}\n" + BODY + "% changed\n",
+                                                            encoding="utf-8")
+    (ctx.root / "slide_ids.csv").write_text('"id"\r\n"abc"\r\n', encoding="utf-8", newline="")
+    ctx.decks_dir.mkdir()
+    (ctx.decks_dir / "talk.tex").write_text(
+        "\documentclass{beamer}\n\begin{document}\n\slide{abc-EN-Demo}\n\end{document}\n", encoding="utf-8")
+    return versioned_slide
+
+
+def test_update_version_can_save_the_changes_as_a_new_slide(ctx, qapp, branchable, monkeypatch):
+    from slidemage.ui.workspace import centre as centre_module
+
+    app = BranchApp(ctx)
+    centre = CentreColumn(app, WorkspaceState(ctx))
+    offered = []
+
+    class Sheet:
+        def __init__(self, parent, id_slug, version, slug, decks, edited):
+            offered.append((id_slug, version, slug, decks, edited))
+            self.slug, self.decks = "Demo-revised", ["talk"]
+
+        def exec(self):
+            return True
+
+    monkeypatch.setattr(centre_module, "prompt_version_level", lambda *a: centre_module.NEW_SLIDE)
+    monkeypatch.setattr(centre_module, "NewSlideVersionSheet", Sheet)
+    centre.update_version("abc-EN-Demo")
+    assert offered == [("abc-EN-Demo", (1, 2, 0), "Demo", [("talk", 1)], None)]
+    new = next(p for p in branchable.glob("*-EN-Demo-revised-current.tex"))
+    assert "% changed" in new.read_text(encoding="utf-8")
+    assert "% changed" not in (branchable / "abc-EN-Demo-current.tex").read_text(encoding="utf-8")
+    assert f"\slide{{{new.name[:-len('-current.tex')]}}}" in (ctx.decks_dir / "talk.tex").read_text(encoding="utf-8")
+    assert centre.source.current.path == new                                   # the new slide is opened
+    assert ("decks",) in app.refreshed and any(line.startswith("    talk: 1 call(s)") for line in app.logged)
+
+
+def test_the_new_slide_sheet_ticks_the_edited_deck_and_checks_the_name(qapp):
+    from slidemage.ui.dialogs.new_slide_version import NewSlideVersionSheet
+
+    sheet = NewSlideVersionSheet(None, "abc-EN-Demo", (1, 2, 0), "Demo", [("talk", 1), ("course", 2)], "talk")
+    assert [box.isChecked() for box in sheet._boxes.values()] == [True, False]
+    sheet.name_edit.setText("two words")
+    sheet._on_ok()
+    assert sheet.problem.isVisibleTo(sheet) and not sheet.slug
+    sheet.name_edit.setText("Demo-2")
+    sheet._on_ok()
+    assert sheet.slug == "Demo-2" and sheet.decks == ["talk"]

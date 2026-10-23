@@ -19,10 +19,9 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QSizePolicy,
 from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
-from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton, ToggleChip
+from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .ai_switch import AiSwitch
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
-from .source_file import autosave_on
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
@@ -118,13 +117,9 @@ class TopBar(QWidget):
         add(self._languages)
 
         layout.addStretch()
-        # As in Office: AutoSave on or off at a glance, beside what it means for the edits.
-        self._autosave = ToggleChip("AutoSave")
-        self._autosave.setChecked(autosave_on())
-        self._autosave.setToolTip("Save edits as you type. Off, Ctrl+S saves.")
-        self._autosave.setFocusPolicy(Qt.FocusPolicy.TabFocus)     # like the bar's other buttons: no ring after a click
-        self._autosave.clicked.connect(lambda: self.command.emit("autosave"))
-        add(self._autosave)
+        # AutoSave [On|Off] is after the menu bar's Help (autosave_switch.py); host_autosave puts it here when the
+        # menu bar is not in the window (macOS).
+        self._autosave: QWidget | None = None
         self._save = QLabel("Saved")
         self._save.setObjectName(q.TOPBAR_SAVE)
         add(self._save)
@@ -171,8 +166,7 @@ class TopBar(QWidget):
         policy, whatever the density."""
         switch = self.ai_switch
         stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
-                 *self._views.buttons(), *self._languages.buttons(), self._autosave, *self._modes.buttons(),
-                 *self._compile.buttons(),
+                 *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
                  self._images, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
@@ -206,8 +200,9 @@ class TopBar(QWidget):
         self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
         self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
         self.ai_switch.set_shrink({"tight": 1, "tiny": 2}.get(density, 0))
-        # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.
-        self._autosave.setVisible(full)
+        if self._autosave is not None:
+            # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.
+            self._autosave.setVisible(full)
         self._update_deck_label()
         self._update_save_label()
         self._update_compile_label()
@@ -257,8 +252,11 @@ class TopBar(QWidget):
         self._deck_button.set_text(name, max_width=DECK_MAX_WIDTHS[self._density])
         self._deck_button.setToolTip(name)
 
-    def refresh_autosave(self) -> None:
-        self._autosave.setChecked(autosave_on())
+    def host_autosave(self, switch: QWidget) -> None:
+        """Show the AutoSave switch before "Saved": for a menu bar outside the window (macOS)."""
+        self._autosave = switch
+        self._row_layout.insertWidget(self._row_layout.indexOf(self._save), switch)
+        self._apply_density(self._density)
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         self._update_save_label()

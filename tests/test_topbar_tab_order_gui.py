@@ -38,8 +38,7 @@ def bar_order(window, *, images: bool = False) -> list[QWidget]:
     segment (←/→ move inside it)."""
     bar = window.topbar
     stops = [bar._left_column, bar._deck_button, bar.ai_switch.segments.current_button(), bar.ai_switch.caret,
-             bar._views.current_button(), bar._languages.current_button(),
-             *([bar._autosave] if bar._autosave.isVisible() else []), bar._modes.current_button(),
+             bar._views.current_button(), bar._languages.current_button(), bar._modes.current_button(),
              *bar._compile.buttons(), *([bar._images] if images else []), bar._right_column]
     xs = [stop.mapTo(bar, stop.rect().topLeft()).x() for stop in stops if stop.isVisible()]
     assert xs == sorted(xs) and len(xs) == len(stops)        # the list is the visual order

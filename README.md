@@ -1209,7 +1209,7 @@ From SlideMage (the normal day-to-day path): edits in the Source view are
 **saved as you type** (a moment after you stop, and before you switch slides,
 compile or close the window; **Ctrl+S** writes at once and renders). With
 AutoSave on (the default) there is no unsaved state to lose. Switched off (the
-top bar's **AutoSave**, Settings → General, or File → *Turn AutoSave off*), only
+**AutoSave On | Off** after the menu bar's Help, Settings → General, or File → *Turn AutoSave off*), only
 Ctrl+S saves, and SlideMage points out unsaved files before you leave them or
 close the window. A slide changed since its last
 version shows a **+** after its version number (`\setSlideVersion{1-2-0+}`,

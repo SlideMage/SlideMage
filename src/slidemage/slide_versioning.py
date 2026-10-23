@@ -340,6 +340,31 @@ def update_version(ctx: ProjectContext, current_path: Path, id_slug: str, level:
     return frozen, new, base
 
 
+def revert_to_version(ctx: ProjectContext, current_path: Path, id_slug: str) -> Version:
+    """Give the slide back the content of the version it was changed from (the version its "+" is on), keeping
+    its own header and dropping the "+": the edits are elsewhere now (Update version → New slide, v8.58.0). No
+    version number is used up, unlike restore_version(). Returns that version. Raises ValueError when the slide
+    has no frozen version to go back to."""
+    from . import slide_source
+    from .deck_headers import HEADER_RE
+
+    cur_text, eol = slide_source.read_slide_source(current_path)
+    marker = parse_marker(cur_text)
+    base = marker[0] if marker is not None else DEFAULT_BASELINE
+    base_path = frozen_path(current_path, id_slug, base)
+    if not base_path.exists():
+        raise ValueError(f"{id_slug} has no frozen v{format_dot(base)} to go back to.")
+    new_text = strip_marker(slide_source.read_slide_source(base_path)[0])
+    header = HEADER_RE.search(cur_text)
+    if header:
+        new_text = HEADER_RE.sub(lambda _m: header.group(0), new_text, count=1) \
+            if HEADER_RE.search(new_text) else header.group(0) + new_text
+    new_text = set_marker(new_text, base)
+    if new_text != cur_text:
+        slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=cur_text)
+    return base
+
+
 class RestoreError(ValueError):
     """restore_version() cannot do it; the message says why."""
 

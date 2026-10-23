@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QApplication
 
 from conftest import build_window, command_context, filled_menu, menu_actions, menu_bar_ids, qapp as qapp
 from slidemage.ui.dialogs.shortcuts import OWN_KEYS, ShortcutsSheet, shortcut_rows
@@ -201,3 +202,24 @@ def test_expand_keeps_ids_and_submenus_and_spreads_a_prefix(qapp):
                                                     "view:after-course"]
     sub = Submenu("Export", ("export_pptx",))
     assert expand(ctx, [sub]) == [sub]
+
+
+def test_autosave_is_an_on_off_switch_right_after_help(window):
+    """v8.58.0: AutoSave [On|Off] after the menu bar's last menu, styled like View as; clicks set it, and it follows
+    a change made elsewhere (Settings, File, Ctrl+K)."""
+    from slidemage.ui import layout_settings
+    from slidemage.ui.workspace import source_file
+
+    layout_settings.set(source_file.AUTOSAVE_KEY, True)
+    bar, switch = window.menuBar(), window.autosave_switch
+    window.autosave_switch.refresh()
+    window.resize(1600, 900)
+    QApplication.processEvents()
+    help_right = bar.actionGeometry(bar.actions()[-1]).right()
+    assert switch.parent() is bar and switch.isVisible()
+    assert help_right < switch.geometry().left() <= help_right + 40
+    assert [b.text() for b in switch.control.buttons()] == ["On", "Off"] and switch.is_on()
+    switch.control.buttons()[1].click()
+    assert not source_file.autosave_on() and not switch.is_on()
+    window.set_autosave(True)
+    assert switch.is_on()

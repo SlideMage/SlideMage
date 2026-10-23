@@ -67,8 +67,9 @@ def test_locked_build_file_does_not_fail_a_finished_render(ctx, monkeypatch, pro
     assert pdf.exists() and pdf.read_text(encoding="utf-8").startswith("%PDF")
     assert any(line.startswith("==== PASS: render of abc-EN-Test") for line in lines)
     assert any("could not be deleted" in line for line in lines)
-    # everything that could be deleted was
-    assert {p.suffix for p in project.iterdir()} == {".fls"}
+    # everything that could be deleted was, the wrapper in .build/preview-wrappers/ too
+    assert {p.suffix for p in project.iterdir() if p.is_file()} == {".fls"}
+    assert not any((project / "preview-wrappers").iterdir())
 
 
 def test_stale_preview_leftovers_are_swept_by_the_next_render(ctx, project):

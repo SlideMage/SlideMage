@@ -40,3 +40,8 @@ def test_the_copy_is_in_the_deck_switcher_at_once_with_the_group_chosen(qapp, mo
     assert TAG_WORK in deck_scan.find_decktags(read_text_exact(dest)).group(1)
     menu = menus.build_deck_menu(window.topbar, window.topbar._decks, window.state.deck)
     assert menus.deck_key(copy) in [e[1] for e in menu._entries if e[0] == "item"]
+
+
+def test_the_copy_is_opened(qapp, monkeypatch, tmp_path):
+    window, source, dest = _duplicate(monkeypatch, tmp_path, TAG_WORK)
+    assert window.state.deck is not None and window.state.deck.path == dest

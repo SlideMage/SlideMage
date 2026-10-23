@@ -280,6 +280,10 @@ def on_duplicate_deck(window, deck: Deck) -> None:
                 window, "Tags",
                 f"{dest.name} was created, but tagging it as {group} failed: {exc}")
     window.reload_decks()
+    # The copy opens, as a new deck does (v8.58.0): it is what the user goes on with.
+    copy = next((d for d in window.decks if d.path == dest), None)
+    if copy is not None:
+        window.state.set_deck(copy)
 
 
 def generate_deck_transcript(window, deck: Deck, version: str, *, quiet: bool = False) -> bool:

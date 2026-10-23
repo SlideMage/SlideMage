@@ -479,6 +479,22 @@ def change_slide_call_variant(
     return apply(deck_path, expected_text, mutate)
 
 
+def retarget_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCall], new_id_slug: str) -> str:
+    """Make `calls` load the slide `new_id_slug` instead, each keeping its kind, conditions and steps (a pinned
+    call keeps its version too, which the new slide must have), as one edit."""
+    blocked = [c for c in calls if not c.editable]
+    if blocked:
+        raise ValueError(f"can't change {blocked[0].id_slug} -- {blocked[0].readonly_reason}")
+
+    def mutate(text: str) -> str:
+        for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
+            token = format_call(call.macro, new_id_slug, call.version, call.conditions, call.steps)
+            text = text[: call.call_start] + token + text[call.call_end :]
+        return text
+
+    return apply(deck_path, expected_text, mutate)
+
+
 def set_calls_visibility(
     deck_path: Path, expected_text: str, calls: list[SlideCall], view: str, visible: bool,
 ) -> str:

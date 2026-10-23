@@ -96,6 +96,21 @@ def comment_ops(lines: list[str]) -> list[tuple[int, int, str]]:
     return [(0, 0, "%")] * len(lines)
 
 
+def outdent_width(line: str, tab_width: int) -> int:
+    """Shift+Tab: how many leading characters of `line` make one indentation level -- a tab, or up to
+    `tab_width` spaces (and a tab after fewer spaces, which ends the level)."""
+    width = 0
+    for count, char in enumerate(line, start=1):
+        if char == "\t":
+            return count
+        if char != " ":
+            return count - 1
+        width += 1
+        if width >= tab_width:
+            return count
+    return len(line)
+
+
 # -- the hyperlink command --------------------------------------------------------
 
 def format_hyperlink(word: str, url: str) -> str:

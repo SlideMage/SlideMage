@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
@@ -22,6 +22,10 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 # hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
 # ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
 HIDDEN_IMPORTS = collect_submodules("anthropic")
+# pywinpty's helpers, which conpty.dll and winpty.dll start at run time, so PyInstaller does not see them: without
+# OpenConsole.exe a program in the Claude Code terminal got a console closed at once and ended before printing
+# anything, exit code -1073741510 (0xC000013A), up to v8.58.0.
+WINPTY_HELPERS = collect_data_files("winpty", includes=["*.exe"]) if sys.platform == "win32" else []
 
 # Bundled so a project created via "Open Project..."'s "not a project
 # yet -- create one?" offer (project.py's init_project()) can be seeded
@@ -80,6 +84,7 @@ a = Analysis(
         (str(ROOT / "THIRD_PARTY_NOTICES.md"), "slidemage/legal"),
         (str(ROOT / "LICENSES"), "slidemage/legal/LICENSES"),
         *TEMPLATE_DATAS,
+        *WINPTY_HELPERS,
     ],
     hiddenimports=HIDDEN_IMPORTS,
 )

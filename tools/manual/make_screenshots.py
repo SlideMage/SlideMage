@@ -392,6 +392,11 @@ def run(args: argparse.Namespace, work: Path) -> None:
 
     from slidemage import app_settings
     from slidemage.project import ProjectContext
+    from slidemage.ui import layout_settings
+
+    # This computer's own settings are neither read nor written: the shots look the same on every machine.
+    layout_settings.STORE_PATH = work / "layout.json"
+    app_settings.MACHINE_STORE_PATH = work / "ai_settings.json"
     from slidemage.ai import credentials
     from slidemage.ai.providers import AnthropicProvider, InstalledModel, OllamaProvider
     from slidemage.ui.kit.fonts import load_fonts

@@ -440,9 +440,9 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
 def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback, env: dict, cancel=None) -> Path:
     """A build of its own: a unique jobname, latexmk's output in .build/, nothing kept afterwards."""
     ctx.decks_dir.mkdir(parents=True, exist_ok=True)
-    # "_slidemage_" prefix matches compiler.py's own wrapper naming, so
-    # gui.py's existing "Remove temp files" sweep already covers a wrapper
-    # left behind by a crash here too. A uuid suffix (not just the
+    # The wrapper is written to .build/preview-wrappers/ (v8.58.0), so a
+    # wrapper left behind by a crash goes with "Remove temp files" too, and
+    # never shows in decks/. A uuid suffix (not just the
     # id_slug) makes the jobname unique per call, not just per slide --
     # confirmed necessary directly: rendering the same slide from two tabs
     # at once (or double-clicking two different rows for the same slide)
@@ -451,9 +451,9 @@ def _compile_fresh(ctx: project.ProjectContext, wrapper_text: str, id_slug: str,
     # deck_headers.py's own _LOCK exists to prevent (see that module).
     safe_id_slug = re.sub(r"[^A-Za-z0-9_-]", "_", id_slug)
     jobname = f"preview-{safe_id_slug}-{uuid.uuid4().hex[:8]}"
-    wrapper_path = ctx.decks_dir / f"_slidemage_{jobname}.tex"
-    with preview_build.active_build(ctx.build_dir, wrapper_path, cancel):
-        ctx.build_dir.mkdir(parents=True, exist_ok=True)
+    wrapper_path = preview_build.wrapper_dir(ctx) / f"_slidemage_{jobname}.tex"
+    with preview_build.active_build(ctx.build_dir, wrapper_path, cancel, root=ctx.root):
+        wrapper_path.parent.mkdir(parents=True, exist_ok=True)
         log(compile_log.rendering(id_slug, jobname))
         try:
             with compiler.wrapper_file(wrapper_path, wrapper_text, remove=lambda p: _retry_on_lock(lambda: p.unlink(missing_ok=True))):

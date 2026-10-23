@@ -30,16 +30,17 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, slide_language, slide_source, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
+from ..dialogs.new_slide_version import NewSlideVersionSheet
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
-from .source_file import RELOADED, autosave_on, prompt_version_level
+from .source_file import NEW_SLIDE, RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -320,8 +321,48 @@ class CentreColumn(QFrame):
             QMessageBox.information(self.app, "Update version", str(exc))
             return
         level = prompt_version_level(self.app, base) if new != base else "patch"
-        if level is not None:
+        if level == NEW_SLIDE:
+            self.save_as_new_slide(id_slug)
+        elif level is not None:
             self.freeze_version(id_slug, level)
+
+    def save_as_new_slide(self, id_slug: str) -> None:
+        """Update version → New slide…: the changes become a slide of their own (slide_branch.py), which the decks
+        ticked load instead; the slide itself goes back to its version. The new slide opens in the editor."""
+        project = self.state.project
+        reason = slide_branch.can_branch(project, id_slug)
+        if reason:
+            QMessageBox.information(self.app, "Save as a new slide", reason)
+            return
+        current = project.slides_dir / slide_language.current_name(id_slug)
+        version = slide_versioning.parse_marker(slide_source.read_slide_source(current)[0])
+        usages = [(u.deck.name, len(slide_branch.following_calls(u))) for u in slide_usage.find_usage(project, id_slug)]
+        usages = [(name, count) for name, count in usages if count]
+        edited = self.state.deck.name if self.state.deck is not None else None
+        usages.sort(key=lambda item: item[0] != edited)          # the deck it is edited in first
+        sheet = NewSlideVersionSheet(self.app, id_slug, version[0] if version else slide_versioning.DEFAULT_BASELINE,
+                                     id_slug.split("-", 2)[2], usages, edited)
+        if not sheet.exec():
+            return
+        open_current = self.source.file_for(current)
+        try:
+            result = slide_branch.save_as_new_slide(project, id_slug, sheet.slug, sheet.decks)
+        except (ValueError, OSError, slide_source.StaleFileError, deck_editor.StaleFileError) as exc:
+            QMessageBox.warning(self.app, "Save as a new slide", str(exc))
+            return
+        new = result.created.id_slug
+        self.app.log(f"{id_slug}'s changes are now the new slide {new}; {id_slug} is back at "
+                     f"v{slide_versioning.format_dot(result.reverted_to)}")
+        for name, count in result.decks.items():
+            self.app.log(f"    {name}: {count} call(s) now load {new}")
+        if open_current is not None:
+            open_current.adopt_disk()
+        self.app.after_version_updates([current, result.created.path])
+        if edited in result.decks:
+            self.app.after_deck_edit(self.state.deck.path, f"{id_slug} → {new} in {edited}", result.previous_texts[edited])
+        if set(result.decks) - {edited}:
+            self.app.refresh_open_deck_editors()
+        self.open_file(result.created.path)
 
     def update_deck_versions(self) -> None:
         """⋮ → This deck → Update Version of all changed slides: every slide the open deck calls from its
