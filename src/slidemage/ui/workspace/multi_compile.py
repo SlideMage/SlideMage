@@ -37,6 +37,8 @@ class MultiCompileSheet(ModalSheet):
     def __init__(self, parent: QWidget, decks: list[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
         super().__init__("Compile several decks", parent, width=900)
         self.boxes: dict[tuple[str, str], QCheckBox] = {}
+        # A deck in several groups has a row under each; its rows' boxes go together, so it is compiled once.
+        self._twins: dict[tuple[str, str], list[QCheckBox]] = {}
         self._decks = {deck.name: deck for deck in decks}
         body = QWidget()
         grid = QGridLayout(body)
@@ -52,7 +54,10 @@ class MultiCompileSheet(ModalSheet):
                 for col, (kind, _label) in enumerate(COLUMNS, start=1):
                     if offered(deck, kind):
                         box = QCheckBox()
-                        self.boxes[(deck.name, kind)] = box
+                        self.boxes.setdefault((deck.name, kind), box)
+                        twins = self._twins.setdefault((deck.name, kind), [])
+                        twins.append(box)
+                        box.toggled.connect(lambda checked, twins=twins: _check_all(twins, checked))
                         grid.addWidget(box, row, col)
                 row += 1
         grid.setColumnStretch(0, 1)
@@ -66,6 +71,10 @@ class MultiCompileSheet(ModalSheet):
         self.add_button("Cancel", role="reject")
         self.add_button("Compile", kind="primary", role="accept")
 
+    def boxes_of(self, deck: Deck, kind: str) -> list[QCheckBox]:
+        """The boxes of `deck`'s rows for `kind`: one per section the deck is listed in."""
+        return self._twins.get((deck.name, kind), [])
+
     def _set_all(self, checked: bool) -> None:
         for box in self.boxes.values():
             box.setChecked(checked)
@@ -74,3 +83,9 @@ class MultiCompileSheet(ModalSheet):
         """(deck, kind) of every ticked box, decks in table order."""
         return [(self._decks[name], kind) for (name, kind), box in self.boxes.items()
                 if box.isChecked()]
+
+
+def _check_all(boxes: list[QCheckBox], checked: bool) -> None:
+    for box in boxes:
+        if box.isChecked() != checked:
+            box.setChecked(checked)

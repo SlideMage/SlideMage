@@ -1,18 +1,19 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The sheet for a deck's group tag (UI_REDESIGN_PLAN.md, step 9): ⋮ "Tags…" asks for the group
-alone, "Duplicate deck…" also for the copy's name. The group is stored in the deck's own file as
-\\decktags{...} (deck_editor.set_deck_tags), where it decides the section of the deck switcher
-the deck appears in.
+"""The sheet for a deck's group tags (UI_REDESIGN_PLAN.md, step 9): ⋮ "Tags…" asks for the groups
+alone, "Duplicate deck…" and "New deck…" also for the deck's name. The groups are stored in the deck's
+own file as \\decktags{...} (deck_editor.set_deck_tags), where they decide the sections of the deck
+switcher the deck is listed in: one checkbox per group of the project's list, any number of them
+checked, none included (docs/plans/editable-deck-tags.md, step 3).
 """
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Callable, Optional
 
-from PySide6.QtWidgets import QButtonGroup, QComboBox, QLineEdit, QRadioButton, QVBoxLayout
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QVBoxLayout
 
-from ...deck_groups import DEFAULT_GROUPS, DeckGroup, fallback_tag, labels, selectable_tags
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, fallback_tag, headings, labels, selectable_tags
 from ..kit.widgets import Field, ModalSheet, Surface, caption, set_property
 
 # The default groups' labels; a project's own list has deck_groups.labels(groups).
@@ -20,14 +21,15 @@ GROUP_LABELS = labels()
 
 
 class DeckGroupSheet(ModalSheet):
-    def __init__(self, parent, title: str, current_group: str, *, ok_text: str = "Save",
+    def __init__(self, parent, title: str, current_groups: Sequence[str], *, ok_text: str = "Save",
                  name_prompt: Optional[str] = None, default_name: str = "",
                  validate_name: Optional[Callable[[str], Optional[str]]] = None,
                  templates: Optional[Sequence[tuple[str, str]]] = None, current_template: str = "",
                  groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> None:
-        """After exec(), `name` ("" without `name_prompt`), `group` and `template` ("" without `templates`) hold
-        the choice. `validate_name` returns the reason a name is unusable, shown in the sheet, or None.
-        `templates` is (key, label) pairs: a deck's institution template is asked for too. `groups` is the
+        """After exec(), `name` ("" without `name_prompt`), `chosen_groups` (the checked groups' tags, in the
+        list's order; none is allowed) and `template` ("" without `templates`) hold the choice. `current_groups`
+        are checked to start with; without one of the list, the fallback group is. `validate_name` returns the
+        reason a name is unusable, shown in the sheet, or None. `templates` is (key, label) pairs: a deck's institution template is asked for too. `groups` is the
         project's list of deck groups, the choices offered."""
         super().__init__(title, parent, width=480)
         self._validate_name = validate_name
@@ -53,22 +55,22 @@ class DeckGroupSheet(ModalSheet):
         group_layout = QVBoxLayout(group_box)
         group_layout.setContentsMargins(0, 0, 0, 0)
         group_layout.setSpacing(6)
-        buttons = QButtonGroup(self)
-        self._radios: dict[str, QRadioButton] = {}
+        self._checks: dict[str, QCheckBox] = {}
         # The manual's own group is never offered (deck_groups.TAG_MANUAL): a copy of the manual
         # starts out in the fallback group (by default a course deck).
         selectable, group_labels = selectable_tags(groups), labels(groups)
-        if current_group not in selectable:
-            current_group = fallback_tag(groups) or next(iter(selectable), "")
+        fallback = fallback_tag(groups)
+        current = [tag for tag in selectable if tag in current_groups] or ([fallback] if fallback else [])
         for tag in selectable:
-            radio = QRadioButton(group_labels[tag])
-            radio.setChecked(tag == current_group)
-            buttons.addButton(radio)
-            self._radios[tag] = radio
-            group_layout.addWidget(radio)
-        layout.addWidget(Field("Group (decides the section of the deck switcher)", group_box))
+            check = QCheckBox(group_labels[tag])
+            check.setChecked(tag in current)
+            self._checks[tag] = check
+            group_layout.addWidget(check)
+        layout.addWidget(Field("Groups (the sections of the deck switcher the deck is listed in)", group_box))
+        home = (headings(groups)[fallback] or group_labels[fallback]) if fallback else "Other decks"
+        layout.addWidget(caption(f"With none checked, the deck is listed under {home}."))
 
-        note = caption("Stored in the deck's own file as \\decktags{...}, so it stays with the deck.")
+        note = caption("Stored in the deck's own file as \\decktags{...}, so they stay with the deck.")
         layout.addWidget(note)
         self.problem = caption()
         self.problem.hide()
@@ -79,11 +81,11 @@ class DeckGroupSheet(ModalSheet):
         ok = self.add_button(ok_text, kind="primary")
         ok.setDefault(True)
         ok.clicked.connect(self._on_ok)
-        focus = self.name_edit or next(iter(self._radios.values()), None)
+        focus = self.name_edit or next(iter(self._checks.values()), None)
         if focus is not None:
             focus.setFocus()
         self.name = ""
-        self.group = current_group
+        self.chosen_groups: tuple[str, ...] = tuple(current)
         self.template = ""
 
     def _show_problem(self, text: str) -> None:
@@ -98,7 +100,7 @@ class DeckGroupSheet(ModalSheet):
             self._show_problem(reason)
             return
         self.name = name
-        self.group = next((tag for tag, radio in self._radios.items() if radio.isChecked()), self.group)
+        self.chosen_groups = tuple(tag for tag, check in self._checks.items() if check.isChecked())
         if self.template_box is not None:
             self.template = self.template_box.currentData()
         self.accept()

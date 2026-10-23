@@ -118,7 +118,7 @@ def deck_entries(window, words: list[str]) -> list[Entry]:
     current = window.state.deck
     decks = [d for d in window.decks if matches(words, d.name) and not (current and d.path == current.path)]
     return [Entry(GO_TO_DECK, d.name, lambda d=d: window.state.set_deck(d), GROUP_ICONS[GO_TO_DECK],
-                  "archived" if d.archived else d.group) for d in decks[:MAX_DECKS]]
+                  "archived" if d.archived else ", ".join(d.groups)) for d in decks[:MAX_DECKS]]
 
 
 def hit_entries(window, hits: list[slide_search.SearchHit]) -> list[Entry]:

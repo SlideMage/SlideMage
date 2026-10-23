@@ -17,7 +17,7 @@ from typing import NamedTuple, Optional
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QLabel, QMenu, QMenuBar, QWidget, QWidgetAction
 
-from ...deck_groups import DEFAULT_GROUPS, DeckGroup, headings, switcher_order
+from ...deck_groups import DEFAULT_GROUPS, TAG_MANUAL, DeckGroup, headings, switcher_order
 from ...deck_scan import Deck
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Context
@@ -31,12 +31,23 @@ VIEW_LABELS = {
     "after-course": "After course",
 }
 
+# The section of the decks whose tags name no group of the project's list (and that has no fallback group).
+OTHER_DECKS = "Other decks"
+
+
 def deck_sections(decks: Iterable[Deck], groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[tuple[str, list[Deck]]]:
     """The deck switcher's sections top to bottom, (heading, decks) per group of the project's list and the
-    manual's, empty ones included; a pinned group has no heading ("")."""
+    manual's, empty ones included; a pinned group has no heading (""). A deck in several groups is listed under
+    each of them, the same way (2026-10-23). Decks in no group follow in OTHER_DECKS, before the manual and the
+    test decks, a section only when there is one."""
     decks = list(decks)
     titles = headings(groups)
-    return [(titles[tag], [d for d in decks if d.group == tag]) for tag in switcher_order(groups)]
+    sections = [(titles[tag], [d for d in decks if tag in d.groups]) for tag in switcher_order(groups)]
+    ungrouped = [d for d in decks if not d.groups]
+    if ungrouped:
+        order = switcher_order(groups)
+        sections.insert(order.index(TAG_MANUAL), (OTHER_DECKS, ungrouped))
+    return sections
 
 
 def deck_key(deck: Deck) -> str:

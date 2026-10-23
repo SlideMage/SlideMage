@@ -8,7 +8,7 @@ provides `project`, `state`, `compiling`, `log` and `reload_decks()`.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
@@ -18,7 +18,7 @@ from ... import (
     transcript)
 from ... import archive as archive_mod
 from ...compiler import deck_pdfs, pdf_to_open
-from ...deck_groups import DEFAULT_GROUPS, DeckGroup, group_tags
+from ...deck_groups import DEFAULT_GROUPS, DeckGroup, group_tags, switcher_order
 from ...deck_scan import TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
 from ...fileio import read_text_exact
@@ -105,10 +105,16 @@ def on_create_deck_snapshot(window) -> None:
     compile_actions.start_snapshots(window, sheet.selected_decks(), sheet.options())
 
 
-def tags_with_group(deck_tags: list[str], group: str, groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[str]:
-    """`group` as the deck's group tag, keeping any other tags it has that name no group of `groups`."""
-    named = group_tags(groups)
-    return [group] + [t for t in deck_tags if t not in named]
+def tags_with_groups(deck_tags: Sequence[str], chosen: Iterable[str],
+                     groups: Sequence[DeckGroup] = DEFAULT_GROUPS) -> list[str]:
+    """Exactly the groups `chosen` as the deck's group tags, in switcher order, then every other tag it has that
+    names no group of `groups`, kept as they are."""
+    chosen, named = set(chosen), group_tags(groups)
+    return [t for t in switcher_order(groups) if t in chosen] + [t for t in deck_tags if t not in named]
+
+
+def _describe_groups(chosen: Sequence[str]) -> str:
+    return f"as {', '.join(chosen)}" if chosen else "with no group"
 
 
 def on_open_latest_pdf(window, deck: Deck) -> None:
@@ -198,7 +204,7 @@ def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:
 
 
 def on_edit_deck_tags(window, deck: Deck) -> None:
-    """⋮ -> "Tags…": choose the group the deck appears
+    """⋮ -> "Tags…": choose the groups the deck appears
     in. Written into the deck's own file as \\decktags{...}."""
     if window.centre.unsaved(deck.path):
         QMessageBox.information(
@@ -209,32 +215,31 @@ def on_edit_deck_tags(window, deck: Deck) -> None:
         return
     if deck.group == TAG_MANUAL:
         return  # its Tags button is disabled; the manual keeps its section
-    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.group, groups=window.deck_groups)
+    sheet = DeckGroupSheet(window, f"Tags — {deck.name}", deck.groups, groups=window.deck_groups)
     if not sheet.exec():
         return
-    group = sheet.group
-    if group == deck.group and group in deck.tags:
+    tags = tags_with_groups(deck.tags, sheet.chosen_groups, window.deck_groups)
+    if tags == list(deck.tags):
         return  # already exactly that
     try:
-        deck_editor.set_deck_tags(
-            deck.path, deck.text, tags_with_group(deck.tags, group, window.deck_groups))
+        deck_editor.set_deck_tags(deck.path, deck.text, tags)
     except (deck_editor.StaleFileError, ValueError, OSError) as exc:
         QMessageBox.critical(window, "Tags failed", str(exc))
         return
-    window.log(f"Tagged {deck.name} as {group}")
+    window.log(f"Tagged {deck.name} {_describe_groups(sheet.chosen_groups)}")
     window.refresh_open_deck_editors()
 
 
 def on_new_deck(window) -> None:
     """⌘K / ⋮ "New deck…": an empty deck; its name, template (the open deck's, else the render template, to
-    start with) and group are asked together like "Duplicate deck…"."""
+    start with) and groups are asked together like "Duplicate deck…"."""
     deck = window.state.deck
     template = slide_snapshot.detect_template(deck.preamble_text) if deck is not None \
         else slide_snapshot.render_template(window.project)
     available = slide_snapshot.available_templates(window.project.root) or [template]
     labels = [(key, slide_snapshot.template_label(key, window.project.root)) for key in available]
     sheet = DeckGroupSheet(
-        window, "New deck", deck.group if deck is not None else "", ok_text="Create",
+        window, "New deck", deck.groups if deck is not None else (), ok_text="Create",
         name_prompt="Name of the new deck (the file decks/<name>.tex)",
         default_name="new-deck",
         validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, window.project.decks_dir),
@@ -243,7 +248,9 @@ def on_new_deck(window) -> None:
     if not sheet.exec():
         return
     try:
-        dest = deck_new.new_deck(window.project, sheet.name, sheet.template or template, sheet.group)
+        dest = deck_new.new_deck(
+            window.project, sheet.name, sheet.template or template,
+            ",".join(tags_with_groups((), sheet.chosen_groups, window.deck_groups)))
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "New deck failed", str(exc))
         return
@@ -256,10 +263,10 @@ def on_new_deck(window) -> None:
 
 def on_duplicate_deck(window, deck: Deck) -> None:
     # Creation is where a deck's tag is first chosen (2026-09-19): the
-    # dialog takes the copy's name and its group together, defaulting
-    # to the original's group.
+    # dialog takes the copy's name and its groups together, defaulting
+    # to the original's groups.
     sheet = DeckGroupSheet(
-        window, "Duplicate deck", deck.group, ok_text="Duplicate",
+        window, "Duplicate deck", deck.groups, ok_text="Duplicate",
         name_prompt=f"Name for the copy of {deck.name}.tex",
         default_name=f"{deck.name}-copy",
         validate_name=lambda n: deck_duplicate.is_valid_deck_name(n, deck.path.parent),
@@ -267,22 +274,22 @@ def on_duplicate_deck(window, deck: Deck) -> None:
     )
     if not sheet.exec():
         return
-    new_name, group = sheet.name, sheet.group
+    new_name, chosen = sheet.name, sheet.chosen_groups
     try:
         dest = deck_duplicate.duplicate_deck(window.project, deck, new_name)
     except Exception as exc:  # noqa: BLE001 -- surface any failure to the user
         QMessageBox.critical(window, "Duplicate failed", str(exc))
         return
     window.log(f"Duplicated {deck.name}.tex -> {dest.name}")
-    if group != deck.group or group not in deck.tags:
+    tags = tags_with_groups(deck.tags, chosen, window.deck_groups)
+    if tags != list(deck.tags):
         try:
-            deck_editor.set_deck_tags(
-                dest, read_text_exact(dest), tags_with_group(deck.tags, group, window.deck_groups))
-            window.log(f"Tagged {dest.stem} as {group}")
+            deck_editor.set_deck_tags(dest, read_text_exact(dest), tags)
+            window.log(f"Tagged {dest.stem} {_describe_groups(chosen)}")
         except (deck_editor.StaleFileError, ValueError, OSError) as exc:
             QMessageBox.warning(
                 window, "Tags",
-                f"{dest.name} was created, but tagging it as {group} failed: {exc}")
+                f"{dest.name} was created, but tagging it {_describe_groups(chosen)} failed: {exc}")
     window.reload_decks()
     # The copy opens, as a new deck does (v8.58.0): it is what the user goes on with.
     copy = next((d for d in window.decks if d.path == dest), None)

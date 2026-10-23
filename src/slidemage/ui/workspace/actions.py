@@ -74,7 +74,7 @@ def _versioned(w) -> bool:
 
 
 def _admin_slides_possible(w) -> bool:
-    return _active_deck(w) and w.state.deck.group == TAG_COURSE and bool(w.state.deck.course_url)
+    return _active_deck(w) and TAG_COURSE in w.state.deck.groups and bool(w.state.deck.course_url)
 
 
 def _offered(w, scope: str, task):

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QPushButton, QRadioButton
+from PySide6.QtWidgets import QCheckBox, QPushButton
 
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
@@ -44,12 +44,12 @@ def test_manual_compiles_before_the_test_decks():
 
 
 def test_sheet_never_offers_the_manual_group(qapp):
-    sheet = DeckGroupSheet(None, "Duplicate deck", TAG_MANUAL)
-    radios = sheet.findChildren(QRadioButton)
-    assert len(radios) == len(SELECTABLE_GROUP_TAGS)
-    assert not any("manual" in radio.text().lower() for radio in radios)
+    sheet = DeckGroupSheet(None, "Duplicate deck", [TAG_MANUAL])
+    checks = sheet.findChildren(QCheckBox)
+    assert len(checks) == len(SELECTABLE_GROUP_TAGS)
+    assert not any("manual" in check.text().lower() for check in checks)
     # a copy of the manual starts out as a course deck
-    assert [r.text() for r in radios if r.isChecked()] == [GROUP_LABELS["course"]]
+    assert [c.text() for c in checks if c.isChecked()] == [GROUP_LABELS["course"]]
 
 
 def test_manual_has_a_disabled_deck_settings_entry_and_its_own_switcher_section(qapp):
@@ -64,7 +64,7 @@ def test_manual_has_a_disabled_deck_settings_entry_and_its_own_switcher_section(
 
 
 def test_sheet_asks_for_a_group_and_a_valid_name(qapp):
-    sheet = DeckGroupSheet(None, "Duplicate deck", "research", ok_text="Duplicate", name_prompt="Name",
+    sheet = DeckGroupSheet(None, "Duplicate deck", ["research"], ok_text="Duplicate", name_prompt="Name",
                            default_name="talk-copy",
                            validate_name=lambda name: None if name == "talk-2" else f"{name} is taken")
     ok = next(b for b in sheet.findChildren(QPushButton) if b.text() == "Duplicate")
@@ -72,20 +72,22 @@ def test_sheet_asks_for_a_group_and_a_valid_name(qapp):
     assert sheet.result() == 0 and not sheet.problem.isHidden() and "talk-copy is taken" in sheet.problem.text()
     sheet.name_edit.setText("talk-2")
     assert sheet.problem.isHidden()                       # the reason goes away when the name changes
-    next(r for r in sheet.findChildren(QRadioButton) if r.text() == GROUP_LABELS["test"]).setChecked(True)
+    checks = {c.text(): c for c in sheet.findChildren(QCheckBox)}
+    checks[GROUP_LABELS["research"]].setChecked(False)
+    checks[GROUP_LABELS["test"]].setChecked(True)
     ok.click()
-    assert sheet.result() == 1 and (sheet.name, sheet.group) == ("talk-2", "test")
+    assert sheet.result() == 1 and (sheet.name, sheet.chosen_groups) == ("talk-2", ("test",))
 
 
 def test_tags_sheet_has_no_name_field_and_keeps_the_current_group(qapp):
-    sheet = DeckGroupSheet(None, "Tags — course", "research")
+    sheet = DeckGroupSheet(None, "Tags — course", ["research"])
     assert sheet.name_edit is None
     next(b for b in sheet.findChildren(QPushButton) if b.text() == "Save").click()
-    assert (sheet.name, sheet.group) == ("", "research")
+    assert (sheet.name, sheet.chosen_groups) == ("", ("research",))
 
 
 def test_the_sheet_asks_for_a_template_when_given_some(qapp):
-    sheet = DeckGroupSheet(None, "New deck", "course", ok_text="Create", name_prompt="Name", default_name="x",
+    sheet = DeckGroupSheet(None, "New deck", ["course"], ok_text="Create", name_prompt="Name", default_name="x",
                            templates=[("uni-graz", "University of Graz"), ("mci", "MCI")], current_template="mci")
     assert sheet.template_box.currentData() == "mci"
     sheet.template_box.setCurrentIndex(0)

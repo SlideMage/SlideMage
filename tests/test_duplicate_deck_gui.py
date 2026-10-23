@@ -14,26 +14,26 @@ from slidemage.ui.workspace import deck_actions, menus
 
 
 class _Sheet:
-    def __init__(self, name, group):
-        self.name, self.group = name, group
+    def __init__(self, name, groups):
+        self.name, self.chosen_groups = name, tuple(groups)
 
     def exec(self):
         return True
 
 
-def _duplicate(monkeypatch, tmp_path, group):
+def _duplicate(monkeypatch, tmp_path, groups):
     root = tmp_path / "proj"
     shutil.copytree(EXAMPLE, root)
     ctx = ProjectContext.at(root)
     window = build_window(monkeypatch, ctx)
     source = next(d for d in window.decks if d.name == "slidemage-manual")
-    monkeypatch.setattr(deck_actions, "DeckGroupSheet", lambda *a, **k: _Sheet("manual-copy", group))
+    monkeypatch.setattr(deck_actions, "DeckGroupSheet", lambda *a, **k: _Sheet("manual-copy", groups))
     deck_actions.on_duplicate_deck(window, source)
     return window, source, root / "decks" / "manual-copy.tex"
 
 
 def test_the_copy_is_in_the_deck_switcher_at_once_with_the_group_chosen(qapp, monkeypatch, tmp_path):
-    window, source, dest = _duplicate(monkeypatch, tmp_path, TAG_WORK)
+    window, source, dest = _duplicate(monkeypatch, tmp_path, [TAG_WORK])
     assert dest.is_file()
     copy = next((d for d in window.decks if d.path == dest), None)
     assert copy is not None and copy.group == TAG_WORK
@@ -43,5 +43,5 @@ def test_the_copy_is_in_the_deck_switcher_at_once_with_the_group_chosen(qapp, mo
 
 
 def test_the_copy_is_opened(qapp, monkeypatch, tmp_path):
-    window, source, dest = _duplicate(monkeypatch, tmp_path, TAG_WORK)
+    window, source, dest = _duplicate(monkeypatch, tmp_path, [TAG_WORK])
     assert window.state.deck is not None and window.state.deck.path == dest

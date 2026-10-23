@@ -21,7 +21,7 @@ from slidemage.ui.workspace.menus import DECKS, MENU_BAR, MENU_ROLES, Submenu, e
 from slidemage.ui.workspace.source_file import REPLACE_KEY
 from test_workspace_window import COURSE as COURSE_DECK
 
-COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course",
+COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course", groups=("course",),
                          course_url="https://example.org/course", supports_version=True)
 TITLES = ["File", "Edit", "Deck", "Slide", "View", "Build", "AI", "Housekeeping", "Help"]
 
