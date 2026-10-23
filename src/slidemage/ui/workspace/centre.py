@@ -30,16 +30,17 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout, QWidget)
 
-from ... import app_settings, deck_outline, slide_language, slide_source, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
+from ..dialogs.new_slide_version import NewSlideVersionSheet
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
 from ..kit import kit_qss as q
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
-from .source_file import RELOADED, prompt_version_level
+from .source_file import NEW_SLIDE, OVERWRITE, RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
 from .state import WorkspaceState
 
@@ -81,6 +82,14 @@ def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version
     return box.clickedButton() is update, stop.isChecked()
 
 
+def _is_slide_file(path: Path) -> bool:
+    try:
+        slide_language.call_for_slide_path(path)
+    except ValueError:
+        return False
+    return True
+
+
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
     duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
@@ -92,10 +101,13 @@ class CentreColumn(QFrame):
         self._path: Optional[Path] = None   # the file the Source view shows
         self._opening = False               # open_file() is changing the focus itself
         self._edited: set[Path] = set()     # files written from the Source view since they were last left
+        self._return_mode: Optional[str] = None   # the mode before a deck's source or the .bib was opened
+        self._mode_shown = state.mode       # the mode last shown (to go back to when leaving one is cancelled)
 
         self.source = SourcePane(app)
         self.preview = PreviewPane(app, state, self._preview_buffer)
         self.preview.neighbours = self._neighbour_targets
+        self.preview.deck_targets = self._deck_targets
         self.preview.slide_requested.connect(self._go_adjacent)
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
@@ -140,12 +152,13 @@ class CentreColumn(QFrame):
         self.source.restore_requested.connect(self.restore_version)
         self.source.version_requested.connect(self.update_version)
         self.source.file_requested.connect(self.open_file)
+        self.source.close_requested.connect(self.close_explicit_file)
         self.preview.partner_requested.connect(lambda path: self.open_file(path, keep_mode=True))
         state.deck_changed.connect(self._on_deck_changed)
         state.focused_slide_changed.connect(self._on_focus)
         state.view_changed.connect(lambda _view: self.refresh())
         state.language_changed.connect(self._on_language)
-        state.mode_changed.connect(lambda _mode: self.refresh())
+        state.mode_changed.connect(self._on_mode)
         self.refresh()
 
     # -- what the window asks ----------------------------------------------------------
@@ -159,6 +172,8 @@ class CentreColumn(QFrame):
         live on the editor. The views are refreshed unless the focus click had already put them there."""
         changed = path != self._path
         mode = self.state.mode
+        if not _is_slide_file(path) and (self._path is None or _is_slide_file(self._path)):
+            self._return_mode = mode           # where its "x" goes back to
         self._opening = True
         try:
             if path.parent == self.state.project.slides_dir and bare_id(path.name) != self.state.focused_slide:
@@ -198,7 +213,7 @@ class CentreColumn(QFrame):
         """Whether the Source view holds edits of `path` that could not be saved (a conflict with a change
         on disk, a read-only buffer, an AI fix running). The edits that can be are written first."""
         file = self.source.file_for(path)
-        return file is not None and not file.write_now() and file.dirty
+        return file is not None and not file.write_now(force=True) and file.dirty
 
     def sync_source(self, path: Path) -> None:
         """Show the file again if it changed on disk elsewhere in the app, unless it has unsaved edits."""
@@ -286,7 +301,7 @@ class CentreColumn(QFrame):
 
     def _written(self, file) -> bool:
         """Write an open file's edits first; False (and say why) when they cannot be."""
-        if file is None or file.write_now():
+        if file is None or file.write_now(force=True):
             return True
         QMessageBox.warning(self.app, "Edits not saved",
                             f"{file.path.name} has edits that could not be saved"
@@ -306,8 +321,68 @@ class CentreColumn(QFrame):
             QMessageBox.information(self.app, "Update version", str(exc))
             return
         level = prompt_version_level(self.app, base) if new != base else "patch"
-        if level is not None:
+        if level == NEW_SLIDE:
+            self.save_as_new_slide(id_slug)
+        elif level == OVERWRITE:
+            self.overwrite_version(id_slug)
+        elif level is not None:
             self.freeze_version(id_slug, level)
+
+    def overwrite_version(self, id_slug: str) -> None:
+        """Update version -> Overwrite: the changes go into the version they were made to, which keeps its number
+        (slide_versioning.overwrite_version); decks pinned to it get them too."""
+        current = self.state.project.slides_dir / slide_language.current_name(id_slug)
+        open_current = self.source.file_for(current)
+        if not self._written(open_current):
+            return
+        try:
+            version = slide_versioning.overwrite_version(self.state.project, current, id_slug)
+        except (ValueError, OSError, slide_source.StaleFileError) as exc:
+            QMessageBox.warning(self.app, "Cannot overwrite the version", str(exc))
+            return
+        self.app.log(f"Overwrote v{slide_versioning.format_dot(version)} of {id_slug} with its current content")
+        if open_current is not None:
+            open_current.adopt_disk()
+        self.refresh()
+        self.versions_changed.emit()
+
+    def save_as_new_slide(self, id_slug: str) -> None:
+        """Update version → New slide…: the changes become a slide of their own (slide_branch.py), which the decks
+        ticked load instead; the slide itself goes back to its version. The new slide opens in the editor."""
+        project = self.state.project
+        reason = slide_branch.can_branch(project, id_slug)
+        if reason:
+            QMessageBox.information(self.app, "Save as a new slide", reason)
+            return
+        current = project.slides_dir / slide_language.current_name(id_slug)
+        version = slide_versioning.parse_marker(slide_source.read_slide_source(current)[0])
+        usages = [(u.deck.name, len(slide_branch.following_calls(u))) for u in slide_usage.find_usage(project, id_slug)]
+        usages = [(name, count) for name, count in usages if count]
+        edited = self.state.deck.name if self.state.deck is not None else None
+        usages.sort(key=lambda item: item[0] != edited)          # the deck it is edited in first
+        sheet = NewSlideVersionSheet(self.app, id_slug, version[0] if version else slide_versioning.DEFAULT_BASELINE,
+                                     id_slug.split("-", 2)[2], usages, edited)
+        if not sheet.exec():
+            return
+        open_current = self.source.file_for(current)
+        try:
+            result = slide_branch.save_as_new_slide(project, id_slug, sheet.slug, sheet.decks)
+        except (ValueError, OSError, slide_source.StaleFileError, deck_editor.StaleFileError) as exc:
+            QMessageBox.warning(self.app, "Save as a new slide", str(exc))
+            return
+        new = result.created.id_slug
+        self.app.log(f"{id_slug}'s changes are now the new slide {new}; {id_slug} is back at "
+                     f"v{slide_versioning.format_dot(result.reverted_to)}")
+        for name, count in result.decks.items():
+            self.app.log(f"    {name}: {count} call(s) now load {new}")
+        if open_current is not None:
+            open_current.adopt_disk()
+        self.app.after_version_updates([current, result.created.path])
+        if edited in result.decks:
+            self.app.after_deck_edit(self.state.deck.path, f"{id_slug} → {new} in {edited}", result.previous_texts[edited])
+        if set(result.decks) - {edited}:
+            self.app.refresh_open_deck_editors()
+        self.open_file(result.created.path)
 
     def update_deck_versions(self) -> None:
         """⋮ → This deck → Update Version of all changed slides: every slide the open deck calls from its
@@ -459,6 +534,54 @@ class CentreColumn(QFrame):
         self._set_path(None)
         self.refresh()
 
+    def _showing_explicit_file(self) -> bool:
+        """A deck's own source or Slidemaster.bib (no slide's file) is the Source view's file."""
+        return self._path is not None and not _is_slide_file(self._path)
+
+    def close_explicit_file(self, *, keep_mode: bool = False) -> bool:
+        """Close a deck's source or Slidemaster.bib (its "x", or a switch to Preview or Details) and go back to the
+        focused slide, in the mode before it was opened unless `keep_mode`. Edits that would be lost are asked
+        about: Save, Discard or Cancel (False: it stays open)."""
+        if not self._showing_explicit_file():
+            return True
+        file = self.source.file_for(self._path)
+        if file is not None and file.dirty and not (autosave_on() and file.write_now(force=True)):
+            answer = self._ask_save(file.path.name)
+            if answer == "save":
+                if not file.write_now(force=True):
+                    return False               # a conflict with a change on disk: its notice says so
+            elif answer == "discard":
+                file.reload()
+            else:
+                return False
+        mode, self._return_mode = self._return_mode or "preview", None
+        self._set_path(self._focused_path())
+        if not keep_mode and self.state.mode != mode:
+            self.state.set_mode(mode)          # refreshes
+        else:
+            self.refresh()
+        return True
+
+    def _ask_save(self, name: str) -> Optional[str]:
+        """"save", "discard" or None (Cancel) for the unsaved changes of the file `name`."""
+        box = QMessageBox(QMessageBox.Icon.Question, "Unsaved changes", f"Save the changes to {name}?",
+                          parent=self.app)
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(save)
+        box.exec()
+        return "save" if box.clickedButton() is save else "discard" if box.clickedButton() is discard else None
+
+    def _on_mode(self, mode: str) -> None:
+        """Preview and Details leave a deck's source or the .bib: it is closed (asked about if it has edits that
+        would be lost); cancelled, the mode before comes back."""
+        if mode in ("preview", "details") and self._showing_explicit_file()                 and not self.close_explicit_file(keep_mode=True):
+            self.state.set_mode(self._mode_shown)
+            return
+        self._mode_shown = mode
+        self.refresh()
+
     def _on_focus(self, _slide_id: Optional[str]) -> None:
         if not self._opening:
             self._set_path(self._focused_path())
@@ -506,7 +629,7 @@ class CentreColumn(QFrame):
             return "This project has no decks yet."
         if deck.is_test_deck:
             return (f"{deck.name} is a test deck: it has no slide list. Compile it from the top bar, "
-                    "or edit its source from the ⋮ menu.")
+                    "or edit its source with Deck → Edit deck source.")
         return "Select a slide in the list. Click it to open its source."
 
     def refresh(self) -> None:
@@ -599,12 +722,35 @@ class CentreColumn(QFrame):
             self.preview.set_step_choice(target.source_path, 1 if direction > 0 else None)
         state.set_focused_slide(other.call.id, occurrence_key=other.key)
 
+    def _english_frames(self, state) -> Optional[deck_outline.Outline]:
+        """An outline for for_call without a language, which takes the Instructor frame numbers of the English
+        resolution: the state's own when it is English, else one resolution kept for the deck text. Without it each
+        neighbour resolved every slot of the deck again (in German, six times after every Preview refresh)."""
+        outline = state.outline
+        if outline is not None and outline.matches(state.project, state.deck, "EN"):
+            return outline
+        cached = getattr(self, "_english_frames_cache", None)
+        if cached is not None and cached.matches(state.project, state.deck, "EN"):
+            return cached
+        links = slide_language.TranslationLinks(state.project.slides_dir)
+        slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links)
+        cached = deck_outline.Outline(state.project, state.deck.path, state.deck.text, deck_editor.VIEW_INSTRUCTOR, "EN",
+                                      [], links, {r.key: r.frame_number for r in slots})
+        self._english_frames_cache = cached
+        return cached
+
     def _neighbour_targets(self) -> list:
         """[(target, row)] of the slides nearest to the focused one in the deck (one before, one after, two before,
         two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle."""
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return []
+        # Kept while the slide, the view and the resolved outline stay: building them reads every slide's language
+        # header of the deck six times, on this thread, and the Preview asks after every refresh (v8.52.2).
+        key = (id(state.outline), state.outline is not None, state.deck.path, row.position, state.view, state.language)
+        cached = getattr(self, "_neighbours_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
         rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
         index = next((i for i, r in enumerate(rows) if r.position == row.position), None)
         if index is None:
@@ -614,8 +760,29 @@ class CentreColumn(QFrame):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
         # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
         # under the same key once that slide is focused.
-        return [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
-                          occurrence_key=r.key, hidden=r.hidden, outline=state.outline), r) for r in picks if not r.hidden]
+        frames = self._english_frames(state)
+        targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in picks if not r.hidden]
+        if state.outline is not None:           # without a resolved outline there is nothing that says it is still right
+            self._neighbours_cache = (key, state.outline, targets)
+        return targets
+
+    def _deck_targets(self) -> list:
+        """[(target, row)] of every slide of the open deck that the view typesets, in deck order: the Preview reads
+        their stored pages ahead. Built once per deck text, view, language and outline (about 50 ms for 400 slides)."""
+        state = self.state
+        if state.deck is None or state.outline is None:
+            return []
+        key = (id(state.outline), state.deck.path, state.view, state.language)
+        cached = getattr(self, "_deck_targets_cache", None)
+        if cached is not None and cached[0] == key and cached[1] is state.outline:
+            return cached[2]
+        rows = deck_outline.outline_rows(state.project, state.deck, state.view, state.language, outline=state.outline)
+        frames = self._english_frames(state)
+        targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,
+                             occurrence_key=r.key, hidden=r.hidden, outline=frames), r) for r in rows if not r.hidden]
+        self._deck_targets_cache = (key, state.outline, targets)
+        return targets
 
     def _no_preview_message(self, fallback: str) -> str:
         if self._path is not None and self._file_slide()[0] == "":

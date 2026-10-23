@@ -76,3 +76,51 @@ def test_busy_registry_counts_holders():
             assert busy.reasons() == ["a compile"]
         assert busy.is_busy()
     assert not busy.is_busy()
+
+
+def test_in_front_a_minute_without_input_lets_rendering_start_and_a_sweep_does_not_skip_that():
+    g = gate()
+    g.t["now"] = 100
+    g.note_started()                             # a sweep is under way
+    g.note_focus(True)                           # coming back counts as input
+    assert g.reason() == idle_gate.IN_USE
+    g.t["now"] = 100 + idle_gate.IN_FRONT_IDLE - 1
+    assert g.reason() == idle_gate.IN_USE
+    g.t["now"] = 100 + idle_gate.IN_FRONT_IDLE + 1
+    assert g.allowed()                           # a minute in front without input
+    g.note_input()
+    assert g.reason() == idle_gate.IN_USE
+    g.note_focus(False)                          # switched to another program
+    assert g.reason() == idle_gate.IN_USE        # a quick look elsewhere starts nothing
+    g.t["now"] += idle_gate.LEAVE_GRACE + 0.1
+    g.note_input()                               # the mouse over the window behind does not count
+    assert g.allowed()
+    g.note_focus(True)
+    g.force(60)                                  # "Render now" in the window
+    assert g.allowed() and g.forced() and not g.in_use()
+
+
+def test_nothing_renders_during_a_presentation_not_even_after_render_now():
+    g = gate()
+    g.t["now"] = 100
+    g.force(60)
+    g.presenting = lambda: True
+    assert g.reason() == idle_gate.PRESENTING
+    g.presenting = lambda: False
+    assert g.allowed()
+
+
+def test_without_a_window_reporting_its_focus_the_input_rule_holds():
+    g = gate()
+    assert g.in_front is None
+    g.t["now"] = 25
+    assert g.reason() == "you are working"
+
+
+def test_in_front_is_the_reason_given_before_what_else_keeps_the_machine_busy():
+    g = gate(is_busy=lambda: ["a dialog"])
+    g.note_focus(True)
+    assert g.reason() == idle_gate.IN_USE
+    g.note_focus(False)
+    g.t["now"] = 100
+    assert g.reason() == "waiting for a dialog"

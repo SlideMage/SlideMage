@@ -12,6 +12,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import latex_edit
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
@@ -406,3 +407,56 @@ def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_p
     deck.write_text("x", encoding="utf-8")
     pane.show_path(deck)
     assert pane.buffer() is None
+
+
+# -- what is no slide; AutoSave off (v8.56.0) ------------------------------------------------------------
+
+def test_a_deck_source_and_the_bib_have_no_formatting_row_but_an_x(pane, ctx, slides):
+    deck = ctx.root / "decks" / "talk.tex"
+    deck.parent.mkdir()
+    deck.write_text("\\begin{document}\nwords\n\\end{document}\n", encoding="utf-8")
+    pane.show_path(slides / "abc-EN-Demo-current.tex")
+    assert pane._format_row.isVisibleTo(pane) and not pane._close_button.isVisibleTo(pane)
+    pane.show_path(deck)
+    assert not pane._format_row.isVisibleTo(pane) and pane._close_button.isVisibleTo(pane)
+    pane._wrap("textbf")                                          # Ctrl+B does nothing in plain text
+    assert pane.current.editor.text() == deck.read_text(encoding="utf-8")
+    closed = []
+    pane.close_requested.connect(lambda: closed.append(True))
+    pane._close_button.click()
+    assert closed == [True]
+
+
+def test_with_autosave_off_edits_wait_for_ctrl_s_and_stay_open(pane, slides):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    path, other = slides / "def-EN-Other-current.tex", slides / "abc-EN-Demo-current.tex"
+    pane.show_path(path)
+    file = pane.current
+    file.editor.insertPlainText("% a note\n")
+    assert not file._autosave_timer.isActive()
+    pane.show_path(other)                                         # leaving it writes nothing
+    assert path.read_text(encoding="utf-8") == BODY and pane.file_for(path) is file
+    assert pane.blocked_files() == [file] and file.unsaved
+    assert file.write_now(explicit=True) and "% a note" in path.read_text(encoding="utf-8")
+    assert pane.blocked_files() == []
+
+
+def test_switching_autosave_on_saves_what_waits(pane, slides):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    pane.show_path(slides / "def-EN-Other-current.tex")
+    file = pane.current
+    file.editor.insertPlainText("% later\n")
+    layout_settings.set(source_file.AUTOSAVE_KEY, True)
+    pane.autosave_changed()
+    assert file._autosave_timer.isActive() and pane.blocked_files() == []
+
+
+def test_a_long_file_name_is_cut_in_a_narrow_pane_and_whole_in_its_tooltip(pane, slides):
+    path = slides / "xyz-EN-A-Very-Long-Slide-Title-That-Does-Not-Fit-current.tex"
+    path.write_text(BODY, encoding="utf-8")
+    pane.resize(320, 400)
+    pane.show()
+    pane.show_path(path)
+    QApplication.processEvents()
+    assert pane._name.toolTip() == path.name and pane._name.full_text() == path.name
+    assert pane._name.text() != path.name and pane._name.text().endswith("…")

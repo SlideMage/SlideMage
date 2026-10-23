@@ -10,10 +10,11 @@ tell the user where the key they are using actually lives:
    only place a key can live without ever touching the project folder);
 2. the system keychain, through the optional ``keyring`` package (import
    guarded: SlideMage works without it);
-3. the ``anthropic_api_key`` entry of app_settings.json -- the fallback
-   when ``keyring`` is missing or has no usable backend. That file is
-   gitignored but sits inside the (possibly cloud-synced) project folder,
-   so Settings says so when the key ends up there.
+3. the ``anthropic_api_key`` entry of the settings -- the fallback when
+   ``keyring`` is missing or has no usable backend. It is one of
+   app_settings.MACHINE_KEYS, so it is kept in SlideMage's own folder on this
+   computer (ai_settings.json), never in the project (v8.58.0; before, the
+   project's possibly cloud-synced app_settings.json).
 
 This module is a leaf (it only needs app_settings) so providers.py can
 read the key without importing the resolver that imports providers.py.

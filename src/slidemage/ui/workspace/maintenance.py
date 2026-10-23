@@ -159,7 +159,7 @@ def on_check_for_updates(window) -> None:
         QApplication.restoreOverrideCursor()
 
     current = version_mod.VERSION_NUMBER
-    plan = updater.plan_update(releases, current)
+    plan = updater.plan_update(releases, current, need_asset=updater.can_self_update())
     if plan.latest is None:
         QMessageBox.information(
             window, "Check for updates", f"SlideMage {current} is up to date.")
@@ -277,7 +277,7 @@ def startup_update_check(window) -> None:
     def work() -> None:
         try:
             result = updater.plan_update(
-                updater.fetch_releases(), version_mod.VERSION_NUMBER)
+                updater.fetch_releases(), version_mod.VERSION_NUMBER, need_asset=True)
         except updater.UpdateError as exc:
             result = exc
         window.update_check_done.emit(result)
@@ -364,7 +364,7 @@ def apply_update_choice(window, choice: str, release: updater.Release) -> None:
                 "Updates will be installed automatically (Settings → General)"
                 if choice == "auto" else
                 "SlideMage will no longer check for updates on start "
-                "(Settings → General; ⋮ → Check for updates… still works)")
+                "(Settings → General; Help → Check for updates… still works)")
     if choice in ("install", "auto"):
         download_and_install_update(window, release)
     elif choice == "later":

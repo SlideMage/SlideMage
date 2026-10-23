@@ -4,10 +4,10 @@
 % SlideMage manual, chapter "Working in SlideMage": the build options, and the entries for
 % other outputs. The crop is the appendix page of this manual (tools/manual/make_crops.py).
 % What the compile entries produce: slide 1kg.
-\setSlideVersion{1-0-1}
+\setSlideVersion{1-0-1+}
 \begin{standardframe}{Options and other formats}
 	\small
-	\emph{Build options\ldots} in the arrow of \emph{Compile PDF} changes how PDFs are made; other outputs have entries of their own.
+	\emph{Build options\ldots} (\emph{Build} menu, or the arrow of \emph{Compile PDF}) changes how PDFs are made; other outputs have entries of their own.
 	\par\smallskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.63\linewidth}
@@ -21,8 +21,9 @@
 			\textbf{Other outputs}
 			\shrinklists{3}
 			\begin{itemize}
-				\item \emph{Export PPTX\ldots} (three-dot menu, \emph{This deck}): a PowerPoint file for recording a lecture, reveal steps fading in one by one
-				\item \emph{Write transcript} (arrow of \emph{Compile PDF}): the accessible text version of a deck
+				\item \emph{Export PPTX\ldots} (\emph{Deck} $\rightarrow$ \emph{Export}): a PowerPoint file for recording a lecture, reveal steps fading in one by one
+					\item \emph{Export LaTeX\ldots} (\emph{Deck} $\rightarrow$ \emph{Export}): the deck as a folder that compiles anywhere with \SMCode{latexmk}
+				\item \emph{Write transcript} (\emph{Build} $\rightarrow$ \emph{Accessible transcript}): the accessible text version of a deck
 			\end{itemize}
 		\end{column}
 		\begin{column}{0.34\linewidth}

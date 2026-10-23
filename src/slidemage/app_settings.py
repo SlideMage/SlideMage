@@ -19,6 +19,15 @@ git) to carry it across machines.
 
 The file is the project's .slidemage/app_settings.json (ProjectContext.settings_dir),
 next to translation_prompts.json; every function takes the ProjectContext it belongs to.
+
+The AI settings of this machine are the exception (v8.58.0, direct instruction: "save all AI model-related settings
+in the SlideMage folder structure, not the project folder structure"): MACHINE_KEYS -- the model per route and task,
+what Cloud means, the Ollama server and the API key's file fallback -- live in SlideMage's own folder
+(project.config_dir()/ai_settings.json, MACHINE_STORE_PATH), for every project on this computer, and never travel
+with a synced project. load() and save() split and merge them, so callers see one dict as before; the first load
+of a project moves any it still holds out of it (a value this machine already has wins). The project keeps what
+is the project's: its Local/Cloud policy (project.json), the Cloud first-use flag, the German form of address and
+the prompts.
 """
 from __future__ import annotations
 
@@ -27,9 +36,17 @@ from pathlib import Path
 from typing import Any
 
 from .fileio import read_json, write_json
-from .project import ProjectContext
+from .project import ProjectContext, config_dir
 
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
+MACHINE_STORE_PATH = config_dir() / "ai_settings.json"
+# The keys of ai/ai_profile.py (models per route and task, the Cloud connection, and the per-task model keys of
+# before v8.0 that it still reads), the Ollama server and ai/credentials.py's API key fallback; ai_draft_model is
+# a leftover of an older version.
+MACHINE_KEYS = frozenset({
+    "ai_models", "cloud_conn", OLLAMA_HOST_SETTING_KEY, "anthropic_api_key",
+    "chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model",
+})
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
 # rather than imported from either -- this module sits below both of them
 # in the import graph (they import get_ollama_host() from here), so it
@@ -42,11 +59,24 @@ def _store_path(ctx: ProjectContext) -> Path:
 
 
 def load(ctx: ProjectContext) -> dict[str, Any]:
-    return read_json(_store_path(ctx))
+    """The project's settings with this machine's AI settings (MACHINE_KEYS) over them."""
+    project_settings = read_json(_store_path(ctx))
+    machine = read_json(MACHINE_STORE_PATH)
+    moved = {key: project_settings.pop(key) for key in MACHINE_KEYS if key in project_settings}
+    if moved:
+        machine = {**moved, **machine}
+        write_json(MACHINE_STORE_PATH, machine)
+        write_json(_store_path(ctx), project_settings)
+    return {**project_settings, **{key: value for key, value in machine.items() if key in MACHINE_KEYS}}
 
 
 def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
-    write_json(_store_path(ctx), settings)
+    """`settings` as load() gave it, changed: MACHINE_KEYS to this machine's file (one left out is removed), the
+    rest to the project's."""
+    machine = {key: value for key, value in read_json(MACHINE_STORE_PATH).items() if key not in MACHINE_KEYS}
+    machine.update({key: value for key, value in settings.items() if key in MACHINE_KEYS})
+    write_json(MACHINE_STORE_PATH, machine)
+    write_json(_store_path(ctx), {key: value for key, value in settings.items() if key not in MACHINE_KEYS})
 
 
 def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:

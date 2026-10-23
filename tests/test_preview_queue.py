@@ -1415,7 +1415,7 @@ def test_cached_page_is_not_shown_after_its_file_changed(two):
     stat = two.path_a.stat()
     os.utime(two.path_a, ns=(stat.st_atime_ns, stat.st_mtime_ns + 2_000_000_000))   # same text, a newer file
     two.show("A")
-    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+    assert view._page.pixmap is None or view._page.dimmed        # A's old page is never shown; B's stays, faint
     assert view._status_chip.text() != preview_view.CHECKING
     two.gate["BODY"].set()
     two.pump(two.verified)
@@ -1423,7 +1423,7 @@ def test_cached_page_is_not_shown_after_its_file_changed(two):
     two.gate["BODY2"].clear()
     two.path_a.write_text("BODY2")                 # another text
     two.show("A")
-    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    assert (view._page.pixmap is None or view._page.dimmed) and view._status_chip.text() != preview_view.CHECKING
     two.gate["BODY2"].set()
 
 
@@ -1434,14 +1434,14 @@ def test_cached_page_is_not_shown_for_another_view_or_language(two):
     two.gate["BODY"].clear()
     view.state.set_view("after-course")
     two.show("A")
-    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    assert (view._page.pixmap is None or view._page.dimmed) and view._status_chip.text() != preview_view.CHECKING
     view.state.set_view("instructor")
     two.show("B")
     two.show("A")
     assert view._page.pixmap is not None and view._status_chip.text() == preview_view.CHECKING
     view._language = "DE"
     view._refresh()
-    assert view._page.pixmap is None and view._status_chip.text() != preview_view.CHECKING
+    assert (view._page.pixmap is None or view._page.dimmed) and view._status_chip.text() != preview_view.CHECKING
     two.gate["BODY"].set()
 
 
@@ -1570,7 +1570,7 @@ def pixels(png):
 def test_a_stored_page_is_looked_up_off_the_gui_thread_and_shown_once_it_arrives(stored):
     view, store = stored.view, stored.store
     stored.show("A")
-    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")   # nothing yet
+    assert view._page.pixmap is None and view._page.message == preview_view.LOADING           # its lookup is out
     stored.pump(lambda: view._page.pixmap is not None)
     assert view._page.pixmap.toImage() == pixels(stored.png["BODY"])
     assert view._last_pdf is None and view._displayed_spec is None             # a store page authorizes no PDF
@@ -1618,18 +1618,20 @@ def test_a_stored_page_for_a_arriving_after_the_selection_moved_to_b_is_discarde
     assert view._stored[0][0] == stored.target_b.key
 
 
-def test_with_the_store_blocked_a_new_slide_shows_its_message_never_the_previous_slide(stored):
+def test_with_the_store_blocked_a_new_slide_keeps_the_previous_page_faint_and_loading_until_its_own_arrives(stored):
+    # v8.53.0: not a flash of "No preview" for every slide scrolled past; the previous page stays, faint, never as current.
     view, store = stored.view, stored.store
     stored.show("A")
     stored.pump(lambda: view._page.pixmap is not None)
+    before = view._page.pixmap
     store.gate[stored.target_b.key].clear()
     stored.show("B")
     for _ in range(10):
         stored.qapp.processEvents()
-    assert view._page.pixmap is None and view._page.message.startswith("No preview for the")
+    assert view._page.pixmap is before and view._page.dimmed and view._status_chip.text() == preview_view.LOADING
     store.gate[stored.target_b.key].set()
-    stored.pump(lambda: view._page.pixmap is not None)
-    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])
+    stored.pump(lambda: view._page.pixmap is not before)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"]) and not view._page.dimmed
 
 
 def test_a_changed_file_discards_the_page_looked_up_for_the_old_one(stored):
@@ -1713,3 +1715,106 @@ def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(
     assert built == {"chips": 3, "menus": 1}
     view._refresh()
     assert built == {"chips": 3, "menus": 1}
+
+
+def test_while_scrolling_no_check_starts_until_the_selection_rests(stored, monkeypatch):
+    # v8.53.0: slides scrolled past started checks that the next slide superseded before they answered.
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 300)
+    view, store = stored.view, stored.store
+    stored.show("A")                                              # the first change: a click, checked at once
+    assert not view._defer_checks
+    stored.pump(lambda: view._page.pixmap is not None)
+    asked = len(store.calls)
+    stored.show("B")                                              # within SCROLLING_MS: scrolling
+    for _ in range(5):
+        stored.qapp.processEvents()
+    assert view._defer_checks and len(store.calls) == asked and view._selection_pending is None
+    assert view._page.dimmed and view._status_chip.text() == preview_view.LOADING
+    view._settled()                                               # the selection rests: B is checked now
+    assert not view._defer_checks
+    stored.pump(lambda: view._page.pixmap is not None and not view._page.dimmed)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"]) and len(store.calls) > asked
+
+
+def test_the_neighbours_stored_pages_are_read_ahead_and_the_next_slide_shows_at_once(stored):
+    view, store = stored.view, stored.store
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()                                               # the selection rests: B's page is read ahead
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._prefetched)
+    assert not any(on_main for _what, on_main, _deck in store.calls)
+    store.gate[stored.target_b.key].clear()                       # B's own lookup would wait now
+    stored.show("B")
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])     # at once, from what was read ahead
+    assert not view._page.dimmed and view._status_chip.text() != preview_view.LOADING
+    store.gate[stored.target_b.key].set()
+
+
+def test_the_pages_read_ahead_go_outward_from_the_slide_on_show_through_the_whole_deck(stored):
+    view = stored.view
+    rows = [SimpleNamespace(position=i) for i in range(6)]
+    targets = [SimpleNamespace(key=("slide", i)) for i in range(6)]
+    view.deck_targets = lambda: list(zip(targets, rows))
+    view._row = rows[2]
+    assert [t.key[1] for t in view._preload_order()] == [3, 1, 4, 0, 5]
+    view._row, view._target = None, targets[4]                   # not a slide of the deck's list: all but itself
+    assert [t.key[1] for t in view._preload_order()] == [0, 1, 2, 3, 5]
+
+
+def test_beyond_the_nearest_pages_the_deck_is_held_compressed_and_decoded_when_shown(stored, monkeypatch):
+    view, store = stored.view, stored.store
+    monkeypatch.setattr(preview_view, "PREFETCHED", 0)            # B is not among the nearest decoded pages
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._compressed)
+    assert ident not in view._prefetched and view._compressed[ident][0] == stored.png["OTHER"]
+    store.gate[stored.target_b.key].clear()                       # B's own lookup would wait now
+    stored.show("B")
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])     # decoded from the PNG held, at once
+    store.gate[stored.target_b.key].set()
+
+
+def test_a_slide_whose_store_has_no_page_is_not_asked_again_at_every_rest(stored):
+    view, store = stored.view, stored.store
+    store.pngs.pop(stored.target_b.key)
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._preload_missing)
+    def pages_asked():
+        return sum(1 for what, _m, _d in store.calls if what == "page")
+
+    asked = pages_asked()
+    view._settled()
+    assert not view._prefetching and pages_asked() == asked
+
+
+def test_another_view_drops_the_pages_read_ahead_and_the_farthest_give_way_at_the_limit(stored, monkeypatch):
+    view = stored.view
+    view.neighbours = lambda: [(stored.target_b, None)]
+    stored.show("A")
+    stored.pump(lambda: view._page.pixmap is not None)
+    view._settled()
+    ident = (stored.target_b.key, view.state.view, view.language, preview_view._mtime(stored.path_b))
+    stored.pump(lambda: ident in view._compressed)
+    view.state.set_view("during-course")
+    view._settled()
+    assert ident not in view._compressed and ident not in view._prefetched and view._compressed_bytes == 0
+    monkeypatch.setattr(preview_view, "PRELOAD_BYTES", 10)
+    view._preload_rank = {"near": 0, "far": 1, "farther": 2}
+    view._keep_compressed("far", b"123456", "f")
+    view._keep_compressed("farther", b"1234", "g")
+    view._keep_compressed("near", b"12345", "n")                   # the farther pages give way to a nearer one
+    assert set(view._compressed) == {"near"} and view._compressed_bytes == 5
+    view._keep_compressed("farther", b"1234", "g")
+    view._keep_compressed("far", b"12", "f")                      # nearer than "farther": that one gives way
+    assert set(view._compressed) == {"near", "far"} and view._compressed_bytes == 7
+    view._keep_compressed("farther", b"1234", "g")                # the farthest, with no room: not kept
+    assert set(view._compressed) == {"near", "far"}

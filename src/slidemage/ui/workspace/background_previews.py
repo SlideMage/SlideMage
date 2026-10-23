@@ -21,7 +21,7 @@ from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from ... import app_settings, background_renders, compile_records, compiler, render_key, render_store
+from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_store
 from ...background_renders import BackgroundRenderer
 from ..kit.widgets import Chip
 
@@ -35,6 +35,11 @@ INPUT_EVENTS = {QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type
 
 VIEW_COLUMNS = (("instructor", "Instructor"), ("during-course", "During course"), ("after-course", "After course"))
 DIAL_SIZE = 34
+
+
+def waiting_text(reason: str) -> str:
+    """Why nothing renders now, for the dial's tooltip and the status window."""
+    return idle_gate.IN_USE_EXPLAINED if reason == idle_gate.IN_USE else f"Waiting: {reason}."
 
 
 class Dial(QWidget):
@@ -190,8 +195,8 @@ class StatusDialog(QDialog):
                 item.setTextAlignment(column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.tree.addTopLevelItem(item)
         self._refresh_running(renderer)
-        reason = progress.paused_because
-        self.note.setText(f"Waiting: {reason}." if reason and progress.left else "")
+        reason = renderer.waiting_because()
+        self.note.setText(waiting_text(reason) if reason and progress.left else "")
         self.pause.setText("Resume" if renderer.gate.paused else "Pause")
         self.failures.setVisible(bool(progress.failures))
         self.retry.setVisible(bool(progress.failures))
@@ -322,8 +327,18 @@ class BackgroundPreviews(QObject):
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
             on_change=self.changed.emit)
         self.renderer.gate._busy = self._busy_reasons
+        if autostart is None and not os.environ.get(NO_BACKGROUND_ENV):
+            # The trace file of what background rendering decided (background_renders.Trace), in the cache folder.
+            from ...project import cache_dir
+            self.renderer._trace = background_renders.Trace(cache_dir() / "background-trace.log")
+        self._chip_said = None
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
         self._watcher = _InputWatcher(self.renderer.user_active, self)
+        # Background renders only while SlideMage is not in front; coming back stops the running ones (v8.52.0).
+        app = QApplication.instance()
+        app.applicationStateChanged.connect(self._application_state)
+        self.renderer.gate.note_focus(app.applicationState() == Qt.ApplicationState.ApplicationActive)
+        self.renderer.gate.presenting = lambda: getattr(window, "presentation", None) is not None
         state = window.state
         state.deck_changed.connect(self._deck_opened)
         state.focused_slide_changed.connect(self._slide_focused)
@@ -353,6 +368,11 @@ class BackgroundPreviews(QObject):
         if QApplication.activeModalWidget() is not None:
             reasons.append("a dialog")
         return reasons
+
+    def _application_state(self, state) -> None:
+        if self.renderer is not None:
+            self.renderer.window_focus(state == Qt.ApplicationState.ApplicationActive)
+            self.refresh()
 
     # -- what the store is told ----------------------------------------------------------------
 
@@ -399,6 +419,10 @@ class BackgroundPreviews(QObject):
         self._timer.stop()
         if hasattr(self, "_watcher"):
             self._watcher.stop()
+            try:
+                QApplication.instance().applicationStateChanged.disconnect(self._application_state)
+            except (RuntimeError, TypeError):
+                pass
         if self.renderer is not None:
             self.renderer.stop()
         if self.store is not None:
@@ -466,7 +490,9 @@ class BackgroundPreviews(QObject):
         if left > 0:
             if renderer.sweeping():
                 return f"Preparing previews · {left} left", "info"
-            reason = progress.paused_because
+            reason = renderer.waiting_because()
+            if reason == idle_gate.IN_USE:
+                return f"Previews wait while you use SlideMage · {left} left", "muted"
             return (f"Previews paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
         if progress.failures:
             return f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered", "warning"
@@ -488,8 +514,8 @@ class BackgroundPreviews(QObject):
             lines.append(f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered.")
         if renderer.sweeping():
             lines.append("Rendering now.")
-        elif progress.left and progress.paused_because:
-            lines.append(f"Waiting: {progress.paused_because}.")
+        elif progress.left and renderer.waiting_because():
+            lines.append(waiting_text(renderer.waiting_because()))
         elif not progress.left:
             lines.append("Everything is ready.")
         lines.append("Click for the decks.")
@@ -516,6 +542,9 @@ class BackgroundPreviews(QObject):
         self.dial.setToolTip(self.hover_text())
         self.dial.setAccessibleDescription(self.hover_text())
         text, tone = self.summary()
+        if text != self._chip_said:
+            self._chip_said = text
+            self.renderer.trace(f"chip: {text or '(hidden)'} · dial {self.dial_state()}")
         if text:
             self.chip.set_text(text)
             self.chip.set_tone(tone)

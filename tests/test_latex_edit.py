@@ -149,6 +149,15 @@ def test_comment_toggle_comments_every_line_and_then_uncomments_them():
     assert le.comment_ops(["%a", "b"]) == [(0, 0, "%")] * 2   # mixed: comment wins
 
 
+def test_outdent_takes_one_tab_or_up_to_a_tab_width_of_spaces():
+    assert le.outdent_width("\t\tx", 4) == 1
+    assert le.outdent_width("      x", 4) == 4
+    assert le.outdent_width("  x", 4) == 2
+    assert le.outdent_width("  \tx", 4) == 3         # a tab after fewer spaces ends the level
+    assert le.outdent_width("x", 4) == 0
+    assert le.outdent_width("   ", 2) == 2
+
+
 # -- braces and the file ------------------------------------------------------------
 
 def test_brace_pair_finds_the_partner_on_either_side_and_skips_escaped_braces():

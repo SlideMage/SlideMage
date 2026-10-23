@@ -3,7 +3,7 @@
 
 % SlideMage manual, chapter "Installing SlideMage": optional programs that
 % make working with SlideMage easier.
-\setSlideVersion{1-1-0}
+\setSlideVersion{1-1-0+}
 \begin{standardframe}{Optional helpers}
 	\small
 	None of these is required; each makes some work easier.
@@ -11,7 +11,7 @@
 	\shrinklists{2}
 	\begin{itemize}
 		\item \textbf{A PDF viewer that does not lock its file}, e.g.\ SumatraPDF (\SMCode{sumatrapdfreader.org}): it reloads a PDF when SlideMage replaces it. A viewer that locks the file (Adobe Acrobat) makes SlideMage wait (SlideMage retries replacing the PDF for up to 15 minutes).
-		\item \textbf{pympress} (\SMCode{github.com/Cimbali/pympress}, releases page): shows a presenter PDF with your notes on your own screen and the slides on the projector.
+		\item \textbf{pympress} (\SMCode{github.com/Cimbali/pympress}, releases page): shows a presenter PDF with your notes on your own screen and the slides on the projector -- as SlideMage does itself (\emph{Presenting}).
 		\item \textbf{TeXstudio} (\SMCode{texstudio.org}), if you also want to edit and compile outside SlideMage: under \emph{Options} $\rightarrow$ \emph{Configure TeXstudio} $\rightarrow$ \emph{Commands}, set \emph{LaTeX} and \emph{LuaLaTeX} to \SMCode{latexmk \%.tex}, so it compiles exactly as SlideMage does.
 		\item \textbf{Git} (\SMCode{git-scm.com}, already there if you installed it for Perl): keeps the history of your project. SlideMage notices a project under Git and moves files with Git when it renames slides.
 		\item \textbf{Claude Code} (the \SMCode{claude} command, logged in): the assistant's second tab runs it in your project.

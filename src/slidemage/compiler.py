@@ -352,12 +352,17 @@ class CancelToken:
         if stopped:
             self._kill(proc)
 
-    def request_stop(self) -> None:
-        """Stop the whole run: kill the job being compiled, skip the rest."""
+    def request_stop(self, *, wait: bool = True) -> None:
+        """Stop the whole run: kill the job being compiled, skip the rest. `wait=False` sets the stop at once and
+        kills the process tree on a thread of its own: taskkill takes a few tenths of a second, and the GUI stopping
+        ten background renders one after the other froze for seconds (v8.52.5)."""
         self._event.set()
         with self._lock:
             proc = self._proc
-        self._kill(proc)
+        if wait:
+            self._kill(proc)
+        elif proc is not None and proc.poll() is None:
+            threading.Thread(target=self._kill, args=(proc,), daemon=True, name="stop-render").start()
 
     def stop_current(self) -> None:
         """Stop only the job being compiled (job_stopped() tells its runner);

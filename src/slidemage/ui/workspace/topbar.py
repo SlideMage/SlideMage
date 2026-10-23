@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The workspace's top bar (prototype v6): logo, deck switcher, the AI switch (ai_switch.py), "View as",
-EN/DE, save status, Preview/Split/Source/Details, Compile and ⋮. While the Images page is open, a "Close images"
-button stands before ⋮ (Images itself is in ⋮ and ⌘K).
+EN/DE, save status, Preview/Split/Source/Details and Compile, under the window's menu bar (menus.py), which has
+every other command. While the Images page is open, a "Close images" button follows Compile (Images itself is in
+View and ⌘K).
 
 The bar changes the shared WorkspaceState for the things that are state (deck,
 view, language, mode) and reports every other click as a command id through
@@ -20,7 +21,7 @@ from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .ai_switch import AiSwitch
-from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, build_more_menu, deck_key
+from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
@@ -116,6 +117,9 @@ class TopBar(QWidget):
         add(self._languages)
 
         layout.addStretch()
+        # AutoSave [On|Off] is after the menu bar's Help (autosave_switch.py); host_autosave puts it here when the
+        # menu bar is not in the window (macOS).
+        self._autosave: QWidget | None = None
         self._save = QLabel("Saved")
         self._save.setObjectName(q.TOPBAR_SAVE)
         add(self._save)
@@ -132,9 +136,6 @@ class TopBar(QWidget):
         self._images.clicked.connect(lambda: self.command.emit("images"))
         self._images.hide()
         add(self._images)
-        self._more = IconButton("more_vert", "More")
-        self._more.clicked.connect(self._open_more_menu)
-        add(self._more)
         self._right_column = IconButton("last_page")
         self._right_column.setCheckable(True)
         self._right_column.clicked.connect(lambda: self.command.emit("column:right"))
@@ -166,7 +167,7 @@ class TopBar(QWidget):
         switch = self.ai_switch
         stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
                  *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
-                 self._images, self._more, self._right_column]
+                 self._images, self._right_column]
         for before, after in zip(stops, stops[1:]):
             QWidget.setTabOrder(before, after)
 
@@ -199,6 +200,9 @@ class TopBar(QWidget):
         self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
         self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
         self.ai_switch.set_shrink({"tight": 1, "tiny": 2}.get(density, 0))
+        if self._autosave is not None:
+            # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.
+            self._autosave.setVisible(full)
         self._update_deck_label()
         self._update_save_label()
         self._update_compile_label()
@@ -247,6 +251,12 @@ class TopBar(QWidget):
         name = deck.name if deck is not None else "No deck"
         self._deck_button.set_text(name, max_width=DECK_MAX_WIDTHS[self._density])
         self._deck_button.setToolTip(name)
+
+    def host_autosave(self, switch: QWidget) -> None:
+        """Show the AutoSave switch before "Saved": for a menu bar outside the window (macOS)."""
+        self._autosave = switch
+        self._row_layout.insertWidget(self._row_layout.indexOf(self._save), switch)
+        self._apply_density(self._density)
 
     def _on_dirty_changed(self, dirty: bool) -> None:
         self._update_save_label()
@@ -301,11 +311,3 @@ class TopBar(QWidget):
             if deck_key(deck) == key:
                 self._state.set_deck(deck)
                 return
-
-    def _open_more_menu(self) -> None:
-        menu = build_more_menu(self, self._window)
-        menu.triggered.connect(self.command)
-        menu.closed.connect(lambda: self._more.set_active(False))
-        menu.closed.connect(menu.deleteLater)
-        self._more.set_active(True)
-        menu.popup_below(self._more, align_right=True)

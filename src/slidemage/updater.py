@@ -203,14 +203,23 @@ def is_breaking(release: Release, current_tag: str) -> bool:
     return new is not None and current is not None and new[0] > current[0]
 
 
-def plan_update(releases: list[Release], current_tag: str) -> UpdatePlan:
+def plan_update(releases: list[Release], current_tag: str, *, need_asset: bool = False) -> UpdatePlan:
     """Decide what to offer. Every release between the running version and
     the newest one counts: skipping over a breaking release to a later,
-    unmarked one still breaks with the past."""
+    unmarked one still breaks with the past.
+
+    `need_asset` (a copy that installs updates itself): a release without
+    this installation's file is not offered yet. GitHub lists a release as
+    soon as its first file is attached, and the builds of the platforms
+    finish minutes apart; offered then, the download failed with "has no
+    download for this platform". The next check finds it."""
     newer = sorted(
         (r for r in releases if is_newer(r.tag, current_tag)),
         key=lambda r: parse_version(r.tag),
     )
+    if need_asset:
+        while newer and newer[-1].asset_url is None:
+            newer.pop()            # an older one without the file still counts as one passed over
     if not newer:
         return UpdatePlan(latest=None, breaking=[], safe=None)
     breaking = [r for r in newer if is_breaking(r, current_tag)]
@@ -432,7 +441,9 @@ def swap_script(install_dir: Path, staging: Path, binary_name: str, pid: int, re
     if windows:
         quote = lambda path: f'"{path}"'
         args = " ".join(f'"{a}"' for a in relaunch or [])
-        start = f'start "" {quote(install_dir / binary_name)} {args}\r\n' if relaunch is not None else ""
+        # Started from its own folder, as Explorer starts it: the next update's helper must not inherit it.
+        start = (f'cd /d {quote(install_dir)}\r\nstart "" {quote(install_dir / binary_name)} {args}\r\n'
+                 if relaunch is not None else "")
         text = (
             "@echo off\r\n"
             f":wait\r\ntasklist /FI \"PID eq {pid}\" 2>NUL | find \"{pid}\" >NUL\r\n"
@@ -481,9 +492,14 @@ def start_helper(script: Path) -> subprocess.Popen:
 
     On Windows it gets a console of its own that is never shown, and NUL as its input and output. A detached cmd
     (DETACHED_PROCESS, no console) with the windowed app's missing handles ended at once with exit code 1, before
-    it swapped anything, and each console program it ran (tasklist, ping) flashed a window of its own."""
+    it swapped anything, and each console program it ran (tasklist, ping) flashed a window of its own.
+
+    It runs in the script's own folder. Started from Explorer, the app's working folder is the installation, and a
+    helper that inherited it could never move that folder (v8.39.2 to v8.51.0: every try failed and the old version
+    started again)."""
     env = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
-    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, env=env)
+    quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, env=env,
+                 cwd=str(script.parent))
     if os.name == "nt":
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         return subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags, **quiet)

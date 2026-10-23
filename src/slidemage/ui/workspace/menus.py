@@ -1,25 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The top bar's menus: deck switcher, Compile caret menu and the ⋮ menu, and the
+"""The window's menu bar, the top bar's menus (deck switcher, Compile caret menu) and the
 helper the slide list's context menus use too.
 
 A menu here is only a layout, which commands in which sections; the labels, the
 shortcuts and when an entry is available come from the command registry
 (actions.py). The item keys are command ids, which `WorkspaceWindow.run_command`
-runs. The old menu bar's System, Decks, Tabs, Housekeeping and Info menus became
-the ⋮ menu's sections or ⌘K commands, and the deck table's per-deck buttons its
-"This deck" section.
+runs. The menu bar (MENU_BAR) lists every command of the registry; the Compile menu
+and the ⌘K palette stay as quick ways to the same commands.
 """
 from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import NamedTuple, Optional
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtWidgets import QLabel, QMenu, QMenuBar, QWidget, QWidgetAction
 
 from ...deck_scan import GROUP_ORDER, TAG_COURSE, TAG_MANUAL, TAG_RESEARCH, TAG_TEST, TAG_WORK, Deck
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Context
+from ..kit import kit_qss as q
 from ..kit.widgets import PopoverMenu
 from .state import VIEWS
 
@@ -124,31 +125,174 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
     return menu
 
 
-# The ⋮ menu: two columns of (header, command ids) and a footer; a section without a header is set off
-# by a separator. Only what is used often is here, the rest is a ⌘K command: Admin slides, Tags, Edit deck
-# source, Find anything, the View toggles, Decks, Log and Exit. The deck's snapshot, previews and slide
-# versions are Deck settings → General → Maintenance; the .bib and test slides, project compatibility,
-# version history and the update check are Settings → Project / About. A Submenu is a row with a flyout.
-MORE_COLUMNS = (
-    (("This deck", ("present", "deck_settings", Submenu("Export", ("export_pptx", "export_latex")), "duplicate_deck")),
-     ("", ("archive_deck",))),
-    (("Project", ("images", "open_project", "new_deck")),
-     ("", (Submenu("Housekeeping", ("housekeeping", "archive_unused")),))),
+# The menu bar: menus of sections. A section is (header, entries); a section without a header is set off by a plain
+# separator (none before a menu's first one). An entry is a command id, an id prefix ending in "*" (every command
+# registered under it, in the registry's order), a Submenu, or DECKS, the decks as the deck switcher groups them.
+# Each menu is filled from the registry whenever it opens: labels, keys, enabled and checked states are those of now.
+DECKS = "decks"
+MENU_BAR = (
+    ("&File", (("", ("open_project", "new_deck", "import_presentation")), ("", ("save", "autosave")),
+               ("", ("edit_bib", "edit_test_slides")), ("", ("settings",)), ("", ("exit",)))),
+    ("&Edit", (("", ("palette", "find", "replace")),
+               ("", ("selection:rewrite", Submenu("Rewrite selection as", ("selection:rewrite:*",)),
+                     "selection:proofread")),
+               ("", ("slide:clear",)))),
+    ("&Deck", (("", (DECKS, "archived_decks", "refresh_decks")), ("", ("present", "open_pdf")),
+               ("", ("deck_settings", "deck_tags", "admin_slides", "deck_source")),
+               ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
+                     "create_snapshot")),
+               ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability")),
+               ("", ("archive_deck",)))),
+    ("&Slide", (("", ("slide:open", "slide:preview", "slide:images")),
+                ("", ("slide:before", "slide:after", "slide:section_before", "slide:duplicate", "slide:translate")),
+                ("", (Submenu("Visibility", ("slide:visible:*",)), "slide:update_versions")),
+                ("", ("slide:reviewed", "slides:unreviewed", "slide:compare", "slide:readability")),
+                ("", (Submenu("Section", ("section:*",)),)),
+                ("", ("slide:remove",)))),
+    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Centre", ("mode:*",)),
+               ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "log")),
+               ("", ("render_buffer", "preview:*")))),
+    ("&Build", (("", ("compile:current",)),
+                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:chapters", "compile:presenter",
+                         "compile:slides", "compile:pages", "compile:several", "compile:everything")),
+                ("Accessible transcript", ("transcript:*",)),
+                ("", ("stop", "build_options")))),
+    ("&AI", (("", ("ai:local", "ai:cloud", "ai:setup")), ("This slide", ("slide:readable", "task:slide:*")),
+             ("This deck", ("task:deck:*",)))),
+    ("H&ousekeeping", (("", ("housekeeping",)), ("Cleanup", ("empty_pdf", "remove_temp", "archive_unused")),
+                       ("Updating", ("update_previews", "sync_links")))),
+    ("&Help", (("", ("open_manual", "shortcuts", "palette")),
+               ("", ("version_history", "check_updates", "project_compat")))),
 )
-MORE_FOOTER = ("settings",)
-MORE_NOTE = "Everything here is also in ⌘K / Ctrl+K"
+# The commands that are one of a set of states: a radio item, checked where the command's meta says "current".
+RADIO_PREFIXES = ("view:", "language:", "mode:", "ai:local", "ai:cloud")
+# On a Mac these move to the application menu (Settings… with ⌘,, Quit with ⌘Q, About); elsewhere they stay.
+MENU_ROLES = {"settings": QAction.MenuRole.PreferencesRole, "exit": QAction.MenuRole.QuitRole,
+              "version_history": QAction.MenuRole.AboutRole}
 
 
-def build_more_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
-    menu = PopoverMenu(parent, min_width=520, focus_first=True)
-    for index, sections in enumerate(MORE_COLUMNS):
-        if index:
-            menu.add_column()
-        for header, ids in sections:
-            if not header:
-                menu.add_separator()
-            add_commands(menu, ctx, ids, header, hints=False)
-    menu.add_footer()
-    add_commands(menu, ctx, MORE_FOOTER, hints=False)
-    menu.add_note(MORE_NOTE)
-    return menu
+def expand(ctx: Context, entries: Iterable) -> list:
+    """`entries` with each "prefix*" replaced by the ids registered under the prefix."""
+    out = []
+    for entry in entries:
+        if isinstance(entry, str) and entry.endswith("*"):
+            out += [c.id for c in ctx.commands if c.id.startswith(entry[:-1])]
+        else:
+            out.append(entry)
+    return out
+
+
+def menu_bar_ids(ctx: Context) -> list[str]:
+    """Every command id the menu bar can show, submenus included (DECKS is not a command)."""
+    ids = []
+    for _title, sections in MENU_BAR:
+        for _header, entries in sections:
+            for entry in expand(ctx, entries):
+                if isinstance(entry, Submenu):
+                    ids += expand(ctx, entry.ids)
+                elif entry != DECKS:
+                    ids.append(entry)
+    return ids
+
+
+def build_menu_bar(window: QWidget, ctx: Context) -> QMenuBar:
+    """The window's menu bar; `ctx` runs the commands (the window itself)."""
+    bar = QMenuBar(window)
+    for title, sections in MENU_BAR:
+        menu = bar.addMenu(title)
+        menu.setObjectName("menu:" + title.replace("&", "").lower())
+        menu.aboutToShow.connect(lambda m=menu, s=sections: fill_menu(m, ctx, s))
+        fill_menu(menu, ctx, sections)      # filled once now too, so a Mac finds Settings, Quit and About at once
+    return bar
+
+
+def fill_menu(menu: QMenu, ctx: Context, sections) -> None:
+    """Fill `menu` again with `sections`' visible commands as they are now."""
+    menu.clear()
+    first = True
+    for header, entries in sections:
+        entries = [e for e in expand(ctx, entries) if _shown(ctx, e)]
+        if not entries:
+            continue
+        if not first:
+            menu.addSeparator()
+        first = False
+        if header:
+            _add_header(menu, header)
+        group = None
+        for entry in entries:
+            if entry == DECKS:
+                _add_decks(menu, ctx)
+            elif isinstance(entry, Submenu):
+                sub = menu.addMenu(entry.title)
+                sub.setObjectName("submenu:" + entry.title.lower())
+                commands = _visible(ctx, expand(ctx, entry.ids))
+                for command in commands:
+                    _add_command(sub, ctx, command)
+                sub.menuAction().setEnabled(any(c.enabled(ctx) for c in commands))
+            else:
+                action = _add_command(menu, ctx, ctx.commands[entry])
+                if action.isCheckable():
+                    group = group or QActionGroup(menu)
+                    group.addAction(action)
+
+
+def _shown(ctx: Context, entry) -> bool:
+    if entry == DECKS:
+        return bool(getattr(ctx, "decks", None))
+    if isinstance(entry, Submenu):
+        return bool(_visible(ctx, expand(ctx, entry.ids)))
+    return ctx.commands[entry].visible(ctx)
+
+
+def _add_header(menu: QMenu, text: str) -> None:
+    label = QLabel(text)
+    label.setObjectName(q.MENU_HEADER)
+    header = QWidgetAction(menu)
+    header.setDefaultWidget(label)
+    header.setEnabled(False)
+    menu.addAction(header)
+
+
+def _add_command(menu: QMenu, ctx: Context, command) -> QAction:
+    """A command as an item: its title, its key after a tab (shown only; the window binds the shortcuts, a second
+    binding on the action would make the key ambiguous), enabled and, for a radio item, checked as now."""
+    title = command.title(ctx).replace("&", "&&")
+    key = command.key_text()
+    action = menu.addAction(f"{title}\t{key}" if key else title)
+    action.setObjectName(command.id)
+    action.setMenuRole(MENU_ROLES.get(command.id, QAction.MenuRole.NoRole))
+    action.setEnabled(command.enabled(ctx))
+    if command.id.startswith(RADIO_PREFIXES):
+        action.setCheckable(True)
+        action.setChecked(command.info(ctx) == "current")
+    action.triggered.connect(lambda _checked=False, cid=command.id: ctx.commands.run(cid, ctx))
+    return action
+
+
+def _add_decks(menu: QMenu, ctx: Context) -> None:
+    """Switch deck ▸: the active decks by group under the deck switcher's headings, then the archived ones."""
+    sub = menu.addMenu("Switch deck")
+    sub.setObjectName("submenu:switch deck")
+    current = ctx.state.deck
+    group = QActionGroup(sub)
+    active = [d for d in ctx.decks if not d.archived]
+    sections = [(GROUP_HEADINGS[tag] or "", [d for d in active if d.group == tag]) for tag in GROUP_ORDER]
+    sections.append(("Archived decks", [d for d in ctx.decks if d.archived]))
+    first = True
+    for heading, decks in sections:
+        if not decks:
+            continue
+        if not first:
+            sub.addSeparator()
+        first = False
+        if heading:
+            _add_header(sub, heading)
+        for deck in decks:
+            action = sub.addAction(deck.name.replace("&", "&&"))
+            action.setObjectName(deck_key(deck))
+            action.setCheckable(True)
+            action.setChecked(current is not None and deck.path == current.path)
+            action.setMenuRole(QAction.MenuRole.NoRole)
+            group.addAction(action)
+            action.triggered.connect(lambda _checked=False, d=deck: ctx.state.set_deck(d))

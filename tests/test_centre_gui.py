@@ -5,6 +5,7 @@ states and renders (the renderer is faked), and unsaved edits across slides."""
 from __future__ import annotations
 
 import os
+import threading
 import time
 from types import SimpleNamespace
 
@@ -18,8 +19,9 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from slidemage import alt_images, deck_outline, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
+from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.workspace import preview_view, render_check
+from slidemage.ui.workspace import preview_view, render_check, source_file
 from slidemage.ui.workspace.centre import CentreColumn
 from slidemage.ui.workspace.state import WorkspaceState
 
@@ -110,12 +112,30 @@ def centre(qapp, project, deck, monkeypatch, ctx):
 
 
 def wait_idle(centre):
+    """Until the Preview has rendered, its render's record is written and the check that follows it has run: until
+    then the new page counts as current (the pixels come before the record, v8.48.0), and the status would depend on
+    how fast the record's thread was."""
+    preview = centre.preview
+
+    def recording():
+        done = getattr(preview._last_request, "done", None)
+        return done is not None and not done.is_set()
+
     deadline = time.monotonic() + 5
-    while (centre.preview._busy or centre.preview._selection_pending is not None) and time.monotonic() < deadline:
+    recorded = False
+    while time.monotonic() < deadline:
+        recorded = recorded or recording()
+        if not (preview._busy or preview._selection_pending is not None or recording()):
+            break
         QApplication.processEvents()
         time.sleep(0.01)
+    if recorded:                         # the check runs on the next poll of _check_when_recorded (every 50 ms)
+        end = time.monotonic() + 0.15
+        while time.monotonic() < end:
+            QApplication.processEvents()
+            time.sleep(0.01)
     QApplication.processEvents()
-    assert not centre.preview._busy
+    assert not preview._busy and not recording()
 
 
 def link_german(project):
@@ -347,6 +367,30 @@ def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_resu
     assert page(centre).pixmap is None
 
 
+def test_a_render_whose_record_is_still_being_written_shows_as_current_and_is_checked_once_it_is(
+        centre, renders, monkeypatch):
+    # The pixels come before the cache record (v8.48.0). A check in between called the new page "Previous
+    # render … render to verify" for about a second after every render.
+    monkeypatch.setattr(preview_view, 'legacy_reference', lambda *args: None)
+    state = centre.state
+    state.set_focused_slide("aaa")
+    page(centre).render_button.click()
+    wait_idle(centre)
+    pane = centre.preview
+    assert "Previous render" in pane._status_chip.text()      # fake PDF: no record ever comes
+    request = SimpleNamespace(done=threading.Event())
+    pane._last_request = request
+    pane._check_when_recorded(request)
+    pane._refresh()
+    assert page(centre).pixmap is not None and not pane._status_chip.isVisibleTo(pane)
+    request.done.set()
+    deadline = time.monotonic() + 10
+    while "Previous render" not in pane._status_chip.text() and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert "Previous render" in pane._status_chip.text() and page(centre).pixmap is not None
+
+
 def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current(centre, renders, project):
     centre.state.set_focused_slide("aaa")
     centre.preview.render_now()
@@ -551,8 +595,10 @@ def test_details_follow_the_focused_slide(centre):
         "Select a slide in the list. Click it to open its source."]
     centre.state.deck.path.write_text(DECK, encoding="utf-8")
     centre.open_file(centre.state.deck.path)
-    state.set_mode("details")
-    assert "not a slide" in centre.details.findChildren(QLabel)[0].text()
+    state.set_mode("details")                       # closes the deck's source (v8.56.0): back to the focus
+    assert centre.path is None and state.mode == "details"
+    assert [label.text() for label in centre.details.findChildren(QLabel)] == [
+        "Select a slide in the list. Click it to open its source."]
 
 
 def test_moving_a_slide_with_edits_that_cannot_be_saved_is_refused(centre, project, monkeypatch):
@@ -909,6 +955,23 @@ def test_selection_in_the_centre_reuses_the_resolved_outline(centre, resolutions
     assert (resolutions.slots, resolutions.outlines, resolutions.scans) == (0, 0, 0)
 
 
+def test_the_neighbours_of_a_german_slide_resolve_the_deck_once_not_on_every_refresh(centre, resolutions):
+    # Profiled in the app (v8.52.0): in German every Preview refresh resolved every slot of the deck six times on
+    # the GUI thread, for the Instructor frame numbers of the neighbours.
+    state = centre.state
+    state.set_mode("preview")
+    state.set_language("DE")
+    outline = resolved(centre)
+    state.set_focused_slide(outline.rows[0].call.id, occurrence_key=outline.rows[0].key)
+    resolutions.reset()
+    first = centre._neighbour_targets()
+    assert first and resolutions.slots <= 1
+    for _ in range(5):
+        assert centre._neighbour_targets() is first
+    state.set_focused_slide(outline.rows[1].call.id, occurrence_key=outline.rows[1].key)
+    assert centre._neighbour_targets() and resolutions.slots <= 1      # another slide: the English frames are kept
+
+
 def test_the_centre_resolves_afresh_for_another_deck_view_or_language(centre, project, resolutions):
     state = centre.state
     state.set_mode("preview")
@@ -1050,3 +1113,42 @@ def test_show_makes_a_panel_edit_the_source_views_own(centre, project):
     centre.state.set_focused_slide("aaa")
     assert centre.edit_slide_text(aaa, panel_edit, show=True)           # "Save notes": Ctrl+S then writes this file
     assert centre.source.current.path == aaa and centre.source.current.dirty
+
+
+# -- a deck's source and the .bib: the "x", and Preview closes them (v8.56.0) -----------------------------
+
+def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centre, project, deck):
+    deck.path.write_text(DECK, encoding="utf-8")
+    state = centre.state
+    state.set_mode("preview")
+    state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    assert state.mode == "source" and centre.source.current.path == deck.path
+    centre.source._close_button.click()
+    assert state.mode == "preview" and centre.path.name == "aaa-EN-One-current.tex"
+
+
+def test_preview_closes_the_bib_and_asks_about_changes_autosave_would_not_save(centre, project, monkeypatch):
+    bib = centre.state.project.bibliography_path
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    state = centre.state
+    state.set_focused_slide("aaa")
+    centre.open_file(bib)
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.source.current.editor.insertPlainText("% mine\n")
+    answers = [None, "save"]
+    monkeypatch.setattr(centre, "_ask_save", lambda _name: answers.pop(0))
+    state.set_mode("preview")                                     # Cancel: it stays, in the Source view
+    assert state.mode == "source" and centre.path == bib and "% mine" not in bib.read_text(encoding="utf-8")
+    state.set_mode("preview")                                     # Save
+    assert state.mode == "preview" and "% mine" in bib.read_text(encoding="utf-8")
+    assert centre.path.name == "aaa-EN-One-current.tex"
+
+
+def test_with_autosave_on_closing_saves_without_asking(centre, project, deck, monkeypatch):
+    deck.path.write_text(DECK, encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    centre.source.current.editor.insertPlainText("% quick\n")       # its autosave has not run yet
+    monkeypatch.setattr(centre, "_ask_save", lambda _name: pytest.fail("asked"))
+    assert centre.close_explicit_file() and "% quick" in deck.path.read_text(encoding="utf-8")

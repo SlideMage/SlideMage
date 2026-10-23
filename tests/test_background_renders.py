@@ -661,3 +661,42 @@ def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(pro
         other.close()
         singles.stop()
         batched.stop()
+
+
+def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, tmp_path):
+    # A render that ended while the planner rebuilt the progress stayed "working" in the copy: the chip said
+    # "Preparing previews" with nothing running until the next render, and in front of the window none starts.
+    r = make(project, store, raster)
+    r.progress = background_renders.Progress([background_renders.DeckProgress("a", total=10, fresh=4)],
+                                             working="a:1jh:instructor:EN", scanned_at=1.0)
+    r.gate.sweep_until = 0.0
+    assert not r.sweeping()
+    from slidemage.compiler import CancelToken
+    from slidemage.render_scheduler import Job
+    job = Job("b:2:instructor:EN", None, background_renders.P_IDLE)
+    job.cancel, job.started, job.cancelled_for_requeue = CancelToken(), 0.0, False
+    r.scheduler._running[job.key] = job                         # a render runs
+    assert r.sweeping()
+    assert r.scheduler.interrupt(background_renders.P_IDLE) == 1 and job.cancel.is_set()
+    assert not r.sweeping()                                      # told to stop: no longer "Preparing", however long it takes
+    del r.scheduler._running[job.key]
+    r.scan()
+    assert r.progress.working is None                          # the new progress names what runs, from the workers
+    r._trace = background_renders.Trace(tmp_path / "trace.log")
+    r.window_focus(True)
+    r.trace("chip: Previews wait while you use SlideMage")
+    lines = (tmp_path / "trace.log").read_text(encoding="utf-8").splitlines()
+    assert "focus in: stopped 0 | in_front=True" in lines[0] and "running=0" in lines[0]
+    assert lines[1].split(" ", 2)[2].startswith("chip: Previews wait")
+
+
+def test_a_slide_the_plan_counted_as_fresh_is_not_counted_again_when_its_page_number_is_refreshed(project, store, raster):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    first, second = background_renders.deck_units(project, deck, "instructor", "EN")[:2]
+    r.progress = background_renders.Progress([background_renders.DeckProgress(deck.name, total=10, fresh=4)])
+    r._counted = {first.label}                                   # right apart from its page number: counted already
+    r._count_fresh(first)
+    assert r.progress.deck(deck.name).fresh == 4
+    r._count_fresh(second)                                       # a slide really rendered now
+    assert r.progress.deck(deck.name).fresh == 5

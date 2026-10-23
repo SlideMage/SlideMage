@@ -34,6 +34,7 @@ class FakeApp(QWidget):
         self.theme = ThemeManager()
         self.calls, self.logged, self.slots, self.slot_free = [], [], [], True
         self.set_dark_mode = lambda value: self.calls.append(("dark", value))
+        self.set_autosave = lambda value: self.calls.append(("autosave", value))
         self.set_tab_width_chars = lambda value: self.calls.append(("tab width", value))
         self.log = self.logged.append
         self.commands = SimpleNamespace(run=lambda command_id, ctx: self.calls.append((command_id, ctx)))
@@ -247,7 +248,8 @@ def test_the_key_message_says_where_a_key_will_live_without_a_keychain(qapp, mon
     assert sheet.cloud.key_edit.text() == ""
     assert app_settings.get(EXAMPLE_PROJECT, credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
     assert credentials.get_api_key(EXAMPLE_PROJECT).source == "settings file"
-    assert "Key stored in the settings file" in status.text() and "keyring" in status.text()
+    assert "settings file on this computer" in status.text() and "keyring" in status.text()
+    assert credentials.FILE_SETTING_KEY not in (EXAMPLE_PROJECT.settings_dir / "app_settings.json").read_text(encoding="utf-8")
     assert "sk-ant-fake-1" not in status.text()                    # the key itself is never shown
 
     sheet.cloud._on_key_remove()

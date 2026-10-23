@@ -132,7 +132,6 @@ def test_the_switch_has_a_group_name_and_every_icon_button_a_name(window):
     header.focus_button.click()
     assert header.focus_button.accessibleName() == "Show the side panels again"
     assert header.new_button.accessibleName() == "New conversation (this route only)"
-    assert window.topbar._more.accessibleName() == "More"
     assert header.route_icon.accessibleName() == "Local"
     commit_to_cloud(window)
     assert header.route_icon.accessibleName() == "Cloud"
@@ -342,16 +341,9 @@ def test_kit_buttons_and_segments_take_the_focus_from_the_keyboard_and_draw_its_
 
 
 
-# -- the ⋮ menu (step 6, checked again) -----------------------------------------------------------------------------
+# -- the menu bar --------------------------------------------------------------------------------------------------
 
-def test_the_more_menu_opens_from_the_keyboard_on_its_first_item_and_escape_closes_it(window, qapp):
-    more = focus_on(window, window.topbar._more)
-    assert more.accessibleName() == "More"
-    QTest.keyClick(more, Qt.Key.Key_Return)
-    menu = next(w for w in window.topbar.findChildren(widgets.PopoverMenu) if w.isVisible())
-    assert menu._rows[menu._current].key == "present"                  # it opens on the first item
-    closed = []
-    menu.closed.connect(lambda: closed.append(True))
-    QTest.keyClick(menu, Qt.Key.Key_Escape)
-    qapp.processEvents()
-    assert closed                                                       # Qt returns the focus of a popup window itself
+def test_every_menu_of_the_menu_bar_has_its_own_alt_key(window):
+    titles = [a.text() for a in window.menuBar().actions()]
+    keys = [title[title.index("&") + 1].lower() for title in titles]
+    assert all(title.count("&") == 1 for title in titles) and len(set(keys)) == len(keys)

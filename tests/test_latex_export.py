@@ -141,6 +141,37 @@ def test_a_failure_leaves_no_half_written_folder_and_the_old_one_alone(project, 
     assert list(fresh.iterdir()) == []
 
 
+def test_a_rename_windows_denies_for_a_moment_is_tried_again_and_one_it_keeps_denying_keeps_the_old_folder(
+        project, monkeypatch):
+    first = export(project)
+    (first.folder / "keep.txt").write_text("old", encoding="utf-8")
+    real, denied = os.replace, []
+    monkeypatch.setattr(latex_export.time, "sleep", lambda _s: None)
+
+    def busy(source, target):                           # a scanner holds the new folder for two tries
+        if Path(source).name.startswith(".graz-latex-") and len(denied) < 2:
+            denied.append(source)
+            raise PermissionError("in use")
+        real(source, target)
+
+    monkeypatch.setattr(latex_export.os, "replace", busy)
+    export(project)
+    assert len(denied) == 2 and not (first.folder / "keep.txt").exists()
+    assert [p.name for p in first.folder.parent.iterdir()] == ["graz-latex"]
+    (first.folder / "keep.txt").write_text("old", encoding="utf-8")
+
+    def never(source, target):                          # up to v8.51.0 the old folder was deleted before this
+        if Path(source).name.startswith(".graz-latex-") and not Path(source).name.startswith(".graz-latex-old-"):
+            raise PermissionError("in use")
+        real(source, target)
+
+    monkeypatch.setattr(latex_export.os, "replace", never)
+    with pytest.raises(PermissionError):
+        export(project)
+    assert (first.folder / "keep.txt").read_text(encoding="utf-8") == "old"
+    assert [p.name for p in first.folder.parent.iterdir()] == ["graz-latex"]
+
+
 def test_the_slide_and_media_scans_are_the_ones_that_archive_unused_content(project):
     result = export(project)
     exported = {Path(f).name for f in result.files if f.startswith(("slides/", "media/"))}

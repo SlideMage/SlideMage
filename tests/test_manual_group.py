@@ -11,9 +11,9 @@ from PySide6.QtWidgets import QPushButton, QRadioButton
 
 from slidemage.compiler import CompileJob, order_jobs
 from slidemage.deck_scan import SELECTABLE_GROUP_TAGS, TAG_MANUAL, Deck
-from conftest import command_context
+from conftest import command_context, filled_menu, menu_actions
 from slidemage.ui.dialogs.deck_group import GROUP_LABELS, DeckGroupSheet
-from slidemage.ui.workspace.menus import build_deck_menu, build_more_menu
+from slidemage.ui.workspace.menus import build_deck_menu
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
 
@@ -52,14 +52,9 @@ def test_sheet_never_offers_the_manual_group(qapp):
     assert [r.text() for r in radios if r.isChecked()] == [GROUP_LABELS["course"]]
 
 
-def menu_rows(menu):
-    menu._build()
-    return {row.key: row for row in menu._rows}
-
-
 def test_manual_has_a_disabled_deck_settings_entry_and_its_own_switcher_section(qapp):
     course, manual = make_deck("course-deck", ["course"]), make_deck("slidemage-manual", ["manual"])
-    settings = {deck.name: menu_rows(build_more_menu(None, command_context(deck)))["deck_settings"].isEnabled()
+    settings = {deck.name: menu_actions(filled_menu(command_context(deck), "Deck"))["deck_settings"].isEnabled()
                 for deck in (course, manual)}
     assert settings == {"course-deck": True, "slidemage-manual": False}
     menu = build_deck_menu(None, [course, manual], course)

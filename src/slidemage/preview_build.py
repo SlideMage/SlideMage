@@ -34,12 +34,13 @@ _ACTIVE = {}
 
 
 @contextmanager
-def active_build(cache: Path, wrapper: Path, cancel=None):
-    """Reserve paths before mutation; maintenance cannot race a preview process."""
+def active_build(cache: Path, wrapper: Path, cancel=None, *, root: Optional[Path] = None):
+    """Reserve paths before mutation; maintenance cannot race a preview process. `root` is the project (or
+    background workspace) whose maintenance lock is taken; by default the folder above the wrapper's decks/."""
     paths = (cache.resolve(), wrapper.resolve())
     # This lock stays outside removable .build entries. POSIX readers may
     # compile concurrently; Windows uses its exclusive byte-lock primitive.
-    with build_lock(maintenance_lock(wrapper.parent.parent), shared=True, cancel=cancel):
+    with build_lock(maintenance_lock(root if root is not None else wrapper.parent.parent), shared=True, cancel=cancel):
         with _ACTIVE_LOCK:
             for path in paths:
                 _ACTIVE[path] = _ACTIVE.get(path, 0) + 1
@@ -78,7 +79,16 @@ def cleanup_guard(paths, project_root: Path):
 # slide_preview.sweep_old_renders).
 RENDER_FOLDER_PREFIX = 'slidemage_preview_'
 WRAPPER_PREFIX = '_slidemage_preview-'
+# A project's preview wrappers live in .build/preview-wrappers/ (v8.58.0; before, in decks/ beside the decks, where
+# they piled up in the user's folder). latexmk still runs in decks/, so TeX sees the same folders (run_preview).
+# A background workspace keeps them in its own decks/, outside the project.
+WRAPPER_FOLDER = 'preview-wrappers'
 UNUSED_DAYS = 14
+
+
+def wrapper_dir(ctx: ProjectContext) -> Path:
+    """Where a project's preview wrappers are written."""
+    return ctx.build_dir / WRAPPER_FOLDER
 
 
 def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Path,
@@ -118,14 +128,37 @@ def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, ca
         fls, database, project_root=project_root, cache=cache, extra=extra)), encoding='utf-8')
 
 
+PRUNE_EVERY = 600.0      # seconds between two prune_unused passes over one folder (maybe_prune_unused)
+_PRUNED: dict[str, float] = {}
+_PRUNED_LOCK = threading.Lock()
+
+
+def maybe_prune_unused(project_root: Path, build_dir: Path, *, clock=time.monotonic) -> bool:
+    """prune_unused, at most once per PRUNE_EVERY for a folder; whether it ran. A render ran it before every compile:
+    a pass looks at every wrapper under a lock each (the background workspace holds hundreds, three per slide since
+    v8.49.0), so the background workers queued behind one another there, could not stop when told to, and took the
+    time the window needed (v8.52.2). Wrappers become old in UNUSED_DAYS: once in ten minutes loses nothing."""
+    key, now = str(project_root), clock()
+    with _PRUNED_LOCK:
+        last = _PRUNED.get(key)
+        if last is not None and now - last < PRUNE_EVERY:
+            return False
+        _PRUNED[key] = now
+    prune_unused(project_root, build_dir)
+    return True
+
+
 @measure('prune')
 def prune_unused(project_root: Path, build_dir: Path):
-    """Delete the wrappers in decks/ (and build caches) of previews not rendered for UNUSED_DAYS,
-    and wrappers whose cache is gone. A cached job leaves its wrapper in decks/ so latexmk's
-    dependency check keeps working, one per slide and preamble, so without this they pile up."""
+    """Delete the wrappers (and build caches) of previews not rendered for UNUSED_DAYS, and wrappers whose cache
+    is gone. A cached job keeps its wrapper so latexmk's dependency check keeps working, one per slide and
+    preamble, so without this they pile up. Wrappers are in build_dir/WRAPPER_FOLDER, in a background workspace's
+    decks/, and, from before v8.58.0, in a project's decks/ (remove_legacy_wrappers deletes those at once)."""
     cache_root = build_dir / 'preview-cache'
     limit = time.time() - UNUSED_DAYS * 86400
-    for wrapper in (project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'):
+    wrappers = [*(project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'),
+                *(build_dir / WRAPPER_FOLDER).glob(WRAPPER_PREFIX + '*.tex')]
+    for wrapper in wrappers:
         cache = cache_root / wrapper.stem[len(WRAPPER_PREFIX):]
         lock = cache / 'build.lock'
         with cleanup_guard((cache, wrapper), project_root) as permitted:
@@ -142,6 +175,27 @@ def prune_unused(project_root: Path, build_dir: Path):
             except FileNotFoundError:
                 continue
             shutil.rmtree(cache, ignore_errors=True)
+
+
+_LEGACY_SWEPT: set[str] = set()
+
+
+def remove_legacy_wrappers(ctx: ProjectContext) -> int:
+    """Delete the preview wrappers SlideMage before v8.58.0 left in the project's decks/ (once per project and
+    session); how many. Nothing reads them any more: a render writes its wrapper to wrapper_dir() and keeps its
+    cache, which is found by the same key."""
+    key = str(Path(os.path.abspath(ctx.root)))
+    with _PRUNED_LOCK:
+        if key in _LEGACY_SWEPT:
+            return 0
+        _LEGACY_SWEPT.add(key)
+    removed = 0
+    for wrapper in ctx.decks_dir.glob(WRAPPER_PREFIX + '*.tex'):
+        with cleanup_guard((wrapper,), ctx.root) as permitted:
+            if permitted:
+                wrapper.unlink(missing_ok=True)
+                removed += 1
+    return removed
 
 
 # latexmk settings of SlideMage's own, for preview builds only (passed with -r after the project's rc files; deck
@@ -274,10 +328,15 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
         key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
     cache = ctx.build_dir / 'preview-cache' / key
-    prune_unused(workspace if workspace is not None else ctx.root, ctx.build_dir)
+    root = workspace if workspace is not None else ctx.root
+    maybe_prune_unused(root, ctx.build_dir)
+    if workspace is None:
+        remove_legacy_wrappers(ctx)
+    check_cancel(cancel)            # told to stop while waiting: before the build, not after it
     jobname = 'preview-' + key
-    wrapper = (workspace if workspace is not None else ctx.root) / 'decks' / ('_slidemage_' + jobname + '.tex')
-    with active_build(cache, wrapper, cancel):
+    folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
+    wrapper = folder / ('_slidemage_' + jobname + '.tex')
+    with active_build(cache, wrapper, cancel, root=root):
         cache.mkdir(parents=True, exist_ok=True)
         (cache / 'build.lock').touch()
         wrapper.parent.mkdir(parents=True, exist_ok=True)
@@ -322,14 +381,6 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         unstable.unlink(missing_ok=True)
     return publish_preview(ctx, pdf, id_slug, cache, jobname,
                            extra=preview_format.inputs(format_dir) if format_dir is not None else ())
-
-
-def _is_within(path: Path, root: Path) -> bool:
-    try:
-        Path(os.path.abspath(path)).relative_to(os.path.abspath(root))
-        return True
-    except ValueError:
-        return False
 
 
 FONT_CACHE_ATTEMPTS = 3
@@ -378,12 +429,15 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
         output_tail.append(line)
         record_line(line)
 
-    if not _is_within(wrapper, ctx.root):
-        # The wrapper is outside the project (a background render). latexmk's rc files make it change into the
-        # source's folder, so it is told not to, and runs in decks/ itself: TeX then sees the same folders as for
-        # a wrapper in decks/ (the ../ of the deck preambles). The project's own rc file is read from there.
+    if Path(os.path.abspath(wrapper.parent)) != Path(os.path.abspath(ctx.decks_dir)):
+        # The wrapper is not in decks/: in .build/preview-wrappers/, or outside the project (a background render).
+        # latexmk's rc files make it change into the source's folder, so it is told not to, and runs in decks/
+        # itself: TeX then sees the same folders as for a wrapper in decks/ (the ../ of the deck preambles). The
+        # project's own rc file is read from there.
+        ctx.decks_dir.mkdir(parents=True, exist_ok=True)       # latexmk's folder, even before the first deck
         rc = ctx.decks_dir / '.latexmkrc'
-        extra = ['-cd-'] + (['-r', str(ctx.root / '.latexmkrc')] if not rc.is_file() and (ctx.root / '.latexmkrc').is_file() else [])
+        # -cd- after the -r: latexmk applies its arguments in order, and a project rc file may set $do_cd.
+        extra = (['-r', str(ctx.root / '.latexmkrc')] if not rc.is_file() and (ctx.root / '.latexmkrc').is_file() else []) + ['-cd-']
         command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *extra, *options, cwd=ctx.decks_dir, aux=reusable,
                                            absolute=True)
         run_cwd = ctx.decks_dir

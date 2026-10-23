@@ -33,10 +33,10 @@ from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_L
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Chip, IconButton, Popover, PopoverMenu, Surface
+from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
-from .source_file import SourceFile
+from .source_file import REPLACE_KEY, SourceFile, autosave_on
 
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -57,6 +57,7 @@ class SourcePane(Surface):
     version_requested = Signal(str)      # id_slug: Update Version of that slide
     file_requested = Signal(object)      # Path of another file to show
     reference_added = Signal()           # an entry was added to Slidemaster.bib
+    close_requested = Signal()           # the "x" of a file that is no slide (a deck's source, Slidemaster.bib)
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -107,22 +108,26 @@ class SourcePane(Surface):
 
         top = QHBoxLayout()
         top.setSpacing(6)
-        self._name = QLabel()
+        # Cut with … where the pane is narrow (Split view); the whole name is its tooltip.
+        self._name = ElidedLabel()
         self._name.setObjectName(q.SOURCE_FILE_NAME)
-        top.addWidget(self._name)
+        top.addWidget(self._name, 1)
         self._unsaved_chip = Chip("", "muted")
         top.addWidget(self._unsaved_chip)
-        top.addStretch(1)
         self._elsewhere_chip = Chip("", "warning")
         self._elsewhere_chip.clicked.connect(self._show_other_dirty)
         top.addWidget(self._elsewhere_chip)
-        self._find_button = IconButton("search", "Find and replace (Ctrl+F, Ctrl+H)")
+        keys = ", ".join(QKeySequence(k).toString(QKeySequence.SequenceFormat.NativeText) for k in ("Ctrl+F", REPLACE_KEY))
+        self._find_button = IconButton("search", f"Find and replace ({keys})")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
         self._version_button = Button("Update version", "primary", compact=True)
         self._version_button.clicked.connect(self.update_version)
         self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
+        self._close_button = IconButton("close", "Close and go back to the slide")
+        self._close_button.clicked.connect(self.close_requested.emit)
+        top.addWidget(self._close_button)
         outer.addLayout(top)
 
         self._format_row = Surface()
@@ -214,7 +219,14 @@ class SourcePane(Surface):
         return sorted((f for f in self._files.values() if f.dirty), key=lambda f: str(f.path))
 
     def blocked_files(self) -> list[SourceFile]:
-        return [f for f in self.dirty_files() if f.blocked]
+        """Files whose edits will not be written by themselves: blocked, or AutoSave is off."""
+        return [f for f in self.dirty_files() if f.unsaved]
+
+    def autosave_changed(self) -> None:
+        """AutoSave was switched: on, the edits waiting in open files are saved shortly; off, they stay."""
+        for file in self._files.values():
+            file._schedule_autosave()
+        self._on_modified()
 
     def _add_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None) -> SourceFile:
         file = SourceFile(self.app, path, on_saved, on_open=self.app.open_slide_editor)
@@ -293,7 +305,7 @@ class SourcePane(Surface):
         self.file_closed.emit(file.path)
 
     def _on_modified(self, _modified: bool = False) -> None:
-        dirty = any(f.blocked for f in self._files.values())
+        dirty = any(f.unsaved for f in self._files.values())
         self._update_toolbar()
         if dirty != self._dirty:
             self._dirty = dirty
@@ -343,7 +355,7 @@ class SourcePane(Surface):
         file = self._current
         has = file is not None
         read_only = has and file.editor.is_read_only()
-        self._name.setText(file.path.name if has else "")
+        self._name.set_full_text(file.path.name if has else "")
         self._unsaved_chip.setVisible(has and file.dirty)
         if has and file.conflicted:
             self._unsaved_chip.set_text("Not saved: changed on disk")
@@ -351,10 +363,13 @@ class SourcePane(Surface):
         elif has and (file.editor.is_read_only() or file.fix_panel.running):
             self._unsaved_chip.set_text("Not saved")
             self._unsaved_chip.set_tone("warning")
+        elif not autosave_on():
+            self._unsaved_chip.set_text("Not saved · Ctrl+S")
+            self._unsaved_chip.set_tone("muted")
         else:
             self._unsaved_chip.set_text("Saving…")
             self._unsaved_chip.set_tone("muted")
-        others = [f for f in self.dirty_files() if f is not file and f.blocked]
+        others = [f for f in self.dirty_files() if f is not file and f.unsaved]
         self._elsewhere_chip.setVisible(bool(others))
         self._elsewhere_chip.set_text(f"{len(others)} more not saved" if len(others) > 1 else "1 more not saved")
         self._elsewhere_chip.setToolTip("Click to show the next file whose edits could not be saved.")
@@ -363,7 +378,11 @@ class SourcePane(Surface):
         changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
         self._version_button.setEnabled(changes and not read_only)
         self._version_button.setToolTip(VERSION_TIP if changes else why_not)
+        # Formatting is for slides: a deck's source and Slidemaster.bib are edited as plain text, and closed with
+        # the "x", which goes back to the slide.
+        self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
+        self._close_button.setVisible(has and not file.is_slide)
         self._tools_button.setEnabled(has)
         frozen = has and file.is_slide and not file.is_current_slide
         self._frozen_bar.setVisible(frozen)
@@ -384,6 +403,10 @@ class SourcePane(Surface):
             return False, f"No changes since v{slide_versioning.format_dot(base)}."
         return True, ""
 
+    def show_find(self, replace: bool = False) -> None:
+        """The find bar of the file shown, with the replace field when `replace` (Edit → Find / Replace in source)."""
+        self._with_file(lambda f: f.find_bar.show_replace() if replace else f.find_bar.show_find())
+
     def _with_file(self, action: Callable[[SourceFile], None]) -> None:
         if self._current is not None:
             action(self._current)
@@ -393,7 +416,8 @@ class SourcePane(Surface):
             action(self._current.editor)
 
     def _wrap(self, macro: str) -> None:
-        self._edit(lambda editor: editor.wrap_macro(macro))
+        if self._current is not None and self._current.is_slide:
+            self._edit(lambda editor: editor.wrap_macro(macro))
 
     def _unlock(self) -> None:
         self._with_file(SourceFile.unlock)
@@ -552,7 +576,7 @@ class SourcePane(Surface):
         The dialog writes the file on disk, not a buffer: edits of the .bib are written first,
         or the two would overwrite each other, and an open buffer is reloaded afterwards."""
         bib = self._files.get(self.app.project.bibliography_path)
-        if bib is not None and not bib.write_now():
+        if bib is not None and not bib.write_now(force=True):
             QMessageBox.warning(self, "Add reference",
                                 "Slidemaster.bib has edits that could not be saved (it changed on disk). "
                                 "Resolve that first, so the new reference and your edits can't overwrite each other.")

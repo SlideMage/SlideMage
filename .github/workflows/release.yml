@@ -76,27 +76,64 @@ jobs:
             tag=$(sed -n 's/^VERSION_NUMBER = "\(v[^"]*\)".*/\1/p' src/slidemage/version.py)
           fi
           python packaging/release_notes.py "$tag" > release_notes.md
-      - run: pyinstaller packaging/slidemage.spec
-      # Start both builds once before anything is published: --self-test imports every module the window needs
-      # and exits 0. v8.33.0's Windows build stopped at startup (PyMuPDF 2.0 wanted model files the bundle
-      # lacked) and was published anyway; a build like that fails here instead.
-      - name: Self-test (Linux)
+      # The folder first: it is what installations update to (the updater of a folder installation fetches
+      # SlideMage-<os>-folder.zip), so it is built, tested and published before the single file is built.
+      - name: Build the folder
+        env:
+          SLIDEMAGE_BUILD: folder
+        run: pyinstaller --noconfirm packaging/slidemage.spec
+      # Start every build once before it is published: --self-test imports every module the window needs and
+      # exits 0. v8.33.0's Windows build stopped at startup (PyMuPDF 2.0 wanted model files the bundle lacked)
+      # and was published anyway; a build like that fails here instead.
+      - name: Self-test the folder (Linux)
         if: runner.os != 'Windows'
         timeout-minutes: 5
         env:
           QT_QPA_PLATFORM: offscreen
-        run: |
-          dist/SlideMage-folder/SlideMage --self-test
-          dist/SlideMage --self-test
-      - name: Self-test (Windows)
+        run: dist/SlideMage-folder/SlideMage --self-test
+      - name: Self-test the folder (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 5
         shell: pwsh
         run: |
-          foreach ($exe in 'dist/SlideMage-folder/SlideMage.exe', 'dist/SlideMage.exe') {
-            $run = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
-            if ($run.ExitCode -ne 0) { throw "$exe --self-test exited with $($run.ExitCode)" }
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test exited with $($run.ExitCode)" }
+          # The Claude Code terminal's programs start through these; up to v8.58.0 they were missing.
+          foreach ($helper in 'OpenConsole.exe', 'winpty-agent.exe') {
+            if (-not (Get-ChildItem 'dist/SlideMage-folder' -Recurse -Filter $helper)) { throw "$helper is not in the build" }
           }
+      # A zip with one top-level folder, which the updater of a folder installation unpacks.
+      - name: Package the folder
+        run: |
+          python -c "import os, shutil; os.makedirs('out', exist_ok=True); shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
+      - name: Attach the folder to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/${{ matrix.asset_name }}-folder.zip
+          fail_on_unmatched_files: true
+          body_path: release_notes.md
+          # release_notes.py writes the changelog link itself, under a
+          # heading of its own -- GitHub's appended "Full Changelog" line
+          # would otherwise sit inside a "## Breaking changes" section
+          generate_release_notes: false
+
+      - name: Build the single file
+        env:
+          SLIDEMAGE_BUILD: onefile
+        run: pyinstaller --noconfirm packaging/slidemage.spec
+      - name: Self-test the single file (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage --self-test
+      - name: Self-test the single file (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "SlideMage.exe --self-test exited with $($run.ExitCode)" }
 
       # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
       # the executable bit survives the upload/download round trip, and
@@ -111,33 +148,18 @@ jobs:
       # binary, setting up a desktop entry from just the downloaded zip has
       # no icon file to point at, only the source repo's own copy (which a
       # user who only ever downloads releases may not have on disk at all).
-      - name: Package (Linux)
+      - name: Package the single file (Linux)
         if: runner.os != 'Windows'
         run: |
-          mkdir -p out
-          zip -j "out/${{ matrix.asset_name }}.zip" \
-            "${{ matrix.binary_path }}" \
-            src/slidemage/assets/icon.svg \
-            packaging/slidemage.desktop.template
-          # The folder build: a zip with one top-level folder, which the updater of a folder installation unpacks.
-          python -c "import shutil; shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
-      - name: Package (Windows)
+          zip -j "out/${{ matrix.asset_name }}.zip"             "${{ matrix.binary_path }}"             src/slidemage/assets/icon.svg             packaging/slidemage.desktop.template
+      - name: Package the single file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path out | Out-Null
-          Compress-Archive -Path "${{ matrix.binary_path }}" -DestinationPath "out/${{ matrix.asset_name }}.zip"
-          python -c "import shutil; shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
-
-      - name: Attach to release
+        run: Compress-Archive -Path "${{ matrix.binary_path }}" -DestinationPath "out/${{ matrix.asset_name }}.zip"
+      - name: Attach the single file to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            out/${{ matrix.asset_name }}.zip
-            out/${{ matrix.asset_name }}-folder.zip
+          files: out/${{ matrix.asset_name }}.zip
           fail_on_unmatched_files: true
           body_path: release_notes.md
-          # release_notes.py writes the changelog link itself, under a
-          # heading of its own -- GitHub's appended "Full Changelog" line
-          # would otherwise sit inside a "## Breaking changes" section
           generate_release_notes: false

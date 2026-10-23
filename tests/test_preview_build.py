@@ -92,6 +92,32 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
     assert (build / 'preview-cache' / 'fresh').exists() and not (build / 'preview-cache' / 'stale').exists()
 
 
+def test_wrappers_in_the_build_folder_are_pruned_too(tmp_path):
+    build = tmp_path / '.build'
+    wrappers = build / preview_build.WRAPPER_FOLDER
+    wrappers.mkdir(parents=True)
+    old = time.time() - (preview_build.UNUSED_DAYS + 1) * 86400
+    for key in ('fresh', 'stale'):
+        (wrappers / f'_slidemage_preview-{key}.tex').write_text('x')
+        lock = build / 'preview-cache' / key / 'build.lock'
+        lock.parent.mkdir(parents=True)
+        lock.touch()
+    os.utime(build / 'preview-cache' / 'stale' / 'build.lock', (old, old))
+    preview_build.prune_unused(tmp_path, build)
+    assert [p.name for p in wrappers.iterdir()] == ['_slidemage_preview-fresh.tex']
+
+
+def test_the_wrappers_left_in_decks_before_v8_58_are_removed_once(tmp_path):
+    ctx = ProjectContext.at(tmp_path)
+    ctx.decks_dir.mkdir()
+    (ctx.decks_dir / '_slidemage_preview-old.tex').write_text('x')
+    (ctx.decks_dir / 'deck.tex').write_text('x')
+    assert preview_build.remove_legacy_wrappers(ctx) == 1
+    assert [p.name for p in ctx.decks_dir.iterdir()] == ['deck.tex']
+    (ctx.decks_dir / '_slidemage_preview-later.tex').write_text('x')
+    assert preview_build.remove_legacy_wrappers(ctx) == 0          # once per project and session
+
+
 def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
     calls = []
     monkeypatch.setattr(slide_preview, 'compile_and_extract',
@@ -443,6 +469,17 @@ def test_a_forced_render_reruns_every_rule_only_when_the_text_is_unchanged(tmp_p
     assert 'lualatex' in rules and 'biber' in rules, '\n'.join(lines[-80:])
 
 
+@needs_tex_tools
+def test_a_render_writes_its_wrapper_to_the_build_folder_not_decks(tmp_path):
+    """v8.58.0: decks/ holds the user's decks only; latexmk still runs there, so the ../-relative inputs and the
+    bibliography are found (the project's rc file sets $do_cd, which -cd- must come after)."""
+    ctx, text = _citing_project(tmp_path)
+    rules, lines = _rules_run(text, ctx, force=False)
+    assert 'biber' in rules, '\n'.join(lines[-80:])
+    assert [p.name for p in ctx.decks_dir.iterdir()] == ['refs.bib']
+    assert len(list(preview_build.wrapper_dir(ctx).glob('_slidemage_preview-*.tex'))) == 1
+
+
 def _in_view(text, view):
     r"""`text` as the framework runs a view: \deckversion after \begin{document}, and a helper file that holds the
     view the previous run ended in (read at \begin{document}, rewritten at the end), so it differs between views."""
@@ -486,3 +523,18 @@ def test_returning_to_a_view_runs_lualatex_once(tmp_path):
     assert rules == ['lualatex'], '\n'.join(lines[-80:])
     rules, lines = _rules_run(_in_view(text, 'during-course').replace('See', 'See once more'), ctx, force=True)
     assert rules == ['lualatex'], '\n'.join(lines[-80:])
+
+
+def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, monkeypatch):
+    # Every render ran it: the background workers queued behind one another over hundreds of wrappers (v8.52.2).
+    ran = []
+    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build: ran.append(root))
+    now = {"t": 1000.0}
+    clock = lambda: now["t"]
+    one, two = tmp_path / "one", tmp_path / "two"
+    assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert not preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert preview_build.maybe_prune_unused(two, tmp_path, clock=clock)            # another folder has its own time
+    now["t"] += preview_build.PRUNE_EVERY + 1
+    assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
+    assert ran == [one, two, one]

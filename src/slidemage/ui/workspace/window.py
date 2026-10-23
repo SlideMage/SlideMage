@@ -54,7 +54,7 @@ from ..kit.widgets import Toast
 from ..pages.images import ImagesPage
 from ..pages.no_decks import NoDecksPage
 from ..text import plural
-from . import compile_actions, side_panels, slide_list
+from . import compile_actions, side_panels, slide_list, source_file
 from .actions import build_registry
 from .ai_fix import AiFixPanel
 from .ai_route import AiRoute
@@ -66,6 +66,8 @@ from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
 from .background_previews import BackgroundPreviews
 from .compile_display import CompileDisplay
+from .autosave_switch import AutoSaveSwitch
+from .menus import build_menu_bar
 from .palette import CommandPalette
 from .panels.base import PanelActions
 from .side_panels import SidePanels
@@ -217,6 +219,13 @@ class WorkspaceWindow(QMainWindow):
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
+        menu_bar = build_menu_bar(self, self)
+        self.setMenuBar(menu_bar)
+        self.autosave_switch = AutoSaveSwitch(self.set_autosave)
+        if menu_bar.isNativeMenuBar():
+            self.topbar.host_autosave(self.autosave_switch)     # macOS: the menu bar is not in the window
+        else:
+            self.autosave_switch.attach_to(menu_bar)
         self.ai_route = AiRoute(self)
         self.topbar.ai_switch.requested.connect(self.ai_route.request)
         self.topbar.ai_switch.setup_requested.connect(self.ai_route.open_setup)
@@ -646,6 +655,14 @@ class WorkspaceWindow(QMainWindow):
         # outside the stylesheet mechanism entirely -- each open editor's
         # highlighter needs an explicit nudge to pick up the new palette and re-run.
         self.centre.refresh_colors()
+
+    def set_autosave(self, on: bool) -> None:
+        """The AutoSave switch after the menu bar's Help, Settings -> General, File and Ctrl+K: this user's choice
+        (layout_settings). Switched on, edits waiting in open files are saved shortly; off, they stay until Ctrl+S."""
+        layout_settings.set(source_file.AUTOSAVE_KEY, bool(on))
+        self.centre.source.autosave_changed()
+        self.autosave_switch.refresh()
+        self.log(f"AutoSave {'on' if on else 'off: Ctrl+S saves'}")
 
     def set_tab_width_chars(self, chars: int) -> None:
         """Called from the Settings sheet's tab-width spinbox, like set_dark_mode() above: persist

@@ -138,6 +138,21 @@ class RenderScheduler:
         self._on_change()
         return dropped
 
+    def interrupt(self, priority: int) -> int:
+        """Stop the running jobs of class `priority` and put them back in the queue (not a failure); how many."""
+        stopped = 0
+        with self._cond:
+            for job in self._running.values():
+                if job.priority == priority and not job.cancelled_for_requeue:
+                    job.cancelled_for_requeue = True
+                    # Not waiting for the kill: the caller is the GUI (focus, input), and this holds the queue's lock.
+                    job.cancel.request_stop(wait=False)
+                    stopped += 1
+            self._cond.notify_all()
+        if stopped:
+            self._on_change()
+        return stopped
+
     def user_active(self) -> None:
         """The user did something. Nothing running is stopped (only a job of a better class does that, in submit());
         the gate (`can_start`) decides whether the next idle job starts."""

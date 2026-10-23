@@ -2,10 +2,12 @@
 %%
 
 % SlideMage manual: chapter divider; its body is the chapter agenda.
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-0-0+}
 \begin{sectionframe}{Working in SlideMage}
 	\begin{minipage}[t]{0.9\linewidth}\small
 		The workspace, the AI assistant, and the ways slides leave SlideMage.
 	\end{minipage}\par\smallskip
+	% the agenda's room less the line above it, so that 13 entries step down to \small
+	\setlength{\SMChapterAgendaMaxHeight}{\dimexpr\paperheight-\SMSectionframeBarBottom-\SMSectionframeContentDrop-\SMContentBottomAlign-14pt-2\baselineskip\relax}%
 	\SMChapterAgenda
 \end{sectionframe}

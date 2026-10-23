@@ -42,6 +42,7 @@ from ...project import ProjectContext
 from .. import background
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..workspace.source_file import autosave_on
 from .settings_ollama import OllamaTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
@@ -51,7 +52,7 @@ LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render th
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
 UPDATE_NOTES = {
-    updater.UPDATE_MODE_OFF: "SlideMage does not check for updates by itself. ⋮ → Check for updates… "
+    updater.UPDATE_MODE_OFF: "SlideMage does not check for updates by itself. Help → Check for updates… "
                              "always works.",
     updater.UPDATE_MODE_ASK: "Checked when SlideMage starts; a newer release is offered, and you decide "
                              "whether to install it.",
@@ -87,6 +88,13 @@ class GeneralTab(Page):
         self.tab_width_spin.setValue(app_settings.get(app.project, TAB_WIDTH_SETTING_KEY, DEFAULT_TAB_WIDTH_CHARS))
         self.tab_width_spin.valueChanged.connect(app.set_tab_width_chars)
         layout.addWidget(columns(Field("Appearance", self.dark_check), Field("Source editor tab width (characters)", self.tab_width_spin)))
+
+        self.autosave_check = QCheckBox("Save edits as you type (AutoSave)")
+        self.autosave_check.setChecked(autosave_on())
+        self.autosave_check.toggled.connect(app.set_autosave)
+        layout.addWidget(Field("Saving", self.autosave_check))
+        layout.addWidget(caption("Off, a file is saved with Ctrl+S; its edits stay in the editor until then, and "
+                                 "leaving them is asked about. The same switch is in the top bar."))
 
         self.live_render_check = QCheckBox("Render the Preview after each autosave")
         self.live_render_check.setChecked(bool(app_settings.get(app.project, LIVE_RENDER_SETTING_KEY, False)))
@@ -203,9 +211,10 @@ class GeneralTab(Page):
         self.bg_caption = caption("")
         layout.addWidget(self.bg_caption)
         layout.addWidget(caption(
-            "When you have not touched SlideMage for 30 seconds, it renders the slides of your decks, with all their "
+            "When you switch to another window, or leave SlideMage untouched for a minute, it renders the slides of "
+            "your decks, with all their "
             "reveal steps, most recently used decks first and the instructor version first, so they are ready when you "
-            "open them. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
+            "open them. Coming back to SlideMage stops it at once, and it never runs during a presentation. The previews are kept on this computer, outside the project folder (so the sync never carries them); "
             "a deck can be left out in the chip that shows the progress."))
         self._background_size()
 
@@ -310,15 +319,15 @@ class CloudTab(Page):
         if key is None:
             return "No API key set. " + (
                 "A key you save is stored in the system keychain." if keychain else
-                "A key you save is stored in the settings file (.slidemage/app_settings.json inside the project "
-                "folder, which may be synced), because no system keychain is available. Install the optional "
+                "A key you save is stored in SlideMage's settings file on this computer (ai_settings.json, "
+                "outside the project), because no system keychain is available. Install the optional "
                 "'keyring' package to use it.")
         return {
             credentials.SOURCE_ENV: f"Using the key from the {credentials.ENV_VAR} environment variable "
                                     "(it takes precedence over a saved key).",
             credentials.SOURCE_KEYCHAIN: "Key stored in the system keychain.",
-            credentials.SOURCE_FILE: "Key stored in the settings file (.slidemage/app_settings.json inside the "
-                                     "project folder, which may be synced). " + (
+            credentials.SOURCE_FILE: "Key stored in SlideMage's settings file on this computer (ai_settings.json, "
+                                     "outside the project). " + (
                                          "Save it again to move it to the system keychain." if keychain else
                                          "Install the optional 'keyring' package to use the system keychain instead."),
         }[key.source]

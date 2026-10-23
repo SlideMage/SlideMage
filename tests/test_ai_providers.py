@@ -20,7 +20,7 @@ from slidemage.ai.providers import (
     parse_json_object,
 )
 
-from fake_http import message_sse
+from fake_http import api_key_of, message_sse
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -185,8 +185,8 @@ def test_anthropic_request_shape_with_image_and_json_mode(server):
         schema={"type": "object"}, max_tokens=123, temperature=0.9, think=True, num_ctx=1)
     request = server.requests[0]
     assert (request["method"], request["path"]) == ("POST", "/v1/messages")
-    assert request["headers"]["x-api-key"] == "sk-test"
-    assert request["headers"]["anthropic-version"] == "2023-06-01"
+    assert api_key_of(request) == "sk-test"
+    assert request["headers"]["anthropic-version"]          # the SDK's own API version (2023-06-01 up to SDK 1.x)
     assert request["headers"]["content-type"] == "application/json"
     body = request["body"]
     assert set(body) == {"model", "max_tokens", "system", "messages", "stream"}

@@ -101,6 +101,13 @@ class McpServer:
         handler.wfile.write(data)
 
     def _post(self, handler: BaseHTTPRequestHandler) -> None:
+        # The body is read before any refusal: on Windows, closing a connection with unread data resets it, and
+        # the client loses the answer.
+        try:
+            length = int(handler.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = -1
+        body = handler.rfile.read(length) if 0 < length <= MAX_BODY else None
         if handler.headers.get("Host", "") not in (f"127.0.0.1:{self.port}", f"localhost:{self.port}"):
             return self._reply(handler, 403, {"error": "wrong host"})
         given = handler.headers.get("Authorization", "")
@@ -109,10 +116,9 @@ class McpServer:
         if handler.path.split("?")[0] != PATH:
             return self._reply(handler, 404, {"error": "not found"})
         try:
-            length = int(handler.headers.get("Content-Length", "0"))
-            if not 0 < length <= MAX_BODY:
+            if body is None:
                 raise ValueError(length)
-            message = json.loads(handler.rfile.read(length))
+            message = json.loads(body)
         except ValueError:
             return self._reply(handler, 400, self._error(None, JSONRPC_PARSE_ERROR, "invalid JSON"))
         if not isinstance(message, dict):         # batches are not part of the 2025-06-18 transport

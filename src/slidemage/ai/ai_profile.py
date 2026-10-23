@@ -10,16 +10,18 @@ Concepts (the handoff README, section 2):
 * `mode` ("local" | "cloud"): the route of all *new* AI work in this session, in memory. It starts from the
   project's `policy` when the project is first asked, and only `set_mode` changes it. Requests already
   running keep the Route they captured.
-* `cloud_conn` ("claude_code" | "api"): what Cloud means. Persisted in app_settings.json: it depends on what
-  this person has installed or signed in to (Claude Code, an API key), so it must not follow the project to a
-  collaborator. Anthropic API is never a fallback of Claude Code, nor the reverse.
+* `cloud_conn` ("claude_code" | "api"): what Cloud means. Kept for this machine (app_settings.MACHINE_KEYS,
+  SlideMage's own ai_settings.json since v8.58.0): it depends on what this person has installed or signed in to
+  (Claude Code, an API key), so it must not follow the project to a collaborator. Anthropic API is never a
+  fallback of Claude Code, nor the reverse.
 * `policy` ("local" | "cloud"): the project's own setting, in `.slidemage/project.json` under `"ai"`, tracked
   with the project so everyone who opens it starts on the same side. A project without one is Local: nothing
   leaves the machine until someone says so. An older `"ai": {"local_only": true}` reads as "local", an explicit
   `false` as "cloud"; set_policy replaces it.
 * `cloud_seen`: the project's first-use flag for Cloud (app_settings.json, which sits inside the project
   folder). It replaces `cloud_consent`, which reads as the same flag until the next write.
-* models per route and task, in app_settings.json under "ai_models": {route: {task: choice}}. A choice is an
+* models per route and task, under "ai_models": {route: {task: choice}}, kept for this machine like
+  `cloud_conn`. A choice is an
   Ollama or API model name, or for Claude Code "<model>:<effort>" ("haiku:medium"). The task models of the
   earlier version ("<provider>:<model>" under drafting_model, translation_model, chat_model and
   syntax_check_model) read as the Local (ollama) and API (anthropic) models until the first write moves them.

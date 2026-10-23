@@ -17,7 +17,10 @@ from test_settings_gui import FakeApp
 
 @pytest.fixture
 def window(qapp, monkeypatch):
-    return build_window(monkeypatch)
+    window = build_window(monkeypatch)
+    if window.background.renderer is not None:
+        window.background.renderer.gate.in_front = None     # as without a window that reports its focus; the tests
+    return window                                           # of the focus rules report it themselves
 
 
 def test_nothing_is_started_by_a_window_under_test_and_the_chip_is_hidden(window):
@@ -155,9 +158,9 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)], scanned_at=1.0)
     controller.renderer.progress = progress
     assert controller.summary() == ("Previews · 11 left", "muted")
-    progress.working = "a:1jh:instructor:EN"
+    rendering(controller.renderer, True)                             # a render runs (the scheduler's, not stopping)
     assert controller.summary() == ("Preparing previews · 11 left", "info")
-    progress.working = None
+    rendering(controller.renderer, False)
     progress.paused_because = "you are working"
     assert controller.summary() == ("Previews paused (you are working) · 11 left", "muted")
     controller.refresh()
@@ -172,9 +175,12 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     assert controller.summary()[0] == ""
 
 
-def test_the_menu_lists_the_decks_and_pauses_renders_now_and_skips_the_open_deck(window):
+def test_the_menu_lists_the_decks_and_pauses_renders_now_and_skips_the_open_deck(window, monkeypatch):
     controller = window.background
-    controller.renderer.progress = Progress([DeckProgress("slidemage-manual", total=10, fresh=4, failed=1)], failures=1)
+    # The renderer's planning thread replaces its progress at any time; this one stays for the test.
+    progress = Progress([DeckProgress("slidemage-manual", total=10, fresh=4, failed=1)], failures=1)
+    monkeypatch.setattr(type(controller.renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
+                        raising=False)
     texts = [a.text() for a in controller.menu().actions()]
     assert "slidemage-manual: 4 of 10 ready, 1 failed" in texts
     assert any(t.startswith("Stored:") for t in texts) and "Pause" in texts and "Render now" in texts
@@ -301,6 +307,14 @@ def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(windo
 
 # -- the dial and the status window ---------------------------------------------------------------
 
+def rendering(renderer, on: bool) -> None:
+    """Make the scheduler report one render running (that has not been told to stop), or none."""
+    if on:
+        renderer.scheduler.running_jobs = lambda: [object()]
+    else:
+        renderer.scheduler.__dict__.pop("running_jobs", None)
+
+
 def progress_of(*decks, **kwargs):
     return Progress(list(decks), scanned_at=1.0, **kwargs)
 
@@ -324,9 +338,11 @@ def test_the_dial_shows_the_share_of_up_to_date_renders_and_explains_it(window):
     controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=3, failed=1), failures=1)
     controller.refresh()
     assert controller.dial.state == "failed" and "1 slide cannot be rendered" in controller.dial.toolTip()
-    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1), working="a:x:instructor:EN")
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
+    rendering(controller.renderer, True)
     controller.refresh()
     assert controller.dial.state == "working" and "Rendering now" in controller.dial.toolTip()
+    rendering(controller.renderer, False)
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
     controller.refresh()
     assert controller.dial.isHidden()
@@ -415,4 +431,66 @@ def test_the_chip_stays_blue_between_two_jobs_of_one_sweep(window):
     assert controller.dial_state() == "working"
     renderer.progress.paused_because = "waiting for a compile"             # something holds it back: now it is waiting
     assert controller.summary() == ("Previews paused (waiting for a compile) · 6 left", "muted")
+    assert controller.dial_state() == "waiting"
+
+
+def test_the_window_in_front_stops_background_renders_and_the_chip_says_why(window, monkeypatch):
+    from slidemage import idle_gate
+    controller = window.background
+    renderer = controller.renderer
+    stopped = []
+    monkeypatch.setattr(renderer.scheduler, "interrupt", lambda priority: stopped.append(priority) or 1)
+    app = QApplication.instance()
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationInactive)
+    assert renderer.gate.in_front is False and stopped == []
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+    assert renderer.gate.in_front is True and renderer.gate.reason() == idle_gate.IN_USE
+    assert stopped == [background_renders.P_IDLE]               # the running renders stop and go back in the queue
+    renderer.gate.force(60)                                      # "Render now" keeps them going
+    app.applicationStateChanged.emit(Qt.ApplicationState.ApplicationActive)
+    assert stopped == [background_renders.P_IDLE]
+    progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0, paused_because=idle_gate.IN_USE)
+    monkeypatch.setattr(type(renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
+                        raising=False)
+    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
+    assert idle_gate.IN_USE_EXPLAINED in controller.hover_text()
+    assert "switch to another window" in idle_gate.IN_USE_EXPLAINED
+
+
+def test_input_in_front_and_a_presentation_stop_background_renders(window, monkeypatch):
+    from slidemage import idle_gate
+    renderer = window.background.renderer
+    stopped = []
+    monkeypatch.setattr(renderer.scheduler, "interrupt", lambda priority: stopped.append(priority) or 1)
+    renderer.gate.note_focus(False)
+    renderer.user_active()                                      # the mouse over the window behind: nothing stops
+    assert stopped == []
+    renderer.gate.note_focus(True)
+    renderer.user_active()                                      # a scroll after a minute of reading
+    assert stopped == [background_renders.P_IDLE]
+    renderer.gate.force(60)
+    renderer.user_active()                                      # "Render now" keeps them going
+    assert stopped == [background_renders.P_IDLE]
+    window.presentation = object()
+    renderer.presentation_started()
+    assert stopped == [background_renders.P_IDLE] * 2 and renderer.waiting_because() == idle_gate.PRESENTING
+    window.presentation = None
+    assert renderer.waiting_because() != idle_gate.PRESENTING
+
+
+def test_the_chip_says_the_renders_wait_as_soon_as_the_user_is_back_not_a_planner_step_later(window):
+    # The chip took its reason from the planner, a step (and a rescan of every deck) late: it said "Preparing
+    # previews" for that long after the renders had stopped.
+    from slidemage import idle_gate
+    controller = window.background
+    renderer = controller.renderer
+    progress = renderer.progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0)
+    renderer.gate.note_started()                                 # a sweep was under way
+    renderer.gate.note_focus(False)
+    renderer.gate.left_at -= idle_gate.LEAVE_GRACE + 1
+    assert renderer.sweeping() and controller.summary()[0].startswith("Preparing previews")
+    renderer.gate.note_focus(True)                               # back; the planner has not stepped yet
+    assert progress.paused_because is None
+    assert not renderer.sweeping() and renderer.waiting_because() == idle_gate.IN_USE
+    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
     assert controller.dial_state() == "waiting"

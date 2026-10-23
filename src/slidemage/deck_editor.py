@@ -355,6 +355,15 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
     undo step. Cut from the last line to the first so each earlier call's
     offsets are still valid when its turn comes. Refuses the whole batch,
     changing nothing, if any one call isn't editable."""
+    _refuse_blocked(calls)
+
+    def mutate(text: str) -> str:
+        return _cut(text, [(c.line_start, c.line_end) for c in calls])
+
+    return apply(deck_path, expected_text, mutate)
+
+
+def _refuse_blocked(calls: list[SlideCall]) -> None:
     blocked = [c for c in calls if not c.editable]
     if blocked:
         raise ValueError(
@@ -362,12 +371,12 @@ def remove_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCal
             + f" -- {blocked[0].readonly_reason}"
         )
 
-    def mutate(text: str) -> str:
-        for call in sorted(calls, key=lambda c: c.line_start, reverse=True):
-            text = text[: call.line_start] + text[call.line_end :]
-        return text
 
-    return apply(deck_path, expected_text, mutate)
+def _cut(text: str, spans: list[tuple[int, int]]) -> str:
+    """`text` without the (start, end) spans, cut from the last to the first so the earlier offsets stay valid."""
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + text[end:]
+    return text
 
 
 def normalize_course_url(url: str) -> str:
@@ -466,6 +475,22 @@ def change_slide_call_variant(
 
     def mutate(text: str) -> str:
         return text[: call.call_start] + new_token + text[call.call_end :]
+
+    return apply(deck_path, expected_text, mutate)
+
+
+def retarget_slide_calls(deck_path: Path, expected_text: str, calls: list[SlideCall], new_id_slug: str) -> str:
+    """Make `calls` load the slide `new_id_slug` instead, each keeping its kind, conditions and steps (a pinned
+    call keeps its version too, which the new slide must have), as one edit."""
+    blocked = [c for c in calls if not c.editable]
+    if blocked:
+        raise ValueError(f"can't change {blocked[0].id_slug} -- {blocked[0].readonly_reason}")
+
+    def mutate(text: str) -> str:
+        for call in sorted(calls, key=lambda c: c.call_start, reverse=True):
+            token = format_call(call.macro, new_id_slug, call.version, call.conditions, call.steps)
+            text = text[: call.call_start] + token + text[call.call_end :]
+        return text
 
     return apply(deck_path, expected_text, mutate)
 
@@ -748,6 +773,27 @@ def remove_section(deck_path: Path, expected_text: str, chapter: Chapter) -> str
     def mutate(text: str) -> str:
         _token_start, _token_end, line_start, line_end = _chapter_marker(text, chapter)
         return text[:line_start] + text[line_end:]
+
+    return apply(deck_path, expected_text, mutate)
+
+
+def remove_section_and_calls(deck_path: Path, expected_text: str, chapter: Chapter, calls: list[SlideCall]) -> str:
+    """Remove a section marker and the slide calls it heads, in one write (the slide files stay). Other lines of the
+    section stay. Refuses everything if the marker or one of the calls cannot be edited."""
+    _refuse_blocked(calls)
+
+    def mutate(text: str) -> str:
+        _token_start, _token_end, line_start, line_end = _chapter_marker(text, chapter)
+        return _cut(text, [(line_start, line_end)] + [(c.line_start, c.line_end) for c in calls])
+
+    return apply(deck_path, expected_text, mutate)
+
+
+def remove_all_sections(deck_path: Path, expected_text: str, chapters: list[Chapter]) -> str:
+    """Remove every section marker of the deck in one write; all slides stay. Refuses everything if one of the
+    markers cannot be edited (it shares its line with other text)."""
+    def mutate(text: str) -> str:
+        return _cut(text, [_chapter_marker(text, chapter)[2:] for chapter in chapters])
 
     return apply(deck_path, expected_text, mutate)
 

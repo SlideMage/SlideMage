@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Protocol
 
-from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -372,6 +372,48 @@ class LatexPlainTextEdit(QPlainTextEdit):
         cursor.endEditBlock()
         self.setFocus()
 
+    def _selected_blocks(self) -> list:
+        """The lines the selection touches (the cursor's own line with no selection); a selection that ends at the
+        start of a line does not take that line."""
+        cursor, doc = self.textCursor(), self.document()
+        first = doc.findBlock(cursor.selectionStart()).blockNumber()
+        last = doc.findBlock(cursor.selectionEnd()).blockNumber()
+        if cursor.hasSelection() and last > first:
+            end = QTextCursor(doc)
+            end.setPosition(cursor.selectionEnd())
+            if end.atBlockStart():
+                last -= 1
+        return [doc.findBlockByNumber(n) for n in range(first, last + 1)]
+
+    def shift_lines(self, outdent: bool) -> None:
+        """Tab on a selection of several lines, Shift+Tab on any: one indentation level more (a tab) or less (a
+        tab or up to a tab's width of spaces) on every line touched, as one undo step; the selection stays on
+        the same text."""
+        blocks = self._selected_blocks()
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        for block in blocks:
+            line = QTextCursor(block)
+            if outdent:
+                line.setPosition(block.position() + latex_edit.outdent_width(block.text(), self._tab_chars),
+                                 QTextCursor.MoveMode.KeepAnchor)
+                line.removeSelectedText()
+            elif block.text():
+                line.insertText("\t")
+        cursor.endEditBlock()
+
+    def event(self, event) -> bool:  # noqa: N802 -- Qt's name
+        # Tab and Shift+Tab reach the widget's event() first, which would move the focus on Shift+Tab.
+        if event.type() == QEvent.Type.KeyPress and not self.isReadOnly():
+            key, shift = event.key(), bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            if key == Qt.Key.Key_Backtab or (key == Qt.Key.Key_Tab and shift):
+                self.shift_lines(outdent=True)
+                return True
+            if key == Qt.Key.Key_Tab and len(self._selected_blocks()) > 1:
+                self.shift_lines(outdent=False)
+                return True
+        return super().event(event)
+
     def reindent(self) -> bool:
         old = self.toPlainText()
         new = latex_edit.reindent_latex(old)
@@ -449,6 +491,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
     def set_tab_width(self, chars: int) -> None:
         """A tab `chars` characters wide in the editor's font (Qt's own default of
         80 px is unrelated to the font and far too wide for code)."""
+        self._tab_chars = chars
         self.setTabStopDistance(QFontMetricsF(self.font()).horizontalAdvance(" ") * chars)
 
     def refresh_colors(self) -> None:

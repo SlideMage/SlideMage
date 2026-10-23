@@ -5,10 +5,11 @@
 # Output lands in dist/SlideMage(.exe) and dist/SlideMage-folder/. The exe finds its project via
 # --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
 # last project opened, or a folder picker.
+import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
@@ -21,6 +22,10 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 # hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
 # ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
 HIDDEN_IMPORTS = collect_submodules("anthropic")
+# pywinpty's helpers, which conpty.dll and winpty.dll start at run time, so PyInstaller does not see them: without
+# OpenConsole.exe a program in the Claude Code terminal got a console closed at once and ended before printing
+# anything, exit code -1073741510 (0xC000013A), up to v8.58.0.
+WINPTY_HELPERS = collect_data_files("winpty", includes=["*.exe"]) if sys.platform == "win32" else []
 
 # Bundled so a project created via "Open Project..."'s "not a project
 # yet -- create one?" offer (project.py's init_project()) can be seeded
@@ -79,6 +84,7 @@ a = Analysis(
         (str(ROOT / "THIRD_PARTY_NOTICES.md"), "slidemage/legal"),
         (str(ROOT / "LICENSES"), "slidemage/legal/LICENSES"),
         *TEMPLATE_DATAS,
+        *WINPTY_HELPERS,
     ],
     hiddenimports=HIDDEN_IMPORTS,
 )
@@ -100,35 +106,41 @@ if sys.platform == "win32":
     )
     splash_parts = [splash, splash.binaries]
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    *splash_parts,
-    a.binaries,
-    a.datas,
-    [],
-    name="SlideMage",
-    console=False,
-    icon=icon,
-)
+# SLIDEMAGE_BUILD=folder or =onefile builds just that one (the release builds the folder first and publishes
+# it before the single file); unset, both.
+BUILD = os.environ.get("SLIDEMAGE_BUILD", "")
 
 # The same program as a folder (dist/SlideMage-folder/: SlideMage[.exe] and _internal/). It does not unpack itself
 # at every start, so it starts in about a quarter of the time (v8.33.0); the release publishes both and an
 # installation updates itself with the build it is (updater.install_flavour()).
-folder_exe = EXE(
-    pyz,
-    a.scripts,
-    *([splash] if splash_parts else []),
-    [],
-    exclude_binaries=True,
-    name="SlideMage",
-    console=False,
-    icon=icon,
-)
-folder = COLLECT(
-    folder_exe,
-    a.binaries,
-    a.datas,
-    *([splash.binaries] if splash_parts else []),
-    name="SlideMage-folder",
-)
+if BUILD != "onefile":
+    folder_exe = EXE(
+        pyz,
+        a.scripts,
+        *([splash] if splash_parts else []),
+        [],
+        exclude_binaries=True,
+        name="SlideMage",
+        console=False,
+        icon=icon,
+    )
+    folder = COLLECT(
+        folder_exe,
+        a.binaries,
+        a.datas,
+        *([splash.binaries] if splash_parts else []),
+        name="SlideMage-folder",
+    )
+
+if BUILD != "folder":
+    exe = EXE(
+        pyz,
+        a.scripts,
+        *splash_parts,
+        a.binaries,
+        a.datas,
+        [],
+        name="SlideMage",
+        console=False,
+        icon=icon,
+    )
