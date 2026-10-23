@@ -2650,3 +2650,9 @@ v8.51.0 (2026-10-21, docs/findings.md plan 5): "Rerender all previews for this d
 NEW: "Rerender all previews for this deck" is several times faster.
 - The slides are prepared in groups of up to 16, so a whole deck is done in about a third of the time and the computer is much less busy on the way.
 - Nothing looks different: the pictures are the same as before.
+
+v8.51.1 (2026-10-23, Linux launcher icon follows the system theme): The Linux app icon (assets/icon.svg, shipped in SlideMage-linux.zip for the desktop entry) carries both palettes of the logo mark and picks one with prefers-color-scheme: the black front slide on a light system, the off-white one on a dark system. Renderers that ignore the media query show the light palette, as before. The Windows icon.ico is unchanged.
+
+NEW: The Linux launcher icon now matches a dark system theme too.
+- On a dark desktop the front slide of the logo is light instead of black.
+- Whether the launcher switches by itself depends on your desktop; if not, it shows the same icon as before.
