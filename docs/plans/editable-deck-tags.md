@@ -1,6 +1,6 @@
 # Plan: deck groups the user can edit
 
-Status: proposal, decisions taken (2026-10-22), not started. Asked for: "develop a plan to allow the user to edit the
+Status: decisions taken (2026-10-22, 2026-10-23), in progress on `feature/deck-groups`. Asked for: "develop a plan to allow the user to edit the
 tags that SlideMage offers." Decided: the groups belong to the project; built-in groups can be removed; a deck can
 be in several groups.
 
@@ -79,9 +79,8 @@ does not touch a project that has its own list.
 
 `\decktags{course,workshops}` puts a deck into both groups.
 
-- **Deck switcher and Deck → Switch deck**: the deck is listed under each of its groups. The entry under the
-  first group in switcher order is the main one; the others are marked as the same deck, e.g. by a small "also in
-  Course decks" note, so that the list does not read as two decks.
+- **Deck switcher and Deck → Switch deck**: the deck is listed under each of its groups, the same way under each:
+  no main entry, no "also in" note (decided 2026-10-23).
 - **Roles**: a deck is pinned if any of its groups is `pinned`, a test deck if any is `test`. A pinned deck is
   still listed under its other groups too.
 - **Compile order**: by the deck's first group in switcher order, so a deck is compiled once.
@@ -91,7 +90,7 @@ does not touch a project that has its own list.
 - **Collapsed sections** (`collapsed_deck_groups_active`) stay per group, as now.
 
 `Deck.group` (one value) becomes `Deck.groups` (a tuple, in switcher order), set at scan time; `Deck.group` stays
-as the first of them for the places that need one (compile order, the main entry).
+as the first of them for the places that need one (compile order).
 
 ### 4. Who reads the list
 
@@ -135,7 +134,7 @@ untouched in the files either way.
    `GROUP_ORDER`, `SELECTABLE_GROUP_TAGS`, `GROUP_HEADINGS`, `GROUP_LABELS` become functions of the list; compile
    order and background previews follow. With the defaults and one group per deck the full suite must pass
    unchanged (the behaviour is identical).
-3. Several groups per deck: the switcher's entries under each group with the "also in" note, Other decks, the
+3. Several groups per deck: the switcher's entries under each group, Other decks, the
    checkbox sheets and `tags_with_groups`. Tests for a deck in two groups (both entries, one compile, roles).
 4. Settings → Project → Deck groups: add, edit, reorder, remove with its three answers, restore defaults, "Found in
    decks". GUI tests for each, and for the Tags sheet offering a new group.
