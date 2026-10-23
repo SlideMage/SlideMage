@@ -329,7 +329,7 @@ def shot_sheets(shooter: Shooter) -> None:
     sheet = AboutSheet(window)
     shooter.sheet_shot("about", sheet)
     sheet.close()
-    sheet = DeckGroupSheet(window, "Tags", "course")
+    sheet = DeckGroupSheet(window, "Tags", ("course",), groups=window.deck_groups, edit_groups=True)
     shooter.sheet_shot("deck-group", sheet)
     sheet.close()
     path = Path(os.environ["SLIDEMASTER_PROJECT"]) / "slides" / TRANSCRIPT_FILE

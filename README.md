@@ -728,22 +728,34 @@ what a real compile read.
 
 ### Deck tags (`\decktags`)
 
-SlideMage's deck switcher (top left) groups decks under headings -- the workdeck on top,
-then "Course decks", "Research presentations", "SlideMage manual" and
-"Test decks", with the archived decks at the foot. Which group a deck is in is
-decided by its own tag, never by its filename:
+SlideMage's deck switcher (top left) groups decks under headings -- by default the
+workdeck on top, then "Course decks", "Research presentations", "SlideMage manual"
+and "Test decks", with the archived decks at the foot. Which groups a deck is in is
+decided by its own tags, never by its filename:
 
 ```latex
 \decktags{test}
 ```
 
 placed just before `\begin{document}` (after the preamble `\input{}`, which
-defines it as an inert no-op like `\deckoutputfolder`). The group tags are
-`work`, `course`, `research` and `test`; a deck with none of them is a
-course deck, and if it carries several the first in that order wins. Other
-tags are allowed and ignored for now. Set it from SlideMage rather than by
-hand: **Tags…** in `Ctrl+K`, or the group choice in the
-**Duplicate deck…** sheet when creating a copy.
+defines it as an inert no-op like `\deckoutputfolder`). A deck may be in
+several groups (`\decktags{course,workshops}`) and is then listed the same way
+under each of them. Set the tags from SlideMage rather than by hand: **Tags…**
+in `Ctrl+K`, or the group checkboxes in the **Duplicate deck…** and
+**New deck…** sheets.
+
+The groups belong to the project and are stored under `"deck_groups"` in
+`.slidemage/project.json`, so collaborators see the same ones. A project starts
+with `work` (pinned to the top, no heading), `course` (where decks without a
+group go), `research` and `test` (no slide list, no background previews).
+**Settings → Project → Deck groups** (also **Edit groups…** in the Tags sheet)
+adds groups, renames their headings and labels, reorders the switcher's sections,
+moves those roles between groups, and removes any group, built-in ones too.
+Removing a group whose tag decks carry offers to move those decks to another
+group, take the tag off them, or leave it in the files. A deck whose tags name
+no group goes to the group marked for that, or to "Other decks" if there is
+none; tags no group knows are listed under "Found in decks", where they can be
+added as groups. Other tags are allowed and left alone.
 
 The SlideMage manual (`decks/slidemage-manual.tex`) carries a fifth group
 tag, `manual` (since v5.18.0): it always sits in its own "SlideMage manual"

@@ -1,6 +1,6 @@
 # Plan: deck groups the user can edit
 
-Status: decisions taken (2026-10-22, 2026-10-23), in progress on `feature/deck-groups`. Asked for: "develop a plan to allow the user to edit the
+Status: done in v8.60.0 (2026-10-23). Decisions taken 2026-10-22 and 2026-10-23. Asked for: "develop a plan to allow the user to edit the
 tags that SlideMage offers." Decided: the groups belong to the project; built-in groups can be removed; a deck can
 be in several groups.
 
