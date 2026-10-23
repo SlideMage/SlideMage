@@ -2751,3 +2751,9 @@ v8.59.0 (2026-10-23, direct requests: "When I hover over a slide title in the sp
 NEW: Update version can overwrite the version, and long slide names show whole on hover.
 - Update version offers Overwrite: the changes go into the current version number instead of a new one.
 - Hovering over the slide name at the top of the Source view shows the whole name when it is cut off, e.g. in Split view.
+
+v8.59.1 (2026-10-23, Jürgen's PR 16 merged: the Linux launcher icon follows the system theme): The Linux app icon (assets/icon.svg, shipped in SlideMage-linux.zip for the desktop entry) carries both palettes of the logo mark and picks one with prefers-color-scheme: the black front slide on a light system, the off-white one on a dark system. Renderers that ignore the media query show the light palette, as before; Qt's renderer is one of them, so the logo in the top bar is drawn exactly as before. The Windows icon.ico is unchanged.
+
+NEW: The Linux launcher icon now matches a dark system theme too.
+- On a dark desktop the front slide of the logo is light instead of black.
+- Whether the launcher switches by itself depends on your desktop; if not, it shows the same icon as before.
