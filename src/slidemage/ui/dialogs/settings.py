@@ -15,7 +15,9 @@
   ui/dialogs/settings_prompts.py.
 * Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
   ui/presentation/settings_page.py.
-* Project: the .bib file and test-slides.tex (Edit opens them in Source) and the project compatibility check.
+* Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check and the
+  project's deck groups (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
+  window's `open_deck_groups()`).
 * About: the version, the version history and the check for updates.
 The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
 it when the sheet has closed).
@@ -43,11 +45,13 @@ from .. import background
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace.source_file import autosave_on
+from .settings_deck_groups import DeckGroupsSection
 from .settings_ollama import OllamaTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
 
 GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT = range(8)
+DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
@@ -365,7 +369,8 @@ def _command_row(app, leave, command_id: str, title: str, note: str, text: str, 
 
 
 class ProjectTab(Page):
-    """The project's .bib file and test slides, which open in Source, and its compatibility check."""
+    """The project's .bib file and test slides, which open in Source, its compatibility check and its deck
+    groups."""
 
     def __init__(self, app, leave) -> None:
         super().__init__()
@@ -382,6 +387,8 @@ class ProjectTab(Page):
         layout.addWidget(_command_row(
             app, leave, "project_compat", "Project compatibility",
             "Whether this project's files fit this version of SlideMage.", "Check…")[0])
+        self.deck_groups = DeckGroupsSection(app)
+        layout.addWidget(self.deck_groups)
         layout.addStretch(1)
 
 
@@ -401,8 +408,9 @@ class AboutTab(Page):
 
 
 class SettingsSheet(ModalSheet):
-    def __init__(self, app, tab: int = GENERAL) -> None:
-        """`app` is the window (its theme, tab width, log and the Ollama slot)."""
+    def __init__(self, app, tab: int = GENERAL, *, focus: str | None = None) -> None:
+        """`app` is the window (its theme, tab width, log, the Ollama slot and its decks). `focus` DECK_GROUPS
+        opens the Project tab at its deck groups."""
         super().__init__("Settings", app, width=760)
         self.app = app
         add_route_badge(self, app)
@@ -427,7 +435,9 @@ class SettingsSheet(ModalSheet):
         self.add_button("Close", kind="primary", role="accept")
         self.cloud.cloud_changed.connect(self.reload_models)
         self.ollama.changed.connect(self.reload_models)
-        self.set_current_tab(tab)
+        self.set_current_tab(PROJECT if focus == DECK_GROUPS else tab)
+        if focus == DECK_GROUPS:
+            self.project_tab.deck_groups.list.setFocus()
         self.reload_models()
 
     def reload_models(self) -> None:

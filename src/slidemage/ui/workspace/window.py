@@ -47,7 +47,7 @@ from .. import layout_settings
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import GENERAL, SettingsSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PROJECT, SettingsSheet
 from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
@@ -612,8 +612,12 @@ class WorkspaceWindow(QMainWindow):
     def _on_open_settings(self) -> None:
         self.open_settings()
 
-    def open_settings(self, tab: int = GENERAL) -> None:
-        sheet = SettingsSheet(self, tab)
+    def open_deck_groups(self) -> None:
+        """Settings → Project at the project's deck groups (Deck → Tags… links here)."""
+        self.open_settings(PROJECT, focus=DECK_GROUPS)
+
+    def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
+        sheet = SettingsSheet(self, tab, focus=focus)
         sheet.exec()
         if sheet.loaded:        # the model pickers that are open follow what Settings found
             self.local_models.fill(sheet.installed)

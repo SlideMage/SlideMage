@@ -162,7 +162,7 @@ def test_the_models_found_reach_the_window_when_the_sheet_closes(monkeypatch, qa
 
     sheet = open_sheet(qapp)
     monkeypatch.setattr(sheet, "exec", lambda: None)
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: sheet)
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab, **_kw: sheet)
     filled, refreshed = [], []
     app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
     window_module.WorkspaceWindow.open_settings(app)
@@ -181,7 +181,7 @@ def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch,
 
     filled, refreshed = [], []
     app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: SimpleNamespace(exec=lambda: 0, loaded=False, after=None))
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab, **_kw: SimpleNamespace(exec=lambda: 0, loaded=False, after=None))
     window_module.WorkspaceWindow.open_settings(app)
     assert filled == [] and refreshed == [True]       # nothing was found; the keys and defaults may have changed
 
@@ -662,7 +662,7 @@ def test_the_window_runs_what_the_sheet_leaves_after_it_has_closed(monkeypatch, 
 
     order = []
     sheet = SimpleNamespace(exec=lambda: order.append("closed"), loaded=False, after=lambda: order.append("action"))
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab: sheet)
+    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab, **_kw: sheet)
     app = SimpleNamespace(refresh_ai_models=lambda: order.append("refreshed"))
     window_module.WorkspaceWindow.open_settings(app)
     assert order == ["closed", "refreshed", "action"]
