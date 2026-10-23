@@ -228,9 +228,11 @@ class WorkspaceWindow(QMainWindow):
             self.topbar.host_autosave(self.autosave_switch)     # macOS: the menu bar is not in the window
         else:
             self.autosave_switch.attach_to(menu_bar)
+        # The AI switch is the first row of the assistant card (assistant_header.py), with every other AI control.
+        self.ai_switch = self.assistant.header.ai_switch
         self.ai_route = AiRoute(self)
-        self.topbar.ai_switch.requested.connect(self.ai_route.request)
-        self.topbar.ai_switch.setup_requested.connect(self.ai_route.open_setup)
+        self.ai_switch.requested.connect(self.ai_route.request)
+        self.ai_switch.setup_requested.connect(self.ai_route.open_setup)
         self.state.ai_route_changed.connect(self._on_ai_route_changed)
         self.local_models.changed.connect(self.refresh_ai_models)
         self.topbar.command.connect(self._on_command)

@@ -37,7 +37,7 @@ def bar_order(window, *, images: bool = False) -> list[QWidget]:
     """The stops of the top bar, left to right: what the user sees. A segmented control is one stop, its selected
     segment (←/→ move inside it)."""
     bar = window.topbar
-    stops = [bar._left_column, bar._deck_button, bar.ai_switch.segments.current_button(), bar.ai_switch.caret,
+    stops = [bar._left_column, bar._deck_button,
              bar._views.current_button(), bar._languages.current_button(), bar._modes.current_button(),
              *bar._compile.buttons(), *([bar._images] if images else []), bar._right_column]
     xs = [stop.mapTo(bar, stop.rect().topLeft()).x() for stop in stops if stop.isVisible()]
@@ -53,7 +53,7 @@ def open_window(window):
     return window
 
 
-@pytest.mark.parametrize("width, density", [(2000, "full"), (1400, "narrow"), (1024, "tiny")])
+@pytest.mark.parametrize("width, density", [(2000, "full"), (1300, "narrow"), (1024, "tight")])
 def test_tab_walks_the_bar_in_visual_order_and_back(open_window, width, density):
     window = open_window
     window.resize(width, 800)

@@ -141,7 +141,7 @@ CHAT_DIFF_LINE = "kitChatDiffLine"
 CHAT_NOTICE = "kitChatNotice"
 CHAT_SUGGESTION = "kitChatSuggestion"
 
-# The AI switch of the top bar and its popovers (ui/workspace/ai_switch.py, ai_popups.py, ai_setup.py).
+# The AI switch (the assistant card's first row) and its popovers (ui/workspace/ai_switch.py, ai_popups.py, ai_setup.py).
 AI_SWITCH = "kitAiSwitch"
 AI_SWITCH_STATE = "kitAiSwitchState"
 AI_POPUP_TITLE = "kitAiPopupTitle"

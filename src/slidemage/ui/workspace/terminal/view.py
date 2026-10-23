@@ -208,6 +208,15 @@ class ClaudeCodeView(Surface):
         self.session.write((f'@"{rel}" ' if " " in rel else f"@{rel} ").encode("utf-8"))
         self.terminal.focus_terminal()
 
+    def switch_model(self, model: str) -> bool:
+        """Type `/model <model>` and Enter at Claude Code's prompt: the running session moves to `model` and keeps its
+        conversation (the effort level is a start option: it needs a restart). False without a running session."""
+        if not self.session_live or not model:
+            return False
+        self.session.write(f"/model {model}\r".encode("utf-8"))
+        self.session.model = model
+        return True
+
     def _set_attachable(self) -> None:
         self.attach_button.setEnabled(self.session is not None and self.session.running)
 

@@ -13,7 +13,7 @@ link; Tab stays inside, and Esc closes it and gives the focus back to the ▾.
 """
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ...ai import ai_profile, resolver
 from ...ai.ai_profile import API, CHAT, CLAUDE_CODE, CLOUD, IMAGE_DESCRIPTION, LOCAL, TASKS, TASK_LABELS
@@ -31,6 +31,25 @@ POLICIES = ((LOCAL, "Local"), (CLOUD, "Cloud"))
 NOTE = ("Saved as your defaults. Each side keeps its own models; switching back to Local restores these Ollama "
         "models and the Ollama address of Settings. Pickers elsewhere (Images page, chat) start on these.")
 NO_MODEL = "(none chosen)"
+SWITCH, RESTART = "switch", "restart"      # what ask_session_model() answers, else None (Later)
+
+
+def ask_session_model(parent, label: str, can_switch: bool) -> str | None:
+    """A running Claude Code session and a new default model (`label`): SWITCH (type /model in it, keeping the
+    conversation; offered when `can_switch`), RESTART (a new session on the new default) or None (Later)."""
+    box = QMessageBox(QMessageBox.Icon.Question, "Claude Code is running",
+                      f"Claude Code is running in the terminal. Use {label} there now?", parent=parent)
+    box.setInformativeText(
+        ("Switch now changes the model of the running session and keeps the conversation. " if can_switch else
+         "The running session can take this only by restarting (the effort level is set when Claude Code starts). ")
+        + "Restart starts a new conversation.")
+    switch = box.addButton("Switch now", QMessageBox.ButtonRole.AcceptRole) if can_switch else None
+    restart = box.addButton("Restart Claude Code", QMessageBox.ButtonRole.DestructiveRole)
+    later = box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(switch or later)
+    box.exec()
+    clicked = box.clickedButton()
+    return SWITCH if switch is not None and clicked is switch else RESTART if clicked is restart else None
 
 
 def fit_list_to_items(combo: QComboBox) -> None:
@@ -171,7 +190,7 @@ class AiSetup(Popover):
     def _cell_tooltip(combo: QComboBox, route: str, task: str) -> None:
         text = combo.currentText()
         if route == CLAUDE_CODE and task == CHAT:
-            text += "\nUsed for new sessions. Restart Claude Code to apply a changed default."
+            text += "\nUsed for new sessions; a running one is asked whether to switch or restart."
         combo.setToolTip(text)
 
     def _on_cell(self, side: str, task: str, index: int) -> None:
@@ -184,10 +203,29 @@ class AiSetup(Popover):
             "Claude Code default" if route == CLAUDE_CODE and task == CHAT else NO_MODEL)
         text = f"Default for {TOAST_ROUTES[route]} · {TASK_LABELS[task]}: {label}"
         if route == CLAUDE_CODE and task == CHAT:
-            text += ". Restart Claude Code to apply it to the terminal."
+            text += self._apply_to_session(label)
         self._window.toast.show_message(text)
         announce(self, text)
         self._window.refresh_ai_models()
+
+    def _apply_to_session(self, label: str) -> str:
+        """The default Claude Code chat model changed while the terminal's Claude Code may be running: ask whether
+        the running session switches to it now (`/model`, the conversation stays; only for a changed model, as the
+        effort level is a start option) or restarts on it (a new conversation). Returns the end of the toast."""
+        view = self._window.assistant.claude_code
+        if not view.session_live:
+            return ". Claude Code starts on it."
+        new, session = ai_profile.route_for(self._project, CLAUDE_CODE, CHAT), view.session
+        if (new.model, new.effort) == (session.model, session.effort):
+            return "."
+        can_switch = bool(new.model) and new.model != session.model and new.effort == session.effort
+        answer = ask_session_model(self._window, label, can_switch)
+        if answer == SWITCH and view.switch_model(new.model):
+            return ". The running Claude Code switched to it."
+        if answer == RESTART:
+            view.restart()
+            return ". Claude Code restarted on it."
+        return ". The running Claude Code keeps its model until it is restarted."
 
     # -- the settings under the grid ---------------------------------------------------------------
 

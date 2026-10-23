@@ -92,10 +92,10 @@ def test_every_dialog_that_runs_ai_shows_the_route_badge_under_its_title(sheet, 
     badge = badge_of(sheet)
     assert isinstance(badge, ModeBadge) and sheet._root.itemAt(0).widget() is sheet._title      # right under the title
     assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Local · Ollama", False, "computer")
-    assert badge.toolTip() == "Change it with the switch in the top bar"
+    assert badge.toolTip() == "Change it with the Local | Cloud switch at the top of the assistant"
     commit_to_cloud(window)
     assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Cloud · Claude Code", True, "cloud")
-    assert badge.toolTip() == "Change it with the switch in the top bar"
+    assert badge.toolTip() == "Change it with the Local | Cloud switch at the top of the assistant"
     route(window).request(CLOUD, API)
     assert badge.text() == "Cloud · Anthropic API" and badge.property("cloud") is True      # refreshed while it is open
     route(window).request(LOCAL)
@@ -124,7 +124,7 @@ def test_a_sheet_without_a_window_has_no_badge(tmp_path, monkeypatch, qapp):
 # -- the switch -----------------------------------------------------------------------------------------------------
 
 def test_the_switch_has_a_group_name_and_every_icon_button_a_name(window):
-    switch = window.topbar.ai_switch
+    switch = window.ai_switch
     assert switch.segments.accessibleName() == "AI for all tasks" and switch.caret.accessibleName() == "AI setup"
     assert [b.accessibleName() for b in switch.segments._buttons.values()] == ["Local", "Cloud"]
     header = window.assistant.header
@@ -132,9 +132,9 @@ def test_the_switch_has_a_group_name_and_every_icon_button_a_name(window):
     header.focus_button.click()
     assert header.focus_button.accessibleName() == "Show the side panels again"
     assert header.new_button.accessibleName() == "New conversation (this route only)"
-    assert header.route_icon.accessibleName() == "Local"
+    assert switch.segments.current_button().accessibleName() == "Local"
     commit_to_cloud(window)
-    assert header.route_icon.accessibleName() == "Cloud"
+    assert switch.segments.current_button().accessibleName() == "Cloud"
     assert header.scope.accessibleName() == "Scope of the assistant"
 
 
@@ -142,7 +142,7 @@ def test_the_switch_announces_a_commit_and_the_start_of_stopping(window, monkeyp
     told = []
     monkeypatch.setattr(ai_switch, "announce", lambda widget, text: told.append((widget, text)))
     commit_to_cloud(window)
-    switch = window.topbar.ai_switch
+    switch = window.ai_switch
     assert told == [(switch.segments, "All AI tasks now use Cloud")]
     route(window).request(LOCAL)
     assert told[-1] == (switch.segments, "All AI tasks now use Local")
@@ -185,12 +185,12 @@ def test_the_real_announce_runs_on_this_qt(qapp):
 def test_the_keyboard_flips_the_switch_and_keeps_the_focus_on_the_selected_segment(window, qapp):
     ai_profile.set_policy(window.project, CLOUD)
     ai_profile.mark_cloud_seen(window.project)
-    segments = window.topbar.ai_switch.segments
+    segments = window.ai_switch.segments
     local, cloud = segments._buttons[LOCAL], segments._buttons[CLOUD]
     focus_on(window, local)
     QTest.keyClick(local, Qt.Key.Key_Right)
     assert window.state.ai_mode == CLOUD and QApplication.focusWidget() is cloud
-    assert tab()[0] is window.topbar.ai_switch.caret                    # Tab: the selected segment, then the ▾
+    assert tab()[0] is window.ai_switch.caret                    # Tab: the selected segment, then the ▾
     focus_on(window, cloud)
     assert tab(back=True)[0] is not local
     focus_on(window, cloud)
@@ -202,7 +202,7 @@ def test_the_keyboard_flips_the_switch_and_keeps_the_focus_on_the_selected_segme
 
 
 def test_the_arrow_into_a_popover_moves_the_focus_there_and_escape_gives_it_back(window, qapp):
-    segments = window.topbar.ai_switch.segments
+    segments = window.ai_switch.segments
     local = focus_on(window, segments._buttons[LOCAL])
     QTest.keyClick(local, Qt.Key.Key_Right)                              # the project is Local: the warning
     popover = route(window)._popover
@@ -219,7 +219,7 @@ def test_the_arrow_into_a_popover_moves_the_focus_there_and_escape_gives_it_back
 
 
 def test_enter_on_the_primary_button_commits_and_the_focus_is_on_the_selected_segment(window, qapp):
-    segments = window.topbar.ai_switch.segments
+    segments = window.ai_switch.segments
     local = focus_on(window, segments._buttons[LOCAL])
     QTest.keyClick(local, Qt.Key.Key_Right)
     tab()                                                                # the primary button
@@ -229,7 +229,7 @@ def test_enter_on_the_primary_button_commits_and_the_focus_is_on_the_selected_se
 
 
 def test_the_link_of_the_policy_popover_is_reachable_from_the_keyboard(window, qapp):
-    local = focus_on(window, window.topbar.ai_switch.segments._buttons[LOCAL])
+    local = focus_on(window, window.ai_switch.segments._buttons[LOCAL])
     QTest.keyClick(local, Qt.Key.Key_Right)
     tab(2)
     assert QApplication.focusWidget().text() == "Change the project setting…"
@@ -278,7 +278,7 @@ def test_tab_goes_through_ai_setup_in_reading_order_and_stays_inside(window, qap
 
 
 def test_escape_closes_ai_setup_and_returns_the_focus_to_the_caret(window, qapp):
-    caret = focus_on(window, window.topbar.ai_switch.caret)
+    caret = focus_on(window, window.ai_switch.caret)
     QTest.keyClick(caret, Qt.Key.Key_Return)                       # Enter opens it, as Space does
     setup = window.ai_route.setup
     assert setup.isVisible()
@@ -303,7 +303,7 @@ def test_ai_setup_announces_the_confirmation_of_a_default(window, monkeypatch):
 
 
 def test_a_popover_keeps_tab_inside_and_gives_the_keyboard_back_when_it_closes(window, qapp):
-    anchor = window.topbar.ai_switch.caret
+    anchor = window.ai_switch.caret
     popover = Popover(window, inline=True)
     first, second = widgets.Button("One"), widgets.Button("Two")
     popover.body.addWidget(first)

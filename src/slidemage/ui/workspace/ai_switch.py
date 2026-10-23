@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The AI switch of the top bar (workspace v6 handoff, section 1): one Local | Cloud control for every AI task of
+"""The AI switch, the first row of the assistant card since v8.61.0 (until then in the top bar; workspace v6
+handoff, section 1): one Local | Cloud control for every AI task of
 the project, the connection Cloud means, and the ▾ that opens AI setup.
 
 The switch only asks: moving it emits `requested(mode)` and shows the real mode again at once; ai_route.py runs
@@ -34,7 +35,8 @@ class AiSwitch(QFrame):
         super().__init__(parent)
         self._state = state
         self._running = self._stopping = False
-        self._shrink = 0                # 0: as designed; 1: no connection name (below 1320 px); 2: icons only
+        self._shrink = 0                # 0: as designed; 1: no connection name (a narrow assistant); 2: icons only
+        self._note = ""                 # what the conversation runs on (the assistant's header), in the tooltip
         self.setObjectName(q.AI_SWITCH)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
@@ -103,7 +105,14 @@ class AiSwitch(QFrame):
         set_property(self.caret, "cloud", cloud)
         route = ai_profile.Route(state.ai_route, ai_profile.CHAT)
         self.setToolTip(f"{route.name} · " + ("AI requests send content to the cloud" if cloud
-                                              else "All AI tasks use your Ollama setup"))
+                                              else "All AI tasks use your Ollama setup")
+                        + (f"\n{self._note}" if self._note else ""))
+
+    def set_note(self, note: str) -> None:
+        """What the conversation runs on ("Chat with qwen3:8b · localhost:11434"): the second line of the tooltip."""
+        if note != self._note:
+            self._note = note
+            self.refresh()
 
     def announce(self, mode: str) -> None:
         """Tell assistive technology that the switch has moved."""

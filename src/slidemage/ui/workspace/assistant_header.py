@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The header of the assistant card (workspace v6 handoff, section 3), four rows:
 
-1. the route (icon, name in amber on Cloud, what the conversation runs on), Focus and New conversation;
+1. the AI switch (ai_switch.py: Local | Cloud for every AI task, the connection, the ▾ of AI setup; its tooltip says
+   what the conversation runs on), Focus and New conversation. The switch was in the top bar until v8.61.0: here
+   every AI control is in one place;
 2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · not saved" with edits that could not be saved in the Source
    view; for the deck "name · 80 slides";
 3. at most two task buttons that fit the scope, the slide (with a selection in the Source view: Rewrite selection and
@@ -23,15 +25,16 @@ from functools import partial
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ... import app_settings, deck_outline, slide_language
 from ...ai import ai_profile
 from ...ai.claude_scope import DECK, SLIDE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
-from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface, set_property
+from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface
 from ..text import plural
+from .ai_switch import AiSwitch
 from .state import SETTLE_MS, WorkspaceState
 from .task_card_model import PILL_WORDS
 from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides, selection_of
@@ -39,6 +42,8 @@ from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubble
 POLL_MS = 400       # how often the file shown and its unsaved state are looked at (neither has a signal)
 TYPING_MS = 500     # the offers follow the text a moment after the last keystroke
 SUBTITLES = {ai_profile.CLAUDE_CODE: "Terminal · permissions are handled in Claude Code"}
+# The header's width below which the switch drops the connection's name (the subtitle says it), and its icons only.
+SWITCH_NAMED_WIDTH, SWITCH_LABELS_WIDTH = 360, 280
 
 
 class RunningPill(ClickFrame):
@@ -123,19 +128,14 @@ class AssistantHeader(Surface):
     # -- building ---------------------------------------------------------------------------
 
     def _build_route_row(self) -> QHBoxLayout:
+        # One row, so that the card keeps its height for the conversation (640 px windows): what the conversation
+        # runs on is the switch's tooltip (the model is also under the message box).
         row = QHBoxLayout()
         row.setSpacing(8)
-        self.route_icon = IconLabel("computer", 20)
-        row.addWidget(self.route_icon)
-        words = QVBoxLayout()
-        words.setSpacing(0)
-        self.title = QLabel()
-        self.title.setObjectName(q.ASSISTANT_TITLE)
-        words.addWidget(self.title)
-        self.subtitle = ElidedLabel()
-        self.subtitle.setObjectName(q.ASSISTANT_SUB)
-        words.addWidget(self.subtitle)
-        row.addLayout(words, 1)
+        self.ai_switch = AiSwitch(self.state)
+        self.route_note = ""
+        row.addWidget(self.ai_switch)
+        row.addStretch(1)
         self.focus_button = IconButton("open_in_full", "Focus assistant: hide the side panels")
         self.focus_button.clicked.connect(self.toggle_focus)
         row.addWidget(self.focus_button)
@@ -143,6 +143,11 @@ class AssistantHeader(Surface):
         self.new_button.clicked.connect(self.new_conversation)
         row.addWidget(self.new_button)
         return row
+
+    def resizeEvent(self, event) -> None:          # noqa: N802 -- Qt's name
+        super().resizeEvent(event)
+        width = event.size().width()
+        self.ai_switch.set_shrink(0 if width >= SWITCH_NAMED_WIDTH else 1 if width >= SWITCH_LABELS_WIDTH else 2)
 
     def _build_scope_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -156,13 +161,8 @@ class AssistantHeader(Surface):
     # -- the route (row 1) ------------------------------------------------------------------
 
     def show_route(self, route: ai_profile.Route) -> None:
-        """Name `route` and what its conversation runs on (the chat's model, or Claude Code's terminal)."""
-        cloud = not route.is_local
-        self.route_icon.set_icon("cloud" if cloud else "computer")
-        self.route_icon.set_tone("cloud" if cloud else "local")
-        self.route_icon.setAccessibleName("Cloud" if cloud else "Local")
-        self.title.setText(route.name)
-        set_property(self.title, "cloud", cloud)
+        """Say what `route`'s conversation runs on (the chat's model, or Claude Code's terminal), in the switch's
+        tooltip (`route_note`); the switch names the route."""
         if route.route in SUBTITLES:
             subtitle = SUBTITLES[route.route]
         else:
@@ -170,7 +170,8 @@ class AssistantHeader(Surface):
             if route.is_local:
                 host = app_settings.get_ollama_host(self.state.project)
                 subtitle += f" · {host.split('://', 1)[-1].rstrip('/')}"
-        self.subtitle.set_full_text(subtitle)
+        self.route_note = subtitle
+        self.ai_switch.set_note(subtitle)
 
     def toggle_focus(self) -> None:
         self.focused = not self.focused

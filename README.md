@@ -86,7 +86,7 @@ screenshots.
   course / After course and EN / DE (what the Preview shows and the slide list marks as
   hidden), the save state, **Preview | Split | Source | Details**, **Compile PDF** (the arrow
   offers every view, chapters, presenter, pages, several decks, transcripts, Stop and Build
-  options) and a **Local | Cloud** AI switch (see below).
+  options). The **Local | Cloud** AI switch is at the top of the assistant (see below).
 - **Menu bar** above it: File, Edit, Deck, Slide, View, Build, AI, Housekeeping and Help hold every command, each
   with its shortcut (Help → *Keyboard shortcuts…* lists them all; on a Mac some differ, e.g. ⌘, for Settings and
   ⌥⌘P to present). New in v8.57: `Ctrl+1/2/3` switch the view, `Ctrl+Shift+B` compiles the view shown, `F1`
@@ -159,7 +159,8 @@ screenshots.
   slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
   versions can never be edited. The model is a local Ollama model that can call tools or,
   with an Anthropic API key, a Claude model. Every AI request goes through one setting,
-  the **Local | Cloud** switch after the deck switcher in the top bar (it asks before it
+  the **Local | Cloud** switch at the top of the assistant, with every other AI control
+  (in the top bar until v8.61.0; it asks before it
   stops running AI work, ends a live Claude Code terminal or sends a Local project to the
   cloud; its ▾ opens **AI setup**: the default model of every task for each side, "Cloud
   means" Claude Code or the Anthropic API, and the project's setting, where the switch
@@ -169,8 +170,11 @@ screenshots.
   refused instead of using another route, and the first cloud request in a project says
   what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
   in the project folder (permissions are Claude Code's). In **AI setup → Chat**, choose a
-  saved model and effort for new sessions; **Restart** applies a changed default to an open
-  terminal. **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
+  saved model and effort for new sessions. While Claude Code is running, a changed default asks
+  what to do with it: **Switch now** types `/model …` into the session and keeps the conversation
+  (offered when only the model changed: the effort level is set when Claude Code starts),
+  **Restart Claude Code** starts a new session on it, **Later** leaves the session as it is.
+  **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
 - **Settings** (File → Settings…): General, AI (German address of translations), Cloud (the API
@@ -1265,7 +1269,8 @@ the slides start where you last looked. A deck whose files did not change is not
 again. Whatever you do stops it: a render you ask for, a compile or an AI task goes first, and
 the slider's renders never wait for it. A small dial at the bottom of the centre column shows how much of all your decks' previews is up to date (hover for
 details); clicking it opens a window with every deck, its three versions and what is outstanding, with **Pause** and
-**Render now**. A chip next to it says how many are left and can leave the open deck out; on battery nothing runs.
+**Render now**. A chip next to it says how many are left and can leave the open deck out, and once every preview is
+rendered says so in green, "All previews are up to date."; on battery nothing runs.
 
 A prepared render is only used while everything it was made from is unchanged: the slide,
 the deck's preamble, the template files, the images and the bibliography it reads, and the TeX

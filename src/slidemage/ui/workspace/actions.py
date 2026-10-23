@@ -349,7 +349,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         shortcut="F1", enabled=lambda w: _manual_deck(w) is not None)
     add("shortcuts", "Keyboard shortcuts…", PROJECT, _show_shortcuts, icon="keyboard")
 
-    # AI: the switch of the top bar, through its request flow (popovers included) ---------------
+    # AI: the assistant's Local | Cloud switch, through its request flow (popovers included) ---------------
     for mode, label, icon in ((ai_profile.LOCAL, "Use Local AI", "computer"), (ai_profile.CLOUD, "Use Cloud AI", "cloud")):
         add(f"ai:{mode}", label, AI, lambda w, m=mode: w.ai_route.request(m), icon=icon,
             meta=lambda w, m=mode: _current(w.state.ai_mode == m))

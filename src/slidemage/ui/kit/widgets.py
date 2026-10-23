@@ -1248,10 +1248,10 @@ class Toast(QFrame):
 
 class ModeBadge(QFrame):
     """The read-only route pill under a dialog's title (workspace v6 handoff, section 6): an icon and "Local ·
-    Ollama" or "Cloud · Claude Code", amber on Cloud. The dialog has no route picker of its own: the switch in the
-    top bar is the one place to change it, and the tooltip says so."""
+    Ollama" or "Cloud · Claude Code", amber on Cloud. The dialog has no route picker of its own: the Local | Cloud
+    switch at the top of the assistant is the one place to change it, and the tooltip says so."""
 
-    TIP = "Change it with the switch in the top bar"
+    TIP = "Change it with the Local | Cloud switch at the top of the assistant"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

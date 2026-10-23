@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The workspace's top bar (prototype v6): logo, deck switcher, the AI switch (ai_switch.py), "View as",
+"""The workspace's top bar (prototype v6): logo, deck switcher, "View as",
 EN/DE, save status, Preview/Split/Source/Details and Compile, under the window's menu bar (menus.py), which has
 every other command. While the Images page is open, a "Close images" button follows Compile (Images itself is in
 View and ⌘K).
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from PySide6 import QtSvg  # noqa: F401 -- Qt's SVG support: without it QIcon draws the .svg logo empty
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QResizeEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QSizePolicy, QVBoxLayout, QWidget
@@ -23,7 +24,6 @@ from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
-from .ai_switch import AiSwitch
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
 from .state import MODES, UI_LANGUAGES, VIEWS
 
@@ -37,10 +37,9 @@ LOGO_SIZE = 32
 # (1024 px) keeps the room for the other controls.
 DECK_MAX_WIDTHS = {"full": 280, "narrow": 220, "tight": 200, "tiny": 170}
 DECK_MAX_WIDTH = max(DECK_MAX_WIDTHS.values())
-# The narrowest bar each density is for, when its content fits: below 1500 px the labels shorten, below 1320 px
-# the AI switch gives up the name of its connection too, and in the narrowest window (1024 px) it is only icons:
-# it is the last to shrink.
-DENSITIES = (("full", 1500), ("narrow", 1320), ("tight", 0), ("tiny", 0))
+# The narrowest bar each density is for, when its content fits: below 1400 px the labels shorten, and tighter
+# below 1100 px. (Until v8.61.0 the AI switch was in the bar too, which then needed 1500 and 1320 px.)
+DENSITIES = (("full", 1400), ("narrow", 1100), ("tight", 0), ("tiny", 0))
 # The kit names the view colors "instructor", "during" and "after".
 VIEW_TONES = {"instructor": "instructor", "during-course": "during", "after-course": "after"}
 SHORT_VIEWS = {"instructor": "Instr.", "during-course": "During", "after-course": "After"}
@@ -105,9 +104,6 @@ class TopBar(QWidget):
         self._deck_button.clicked.connect(self.open_deck_menu)
         add(self._deck_button)
 
-        self.ai_switch = AiSwitch(state)
-        add(self.ai_switch)
-
         self._view_as = QLabel("View as")
         self._view_as.setObjectName(q.TOPBAR_LABEL)
         add(self._view_as)
@@ -168,8 +164,7 @@ class TopBar(QWidget):
         panels (the window adds them to its splitter in that order). The widgets are chained once, all of them: a
         hidden one ("Close images") and a segment that is not selected (roving) are skipped by visibility and focus
         policy, whatever the density."""
-        switch = self.ai_switch
-        stops = [self._left_column, self._deck_button, *switch.segments.buttons(), switch.caret,
+        stops = [self._left_column, self._deck_button,
                  *self._views.buttons(), *self._languages.buttons(), *self._modes.buttons(), *self._compile.buttons(),
                  self._images, self._right_column]
         for before, after in zip(stops, stops[1:]):
@@ -203,7 +198,6 @@ class TopBar(QWidget):
         self._views.set_labels(VIEW_LABELS if full else SHORT_VIEWS, tooltips=VIEW_LABELS, compact=not full)
         self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
         self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
-        self.ai_switch.set_shrink({"tight": 1, "tiny": 2}.get(density, 0))
         if self._autosave is not None:
             # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.
             self._autosave.setVisible(full)
@@ -211,7 +205,7 @@ class TopBar(QWidget):
         self._update_save_label()
         self._update_compile_label()
         # Flush nested layout minimums before measuring; Qt otherwise updates them next event loop.
-        for widget in (self._deck_button, self.ai_switch.segments, self.ai_switch, self._views, self._languages,
+        for widget in (self._deck_button, self._views, self._languages,
                        self._modes, self._compile):
             widget.layout().invalidate()
             widget.layout().activate()

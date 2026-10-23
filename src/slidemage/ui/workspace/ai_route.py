@@ -50,7 +50,7 @@ class AiRoute(QObject):
 
     @property
     def switch(self):
-        return self._window.topbar.ai_switch
+        return self._window.ai_switch
 
     @property
     def popover_kind(self) -> str:

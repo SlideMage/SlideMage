@@ -5,8 +5,10 @@ per-route conversations, toast), AI setup, the keyboard, and the commands. Nothi
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QLabel
 
 from slidemage.ai import ai_profile
 from slidemage.ai.ai_profile import API, CLAUDE_CODE, CLOUD, LOCAL
@@ -140,13 +142,13 @@ def test_stop_and_switch_waits_for_the_end_of_the_work_and_then_asks_the_rest_of
     work = Work(window, monkeypatch)
     route(window).request(CLOUD)
     choose_primary(window)
-    assert work.stopped == [True] and route(window).stopping and window.topbar.ai_switch.state_label.text() == "stopping…"
+    assert work.stopped == [True] and route(window).stopping and window.ai_switch.state_label.text() == "stopping…"
     settle(qapp, window)
     assert route(window).stopping and window.state.ai_mode == LOCAL     # the work is still ending
     route(window).request(LOCAL)                                        # a request while stopping is ignored
     work.running = False
     settle(qapp, window)
-    assert not route(window).stopping and window.topbar.ai_switch.state_label.text() == ""
+    assert not route(window).stopping and window.ai_switch.state_label.text() == ""
     assert kind(window) == "policy"                                     # the checks still apply
     choose_primary(window)
     assert window.state.ai_mode == CLOUD
@@ -195,11 +197,12 @@ def commit_to_cloud(window):
 
 
 def test_a_commit_sets_the_route_tells_everyone_and_sends_nothing(window, qapp):
+    switch = window.ai_switch
+    switch.set_shrink(0)                    # as in an assistant wide enough for the connection's name
     commit_to_cloud(window)
-    switch = window.topbar.ai_switch
     assert window.state.ai_route == CLAUDE_CODE and switch.segments.current() == CLOUD
     assert switch.property("cloud") is True and switch.state_label.text() == "Claude Code"
-    assert switch.toolTip() == "Cloud · Claude Code · AI requests send content to the cloud"
+    assert switch.toolTip().splitlines()[0] == "Cloud · Claude Code · AI requests send content to the cloud"
     assert window.toast.isVisible() and window.toast.findChildren(type(switch.state_label))[0].text() == \
         "All AI tasks now use Cloud · Claude Code"
     assert window.assistant.chat.route_chip.text().startswith("Claude Code")
@@ -211,11 +214,26 @@ def test_a_commit_sets_the_route_tells_everyone_and_sends_nothing(window, qapp):
     assert window.assistant.chat.session.running is False
 
 
-def test_the_switch_reads_running_and_drops_the_name_below_1320_px(window, monkeypatch, qapp):
+def test_the_switch_is_the_first_row_of_the_assistant_and_shrinks_with_it(window, qapp):
+    from slidemage.ui.workspace.assistant_header import SWITCH_LABELS_WIDTH, SWITCH_NAMED_WIDTH
+    header = window.assistant.header
+    assert window.ai_switch is header.ai_switch and header.isAncestorOf(window.ai_switch)
+    assert not window.topbar.isAncestorOf(window.ai_switch)
+    commit_to_cloud(window)
+    for width, name, labels in ((SWITCH_NAMED_WIDTH, "Claude Code", ["Local", "Cloud"]),
+                                (SWITCH_NAMED_WIDTH - 1, "", ["Local", "Cloud"]),
+                                (SWITCH_LABELS_WIDTH - 1, "", ["", ""])):
+        header.resizeEvent(QResizeEvent(QSize(width, header.height()), header.size()))     # as the column would
+        assert window.ai_switch.state_label.text() == name
+        assert [b.text() for b in window.ai_switch.segments._buttons.values()] == labels
+
+
+def test_the_switch_reads_running_and_drops_the_name_when_narrow(window, monkeypatch, qapp):
     commit_to_cloud(window)
     work = Work(window, monkeypatch)
+    switch = window.ai_switch
+    switch.set_shrink(0)
     route(window)._show_running()
-    switch = window.topbar.ai_switch
     assert switch.state_label.text() == "Claude Code · running"
     switch.set_shrink(1)
     assert switch.state_label.text() == "running"
@@ -251,7 +269,7 @@ def test_each_route_keeps_its_own_draft_and_conversation(window, monkeypatch):
 def test_the_arrow_keys_and_enter_move_the_switch_and_only_the_current_segment_is_a_tab_stop(window, qapp):
     commit_to_cloud(window)
     route(window).request(LOCAL)
-    segments = window.topbar.ai_switch.segments
+    segments = window.ai_switch.segments
     buttons = segments._buttons
     assert buttons[LOCAL].focusPolicy() == Qt.FocusPolicy.TabFocus and buttons[CLOUD].focusPolicy() == Qt.FocusPolicy.NoFocus
     buttons[LOCAL].setFocus()
@@ -270,7 +288,7 @@ def test_the_arrow_keys_and_enter_move_the_switch_and_only_the_current_segment_i
 # -- AI setup ------------------------------------------------------------------------------------
 
 def open_setup(window):
-    window.topbar.ai_switch.caret.click()
+    window.ai_switch.caret.click()
     return window.ai_route.setup
 
 
@@ -284,13 +302,13 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert setup.heads[CLAUDE_CODE].text() == "Cloud · Claude Code"
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
     assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
-    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "switch or restart" in cloud_chat.toolTip()
     cloud_chat.setCurrentIndex(cloud_chat.findData("sonnet:high"))
     cloud_chat.activated.emit(cloud_chat.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.CHAT) == "sonnet:high"
     setup.refresh()
     assert cloud_chat.currentData() == "sonnet:high"
-    assert cloud_chat.currentText() in cloud_chat.toolTip() and "Restart Claude Code" in cloud_chat.toolTip()
+    assert cloud_chat.currentText() in cloud_chat.toolTip() and "switch or restart" in cloud_chat.toolTip()
     assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
@@ -303,6 +321,43 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     cloud.activated.emit(cloud.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.TRANSLATION) == "opus:high"
     assert ai_profile.model_choice(window.project, LOCAL, ai_profile.TRANSLATION) == ""      # each side its own
+
+
+class _Session:
+    def __init__(self, model, effort):
+        self.model, self.effort, self.typed = model, effort, []
+
+    def write(self, data):
+        self.typed.append(data)
+
+
+def test_a_new_claude_code_default_asks_a_running_session_to_switch_or_restart(window, monkeypatch):
+    from slidemage.ui.workspace import ai_setup
+    view = window.assistant.claude_code
+    session = _Session("sonnet", "high")
+    restarted, asked = [], []
+    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
+    monkeypatch.setattr(view, "session", session)
+    monkeypatch.setattr(view, "restart", lambda: restarted.append(True))
+    setup = open_setup(window)
+    cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
+
+    def pick(choice, answer):
+        monkeypatch.setattr(ai_setup, "ask_session_model",
+                            lambda _parent, label, can_switch: asked.append((label, can_switch)) or answer)
+        cloud_chat.setCurrentIndex(cloud_chat.findData(choice))
+        cloud_chat.activated.emit(cloud_chat.currentIndex())
+        return window.toast.findChildren(QLabel)[0].text()
+
+    assert pick("opus:high", ai_setup.SWITCH).endswith("The running Claude Code switched to it.")
+    assert asked[-1] == ("Opus · high", True) and session.typed == [b"/model opus\r"] and session.model == "opus"
+    assert pick("opus:low", ai_setup.RESTART).endswith("Claude Code restarted on it.")    # effort: restart only
+    assert asked[-1] == ("Opus · low", False) and restarted == [True] and len(session.typed) == 1
+    session.effort = "low"
+    asked.clear()
+    assert pick("opus:low", None).endswith(".") and not asked                               # what it runs on already
+    assert pick("haiku:low", None).endswith("keeps its model until it is restarted.")
+    assert session.model == "opus" and len(session.typed) == 1
 
 
 def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
@@ -370,7 +425,7 @@ def test_ai_setup_closes_on_escape_and_on_a_click_outside_but_not_on_its_anchor(
     qapp.processEvents()
     assert not setup.isVisible()
     open_setup(window)
-    window.topbar.ai_switch.caret.click()                                  # the ▾ again closes it
+    window.ai_switch.caret.click()                                  # the ▾ again closes it
     assert not window.ai_route.setup.isVisible()
 
 

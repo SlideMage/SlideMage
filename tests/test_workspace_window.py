@@ -169,7 +169,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
     window.state.set_ai_route("cloud")
-    for width, density in ((2000, "full"), (1400, "narrow"), (1200, "tight"), (1024, "tiny"), (2000, "full")):
+    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (900, "tiny"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density
@@ -185,14 +185,9 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
             ["Instr.", "During", "After"] if short else ["Instructor", "During course", "After course"])
         assert [button.text() for button in bar._modes._buttons.values()] == (
             ["Prev.", "Split", "Src.", "Info"] if short else ["Preview", "Split", "Source", "Details"])
-        # The AI switch is the last to shrink: it loses the name of its connection below 1320 px, and its labels
-        # in the narrowest window.
-        assert bar.ai_switch.state_label.text() == ("" if density in ("tight", "tiny") else "Claude Code")
-        assert [b.text() for b in bar.ai_switch.segments._buttons.values()] == (
-            ["", ""] if density == "tiny" else ["Local", "Cloud"])
-        for control in (bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile):
+        for control in (bar._views, bar._languages, bar._modes, bar._compile):
             assert control.width() >= control.minimumSizeHint().width()
-        for control in (bar._left_column, bar.ai_switch, bar._views, bar._languages, bar._modes, bar._compile,
+        for control in (bar._left_column, bar._views, bar._languages, bar._modes, bar._compile,
                         bar._right_column):
             assert bar.rect().contains(control.geometry())
         assert bar._left_column.width() == bar._right_column.width() == 30
@@ -202,10 +197,10 @@ def test_narrow_top_bar_keeps_hidden_text_and_images_reachable(topbar, window, q
     bar = topbar
     name = "An exceptionally long course deck name " * 10
     window.state.set_deck(make_deck(name))
-    bar.resize(1024, bar.height())
+    bar.resize(900, bar.height())
     window.state.set_dirty(True)
     qapp.processEvents()
-    assert bar._density == "tiny" and bar.minimumSizeHint().width() <= 1024
+    assert bar._density == "tiny" and bar.minimumSizeHint().width() <= 900
     assert bar._deck_button.width() <= DECK_MAX_WIDTHS["tiny"] and bar._deck_button.text().endswith("…")
     assert bar._deck_button.toolTip() == name
     assert bar._views.toolTip() == "View as"
@@ -297,7 +292,7 @@ def test_top_bar_allows_the_window_to_shrink_after_full_density(window, qapp):
     qapp.processEvents()
     # A full-density minimum must not stop the parent delivering the smaller width.
     assert window.width() == 1100
-    assert bar.width() == 1100 and bar._density in ("tight", "tiny")    # tight fits there with Windows' fonts
+    assert bar.width() == 1100 and bar._density != "full"
     assert bar.minimumSizeHint().width() <= 1100
     window.resize(1700, 800)
     qapp.processEvents()

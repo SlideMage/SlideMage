@@ -232,7 +232,7 @@ class FakeKeyring:
 def test_the_cloud_tab_has_the_key_and_points_to_the_switch_and_ai_setup_for_the_rest(qapp):
     sheet = open_sheet(qapp, tab=CLOUD)
     assert not hasattr(sheet.cloud, "connection") and not hasattr(sheet.cloud, "project_choice")
-    assert "the switch in the top bar" in sheet.cloud.findChildren(QLabel)[0].text()
+    assert "switch at the top of the assistant" in sheet.cloud.findChildren(QLabel)[0].text()
 
 
 @pytest.mark.parametrize("backend", ["missing", "unusable"])

@@ -6,7 +6,7 @@ small chip, and stops everything when the window closes.
 
 The chip stands over the bottom left of the workspace and is there only while there is something to say: previews
 being prepared (with how many are left), prepared previews waiting for the user to stop working (and why), or
-slides that cannot be rendered. Clicking it shows the decks in the order they are worked through and the controls:
+slides that cannot be rendered; once everything is rendered it says so in green. Clicking it shows the decks in the order they are worked through and the controls:
 pause, render now, skip the open deck, retry the failed slides.
 """
 from __future__ import annotations
@@ -496,7 +496,7 @@ class BackgroundPreviews(QObject):
             return (f"Previews paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
         if progress.failures:
             return f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered", "warning"
-        return "", "muted"
+        return "All previews are up to date.", "ok"
 
     def hover_text(self) -> str:
         """What the dial's tooltip and the status window's first line say."""

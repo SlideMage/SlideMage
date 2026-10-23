@@ -100,25 +100,23 @@ def test_the_header_names_each_route_and_what_its_conversation_runs_on(env, monk
     ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.CHAT, "qwen3:8b")
     ai_profile.set_model_choice(env.window.project, API, ai_profile.CHAT, "claude-sonnet-5-5")
     env.window.refresh_ai_models()
-    assert head.title.text() == "Local · Ollama"
-    assert head.subtitle.full_text() == "Chat with qwen3:8b · localhost:11434"
-    assert head.route_icon.text() == "computer" and head.route_icon.property("tone") == "local"
-    assert head.title.property("cloud") is False
+    assert head.ai_switch.toolTip().startswith("Local · Ollama")
+    assert head.route_note == "Chat with qwen3:8b · localhost:11434" and head.route_note in head.ai_switch.toolTip()
+    assert head.ai_switch.segments.current() == LOCAL and head.ai_switch.property("cloud") is False
     go(env, CLOUD, CLAUDE_CODE)
-    assert head.title.text() == "Cloud · Claude Code"
-    assert head.subtitle.full_text() == "Terminal · permissions are handled in Claude Code"
-    assert head.route_icon.text() == "cloud" and head.route_icon.property("tone") == "cloud"
-    assert head.title.property("cloud") is True
+    assert head.ai_switch.toolTip().startswith("Cloud · Claude Code")
+    assert head.route_note == "Terminal · permissions are handled in Claude Code"
+    assert head.ai_switch.segments.current() == CLOUD and head.ai_switch.property("cloud") is True
     go(env, CLOUD, API)
-    assert head.title.text() == "Cloud · Anthropic API" and head.subtitle.full_text() == "Chat with claude-sonnet-5-5"
+    assert head.ai_switch.toolTip().startswith("Cloud · Anthropic API") and head.route_note == "Chat with claude-sonnet-5-5"
     go(env, LOCAL)
-    assert head.subtitle.full_text().startswith("Chat with qwen3:8b")
+    assert head.route_note.startswith("Chat with qwen3:8b")
 
 
 def test_the_subtitle_without_a_chosen_local_model_and_with_another_host(env):
     app_settings.set_ollama_host(env.window.project, "http://ollama.test:8080/")
     env.window.refresh_ai_models()
-    assert header(env).subtitle.full_text() == "Chat with no model chosen · ollama.test:8080"
+    assert header(env).route_note == "Chat with no model chosen · ollama.test:8080"
 
 
 def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env, monkeypatch):

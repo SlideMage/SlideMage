@@ -461,7 +461,7 @@ def test_a_model_picked_in_the_menu_is_for_this_chat_only_and_the_default_stays(
     env.chat._set_route("llama3.1:8b")
     assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
     assert env.chat.route_chip.text() == "llama3.1:8b · Ollama" and env.chat.route().model == "llama3.1:8b"
-    assert env.window.assistant.header.subtitle.full_text().startswith("Chat with llama3.1:8b")
+    assert env.window.assistant.header.route_note.startswith("Chat with llama3.1:8b")
     menu = open_route_menu(env)
     assert items(menu)[:2] == [("qwen3:8b", "default", ""), ("llama3.1:8b", "this chat only", "check")]
     menu.close()

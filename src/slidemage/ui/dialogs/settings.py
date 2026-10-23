@@ -7,8 +7,8 @@
   handled and the GitHub token for them.
 * AI: how Claude Code translations address the audience in German (this project's `de_address`;
   ai/translation_style.py) and the glossary. The model of each AI task on each side, what Cloud means and the
-  project's Local | Cloud setting are not here: they are AI setup, the ▾ of the AI switch in the top bar
-  (workspace/ai_setup.py).
+  project's Local | Cloud setting are not here: they are AI setup, the ▾ of the AI switch at the top of the
+  assistant (workspace/ai_setup.py).
 * Cloud: the Anthropic API key, with where it is stored.
 * Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
 * Prompts: the system prompts of image descriptions and translation:
@@ -282,7 +282,7 @@ class AiTab(Page):
         layout = self.body
         layout.addWidget(caption(
             "The model of each AI task, what Cloud means and the project's Local | Cloud setting are in AI setup, "
-            "the ▾ of the switch in the top bar."))
+            "the ▾ of the Local | Cloud switch at the top of the assistant."))
         self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
                                         current=translation_style.de_address(project))
         self.address.changed.connect(lambda value: translation_style.set_de_address(project, value))
@@ -302,7 +302,7 @@ class CloudTab(Page):
         layout = self.body
         layout.addWidget(caption(
             "A cloud route (Claude Code or the Anthropic API) receives whatever its task sends: slide text, images, "
-            "notes. Which side the project uses is the switch in the top bar; what Cloud means (Claude Code or the "
+            "notes. Which side the project uses is the Local | Cloud switch at the top of the assistant; what Cloud means (Claude Code or the "
             "Anthropic API) and the project's own setting are in AI setup, its ▾."))
         self.key_edit = QLineEdit()
         self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)

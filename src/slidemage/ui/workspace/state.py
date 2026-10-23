@@ -7,7 +7,7 @@ panels all read and write, instead of reaching into each other: the current
 deck, the focused slide, the view being edited (Instructor / During-course /
 After-course), the language being edited (EN / DE), the selected slides, what the centre shows
 (Preview / Split / Source / Details) and whether any source has unsaved edits.
-The AI route (the top bar's Local | Cloud switch and the cloud connection) lives in ai/ai_profile.py; the state
+The AI route (the assistant's Local | Cloud switch and the cloud connection) lives in ai/ai_profile.py; the state
 only mirrors it for the Qt side and tells everything that shows a model, a picker or a conversation when the route
 changed. Each field has a setter and one signal; a setter that would not change the
 value does nothing, so listeners can connect without guarding against loops.

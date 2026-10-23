@@ -152,7 +152,7 @@ def test_application_input_watcher_needs_no_widget_polling_and_is_removed_on_sto
         watcher.stop()
 
 
-def test_the_chip_says_what_is_going_on_and_only_then(window):
+def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
     controller = window.background
     window.show()
     progress = Progress([DeckProgress("a", total=10, fresh=4), DeckProgress("b", total=5)], scanned_at=1.0)
@@ -168,8 +168,9 @@ def test_the_chip_says_what_is_going_on_and_only_then(window):
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], failures=2, scanned_at=1.0)
     assert controller.summary() == ("2 slides cannot be rendered", "warning")
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], scanned_at=1.0)
+    assert controller.summary() == ("All previews are up to date.", "ok")      # green
     controller.refresh()
-    assert controller.chip.isHidden() and controller.dial.isVisible()
+    assert controller.chip.isVisible() and controller.dial.isVisible()
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
     controller.renderer.progress = progress
     assert controller.summary()[0] == ""
