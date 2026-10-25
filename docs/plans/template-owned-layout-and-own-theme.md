@@ -175,7 +175,7 @@ format belongs to the template by design, but the copying is avoidable.
 | (new) setup layer | `SlideMage_setup.tex` |
 | (new) layout profiles | `SlideMage_layout_<name>.tex` |
 | (new) house citation format | `SlideMage_bibliography_default.tex` |
-| `Slidemaster_alt.lua`, `Slidemaster_layout.lua` | `SlideMage_alt.lua`, `SlideMage_layout.lua` |
+| `Slidemaster_alt.lua`, `Slidemaster_layout.lua` | `SlideMage_alt.lua`, `SlideMage_measure.lua` (not `_layout`, which would read like a layout profile) |
 | `Slidemaster_project_macros.tex` (project file) | `SlideMage_project_macros.tex` |
 | `Slidemaster.bib` (project file, default of `\SMUseBibliography`) | `SlideMage.bib` |
 | `$SLIDEMASTER_LATEX`, `$SLIDEMASTER_PROJECT` | `$SLIDEMAGE_LATEX`, `$SLIDEMAGE_PROJECT` |
