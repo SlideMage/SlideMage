@@ -1,0 +1,12 @@
+{
+  "project": "../example",
+  "framework": "../latex",
+  "copy": true,
+  "copy_exclude": [".build", ".previews", ".scripts", ".slidemage", "pdf"],
+  "decks": [
+    {"deck": "decks/slidemage-manual.tex"},
+    {"deck": "decks/slidemage-manual.tex", "template": "uni-graz"},
+    {"deck": "decks/slidemage-manual-copy.tex"},
+    {"deck": "decks/slidemage-manual-copy.tex", "template": "uni-graz"}
+  ]
+}
