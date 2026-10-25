@@ -42,7 +42,7 @@ def test_edit_guard_only_in_slide_scope(tmp_path):
     assert "outside it" in claude_scope.edit_problem(slide, tmp_path, other)
     assert claude_scope.edit_problem(slide, tmp_path, tmp_path / "decks" / "course.tex")
     assert claude_scope.edit_problem(slide, tmp_path, own) is None
-    assert claude_scope.edit_problem(slide, tmp_path, tmp_path / "Slidemaster.bib") is None
+    assert claude_scope.edit_problem(slide, tmp_path, tmp_path / "SlideMage.bib") is None
     assert claude_scope.edit_problem(deck, tmp_path, other) is None
     assert claude_scope.edit_problem(None, tmp_path, other) is None
 

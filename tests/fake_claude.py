@@ -52,7 +52,7 @@ if "-p" in sys.argv:
 if log:
     with open(log, "w") as f:
         json.dump({{"argv": sys.argv[1:], "cwd": os.getcwd(), "token": os.environ.get("SLIDEMAGE_MCP_TOKEN"),
-                   "term": os.environ.get("TERM"), "project": os.environ.get("SLIDEMASTER_PROJECT")}}, f)
+                   "term": os.environ.get("TERM"), "project": os.environ.get("SLIDEMAGE_PROJECT")}}, f)
 sys.stdout.write("Fake Claude Code\\r\\n> ")
 sys.stdout.flush()
 import tty

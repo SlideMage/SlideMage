@@ -92,7 +92,7 @@ def test_what_is_not_a_slide_or_cannot_be_judged_is_allowed(ctx, root):
     deck["tool_input"]["file_path"] = str(root / "decks" / "test.tex")
     assert claude_hook.blocked_reason(ctx, deck) is None
     bib = event(root, "Write", content="@book{x}")
-    bib["tool_input"]["file_path"] = str(root / "Slidemaster.bib")
+    bib["tool_input"]["file_path"] = str(root / "SlideMage.bib")
     assert claude_hook.blocked_reason(ctx, bib) is None
     assert claude_hook.blocked_reason(ctx, edit(root, "not in the file at all", "x")) is None      # Edit fails on its own
     assert claude_hook.blocked_reason(ctx, edit(root, "", "x")) is None
@@ -114,7 +114,7 @@ def test_a_relative_path_is_taken_from_the_session_folder(ctx, root):
 
 def run_main(monkeypatch, capsys, payload: str, root=None):
     if root is not None:
-        monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
+        monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(payload.encode())))
     code = claude_hook.main()
     return code, capsys.readouterr().err
@@ -143,14 +143,14 @@ def test_the_command_as_claude_code_runs_it(tmp_path, argv, tool, name, argument
     project = make_project_in(tmp_path)
     payload = json.dumps({"cwd": str(project), "tool_name": tool, "tool_input": {
         "file_path": str(project / "slides" / name), **arguments}})
-    env = {**os.environ, "SLIDEMASTER_PROJECT": str(project), "QT_QPA_PLATFORM": "offscreen"}
+    env = {**os.environ, "SLIDEMAGE_PROJECT": str(project), "QT_QPA_PLATFORM": "offscreen"}
     done = subprocess.run([sys.executable, *argv], input=payload.encode(), env=env,
                           capture_output=True, timeout=60)
     assert done.returncode == 2 and reason in done.stderr
 
 
 def make_project_in(tmp_path):
-    """A real project folder (the subprocess reads it by SLIDEMASTER_PROJECT, so it needs the marker file)."""
+    """A real project folder (the subprocess reads it by SLIDEMAGE_PROJECT, so it needs the marker file)."""
     from slidemage import project
 
     root = tmp_path / "proj"

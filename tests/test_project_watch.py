@@ -23,11 +23,11 @@ def rel(root, paths):
 
 
 def test_only_text_files_of_the_project_are_seen(tmp_path):
-    make(tmp_path, "slides/a-current.tex", "decks/d.tex", "Slidemaster.bib", "notes.md", "media/pic.png",
+    make(tmp_path, "slides/a-current.tex", "decks/d.tex", "SlideMage.bib", "notes.md", "media/pic.png",
          ".build/x.tex", ".slidemage/app_settings.json", "decks/.hidden/x.tex", "pdf/out.tex", ".gitignore.txt",
          "slides/.backups/old.tex", "sub/pdf/ok.tex")
     seen = rel(tmp_path, project_watch.scan(tmp_path))
-    assert seen == ["Slidemaster.bib", "decks/d.tex", "notes.md", "slides/a-current.tex", "sub/pdf/ok.tex"]
+    assert seen == ["SlideMage.bib", "decks/d.tex", "notes.md", "slides/a-current.tex", "sub/pdf/ok.tex"]
 
 
 def test_generated_wrappers_never_appear_as_project_changes(tmp_path):

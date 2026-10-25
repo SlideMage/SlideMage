@@ -30,8 +30,8 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `Slidemaster_preamble_base.tex`, `Slidemaster_alt.lua`. Institution-independent. |
-| `example/` | A complete Slidemaster project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`Slidemaster_preamble_uni-graz.tex`, `schemes/`), `Slidemaster.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
+| `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `SlideMage_base.tex`, `SlideMage_alt.lua`. Institution-independent. |
+| `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
 | `.github/workflows/` | `release.yml` builds the Windows and Linux executables for every version tag; `ci.yml` (run by hand) runs the tests and compiles the demo decks. |
@@ -52,7 +52,7 @@ cd example/decks && latexmk test.tex # or compile directly
 ```
 
 For your own project, copy `example/` anywhere; if it doesn't sit next to
-`latex/`, point `SLIDEMASTER_LATEX` at this repo's `latex/` folder. See
+`latex/`, point `SLIDEMAGE_LATEX` at this repo's `latex/` folder. See
 [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) for prerequisites
 (LuaLaTeX, biber, optional Ollama).
 
@@ -303,8 +303,16 @@ From the command line, without a window:
 
 prints the report, exits with 1 if something may break, and with `--fix` runs the
 automatic updates first. A migration is plain planning (`migrate(root)` returns the new
-bytes of each file to rewrite), idempotent, and written atomically, with
-line endings kept.
+bytes of each file to rewrite, or `None` for a file to remove, so a rename is both),
+idempotent, and written all or nothing, with line endings kept.
+
+The framework's old name was "Slidemaster". The change `slidemage-names-and-setup-layer`
+(`src/slidemage/compat_names.py`) renames the project's `Slidemaster_preamble_<key>.tex`
+to `SlideMage_template_<key>.tex`, `Slidemaster_project_macros.tex` to
+`SlideMage_project_macros.tex` and `Slidemaster.bib` to `SlideMage.bib`, and rewrites the
+names inside decks, templates and `.latexmkrc` files. The environment variables are now
+`$SLIDEMAGE_LATEX` and `$SLIDEMAGE_PROJECT`; the old names are no longer read, and a
+variable still set under its old name is reported once in the log and in this sheet.
 
 The first registered change is not a breaking one but the worked example of a
 migration (`src/slidemage/compat_bibliography.py`, v5.32.0): course decks that carry
@@ -385,7 +393,7 @@ copied package files in `texmf/` record the exact originals.
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham
   theme itself. Don't edit; these are the upstream theme sources.
-- `Slidemaster_preamble_base.tex` — the project's shared customization
+- `SlideMage_base.tex` — the project's shared customization
   layer: the footer (course name + slide ID + frame number), the
   `\slide{}`/`\slideversion{}` loading commands (and their student-version-
   excludable counterparts, `\omitslide{}`/`\omitslideversion{}`), the
@@ -394,17 +402,17 @@ copied package files in `texmf/` record the exact originals.
   presenter-attention — see "Special frame types" below). Institution-
   agnostic: everything here refers to colors/logos only through the names
   the institution layer below defines.
-- `Slidemaster_preamble_uni-graz.tex` — a thin institution layer: the `c_*`
+- `SlideMage_template_uni-graz.tex` — a thin institution layer: the `c_*`
   color palette definitions, the institute logo path, and the per-logo
-  calibration lengths, followed by `\input{Slidemaster_preamble_base}`. A
+  calibration lengths, followed by `\input{SlideMage_base}`. A
   deck picks its institution by `\input{}`ing this file (never the base
   file directly). The original project has two more of these (for two
   other institutions), each following exactly this same pattern with its
   own colors/logo and nothing else different — not included in this copy,
   but add your own the same way if you need a second institution: copy
   this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
-  the trailing `\input{Slidemaster_preamble_base}` line.
-- `latex/Slidemaster_preamble_slidemage.tex` (with `latex/slidemage-logo.pdf`)
+  the trailing `\input{SlideMage_base}` line.
+- `latex/SlideMage_template_slidemage.tex` (with `latex/slidemage-logo.pdf`)
   — the generic **SlideMage template** (since v5.7.0; part of the framework
   since v5.9.0), for decks that don't belong to an institution: the
   SlideMage logo (a vector copy of the app icon), dark title and footer
@@ -414,8 +422,8 @@ copied package files in `texmf/` record the exact originals.
   combines checked against WCAG 2.1 (see the file's comments). Same
   structure as the Graz layer, but in `latex/` rather than in a project:
   every project finds it on the same search path as
-  `Slidemaster_preamble_base.tex`, so any deck can select it with
-  `\input{Slidemaster_preamble_slidemage}` without a copy of its own (a
+  `SlideMage_base.tex`, so any deck can select it with
+  `\input{SlideMage_template_slidemage}` without a copy of its own (a
   project's own copy would win). SlideMage keeps its previews apart from
   the institutions' (template name "SlideMage"); the manual,
   `decks/slidemage-manual.tex`, is the demo deck in it.
@@ -423,7 +431,7 @@ copied package files in `texmf/` record the exact originals.
   deck -- the Source view's Render menu and the Preview, tikz
   illustration renders -- uses the template chosen under Settings → General
   → Slide rendering, which lists every template a deck of the project can
-  find: the project's own `Slidemaster_preamble_<name>.tex` files plus the
+  find: the project's own `SlideMage_template_<name>.tex` files plus the
   framework's SlideMage template. Out of the box that is the SlideMage
   template; if it can't be found, the first other template there is.
   A deck's own renders always use the deck's template.
@@ -443,13 +451,13 @@ copied package files in `texmf/` record the exact originals.
   SlideMage's Images page. See "Screen-reader accessibility" below.
 - `media/alt-text.csv` — a **generated** compile-time projection of the JSON
   store above (image, role, status, short alt only), rewritten automatically
-  every time the store saves. Exists only because `Slidemaster_alt.lua` reads
+  every time the store saves. Exists only because `SlideMage_alt.lua` reads
   it directly at compile time with a hand-rolled CSV parser and LuaTeX has no
   JSON library — never hand-edit it, and don't be surprised to see it change
   on every save; it is derived, the same as `transcripts/` below.
-- `Slidemaster_alt.lua` — the compile-time half of the alt-text system: parses
+- `SlideMage_alt.lua` — the compile-time half of the alt-text system: parses
   `media/alt-text.csv` and tells the `\includegraphics` wrapper in
-  `Slidemaster_preamble_base.tex` what to do with each image. In its own file
+  `SlideMage_base.tex` what to do with each image. In its own file
   rather than inline in `\directlua{}` because TeX tokenizes that argument
   first, so a `%` in a Lua string pattern would silently truncate the line.
 - `transcripts/` — generated accessible transcripts (Markdown + HTML), one per
@@ -483,7 +491,7 @@ copied package files in `texmf/` record the exact originals.
   (e.g. `t-Uni-FM2-2027s.tex`), plus `decks/#workdeck.tex`, a single,
   reusable, throwaway scratch deck for quick iteration on whichever slides
   are currently being worked on, without recompiling a whole real deck.
-- [SlidemasterManual.md](docs/SlidemasterManual.md) — concise reference for core
+- [SlideMageCommands.md](docs/SlideMageCommands.md) — concise reference for core
   functionality, including the deck version system for instructor/during-course/
   after-course decks.
 - `src/slidemage/` — SlideMage, a PySide6 (Qt) app: one workspace per deck
@@ -505,7 +513,7 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 ```latex
 \documentclass[aspectratio=169]{beamer}
 \usetheme{gotham}
-\input{Slidemaster_preamble_uni-graz}
+\input{SlideMage_template_uni-graz}
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 \begin{document}
@@ -514,7 +522,7 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 \end{document}
 ```
 
-Relative paths inside `Slidemaster_preamble_uni-graz.tex` (and `\slide{}`'s own
+Relative paths inside `SlideMage_template_uni-graz.tex` (and `\slide{}`'s own
 `\input{slides/...}`) assume the project root as the working directory. Every
 deck lives one level down, in `decks/`, so needs two extra lines right after
 `\documentclass` so it can *also* be compiled from inside `decks/` itself,
@@ -530,8 +538,8 @@ not just from the root:
 This adds the project root as a *fallback* search location — tried only if
 the plain relative path isn't found relative to wherever the compiler was
 actually invoked from — so every `\input`/`\slide{}`/`\includegraphics`
-call throughout `Slidemaster_preamble_uni-graz.tex` and the slide files themselves
-(not just the deck file's own `\input{Slidemaster_preamble_uni-graz}`) resolves
+call throughout `SlideMage_template_uni-graz.tex` and the slide files themselves
+(not just the deck file's own `\input{SlideMage_template_uni-graz}`) resolves
 correctly either way, with no changes needed to any of those other files.
 `decks/slidemage-manual.tex` has this already; copy it into any new deck under `decks/`.
 
@@ -706,7 +714,7 @@ and writes a real `.pptx` next to its PDF in `pdf/`. Every beamer overlay/reveal
 (topmost = first reveal step) instead of getting its own slide, with each
 image but the last given a click-triggered "Fade" ("Verblassen") exit
 animation that peels it away to reveal the one underneath. This exists so
-PowerPoint's own recording/presenter tools can be used with a SlideMaster
+PowerPoint's own recording/presenter tools can be used with a SlideMage
 deck, since PowerPoint can't open a compiled PDF directly -- and since
 PowerPoint's ink annotations paint in a layer above everything on a slide,
 an annotation drawn during a live recording stays visible across that
@@ -725,7 +733,7 @@ compiles on its own, on a machine that has only a TeX distribution: pick a folde
 creates `<deck name>-latex/` in it (asking before it replaces one that is already there). The folder
 holds the deck at its top level, the slides it uses under `slides/`, only the images those slides use
 under `media/`, and everything else the build reads: the institution template and
-`Slidemaster_preamble_base.tex` with the theme files, logos and schemes they name, the `.bib`, the
+`SlideMage_base.tex` with the theme files, logos and schemes they name, the `.bib`, the
 code files of `snippets/` and the image descriptions. Build it with `latexmk <deck name>.tex`; the
 `.latexmkrc` in the folder selects LuaLaTeX. A file the deck names that the project does not have is
 listed in the Log (and counted in the toast); the rest is exported anyway. It copies the sources, so
@@ -778,7 +786,7 @@ manual can't be moved into another group by accident. A copy made with
 it is moved, copied or archived:
 
 - **Template**: the institution template the deck loads
-  (`\input{Slidemaster_preamble_<name>}`), chosen from the templates the
+  (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[en]` or `[de]`.
 - **Dark slides** (supported templates, including the example Graz template):
@@ -821,18 +829,18 @@ English deck, group names ("Standardgruppe"), session types ("Abhaltung",
 German rather than half-translated, and dates, times and rooms are kept as
 the course system lists them.
 
-### Decks with a bibliography (`\fullcite{}`/`Slidemaster.bib`)
+### Decks with a bibliography (`\fullcite{}`/`SlideMage.bib`)
 
 biblatex+biber is opt-in per deck (not loaded globally): a deck that wants
 references puts **`\SMUseBibliography`** in its preamble, after the template
 is `\input`. That one command loads biblatex with the template's options,
-registers `Slidemaster.bib` (or `\SMUseBibliography[other.bib]`) so that biber
+registers `SlideMage.bib` (or `\SMUseBibliography[other.bib]`) so that biber
 finds it whether the compile starts in the project root or in `decks/`, and
 applies the template's citation format. The format is the template's job:
 the institution template redefines `\SMBiblatexOptions` (package options) and
 `\SMBibliographyStyle` (name format, field formats, bibliography drivers) --
-`Slidemaster_preamble_uni-graz.tex` and the SlideMage template
-(`latex/Slidemaster_preamble_slidemage.tex`) carry the author's house format,
+`SlideMage_template_uni-graz.tex` and the SlideMage template
+(`latex/SlideMage_template_slidemage.tex`) carry the author's house format,
 `Markowitz, H., 1952. "Portfolio Selection", Journal of Finance 7(1), 77--91.`
 (every author as "Family, Initials.", year unparenthesized, title in quotes,
 type-specific tail for books, articles, online sources and reports). A
@@ -841,7 +849,7 @@ that wants a format of its own redefines the two macros before
 `\SMUseBibliography`, or skips the command and loads biblatex itself.
 `decks/slidemage-manual.tex` is this copy's own live example, enough to
 resolve the manual's one `\fullcite{markowitz1952}` (slide `1nz`) against this
-copy's trimmed `Slidemaster.bib` (a single entry -- see that file's own header
+copy's trimmed `SlideMage.bib` (a single entry -- see that file's own header
 comment).
 This needs one extra step beyond the usual two `lualatex` passes above —
 **`biber`, run in between them**:
@@ -849,7 +857,7 @@ This needs one extra step beyond the usual two `lualatex` passes above —
 ```
 cd decks
 lualatex test.tex   # 1st pass -- also tells biber what to fetch
-biber test           # resolves citations from Slidemaster.bib into .bbl
+biber test           # resolves citations from SlideMage.bib into .bbl
 lualatex test.tex   # 2nd pass -- typesets the resolved citations
 lualatex test.tex   # 3rd pass -- for the tikz "remember picture" bits, as usual (not exercised by this deck's demo slides, but harmless to always run)
 ```
@@ -859,7 +867,7 @@ like this:
 
 ```
 lualatex t-Uni-FM2-2027s.tex   # 1st pass -- also tells biber what to fetch
-biber t-Uni-FM2-2027s          # resolves citations from Slidemaster.bib into .bbl
+biber t-Uni-FM2-2027s          # resolves citations from SlideMage.bib into .bbl
 lualatex t-Uni-FM2-2027s.tex   # 2nd pass -- typesets the resolved citations
 lualatex t-Uni-FM2-2027s.tex   # 3rd pass -- for the tikz "remember picture" bits, as usual
 ```
@@ -876,7 +884,7 @@ can be configured to run this sequence automatically as their default build
 command; check that setting first so it isn't forgotten on every edit.
 
 Since `biber` (unlike `lualatex`, which follows this deck's own
-`\input@path`/`\graphicspath` fallback above) reads `Slidemaster.bib`'s path
+`\input@path`/`\graphicspath` fallback above) reads `SlideMage.bib`'s path
 literally from wherever it was invoked, `\addbibresource{}` resolves it at
 `lualatex`-compile time based on the *actual* working directory, so the
 `biber` step above works whether the whole sequence runs from the project
@@ -1338,7 +1346,7 @@ day-to-day workflow. Every slide's id-slug now carries a language
 segment as its second hyphen-delimited part —
 `slides/<id>-<LANG>-<slug>-current.tex`, `LANG` one of `EN`, `DE`, or
 `mult` (multilingual, see below) — parsed at compile time by
-`Slidemaster_preamble_base.tex`'s `\setSlideLanguageFromSlug` and shown
+`SlideMage_base.tex`'s `\setSlideLanguageFromSlug` and shown
 in the footer appended directly to the tracked version:
 `v1.1.0` becomes `v1.1.0EN`/`v1.1.0DE` (only once a version is tracked at
 all — an untracked slide's footer still shows no `v...` segment).
@@ -1447,7 +1455,7 @@ only removes files no other installed model still shares.
 
 ## Available layouts
 
-Defined in `Slidemaster_preamble_base.tex` (the shared layer — not in any
+Defined in `SlideMage_base.tex` (the shared layer — not in any
 institution file, since none of this depends on the palette):
 
 - `standardframe` — the default content slide (yellow dot bullets, matching PowerPoint):
@@ -1462,7 +1470,7 @@ institution file, since none of this depends on the palette):
   bullet is visibly taller than a plain-text line (the fraction bar sits on
   the baseline with the numerator/denominator stacked around it), so it
   reads as cramped against plain-text neighbors without extra headroom.
-  `\tallitem` (`Slidemaster_preamble_base.tex`) is a drop-in `\item`
+  `\tallitem` (`SlideMage_base.tex`) is a drop-in `\item`
   replacement that adds that headroom — use it in place of `\item` both on
   the fraction's own line *and* on whichever item renders immediately after
   it (the fraction extends below its own line too, not just above), unless
@@ -1598,7 +1606,7 @@ institution file, since none of this depends on the palette):
   `-\SMContentTopAlign+6.02pt` intrinsic gap correction on the anchor
   node (confirmed empirically, not derived — see
   `\SMFloatingInfoblockRightAlign`'s own comment in
-  `Slidemaster_preamble_base.tex`) —
+  `SlideMage_base.tex`) —
   `slides/k4p-Introductory-Question-Answer-current.tex` and
   `slides/2s4-EN-Groups-SE-COF-current.tex` are worked examples.
 - Title slide: `\titleframe{Title}{Author\\Term}` — see "Special frame types"
@@ -1614,7 +1622,7 @@ institution file, since none of this depends on the palette):
   default behavior on `\section{}` is to *also* auto-insert its own plain,
   unstyled divider frame plus a mini current-section-highlighted outline
   frame, which would otherwise show up redundantly right next to this
-  project's own hand-styled `sectionframe`. `Slidemaster_preamble_base.tex` turns
+  project's own hand-styled `sectionframe`. `SlideMage_base.tex` turns
   that default off (`\gothamset{sectionframe default=false}`) so
   `\section{}` only feeds the outline, without side effects on the frame
   sequence itself.
@@ -1706,7 +1714,7 @@ pixel-identical; everything below is what new slides should use.
   slide then needs no `[fragile]` frame, and the code is exactly the text
   in that file): Fira Mono on a light gray panel, every control sequence and
   every comment in its own colour. The three colours are named colours a
-  template sets before `\input{Slidemaster_preamble_base}` (since v5.17.0):
+  template sets before `\input{SlideMage_base}` (since v5.17.0):
   `SMCodeKeywordColor`, `SMCodeCommentColor`, `SMCodeBackgroundColor`; a
   template that doesn't set them gets the highlight colour, `c_primary_gray`
   and `c_tertiary_gray`, which is unreadable with a yellow or orange
@@ -1931,7 +1939,7 @@ constant**, and anything anchoring itself directly against it (as neb/u97's
 own decorative-image overlay does, the `sideimageframe` technique from
 "Side image" below applied to `sectionframe`'s own box) needs the bar's real,
 per-title rendered height, not this target.
-`\SMSectionframeTrueBoxBottom` (`Slidemaster_preamble_base.tex`, right
+`\SMSectionframeTrueBoxBottom` (`SlideMage_base.tex`, right
 after `\SMSectionframeBoxHeight`'s own definition) is that measured
 value — but it's **only valid for a title with no descenders**, matching the
 two slides (neb/u97) that currently use it; a *different* sectionframe with
@@ -2000,7 +2008,7 @@ Two rules for the rest of the slide:
   a `\parbox` (rather than the node's own `text width`) precisely so that
   works, and so the reveal doesn't cover the source line and footer that
   follow it; see the comment above that node in
-  `Slidemaster_preamble_base.tex` for the two beamer/TikZ failures this
+  `SlideMage_base.tex` for the two beamer/TikZ failures this
   avoids. Existing quote slides render pixel-identically.
 
 Every piece of this — box, logo, quote text, attribution — is drawn as a
@@ -2211,7 +2219,7 @@ Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 in tikz, etc. — see the manual's slide
 [slides/1u5-EN-Color-and-Emphasis-current.tex](example/slides/1u5-EN-Color-and-Emphasis-current.tex)
 for `\textcolor{}` in body text). These names are shared machinery, defined
-once per institution in that institution's own `Slidemaster_preamble_*.tex`
+once per institution in that institution's own `SlideMage_template_*.tex`
 (see the directory layout above for the base/institution-layer split) with
 different hex values — a slide
 that uses `c_secondary_blue` renders in Graz's blue, MCI's blue, or
@@ -2235,7 +2243,7 @@ each paired with its tertiary/lighter variant), and finally the three
 `c_custom_*` colors last — unlike every other color here, not part of any
 institution's official palette, just supporting colors this project defines
 itself (see each one's own `\definecolor` comment in whichever
-`Slidemaster_preamble_*.tex` is current); the name flags that on sight, so
+`SlideMage_template_*.tex` is current); the name flags that on sight, so
 it doesn't get mistaken for an official palette color when picking one for
 something new.
 
@@ -2264,7 +2272,7 @@ The sequence itself is a plain list, overridable with `\setfootnotesymbols{}`
 \setfootnotesymbols{†,‡,§}     % from here to the end of the deck
 ```
 
-Call it once per deck (e.g. right after `\input{Slidemaster_preamble_uni-graz}`) for a
+Call it once per deck (e.g. right after `\input{SlideMage_template_uni-graz}`) for a
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
@@ -2330,7 +2338,7 @@ patches, the strip is positioned via a remembered tikz coordinate, so it too
 needs the usual second compile pass. The strip's geometry (its vertical run,
 top gap, and inset from the page edge) is set by
 `\SMSideFootnoteHsize`/`\SMSideFootnoteTopSep`/`\SMSideFootnoteRightInset`
-in `Slidemaster_preamble_base.tex`; the first is calibrated against the measured
+in `SlideMage_base.tex`; the first is calibrated against the measured
 title-bar position and needs re-measuring if the title bar ever changes.
 
 `verify_sidefootnotes.tex` is a compilable demo/regression deck for this:
@@ -2345,7 +2353,7 @@ checking the switch resets.
 > **three-way deck version system** — `\deckversion[...]` plus
 > `\conditionalslide{}`/`\conditionalpause`/`\deckreveal{}` — described
 > under "Deck version system" at the end of this file and in
-> [SlidemasterManual.md](docs/SlidemasterManual.md). Reach for that one when
+> [SlideMageCommands.md](docs/SlideMageCommands.md). Reach for that one when
 > setting up a new course deck. What's below is still live (the demo
 > decks `test.tex`/`test-student.tex` that showed it in `example/` were
 > retired in v5.16.0). The two do not interoperate:
@@ -2365,7 +2373,7 @@ and `\omitslideversion{}` are drop-in replacements for
 ```
 
 — and `\studentversion`, called anywhere in a deck (e.g. right after
-`\input{Slidemaster_preamble_uni-graz}`), switches that one compile into the "handout"
+`\input{SlideMage_template_uni-graz}`), switches that one compile into the "handout"
 variant: every tagged slide is skipped entirely (not blanked out or hidden,
 but never `\input` at all, so it produces no frame and no blank page), *and*
 it forces beamer's own `handout` mode (normally only reachable via the
@@ -2407,7 +2415,7 @@ variants can never drift apart on which slides they contain:
 
 ```latex
 % course.tex (instructor)          % course-student.tex (handout)
-\input{Slidemaster_preamble_uni-graz}          \input{Slidemaster_preamble_uni-graz}
+\input{SlideMage_template_uni-graz}          \input{SlideMage_template_uni-graz}
 ...                                \studentversion
                                     ...
 \begin{document}                   \begin{document}
@@ -2464,7 +2472,7 @@ on the left and a notes panel on the right holding that slide's own
 `\note{}` text (blank if it has none — see "Speaker notes" above), plus a
 compact one-line breadcrumb above it (current section/subsection/frame
 title, whichever apply) if this deck uses `\section{}`. The note-page
-template is customized (`Slidemaster_preamble_base.tex`'s own
+template is customized (`SlideMage_base.tex`'s own
 `\SMPresenterModeOverride` block) to drop beamer's own default
 thumbnail-of-the-current-slide and printed compile-date from that
 panel — redundant since presenter software already shows the current
@@ -2632,7 +2640,7 @@ What actually works: `/Artifact` is a standalone PDF
 marked-content tag (PDF spec 14.8.2.2), valid in *any* PDF with or without a
 structure tree — no `/Properties` resource entry or MCID needed.
 `\SMArtifactBegin{dict}`/`\SMArtifactEnd` (in
-`Slidemaster_preamble_base.tex`, "PDF accessibility" comment) wrap a region in
+`SlideMage_base.tex`, "PDF accessibility" comment) wrap a region in
 `/Artifact <<dict>> BDC ... EMC` via LuaTeX's raw
 `\pdfextension literal direct{...}` primitive, e.g.
 `\SMArtifactBegin{/Type /Pagination /Subtype /Footer}` for the footer,
@@ -2662,7 +2670,7 @@ Per frame type:
   unmarked, this one is explicitly decorative filler, marked unconditionally
   regardless of which image file the slide happens to use.
 
-**Verification.** In the Slidemaster project, `decks/verify_accessibility.tex`
+**Verification.** In the SlideMage project, `decks/verify_accessibility.tex`
 is a compilable regression deck exercising every frame type above, including
 one real `sideimageframe` slide and one real `fullbleedframe` slide, on top of
 that project's shared demo slide list `test-slides.tex` (`example/` had a copy
@@ -2692,7 +2700,7 @@ Rerun after any palette change.
 `media/alt-text.json` marking it `decorative` or `informative` (mirrored at
 compile time into `media/alt-text.csv`, since that's what the LaTeX/Lua side
 actually reads), and the `\includegraphics` wrapper in
-`Slidemaster_preamble_base.tex` ("Alt-text manifest" comment) wraps every
+`SlideMage_base.tex` ("Alt-text manifest" comment) wraps every
 decorative one in `/Artifact <</Type /Layout>>` so screen readers skip it
 instead of announcing a bare filename. An **informative** image with a short
 alt also gets that text typeset beside it in PDF text rendering mode 3 — invisible on the page,
@@ -2831,7 +2839,7 @@ system prompt tends to make the model abandon the required output format.
 A hand-drawn `tikz` diagram (a timeline, a payoff chart, a flowchart —
 anything drawn directly in a slide's own `.tex` rather than an
 `\includegraphics`-ed file) joins the exact same workflow above. Wrap it in
-`\tikzillustration{ID}` (`Slidemaster_preamble_base.tex`) instead of a bare
+`\tikzillustration{ID}` (`SlideMage_base.tex`) instead of a bare
 `tikzpicture`:
 
 ```latex
@@ -2912,7 +2920,7 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   English otherwise) — driven by the deck's own fixed language, not a
   separate transcript-time choice.
 - `\note{}` content never reaches it. Citations resolve against
-  `Slidemaster.bib`.
+  `SlideMage.bib`.
 - Colour is omitted: `\textcolor{...}{text}`, `\colorbox`, `\fcolorbox`,
   `\color{...}`, `\cellcolor`/`\rowcolor`/`\columncolor` keep only their
   text.
@@ -2964,7 +2972,7 @@ on everything that compiles.
 | `math-delims` | error | unpaired `\[ \]` or `\( \)`, different number of `\left` and `\right` |
 | `ampersand` | error | unescaped `&` in running text (allowed in tabular/array/align/matrix/tikz and in URLs) |
 | `hash` | error | unescaped `#` outside macro definitions and URLs |
-| `citation` | error | `\fullcite`/`\cite`/`\textcite`/`\parencite`/... with a key that is not in `Slidemaster.bib` |
+| `citation` | error | `\fullcite`/`\cite`/`\textcite`/`\parencite`/... with a key that is not in `SlideMage.bib` |
 | `image` | error | `\includegraphics`, `\chapterlogo`, `\fullbleedframe`, `sideimageframe`, `\cornerfigure`, `besidefigure`, `\fitfigure`, `\sectionfigure` pointing at a file that does not exist (extension optional) |
 | `code-file` | error | `\SMCodeFile{path}` pointing at a file that does not exist (path relative to the project root) |
 | `slide-file` | error | a deck call whose `slides/<id>-current.tex` / `-vX-Y-Z.tex` does not exist |
@@ -2998,7 +3006,7 @@ A slide exempts itself from a check with a comment line in its own file,
 `%% layout-check: skip top -- why` (several checks comma-separated, or `all`);
 the exemptions are read from the slide files of the PDF's project (`--project`,
 else the folder with `slide_ids.csv` above the PDF, else
-`$SLIDEMASTER_PROJECT`). Exit code 1 if anything is reported. The Right Margin
+`$SLIDEMAGE_PROJECT`). Exit code 1 if anything is reported. The Right Margin
 is the logo's visible right edge, measured on the rendered page (since
 v5.15.1); in every template it coincides with the framework's own Right Margin,
 `\gothamFrametitleRightpading` from the page edge.
@@ -3059,7 +3067,7 @@ This project supports three deck versions for each course:
 - **during-course** — restricted content (given to students at start of term)
 - **after-course** — intermediate content (given to students at end of term)
 
-See `SlidemasterManual.md` for details on how to use the deck version system,
+See `SlideMageCommands.md` for details on how to use the deck version system,
 including how to mark slides/steps for specific versions and how to compile
 each variant.
 
@@ -3183,7 +3191,7 @@ previews do not replace the full-slide snapshot.
 For a saved source with automatic rebuilds:
 
 ```sh
-SLIDEMASTER_PROJECT=/path/to/project python -m slidemage.preview_cli \
+SLIDEMAGE_PROJECT=/path/to/project python -m slidemage.preview_cli \
   /path/to/project/slides/abc-EN-Example-current.tex \
   --deck my-deck --watch --open
 ```
@@ -3222,7 +3230,7 @@ essentially unchanged.
 | Part | Licence |
 |---|---|
 | The SlideMage application (`src/`, `tools/`, `packaging/`, `tests/`) | GPL-3.0-or-later |
-| The Slidemaster LaTeX framework (`latex/`, except Gotham) | LPPL 1.3c or later |
+| The SlideMage LaTeX framework (`latex/`, except Gotham) | LPPL 1.3c or later |
 | The Gotham beamer theme (`latex/beamer*gotham.sty`, `gotham*`), unchanged | LPPL 1.3c, © Romain Noël |
 | This documentation and the example project (`README.md`, `docs/`, `example/`) | CC BY-SA 4.0 |
 

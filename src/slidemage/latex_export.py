@@ -144,7 +144,7 @@ class _Collector:
             if source.parent == self.ctx.decks_dir or source == self.deck.path:
                 self._scan_slides(text)
             if DEFAULT_BIBLIOGRAPHY_RE.search(text):
-                self.reference("Slidemaster.bib", ("",), own, True)
+                self.reference("SlideMage.bib", ("",), own, True)
         for match in NAMED_FILE_RE.finditer(text):
             command = match.group("command")
             suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "usepackage", "RequirePackage",

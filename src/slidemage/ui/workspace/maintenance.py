@@ -61,6 +61,8 @@ def check_project_compat(window) -> None:
     except Exception as exc:  # noqa: BLE001 -- a broken detector must not stop the app
         window.log(f"Couldn't check the project's compatibility: {exc}")
         return
+    for note in evaluation.environment_notes:
+        window.log(note)
     if evaluation.newer_notice:
         compat_newer_notice(window, evaluation.newer_notice, app_version)
     if evaluation.loud:

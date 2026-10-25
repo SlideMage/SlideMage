@@ -185,7 +185,7 @@ def test_invalid_inputs_do_not_write(env, args):
     assert env.path.read_bytes() == original and not env.events and not env.renders
 
 
-@pytest.mark.parametrize("slide", ["Slidemaster.bib", "decks/test.tex", "slides/missing-current.tex", "../outside.tex"])
+@pytest.mark.parametrize("slide", ["SlideMage.bib", "decks/test.tex", "slides/missing-current.tex", "../outside.tex"])
 def test_non_live_slides_are_refused(env, slide):
     result = modify(env, slide=slide)
     assert result.is_error and not env.events and not env.renders
@@ -215,7 +215,7 @@ def test_timing_is_silent_when_off(env, monkeypatch):
 
 def test_timing_records_the_request_in_order(env, monkeypatch):
     monkeypatch.setenv("SLIDEMAGE_TIMING", "1")
-    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(env.root))
+    monkeypatch.setenv("SLIDEMAGE_PROJECT", str(env.root))
     monkeypatch.setattr("sys.stdin", SimpleNamespace(buffer=io.BytesIO(b'{"hook_event_name": "UserPromptSubmit"}')))
     assert claude_hook.main() == 0
     assert not modify(env).is_error

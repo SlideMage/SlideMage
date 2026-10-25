@@ -235,7 +235,7 @@ def create_slide_file(
 ) -> Path:
     """Create slides/<id>-<LANG>-<slug>-current.tex (added 2026-08-24:
     `language`, one of slide_language.LANGUAGES, is always encoded into
-    the filename itself -- Slidemaster_preamble_base.tex's own
+    the filename itself -- SlideMage_base.tex's own
     \\setSlideLanguageFromSlug parses it back out at compile time).
     The content is `body` when given (e.g. another slide's
     slide_body()), else the packaged starter template (mirrors slide.new.R);

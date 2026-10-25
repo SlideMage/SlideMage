@@ -184,7 +184,7 @@ def thumbnail_png(png: bytes) -> bytes | None:
 
 
 def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
-    roots = [project_root, Path(env.get('SLIDEMASTER_LATEX') or project_root.parent / 'latex')]
+    roots = [project_root, Path(env.get('SLIDEMAGE_LATEX') or project_root.parent / 'latex')]
     for name in ('TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS', 'LUAINPUTS'):
         for value in env.get(name, '').split(os.pathsep):
             if not value:
@@ -244,7 +244,7 @@ def configuration_state(project_root: Path, env: dict) -> dict:
         tools[name] = states(Path(executable)) if executable else None
     relevant = {name: value for name, value in env.items() if name.startswith(
         ('TEX', 'LUA', 'BIB', 'BST', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
-        ('SLIDEMASTER_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
+        ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 

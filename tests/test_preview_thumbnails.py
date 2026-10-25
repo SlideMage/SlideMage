@@ -36,7 +36,7 @@ def project(tmp_path, monkeypatch):
     framework.mkdir()
     package = framework / 'theme.tex'
     package.write_text('THEME ONE')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(preview_thumbnails.compiler, 'build_env', lambda ctx: env)
     return ctx, package, image, env
 

@@ -606,11 +606,11 @@ def project_with_files(tmp_path, *names):
 
 
 def test_edit_closes_settings_and_opens_the_file_in_source_afterwards(tmp_path, qapp):
-    app = FakeApp(project_with_files(tmp_path, "Slidemaster.bib", "decks/test-slides.tex"))
+    app = FakeApp(project_with_files(tmp_path, "SlideMage.bib", "decks/test-slides.tex"))
     sheet = open_sheet(qapp, app, tab=PROJECT)
     buttons = sheet.project_tab.edit_buttons
     assert tab_names(sheet)[PROJECT] == "Project" and all(b.isEnabled() for b in buttons.values())
-    assert any(label.text() == "Slidemaster.bib" for label in sheet.project_tab.findChildren(QLabel))
+    assert any(label.text() == "SlideMage.bib" for label in sheet.project_tab.findChildren(QLabel))
 
     buttons["bib"].click()
     assert sheet.result() == sheet.DialogCode.Accepted and app.calls == []      # closed first, nothing run yet
@@ -624,15 +624,15 @@ def test_edit_closes_settings_and_opens_the_file_in_source_afterwards(tmp_path, 
 
 
 def test_a_missing_file_says_not_found_and_cannot_be_edited(tmp_path, qapp):
-    sheet = open_sheet(qapp, FakeApp(project_with_files(tmp_path, "Slidemaster.bib")), tab=PROJECT)
+    sheet = open_sheet(qapp, FakeApp(project_with_files(tmp_path, "SlideMage.bib")), tab=PROJECT)
     assert sheet.project_tab.edit_buttons["bib"].isEnabled()
     assert not sheet.project_tab.edit_buttons["test_slides"].isEnabled()
     texts = [label.text() for label in sheet.project_tab.findChildren(QLabel)]
-    assert "test-slides.tex — not found" in texts and "Slidemaster.bib — not found" not in texts
+    assert "test-slides.tex — not found" in texts and "SlideMage.bib — not found" not in texts
 
 
 def test_unsaved_prompt_text_is_asked_about_before_edit_closes_settings(tmp_path, monkeypatch, qapp):
-    app = FakeApp(project_with_files(tmp_path, "Slidemaster.bib"))
+    app = FakeApp(project_with_files(tmp_path, "SlideMage.bib"))
     sheet = open_sheet(qapp, app, tab=PROJECT)
     sheet.show()
     sheet.prompts.image.editor.edit.setPlainText("Mine")

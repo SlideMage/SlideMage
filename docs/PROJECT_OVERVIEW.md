@@ -1,6 +1,6 @@
-# Slidemaster / SlideMage — project overview
+# SlideMage — project overview
 
-Slidemaster is a LaTeX/beamer framework for research and teaching slides,
+SlideMage is a LaTeX/beamer framework for research and teaching slides,
 built on the [Gotham beamer theme](https://github.com/) with an
 institution-specific color/logo layer (Uni Graz, in this copy). SlideMage
 is a PySide6 (Qt) desktop app that sits on top of it: compiling decks,
@@ -19,8 +19,8 @@ verified against an actual working copy while preparing it, not just
 described.
 
 **One repo, three parts.** `latex/` is the institution-independent
-framework (Gotham theme, `Slidemaster_preamble_base.tex`,
-`Slidemaster_alt.lua`); `example/` is a complete Slidemaster *project* —
+framework (Gotham theme, `SlideMage_base.tex`,
+`SlideMage_alt.lua`); `example/` is a complete SlideMage *project* —
 slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,
 which marks a project's root; `src/slidemage/` is SlideMage, the app. Paths like
 `decks/…`, `slides/…` or `media/…` in these docs are relative to the
@@ -28,7 +28,7 @@ project folder, i.e. `example/` here.
 
 Start here, then go to `README.md` for the full reference (it documents
 several things — layouts, footnotes, multi-language slides, bibliography
-integration — this overview only summarizes) and `SlidemasterManual.md`
+integration — this overview only summarizes) and `SlideMageCommands.md`
 for a quick-lookup table of the deck-version commands.
 
 ## Core concepts
@@ -75,17 +75,17 @@ show only step 1 — the same deck file, the same slide file, different
 outputs. The manual's chapter "Reveal steps and deck versions" shows the
 other per-version reveal commands the same way.
 
-### Bibliography (`\fullcite{}`/`Slidemaster.bib`)
+### Bibliography (`\fullcite{}`/`SlideMage.bib`)
 
 A deck opts into biblatex+biber (it's not loaded globally) by adding
-`\usepackage{biblatex}` and `\addbibresource{Slidemaster.bib}` itself; a
+`\usepackage{biblatex}` and `\addbibresource{SlideMage.bib}` itself; a
 slide then pulls a fully formatted reference straight out of
-`Slidemaster.bib` with `\fullcite{key}` — usually inside a `\footnote{}`
+`SlideMage.bib` with `\fullcite{key}` — usually inside a `\footnote{}`
 or a `\source{}` line, not as a separate references slide (this project
 never uses `\printbibliography`). `decks/slidemage-manual.tex` demonstrates
 this with plain biblatex defaults, no custom citation-format style — see the
 `\fullcite{markowitz1952}` on its slide `1nz` and this copy's trimmed
-`Slidemaster.bib` (a single entry; add your own the same way). Compiling
+`SlideMage.bib` (a single entry; add your own the same way). Compiling
 a deck that uses this needs one extra step beyond the usual two `lualatex`
 passes — `biber`, run in between them — see "Getting started" below and
 README.md's "Decks with a bibliography" section for the full sequence and
@@ -228,14 +228,14 @@ cd ../..
 slidemage --project example
 ```
 
-SlideMage picks its project from `--project`, else `$SLIDEMASTER_PROJECT`,
+SlideMage picks its project from `--project`, else `$SLIDEMAGE_PROJECT`,
 else by searching upward from the current directory for `slide_ids.csv`,
 else the last project it opened — and otherwise asks for a folder. Its
 per-project settings live in `<project>/.slidemage/`.
 
 **Your own project:** copy `example/` anywhere. Its `.latexmkrc` files
 look for the framework in `../latex`; for a project kept elsewhere, set
-`SLIDEMASTER_LATEX` to this repo's `latex/` folder.
+`SLIDEMAGE_LATEX` to this repo's `latex/` folder.
 
 The very first `lualatex` run of `decks/slidemage-manual.tex` will be slow while your TeX distribution fetches whatever packages it's
 missing; subsequent compiles are fast. Note that decks typically require
@@ -247,7 +247,7 @@ these four passes run automatically when using SlideMage.
 - `README.md` — the full reference: directory layout, layouts/frame types,
   the naming/versioning convention, multi-language slides, accessibility
   in full detail, and more.
-- `docs/SlidemasterManual.md` — a quick-lookup table for the deck-version
+- `docs/SlideMageCommands.md` — a quick-lookup table for the deck-version
   commands (`\slide`, `\omitslide`, `\conditionalslide`, `\slidestep`,
   `\deckonly`, `\conditionalpause`, `\deckversion`).
 - `docs/SlideMage.md` — how the app itself is built, module by module,

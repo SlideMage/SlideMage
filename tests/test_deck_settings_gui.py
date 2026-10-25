@@ -22,7 +22,7 @@ from test_admin_slides import DETAIL, GROUP
 COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
 TEMPLATES = [("slidemage", "SlideMage"), ("uni-graz", "University of Graz")]
 DECK_TEXT = (
-    "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-graz}\n"
+    "\\documentclass{beamer}\n\\input{SlideMage_template_uni-graz}\n"
     "\\deckoutputfolder{D:/Out}\n\\newcommand{\\FooterText}{Course | 2027s}\n"
     "\\decklanguage[en]\n\\begin{document}\n"
 )
@@ -39,7 +39,7 @@ def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
 
 
 def make_sheet(tmp_path, monkeypatch, text=DECK_TEXT, tab=GENERAL, **fields):
-    (tmp_path / "Slidemaster_preamble_uni-graz.tex").write_text("% SlideMage dark mode: true\n")
+    (tmp_path / "SlideMage_template_uni-graz.tex").write_text("% SlideMage dark mode: true\n")
     monkeypatch.setattr(sheet_module.AdminSlidesTab, "start", lambda self: None)     # no network
     return DeckSettingsSheet(None, make_deck(tmp_path, text=text, **fields), TEMPLATES, tab=tab)
 
@@ -185,7 +185,7 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
     deck_actions.on_deck_settings(window, deck)
 
     written = deck.path.read_text(encoding="utf-8")
-    assert "\\input{Slidemaster_preamble_slidemage}" in written
+    assert "\\input{SlideMage_template_slidemage}" in written
     assert f"%% SlideMage course URL: {COURSE_URL}" in written
     assert "%% SlideMage open PDF: presenter" in written
     assert refreshed == [True] and reloaded == [True]
@@ -325,7 +325,7 @@ def test_dark_slide_changes_obey_the_admin_unsaved_settings_rule(tmp_path, monke
 
 
 def test_dark_slides_work_for_a_renamed_template(tmp_path, monkeypatch, qapp):
-    (tmp_path / "Slidemaster_preamble_custom-college.tex").write_text("% SlideMage dark mode: true\n")
+    (tmp_path / "SlideMage_template_custom-college.tex").write_text("% SlideMage dark mode: true\n")
     sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("uni-graz", "custom-college"))
     assert sheet.dark_mode_check.isEnabled()
     sheet.dark_mode_check.setChecked(True)

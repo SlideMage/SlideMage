@@ -10,13 +10,13 @@ extra "../". Nothing else in the file changes; prose comments are left
 untouched -- only these specific functional lines.
 
 For a deck using biblatex, the original two-branch
-\\IfFileExists{Slidemaster.bib}{...}{\\addbibresource{../Slidemaster.bib}}
+\\IfFileExists{SlideMage.bib}{...}{\\addbibresource{../SlideMage.bib}}
 (supporting compile-from-root vs. compile-from-decks/) is replaced with a
-single, unconditional \\addbibresource{../../Slidemaster.bib} rather than
+single, unconditional \\addbibresource{../../SlideMage.bib} rather than
 extended into a three-branch cascade (tried first, and confirmed broken by
 inspecting the actual compile log): the extra \\IfFileExists branch didn't
-resolve the way its own logic implies -- biber recorded "../Slidemaster.bib"
-(one level short) as the winning branch even though decks/Slidemaster.bib
+resolve the way its own logic implies -- biber recorded "../SlideMage.bib"
+(one level short) as the winning branch even though decks/SlideMage.bib
 doesn't exist, and latexmk then silently vetoed running biber at all since
 that path doesn't exist, leaving every citation unresolved with no fatal
 error. This project always compiles archived decks through latexmk with
@@ -38,8 +38,8 @@ from .processes import move_file
 INPUT_PATH_RE = re.compile(r"\\def\\input@path\{\{\.\./\}\}")
 GRAPHICSPATH_RE = re.compile(r"\\graphicspath\{\{\.\./\}\}")
 BIB_IFFILEEXISTS_RE = re.compile(
-    r"\\IfFileExists\{Slidemaster\.bib\}\{\\addbibresource\{Slidemaster\.bib\}\}"
-    r"\{\\addbibresource\{\.\./Slidemaster\.bib\}\}"
+    r"\\IfFileExists\{SlideMage\.bib\}\{\\addbibresource\{SlideMage\.bib\}\}"
+    r"\{\\addbibresource\{\.\./SlideMage\.bib\}\}"
 )
 INPUT_CALL_RE = re.compile(r"\\input\{([^}]+)\}")
 
@@ -47,7 +47,7 @@ INPUT_CALL_RE = re.compile(r"\\input\{([^}]+)\}")
 def _sibling_dependencies(deck: Deck) -> list[str]:
     """Bare \\input{X} calls (no path separator, e.g. \\input{test-slides})
     whose X.tex lives alongside the deck in decks/ itself -- unlike
-    \\input{Slidemaster_preamble_uni-*} (a project-root resource, handled by
+    \\input{SlideMage_template_uni-*} (a project-root resource, handled by
     the path fallbacks this module patches) or \\input{slides/...} (already
     has its own path), a bare same-directory sibling has no fallback at all:
     it resolves relative to cwd only. Archiving moves *only* the requested
@@ -57,7 +57,7 @@ def _sibling_dependencies(deck: Deck) -> list[str]:
     for name in INPUT_CALL_RE.findall(deck.text):
         if "/" in name or "\\" in name:
             continue
-        if name.startswith("Slidemaster_preamble_"):
+        if name.startswith("SlideMage_template_"):
             continue
         if (deck.path.parent / f"{name}.tex").exists():
             siblings.append(name)
@@ -67,7 +67,7 @@ def _sibling_dependencies(deck: Deck) -> list[str]:
 def archive_deck(ctx: ProjectContext, deck: Deck) -> Path:
     """Move decks/<name>.tex to decks/archive/<name>.tex (via `git mv` in a
     git working tree, else a plain move), then patch its
-    \\input@path/\\graphicspath/Slidemaster.bib fallbacks for the extra
+    \\input@path/\\graphicspath/SlideMage.bib fallbacks for the extra
     directory depth. Returns the new path."""
     if deck.archived:
         raise ValueError(f"{deck.name} is already archived")
@@ -102,13 +102,13 @@ def archive_deck(ctx: ProjectContext, deck: Deck) -> Path:
 
     if deck.uses_biblatex:
         text, n_bib = BIB_IFFILEEXISTS_RE.subn(
-            r"\\addbibresource{../../Slidemaster.bib}",
+            r"\\addbibresource{../../SlideMage.bib}",
             text,
         )
         if n_bib == 0:
             raise RuntimeError(
                 f"{deck.name}: uses biblatex but the expected "
-                "\\IfFileExists{Slidemaster.bib}{...}{...} pattern wasn't found -- "
+                "\\IfFileExists{SlideMage.bib}{...}{...} pattern wasn't found -- "
                 "archived file's bibliography path may be broken; fix by hand."
             )
 

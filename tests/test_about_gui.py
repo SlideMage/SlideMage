@@ -25,8 +25,8 @@ def test_sheet_shows_history_license_and_expands_an_entry(qapp):
     newest = version_mod.parse_history()[-1].version
     assert version_mod.VERSION in html and newest in html
     # Regression: the license used to be looked up in the project folder.
-    assert "Slidemaster" in app_info.license_text()
-    assert "Slidemaster" in sheet.findChild(QPlainTextEdit).toPlainText()
+    assert "LaTeX framework" in app_info.license_text()
+    assert "LaTeX framework" in sheet.findChild(QPlainTextEdit).toPlainText()
     entries = list(reversed(version_mod.parse_history()))
     index = next(i for i, e in enumerate(entries) if app_info.summary(e.description) != e.description)
     description = entries[index].description

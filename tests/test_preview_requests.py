@@ -174,7 +174,7 @@ def test_completed_service_cache_survives_restart_and_validates_content(tmp_path
     framework.mkdir()
     theme = framework / 'theme.tex'
     theme.write_text('THEME ONE')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool'), ()))
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
@@ -290,7 +290,7 @@ def recorded(tmp_path, monkeypatch):
     source.write_text('1.2.0+ FIRST')
     framework = tmp_path / 'framework'
     framework.mkdir()
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool', b'thumb'), ()))
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)

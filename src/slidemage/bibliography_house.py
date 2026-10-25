@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The house citation format (v5.32.0, 2026-10-07): the one block of LaTeX that
-the institution templates carry (latex/Slidemaster_preamble_slidemage.tex, a
+the institution templates carry (latex/SlideMage_template_slidemage.tex, a
 project's own institution template, ...) and that every course deck
 used to copy. compat_bibliography.py compares decks against it and writes it
 into a template; tests/test_bibliography_template.py keeps the shipped
@@ -60,12 +60,12 @@ BLOCK = r"""% Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): 
 % specifically for @article, since the entrytype-specific format takes
 % priority over the generic one above and would otherwise still auto-wrap
 % article titles in its own curly quotes, doubling up with the
-% \textquotedbl below (rock1986 in Slidemaster.bib is the first @article
+% \textquotedbl below (rock1986 in SlideMage.bib is the first @article
 % entry exercising this branch).
 \DeclareFieldFormat{title}{##1}
 \DeclareFieldFormat[article]{title}{##1}
 % Drop the automatic "pp." prefix biblatex adds to page ranges by default --
-% needed by rock1986 (Slidemaster.bib), the first @article entry.
+% needed by rock1986 (SlideMage.bib), the first @article entry.
 \DeclareFieldFormat{pages}{##1}
 % biblatex's own built-in isbn field format prepends a lowercase "isbn:"
 % label of its own (confirmed directly on svv/IA2: rendered as

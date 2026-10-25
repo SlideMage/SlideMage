@@ -5,7 +5,7 @@
 Direct instruction: "rename all \\gotham... commands that this project newly
 created to \\SM...". The vendored Gotham beamer theme (latex/beamer*gotham.sty,
 gotham.dtx) keeps its names -- \\gothamset, \\gothamFrametitleLeftpading, ... --
-everything the SlideMaster framework, its institution preambles and its slides
+everything the SlideMage framework, its institution preambles and its slides
 added on top is renamed: \\gothamContentTopAlign -> \\SMContentTopAlign,
 \\ifgothamInstructorVersion -> \\ifSMInstructorVersion, \\gotham@cf@x ->
 \\SM@cf@x. The rename works on identifiers, not only on backslash tokens,
@@ -62,7 +62,7 @@ gothamVposRightRotFooter gothamZerosectionframes
 # "if": \newif's \ifgotham...; "the": a counter's \thegotham... (\newcounter)
 _NAME_RE = re.compile(r"(?<![A-Za-z])(if|the)?(gotham)(?=[A-Z@])([A-Za-z@]*)")
 
-# Files of a SlideMaster project the rename applies to.
+# Files of a SlideMage project the rename applies to.
 PROJECT_GLOBS = ("slides/*.tex", "decks/*.tex", "decks/**/*.tex", "*.tex",
                  ".slidemage/*.json", "*.md", ".scripts/*.py", "decks/render/*.py")
 # Session logs keep the names they were written with.

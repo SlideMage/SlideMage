@@ -155,10 +155,10 @@ def store_render(store, key, meta, origin="background", pages=2, decks=("deck1",
 def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     image = write(ctx.media_dir / "pic.png", "img")
-    preamble = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "pre")
+    preamble = write(ctx.root / "SlideMage_template_uni-graz.tex", "pre")
     unit = unit_for(ctx)
     key, meta = make_record(resolver, ctx, unit, [ctx.slides_dir / "aaa-EN-One-current.tex", image, preamble])
-    assert {rel for _, rel, _ in meta["manifest"]} == {"slides/aaa-EN-One-current.tex", "media/pic.png", "Slidemaster_preamble_uni-graz.tex"}
+    assert {rel for _, rel, _ in meta["manifest"]} == {"slides/aaa-EN-One-current.tex", "media/pic.png", "SlideMage_template_uni-graz.tex"}
     assert resolver.lookup(unit).state is Freshness.MISSING
     store_render(store, key, meta)
     assert resolver.lookup(unit).state is Freshness.FRESH
@@ -170,7 +170,7 @@ def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
 
 
 def test_a_preamble_layer_change_stales_every_render_that_read_it(ctx, resolver, store):
-    layer = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "v1")
+    layer = write(ctx.root / "SlideMage_template_uni-graz.tex", "v1")
     units = [unit_for(ctx, slug) for slug in ("aaa-EN-One", "bbb-EN-Two")]
     for u in units:
         write(u.source_path, f"text {u.id_slug}")
@@ -185,7 +185,7 @@ def test_a_new_render_of_a_stale_slide_takes_the_place_of_the_old_one_under_the_
     # v8.37.0 changed a framework file, which is in the manifest and not in the key: the new render of an unchanged
     # slide has the old render's key, and put kept the old object, so the sweep rendered the same slides again and
     # again (the dial rose and fell back to 0 % at every replan).
-    layer = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "v1")
+    layer = write(ctx.root / "SlideMage_template_uni-graz.tex", "v1")
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     key, old = make_record(resolver, ctx, unit, [unit.source_path, layer])
@@ -201,7 +201,7 @@ def test_a_new_render_of_a_stale_slide_takes_the_place_of_the_old_one_under_the_
 
 
 def test_a_reveal_render_is_kept_when_the_background_render_of_its_key_is_stale(ctx, resolver, store):
-    layer = write(ctx.root / "Slidemaster_preamble_uni-graz.tex", "v1")
+    layer = write(ctx.root / "SlideMage_template_uni-graz.tex", "v1")
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     key, old = make_record(resolver, ctx, unit, [unit.source_path, layer])
@@ -263,12 +263,12 @@ def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resol
 
 def test_a_framework_file_is_found_again_through_the_framework_folders(ctx, resolver, store, monkeypatch, tmp_path):
     framework = tmp_path / "fw"
-    base = write(framework / "Slidemaster_preamble_base.tex", "base")
+    base = write(framework / "SlideMage_base.tex", "base")
     monkeypatch.setattr(render_key.slide_snapshot, "framework_dirs", lambda root: [framework])
     unit = unit_for(ctx)
     write(unit.source_path, "s")
     key, meta = make_record(resolver, ctx, unit, [unit.source_path, base])
-    assert ["framework", "Slidemaster_preamble_base.tex"] in [e[:2] for e in meta["manifest"]]
+    assert ["framework", "SlideMage_base.tex"] in [e[:2] for e in meta["manifest"]]
     store_render(store, key, meta)
     assert resolver.lookup(unit).state is Freshness.FRESH
     write(base, "base changed")

@@ -105,7 +105,7 @@ class DeckSettingsSheet(ModalSheet):
         self.template_combo.setCurrentIndex(max(self.template_combo.findData(settings.template), 0))
         self.template_combo.setToolTip(
             "The institution template: colors, logo, title bar and footer. "
-            "Slidemaster_preamble_<name>.tex, loaded by the deck's \\input line.")
+            "SlideMage_template_<name>.tex, loaded by the deck's \\input line.")
         self.language_combo = QComboBox()
         codes = list(LANGUAGE_LABELS)
         if settings.language not in codes:

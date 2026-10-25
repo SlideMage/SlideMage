@@ -10,7 +10,7 @@ from slidemage.deck_settings import DeckSettings
 DECK = r"""% !TeX program = lualatex
 \documentclass[aspectratio=169]{beamer}
 \usetheme{gotham}
-\input{Slidemaster_preamble_uni-graz}
+\input{SlideMage_template_uni-graz}
 
 \deckoutputfolder{D:/Teaching/FM2/current} % all versions
 %\deckoutputfolder[instructor]{D:/old/Instructor}
@@ -46,7 +46,7 @@ def test_read_settings_ignores_commented_lines_and_the_override_branch():
 
 def test_set_template_changes_only_the_name():
     new = deck_settings.set_template(DECK, "mci")
-    assert "\\input{Slidemaster_preamble_mci}" in new
+    assert "\\input{SlideMage_template_mci}" in new
     assert new.replace("mci", "uni-graz", 1) == DECK
 
 
@@ -103,7 +103,7 @@ def test_output_folder_added_after_the_template_input_when_there_is_none():
         "\\deckoutputfolder[presenter]{D:/Teaching/FM2/current/presenter.pdf}\n", "")
     new = deck_settings.set_output_folder(text, None, "D:/Out")
     lines = new.splitlines()
-    assert lines[lines.index("\\input{Slidemaster_preamble_uni-graz}") + 1] == "\\deckoutputfolder{D:/Out}"
+    assert lines[lines.index("\\input{SlideMage_template_uni-graz}") + 1] == "\\deckoutputfolder{D:/Out}"
 
 
 def test_output_folder_refuses_tex_special_characters():
@@ -176,7 +176,7 @@ def test_from_form_refuses_latex_specials_in_a_path_but_keeps_an_untouched_one_b
 
 
 def test_footer_elements_left_out_are_written_and_read_back():
-    text = "\\input{Slidemaster_preamble_uni-graz}\n\\newcommand{\\FooterText}{X}\n\\begin{document}\n\\end{document}\n"
+    text = "\\input{SlideMage_template_uni-graz}\n\\newcommand{\\FooterText}{X}\n\\begin{document}\n\\end{document}\n"
     hidden = deck_settings.set_footer_hide(text, ("deck", "id"))
     assert "\\def\\SMFooterHide{id,deck}\n" in hidden
     assert deck_settings.read_settings(hidden).footer_hide == ("id", "deck")
@@ -191,7 +191,7 @@ def test_dark_mode_round_trip_places_switch_before_template_and_keeps_line_endin
     new.dark_mode = True
     dark = deck_settings.apply_settings(text, old, new)
     assert read(dark).dark_mode
-    assert dark.index(r"\newcommand{\SMDarkMode}{}") < dark.index(r"\input{Slidemaster_preamble_")
+    assert dark.index(r"\newcommand{\SMDarkMode}{}") < dark.index(r"\input{SlideMage_template_")
     if newline == "\r\n":
         assert "\n" not in dark.replace("\r\n", "")
     assert deck_settings.apply_settings(dark, read(dark), old) == text
@@ -202,7 +202,7 @@ def test_dark_mode_round_trip_places_switch_before_template_and_keeps_line_endin
     r"\def\SMDarkMode{}", r"\providecommand\SMDarkMode{enabled}",
 ])
 def test_dark_mode_reads_existing_switches_and_ignores_comments_and_body(declaration):
-    marker = r"\input{Slidemaster_preamble_uni-graz}"
+    marker = r"\input{SlideMage_template_uni-graz}"
     assert read(DECK.replace(marker, declaration + "\n" + marker)).dark_mode
     ignored = "% " + declaration + "\n" + DECK + "\n" + declaration
     assert not read(ignored).dark_mode
@@ -238,7 +238,7 @@ def test_dark_mode_form_does_not_depend_on_a_template_name():
 
 
 def test_dark_mode_support_is_discovered_from_template_headers(tmp_path):
-    template = tmp_path / "Slidemaster_preamble_custom-college.tex"
+    template = tmp_path / "SlideMage_template_custom-college.tex"
     template.write_text("% SlideMage dark mode: true\n")
     assert deck_settings.template_supports_dark_mode(tmp_path, "custom-college")
     template.write_text("% SlideMage dark mode: false\n")

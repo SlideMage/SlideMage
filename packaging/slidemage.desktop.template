@@ -22,7 +22,7 @@
 [Desktop Entry]
 Type=Application
 Name=SlideMage
-Comment=Compile and manage Slidemaster slide decks
+Comment=Compile and manage SlideMage slide decks
 Exec=__DIR__/SlideMage
 Icon=__DIR__/icon.svg
 Terminal=false

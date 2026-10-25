@@ -15,7 +15,7 @@ from slidemage.project import ProjectContext
 
 PREAMBLE = r"""\documentclass{beamer}
 \usetheme{gotham}
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Equivalence probe}
 \def\SMFooterHide{deck}
 \begin{document}
@@ -110,8 +110,8 @@ def test_project_macro_override_and_framework_change_fail_closed(tmp_path, monke
     assert all(not d.certain for d in custom.decisions)
     framework = tmp_path / "framework"
     framework.mkdir()
-    (framework / "Slidemaster_preamble_base.tex").write_text("changed")
-    monkeypatch.setenv("SLIDEMASTER_LATEX", str(framework))
+    (framework / "SlideMage_base.tex").write_text("changed")
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
     changed = classify_views(specs(tmp_path / "changed", "Text"))
     assert all(not d.certain and "unaudited framework" in d.reasons[0] for d in changed.decisions)
 
@@ -143,35 +143,35 @@ def test_fullbleed_image_list_changes_instructor_sequence(tmp_path):
 def test_default_template_and_stock_framework_fallback(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
-    shutil.copy2(REPO / "example" / "Slidemaster_preamble_uni-graz.tex",
-                 root / "Slidemaster_preamble_uni-graz.tex")
+    shutil.copy2(REPO / "example" / "SlideMage_template_uni-graz.tex",
+                 root / "SlideMage_template_uni-graz.tex")
     try:
         (tmp_path / "latex").symlink_to(REPO / "latex", target_is_directory=True)
     except OSError as exc:      # Windows lets only privileged users (or Developer Mode) create symlinks
         pytest.skip(f"cannot create a symlink here: {exc}")
-    monkeypatch.delenv("SLIDEMASTER_LATEX")
+    monkeypatch.delenv("SLIDEMAGE_LATEX")
     classified = classify_views(specs(tmp_path, "Plain", preamble=None))
     assert all(d.certain for d in classified.decisions)
     assert len(set(groups(classified))) == 3  # the default footer shows deck labels
-    assert any("Slidemaster_preamble_slidemage.tex" in path for path, _ in classified.dependencies)
+    assert any("SlideMage_template_slidemage.tex" in path for path, _ in classified.dependencies)
 
 
 def test_actual_institution_shadow_and_non_top_level_imports_fail_closed(tmp_path):
     root = tmp_path / "shadow" / "project"
     root.mkdir(parents=True)
-    shutil.copy2(REPO / "example" / "Slidemaster_preamble_uni-graz.tex",
-                 root / "Slidemaster_preamble_uni-graz.tex")
+    shutil.copy2(REPO / "example" / "SlideMage_template_uni-graz.tex",
+                 root / "SlideMage_template_uni-graz.tex")
     requests = specs(tmp_path / "shadow", "Plain", preamble=PREAMBLE.replace("slidemage", "uni-graz"))
     (root / "decks").mkdir(exist_ok=True)
-    (root / "decks" / "Slidemaster_preamble_uni-graz.tex").write_text("custom")
+    (root / "decks" / "SlideMage_template_uni-graz.tex").write_text("custom")
     shadow = classify_views(requests)
     assert all(not d.certain and "shadows institution" in d.reasons[0] for d in shadow.decisions)
-    grouped = PREAMBLE.replace(r"\input{Slidemaster_preamble_slidemage}",
-                               r"{\input{Slidemaster_preamble_slidemage}}")
+    grouped = PREAMBLE.replace(r"\input{SlideMage_template_slidemage}",
+                               r"{\input{SlideMage_template_slidemage}}")
     result = classify_views(specs(tmp_path / "grouped", "Plain", preamble=grouped))
     assert all(not d.certain and "framework import" in d.reasons[0] for d in result.decisions)
-    delayed = PREAMBLE.replace(r"\input{Slidemaster_preamble_slidemage}",
-                               r"\AtBeginDocument{\input{Slidemaster_preamble_slidemage}}")
+    delayed = PREAMBLE.replace(r"\input{SlideMage_template_slidemage}",
+                               r"\AtBeginDocument{\input{SlideMage_template_slidemage}}")
     result = classify_views(specs(tmp_path / "delayed", "Plain", preamble=delayed))
     assert all(not d.certain for d in result.decisions)
 

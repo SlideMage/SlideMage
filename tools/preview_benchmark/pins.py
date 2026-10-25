@@ -15,7 +15,7 @@ from slidemage.project import ProjectContext
 
 def run(root, framework, output):
     output.mkdir(parents=True, exist_ok=False)
-    os.environ['SLIDEMASTER_LATEX'] = str(framework)
+    os.environ['SLIDEMAGE_LATEX'] = str(framework)
     ctx = ProjectContext.at(root)
     source = ctx.slides_dir / 'aaa-EN-Probe-current.tex'
     frozen = ctx.slides_dir / 'aaa-EN-Probe-v1-0-0.tex'

@@ -438,7 +438,7 @@ class WorkspaceWindow(QMainWindow):
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
         *, keep_mode: bool = False,
     ) -> None:
-        """Show a file in the Source view: a slide, a deck's own source or Slidemaster.bib.
+        """Show a file in the Source view: a slide, a deck's own source or SlideMage.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
         the Preview on show instead of switching to the Source view."""
         returning = self.stack.currentWidget() is not self.centre
@@ -770,13 +770,13 @@ class WorkspaceWindow(QMainWindow):
 
     def _on_edit_bib(self) -> None:
         """"⋮ -> "Edit .bib" (a plain toolbar button until
-        2026-08-25) -- opens Slidemaster.bib in the same editor used
+        2026-08-25) -- opens SlideMage.bib in the same editor used
         for a slide's/deck's own .tex source. That editor
         already degrades gracefully for a non-slide path, so no separate
         editor was needed just for this.
 
         Sorted on disk *before* opening (2026-08-18, direct instruction:
-        keep Slidemaster.bib sorted automatically on open/close of this tab
+        keep SlideMage.bib sorted automatically on open/close of this tab
         rather than needing a manual sort_bib.py run) -- only when actually
         creating a new tab, not when this just re-focuses an already-open
         one, so a mid-edit buffer is never silently reloaded out from under
@@ -788,7 +788,7 @@ class WorkspaceWindow(QMainWindow):
 
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
-        source mode, like "Edit .bib" does for Slidemaster.bib."""
+        source mode, like "Edit .bib" does for SlideMage.bib."""
         path = self.project.test_slides_path
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")

@@ -30,7 +30,7 @@ class Window(QWidget):
 def make_sheet(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(sheet_module.AdminSlidesTab, "start", lambda self: None)     # no network
     monkeypatch.setattr(sheet_module, "add_route_badge", lambda *_args: None)       # the stand-in has no AI state
-    (tmp_path / "Slidemaster_preamble_uni-graz.tex").write_text("")
+    (tmp_path / "SlideMage_template_uni-graz.tex").write_text("")
     windows = []
 
     def make(*, with_deck=True):

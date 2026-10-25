@@ -178,7 +178,7 @@ def main():
     deadline = min(start + args.time_budget, args.deadline or float("inf"))
     for label in labels:
         env = dict(os.environ, PYTHONPATH=str(base / "sources" / label),
-            SLIDEMASTER_PROJECT=str(base / "project"), SLIDEMASTER_LATEX=str(base / "framework"))
+            SLIDEMAGE_PROJECT=str(base / "project"), SLIDEMAGE_LATEX=str(base / "framework"))
         subprocess.check_call([sys.executable, str(Path(__file__).resolve()), "--output", str(base),
             "--child", label, "--case", args.case, "--deadline", str(deadline)], env=env)
     records = {label: json.loads((base / "results" / label / "samples.json").read_text())

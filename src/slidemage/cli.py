@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Entry point: settle which Slidemaster project to open, then start the GUI."""
+"""Entry point: settle which SlideMage project to open, then start the GUI."""
 from __future__ import annotations
 
 import argparse
@@ -97,11 +97,11 @@ def main(argv: list[str] | None = None) -> None:
         return
     parser = argparse.ArgumentParser(
         prog="slidemage",
-        description="Build, compile and manage Slidemaster slide decks.",
+        description="Build, compile and manage SlideMage slide decks.",
     )
     parser.add_argument(
         "--project", type=Path,
-        help=f"Slidemaster project folder (the one containing {project.MARKER}). "
+        help=f"SlideMage project folder (the one containing {project.MARKER}). "
              f"Default: ${project.ENV_VAR}, else searched upward from the current "
              "directory, else the last project opened.",
     )
@@ -113,6 +113,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--fix", action="store_true", help="with --check-project: run the automatic updates")
     parser.add_argument("--json", action="store_true", help="with --check-project: print JSON")
     args, qt_args = parser.parse_known_args(argv)
+    project.warn_legacy_env_vars()
 
     if args.check_project:
         from . import compat
@@ -135,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
         if not project.is_project(root):
             splash.close()
             QMessageBox.critical(
-                None, "Not a Slidemaster project", f"{root} has no {project.MARKER}."
+                None, "Not a SlideMage project", f"{root} has no {project.MARKER}."
             )
             sys.exit(2)
     else:

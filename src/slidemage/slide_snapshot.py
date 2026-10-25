@@ -80,7 +80,7 @@ _PNG_CACHE_BYTES = 32 * 1024 * 1024
 _PNG_LOCK = threading.RLock()
 
 # Every compiled frame carries this footer element unconditionally (theme
-# footer template, Slidemaster_preamble_base.tex) -- not something special
+# footer template, SlideMage_base.tex) -- not something special
 # to test builds. `\S+` stops at the space before a possible
 # "| omitted from student deck" suffix, so the bare id is always what's
 # captured regardless of that flag.
@@ -89,14 +89,13 @@ SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 # Every institution template is a one-line \input{} swap on top of an
 # otherwise-shared preamble, so detecting which one a deck uses is one regex
 # against its own preamble text, not a whole-file diff. A template is any
-# Slidemaster_preamble_<key>.tex the project (or the framework next to it)
+# SlideMage_template_<key>.tex the project (or the framework next to it)
 # holds; the app knows none by name except its own, "slidemage", the generic
 # template shipped in latex/. It is also the default when detection finds
 # nothing (a deck with a preamble this regex doesn't recognize at all).
-TEMPLATE_PREFIX = "Slidemaster_preamble_"
-TEMPLATE_RE = re.compile(r"\\input\{Slidemaster_preamble_([A-Za-z0-9_-]+)\}")
+TEMPLATE_PREFIX = "SlideMage_template_"
+TEMPLATE_RE = re.compile(r"\\input\{SlideMage_template_([A-Za-z0-9_-]+)\}")
 DEFAULT_TEMPLATE = "slidemage"
-_NOT_TEMPLATES = ("base",)           # the shared layer every template inputs, never a deck's choice
 _LABEL_RE = re.compile(r"^%+\s*SlideMage template name:\s*(.+?)\s*$", re.MULTILINE)
 
 
@@ -135,10 +134,8 @@ def template_label(key: str, root: Path | None = None) -> str:
 
 def detect_template(preamble_text: str) -> str:
     """The template key a deck's own preamble selects, defaulting to DEFAULT_TEMPLATE when the pattern isn't found."""
-    for match in TEMPLATE_RE.finditer(preamble_text):
-        if match.group(1) not in _NOT_TEMPLATES:
-            return match.group(1)
-    return DEFAULT_TEMPLATE
+    match = TEMPLATE_RE.search(preamble_text)
+    return match.group(1) if match else DEFAULT_TEMPLATE
 
 
 def _template_name(template: str) -> str:
@@ -157,23 +154,23 @@ OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
 
 def framework_dirs(root: Path) -> list[Path]:
     """The LaTeX framework folders a project's decks search (its .latexmkrc
-    puts one on TEXINPUTS): $SLIDEMASTER_LATEX, else ../latex (a project
+    puts one on TEXINPUTS): $SLIDEMAGE_LATEX, else ../latex (a project
     next to the framework, like example/) or ../SlideMage/latex (a project
     next to a SlideMage checkout). Only folders holding
-    Slidemaster_preamble_base.tex count."""
+    SlideMage_base.tex count."""
     candidates = []
-    if os.environ.get("SLIDEMASTER_LATEX"):
-        candidates.append(Path(os.environ["SLIDEMASTER_LATEX"]))
+    if os.environ.get("SLIDEMAGE_LATEX"):
+        candidates.append(Path(os.environ["SLIDEMAGE_LATEX"]))
     candidates += [root.parent / "latex", root.parent / "SlideMage" / "latex"]
-    return [d for d in candidates if (d / "Slidemaster_preamble_base.tex").is_file()]
+    return [d for d in candidates if (d / "SlideMage_base.tex").is_file()]
 
 
 def preamble_file(template: str, root: Path) -> Path:
-    """The template's preamble file, Slidemaster_preamble_<key>.tex: the
+    """The template's preamble file, SlideMage_template_<key>.tex: the
     project's own (institution layers live in the project root), else the
     framework's (the SlideMage template, since v5.9.0). The project-root path
     when neither exists."""
-    name = f"Slidemaster_preamble_{template}.tex"
+    name = f"SlideMage_template_{template}.tex"
     for folder in (root, *framework_dirs(root)):
         if (folder / name).is_file():
             return folder / name
@@ -185,7 +182,6 @@ def available_templates(root: Path) -> list[str]:
     the app's own first, then the others alphabetically."""
     keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in (root, *framework_dirs(root))
             for file in folder.glob(f"{TEMPLATE_PREFIX}*.tex")}
-    keys -= set(_NOT_TEMPLATES)
     return sorted(keys, key=lambda key: (key != DEFAULT_TEMPLATE, key))
 
 
@@ -401,7 +397,7 @@ def _own_language_for_bare_id(ctx: project.ProjectContext, bare_id_: str) -> str
     """Resolves a bare id to its current on-disk id-slug and returns that
     slide's own language segment (EN/DE/mult, slide_language.own_language)
     -- None for a legacy, not-yet-migrated slide. Used to key the preview
-    cache the same way Slidemaster_preamble_base.tex's own
+    cache the same way SlideMage_base.tex's own
     \\setSlideLanguageFromSlug derives language at compile time: from the
     filename alone, not from anything in the compiled PDF (a slide's
     *own* language never depends on which deck/template compiled it --

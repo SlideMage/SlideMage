@@ -131,7 +131,7 @@ def _preamble_for(template: str) -> str:
     return template_preamble(template)
 
 
-_EXTRA_INPUT = re.compile(r"^[ \t]*\\input\{(?!Slidemaster_preamble)[^}]+\}[ \t]*$", re.MULTILINE)
+_EXTRA_INPUT = re.compile(r"^[ \t]*\\input\{(?!SlideMage_template_)[^}]+\}[ \t]*$", re.MULTILINE)
 
 
 def extra_inputs_by_template(ctx: project.ProjectContext, deck: Optional[Deck] = None) -> dict[str, list[str]]:

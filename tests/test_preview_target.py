@@ -11,7 +11,7 @@ from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
 
-PREAMBLE = "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}"
+PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_uni-ibk}\n\\begin{document}"
 
 
 def make_deck(body):

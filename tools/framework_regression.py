@@ -22,14 +22,14 @@ CONFIG.json (relative paths are relative to the config file):
 
     {
       "project":   "../example",        project folder (decks/, slides/, ...)
-      "framework": "../latex",          framework folder, handed to the project as $SLIDEMASTER_LATEX
+      "framework": "../latex",          framework folder, handed to the project as $SLIDEMAGE_LATEX
       "copy":      true,                compile in a copy under DIR/work/ so the source is never touched
       "copy_exclude": ["pdf", ".git"],  top-level names left out of the copy
       "versions":  ["instructor", "during-course", "after-course"],
       "dpi":       72,
       "decks": [
         {"deck": "decks/slidemage-manual.tex"},                          compiled under its own template
-        {"deck": "decks/slidemage-manual.tex", "template": "uni-graz"}   \\input{Slidemaster_preamble_<key>} swapped
+        {"deck": "decks/slidemage-manual.tex", "template": "uni-graz"}   \\input{SlideMage_template_<key>} swapped
       ]
     }
 
@@ -39,7 +39,9 @@ In-repo set (tools/framework_regression_repo.json: the manual and its sibling de
 
 A private project needs only its own config (absolute paths are fine) and an output folder outside the repository;
 point "framework" at this checkout's latex/ folder. A project that finds the framework through ../SlideMage/latex
-works unchanged, because $SLIDEMASTER_LATEX is set for every compile.
+works unchanged, because $SLIDEMAGE_LATEX is set for every compile. $SLIDEMASTER_LATEX is set too, and a deck
+that still names its template \\input{Slidemaster_preamble_<key>} is swapped the same way: that is how a project from
+before the rename to SlideMage is compared with baselines recorded then.
 
 A template override is made in the wrapper file inside the work copy; the source deck is never edited. Compiles
 run in parallel (--jobs), each in its own output folder with a fixed SOURCE_DATE_EPOCH. Images, not PDF bytes,
@@ -66,8 +68,9 @@ DEFAULT_DPI = 72
 COMPILE_TIMEOUT_SECONDS = 30 * 60
 SOURCE_DATE_EPOCH = "1760000000"
 FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
-TEMPLATE_INPUT_RE = re.compile(r"\\input\{Slidemaster_preamble_([^}]+)\}")
-NOT_TEMPLATES = {"base"}
+# The template file names of today and of before the rename to SlideMage (when the base file shared the prefix).
+TEMPLATE_INPUT_RE = re.compile(r"\\input\{(SlideMage_template_|Slidemaster_preamble_)([^}]+)\}")
+OLD_NOT_TEMPLATES = {"base"}
 SUBSET_TAG_RE = re.compile(r"^[A-Z]{6}\+")
 
 
@@ -188,9 +191,10 @@ def swapped_deck_text(entry: Entry) -> str | None:
         return None
     text = entry.deck.read_text(encoding="utf-8", errors="replace")
     for match in TEMPLATE_INPUT_RE.finditer(text):
-        if match.group(1) not in NOT_TEMPLATES and match.group(1) != "project_macros":
-            return text[:match.start()] + f"\\input{{Slidemaster_preamble_{entry.template}}}" + text[match.end():]
-    raise ValueError(f"{entry.deck.name}: no \\input{{Slidemaster_preamble_<template>}} to swap")
+        prefix, key = match.groups()
+        if prefix == "SlideMage_template_" or key not in OLD_NOT_TEMPLATES:
+            return text[:match.start()] + f"\\input{{{prefix}{entry.template}}}" + text[match.end():]
+    raise ValueError(f"{entry.deck.name}: no \\input{{SlideMage_template_<template>}} to swap")
 
 
 def compile_entry(entry: Entry, project: Path, framework: Path, run_dir: Path) -> dict:
@@ -206,7 +210,8 @@ def compile_entry(entry: Entry, project: Path, framework: Path, run_dir: Path) -
     except ValueError as error:
         return {"ok": False, "error": str(error), "seconds": 0}
     wrapper.write_text(wrapper_text(entry, text), encoding="utf-8", newline="")
-    env = dict(os.environ, SLIDEMASTER_LATEX=str(framework), SOURCE_DATE_EPOCH=SOURCE_DATE_EPOCH,
+    env = dict(os.environ, SLIDEMAGE_LATEX=str(framework), SLIDEMASTER_LATEX=str(framework),
+               SOURCE_DATE_EPOCH=SOURCE_DATE_EPOCH,
                FORCE_SOURCE_DATE="1")
     out = build.as_posix()
     cmd = ["latexmk", "-f", f"-jobname={jobname}", f"-outdir={out}", f"-auxdir={out}",

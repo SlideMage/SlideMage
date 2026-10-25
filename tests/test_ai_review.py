@@ -179,7 +179,7 @@ def test_deleting_and_archiving_drop_marks_but_skipped_archives_keep_them(projec
 def test_real_post_hook_process_marks_written_slide_and_poll_notices_store(project, tool):
     event = dict(cwd=str(project.root), tool_name=tool, tool_use_id="tool-1",
                  tool_input={"file_path": SLIDE})
-    env = {**os.environ, "SLIDEMASTER_PROJECT": str(project.root)}
+    env = {**os.environ, "SLIDEMAGE_PROJECT": str(project.root)}
     def hook(name):
         payload = json.dumps({**event, "hook_event_name": name})
         done = subprocess.run([sys.executable, "-m", "slidemage.ai.claude_hook"],

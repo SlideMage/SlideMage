@@ -155,8 +155,8 @@ def main():
     manifest = dict(
         schema=SCHEMA, selected_indices=selected, edit_version=EDIT_VERSION,
         project_inputs=tree_hashes(root),
-        framework_inputs=tree_hashes(Path(slide_preview.build_env(ctx)["SLIDEMASTER_LATEX"]))
-        if slide_preview.build_env(ctx).get("SLIDEMASTER_LATEX") else {},
+        framework_inputs=tree_hashes(Path(slide_preview.build_env(ctx)["SLIDEMAGE_LATEX"]))
+        if slide_preview.build_env(ctx).get("SLIDEMAGE_LATEX") else {},
         preamble_hash=hashlib.sha256(deck.preamble_text.encode()).hexdigest(),
         calls=[
             dict(

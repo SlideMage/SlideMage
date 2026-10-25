@@ -34,7 +34,7 @@ source analysis.
 Only the pinned framework files and the bundled Uni Graz institution template
 are trusted. The default template is accepted when its generated preamble
 matches the audited bundled version. Project/deck `.latexmkrc` files must match
-the audited search configuration; without `SLIDEMASTER_LATEX`, the stock
+the audited search configuration; without `SLIDEMAGE_LATEX`, the stock
 `<project parent>/latex` fallback is used. The classifier checks for actual
 deck/project search-path shadows, top-level framework import, custom
 packages/classes, user search configuration, source and preamble definitions,

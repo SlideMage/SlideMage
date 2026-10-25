@@ -265,7 +265,7 @@ def plan_updates(project_root: Path, *, latex_source: Optional[Path],
         else:
             target = (project_root.parent / "latex").resolve()
             baseline = None
-            if (not (target / "Slidemaster_preamble_base.tex").is_file()
+            if (not (target / "SlideMage_base.tex").is_file()
                     or _in_git_checkout(target)):
                 target = None
         if target is not None and target.is_dir() and not _same_folder(target, latex_source):

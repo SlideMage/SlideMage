@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Locate the Slidemaster project (the folder holding slide_ids.csv) to operate on.
+"""Locate the SlideMage project (the folder holding slide_ids.csv) to operate on.
 
 Deliberately free of side effects and of imports from the rest of the package.
 Importing any SlideMage module selects no project: the entry points (cli.py,
@@ -20,7 +20,11 @@ from pathlib import Path
 from .fileio import atomic_write, read_json
 
 MARKER = "slide_ids.csv"
-ENV_VAR = "SLIDEMASTER_PROJECT"
+ENV_VAR = "SLIDEMAGE_PROJECT"
+LATEX_ENV_VAR = "SLIDEMAGE_LATEX"
+# The framework's names before it was called SlideMage. They are no longer read; a variable that is
+# still set under the old name is reported once (warn_legacy_env_vars) and in the project compatibility sheet.
+LEGACY_ENV_VARS = {"SLIDEMASTER_PROJECT": ENV_VAR, "SLIDEMASTER_LATEX": LATEX_ENV_VAR}
 
 # Project format guard (v4.1.0). <project>/.slidemage/project.json records
 # {"format": N, "last_app_version": "vX.Y.Z"} and is tracked with the
@@ -288,7 +292,7 @@ def project_status(root: Path, app_version: str) -> ProjectStatus:
 SNAPSHOT_MANIFEST = "snapshot.json"
 # Environment variables that could make a compile find files outside the
 # snapshot; never passed to a snapshot's compiles.
-SNAPSHOT_ISOLATING_ENV_VARS = ("TEXINPUTS", "BIBINPUTS", "LUAINPUTS", "SLIDEMASTER_LATEX")
+SNAPSHOT_ISOLATING_ENV_VARS = ("TEXINPUTS", "BIBINPUTS", "LUAINPUTS", "SLIDEMAGE_LATEX")
 
 
 def snapshot_info(root: Path) -> dict | None:
@@ -326,7 +330,7 @@ def snapshot_compile_env(root: Path, env: dict) -> dict:
     manifest = snapshot_manifest(root)
     framework = manifest.get("framework_dir")
     if isinstance(framework, str) and framework:
-        env["SLIDEMASTER_LATEX"] = str(root.parent / framework)
+        env["SLIDEMAGE_LATEX"] = str(root.parent / framework)
     epoch = manifest.get("source_date_epoch")
     if isinstance(epoch, int):
         env["SOURCE_DATE_EPOCH"] = str(epoch)
@@ -457,8 +461,27 @@ def init_project(path: Path, copy_example: bool = True) -> None:
         (path / sub).mkdir(exist_ok=True)
 
 
+def legacy_env_notes() -> list[str]:
+    """One sentence per old environment variable that is set while its new name is not."""
+    return [f"${old} is set but is no longer read. Set ${new} instead."
+            for old, new in LEGACY_ENV_VARS.items() if os.environ.get(old) and not os.environ.get(new)]
+
+
+_legacy_env_warned = False
+
+
+def warn_legacy_env_vars() -> None:
+    """Say on stderr, once per process, which old environment variables are being ignored."""
+    global _legacy_env_warned
+    if _legacy_env_warned:
+        return
+    _legacy_env_warned = True
+    for note in legacy_env_notes():
+        print("SlideMage:", note, file=sys.stderr)
+
+
 def discover() -> Path | None:
-    """$SLIDEMASTER_PROJECT, else upward from the cwd, else the last project opened."""
+    """$SLIDEMAGE_PROJECT, else upward from the cwd, else the last project opened."""
     env = os.environ.get(ENV_VAR)
     if env and is_project(Path(env)):
         return Path(env).resolve()
@@ -501,7 +524,7 @@ class ProjectContext:
     ai_before_dir = _Under(".slidemage", "ai-before")   # a slide's text before the last AI edit (ai_review.last_before)
     claude_hook_dir = _Under(".slidemage", "claude-hooks")
     slide_ids_csv = _Under(MARKER)
-    bibliography_path = _Under("Slidemaster.bib")
+    bibliography_path = _Under("SlideMage.bib")
     test_slides_path = _Under("decks", "test-slides.tex")
     slide_template_path = _Under(".scripts", "R_Slidemaster", "inst", "templates", "slide-template.tex")
 
@@ -524,7 +547,7 @@ class ProjectContext:
 
 
 def from_environment() -> ProjectContext:
-    """The project a command line works on: $SLIDEMASTER_PROJECT, else the one found
+    """The project a command line works on: $SLIDEMAGE_PROJECT, else the one found
     upward from the working directory, else the last opened (else the working directory)."""
     return ProjectContext.at(discover() or Path.cwd())
 

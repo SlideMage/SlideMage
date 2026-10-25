@@ -42,7 +42,7 @@ run, both fixed here:
 - media/alt-text.json/.csv (the accessibility image-description store --
   see README.md's "Screen-reader accessibility"/"Describing images") sit
   directly inside media/, but are never \\includegraphics{}d -- they're
-  read directly by SlideMage/Slidemaster_alt.lua, not referenced as a
+  read directly by SlideMage/SlideMage_alt.lua, not referenced as a
   literal "media/<name>" string in any slide, so the media/ scan always
   treated them as unused. MEDIA_NEVER_UNUSED below is the fix: filenames
   excluded from the media/ scan outright, regardless of whether anything

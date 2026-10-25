@@ -26,7 +26,7 @@ each against ``--batch-size`` (16) in one document, wall time and child-process 
 Run ``cold`` first for clean numbers: later scenarios render the base text once, unreported, if nothing ran before.
 
 The project is copied to a temp folder (and its preview cache removed again) unless ``--in-place``; ``--keep``
-leaves both. The framework folder (``--framework``) is used through ``SLIDEMASTER_LATEX``.
+leaves both. The framework folder (``--framework``) is used through ``SLIDEMAGE_LATEX``.
 """
 import argparse
 import collections
@@ -414,7 +414,7 @@ def run(args):
         root = Path(tempfile.mkdtemp(prefix='preview_bench_')) / source.name
         shutil.copytree(source, root, ignore=shutil.ignore_patterns('.build', '.previews', '_slidemage_preview-*'))
     os.environ[project.ENV_VAR] = str(root)
-    os.environ['SLIDEMASTER_LATEX'] = str(args.framework.resolve())
+    os.environ['SLIDEMAGE_LATEX'] = str(args.framework.resolve())
     print(header_line())
     bench = None
     try:

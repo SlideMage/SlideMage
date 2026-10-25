@@ -27,10 +27,10 @@ between title bar and footer -- with a comment line in its own slide file:
 
 (several checks comma-separated, or "all"). Exempted findings are counted, not listed.
 
-The margins are the framework's (Slidemaster_preamble_base.tex), the same in
+The margins are the framework's (SlideMage_base.tex), the same in
 every template. Exemptions are read from the slide files of the project the PDF
 belongs to: --project, else the folder with slide_ids.csv above the PDF, else
-$SLIDEMASTER_PROJECT.
+$SLIDEMAGE_PROJECT.
 
 usage: python tools/check_layout.py [--project DIR] [--checks top,right,...] [--tol 0.6] deck.pdf [...]
 Exit code 1 if anything is reported.
@@ -63,13 +63,13 @@ _skip_cache: dict[tuple[Path, str], set[str]] = {}
 
 def find_project(pdf: Path, given: str | None) -> Path | None:
     """The project a PDF belongs to: --project, the folder with slide_ids.csv
-    above the PDF, or $SLIDEMASTER_PROJECT."""
+    above the PDF, or $SLIDEMAGE_PROJECT."""
     if given:
         return Path(given).resolve()
     for folder in pdf.resolve().parents:
         if (folder / "slide_ids.csv").is_file():
             return folder
-    env = os.environ.get("SLIDEMASTER_PROJECT")
+    env = os.environ.get("SLIDEMAGE_PROJECT")
     return Path(env).resolve() if env else None
 
 

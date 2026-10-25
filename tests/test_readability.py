@@ -589,12 +589,12 @@ def test_a_real_beamer_deck_is_read_slide_by_slide(tmp_path, monkeypatch):
     shutil.copytree(repo / "example", tmp_path / "example",
                     ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
     root = tmp_path / "example"
-    monkeypatch.setenv("SLIDEMASTER_LATEX", str(tmp_path / "latex"))
-    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(tmp_path / "latex"))
+    monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))
     ctx = ProjectContext.at(root)
     (root / "decks" / "read-test.tex").write_text(
         "\\documentclass[aspectratio=169]{beamer}\n\\usetheme{gotham}\n\\makeatletter\\def\\input@path{{../}}\\makeatother\n"
-        "\\input{Slidemaster_preamble_slidemage}\n\\newcommand{\\FooterText}{Readability test}\n"
+        "\\input{SlideMage_template_slidemage}\n\\newcommand{\\FooterText}{Readability test}\n"
         "\\begin{document}\n\\slide{1jv-EN-Anatomy-of-a-Project}\n\\slide{1c9-EN-Placing-Figures}\n\\end{document}\n",
         encoding="utf-8")
     deck = next(d for d in scan_decks(ctx) if d.name == "read-test")

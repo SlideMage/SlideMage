@@ -59,6 +59,8 @@ class CompatSheet(ModalSheet):
                 intro += (f" {len(evaluation.quiet)} more change(s) only affect how slides look; they "
                           "are listed under ⋮ → Project compatibility.")
         layout.addWidget(_label(intro, rich=True))
+        for note in evaluation.environment_notes:
+            layout.addWidget(_label(note))
 
         self.items = evaluation.everything if review else evaluation.loud
         if self.items:

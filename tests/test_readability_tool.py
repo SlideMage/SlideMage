@@ -78,7 +78,7 @@ def test_an_explicit_slide_by_id_or_path_and_the_refusals(box, rendered):
     assert "abd-EN-Second-current.tex" in box.ok("check_readability", slide="abd")
     assert rendered[-1][0] == "abd"
     assert "abc-EN-Hello-current.tex" in box.ok("check_readability", slide="slides/abc-EN-Hello-current.tex")
-    assert "not a slide file" in box.error("check_readability", slide="Slidemaster.bib")
+    assert "not a slide file" in box.error("check_readability", slide="SlideMage.bib")
     assert "not both" in box.error("check_readability", slide="abc", deck="test")
     rendered.draws[0] = None
     assert box.error("check_readability").endswith("! Undefined control sequence.")

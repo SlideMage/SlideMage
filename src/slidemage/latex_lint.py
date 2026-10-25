@@ -27,7 +27,7 @@ listing shown in the GUI and in README.md):
     math-delims   \\[ \\] and \\( \\) not paired, \\left without \\right
     ampersand     unescaped & outside a table/alignment/matrix/tikz context
     hash          unescaped # outside a macro definition or URL
-    citation      \\fullcite/\\cite/... key that is not in Slidemaster.bib
+    citation      \\fullcite/\\cite/... key that is not in SlideMage.bib
     image         \\includegraphics/\\chapterlogo file that does not exist
     code-file     \\SMCodeFile{path} whose file does not exist
     slide-file    a \\slide{}-family call whose slides/*.tex file is missing
@@ -71,7 +71,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("math-delims", ERROR, "Unpaired \\[ ... \\] or \\( ... \\), or a different number of \\left and \\right."),
     ("ampersand", ERROR, "Unescaped & in running text (outside tabular/array/align/matrix/tikz contexts) -- \"Misplaced alignment tab character &\"."),
     ("hash", ERROR, "Unescaped # outside a macro definition or a URL -- \"You can't use macro parameter character #\"."),
-    ("citation", ERROR, "\\fullcite/\\cite/\\textcite/\\parencite/... with a key that is not in Slidemaster.bib."),
+    ("citation", ERROR, "\\fullcite/\\cite/\\textcite/\\parencite/... with a key that is not in SlideMage.bib."),
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
     ("code-file", ERROR, "\\SMCodeFile{path} pointing at a file that does not exist (the path is relative to the project root, extension included)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
@@ -454,7 +454,7 @@ _bib_cache: tuple[tuple[Path, float, int], frozenset[str]] | None = None
 
 
 def bib_keys(ctx: ProjectContext) -> frozenset[str]:
-    """Every citation key in Slidemaster.bib, cached until the file changes."""
+    """Every citation key in SlideMage.bib, cached until the file changes."""
     global _bib_cache
     try:
         st = ctx.bibliography_path.stat()
@@ -492,7 +492,7 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
     if keys:
         for key, position in _citations(masked):
             if key not in keys and "\\" not in key and "#" not in key:
-                issues.append(LintIssue("citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(position)))
+                issues.append(LintIssue("citation", f"citation key '{key}' is not in SlideMage.bib", line_of(position)))
     for regex in _IMAGE_RES:
         for m in regex.finditer(masked):
             # \fullbleedframe takes a comma-separated list (one image per reveal step)

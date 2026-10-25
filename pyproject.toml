@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "slidemage"
 dynamic = ["version"]
-description = "Desktop app for building, compiling and managing Slidemaster (LaTeX beamer) slide decks"
+description = "Desktop app for building, compiling and managing SlideMage (LaTeX beamer) slide decks"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"

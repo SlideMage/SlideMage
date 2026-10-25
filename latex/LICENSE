@@ -1,4 +1,4 @@
-Slidemaster LaTeX framework
+SlideMage LaTeX framework
 Copyright (C) 2026 Stefan Palan, Jürgen Fleiß
 
 This work may be distributed and/or modified under the conditions of the
@@ -11,8 +11,8 @@ This work has the LPPL maintenance status `maintained'.
 
 The Current Maintainer of this work is Stefan Palan.
 
-This work consists of the files Slidemaster_preamble_base.tex,
-Slidemaster_preamble_slidemage.tex, Slidemaster_alt.lua, Slidemaster_layout.lua
+This work consists of the files SlideMage_base.tex,
+SlideMage_template_slidemage.tex, SlideMage_alt.lua, SlideMage_measure.lua
 and slidemage-logo.pdf/.svg.
 
 The Gotham beamer theme in this folder (beamer*themegotham.sty, gotham.dtx,

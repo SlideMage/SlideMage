@@ -271,7 +271,7 @@ def configuration_key(wrapper_text, id_slug, project_root: Path, env):
         'root': str(project_root.resolve()), 'slide': id_slug, 'preamble': preamble,
         'search': {name: value for name, value in env.items() if name.startswith(
             ('TEX', 'LUA', 'BIB', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
-            ('SLIDEMASTER_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'OSFONTDIR', 'VARTEXFONTS')},
+            ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'OSFONTDIR', 'VARTEXFONTS')},
         'tools': tools,
         'rc': [(str(path), path.read_text(errors='replace') if path.is_file() else '') for path in rc_paths],
     }

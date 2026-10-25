@@ -1,8 +1,8 @@
 -- SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 -- SPDX-License-Identifier: LPPL-1.3c+
--- Slidemaster_layout.lua -- Lua half of the layout helpers in
--- Slidemaster_preamble_base.tex. In its own file, not inline in \directlua,
--- for the same reason as Slidemaster_alt.lua: TeX tokenizes a \directlua
+-- SlideMage_measure.lua -- Lua half of the layout helpers in
+-- SlideMage_base.tex. In its own file, not inline in \directlua,
+-- for the same reason as SlideMage_alt.lua: TeX tokenizes a \directlua
 -- argument first, so a "%" in a Lua string pattern would silently comment
 -- out the rest of its line.
 

@@ -28,8 +28,8 @@ from .deck_scan import (
 )
 from .tex_source import braced_argument, is_commented
 
-# \input{Slidemaster_preamble_<template>} -- which template the deck uses.
-TEMPLATE_INPUT_RE = re.compile(r"\\input\{Slidemaster_preamble_([^}\s]+)\}")
+# \input{SlideMage_template_<template>} -- which template the deck uses.
+TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_([^}\s]+)\}")
 # The opt-in switch must be defined before the institution template is loaded.
 DARK_MODE_RE = re.compile(
     r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMDarkMode\}|\\SMDarkMode\b)"
@@ -167,7 +167,7 @@ def template_supports_dark_mode(root: Path, key: str) -> bool:
 
 def template_choices(root: Path) -> list[tuple[str, str]]:
     """[(key, label)] of every template the project's decks can \\input: the
-    Slidemaster_preamble_<name>.tex in the project folder or the framework."""
+    SlideMage_template_<name>.tex in the project folder or the framework."""
     from . import slide_snapshot
 
     return [(key, slide_snapshot.template_label(key, root)) for key in slide_snapshot.available_templates(root)]
@@ -211,7 +211,7 @@ def read_settings(text: str) -> DeckSettings:
 def set_template(text: str, template: str) -> str:
     matches = _live(text, TEMPLATE_INPUT_RE)
     if not matches:
-        raise ValueError("This deck has no \\input{Slidemaster_preamble_...} line to change.")
+        raise ValueError("This deck has no \\input{SlideMage_template_...} line to change.")
     name = template.strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
         raise ValueError(f"'{template}' is not a template name.")

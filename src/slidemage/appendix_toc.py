@@ -6,11 +6,11 @@ thumbnail-grid slides per chapter, hyperlinked to and from the main deck.
 Text only -- never written to slides/ or decks/. compiler.py's wrapper
 calls generate_appendix_tex() and appends the result right before
 \\end{document} when a job has appendix_toc=True. Relies on:
-- \\hypertarget{\\slideID}{} in \\setSlideID@aux (Slidemaster_preamble_base.tex)
+- \\hypertarget{\\slideID}{} in \\setSlideID@aux (SlideMage_base.tex)
   as the jump target every real slide already carries, any frame type.
 - slide_snapshot.THUMB_SIZE-cached previews for the grid thumbnails.
 - \\SMInstituteLogoGraphic's own \\hyperlink to "SMAppendixAgenda"
-  (Slidemaster_preamble_base.tex), which this module's agenda slide is the
+  (SlideMage_base.tex), which this module's agenda slide is the
   landing target for.
 """
 from __future__ import annotations

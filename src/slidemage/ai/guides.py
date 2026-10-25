@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Short guides the agent can load on demand with read_guide (2026-10-10, UI redesign step
-10a). Condensed from README.md and docs/SlidemasterManual.md; the frame skeletons come from
+10a). Condensed from README.md and docs/SlideMageCommands.md; the frame skeletons come from
 slide_add, so they are the ones the Add slide sheet writes. A guide is kept short on purpose:
 it costs context every time it is read, and the slides of the project (find_files, search,
 read_file) are the better examples for anything not covered here."""
@@ -50,7 +50,7 @@ Reveal steps (overlays) and deck versions.
 
 _CITATIONS = """\
 Citations and the bibliography.
-- References live in Slidemaster.bib at the project root, kept sorted by key. Keys are the first
+- References live in SlideMage.bib at the project root, kept sorted by key. Keys are the first
   author's lowercase surname plus the year, with a letter if taken: markowitz1952, smith2024b.
 - Cite in a slide with \\fullcite{key} (the full reference as a footnote line; the usual choice),
   \\textcite{key} (Author (year) in running text) or \\parencite{key} ((Author, year)).
@@ -107,7 +107,7 @@ GUIDES: dict[str, tuple[str, str | Callable[[ProjectContext], str]]] = {
     "frames": ("the frame types and their LaTeX skeletons", _frames),     # built on demand
     "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
     "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
-    "citations": ("Slidemaster.bib, \\fullcite, \\textcite", _CITATIONS),
+    "citations": ("SlideMage.bib, \\fullcite, \\textcite", _CITATIONS),
     "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES + "\n" + IMAGE_DESCRIPTION_RULES),
 }
 TOPICS = tuple(GUIDES)

@@ -22,7 +22,7 @@ DECK_TEXT = r"""% !TeX program = lualatex
 \makeatother
 \graphicspath{{../}}
 
-\input{Slidemaster_preamble_@TEMPLATE@}
+\input{SlideMage_template_@TEMPLATE@}
 
 \newcommand{\FooterText}{@FOOTER@}
 

@@ -147,7 +147,7 @@ def split_fixture(tmp_path, monkeypatch, ids):
     theme = tmp_path / 'framework' / 'theme.tex'
     theme.parent.mkdir()
     theme.write_text('theme')
-    monkeypatch.setattr(compiler, 'build_env', lambda _: {'SLIDEMASTER_LATEX': str(theme.parent), 'PATH': '', 'HOME': str(tmp_path)})
+    monkeypatch.setattr(compiler, 'build_env', lambda _: {'SLIDEMAGE_LATEX': str(theme.parent), 'PATH': '', 'HOME': str(tmp_path)})
     specs = [make_spec(ctx, 'aaa-EN-X', text='\\includegraphics{named}', preamble='\\includegraphics{logo}', frame=3),
              make_spec(ctx, 'bbb-EN-X', text='Plain', preamble='\\includegraphics{logo}', frame=4)]
     inputs = [ctx.root / 'media' / name for name in ('named.png', 'other.png', 'logo.png', 'alt-text.csv')]
@@ -325,7 +325,7 @@ def service_fixture(tmp_path, monkeypatch):
     framework.mkdir()
     theme = framework / 'theme.tex'
     theme.write_text('fixture')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images',
@@ -385,7 +385,7 @@ def manual_requests(root, count):
 
 @pytest.mark.skipif(shutil.which('latexmk') is None or shutil.which('lualatex') is None, reason='needs a TeX installation')
 def test_a_real_document_stores_the_images_and_the_evidence_of_the_single_renders(tmp_path, monkeypatch):
-    os.environ.setdefault('SLIDEMASTER_LATEX', str(Path(__file__).resolve().parent.parent / 'latex'))
+    os.environ.setdefault('SLIDEMAGE_LATEX', str(Path(__file__).resolve().parent.parent / 'latex'))
     results, entries, spy = {}, {}, []
     real_texts, real_text = slide_preview.render_slide_texts_to_pdf, slide_preview.render_slide_text_to_pdf
     monkeypatch.setattr(slide_preview, 'render_slide_texts_to_pdf', lambda *a, **k: spy.append('batch') or real_texts(*a, **k))

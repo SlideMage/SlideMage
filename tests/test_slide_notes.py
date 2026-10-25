@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The slide-source helpers behind the side panels: \\note calls and when a slide was last saved
 (slide_source), a slide's translation partner and whether it is outdated (slide_language), the key
-lookup of Slidemaster.bib, and storing one image's description for one slide (alt_images)."""
+lookup of SlideMage.bib, and storing one image's description for one slide (alt_images)."""
 from __future__ import annotations
 
 import os
@@ -138,7 +138,7 @@ def test_a_translation_is_outdated_when_the_original_was_saved_after_it_was_writ
     assert not slide_language.translation_link(ctx, "abd-DE-Demo").outdated  # is not a save
 
 
-# -- Slidemaster.bib ---------------------------------------------------------------------------------
+# -- SlideMage.bib ---------------------------------------------------------------------------------
 
 def test_entry_line_finds_the_entry_of_a_key(tmp_path):
     bib = tmp_path / "x.bib"

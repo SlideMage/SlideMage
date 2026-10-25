@@ -1,4 +1,4 @@
-Slidemaster / SlideMage
+SlideMage
 Copyright (c) 2026 Stefan Palan, Jürgen Fleiß
 
 This repository holds material under three licences. The full texts are in
@@ -8,7 +8,7 @@ every file is also given in its header or in REUSE.toml.
   Part                                   Paths                                              Licence
   -------------------------------------  -------------------------------------------------  ------------------
   The SlideMage application              src/, tools/, packaging/, tests/, pyproject.toml   GPL-3.0-or-later
-  The Slidemaster LaTeX framework        latex/ (Slidemaster_preamble_*.tex, *.lua, logos)  LPPL-1.3c+
+  The SlideMage LaTeX framework          latex/ (SlideMage_*.tex, *.lua, logos)             LPPL-1.3c+
   The Gotham beamer theme (third party)  latex/beamer*gotham.sty, latex/gotham*             LPPL-1.3c, unchanged,
                                                                                             (c) Romain Noël
   Documentation and example project     README.md, docs/, example/                         CC-BY-SA-4.0

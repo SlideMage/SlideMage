@@ -6,7 +6,7 @@ files" group).
 
 Searched are every slide's `slides/<id>-<slug>-current.tex` (a slide's text is
 what one searches for, with or without an image), the decks `decks/*.tex` and
-`decks/archive/*.tex`, and `Slidemaster.bib`. A plain case-insensitive substring
+`decks/archive/*.tex`, and `SlideMage.bib`. A plain case-insensitive substring
 match against the raw source, not a regex or a maintained index: ~665 slide
 files of a few KB each are re-read in well under a second, so there is nothing
 to keep in sync. Matching the raw source is deliberate too: it also finds a
@@ -27,7 +27,7 @@ from .slide_language import CURRENT_SUFFIX
 # Characters of context kept on each side of the match: a palette row shows one line.
 _SNIPPET_CONTEXT = 40
 SLIDE_SUFFIX = CURRENT_SUFFIX
-BIB_NAME = "Slidemaster.bib"
+BIB_NAME = "SlideMage.bib"
 
 
 @dataclass(frozen=True)

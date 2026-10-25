@@ -4,7 +4,7 @@ SPDX-PackageSupplier = "Stefan Palan"
 SPDX-PackageDownloadLocation = "https://github.com/stpalan/SlideMage"
 
 # Files that cannot carry an SPDX header of their own. Python, Lua and the
-# Slidemaster LaTeX files have one; see LICENSE for the overview.
+# SlideMage LaTeX files have one; see LICENSE for the overview.
 
 [[annotations]]
 path = ["pyproject.toml", "uv.lock", ".gitattributes", ".gitignore", ".github/**", ".claude/**",

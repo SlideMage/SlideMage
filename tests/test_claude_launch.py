@@ -94,7 +94,7 @@ def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tm
 def test_the_token_goes_to_the_child_by_environment_only(tmp_path):
     claude = tmp_path / "bin" / "claude"
     env = claude_launch.environment("s3cret", tmp_path / "proj", claude, base={"PATH": "/usr/bin", "HOME": "/h"})
-    assert env["SLIDEMAGE_MCP_TOKEN"] == "s3cret" and env["SLIDEMASTER_PROJECT"] == str(tmp_path / "proj")
+    assert env["SLIDEMAGE_MCP_TOKEN"] == "s3cret" and env["SLIDEMAGE_PROJECT"] == str(tmp_path / "proj")
     assert env["TERM"] == "xterm-256color" and env["COLORTERM"] == "truecolor" and env["HOME"] == "/h"
     assert env["PATH"].split(os.pathsep) == [str(claude.parent), "/usr/bin"]
     assert "s3cret" not in " ".join(claude_launch.build_command(claude, URL))

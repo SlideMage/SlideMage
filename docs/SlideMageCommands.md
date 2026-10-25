@@ -1,4 +1,4 @@
-# Slidemaster Manual
+# SlideMage Commands
 
 A concise reference for core functionality.
 
@@ -14,10 +14,10 @@ This project supports three deck versions:
 
 ### Setting the Deck Version
 
-In your deck file (e.g., `decks/slidemage-manual.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{Slidemaster_preamble_uni-graz}`:
+In your deck file (e.g., `decks/slidemage-manual.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{SlideMage_template_uni-graz}`:
 
 ```latex
-\input{Slidemaster_preamble_uni-graz}
+\input{SlideMage_template_uni-graz}
 \deckversion[instructor]           % or during-course, after-course
 ```
 

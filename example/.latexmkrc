@@ -62,42 +62,42 @@ use File::Basename 'dirname';
 $do_cd = 1;
 $aux_dir = dirname($abs_rc) . '/.build';
 
-# Search paths. The Slidemaster framework (beamerthemegotham.sty, the base
-# preamble, Slidemaster_alt.lua) lives outside the project, in the repo's
-# latex/ folder -- or wherever $SLIDEMASTER_LATEX points, for a project kept
+# Search paths. The SlideMage framework (beamerthemegotham.sty, the base
+# preamble, SlideMage_alt.lua) lives outside the project, in the repo's
+# latex/ folder -- or wherever $SLIDEMAGE_LATEX points, for a project kept
 # outside this repo. The project root itself also goes on the path so that
-# `\usetheme`/`\input{Slidemaster_preamble_uni-graz}` resolve after $do_cd
+# `\usetheme`/`\input{SlideMage_template_uni-graz}` resolve after $do_cd
 # moves into decks/ (TeX Live's kpathsea doesn't search parent folders).
 # kpathsea's separator is ';' on Windows; the trailing separator keeps the
 # distribution's default search path appended.
 # Windows is 'MSWin32' for a native Perl but 'cygwin'/'msys' for the Perl
 # bundled with Git for Windows -- the one MiKTeX's latexmk usually runs on --
 # and MiKTeX wants ';' either way (a ':' would split at every drive letter).
-my $slidemaster_windows = $^O =~ /^(?:MSWin32|cygwin|msys)$/;
-my $slidemaster_sep = $slidemaster_windows ? ';' : ':';
+my $slidemage_windows = $^O =~ /^(?:MSWin32|cygwin|msys)$/;
+my $slidemage_sep = $slidemage_windows ? ';' : ':';
 # That same Perl also reports its own paths ($abs_rc and everything built from
 # it) in POSIX form, /d/... or /cygdrive/d/..., which it translates for
 # command-line arguments but not inside TEXINPUTS -- MiKTeX then can't find
 # anything on it. Convert to D:/... form before joining.
-sub slidemaster_native_path {
+sub slidemage_native_path {
 	my ($path) = @_;
 	if ($^O eq 'cygwin' || $^O eq 'msys') {
 		$path =~ s{^/cygdrive/([a-zA-Z])/}{$1:/} or $path =~ s{^/([a-zA-Z])/}{$1:/};
 	}
 	return $path;
 }
-my $slidemaster_latex = $ENV{'SLIDEMASTER_LATEX'} // (dirname($abs_rc) . '/../latex');
-$ENV{'TEXINPUTS'} = join($slidemaster_sep,
-	map({ slidemaster_native_path($_) } dirname($abs_rc), $slidemaster_latex),
+my $slidemage_latex = $ENV{'SLIDEMAGE_LATEX'} // (dirname($abs_rc) . '/../latex');
+$ENV{'TEXINPUTS'} = join($slidemage_sep,
+	map({ slidemage_native_path($_) } dirname($abs_rc), $slidemage_latex),
 	$ENV{'TEXINPUTS'} // '');
 
 # biber finds .bib files via BIBINPUTS, not TEXINPUTS: without this, a
 # decks/*.tex compile that took the bare-filename branch of the deck's
-# \IfFileExists{Slidemaster.bib} fallback logs "Bib file(s) not found in
+# \IfFileExists{SlideMage.bib} fallback logs "Bib file(s) not found in
 # search path", leaving \fullcite{} unresolved (which then cascades into
 # spurious "missing \item" errors). Needed on Windows too: with the
 # project root on TEXINPUTS, \IfFileExists finds the bare filename there,
 # and latexmk then vetoes biber outright ("only use bibtex/biber if all
 # .bib files exist") unless BIBINPUTS can find it as well.
-$ENV{'BIBINPUTS'} = join($slidemaster_sep,
-	slidemaster_native_path(dirname($abs_rc)), $ENV{'BIBINPUTS'} // '');
+$ENV{'BIBINPUTS'} = join($slidemage_sep,
+	slidemage_native_path(dirname($abs_rc)), $ENV{'BIBINPUTS'} // '');

@@ -20,7 +20,7 @@ Tracked in git (unlike SlideMage's own UI preferences -- see
 ui/kit/theme.py's dark-mode QSettings use, a deliberately different, per-
 machine store) since this is genuinely project config: which models
 translate this project's content, and exactly how, is worth sharing/
-versioning the same way Slidemaster.bib or slide_ids.csv are, not left
+versioning the same way SlideMage.bib or slide_ids.csv are, not left
 as one machine's own throwaway local state.
 
 On-disk shape (media/alt-text.json-style: plain nested dict, human-

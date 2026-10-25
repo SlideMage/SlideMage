@@ -408,7 +408,7 @@ def test_preview_builds_read_slidemages_own_latexmk_settings(tmp_path, monkeypat
 
 
 def test_the_framework_names_a_missing_ovl_and_top_like_latex_names_a_missing_aux():
-    base = (Path(__file__).resolve().parents[1] / 'latex' / 'Slidemaster_preamble_base.tex').read_text(encoding='utf-8')
+    base = (Path(__file__).resolve().parents[1] / 'latex' / 'SlideMage_base.tex').read_text(encoding='utf-8')
     for ext in ('ovl', 'top'):
         assert rf'\InputIfFileExists{{\jobname.{ext}}}{{}}{{\typeout{{No file \jobname.{ext}.}}}}' in base
 

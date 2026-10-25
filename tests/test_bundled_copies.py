@@ -26,8 +26,8 @@ write = partial(write, newline=None)
 def bundle(tmp_path):
     """A bundled framework and example project (manual), like the exe's."""
     latex = tmp_path / "bundle" / "latex"
-    write(latex / "Slidemaster_preamble_base.tex", "base v1\n")
-    write(latex / "Slidemaster_preamble_slidemage.tex", "template v1\n")
+    write(latex / "SlideMage_base.tex", "base v1\n")
+    write(latex / "SlideMage_template_slidemage.tex", "template v1\n")
     example = tmp_path / "bundle" / "example"
     write(example / "decks" / "slidemage-manual.tex", "manual deck v1\n")
     write(example / "slides" / "1aa-EN-One-current.tex", "slide one v1\n")
@@ -37,7 +37,7 @@ def bundle(tmp_path):
     write(example / "media" / "alt-text.json", json.dumps({"version": 1, "images": {
         "media/shot.png": {"role": "informative", "status": "auto", "short": "shot v1"}}}))
     write(example / "slide_ids.csv", '"id"\r\n"1aa"\r\n"1bb"\r\n')
-    write(example / "Slidemaster_preamble_uni-graz.tex", "graz\n")
+    write(example / "SlideMage_template_uni-graz.tex", "graz\n")
     return latex, example
 
 
@@ -71,7 +71,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     write(example / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
     write(example / "slides" / "1cc-EN-Three-current.tex", "slide three v2\n")
     (example / "slides" / "1bb-EN-Two-current.tex").unlink()
-    write(latex / "Slidemaster_preamble_base.tex", "base v2\n")
+    write(latex / "SlideMage_base.tex", "base v2\n")
     # the user changed the snippet, which also changed upstream
     write(root / "snippets" / "1aa-1.tex", "my own code\n")
     write(example / "snippets" / "1aa-1.tex", "code v2\n")
@@ -82,7 +82,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert manual.add == ["slides/1cc-EN-Three-current.tex"]
     assert manual.remove == ["slides/1bb-EN-Two-current.tex"]
     assert manual.kept == ["snippets/1aa-1.tex"]
-    assert framework.update == ["Slidemaster_preamble_base.tex"] and not framework.adopted
+    assert framework.update == ["SlideMage_base.tex"] and not framework.adopted
 
     backup = bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.20.0", now=NOW)
     bundled_copies.apply_update(ProjectContext.at(root), framework, "v5.20.0", now=NOW)
@@ -92,7 +92,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert (root / "snippets" / "1aa-1.tex").read_text() == "my own code\n"     # kept
     assert (backup / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
     assert (backup / "slides" / "1bb-EN-Two-current.tex").is_file()
-    assert (root.parent / "latex" / "Slidemaster_preamble_base.tex").read_text() == "base v2\n"
+    assert (root.parent / "latex" / "SlideMage_base.tex").read_text() == "base v2\n"
     # afterwards nothing is pending; the user's snippet stays theirs
     assert plan(root, bundle) == {}
 
@@ -145,12 +145,12 @@ def test_framework_adoption_and_git_checkouts(tmp_path, bundle, monkeypatch):
     latex, example = bundle
     root = tmp_path / "old" / "project"
     write(root / "slide_ids.csv", '"id"\r\n')
-    write(root.parent / "latex" / "Slidemaster_preamble_base.tex", "base v0\n")
+    write(root.parent / "latex" / "SlideMage_base.tex", "base v0\n")
     parts = plan(root, bundle)
     framework = parts[FRAMEWORK]
     assert framework.adopted
-    assert framework.update == ["Slidemaster_preamble_base.tex"]
-    assert framework.add == ["Slidemaster_preamble_slidemage.tex"]
+    assert framework.update == ["SlideMage_base.tex"]
+    assert framework.add == ["SlideMage_template_slidemage.tex"]
     # a framework folder inside a git checkout is never touched
     (root.parent / ".git").mkdir()
     assert FRAMEWORK not in plan(root, bundle)

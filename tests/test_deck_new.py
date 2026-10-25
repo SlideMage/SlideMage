@@ -14,7 +14,7 @@ def test_new_deck_is_written_scanned_and_tagged(tmp_path):
     dest = deck_new.new_deck(ctx, " Lecture 1 ", "uni-graz", "Course")
     assert dest == root / "decks" / "Lecture 1.tex"
     text = dest.read_text(encoding="utf-8")
-    assert "\\input{Slidemaster_preamble_uni-graz}" in text
+    assert "\\input{SlideMage_template_uni-graz}" in text
     assert "\\decktags{course}" in text
     assert "\\newcommand{\\FooterText}{Lecture 1}" in text
     assert text.index("\\decktags") < text.index("\\begin{document}") < text.index("\\end{document}")

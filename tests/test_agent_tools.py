@@ -152,7 +152,7 @@ def test_read_file_refuses_folders_missing_and_binary_files(box):
 def test_find_files_matches_patterns(box):
     assert box.ok("find_files", pattern="slides/*-current.tex").splitlines() == [
         "slides/abc-EN-Hello-current.tex", "slides/abd-EN-Second-current.tex"]
-    assert "Slidemaster.bib" in box.ok("find_files", pattern="*.bib")
+    assert "SlideMage.bib" in box.ok("find_files", pattern="*.bib")
     assert "decks/test.tex" in box.ok("find_files", pattern="**/*.tex")
     assert "No file matches" in box.ok("find_files", pattern="*.xyz")
     assert ".." in box.error("find_files", pattern="../*")
@@ -161,7 +161,7 @@ def test_find_files_matches_patterns(box):
 def test_search_finds_text_in_slides_and_the_bib(box):
     out = box.ok("search", query="second point")
     assert "slides/abc-EN-Hello-current.tex:9" in out and "slides/abd-EN-Second-current.tex" in out
-    assert "Slidemaster.bib" in box.ok("search", query="Older")
+    assert "SlideMage.bib" in box.ok("search", query="Older")
     assert "at least 2" in box.error("search", query="x")
 
 
@@ -335,7 +335,7 @@ def test_lint_checks_the_buffer_when_the_file_is_open(box, root):
     box.ws.open(root / SLIDE, LF + "\\begin{itemize}\n", dirty=True)
     out = box.ok("lint")                                                 # default: the file in focus
     assert "error(s)" in out and "[error]" in out
-    assert "Only .tex" in box.error("lint", path="Slidemaster.bib")
+    assert "Only .tex" in box.error("lint", path="SlideMage.bib")
 
 
 def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
@@ -360,7 +360,7 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
 
     monkeypatch.setattr(preview_target, "render_text", failing)
     assert "Undefined control sequence" in box.error("render_preview")
-    assert "not a slide" in box.error("render_preview", slide="Slidemaster.bib")
+    assert "not a slide" in box.error("render_preview", slide="SlideMage.bib")
 
 
 @pytest.mark.parametrize("slug, title, frame, language, after", [
@@ -443,10 +443,10 @@ def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):
         "author": "Markowitz, Harry", "title": "Portfolio Selection", "year": "1952",
         "journaltitle": "Journal of Finance & Co"})
     assert "markowitz1952" in out and "\\fullcite{markowitz1952}" in out
-    bib = (root / "Slidemaster.bib").read_text()
+    bib = (root / "SlideMage.bib").read_text()
     assert bib.index("markowitz1952") < bib.index("old2000")             # sorted by key
     assert "Journal of Finance \\& Co" in bib
-    assert box.ws.changed[-1][0] == root / "Slidemaster.bib"
+    assert box.ws.changed[-1][0] == root / "SlideMage.bib"
     assert "already exists" in box.error("add_bib_entry", kind="book", key="old2000", fields={
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
 
@@ -454,7 +454,7 @@ def test_add_bib_entry_writes_a_sorted_entry_with_a_suggested_key(box, root):
 def test_add_bib_entry_refuses_a_taken_key_before_asking_and_a_buffer_that_got_edits_while_asking(box, root):
     taken = dict(kind="book", key="old2000", fields={"author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
     assert "already exists" in box.error("add_bib_entry", **taken) and not box.ws.asked          # ask mode: nobody was asked
-    bib = root / "Slidemaster.bib"
+    bib = root / "SlideMage.bib"
     box.ws.before_confirm = lambda: box.ws.dirty.add(bib)
     assert "meanwhile" in box.error("add_bib_entry", kind="book", key="new2001", fields={
         "author": "A, B", "title": "T", "year": "2001", "publisher": "P"})
@@ -468,7 +468,7 @@ def test_add_bib_entry_validates(box):
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P", "colour": "red"})
     assert "lowercase surname" in box.error("add_bib_entry", kind="book", key="Bad Key", fields={
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
-    box.ws.dirty.add(box.root / "Slidemaster.bib")
+    box.ws.dirty.add(box.root / "SlideMage.bib")
     assert "unsaved edits" in box.error("add_bib_entry", kind="book", fields={
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
 
@@ -529,7 +529,7 @@ def test_refresh_preview_reports_the_first_latex_error_and_other_problems(box, r
     assert "! Undefined control sequence." in box.error("refresh_preview", view="instructor")
     fake_render(monkeypatch, root, fail="Render failed")
     assert "Render failed" in box.error("refresh_preview", slide="abd")
-    assert "not a slide file" in box.error("refresh_preview", slide="Slidemaster.bib")
+    assert "not a slide file" in box.error("refresh_preview", slide="SlideMage.bib")
     assert "frozen version" in box.error("refresh_preview", slide="slides/abc-EN-Hello-v1-0-0.tex")
     monkeypatch.setattr(slide_snapshot, "publish_preview", lambda *a: (_ for _ in ()).throw(OSError("disk full")))
     fake_render(monkeypatch, root)

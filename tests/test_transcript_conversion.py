@@ -24,9 +24,9 @@ def _frame(body: str) -> str:
 
 
 @pytest.mark.parametrize(("body", "expected"), [
-    (r"Load it: \SMCmd{input}\SMCode{\{Slidemaster\_preamble\_base\}}, "
+    (r"Load it: \SMCmd{input}\SMCode{\{SlideMage\_base\}}, "
      r"pin with \SMCmd{slideversion}\SMCode{\{abc-EN-X\}\{1-0-0\}}.",
-     (r"`\input{Slidemaster_preamble_base}`", r"`\slideversion{abc-EN-X}{1-0-0}`")),
+     (r"`\input{SlideMage_base}`", r"`\slideversion{abc-EN-X}{1-0-0}`")),
     (r"\SMCode{--project}, \SMCode{gothamtable[gap=12pt]}, "
      r"\SMCode{\textbackslash setfootnotesymbols\{\textdagger,\S\}}, "
      r"\SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}}",

@@ -17,7 +17,7 @@ def test_course_url_round_trip_and_rescan(tmp_path, newline):
     path = tmp_path / "course.tex"
     initial = newline.join((
         r"\documentclass{beamer}",
-        r"\input{Slidemaster_preamble_uni-graz}",
+        r"\input{SlideMage_template_uni-graz}",
         r"% This note mentions \begin{document} before the actual command.",
         r"\begin{document}",
         r"\end{document}",

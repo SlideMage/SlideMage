@@ -15,8 +15,11 @@ one :class:`Change` in :data:`CHANGES`, added in the same commit as the change
   pending only while it finds something; without one, until it is dealt with;
 - ``migrate(root)``: optional, returns ``{file: new bytes}`` for the files to
   rewrite -- pure planning, :func:`run_update` backs every file up first
-  (.slidemage/backups/<time>/compat/) and writes it atomically. It must be
-  idempotent. decks/#workdeck.tex is not exempt;
+  (.slidemage/backups/<time>/compat/) and writes it atomically. A file to
+  delete maps to ``None``, so a rename is the new name with the bytes plus the
+  old name with ``None``. The update is all or nothing: if a file cannot be
+  written, everything already written is put back. It must be idempotent.
+  decks/#workdeck.tex is not exempt;
 - ``fix``: how to fix it by hand (before/after), for the report.
 
 State lives in the project's .slidemage/project.json, key "compat":
@@ -46,7 +49,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, project
+from . import compat_bibliography, compat_names, project
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -121,7 +124,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Use \\slide or \\slideversion for slides students should receive; keep omission "
         "calls for instructor-only content."),
     detect=_detect_omitslide,
-)]
+), compat_names.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
@@ -139,6 +142,7 @@ class Evaluation:
     loud: list[Pending] = field(default_factory=list)      # shown in the dialog
     quiet: list[Pending] = field(default_factory=list)     # appearance only
     newer_notice: str = ""     # "vX": the project was used by a newer SlideMage
+    environment_notes: list[str] = field(default_factory=list)   # old environment variables still set
 
     @property
     def everything(self) -> list[Pending]:
@@ -202,7 +206,7 @@ def _tuple(version: str) -> Optional[tuple[int, ...]]:
 def evaluate(root: Path, app_version: str, changes: Optional[list[Change]] = None) -> Evaluation:
     """What is pending for `root` when it is opened with `app_version`."""
     changes = CHANGES if changes is None else changes
-    result = Evaluation()
+    result = Evaluation(environment_notes=project.legacy_env_notes())
     base, current = _tuple(checked_version(root)), _tuple(app_version)
     skipped = dismissed_ids(root)
     for change in changes:
@@ -244,7 +248,7 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
     if project.is_snapshot(root) and not dry_run:
         result.errors.append("This project is a deck snapshot; snapshots are never updated.")
         return result
-    plan: dict[Path, bytes] = {}
+    plan: dict[Path, Optional[bytes]] = {}
     for item in pending:
         if item.change.migrate is None:
             continue
@@ -255,21 +259,45 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
             result.errors.append(f"{item.change.id}: {exc}")
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
     backup = root / BACKUP_DIR / stamp / "compat"
+    todo: list[tuple[Path, str, Optional[bytes]]] = []
     for path, data in sorted(plan.items()):
-        rel = path.relative_to(root).as_posix()
-        if path.is_file() and path.read_bytes() == data:
+        if (data is None and not path.is_file()) or (data is not None and path.is_file() and path.read_bytes() == data):
             continue
-        result.changed.append(rel)
-        if dry_run:
-            continue
-        try:
+        todo.append((path, path.relative_to(root).as_posix(), data))
+    result.changed = [rel for _path, rel, _data in todo]
+    if dry_run or not todo:
+        return result
+    # Back everything up before the first change, so a failure leaves the project as it was.
+    try:
+        for path, rel, _data in todo:
             if path.is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
                 result.backup = backup
-            atomic_write(path, data)
-        except OSError as exc:
-            result.errors.append(f"{rel}: {exc}")
+    except OSError as exc:
+        result.errors.append(f"backup failed, nothing was changed: {exc}")
+        result.changed = []
+        return result
+    done: list[tuple[Path, Optional[bytes]]] = []        # (file, what it held before; None = it did not exist)
+    try:
+        for path, _rel, data in sorted(todo, key=lambda item: item[2] is None):    # writes first, removals last
+            before = path.read_bytes() if path.is_file() else None
+            if data is None:
+                path.unlink()
+            else:
+                atomic_write(path, data)
+            done.append((path, before))
+    except OSError as exc:
+        result.errors.append(f"{path.relative_to(root).as_posix()}: {exc}; the project was put back as it was")
+        for undone, before in reversed(done):
+            try:
+                if before is None:
+                    undone.unlink(missing_ok=True)
+                else:
+                    atomic_write(undone, before)
+            except OSError as undo_exc:
+                result.errors.append(f"{undone.relative_to(root).as_posix()}: could not be put back: {undo_exc}")
+        result.changed = []
     return result
 
 
@@ -289,6 +317,8 @@ def report_markdown(root: Path, evaluation: Evaluation, app_version: str) -> str
     if evaluation.newer_notice:
         lines += [f"> This project was last used with SlideMage {evaluation.newer_notice}, "
                   f"which is newer than {app_version}; features of that version may not work here.", ""]
+    if evaluation.environment_notes:
+        lines += ["## Environment variables", "", *[f"- {note}" for note in evaluation.environment_notes], ""]
     if not evaluation.everything:
         lines += ["Nothing to report.", ""]
     else:
@@ -312,6 +342,7 @@ def report_data(evaluation: Evaluation, app_version: str) -> dict:
     return {
         "app_version": app_version,
         "newer_notice": evaluation.newer_notice,
+        "environment_notes": evaluation.environment_notes,
         "changes": [{
             "id": p.change.id, "since": p.change.since, "severity": p.change.severity,
             "title": p.change.title, "description": p.change.description, "fix": p.change.fix,
@@ -354,7 +385,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         for error in done.errors:
             print("error:", error, file=sys.stderr)
         evaluation = evaluate(root, VERSION_NUMBER)
-    if evaluation.everything:      # files only when there is something to hand on
+    if evaluation.everything or evaluation.environment_notes:      # files only when there is something to hand on
         write_report(root, evaluation, VERSION_NUMBER)
     if args.json:
         print(json.dumps(report_data(evaluation, VERSION_NUMBER), indent=2))

@@ -145,7 +145,7 @@ def _fresh(manifest: Path, project_root: Path, env: dict) -> bool:
 
 def _texinputs(project_root: Path, env: dict) -> str:
     """What the project's .latexmkrc sets: the project, the framework, then the rest."""
-    framework = env.get('SLIDEMASTER_LATEX') or str(project_root / '..' / 'latex')
+    framework = env.get('SLIDEMAGE_LATEX') or str(project_root / '..' / 'latex')
     return os.pathsep.join([str(project_root), framework, env.get('TEXINPUTS', '')])
 
 

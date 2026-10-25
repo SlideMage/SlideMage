@@ -28,7 +28,7 @@ from slidemage.ui.workspace.state import WorkspaceState
 
 FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
 DECK = (
-    "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}\n"
+    "\\documentclass{beamer}\n\\input{SlideMage_template_uni-ibk}\n\\begin{document}\n"
     "\\section{Part}\n\\slide{aaa-EN-One}\n\\slideversion{bbb-EN-Two}{1-0-0}\n"
     "\\conditionalslide[instructor]{ccc-DE-Drei}\n\\end{document}\n")
 

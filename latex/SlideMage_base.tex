@@ -85,8 +85,8 @@
 % token below (\c_primary_*, \c_secondary_*, \c_tertiary_*, \c_custom_*) and
 % \SMInstituteLogoPath/\SMLogoHeight/\gothamFrametitleRightpading
 % are assumed already defined by the time this file is reached -- see e.g.
-% Slidemaster_preamble_uni-graz.tex for the Graz values, or
-% Slidemaster_preamble_mci.tex/Slidemaster_preamble_uni-ibk.tex for the
+% SlideMage_template_uni-graz.tex for the Graz values, or
+% SlideMage_template_mci.tex/SlideMage_template_uni-ibk.tex for the
 % other two institutions this deck supports. \SMLogoWidth is the one
 % logo-derived length that *does* stay computed here (via \settowidth,
 % further below) rather than hardcoded per institution, since it already
@@ -869,10 +869,10 @@
 % same idiom as \SMChapterLogoPath below) and \SMLogoHeight (a
 % length) are both defined by the per-university preamble that \input{}s
 % this file, before this file is reached -- see e.g.
-% Slidemaster_preamble_uni-graz.tex. Whichever source image
+% SlideMage_template_uni-graz.tex. Whichever source image
 % \SMInstituteLogoPath points at should have any symmetric margin of
 % empty transparent pixels around the actual logo artwork trimmed off first
-% (see Slidemaster_preamble_uni-graz.tex's own comment on why: an untrimmed
+% (see SlideMage_template_uni-graz.tex's own comment on why: an untrimmed
 % margin makes \includegraphics's box bigger than the visible logo, so the
 % logo's right-hand margin ends up looking bigger than its top/bottom
 % margins, since only the latter get absorbed into vertical centering).
@@ -1436,7 +1436,7 @@
 }
 
 % Student-version decks: \studentversion (called anywhere in a deck, e.g.
-% right after \input{Slidemaster_preamble_uni-graz}, similar to \sidefootnotes or
+% right after \input{SlideMage_template_uni-graz}, similar to \sidefootnotes or
 % \setfootnotesymbols) switches that compile into the "handout" variant --
 % including, as of 2026-07-03, actually forcing beamer's own "handout" mode
 % (\gdef\beamer@currentmode{handout}, normally only reachable via the
@@ -1472,7 +1472,7 @@
 % file (not inside the slide's own content file): the identical slide list
 % can serve the instructor deck and both student deck versions, e.g.
 %
-%   \input{Slidemaster_preamble_uni-graz}
+%   \input{SlideMage_template_uni-graz}
 %   \FooterText{...}
 %   \makeatletter\ifdefined\HANDOUT\studentversion\fi\makeatother  % or similar
 %   \input{course-content.tex}   % the shared \slide{}/\omitslide{} list
@@ -2119,14 +2119,14 @@
 % \SMClearSideFootnotesBox already does), emit at frame close.
 %
 % Defined here (outside/before the "Alt-text manifest" \ifluatex block
-% further down that actually loads Slidemaster_alt.lua and redefines
+% further down that actually loads SlideMage_alt.lua and redefines
 % \includegraphics) rather than inside it, matching \SMArtifactBegin/End
 % just above: standardframe unconditionally calls both, so they need to
 % exist regardless of engine, each independently \ifluatex-guarded inside
 % -- under any non-LuaTeX engine \SMResetImageSources/
 % \SMEmitImageSourceFootnote are both no-ops, same degradation as the
 % rest of this accessibility system under a non-LuaTeX engine. Safe to
-% define before Slidemaster_alt.lua is actually loaded (\AtBeginDocument,
+% define before SlideMage_alt.lua is actually loaded (\AtBeginDocument,
 % further down): these are only ever *called* from inside a real frame,
 % well after \begin{document} has fired.
 \newif\ifSMImageSourcesHasText
@@ -2240,7 +2240,7 @@
 % the lookup itself is Lua. Under any other engine \includegraphics is left
 % completely untouched.
 \ifluatex
-	% The Lua itself lives in Slidemaster_alt.lua rather than inline here --
+	% The Lua itself lives in SlideMage_alt.lua rather than inline here --
 	% see that file's own header for why (short version: TeX tokenizes a
 	% \directlua argument first, so every "%" in a Lua string pattern
 	% silently comments out the rest of its line, and the first version of
@@ -2248,8 +2248,8 @@
 	% free of "%" and "#" so it is safe to keep inline. Found via kpathsea
 	% (TEXINPUTS), since it lives in latex/, outside the project.
 	\SMLuaOnce{
-		local path = kpse.find_file("Slidemaster_alt.lua", "lua")
-			or kpse.find_file("Slidemaster_alt.lua", "tex")
+		local path = kpse.find_file("SlideMage_alt.lua", "lua")
+			or kpse.find_file("SlideMage_alt.lua", "tex")
 		if path then
 			dofile(path)
 		end
@@ -2697,7 +2697,7 @@
 % deck" etc.). Empty by default = everything shown. SlideMage's deck
 % settings write it as \def\SMFooterHide{id,deck} in the deck's preamble;
 % it is read once at \begin{document}, so the deck may set it before or
-% after \input{Slidemaster_preamble_...}. The frame number is always shown.
+% after \input{SlideMage_template_...}. The frame number is always shown.
 \providecommand{\SMFooterHide}{}
 \newif\ifSMFooterShowText
 \newif\ifSMFooterShowID
@@ -2849,7 +2849,7 @@
 % The sequence itself is user-configurable via \setfootnotesymbols{...} (a
 % comma-separated list, e.g. \setfootnotesymbols{*,+,#}) -- call it anywhere
 % from that point in the deck onward (e.g. once, right after
-% \input{Slidemaster_preamble_uni-graz}) to replace the default marker set for every
+% \input{SlideMage_template_uni-graz}) to replace the default marker set for every
 % \footnote{}/\source{} from then on. \seq_item:Nn (expl3's indexed lookup;
 % expl3 is already loaded by the gotham theme itself, see e.g.
 % beamerfontthemegotham.sty) is what removes the old \ifcase's hard 9-symbol
@@ -3269,7 +3269,7 @@
 % instead: array places a <{...} suffix inside such a column's box, where
 % it only pads the end of the cell text and leaves the columns touching
 % (the hand-written pattern had exactly that flaw for p columns). The
-% expansion is done by Slidemaster_layout.lua (gotham_layout.gap_spec).
+% expansion is done by SlideMage_measure.lua (gotham_layout.gap_spec).
 % gap=12pt is the ordinary look (2 x beamer's 6pt \tabcolsep). Without the
 % option the environment behaves as it always has (plain tabular with
 % yellow rules), so every existing table is untouched.
@@ -3279,8 +3279,8 @@
 }
 \ifluatex
 	\SMLuaOnce{
-		local path = kpse.find_file("Slidemaster_layout.lua", "lua")
-			or kpse.find_file("Slidemaster_layout.lua", "tex")
+		local path = kpse.find_file("SlideMage_measure.lua", "lua")
+			or kpse.find_file("SlideMage_measure.lua", "tex")
 		if path then
 			dofile(path)
 		end
@@ -3736,7 +3736,7 @@
 % columns, a table each differently -- so no constant pull-up can be right
 % for all. Instead every top-aligned standardframe (and figureframe,
 % highlightframe, sideimageframe) now measures where its first visible
-% content actually landed (at shipout, Slidemaster_layout.lua; overlays at
+% content actually landed (at shipout, SlideMage_measure.lua; overlays at
 % absolute positions don't count, they are placed on the margin already) and
 % moves its body onto the Top Margin line on the next run, via \jobname.top
 % -- the same record-then-apply-on-rerun pattern as \jobname.ovl above;
@@ -3904,7 +3904,7 @@
 % highlight color (matching this project's original, single-institution
 % behavior); MCI's and Innsbruck's are their own secondary blue instead
 % (2026-07-16, direct instruction) -- see each institution's own
-% Slidemaster_preamble_*.tex for its \SMBulletColor setting.
+% SlideMage_template_*.tex for its \SMBulletColor setting.
 \newcommand{\SMBulletDot}{\tikz[baseline=-0.65ex]{\fill[\SMBulletColor] circle (1.7pt);}}
 
 % "a)"/"b)"/"c)"-labeled list, for exercise sub-tasks that read better
@@ -5263,7 +5263,7 @@
 % between an element and a set/class -- and, same as $\triangleq$, it's a
 % math-mode symbol with a real Computer Modern glyph (no Fira Sans/Fira
 % Mono text-mode substitute needed, unlike most Unicode symbol candidates
-% -- see Slidemaster_preamble_uni-graz.tex's own "beamer/TeX gotchas" entry on
+% -- see SlideMage_template_uni-graz.tex's own "beamer/TeX gotchas" entry on
 % $\triangleq$ for why that matters here). Applied to every \exampleblock/
 % \gothamfloatingexampleblock in the deck via this shared template, not a
 % one-off per slide, matching how $\triangleq$ applies to every
@@ -6657,7 +6657,7 @@
 %
 % Code colours (2026-10-05, direct instruction: "set them to something more
 % readable in the institutions' template files"): three named colours a
-% template defines before \input{Slidemaster_preamble_base} --
+% template defines before \input{SlideMage_base} --
 % SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments),
 % SMCodeBackgroundColor (the panel), SMCodeTextColor (ordinary code). A template that doesn't keeps the
 % original look: highlight colour, primary gray, tertiary gray -- which in
@@ -6963,7 +6963,7 @@
 % \SMUseBibliography[file.bib] -- in a deck's preamble (after the institution
 % template is \input) instead of \usepackage{biblatex} + \addbibresource: loads
 % biblatex with \SMBiblatexOptions, registers the .bib file (default
-% Slidemaster.bib), then runs \SMBibliographyStyle. The template decides the
+% SlideMage.bib), then runs \SMBibliographyStyle. The template decides the
 % citation format by redefining the two macros (2026-10-07, direct instruction:
 % the house format had been copied into every course deck); a deck that wants
 % another format redefines them before the call, or does not use the command.
@@ -6982,7 +6982,7 @@
 \makeatletter
 \newcommand{\SMBiblatexOptions}{style=authoryear, backend=biber}
 \newcommand{\SMBibliographyStyle}{}
-\newcommand{\SMUseBibliography}[1][Slidemaster.bib]{%
+\newcommand{\SMUseBibliography}[1][SlideMage.bib]{%
 	\expandafter\usepackage\expandafter[\SMBiblatexOptions]{biblatex}% (options are not expanded otherwise)
 	\let\SM@SavedInputPath\input@path
 	\def\input@path{}%

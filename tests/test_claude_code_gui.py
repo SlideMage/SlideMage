@@ -359,7 +359,7 @@ def test_a_dirty_buffer_is_not_overwritten_and_reload_from_disk_takes_claudes_ve
 
 
 def test_keep_my_edits_lets_the_next_save_replace_the_file_on_disk(watch, monkeypatch):
-    bib = watch.root / "Slidemaster.bib"
+    bib = watch.root / "SlideMage.bib"
     watch.window.open_slide_editor(bib)
     file = watch.window.centre.source.file_for(bib)
     file.editor.replace_selection("% my note\n")

@@ -19,29 +19,31 @@ import re
 from . import compiler, slide_preview
 
 CONTRACT = 2
-AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
+AUDITED_GENERIC_PREAMBLE = "9a8c72fd4d4a91374237755b3c741bd2899d1d7ea6edfe49d1212aef88e4c48c"
 AUDITED_FRAMEWORK = {
     # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
-    "Slidemaster_preamble_base.tex": "eea0fce61896f21fdb863b6e69bb1a69eb922fe9dacf0cacde662e4f47b0fc2b",
-    "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
+    "SlideMage_base.tex": "afb72cc957a6b5994cb669b16b12ea9521172ce8aaa93a165c44a04f728595bd",
+    "SlideMage_template_slidemage.tex": "c0c631471c36de8ee62cf199fcd10da5835567a65fbe97006fb465312fcb814e",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
     "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
     "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
     "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
-    "Slidemaster_alt.lua": "653ffc1ea0292eb01c33f2b050925e051dbbfb4f08e49fbb92819de02117e2a2",
-    "Slidemaster_layout.lua": "80b3e57240e08353b4d7e0d1e9b642c876b39508fd3f0e8ba685e9c5d2860277",
+    "SlideMage_alt.lua": "b4f81e6fdbcc710bf673f4af839d870bcde0058ef7dcfdf9b53ac4d4045012eb",
+    "SlideMage_measure.lua": "75d6fde21e35673d4ad56b67e29378433be35b12977f73fd8ae6ce1470f5ba45",
 }
-# SHA-256 of the project-root institution templates (Slidemaster_preamble_<key>.tex) whose rules were audited; a
+# SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.
 AUDITED_PROJECT_TEMPLATES = frozenset({
     "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
     "13c039dcf2d7e9bdc38363ee782ccd5a34e14fc6786322950bd0cb22f6e11ff8",   # the same with its "template name" line
     "527fa4a6337be2226e7f2badfa3040b9982d95f9c1e5ba760acb6febbf06fafa",   # v8.40.0: \SMDarkMode colors, per deck, not per view
+    "aac9269f3197775e95ffb081672a637f07aae8128b10acd4500d90d94e9b1a66",   # v9.0.0: the same, renamed to SlideMage (names and comments only)
+    "8472abb845208dd1946034ce0dcc7acb160dae3626f0a4bd1483802e56fad20e",   # v9.0.0: that template as the project compatibility update leaves it
 })
 AUDITED_LATEXMKRC = {
-    ".latexmkrc": "b1a1ce4d46229a854d936d870af6e849af21708642c62f7e3c0242fd4625f8e4",
-    "decks/.latexmkrc": "d0588c58f270e748a4eb36576ca122b2801da7da075a3449890b58b92457bd15",
+    ".latexmkrc": "8273d5f38c719ab1e1064fe07ea27a73de7d423ee7d70b2e7e82312b302a73bc",
+    "decks/.latexmkrc": "03c0f5a0a7a825fd3802aeffbdbbd7be90a0bea52e3a1e38d2c127fa488cc0f7",
 }
 
 _VIEWS = ("instructor", "during-course", "after-course")
@@ -253,7 +255,7 @@ def _framework(ctx, dependencies: dict[str, str]):
             return "unaudited deck latexmk search configuration"
     # The pinned stock .latexmkrc uses this exact fallback when the variable
     # is absent. Path('') would instead inspect the process CWD.
-    framework = Path(env["SLIDEMASTER_LATEX"]) if env.get("SLIDEMASTER_LATEX") else root.parent / "latex"
+    framework = Path(env["SLIDEMAGE_LATEX"]) if env.get("SLIDEMAGE_LATEX") else root.parent / "latex"
     if not framework.is_dir():
         return "audited framework directory unavailable"
     for name, expected in AUDITED_FRAMEWORK.items():
@@ -319,11 +321,11 @@ def _preamble(spec, dependencies: dict[str, str]):
     framework_imports = []
     for match in _INPUT.finditer(reduced):
         name = match[1] or match[2]
-        if name.startswith("Slidemaster_preamble_"):
+        if name.startswith("SlideMage_template_"):
             framework_imports.append(name)
             if _brace_depth(reduced, match.start()) != 0:
                 return deck_hidden, "scoped or delayed framework import"
-            if name != "Slidemaster_preamble_slidemage":
+            if name != "SlideMage_template_slidemage":
                 path = root / f"{name}.tex"
                 if (root / "decks" / path.name).exists():
                     return deck_hidden, "deck shadows institution preamble"

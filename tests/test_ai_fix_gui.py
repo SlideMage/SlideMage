@@ -122,7 +122,7 @@ def test_the_buffer_is_checked_a_moment_after_the_last_keystroke(make_file):
 
 def test_a_bib_is_not_checked(make_file, tmp_path, monkeypatch, ctx):
 
-    bib = tmp_path / "Slidemaster.bib"
+    bib = tmp_path / "SlideMage.bib"
     bib.write_text("@book{a, title={{A}}\n", encoding="utf-8")
     file = SourceFile(FakeApp(ctx), bib)
     assert file.lint is None and file.lint_chip.parent().isHidden()

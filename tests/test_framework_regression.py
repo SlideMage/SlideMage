@@ -69,11 +69,11 @@ def test_font_names_lose_their_subset_tag():
 
 def test_template_swap_edits_only_the_wrapper_text(tmp_path):
     deck = tmp_path / "deck.tex"
-    original = r"\documentclass{beamer}" "\n" r"\input{Slidemaster_preamble_slidemage}" "\n" r"\begin{document}\end{document}" "\n"
+    original = r"\documentclass{beamer}" "\n" r"\input{SlideMage_template_slidemage}" "\n" r"\begin{document}\end{document}" "\n"
     deck.write_text(original, encoding="utf-8")
     entry = fr.Entry(deck, "uni-graz", "instructor")
     swapped = fr.swapped_deck_text(entry)
-    assert "Slidemaster_preamble_uni-graz" in swapped and "slidemage}" not in swapped
+    assert "SlideMage_template_uni-graz" in swapped and "slidemage}" not in swapped
     assert deck.read_text(encoding="utf-8") == original
     assert entry.key == "deck@uni-graz-instructor"
     assert fr.wrapper_text(entry, swapped).startswith(r"\def\deckversionoverride{instructor}")

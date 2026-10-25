@@ -39,14 +39,14 @@ CHANGE_ID = "bibliography-in-template"
 
 _PACKAGE = BS + "usepackage[style=authoryear"
 _FINENTRY = BS + "finentry}"
-_INPUT_TEMPLATE = re.compile(re.escape(BS + "input{Slidemaster_preamble_") + r"([A-Za-z0-9_-]+)\}")
-_INPUT_LINE = re.compile(r"^" + re.escape(BS + "input{") + r"Slidemaster_(?:preamble_base|project_macros)\}")
+_INPUT_TEMPLATE = re.compile(re.escape(BS + "input{SlideMage_template_") + r"([A-Za-z0-9_-]+)\}")
+_INPUT_LINE = re.compile(r"^" + re.escape(BS + "input{") + r"SlideMage_(?:base|project_macros)\}")
 _STYLE_MACRO = BS + "renewcommand{" + BS + "SMBibliographyStyle}"
 
 DECK_CALL = (
     "% Bibliography (biblatex + biber, opt-in per deck): the .bib lookup and the house\n"
     "% citation format come from the institution template (" + BS + "SMUseBibliography,\n"
-    "% defined in Slidemaster_preamble_base.tex; the format in this deck's template\n"
+    "% defined in SlideMage_base.tex; the format in this deck's template\n"
     "% file). To use another format in this deck, redefine " + BS + "SMBiblatexOptions /\n"
     "% " + BS + "SMBibliographyStyle before the call.\n"
     + BS + "SMUseBibliography")
@@ -83,8 +83,8 @@ def _house_deck_code() -> list[str]:
         BS + "makeatletter",
         BS + "let" + BS + "SMSavedInputPath" + BS + "input@path",
         BS + "def" + BS + "input@path{}%",
-        BS + "IfFileExists{Slidemaster.bib}{" + BS + "addbibresource{Slidemaster.bib}}{"
-        + BS + "addbibresource{../Slidemaster.bib}}",
+        BS + "IfFileExists{SlideMage.bib}{" + BS + "addbibresource{SlideMage.bib}}{"
+        + BS + "addbibresource{../SlideMage.bib}}",
         BS + "let" + BS + "input@path" + BS + "SMSavedInputPath",
         BS + "makeatother",
     ]
@@ -141,10 +141,10 @@ def _template_state(root: Path, deck_text: str):
     the deck stays as it is."""
     m = _INPUT_TEMPLATE.search(deck_text)
     if not m:
-        return None, "its template is not one of the Slidemaster_preamble_* files"
+        return None, "its template is not one of the SlideMage_template_* files"
     path = slide_snapshot.preamble_file(m.group(1), root)
     if not path.is_file():
-        return None, f"template Slidemaster_preamble_{m.group(1)}.tex not found"
+        return None, f"template SlideMage_template_{m.group(1)}.tex not found"
     text, _ = _read(path)
     inside = root.resolve() in path.resolve().parents
     if _STYLE_MACRO in text:
@@ -157,7 +157,7 @@ def _template_state(root: Path, deck_text: str):
 
 def _framework_ready(root: Path) -> bool:
     for folder in slide_snapshot.framework_dirs(root):
-        base = folder / "Slidemaster_preamble_base.tex"
+        base = folder / "SlideMage_base.tex"
         if "SMUseBibliography" in base.read_text(encoding="utf-8", errors="replace"):
             return True
     return False
@@ -195,7 +195,7 @@ def migrate(root: Path) -> dict[Path, bytes]:
     for tpl in templates:
         text, eol = _read(tpl)
         lines = text.split("\n")
-        at = next((i for i, ln in enumerate(lines) if ln.startswith(BS + "input{Slidemaster_preamble_base}")), None)
+        at = next((i for i, ln in enumerate(lines) if ln.startswith(BS + "input{SlideMage_base}")), None)
         if at is None:
             continue
         j = at + 1                      # past the inputs that follow, comments between them included
@@ -216,7 +216,7 @@ CHANGE = Change(
     description=(
         "Decks no longer need their own copy of the biblatex setup and citation "
         "drivers: the command " + BS + "SMUseBibliography loads biblatex, finds "
-        "Slidemaster.bib and applies the format defined by the institution "
+        "SlideMage.bib and applies the format defined by the institution "
         "template. Decks that still carry the house format themselves keep "
         "working; updating replaces the copy in each such deck by one line and "
         "puts the format into the deck's template file."),
@@ -225,8 +225,8 @@ CHANGE = Change(
         "...]{biblatex} to the end of the last " + BS + "DeclareBibliographyDriver "
         "by the single line " + BS + "SMUseBibliography, and copy the block that "
         "begins with \"% Bibliography (SlideMage v5.32.0\" from SlideMage's "
-        "latex/Slidemaster_preamble_slidemage.tex into your template file, after "
-        "its " + BS + "input{Slidemaster_preamble_base}."),
+        "latex/SlideMage_template_slidemage.tex into your template file, after "
+        "its " + BS + "input{SlideMage_base}."),
     detect=detect,
     migrate=migrate,
 )

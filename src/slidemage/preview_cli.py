@@ -3,7 +3,7 @@
 """Render a slide/region/element, optionally watching its source for changes.
 
 Example: python -m slidemage.preview_cli slides/foo-current.tex --watch
-Use SLIDEMASTER_PROJECT to select the project, as with the desktop app.
+Use SLIDEMAGE_PROJECT to select the project, as with the desktop app.
 """
 from __future__ import annotations
 import argparse

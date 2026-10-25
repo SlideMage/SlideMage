@@ -180,7 +180,7 @@ def environment(token: str, project: Path, claude: Path, base: dict[str, str] | 
     the hook, and this SlideMage on PYTHONPATH for the hook."""
     env = clean_environment(claude, base)
     env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor", TOKEN_ENV: token,
-                "SLIDEMASTER_PROJECT": str(project)})
+                "SLIDEMAGE_PROJECT": str(project)})
     if focus_file is not None:
         env[FOCUS_ENV] = str(focus_file)
     if not getattr(sys, "frozen", False):

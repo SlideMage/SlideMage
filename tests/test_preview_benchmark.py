@@ -63,7 +63,7 @@ def test_interrupted_attempt_restarts_cold_and_restores_source(tmp_path, modules
     (root / "slides").mkdir(parents=True)
     (root / "decks").mkdir()
     (root / "slide_ids.csv").write_text('"id"\n', encoding="utf-8")
-    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
+    monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))
     source = root / "slides" / "abc-EN-Test-current.tex"
     original = b"\\begin{standardframe}{Title}Body\\end{standardframe}"
     source.write_bytes(original)

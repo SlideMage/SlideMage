@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: LPPL-1.3c+
 -- Lua side of the alt-text manifest (ALT_TEXT_NOTES.md, phase 1).
 --
--- Loaded from Slidemaster_preamble_base.tex's "Alt-text manifest" block.
+-- Loaded from SlideMage_base.tex's "Alt-text manifest" block.
 -- This lives in its own .lua file rather than inline in a \directlua{...}
 -- argument for one blunt reason: TeX tokenizes that argument *before* Lua
 -- ever sees it, so "%" starts a TeX comment and silently truncates the line.

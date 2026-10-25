@@ -257,7 +257,7 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
 
 
 def test_the_toolbar_follows_the_kind_of_file(pane, slides, tmp_path, monkeypatch):
-    bib = tmp_path / "Slidemaster.bib"
+    bib = tmp_path / "SlideMage.bib"
     bib.write_text("@book{alpha, title={A}}\n\n@book{beta, title={B}}\n", encoding="utf-8")
     pane.show_path(None)
     assert not pane._version_button.isVisibleTo(pane) and not pane._find_button.isEnabled()

@@ -164,7 +164,7 @@ def _read_image(ctx: ToolContext, path: Path, suffix: str) -> ToolOutput:
 
 
 @tool("read_file",
-      "Read a file of the project. Text (a slide, a deck, Slidemaster.bib ...) comes numbered "
+      "Read a file of the project. Text (a slide, a deck, SlideMage.bib ...) comes numbered "
       "(\"12<tab>text\"); the numbers are not part of the file, leave them out of old_text. If a file "
       "is open in the editor you get its current text, unsaved edits included. A PDF (an attached paper) "
       "comes as text per page; set pages_as_images to see the pages themselves (figures, formulas, "
@@ -239,7 +239,7 @@ def find_files(ctx: ToolContext, args: dict) -> str:
 
 
 @tool("search",
-      "Find text in the project's slides, decks and Slidemaster.bib (case-insensitive, a plain "
+      "Find text in the project's slides, decks and SlideMage.bib (case-insensitive, a plain "
       "substring -- also finds citation keys and macro names). One hit per file, with the first "
       "matching line. Searches the saved files, not unsaved editor edits.",
       {"query": {"type": "string", "description": "The text to look for (at least 2 characters)."}},

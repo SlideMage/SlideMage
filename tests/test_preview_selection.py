@@ -18,7 +18,7 @@ def setup(tmp_path, monkeypatch):
     framework.mkdir()
     package = framework / 'theme.tex'
     package.write_text('Framework')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     cache = preview_cache.PreviewCache(ctx.root)
     target = preview_target.for_path(ctx, source)
     state = {'group': 'group-old'}

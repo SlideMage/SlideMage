@@ -96,7 +96,7 @@ def main():
                 stopped = True
                 break
             env = dict(os.environ, PYTHONPATH=str(base / "sources" / label),
-                       SLIDEMASTER_PROJECT=str(base / "project"), SLIDEMASTER_LATEX=str(base / "framework"))
+                       SLIDEMAGE_PROJECT=str(base / "project"), SLIDEMAGE_LATEX=str(base / "framework"))
             command = [sys.executable, str(scripts / "compare.py"), "--output", str(results),
                        "--label", label, "--indices", str(index), "--subset-indices", *map(str, INDICES),
                        "--repeats", "2", "--deadline", str(deadline), "--time-budget", str(args.time_budget),

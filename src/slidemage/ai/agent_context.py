@@ -36,7 +36,7 @@ or undo them.
 - slides/<id>-<LANG>-<Slug>-current.tex: one slide per file (one frame). The 3-character id is permanent; \
 the language is EN, DE or mult. slides/*-v1-0-0.tex are frozen older versions: never edit them.
 - decks/<name>.tex: a deck is a LaTeX document that calls its slides (\\slide{{id-slug}}, \\conditionalslide, \
-\\slidestep, \\slideversion ...) between \\section{{...}} markers. Slidemaster.bib holds the references; media/ \
+\\slidestep, \\slideversion ...) between \\section{{...}} markers. SlideMage.bib holds the references; media/ \
 the images; snippets/ small code files that slides show; sources/ files the user attached (papers, figures).
 - The user works in one deck at a time, in a view (instructor, during-course or after-course) and a \
 language. The context block of each request says which, and what slide they are looking at.
@@ -51,7 +51,7 @@ A slide is a frame environment: {", ".join(slide_add.FRAMES)}. Standard content 
 \\end{{standardframe}}
 Reveal steps are plain beamer overlays (\\pause, \\only<2>{{...}}, \\item<2->) inside the slide; the deck \
 decides which steps each deck version shows (\\slidestep). Speaker notes: \\note{{...}}. Citations: \
-\\fullcite{{key}}, \\textcite{{key}}, \\parencite{{key}} with keys from Slidemaster.bib. read_guide has the \
+\\fullcite{{key}}, \\textcite{{key}}, \\parencite{{key}} with keys from SlideMage.bib. read_guide has the \
 details (slides, frames, layout, reveals, citations, images_and_text): read the one you need before you \
 write something you are not sure of.
 

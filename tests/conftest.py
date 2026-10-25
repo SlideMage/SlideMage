@@ -18,7 +18,7 @@ shutil.copytree(_REPO_ROOT / "example", EXAMPLE, ignore=_ignore_template_build_o
 EXAMPLE_PROJECT = ProjectContext.at(EXAMPLE)
 # Both .latexmkrc files and preview discovery honor this; no framework copy or
 # symlink is needed, including on Windows where symlinks may need privileges.
-os.environ["SLIDEMASTER_LATEX"] = str(_REPO_ROOT / "latex")
+os.environ["SLIDEMAGE_LATEX"] = str(_REPO_ROOT / "latex")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("SLIDEMAGE_NO_BACKGROUND_PREVIEWS", "1")      # a window under test renders nothing by itself
 
@@ -314,7 +314,7 @@ def make_project(monkeypatch, root):
         (slides / name).write_bytes(text.encode())
     (root / "decks").mkdir()
     (root / "decks" / "test.tex").write_bytes(DECK_TEXT.encode())
-    (root / "Slidemaster.bib").write_text(BIB_TEXT, encoding="utf-8", newline="\n")
+    (root / "SlideMage.bib").write_text(BIB_TEXT, encoding="utf-8", newline="\n")
     (root / ".slidemage").mkdir()
     (root / ".slidemage" / "app_settings.json").write_text('{"anthropic_api_key": "sk-secret"}')
     return root.resolve()

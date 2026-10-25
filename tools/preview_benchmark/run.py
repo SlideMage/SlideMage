@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Sequential manual preview benchmark; run with SLIDEMASTER_PROJECT=example.
+"""Sequential manual preview benchmark; run with SLIDEMAGE_PROJECT=example.
 
 Writes one durable JSONL measurement per call, including errors, and retains PDFs.
 No concurrency: timings include wrapper creation, latexmk and PNG snapshot capture.

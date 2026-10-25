@@ -220,12 +220,12 @@ def test_a_slow_side_does_not_hold_the_other(chat_env, renders):  # noqa: F811
 
 def test_only_a_slide_file_with_a_change_opens(chat_env, renders):  # noqa: F811
     env = chat_env
-    assert compare_rendered.open_compare(env.window, env.root / "Slidemaster.bib", "a", "b") is None
+    assert compare_rendered.open_compare(env.window, env.root / "SlideMage.bib", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.root / "decks" / "test.tex", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.path, "same", "same") is None
     assert renders.requests == []
     with pytest.raises(ValueError):
-        CompareRendered(env.window, env.root / "Slidemaster.bib", "a", "b")
+        CompareRendered(env.window, env.root / "SlideMage.bib", "a", "b")
 
 
 @pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
@@ -270,7 +270,7 @@ def test_a_diff_card_of_a_new_file_or_a_bib_has_no_compare_rendered(chat_env, re
     env = chat_env
     env.chat._set_mode(EDIT_AUTO)
     script(env, reply("", call("write_file", path="notes.txt", content="x"),
-                      call("edit_file", path="Slidemaster.bib", old_text="Older", new_text="Oldest")), reply("Done."))
+                      call("edit_file", path="SlideMage.bib", old_text="Older", new_text="Oldest")), reply("Done."))
     ask(env)
     cards = widgets(env, DiffCard)
     assert len(cards) == 2 and all(c.state == "applied" and c.compare_button.isHidden() for c in cards)

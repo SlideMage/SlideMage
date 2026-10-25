@@ -179,7 +179,7 @@ def _sweep_stale_previews(ctx: project.ProjectContext) -> None:
 # directly, before this fix, by test-rendering a citation-using slide this
 # way and inspecting both the resulting PDF and the raw compile log).
 #
-# The bib path is hardcoded as ../Slidemaster.bib, not those two decks' own
+# The bib path is hardcoded as ../SlideMage.bib, not those two decks' own
 # \IfFileExists compile-from-either-location cascade -- this wrapper is
 # always written to decks/ and always compiled with that as its cwd (via
 # latexmk's own $do_cd), so the one correct relative path is knowable up
@@ -194,10 +194,10 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 \def\input@path{{../}}
 \makeatother
 \graphicspath{{../}}
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 
 \usepackage[style=authoryear, backend=biber, giveninits=true, uniquename=init, maxcitenames=3, mincitenames=1, maxbibnames=3, minbibnames=1]{biblatex}
-\addbibresource{../Slidemaster.bib}
+\addbibresource{../SlideMage.bib}
 
 \DeclareNameAlias{author}{family-given}
 \renewcommand*{\multinamedelim}{\addcomma\space}
@@ -259,7 +259,7 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 # GENERIC_PREAMBLE's template line; template_preamble() swaps it for another
 # template's (2026-10-03: the default render template is a setting now, see
 # slide_snapshot.render_template()).
-_DEFAULT_INPUT = "\\input{Slidemaster_preamble_slidemage}"
+_DEFAULT_INPUT = "\\input{SlideMage_template_slidemage}"
 
 
 def template_preamble(template: str) -> str:
@@ -268,7 +268,7 @@ def template_preamble(template: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", template or ""):
         template = slide_snapshot.DEFAULT_TEMPLATE
     return GENERIC_PREAMBLE.replace(
-        _DEFAULT_INPUT, f"\\input{{Slidemaster_preamble_{template}}}")
+        _DEFAULT_INPUT, f"\\input{{SlideMage_template_{template}}}")
 
 
 def default_preamble(ctx: project.ProjectContext) -> str:
@@ -282,10 +282,10 @@ def _frame_number_line(frame_number: Optional[int]) -> str:
     family call so its own \\stepcounter lands on frame_number exactly --
     lets a single-slide preview show the same page number the slide has in
     its real deck. Safe to inject unconditionally when given: nothing else
-    in Slidemaster_preamble_base.tex touches "framenumber" before a frame's
+    in SlideMage_base.tex touches "framenumber" before a frame's
     own \\stepcounter, and this project's own \\conditionalslide/\\omitslide
     already step that counter even for a call that renders no frame at all
-    (see their own comments in Slidemaster_preamble_base.tex), specifically
+    (see their own comments in SlideMage_base.tex), specifically
     so a slide's frame number stays deck-version-invariant -- which is what
     makes a single caller-supplied number correct here regardless of which
     deck version the caller is previewing."""
@@ -298,7 +298,7 @@ def _deck_version_line(deck_version: Optional[str]) -> str:
     """`\\deckversion[...]` re-sets the same booleans/text a deck's own
     preamble already set (whether that's a real deck's own \\ifdefined...
     \\deckversion[instructor] fallback, or nothing at all for
-    GENERIC_PREAMBLE, which relies on Slidemaster_preamble_base.tex's own
+    GENERIC_PREAMBLE, which relies on SlideMage_base.tex's own
     "instructor" default) -- calling it again afterward is harmless and
     simply overrides with the caller's explicit choice. Placed after
     \\begin{document} (i.e. after whichever preamble ran), since
@@ -375,9 +375,9 @@ def _presenter_mode_line(presenter: bool) -> str:
     """`\\def\\SMPresenterModeOverride{1}`, the same hook compiler.py's
     own wrapper defines for a real "Presenter" job (CompileJob.presenter)
     -- turns on beamer's dual-screen presenter mechanism
-    (Slidemaster_preamble_base.tex's own \\ifdefined\\SMPresenterModeOverride
+    (SlideMage_base.tex's own \\ifdefined\\SMPresenterModeOverride
     block: pgfpages "show notes on second screen"). It has to come before
-    `preamble`, since that's what \\input{}s Slidemaster_preamble_base.tex,
+    `preamble`, since that's what \\input{}s SlideMage_base.tex,
     and same "only emitted when true" shape as compiler.py's own
     `if job.presenter`."""
     if not presenter:
@@ -532,7 +532,7 @@ def render_slide_to_pdf(
     Refreshes this slide's compile-time PNG snapshot (slide_snapshot.py) as
     a side effect, but only when rendering the instructor version -- `None`
     here means "whatever the preamble defaults to", which is instructor
-    for GENERIC_PREAMBLE (Slidemaster_preamble_base.tex's own default) and,
+    for GENERIC_PREAMBLE (SlideMage_base.tex's own default) and,
     in practice, for every real deck's preamble too. An explicit
     during-course/after-course request is a deliberate look at a *partial*
     version, and must never overwrite the canonical (fullest-content)

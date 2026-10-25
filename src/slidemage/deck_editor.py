@@ -7,7 +7,7 @@ so this can be unit-tested and reused independently of it. The slide list
 (ui/workspace/slide_list.py) and the add-slide dialog are the callers;
 everything here just reads/writes deck *.tex text.
 
-Six call variants exist (see Slidemaster_preamble_base.tex): \\slide{},
+Six call variants exist (see SlideMage_base.tex): \\slide{},
 \\slidefinal{} (renders fully revealed), \\slideversion{}{}/
 \\omitslideversion{}{} (pin a frozen version), \\omitslide{} (excluded from
 the student handout), \\conditionalslide[versions]{} (included only in the
@@ -429,7 +429,7 @@ def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
     before \\begin{document} -- after the preamble \\input{}, which is what
     defines the inert \\decktags macro, so the deck keeps compiling. An
     empty list removes the directive. Refuses (changing nothing) for a deck
-    that never loads the Slidemaster preamble, where the macro would be
+    that never loads a SlideMage template, where the macro would be
     undefined."""
     clean = [t.strip().lower() for t in tags if t.strip()]
 
@@ -446,9 +446,9 @@ def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:
         begin = DOCUMENT_BEGIN_LINE_RE.search(text)
         if begin is None:
             raise ValueError(f"{deck_path.name} has no \\begin{{document}} to tag before.")
-        if "Slidemaster_preamble" not in text[: begin.start()]:
+        if "SlideMage_template" not in text[: begin.start()]:
             raise ValueError(
-                f"{deck_path.name} doesn't load the Slidemaster preamble, so "
+                f"{deck_path.name} doesn't load a SlideMage template, so "
                 "\\decktags would not compile there."
             )
         newline = "\r\n" if "\r\n" in text else "\n"

@@ -5,7 +5,7 @@ moved here from ai_draft.py when the whole-slide rewrite dialog was replaced by 
 
 An open rewrite has no ground truth to check against, so a model must not be able to touch what it
 cannot understand: mask_protected_regions() replaces the file's own leading header-comment block, its
-\\setSlideVersion{} line, and every \\vbox to 0pt{...} block (Slidemaster_preamble_base.tex's own
+\\setSlideVersion{} line, and every \\vbox to 0pt{...} block (SlideMage_base.tex's own
 absolute-overlay idiom -- see README.md's "Available layouts" section, "the same \\vbox to 0pt{\\vss ...}
 technique the footer/logo/title bar use") with opaque `%%%PROTECTED_N%%%` placeholder tokens, and says
 where they were. That is calibrated positioning math and version-tracking metadata -- deliberately *not*

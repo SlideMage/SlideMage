@@ -4,7 +4,7 @@
 button, and what saving, reverting and reloading it mean.
 
 The Source view edits slides (slides/*.tex), a deck's own .tex file and
-Slidemaster.bib alike, and saves as you type (AUTOSAVE_DELAY_MS after the last
+SlideMage.bib alike, and saves as you type (AUTOSAVE_DELAY_MS after the last
 keystroke; write_now()). A slide's `-current.tex` gets the "+" on its version
 line as it is written (slide_versioning.prepare_autosave()); a version is made
 on purpose, with Update Version. A frozen `-vX-Y-Z.tex` snapshot is read-only

@@ -18,7 +18,7 @@ def read(*parts: str) -> str:
 
 
 def test_framework_defines_the_command_with_stock_defaults():
-    base = read("latex", "Slidemaster_preamble_base.tex")
+    base = read("latex", "SlideMage_base.tex")
     for name in ("SMUseBibliography", "SMBiblatexOptions", "SMBibliographyStyle"):
         assert cs("newcommand{" + cs(name) + "}") in base
     assert "style=authoryear, backend=biber}" in base

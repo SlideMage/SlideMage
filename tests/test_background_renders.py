@@ -353,7 +353,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
     pages are what the foreground Preview renders."""
     from slidemage import slide_preview
 
-    os.environ.setdefault("SLIDEMASTER_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
+    os.environ.setdefault("SLIDEMAGE_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
     decks = deck_scan.scan_decks(project)
     gate = IdleGate(startup_delay=0, idle_after=0, only_on_mains=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
     renderer = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks)
@@ -400,7 +400,7 @@ def _compiled_pdf(tmp_path, units):
 def _record(pdf, deck, units, ctx):
     from slidemage import compile_records
 
-    paths = [deck.path, *{u.source_path for u in units}, ctx.root / "Slidemaster.bib"]
+    paths = [deck.path, *{u.source_path for u in units}, ctx.root / "SlideMage.bib"]
     return {"pdf_sha256": compile_records.sha256(pdf),
             "inputs": [{"path": str(p), "sha256": compile_records.sha256(p)} for p in paths if p.is_file()]}
 
@@ -471,7 +471,7 @@ class FakeBatchTeX:
                 doc.new_page(width=453, height=255).insert_text((20, 40), f"slide id: {bare}  step {number + 1}")
         doc.save(pdf)
         doc.close()
-        files = [u.source_path for u in units] + [self.project.root / "media" / "alt-text.csv", self.project.root / "Slidemaster.bib"]
+        files = [u.source_path for u in units] + [self.project.root / "media" / "alt-text.csv", self.project.root / "SlideMage.bib"]
         pdf.with_suffix(".inputs.json").write_text(json.dumps([str(f) for f in files]), encoding="utf-8")
         return pdf
 
@@ -540,7 +540,7 @@ def test_a_batch_stores_each_slide_as_a_single_render_would(project, store, rast
         with pymupdf.open(store.pdf_path(record)) as own:                              # its own pages only
             assert [p.get_text().split()[2] for p in own] == [unit.id_slug.split("-")[0]] * 2
         files = {entry[1] for entry in record["manifest"]}
-        assert "media/alt-text.csv" in files and "Slidemaster.bib" in files
+        assert "media/alt-text.csv" in files and "SlideMage.bib" in files
         assert unit.source_path.relative_to(project.root).as_posix() in files
         assert not any(other.source_path.relative_to(project.root).as_posix() in files for other in units if other is not unit)
     assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))
@@ -630,16 +630,16 @@ def test_the_compile_manifest_keeps_the_alt_texts_every_render_reads(project, st
     unit = units[0]
     unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + f"\n% {named.stem}\n", encoding="utf-8")
     paths = [unit.source_path, units[1].source_path, root / "media" / "alt-text.csv", root / "media" / "alt-text.json",
-             named, root / "media" / "illustration-bar-chart.pdf", root / "Slidemaster.bib"]
+             named, root / "media" / "illustration-bar-chart.pdf", root / "SlideMage.bib"]
     recorded = {norm(p): (p, compile_records.sha256(p)) for p in paths}
     files = {entry[1] for entry in r._compile_manifest(recorded, unit)}
     assert files == {unit.source_path.relative_to(root).as_posix(), "media/alt-text.csv", "media/alt-text.json",
-                     f"media/{named.name}", "Slidemaster.bib"}
+                     f"media/{named.name}", "SlideMage.bib"}
 
 
 @pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
 def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(project, store, tmp_path):
-    os.environ.setdefault("SLIDEMASTER_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
+    os.environ.setdefault("SLIDEMAGE_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
     decks = deck_scan.scan_decks(project)
     gate = IdleGate(startup_delay=0, idle_after=0, only_on_mains=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
     batched = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks)

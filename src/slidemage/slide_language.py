@@ -7,7 +7,7 @@ pass.
 
 Language lives in a slide's own id-slug, as its *second* hyphen segment
 (<id>-<LANG>-<slug>), exactly mirroring what
-Slidemaster_preamble_base.tex's \\setSlideLanguageFromSlug parses at
+SlideMage_base.tex's \\setSlideLanguageFromSlug parses at
 compile time -- this module is the Python-side twin of that macro, kept
 deliberately in sync with it rather than reading anything back out of a
 compiled PDF. A slide that predates this feature has no such segment
@@ -37,7 +37,7 @@ from . import slide_source
 from .project import ProjectContext
 
 
-# Keep in sync with Slidemaster_preamble_base.tex's own
+# Keep in sync with SlideMage_base.tex's own
 # \setSlideLanguageFromSlug@aux fixed keyword set.
 LANGUAGES = ("EN", "DE", "mult")
 # Excludes "mult", which is not a translation target.
@@ -53,7 +53,7 @@ FROZEN_RE = re.compile(r"-v([0-9]+-[0-9]+-[0-9]+)\.tex$")
 def bare_id(id_slug_or_ref: str) -> str:
     """Everything before the first hyphen -- a slide's permanent,
     language-independent ID. Matches slide_ids.py's own
-    ID_FROM_FILENAME_RE / Slidemaster_preamble_base.tex's \\setSlideID@aux."""
+    ID_FROM_FILENAME_RE / SlideMage_base.tex's \\setSlideID@aux."""
     return id_slug_or_ref.split("-", 1)[0]
 
 

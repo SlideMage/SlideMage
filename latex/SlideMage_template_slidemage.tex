@@ -1,19 +1,19 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% Slidemaster preamble for the generic SlideMage template (2026-10-03, direct
+% Template of the generic SlideMage look (2026-10-03, direct
 % instruction): the look of SlideMage itself rather than of an institution --
 % the SlideMage logo, the app's own colors, dark title and footer boxes with
 % white text (the splash screen's look), the app's button blue as highlight
 % color. Meant as the default for anyone without an institution template of
-% their own; derived from Slidemaster_preamble_uni-graz.tex, same structure
+% their own; derived from SlideMage_template_uni-graz.tex, same structure
 % (see that file's header comment for the institution-layer/base split). A
 % deck picks it by \input{}ing this file instead of an institution's.
 %
 % Part of the framework (latex/, since SlideMage v5.9.0; it was in example/
 % in v5.7.0-v5.8.x), not of a project: every project finds it on the TeX
 % search path its .latexmkrc sets up, the same way it finds
-% Slidemaster_preamble_base.tex, so it needs no copy in the project. A
-% project's own Slidemaster_preamble_slidemage.tex, if it has one, wins.
+% SlideMage_base.tex, so it needs no copy in the project. A
+% project's own SlideMage_template_slidemage.tex, if it has one, wins.
 %
 % Colors: wherever possible a color SlideMage itself uses
 % (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png); every pair
@@ -60,7 +60,7 @@
 \newlength{\SMLogoHeight}
 \setlength{\SMLogoHeight}{3ex}
 % Re-measured against the compiled PDF for this logo -- see
-% Slidemaster_preamble_base.tex's comment on \gothamFrametitleRightpading.
+% SlideMage_base.tex's comment on \gothamFrametitleRightpading.
 \setlength{\gothamFrametitleRightpading}{0.28cm}
 
 % Itemize bullets in the highlight color, as in the Graz template.
@@ -81,7 +81,7 @@
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
 \definecolor{SMCodeBackgroundColor}{HTML}{f0f0f0}
 
-\input{Slidemaster_preamble_base}
+\input{SlideMage_base}
 
 % Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): the house
 % citation format lives here, in the template, instead of being copied into
@@ -133,12 +133,12 @@
 % specifically for @article, since the entrytype-specific format takes
 % priority over the generic one above and would otherwise still auto-wrap
 % article titles in its own curly quotes, doubling up with the
-% \textquotedbl below (rock1986 in Slidemaster.bib is the first @article
+% \textquotedbl below (rock1986 in SlideMage.bib is the first @article
 % entry exercising this branch).
 \DeclareFieldFormat{title}{##1}
 \DeclareFieldFormat[article]{title}{##1}
 % Drop the automatic "pp." prefix biblatex adds to page ranges by default --
-% needed by rock1986 (Slidemaster.bib), the first @article entry.
+% needed by rock1986 (SlideMage.bib), the first @article entry.
 \DeclareFieldFormat{pages}{##1}
 % biblatex's own built-in isbn field format prepends a lowercase "isbn:"
 % label of its own (confirmed directly on svv/IA2: rendered as

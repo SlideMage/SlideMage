@@ -24,7 +24,7 @@ HEAD = """\\documentclass[aspectratio=169]{{beamer}}
 \\def\\input@path{{{{../}}}}
 \\makeatother
 \\graphicspath{{{{../}}}}
-\\input{{Slidemaster_preamble_{template}}}
+\\input{{SlideMage_template_{template}}}
 \\SMUseBibliography
 \\newcommand{{\\FooterText}}{{Export test}}
 \\begin{{document}}
@@ -87,8 +87,8 @@ def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(projec
 
 def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
-    assert {"Slidemaster_preamble_uni-graz.tex", "Slidemaster_preamble_base.tex", "Slidemaster_alt.lua",
-            "Slidemaster_layout.lua", "beamerthemegotham.sty", "beamerinnerthemegotham.sty", "Slidemaster.bib",
+    assert {"SlideMage_template_uni-graz.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
+            "SlideMage_measure.lua", "beamerthemegotham.sty", "beamerinnerthemegotham.sty", "SlideMage.bib",
             "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf", "snippets/zz2-1.tex", ".latexmkrc"} <= names
     assert not any(n.startswith(("decks/", "latex/")) for n in names)
 
@@ -187,7 +187,7 @@ def test_the_exported_folder_compiles_on_its_own(project, tmp_path_factory):
     shutil.copytree(folder, alone)
     started = time.monotonic()
     subprocess.run(["latexmk", "plain.tex"], cwd=alone, capture_output=True, timeout=600,
-                   env={k: v for k, v in os.environ.items() if k != "SLIDEMASTER_LATEX"})
+                   env={k: v for k, v in os.environ.items() if k != "SLIDEMAGE_LATEX"})
     print(f"latexmk: {time.monotonic() - started:.1f} s")
     log = (alone / "plain.log").read_text(encoding="utf-8", errors="replace")
     assert not compiler.FATAL_ERROR_RE.search(log)

@@ -545,7 +545,7 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
 
 
 @tool("add_bib_entry",
-      "Add a reference to Slidemaster.bib (kept sorted). Only add what the user gave you or a source they "
+      "Add a reference to SlideMage.bib (kept sorted). Only add what the user gave you or a source they "
       "named states. article: author, title, year, journaltitle, volume, number, pages, doi; book: author, "
       "title, year, publisher, edition, location, isbn; online: author, title, year, url, organization, note; "
       "report: author, title, year, institution, type, doi. Authors as 'Family, Given and Family, Given'.",
