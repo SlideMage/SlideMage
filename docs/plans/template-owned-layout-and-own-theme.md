@@ -180,7 +180,7 @@ format belongs to the template by design, but the copying is avoidable.
 | `Slidemaster.bib` (project file, default of `\SMUseBibliography`) | `SlideMage.bib` |
 | `$SLIDEMASTER_LATEX`, `$SLIDEMASTER_PROJECT` | `$SLIDEMAGE_LATEX`, `$SLIDEMAGE_PROJECT` |
 | Gotham theme | `beamerthemeSlideMage.sty`, `\usetheme{SlideMage}` (only setup names it) |
-| Lua global `gotham_layout`, callback "gotham top margin" | `slidemage_layout`, "slidemage top margin" |
+| Lua global `gotham_layout`, callback "gotham top margin" | `slidemage_measure`, "slidemage top margin" |
 | `docs/SlidemasterManual.md`, "Slidemaster" in prose | `docs/SlideMageCommands.md` or similar, "SlideMage framework" |
 
 Notes:
@@ -315,24 +315,34 @@ The current public names stay where a slide or template reads them, so slides th
   The complete table goes into `sm_rename.py` as a second mapping, `THEME_RENAMES`, together with the content
   names below. The compat migration uses it for project files.
 - **Rename the lowercase project names too, with no aliases.** They are SlideMage's own content API, in hundreds
-  of slides, but they carry Gotham's name. Proposed mapping, using the `SM` prefix in the form each kind of name
-  allows. Show the user the full list before step 2 and use their spelling if they change it:
+  of slides, but they carry Gotham's name.
+
+  **Naming rule (user, 2026-10-25): every SlideMage name starts with an uppercase `SM`, never `sm`.** That
+  already holds for the macros (`\SM...`), the counter `SMUnderbraceCounter` and the tikz styles `SMCard`,
+  `SMImageBorder` and `SMProcess`, and it now holds for environments, counters, tikz styles, beamer templates,
+  csnames and expl3 variables too. After `SM` comes CamelCase, as in the existing names. Proposed mapping; show
+  the user the full list before step 2 and use their spelling if they change it:
 
   | Old | New |
   |---|---|
-  | `gothamtable` | `smtable` |
-  | `gothamfloatingblock`, `gothamfloatinginfoblock`, `gothamfloatingexampleblock` | `smfloatingblock`, `smfloatinginfoblock`, `smfloatingexampleblock` |
-  | `gothamalphaitemize`, `gothamnumitemize`, `gothamalphaperioditemize`, `gothamnumperioditemize` | `smalphaitemize`, `smnumitemize`, `smalphaperioditemize`, `smnumperioditemize` |
-  | counters `gothamalphaitem`, `gothamnumitem`, `gothamalphaperioditem`, `gothamnumperioditem` | `smalphaitem`, `smnumitem`, `smalphaperioditem`, `smnumperioditem` |
-  | `gothamtightflalign` | `smtightflalign` |
-  | tikz styles `gotham arrow`, `gotham highlight`, `gotham dotted highlight` | `sm arrow`, `sm highlight`, `sm dotted highlight` |
-  | beamer templates `gothampresenter`, `gothamfn`, `gotham plain enumerate`, `gotham_no_inline_logo` | `smpresenter`, `smfn`, `sm plain enumerate`, `sm_no_inline_logo` |
-  | other base-internal names: `gothamalt*`, `gothamfit*`, `gothamcorner*`, `gotham_footnote_symbols_seq`, `gotham_list_has_no_visible_box`, ... | the same with `sm` |
+  | `gothamtable` | `SMTable` |
+  | `gothamfloatingblock`, `gothamfloatinginfoblock`, `gothamfloatingexampleblock` | `SMFloatingBlock`, `SMFloatingInfoBlock`, `SMFloatingExampleBlock` |
+  | `gothamalphaitemize`, `gothamnumitemize`, `gothamalphaperioditemize`, `gothamnumperioditemize` | `SMAlphaItemize`, `SMNumItemize`, `SMAlphaPeriodItemize`, `SMNumPeriodItemize` |
+  | counters `gothamalphaitem`, `gothamnumitem`, `gothamalphaperioditem`, `gothamnumperioditem` | `SMAlphaItem`, `SMNumItem`, `SMAlphaPeriodItem`, `SMNumPeriodItem` |
+  | `gothamtightflalign*` | `SMTightFlalign*` |
+  | tikz styles `gotham arrow`, `gotham highlight`, `gotham dotted highlight` | `SMArrow`, `SMHighlight`, `SMDottedHighlight` |
+  | beamer templates `gothampresenter`, `gothamfn`, `gotham plain enumerate`, `gotham_no_inline_logo` | `SMPresenter`, `SMFootnote`, `SMPlainEnumerate`, `SMNoInlineLogo` |
+  | internal csnames `\gothamtable@spec`, `@gap`, `@begin`, `\gotham@block`, `gothamfit@...`, `gothamalt...`, `gothamcorner...` | `\SMTable@spec`, ..., `\SM@block`, `SMFit@...`, `SMAlt...`, `SMCorner...` |
+  | expl3 `\g_gotham_footnote_symbols_seq`, `gotham_list_has_no_visible_box` | `\g_SM_footnote_symbols_seq`, `SM_list_has_no_visible_box` (expl3 syntax keeps the `\g_`/`\l_` scope prefix; the module part is `SM`) |
+
+  Lua is not TeX and keeps Lua's own lowercase convention: the global `gotham_layout` becomes `slidemage_measure`
+  (matching `SlideMage_measure.lua`) and the callback "gotham top margin" becomes "slidemage top margin".
 
   The table above is from a grep of base and the Lua files on 2026-10-25 (`gothamalt` 47×, `gothamtable` 40×,
   `gotham_layout` 36×, ...). Redo the grep across `latex/`, `example/`, `src/`, `tests/` and `tools/` and complete
-  it. Check the new names for collisions with packages SlideMage loads (`smtable` etc. should be free; verify
-  with a compile).
+  it under the same rule. Check the new names for collisions with packages SlideMage loads (verify with a
+  compile). The app code that matches these names must match the new spelling exactly, since environment names
+  are case-sensitive.
 
   The app code that names these environments changes in the same step: `latex_lint.py`, `transcript.py`
   (`_BLOCK_ENVIRONMENTS`, `_TABLE_SPEC_ARGS`, the itemize map), `latex_edit.py`, `slide_import.py`,
@@ -376,7 +386,7 @@ it. A profile:
   (base:40-79)
 - defines the metrics the framework needs:
   - `\SMFontAscender` (0.935 for Fira Sans Light): base builds `\SMLineTop` from it, and setup hands it, with
-    the Top Margin hook, to Lua (`gotham_layout.configure{top_margin_bp=..., ascender=...}`) in place of the
+    the Top Margin hook, to Lua (`slidemage_measure.configure{top_margin_bp=..., ascender=...}`) in place of the
     two Lua constants
   - default `\linespread` and `\parskip`
   - every calibration that step 5 finds is still font-dependent
@@ -517,7 +527,7 @@ mix it in.
    - Add `beamerthemeSlideMage.sty` with only the live code, the `SM` names, the LPPL header and the change
      list. Setup loads it instead of Gotham.
    - Rename the lowercase content names (section 3) in the framework, the example project, the app code and the
-     tests. The Lua global becomes `slidemage_layout`.
+     tests. The Lua global becomes `slidemage_measure`.
    - Fonts still load where they do today, now in the new theme, until step 4.
    - Remove the Gotham files; update LICENSE, REUSE.toml, the third-party notices, `sm_rename` and
      `appendix_toc`.
@@ -566,7 +576,7 @@ mix it in.
 
 ## Open decisions (ask the user at the step named)
 
-- **Before step 2: the content-name mapping in section 3** (`smtable`, `smfloatinginfoblock`, `sm arrow`, ...),
+- **Before step 2: the content-name mapping in section 3** (`SMTable`, `SMFloatingInfoBlock`, `SMArrow`, ...),
   and whether frozen slide versions are migrated.
 - **Before step 5: may a template override a layout-profile value directly**, or only pick a profile? Proposed:
   only pick one, or ship its own profile file. That keeps the rule "a profile's numbers belong together".
