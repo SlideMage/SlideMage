@@ -14,7 +14,7 @@ Decided in the conversation:
   framework and are never template-configurable.
 - The framework keeps the frame-type commands (`\titleframe`, `\quoteframe`, ...). Templates set the values those
   commands read: sizes, positions, spacing, colors, fonts. They never carry copies of the commands.
-- Font-dependent values live in a font profile. A template picks a profile, and switching it switches all of them
+- Font-dependent values live in a layout profile. A template picks a profile, and switching it switches all of them
   together.
 - Gotham is replaced by a fork pruned to what SlideMage uses, renamed into SlideMage's namespace and owned by the
   framework from then on.
@@ -153,7 +153,7 @@ format belongs to the template by design, but the copying is avoidable.
 - A template author can change every design choice (colors, logo, fonts, box sizes, positions, paddings, list
   spacing, text sizes) in their template file, using names documented in one catalog, without touching the
   framework.
-- Switching a template's font profile adjusts every font-dependent value.
+- Switching a template's layout profile adjusts every font-dependent value.
 - The framework's own beamer theme holds only what SlideMage uses, under SlideMage names, with correct LPPL
   attribution.
 - Every existing deck and template renders pixel-identically after each step until a template deliberately
@@ -173,13 +173,13 @@ format belongs to the template by design, but the copying is avoidable.
 | `Slidemaster_preamble_<key>.tex` (template) | `SlideMage_template_<key>.tex` |
 | `Slidemaster_preamble_base.tex` | `SlideMage_base.tex` |
 | (new) setup layer | `SlideMage_setup.tex` |
-| (new) font profiles | `SlideMage_font_<name>.tex` |
-| (new) house citation format | `SlideMage_bibliography_house.tex` |
+| (new) layout profiles | `SlideMage_layout_<name>.tex` |
+| (new) house citation format | `SlideMage_bibliography_default.tex` |
 | `Slidemaster_alt.lua`, `Slidemaster_layout.lua` | `SlideMage_alt.lua`, `SlideMage_layout.lua` |
 | `Slidemaster_project_macros.tex` (project file) | `SlideMage_project_macros.tex` |
 | `Slidemaster.bib` (project file, default of `\SMUseBibliography`) | `SlideMage.bib` |
 | `$SLIDEMASTER_LATEX`, `$SLIDEMASTER_PROJECT` | `$SLIDEMAGE_LATEX`, `$SLIDEMAGE_PROJECT` |
-| Gotham theme | `beamerthemeslidemage.sty`, `\usetheme{slidemage}` (only setup names it) |
+| Gotham theme | `beamerthemeSlideMage.sty`, `\usetheme{SlideMage}` (only setup names it) |
 | Lua global `gotham_layout`, callback "gotham top margin" | `slidemage_layout`, "slidemage top margin" |
 | `docs/SlidemasterManual.md`, "Slidemaster" in prose | `docs/SlideMageCommands.md` or similar, "SlideMage framework" |
 
@@ -188,7 +188,7 @@ Notes:
 - **Templates get their own prefix.** `TEMPLATE_PREFIX`/`TEMPLATE_RE` in `slide_snapshot.py` become
   `SlideMage_template_`, and `_NOT_TEMPLATES` goes away. Template *keys* stay as they are (`slidemage`, `uni-graz`,
   `mci`, `uni-ibk`), so cached previews (`<id>-<Template>-<w>-<h>.png`) and the "Default template" setting keep
-  working. The theme and the template key are both called `slidemage`, but authors never see the theme: setup loads
+  working. The theme is `SlideMage` and a template key is `slidemage`; authors never see the theme: setup loads
   it and decks don't name it.
 - **Environment variables.** The app reads only the new names. If an old one is set and the new one isn't, it says
   so once in the log and in Info → Project compatibility, then ignores the old one.
@@ -211,7 +211,7 @@ Notes:
 
 % template: SlideMage_template_uni-ibk.tex
 % SlideMage template name: University of Innsbruck
-\newcommand{\SMFontProfile}{fira}          % optional; fira is the default
+\newcommand{\SMLayoutProfile}{fira}          % optional; fira is the default
 %\newcommand{\SMDarkMode}{}               % optional, as today
 \input{SlideMage_setup}                   % profile, theme, every hook with its default
 \definecolor{c_primary_dark}{HTML}{...}   % ... colors as today
@@ -226,7 +226,7 @@ Notes:
 
 The rules a template author follows:
 
-1. Things chosen before `SlideMage_setup`: `\SMFontProfile` and `\SMDarkMode`. Both decide which defaults setup
+1. Things chosen before `SlideMage_setup`: `\SMLayoutProfile` and `\SMDarkMode`. Both decide which defaults setup
    computes.
 2. Between setup and base: `\setlength`/`\renewcommand`/`\definecolor`/`\colorlet` on catalog names only. All of
    them exist already, so a typo is an error (`\renewcommand` of an undefined name) instead of a silent no-op.
@@ -234,9 +234,9 @@ The rules a template author follows:
 
 `SlideMage_setup.tex` (new, in `latex/`) does this, in order:
 
-1. `\providecommand{\SMFontProfile}{fira}`, then `\input{SlideMage_font_\SMFontProfile}`, with a clear
+1. `\providecommand{\SMLayoutProfile}{fira}`, then `\input{SlideMage_layout_\SMLayoutProfile}`, with a clear
    `\PackageError` naming the available profiles when the file is missing.
-2. `\usetheme{slidemage}` (section 3).
+2. `\usetheme{SlideMage}` (section 3).
 3. **The hook catalog**: every template-settable name with its default and a one-line comment. These are lengths
    (`\newlength` + `\setlength`), macros (`\newcommand`) and colors (`\definecolor`, including a default palette,
    the SlideMage one). The catalog is the documentation, and its file is the one place a template author reads.
@@ -261,7 +261,7 @@ Every length and number now hardcoded in base and the theme goes into exactly on
 | Class | Lives in | Template may change it | Examples (initial assignment; step 5 completes and verifies it) |
 |---|---|---|---|
 | Design hook | setup catalog | yes | logo path and height; frametitle top/bottom/left/right padding; title, footer and bullet colors; title-frame box height, text sep, band gap, bottom pad; section-frame box height; quote box height and attribution gap; footer box height; side-footnote width; block side margin and title-marker width; progress-strip height; text margins (.45cm); list spacing ratios; image border width; Top Margin (41.58pt); text sizes of footer, slide id, footnotes, code, block titles; `\parskip`, `\linespread` (default from the profile) |
-| Font metric | font profile | no, it picks a profile | font files and weight mapping; ascender ratio (0.935); line-box top strut; code/inline-code fonts and scale; card heading font; math-font handling; each calibration that stays font-dependent after step 5 |
+| Font metric | layout profile | no, it picks a profile | font files and weight mapping; ascender ratio (0.935); line-box top strut; code/inline-code fonts and scale; card heading font; math-font handling; each calibration that stays font-dependent after step 5 |
 | Derived | base | no (follows its inputs) | title-frame box width, logo width, content bottom, section-frame true bottom, left margin (= frametitle left padding + strut, today 12.55pt) |
 | Internal | base or theme, private `\SM@...` | no | struts, temporaries, bookkeeping |
 | Obsolete | deleted | n/a | calibrations the automatic Top Margin already corrects; prove each with a pixel-identical render before deleting |
@@ -269,9 +269,9 @@ Every length and number now hardcoded in base and the theme goes into exactly on
 The current public names stay where a slide or template reads them, so slides that use `\SMContentTopAlign` or
 `\SMFooterBoxHeight` keep working. Theme names templates need get `SM` names (section 3).
 
-### 3. The own theme: `slidemage`, a pruned and renamed Gotham fork
+### 3. The own theme: `SlideMage`, a pruned and renamed Gotham fork
 
-- **Name.** `\usetheme{slidemage}`, file `latex/beamerthemeslidemage.sty`. Use one file with sections
+- **Name.** `\usetheme{SlideMage}`, file `latex/beamerthemeSlideMage.sty`. Use one file with sections
   (colors, fonts, inner, outer) rather than five, since the live part is small. Only `SlideMage_setup.tex` loads
   it.
 - **Content.** Only the live behaviour listed under "Today", plus three optional features the user chose to keep
@@ -297,7 +297,7 @@ The current public names stay where a slide or template reads them, so slides th
   structure, so check what they show in a SlideMage deck and how divider slides interact with SlideMage's own
   `\sectionframe`, slide ids and reveal steps before documenting them. In step 7 the stress-test template turns
   all of them on, so they keep compiling.
-- **Fonts move out of the theme into the font profile** (section 4). The theme sets sizes only.
+- **Fonts move out of the theme into the layout profile** (section 4). The theme sets sizes only.
 - **Identifiers.** Rename every `\gotham...`/`\gotham@...` the theme defines to `\SM...`/`\SM@...`. Lengths
   templates or slides use get the clearer names below. Fix the "pading" spelling while renaming.
 
@@ -365,9 +365,9 @@ The current public names stay where a slide or template reads them, so slides th
   dropped the files; Project compatibility (section 6) fixes it when the project is opened. Base should also
   detect a missing `\SMSetupLoaded` and stop with a `\PackageError` that says what to change.
 
-### 4. Font profiles
+### 4. Layout profiles
 
-`latex/SlideMage_font_<name>.tex`. A project may add its own next to its templates; the TeX search path finds
+`latex/SlideMage_layout_<name>.tex`. A project may add its own next to its templates; the TeX search path finds
 it. A profile:
 
 - loads the fonts: `fontspec` with `no-math`, the sans with its weight mapping (today Light regular, LightItalic,
@@ -409,7 +409,7 @@ Ship two profiles:
   today's constants.
 - `appendix_toc.py:43`: `\SMFrametitleRightPadding`.
 - `latex_export.py`: the profile file's name is built from a macro, which the export's token scan can't see.
-  Read `\SMFontProfile` from the template (or default to `fira`) and add that file. Test it.
+  Read `\SMLayoutProfile` from the template (or default to `fira`) and add that file. Test it.
 - `deck_snapshot.py`: records the files a compile read, so it needs no change. Check its tests.
 - `preview_equivalence.py`:
   - the `\usetheme` rule (require none)
@@ -440,7 +440,7 @@ step announces itself as BREAKING in CHANGELOG.md.
     a `\SMUseBibliography[Slidemaster.bib]` or `\addbibresource{Slidemaster.bib}` follows the file rename
   - templates: `\input{Slidemaster_preamble_base}` → `\input{SlideMage_base}`,
     `\input{Slidemaster_project_macros}` → `\input{SlideMage_project_macros}`; insert `\input{SlideMage_setup}`
-    before their colors (or after a leading `\SMFontProfile` or `\SMDarkMode` line);
+    before their colors (or after a leading `\SMLayoutProfile` or `\SMDarkMode` line);
     `\newlength{\SMLogoHeight}`+`\setlength` → `\setlength`; `\newcommand{\SMInstituteLogoPath}` and the color
     macros → `\renewcommand`
   - project settings that store a template key keep working (keys are unchanged); anything that stores a file
@@ -466,8 +466,8 @@ So:
 
 Keep the design (the template owns the citation format) and remove the copying:
 
-- the house format moves to `latex/SlideMage_bibliography_house.tex`, and a template that wants it says
-  `\input{SlideMage_bibliography_house}` after base
+- the house format moves to `latex/SlideMage_bibliography_default.tex`, and a template that wants it says
+  `\input{SlideMage_bibliography_default}` after base
 - `bibliography_house.BLOCK` becomes that one line (keep the full text for detection)
 - `compat_bibliography`:
   - its "template defines the house format" check accepts the line or the full copy
@@ -514,7 +514,7 @@ mix it in.
      preview-equivalence rule and the tests.
    - Compat change `slidemage-names-and-setup-layer`. Pixel-identical.
 2. **Own theme, pruned and renamed; content names renamed.**
-   - Add `beamerthemeslidemage.sty` with only the live code, the `SM` names, the LPPL header and the change
+   - Add `beamerthemeSlideMage.sty` with only the live code, the `SM` names, the LPPL header and the change
      list. Setup loads it instead of Gotham.
    - Rename the lowercase content names (section 3) in the framework, the example project, the app code and the
      tests. The Lua global becomes `slidemage_layout`.
@@ -529,9 +529,9 @@ mix it in.
    - Base loads its packages explicitly.
    - Load-time computations that depend on hooks move to base or to the point of use.
    - Pixel-identical. Not breaking.
-4. **Font profiles.**
-   - Fonts move from the theme into `SlideMage_font_fira.tex`.
-   - `\SMFontProfile` takes effect.
+4. **Layout profiles.**
+   - Fonts move from the theme into `SlideMage_layout_fira.tex`.
+   - `\SMLayoutProfile` takes effect.
    - The ascender and Top Margin go from TeX to Lua; the ascender is derived where luaotfload allows it.
    - `latex_export` finds the profile.
    - Pixel-identical.
@@ -566,11 +566,9 @@ mix it in.
 
 ## Open decisions (ask the user at the step named)
 
-- **Before step 1: the file names in section 0** (`SlideMage_template_<key>.tex`, `SlideMage_base.tex`, ...).
-  Show the table and use the user's spelling if they change it.
 - **Before step 2: the content-name mapping in section 3** (`smtable`, `smfloatinginfoblock`, `sm arrow`, ...),
   and whether frozen slide versions are migrated.
-- **Before step 5: may a template override a font-profile value directly**, or only pick a profile? Proposed:
+- **Before step 5: may a template override a layout-profile value directly**, or only pick a profile? Proposed:
   only pick one, or ship its own profile file. That keeps the rule "a profile's numbers belong together".
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
 
