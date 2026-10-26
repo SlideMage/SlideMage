@@ -2,9 +2,9 @@
 
 21 October 2026, `develop` @ 707b350 (v8.40.1). Review of the single-slide preview path (Preview pane, render
 service, verified cache, latexmk build, raster) and the background/deck refresh paths, with measurements.
-Earlier work this builds on: `docs/PREVIEW_RENDER_OPTIMIZATION_PLAN.md` (view sharing, done),
+Earlier work this builds on: view sharing (done, `docs/PREVIEW_RENDER_OPTIMIZATION_VALIDATION.md`),
 `docs/plans/preview-passes-and-direct-lualatex.md` (third pass fixed in v8.37.0; option 2b planned),
-`docs/plans/parallel-previews-handoff.md` (parallel renders, done).
+parallel renders (done).
 
 ## How this was measured
 
