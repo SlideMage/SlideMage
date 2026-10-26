@@ -64,7 +64,7 @@ def tree(tmp_path, monkeypatch):
     write(root / ".build" / "junk.aux", "aux")
     write(framework / "SlideMage_base.tex", "base\n")
     write(framework / "SlideMage_alt.lua", "-- lua\n")
-    write(framework / "beamerthemegotham.sty", "gotham\n")
+    write(framework / "beamerthemeSlideMage.sty", "theme\n")
     write(texroot / "tex" / "latex" / "beamer" / "beamer.cls", "beamer\n")
 
     monkeypatch.setattr(deck_snapshot, "tex_roots", lambda: [texroot])
@@ -92,7 +92,7 @@ def tree(tmp_path, monkeypatch):
             cwd / "slides" / "1aa-EN-One-current.tex",
             cwd / "media" / "used.png",
             fw / "SlideMage_base.tex",
-            fw / "beamerthemegotham.sty",
+            fw / "beamerthemeSlideMage.sty",
             texroot / "tex" / "latex" / "beamer" / "beamer.cls",
         ]
         if state["leak"] is not None:
@@ -267,7 +267,7 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
     write(inv / f"{jobname}.fls", "\n".join(f"INPUT {p}" for p in (
         root / "decks" / "t-Deck.tex", root / "SlideMage_template_uni-graz.tex",
         root / "slides" / "1aa-EN-One-current.tex", root / "media" / "used.png",
-        fw / "SlideMage_base.tex", fw / "beamerthemegotham.sty",
+        fw / "SlideMage_base.tex", fw / "beamerthemeSlideMage.sty",
         texroot / "tex" / "latex" / "beamer" / "beamer.cls")) + "\n")
     write(inv / f"{jobname}.log", "Package: beamer 2025/06/02 v3.75\n")
     write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'SlideMage.bib'}'\n")

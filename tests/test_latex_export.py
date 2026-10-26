@@ -19,7 +19,6 @@ from slidemage import compiler, deck_scan, latex_export, unused_content
 from slidemage.project import ProjectContext, _ignore_template_build_output
 
 HEAD = """\\documentclass[aspectratio=169]{{beamer}}
-\\usetheme{{gotham}}
 \\makeatletter
 \\def\\input@path{{{{../}}}}
 \\makeatother
@@ -88,9 +87,14 @@ def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(projec
 def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
     assert {"SlideMage_template_uni-graz.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
-            "SlideMage_measure.lua", "beamerthemegotham.sty", "beamerinnerthemegotham.sty", "SlideMage.bib",
+            "SlideMage_measure.lua", "SlideMage_setup.tex", "beamerthemeSlideMage.sty", "SlideMage.bib",
             "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf", "snippets/zz2-1.tex", ".latexmkrc"} <= names
     assert not any(n.startswith(("decks/", "latex/")) for n in names)
+    # the deck never names the theme: only SlideMage_setup.tex does, and that is where the export finds it
+    deck_text = (project.root / "decks" / "graz.tex").read_text(encoding="utf-8")
+    setup = (Path(__file__).resolve().parents[1] / "latex" / "SlideMage_setup.tex").read_text(encoding="utf-8")
+    assert "usetheme" not in deck_text and "\\usetheme{SlideMage}" in setup
+    assert not any("gotham" in n.lower() for n in names)
 
 
 def test_a_file_shown_as_code_is_copied_but_not_read_for_references(project):

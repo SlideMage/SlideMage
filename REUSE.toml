@@ -40,11 +40,11 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
 SPDX-License-Identifier = "LPPL-1.3c+"
 
-# The Gotham beamer theme is third party and unchanged (LPPL 1.3c).
+# The SlideMage beamer theme: a modified version of Romain Noël's Gotham theme (LPPL 1.3c), under the same licence.
 [[annotations]]
-path = ["latex/beamer*gotham.sty", "latex/gotham*"]
+path = ["latex/beamerthemeSlideMage.sty"]
 precedence = "override"
-SPDX-FileCopyrightText = "2023-2026 Romain Noël <romainoel@free.fr>"
+SPDX-FileCopyrightText = ["2023-2026 Romain Noël <romainoel@free.fr>", "2026 Stefan Palan, Jürgen Fleiß"]
 SPDX-License-Identifier = "LPPL-1.3c"
 
 # Documentation and the example project.

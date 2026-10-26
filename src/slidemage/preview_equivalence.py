@@ -23,16 +23,14 @@ AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59
 AUDITED_FRAMEWORK = {
     # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
     # v9.0.0: the setup layer (theme, palette and template settings with their defaults); no view-dependent rule.
-    # v10.0.0 (step 2a): base, the Lua files and the example template only rename gotham... content names to SM...;
+    # v9.1.0 (step 2a): base, the Lua files and the example template only rename gotham... content names to SM...;
     # no rule, argument or view-dependent branch changed.
-    "SlideMage_setup.tex": "ec37b78a9076090dc5f297980165f9379bc8e1de3ea0072c4eac807cc9d40eca",
-    "SlideMage_base.tex": "f8736e360e97ecccbcb78688bc36c739a51cb7bf67ad105ade198c56f5f134bb",
+    # v9.1.0 (step 2b): the five Gotham theme files are replaced by beamerthemeSlideMage.sty, a pruned and renamed fork;
+    # it holds no version, footer-hide or deck-label rule (checked by test_the_pins_are_the_frameworks_files...).
+    "SlideMage_setup.tex": "1b104d2b6805e18ee073726d5202ed858eff7ac65b62f8457ea249e4fc00d0b8",
+    "SlideMage_base.tex": "0183326cdd7bea48143cbbf632c2d2e00075cc4d341a81f190e6e77b5346f601",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
-    "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
-    "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
-    "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
-    "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
+    "beamerthemeSlideMage.sty": "15248861bab6d5f6202638b03d0f53a489f9dc9e295e7c8a67650cfc39018a55",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "7bbfd6d86d3542fc782a827df4bf38bf544574020d0cb7f81adeb940dbc84174",
 }
@@ -46,7 +44,7 @@ AUDITED_PROJECT_TEMPLATES = frozenset({
     "8472abb845208dd1946034ce0dcc7acb160dae3626f0a4bd1483802e56fad20e",   # v9.0.0: that template as the project compatibility update leaves it
     "f11225e2236aafe1e426ead9eb73572c1fd2d4bb4fbc2a3fc61b17aafe52b38d",   # v9.0.0: the same on the setup layer (settings only, no view-dependent rule)
     "74e4d515f70f97274875457274acc7746894d40ba245a9e8ce2494f3db9712ff",   # v9.0.0: the v8.40.0 one as the project compatibility update leaves it
-    "2952cf64c3057cfcc7e35c2f00e4398e5e96c032603aecf0945c8f22aaf60549",   # v10.0.0: the same with a comment that names \SMFrametitleRightPadding
+    "2952cf64c3057cfcc7e35c2f00e4398e5e96c032603aecf0945c8f22aaf60549",   # v9.1.0: the same with a comment that names \SMFrametitleRightPadding
 })
 AUDITED_LATEXMKRC = {
     ".latexmkrc": "8273d5f38c719ab1e1064fe07ea27a73de7d423ee7d70b2e7e82312b302a73bc",

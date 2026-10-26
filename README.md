@@ -1,7 +1,7 @@
 # SlideMage
 
-LaTeX/beamer setup for research and teaching slides, built on the
-[Gotham beamer theme](https://gitlab.com/RomainNOEL/beamertheme-gotham) with institution color/logo
+LaTeX/beamer setup for research and teaching slides, built on its own beamer theme (a modified fork of
+Romain Noël's [Gotham theme](https://gitlab.com/RomainNOEL/beamertheme-gotham)) with institution color/logo
 customization layers, plus SlideMage, a PySide6 desktop app (one workspace per deck, with an
 AI assistant) for compiling decks and managing slide IDs, image descriptions, and
 accessible transcripts.
@@ -30,7 +30,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: Gotham beamer theme (`beamer*themegotham.sty`, `gotham.dtx`), `SlideMage_base.tex`, `SlideMage_alt.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -391,8 +391,13 @@ copied package files in `texmf/` record the exact originals.
 
 ## Directory layout
 
-- `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham
-  theme itself. Don't edit; these are the upstream theme sources.
+- `beamerthemeSlideMage.sty` — the beamer theme (since v9.1.0): a pruned and
+  renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
+  states the changes and points to the unmodified original). `SlideMage_setup.tex`
+  loads it, decks never name it. It holds the Fira font setup, the colour roles,
+  the frame title and footline templates and four optional features that are off
+  until a template switches them on (mini frames, progress bars, automatic
+  divider frames, a watermark — see the end of `SlideMage_setup.tex`).
 - `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):
   loads the beamer theme (decks never name it) and defines every setting a
   template may change, each with its default and a comment — the `c_*`
@@ -559,7 +564,7 @@ both a lecture and a research talk) without copy-pasting content.
 
 ## Compiling
 
-Compile with `lualatex` — the Gotham theme loads Fira Sans via `fontspec`,
+Compile with `lualatex` — the SlideMage theme loads Fira Sans via `fontspec`,
 which plain `pdflatex` can't handle. This fails *silently* under `pdflatex`:
 instead of erroring, it falls back to Computer Modern, which can subtly
 mis-render things (e.g. a literal `|` in `\FooterText` came out as an em
@@ -1592,7 +1597,7 @@ institution file, since none of this depends on the palette):
   deliberate idiom — `slides/6ux-Example-51-BMA-Payback-Table-current.tex`
   uses exactly that for its summary chart. Don't "fix" those.
 - Definitions/formulas/examples/caveats — plain beamer blocks, themed by
-  Gotham: `block`, `exampleblock`, `alertblock`, plus three project-added
+  the SlideMage theme: `block`, `exampleblock`, `alertblock`, plus three project-added
   ones — `referenceblock` for reference/citation-style callouts,
   `definitionblock` for a definition that should stand out from an
   ordinary `block` at a glance: same colors/margins/font as `block`, just
@@ -1623,19 +1628,17 @@ institution file, since none of this depends on the palette):
   below (this replaces the older
   `\begin{frame}[plain,noframenumbering]\titlepage\end{frame}` convention).
 - Section dividers: use `sectionframe` (see "Special frame types" below),
-  loaded like any other slide via `\slide{}` — **not** plain beamer/gotham's
-  own automatic section-divider frame. `\section{Title}` (placed right
+  loaded like any other slide via `\slide{}` — **not** the theme's own
+  automatic section-divider frame (`\SMDividerFrames`). `\section{Title}` (placed right
   before that chapter's `sectionframe` `\slide{}` call, titled to match it
   exactly) is still worth adding on top, purely so the chapter feeds
   `\tableofcontents`/the outline (see `slides/nkj-Agenda-current.tex` for
-  a slide built entirely from `\tableofcontents`) — but gotham's own
-  default behavior on `\section{}` is to *also* auto-insert its own plain,
-  unstyled divider frame plus a mini current-section-highlighted outline
-  frame, which would otherwise show up redundantly right next to this
-  project's own hand-styled `sectionframe`. `SlideMage_base.tex` turns
-  that default off (`\gothamset{sectionframe default=false}`) so
-  `\section{}` only feeds the outline, without side effects on the frame
-  sequence itself.
+  a slide built entirely from `\tableofcontents`) — the Gotham theme
+  would *also* have auto-inserted its own plain, unstyled divider frame plus a
+  mini current-section-highlighted outline frame there. The SlideMage theme
+  keeps that feature but off (`\SMDividerFrames{none}`, see
+  `SlideMage_setup.tex`), so `\section{}` only feeds the outline, without side
+  effects on the frame sequence itself.
 - Single key-statement slide: `\begin{frame}[standout]{...}\end{frame}`.
 
 The manual's chapters "Frame types" and "Content and layout" demonstrate
@@ -1653,9 +1656,11 @@ if you want a particular slide vertically centered instead.
 
 **Names:** everything this framework adds is named `\SM...` (`\SMContentTopAlign`,
 `\ifSMInstructorVersion`, TikZ style `SMImageBorder`, environment `SMTable`);
-`\gotham...` names belong to the vendored Gotham theme only. Up to v5.2.0 the
-framework's own macros were `\gotham...` too, and up to v9 so were its environments,
-counters, TikZ styles and beamer templates (`gothamtable`, `gotham arrow`, ...).
+no `\gotham...` name is left: up to v5.2.0 the framework's own macros were
+`\gotham...`, up to v9 so were its environments, counters, TikZ styles and beamer
+templates (`gothamtable`, `gotham arrow`, ...), and up to v9 the vendored Gotham
+theme's own names (`\gothamFootlineVOffset`, `\gothamInstituteLogoSquare`, ...), which are
+`\SM...` since v9.1.0 (`\SMFootlineVOffset`, `\SMInstituteLogo`, ...).
 Project compatibility migrates a project that still uses them when it is opened;
 `python -m slidemage.sm_rename <project folder>` (`--dry-run` first to see the
 counts) does the v5.2.0 part.
@@ -1850,7 +1855,7 @@ look, not an inverted color scheme:
 ```
 
 The taller bar isn't a second box drawn on top the way `titleframe`'s is —
-it grows the gotham theme's *own* title box instead, by locally overriding
+it grows the SlideMage theme's *own* title box instead, by locally overriding
 the length that theme already sizes it from
 (`\SMFrametitleBottomPadding`) plus the title font size, calibrated
 against the rendered PDF to land the bar at almost exactly a third of the
@@ -1870,16 +1875,16 @@ specific patch (set the same way, and reset the same way, as
 The title text is bottom-anchored within the bar — sitting about half a
 line height above the bar's bottom edge, growing *upward* for a title long
 enough to wrap onto a second line, rather than top-anchored the way
-gotham's own template flows by default (which would instead leave a
-growing gap *below* a wrapped title). gotham's template has no built-in way
+the theme's own template flows by default (which would instead leave a
+growing gap *below* a wrapped title). the theme's template has no built-in way
 to do this — its only two knobs are the top/bottom padding struts, both
 anchored to one end of a single top-down flow — so
 `\SMFrametitleTopPadding` is computed fresh for every `sectionframe`,
 from a separate measurement of the title text's own rendered height
 (`\SMSectionframeTitleBox`, built with the same font/approximate width
-gotham gives it) rather than left at a fixed value:
+the theme gives it) rather than left at a fixed value:
 `toppading = boxHeight - bottompading - measuredTitleHeight` (plus a small
-empirically-measured correction — gotham's real leading strut doesn't
+empirically-measured correction — the theme's real leading strut doesn't
 behave quite like a plain measured `\vbox`, see the comment above
 `sectionframe`). A longer/wrapped title therefore shrinks toppading
 automatically, pushing the whole title block up rather than changing the
@@ -1909,8 +1914,8 @@ comments for the fix actually applied).** `\SMSectionframeBoxHeight`
 `toppading + measuredTitleHeight + measuredTitleDepth + bottompading` should
 algebraically equal `\SMSectionframeBoxHeight + \SMSectionframeHeightCorrection`
 regardless of title content, since the formula solves for toppading from the
-other three. In practice it doesn't stay constant, because gotham's own
-`\gotham@frametitlestrut@start`/`@end` (`gotham.dtx`) don't actually implement
+other three. In practice it doesn't stay constant, because the theme's own
+`\SM@frametitlestrut@start`/`@end` (Gotham's `\gotham@...`, kept from its code) don't actually implement
 "toppading + title + bottompading" as three independently-stacked lengths the
 way that algebra assumes:
 - `@start` is a zero-depth `\rule` of height `toppading + \totalheightof{X}` —
@@ -1962,7 +1967,7 @@ in the future should re-measure (real vector fill, not a visual guess) as
 part of that edit rather than assume either constant still applies.
 
 The institute logo, though, stays exactly where it sits on every other
-frame type — even though gotham normally vertically centers it against the
+frame type — even though the theme normally vertically centers it against the
 title's own baseline (which would otherwise drag it down along with a
 bottom-anchored title). `\SMFrametitleLogoFixed` is `sectionframe`'s
 opt-in for the frametitle hook to redraw the logo at a fixed page-corner
@@ -1976,7 +1981,7 @@ room below the bar before the body content starts, on top of
 `standardframe`'s usual pull-up.
 
 A long title (long enough to wrap onto a second line, which is common at
-`\huge`) needed one more piece: gotham's own frametitle template puts the
+`\huge`) needed one more piece: the theme's own frametitle template puts the
 institute logo directly after the title text on the *same paragraph line*,
 with a forbidden break point between them, and `sectionframe` doesn't use
 that inline logo at all (it draws its own, at a fixed position, as above) —
@@ -2272,7 +2277,7 @@ for that slide's real footnotes.
 The markers are plain Unicode characters typeset in the slide's own text font
 (Fira Sans), not LaTeX's `\fnsymbol` (which renders in math mode, and this
 theme deliberately leaves math on LaTeX's Computer Modern default — see
-`beamerfontthemegotham.sty`'s `no-math` option to fontspec — so `\fnsymbol`'s
+`beamerthemeSlideMage.sty`'s `no-math` option to fontspec — so `\fnsymbol`'s
 markers would visibly mismatch the surrounding Fira Sans text, most obvious
 as a marker that looks shifted out of alignment next to flush-left text like
 a `\source{}` line with no marker of its own).
@@ -3242,8 +3247,8 @@ essentially unchanged.
 | Part | Licence |
 |---|---|
 | The SlideMage application (`src/`, `tools/`, `packaging/`, `tests/`) | GPL-3.0-or-later |
-| The SlideMage LaTeX framework (`latex/`, except Gotham) | LPPL 1.3c or later |
-| The Gotham beamer theme (`latex/beamer*gotham.sty`, `gotham*`), unchanged | LPPL 1.3c, © Romain Noël |
+| The SlideMage LaTeX framework (`latex/`, except the theme) | LPPL 1.3c or later |
+| The SlideMage beamer theme (`latex/beamerthemeSlideMage.sty`), a modified version of the Gotham theme v1.2.5.a | LPPL 1.3c, © Romain Noël (original) and © Stefan Palan, Jürgen Fleiß (modifications) |
 | This documentation and the example project (`README.md`, `docs/`, `example/`) | CC BY-SA 4.0 |
 
 The full texts are in `LICENSES/`, the overview in `LICENSE`, the licences of the bundled third-party software in

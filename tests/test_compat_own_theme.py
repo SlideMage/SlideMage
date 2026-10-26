@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat_own_theme: the project files of the gotham... -> SM... content-name rename."""
+"""compat_own_theme: the project files of the gotham... -> SM... rename (content names and the theme's own names)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -45,7 +45,7 @@ def update(root: Path):
 
 def test_change_is_registered_as_breaking():
     change = next(c for c in compat.CHANGES if c.id == "own-theme-and-content-names")
-    assert change.severity == compat.BREAKS and change.since == "v10.0.0"
+    assert change.severity == compat.BREAKS and change.since == "v9.1.0"
     assert change.detect is not None and change.migrate is not None
 
 
@@ -123,3 +123,57 @@ def test_runs_after_the_setup_change_in_one_update(tmp_path):
     deck = (root / "decks" / "course.tex").read_text(encoding="utf-8")
     assert "\\usetheme" not in deck and "SlideMage_template_x" in deck and NEW_SLIDE in deck
     assert compat_names.detect(root) == [] and compat_own_theme.detect(root) == []
+
+
+THEME_TEMPLATE = (
+    "\\setlength{\\SMLogoHeight}{3ex}\n"
+    "\\addtolength{\\gothamFootlineVOffset}{-1.3pt}\n"
+    "\\renewcommand{\\gothamInstituteLogoSquare}[1][\\SMLogoHeight]{\\includegraphics[height=#1]{logo.pdf}}\n"
+    "\\renewcommand{\\gothamFrameSubtitleSep}{ -- }\n"
+    "\\setlength{\\gothamFramesubtitleStrutend}{2pt}\n"
+    "\\rule{0pt}{\\gotham@frametitlestrut@start}\\gotham@frametitlestrut@end\n"
+    "\\setlength{\\gothamFrametitleLeftpading}{1ex}\n")
+NEW_THEME_TEMPLATE = (
+    "\\setlength{\\SMLogoHeight}{3ex}\n"
+    "\\addtolength{\\SMFootlineVOffset}{-1.3pt}\n"
+    "\\renewcommand{\\SMInstituteLogo}[1][\\SMLogoHeight]{\\includegraphics[height=#1]{logo.pdf}}\n"
+    "\\renewcommand{\\SMFrameSubtitleSep}{ -- }\n"
+    "\\setlength{\\SMFrameSubtitleStrutEnd}{2pt}\n"
+    "\\rule{0pt}{\\SM@frametitlestrut@start}\\SM@frametitlestrut@end\n"
+    "\\setlength{\\SMFrametitleLeftPadding}{1ex}\n")
+
+
+def test_the_themes_own_names_are_renamed_in_templates_and_slides(tmp_path):
+    root = make_project(tmp_path)
+    for rel in ("SlideMage_template_x.tex", "slides/1aa-EN-Slide-current.tex"):
+        (root / rel).write_text(THEME_TEMPLATE, encoding="utf-8")
+    result = update(root)
+    assert not result.errors
+    for rel in ("SlideMage_template_x.tex", "slides/1aa-EN-Slide-current.tex"):
+        assert (root / rel).read_text(encoding="utf-8") == NEW_THEME_TEMPLATE
+    assert compat_own_theme.detect(root) == []
+
+
+def test_gothamset_and_the_other_removed_theme_names_are_reported_not_rewritten(tmp_path):
+    root = make_project(tmp_path)
+    path = root / "SlideMage_template_x.tex"
+    path.write_text(THEME_TEMPLATE + "\\gothamset{progressbar position=footline}\n\\setlength{\\gothamFooterHOffset}{1pt}\n"
+                    "% \\gothamreset{x} is only a comment\n", encoding="utf-8")
+    messages = [(f.line, f.message) for f in compat_own_theme.detect(root) if f.file == "SlideMage_template_x.tex"]
+    gone = {line: msg for line, msg in messages if "gone with the Gotham theme" in msg}
+    assert sorted(gone) == [8, 9] and "gothamset" in gone[8] and "gothamFooterHOffset" in gone[9]
+    update(root)
+    text = path.read_text(encoding="utf-8")
+    # the rest of the file is migrated; the removed names stay where they are, and stay reported
+    assert text.startswith(NEW_THEME_TEMPLATE) and "\\gothamset{progressbar" in text and "\\gothamFooterHOffset" in text
+    assert [f.line for f in compat_own_theme.detect(root) if f.file == "SlideMage_template_x.tex"] == [8, 9]
+
+
+def test_the_new_names_are_the_ones_the_theme_defines():
+    theme = (Path(__file__).resolve().parents[1] / "latex" / "beamerthemeSlideMage.sty").read_text(encoding="utf-8")
+    renames = compat_own_theme.sm_rename.THEME_RENAMES
+    theme_names = [old for old in renames if old in compat_own_theme.sm_rename.THEME_NAMES
+                   or old.startswith("gothamFrametitle")]
+    assert len(theme_names) > 25
+    for old in theme_names:
+        assert renames[old] in theme, (old, renames[old])

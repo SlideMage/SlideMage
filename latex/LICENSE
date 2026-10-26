@@ -11,11 +11,21 @@ This work has the LPPL maintenance status `maintained'.
 
 The Current Maintainer of this work is Stefan Palan.
 
-This work consists of the files SlideMage_base.tex,
-SlideMage_template_slidemage.tex, SlideMage_alt.lua, SlideMage_measure.lua
-and slidemage-logo.pdf/.svg.
+This work consists of the files SlideMage_base.tex, SlideMage_setup.tex,
+SlideMage_template_slidemage.tex, SlideMage_alt.lua, SlideMage_measure.lua,
+beamerthemeSlideMage.sty and slidemage-logo.pdf/.svg.
 
-The Gotham beamer theme in this folder (beamer*themegotham.sty, gotham.dtx,
-gotham.ins, gotham-*) is not part of this work: it is (C) Romain Noël, also under
-the LPPL 1.3c, shipped here unchanged from its release v1.2.5.a
-(https://gitlab.com/RomainNOEL/beamertheme-gotham).
+beamerthemeSlideMage.sty is a MODIFIED VERSION of the Gotham beamer theme
+(beamertheme-gotham), release v1.2.5.a, by Romain Noël. It keeps his copyright
+notice and states its changes in its header, as section 6 of the LPPL 1.3c
+requires:
+
+  Copyright (C) 2023-20** by Romain NOËL <romainoel@free.fr>   (original work)
+  Copyright (C) 2026 by Stefan Palan, Jürgen Fleiß              (modifications)
+
+It is not the original, and Romain Noël does not maintain, support or endorse
+it: report problems with it to the SlideMage project
+(https://github.com/JuergenFleiss/slidemage), not to him. The original, unmodified
+theme (beamer*themegotham.sty, gotham.dtx, gotham.ins) is available from
+https://gitlab.com/RomainNOEL/beamertheme-gotham. SlideMage versions before
+v9.1.0 shipped it unchanged in this folder.

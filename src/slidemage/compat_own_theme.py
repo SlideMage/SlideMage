@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat.py change "own-theme-and-content-names" (v10.0.0, BREAKING): the names SlideMage's content
-carried from the Gotham theme become SlideMage names (sm_rename.THEME_RENAMES, approved 2026-10-26).
+"""compat.py change "own-theme-and-content-names" (v9.1.0, BREAKING): the names SlideMage's content
+carried from the Gotham theme become SlideMage names (sm_rename.THEME_RENAMES, approved 2026-10-26), and the
+Gotham theme's own names become the names of the SlideMage theme (beamerthemeSlideMage.sty).
 
 | Before                                              | After                                       |
 |-----------------------------------------------------|---------------------------------------------|
@@ -11,7 +12,15 @@ carried from the Gotham theme become SlideMage names (sm_rename.THEME_RENAMES, a
 | TikZ styles gotham arrow / highlight / dotted ...   | SMArrow, SMHighlight, SMDottedHighlight     |
 | beamer templates gotham plain enumerate, ...        | SMPlainEnumerate, SMPresenter, SMFootnote   |
 | \\gothamFrametitle<Side>pading                       | \\SMFrametitle<Side>Padding                  |
+| \\gothamFootlineVOffset, ...Height, ...Depth        | \\SMFootlineVOffset, ...Height, ...Depth     |
+| \\gothamInstituteLogoSquare                         | \\SMInstituteLogo                           |
+| \\gothamFrameSubtitleSep, \\gothamFramesubtitleStrutend | \\SMFrameSubtitleSep, \\SMFrameSubtitleStrutEnd |
+| \\gotham@frametitlestrut@start/@end                 | \\SM@frametitlestrut@start/@end              |
 | and the internals named in THEME_RENAMES            |                                             |
+
+The theme names that have no SlideMage counterpart (sm_rename.THEME_REMOVED: \\gothamset and \\gothamreset, the
+title page, TOC and rotated footer hooks, the round logo, ...) cannot be renamed; each use outside a comment is
+reported, and the file is otherwise migrated.
 
 Scope: slides (the current file and every frozen version, since a frozen version that is not migrated stops
 compiling), snippets, decks (decks/ and decks/archive/), and the .tex files in the project root (templates and
@@ -42,8 +51,8 @@ from .tex_source import is_commented
 CHANGE_ID = "own-theme-and-content-names"
 
 TEMP_DECK_PREFIX = "_slidemage"
-# Frametitle paddings are the same register under either name (SlideMage_setup aliases them), so a file that
-# mixes the two spellings is not ambiguous.
+# Frametitle paddings were the same register under either name in v9.0.0 (SlideMage_setup aliased them), so a
+# file that mixes the two spellings is not ambiguous.
 _ALIASED = frozenset(k for k in sm_rename.THEME_RENAMES if k.startswith("gothamFrametitle"))
 _NEW_NAMES = sorted({new for old, new in sm_rename.THEME_RENAMES.items() if old not in _ALIASED}, key=len, reverse=True)
 _NEW_RE = re.compile(r"(?<![A-Za-z0-9_@])(" + "|".join(re.escape(n) for n in _NEW_NAMES) + r")(?![A-Za-z0-9_@])")
@@ -124,6 +133,8 @@ class _FilePlan:
         rewritten = sm_rename.rename_identifiers(text, self.counts)
         for line, name in sm_rename.unknown_names(rewritten, live_only=True):
             self.findings.append(Finding(self.rel, line, f"{name} is in no rename table; change it by hand"))
+        for line, name in sm_rename.removed_names(rewritten, live_only=True):
+            self.findings.append(Finding(self.rel, line, _REMOVED_MESSAGE.format(name=name)))
         if rewritten == text:
             return
         collisions = _live_collisions(text) if _live_old_names(text) else []
@@ -139,6 +150,11 @@ class _FilePlan:
         more = len(self.counts) - 6
         self.findings.insert(0, Finding(self.rel, 0, "names renamed in this update: " + shown
                                         + (f" and {more} more" if more > 0 else "")))
+
+
+_REMOVED_MESSAGE = (
+    "{name} is gone with the Gotham theme and has no SlideMage replacement; change it by hand "
+    "(SlideMage_setup.tex lists what can still be switched)")
 
 
 def _plans(root: Path) -> tuple[_View, dict[Path, _FilePlan]]:
@@ -170,9 +186,9 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v10.0.0",
+    since="v9.1.0",
     severity=BREAKS,
-    title="SlideMage's own environments, counters, TikZ styles and templates no longer carry Gotham's name",
+    title="SlideMage has its own beamer theme, and its names no longer carry Gotham's",
     description=(
         "gothamtable is now SMTable, gothamfloatingblock / gothamfloatinginfoblock / gothamfloatingexampleblock "
         "are SMFloatingBlock / SMFloatingInfoBlock / SMFloatingExampleBlock, gothamalphaitemize, gothamnumitemize, "
@@ -181,14 +197,23 @@ CHANGE = Change(
         "gotham arrow / gotham highlight / gotham dotted highlight are SMArrow / SMHighlight / SMDottedHighlight, "
         "and the beamer templates gotham plain enumerate / gothampresenter / gothamfn / gotham_no_inline_logo are "
         "SMPlainEnumerate / SMPresenter / SMFootnote / SMNoInlineLogo. \\gothamFrametitle{Top,Bottom,Left,Right}pading "
-        "are \\SMFrametitle{Top,Bottom,Left,Right}Padding. There are no aliases: a slide, snippet, deck or template "
-        "that keeps the old names does not compile against this framework, frozen slide versions included."),
+        "are \\SMFrametitle{Top,Bottom,Left,Right}Padding. The theme itself is SlideMage's own now "
+        "(beamerthemeSlideMage.sty, loaded by SlideMage_setup.tex; the Gotham files are gone): "
+        "\\gothamFootlineVOffset is \\SMFootlineVOffset, \\gothamInstituteLogoSquare is \\SMInstituteLogo, "
+        "\\gothamFrameSubtitleSep and \\gothamFramesubtitleStrutend are \\SMFrameSubtitleSep and "
+        "\\SMFrameSubtitleStrutEnd, \\gotham@frametitlestrut@start and @end are \\SM@frametitlestrut@start "
+        "and @end. What the Gotham theme had beyond that (\\gothamset and its keys, title page, TOC frames, "
+        "side strips, rotated footer, round logo) is gone. There are no aliases: a slide, snippet, deck or "
+        "template that keeps the old names does not compile against this framework, frozen slide versions "
+        "included."),
     fix=(
         "Replace each old name by the new one in slides (also the frozen -vX-Y-Z versions), snippets, decks "
         "(decks/ and decks/archive/), templates and project macros: \\begin{gothamtable} by \\begin{SMTable} "
         "(and \\end), [gotham arrow] by [SMArrow], \\setbeamertemplate{section in toc}[gotham plain enumerate] "
-        "by [SMPlainEnumerate], \\gothamFrametitleRightpading by \\SMFrametitleRightPadding, and so on. "
-        "Update project does it for you."),
+        "by [SMPlainEnumerate], \\gothamFrametitleRightpading by \\SMFrametitleRightPadding, "
+        "\\gothamFootlineVOffset by \\SMFootlineVOffset, and so on. Update project does it for you; a "
+        "\\gothamset line or another name of the Gotham theme that has no SlideMage counterpart is listed for you "
+        "to change by hand."),
     detect=detect,
     migrate=migrate,
 )

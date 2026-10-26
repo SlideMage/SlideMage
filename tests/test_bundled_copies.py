@@ -291,3 +291,36 @@ def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
     write(example / ".build" / "x.aux", "aux")
     files = bundled_copies.manual_files(example)
     assert not any(part.startswith(".") for f in files for part in Path(f).parts)
+
+
+def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, bundle):
+    """v9.1.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
+    Gotham files are removed, one the user edited stays where it is (reported as kept), and nothing is pending
+    afterwards."""
+    latex, _ = bundle
+    gotham = ("beamerthemegotham.sty", "beamerouterthemegotham.sty", "gotham.dtx")
+    for name in gotham:
+        write(latex / name, f"{name} v1\n")
+    root = make_project(tmp_path, bundle)
+    for name in gotham:                                    # this SlideMage no longer carries them
+        (latex / name).unlink()
+    write(latex / "beamerthemeSlideMage.sty", "theme\n")
+    copy = root.parent / "latex"
+    write(copy / "beamerouterthemegotham.sty", "my edit\n")
+
+    framework = plan(root, bundle)[FRAMEWORK]
+    assert framework.add == ["beamerthemeSlideMage.sty"]
+    assert sorted(framework.remove) == ["beamerthemegotham.sty", "gotham.dtx"]
+    assert framework.kept == ["beamerouterthemegotham.sty"]
+    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v9.1.0", now=NOW)
+    assert (copy / "beamerthemeSlideMage.sty").read_text() == "theme\n"
+    assert not (copy / "beamerthemegotham.sty").exists() and not (copy / "gotham.dtx").exists()
+    assert (copy / "beamerouterthemegotham.sty").read_text() == "my edit\n"
+    assert (backup / "gotham.dtx").is_file()
+    assert plan(root, bundle) == {}
+
+
+def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
+    names = bundled_copies.framework_files(Path(__file__).resolve().parents[1] / "latex")
+    assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
+    assert not [n for n in names if "gotham" in n.lower()]
