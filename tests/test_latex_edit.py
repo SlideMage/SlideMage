@@ -101,8 +101,8 @@ def test_block_lands_in_the_title_braces_and_floating_blocks_take_a_width_first(
     edit = le.wrap_block("body", "\t", "infoblock")
     assert edit.text == "\\begin{infoblock}{}\nbody\n\t\\end{infoblock}"
     assert edit.text[:edit.caret].endswith("\\begin{infoblock}{")
-    floating = le.wrap_block("", "", "gothamfloatingblock", floating=True)
-    assert floating.text.startswith("\\begin{gothamfloatingblock}{5cm}{}\n\t\n")
+    floating = le.wrap_block("", "", "SMFloatingBlock", floating=True)
+    assert floating.text.startswith("\\begin{SMFloatingBlock}{5cm}{}\n\t\n")
     assert floating.text[:floating.caret].endswith("{5cm}{")
 
 

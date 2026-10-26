@@ -79,7 +79,7 @@ Layout helpers (prefer these to hand-measured shifts).
 - Content is top-aligned automatically; do not add vertical shifts. [c] centres a frame.
 - Two columns go inside standardframe: \\begin{columns}[t,onlytextwidth] with column{0.48\\linewidth} x2.
   Do not combine columns with \\pause reveals next to a bulky image; use an overlay or a minipage.
-- Tables: \\begin{gothamtable}[gap=12pt]{lcc} with \\toprule \\midrule \\bottomrule.
+- Tables: \\begin{SMTable}[gap=12pt]{lcc} with \\toprule \\midrule \\bottomrule.
 - Blocks: block, exampleblock, alertblock, definitionblock, infoblock, referenceblock.
 - A stacked fraction in a list: use \\tallitem instead of \\item on that line and the next.
 - \\shrinklists{1|2|3} makes lists one to three sizes smaller; \\small or \\footnotesize shrink text.

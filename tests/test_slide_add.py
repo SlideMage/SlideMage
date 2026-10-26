@@ -406,7 +406,7 @@ def test_extract_odp_imports_table_instead_of_its_preview(tmp_path):
 
     layout, tex = slide_import.slide_content_to_tex(slide, [])
     assert layout == "standardframe"
-    assert r"\begin{gothamtable}[gap=12pt]{lll}" in tex
+    assert r"\begin{SMTable}[gap=12pt]{lll}" in tex
     assert (
         r"Date & \multicolumn{2}{l@{}}{\begin{tabular}[t]{@{}l@{}}Topic \\ Lecturer\end{tabular}} \\"
         in tex

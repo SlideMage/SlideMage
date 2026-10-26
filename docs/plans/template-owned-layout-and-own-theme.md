@@ -320,7 +320,7 @@ The current public names stay where a slide or template reads them, so slides th
   **Naming rule (user, 2026-10-25): every SlideMage name starts with an uppercase `SM`, never `sm`.** That
   already holds for the macros (`\SM...`), the counter `SMUnderbraceCounter` and the tikz styles `SMCard`,
   `SMImageBorder` and `SMProcess`, and it now holds for environments, counters, tikz styles, beamer templates,
-  csnames and expl3 variables too. After `SM` comes CamelCase, as in the existing names. Proposed mapping; show
+  csnames and expl3 variables too. After `SM` comes CamelCase, as in the existing names. Mapping approved by the user on 2026-10-26 (the list below is the approved one; it is also `sm_rename.THEME_RENAMES`); show
   the user the full list before step 2 and use their spelling if they change it:
 
   | Old | New |
@@ -328,12 +328,14 @@ The current public names stay where a slide or template reads them, so slides th
   | `gothamtable` | `SMTable` |
   | `gothamfloatingblock`, `gothamfloatinginfoblock`, `gothamfloatingexampleblock` | `SMFloatingBlock`, `SMFloatingInfoBlock`, `SMFloatingExampleBlock` |
   | `gothamalphaitemize`, `gothamnumitemize`, `gothamalphaperioditemize`, `gothamnumperioditemize` | `SMAlphaItemize`, `SMNumItemize`, `SMAlphaPeriodItemize`, `SMNumPeriodItemize` |
-  | counters `gothamalphaitem`, `gothamnumitem`, `gothamalphaperioditem`, `gothamnumperioditem` | `SMAlphaItem`, `SMNumItem`, `SMAlphaPeriodItem`, `SMNumPeriodItem` |
+  | counters `gothamalphaitem`, `gothamnumitem`, `gothamalphaperioditem`, `gothamnumperioditem` | `SMAlphaItemCounter`, `SMNumItemCounter`, `SMAlphaPeriodItemCounter`, `SMNumPeriodItemCounter` (the macros `\SMAlphaItem` etc. exist already as labels, so the counters take a `Counter` suffix; approved 2026-10-26) |
   | `gothamtightflalign*` | `SMTightFlalign*` |
   | tikz styles `gotham arrow`, `gotham highlight`, `gotham dotted highlight` | `SMArrow`, `SMHighlight`, `SMDottedHighlight` |
   | beamer templates `gothampresenter`, `gothamfn`, `gotham plain enumerate`, `gotham_no_inline_logo` | `SMPresenter`, `SMFootnote`, `SMPlainEnumerate`, `SMNoInlineLogo` |
-  | internal csnames `\gothamtable@spec`, `@gap`, `@begin`, `\gotham@block`, `gothamfit@...`, `gothamalt...`, `gothamcorner...` | `\SMTable@spec`, ..., `\SM@block`, `SMFit@...`, `SMAlt...`, `SMCorner...` |
-  | expl3 `\g_gotham_footnote_symbols_seq`, `gotham_list_has_no_visible_box` | `\g_SM_footnote_symbols_seq`, `SM_list_has_no_visible_box` (expl3 syntax keeps the `\g_`/`\l_` scope prefix; the module part is `SM`) |
+  | internal csnames `\gothamtable@spec`, `@gap`, `@begin`; pgfkeys `/gothamcorner`, `/gothamfit`; TikZ coordinates and nodes `gothamfit@top`, `@bl`, `@r`, `gothamfit<n>` | `\SMTable@spec`, `@gap`, `@begin`; `/SMCorner`, `/SMFit`; `SMFit@top`, `@bl`, `@r`, `SMFit<n>` |
+  | `\gotham@block` (the theme's own, not a content name) | `\SM@block`, in step 2b with the theme |
+  | expl3 `\g_gotham_footnote_symbols_seq` | `\g_SM_footnote_symbols_seq` (expl3 syntax keeps the `\g_`/`\l_` scope prefix; the module part is `SM`) |
+  | Lua globals `gothamalt`, `gotham_layout`, `gotham_list_has_no_visible_box`; callback "gotham top margin"; Python `_GOTHAMTABLE_RE` | `slidemage_alt`, `slidemage_measure`, `slidemage_list_has_no_visible_box`; "slidemage top margin"; `_SMTABLE_RE` |
 
   Lua is not TeX and keeps Lua's own lowercase convention: the global `gotham_layout` becomes `slidemage_measure`
   (matching `SlideMage_measure.lua`) and the callback "gotham top margin" becomes "slidemage top margin".

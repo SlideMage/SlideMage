@@ -6,11 +6,11 @@
 -- argument first, so a "%" in a Lua string pattern would silently comment
 -- out the rest of its line.
 
-gotham_layout = gotham_layout or {}
+slidemage_measure = slidemage_measure or {}
 
 ---------------------------------------------------------------------------
--- gothamtable[gap=<length>]: turn a plain column spec into the
--- flush-edge form every gothamtable used to be written in by hand,
+-- SMTable[gap=<length>]: turn a plain column spec into the
+-- flush-edge form every SMTable used to be written in by hand,
 --   @{} col1 <{\hspace{gap}} col2 <{\hspace{gap}} ... colN @{}
 -- (with \tabcolsep set to 0pt by the environment). The gap goes *inside*
 -- the preceding column (a <{} suffix), so \rowcolor tints it like the rest
@@ -46,7 +46,7 @@ local function read_group(s, i)
     end
     j = j + 1
   end
-  error("gothamtable: unbalanced braces in column spec: " .. s)
+  error("SMTable: unbalanced braces in column spec: " .. s)
 end
 
 local function skip_space(s, i)
@@ -105,7 +105,7 @@ local function split_spec(s)
       local body, k = read_group(s, j)
       local last = items[#items]
       if not last or last.kind ~= "col" then
-        error("gothamtable: <{...} without a column: " .. s)
+        error("SMTable: <{...} without a column: " .. s)
       end
       last.text = last.text .. "<{" .. body .. "}"
       i = k
@@ -137,13 +137,13 @@ local function split_spec(s)
       items[#items + 1] = { kind = "col", text = text, fixed = nargs > 0 }
       i = k
     else
-      error("gothamtable: unexpected '" .. ch .. "' in column spec: " .. s)
+      error("SMTable: unexpected '" .. ch .. "' in column spec: " .. s)
     end
   end
   return items
 end
 
-function gotham_layout.gap_spec(spec, gap)
+function slidemage_measure.gap_spec(spec, gap)
   local items = split_spec(expand_stars(spec))
   -- drop an explicit @{} at either end: the environment adds its own
   if items[1] and items[1].kind == "sep" and items[1].text == "@{}" then
@@ -180,10 +180,10 @@ function gotham_layout.gap_spec(spec, gap)
   return table.concat(out)
 end
 
--- Called from the gothamtable environment: store the expanded spec in
--- \gothamtable@spec (tokenized with the catcodes in force at the call).
-function gotham_layout.set_gap_spec(spec, gap)
-  token.set_macro("gothamtable@spec", gotham_layout.gap_spec(spec, gap))
+-- Called from the SMTable environment: store the expanded spec in
+-- \SMTable@spec (tokenized with the catcodes in force at the call).
+function slidemage_measure.set_gap_spec(spec, gap)
+  token.set_macro("SMTable@spec", slidemage_measure.gap_spec(spec, gap))
 end
 
 ---------------------------------------------------------------------------
@@ -223,14 +223,14 @@ local SMALL_PICTURE = 6 * SP_PER_PT   -- bullet dots, inline icons
 local MIN_ROOM_PT = 1                 -- clearance kept above footnotes/footer
 local MIN_SIZE = SP_PER_PT // 2
 
-gotham_layout.top_applied = gotham_layout.top_applied or {}
-gotham_layout.top_measured = gotham_layout.top_measured or {}
-gotham_layout.top_debug = false
-gotham_layout.top_extra_pt = gotham_layout.top_extra_pt or {}
+slidemage_measure.top_applied = slidemage_measure.top_applied or {}
+slidemage_measure.top_measured = slidemage_measure.top_measured or {}
+slidemage_measure.top_debug = false
+slidemage_measure.top_extra_pt = slidemage_measure.top_extra_pt or {}
 
 -- TeX side: this frame (index) got `applied_pt` of automatic correction
-function gotham_layout.top_begin(index, applied_pt)
-  gotham_layout.top_applied[index] = applied_pt
+function slidemage_measure.top_begin(index, applied_pt)
+  slidemage_measure.top_applied[index] = applied_pt
   local n = node.new(WHATSIT, USER_DEFINED)
   n.user_id = MARKER_ID
   n.type = 100          -- integer
@@ -240,11 +240,11 @@ end
 
 -- TeX side: this frame's target line is the Top Margin plus `pt` (a frame with a
 -- strip below the title bar)
-function gotham_layout.top_extra(index, pt)
-  gotham_layout.top_extra_pt[index] = pt
+function slidemage_measure.top_extra(index, pt)
+  slidemage_measure.top_extra_pt[index] = pt
 end
 
-function gotham_layout.top_end(index)
+function slidemage_measure.top_end(index)
   local n = node.new(WHATSIT, USER_DEFINED)
   n.user_id = MARKER_ID
   n.type = 100
@@ -576,7 +576,7 @@ end
 
 -- shipout: measure this page. The last page of a frame wins (its final
 -- overlay state).
-function gotham_layout.top_measure_page(box)
+function slidemage_measure.top_measure_page(box)
   local events = {}
   if box.id == VLIST then
     events_v(box, 0, events)
@@ -584,7 +584,7 @@ function gotham_layout.top_measure_page(box)
     events_h(box, box.height, events)
   end
   local index, top, bottom, after = measure_events(events)
-  if gotham_layout.top_debug then
+  if slidemage_measure.top_debug then
     for _, e in ipairs(events) do
       if e.marker then
         texio.write_nl("log", string.format("  [ev] marker %d", e.marker))
@@ -599,9 +599,9 @@ function gotham_layout.top_measure_page(box)
       -- room below the content, down to the footnotes/footer
       m.room = to_bp(after) - to_bp(bottom)
     end
-    gotham_layout.top_measured[index] = m
-    if gotham_layout.top_debug then
-      texio.write_nl("log", string.format("gotham top margin: frame %d first content at %.3fbp, room below %s",
+    slidemage_measure.top_measured[index] = m
+    if slidemage_measure.top_debug then
+      texio.write_nl("log", string.format("slidemage top margin: frame %d first content at %.3fbp, room below %s",
         index, m.top, m.room and string.format("%.2fbp", m.room) or "?"))
     end
   end
@@ -609,18 +609,18 @@ end
 
 -- \AtEndDocument: the new corrections, written through TeX (\write) to
 -- \jobname.top, which TeX opened in the aux directory latexmk uses
-function gotham_layout.top_emit()
+function slidemage_measure.top_emit()
   local keys = {}
-  for index in pairs(gotham_layout.top_applied) do
+  for index in pairs(slidemage_measure.top_applied) do
     keys[#keys + 1] = index
   end
   table.sort(keys)
   for _, index in ipairs(keys) do
-    local applied = gotham_layout.top_applied[index]
-    local measured = gotham_layout.top_measured[index]
+    local applied = slidemage_measure.top_applied[index]
+    local measured = slidemage_measure.top_measured[index]
     local value = applied
     if measured then
-      local target = TOP_MARGIN_BP + (gotham_layout.top_extra_pt[index] or 0) * BP_PER_PT
+      local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
       local delta_pt = (measured.top - target) / BP_PER_PT
       -- delta < 0: content too high, it moves down -- but never by more
       -- than the room left above the footnotes/footer (minus MIN_ROOM): a
@@ -643,4 +643,4 @@ function gotham_layout.top_emit()
   end
 end
 
-return gotham_layout
+return slidemage_measure

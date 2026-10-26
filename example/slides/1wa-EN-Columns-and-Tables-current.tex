@@ -2,12 +2,12 @@
 %%
 
 % SlideMage manual, chapter "Content and layout": columns, top-aligned
-% minipages and gothamtable. The slide itself is two columns; the table is
+% minipages and SMTable. The slide itself is two columns; the table is
 % live.
 \setSlideVersion{1-1-1}
 \begin{standardframe}{Columns and tables}
 	{\small Side by side, text and figures or code use beamer's \SMCode{columns};
-	this slide uses two. Tables use \SMCode{gothamtable}, whose rules end
+	this slide uses two. Tables use \SMCode{SMTable}, whose rules end
 	exactly with the left and right edges of the text.\par}
 	\medskip
 	\begin{columns}[T,onlytextwidth]
@@ -16,18 +16,18 @@
 			\begin{itemize}
 				\item \SMCode{columns[t,onlytextwidth]}; \SMCode{[T]} when a column holds a figure, code or a table
 				\item Or two \SMCode{minipage[t]}, the first line with \SMCmd{SMLineTop}
-				\item \SMCode{gothamtable[gap=12pt]}: the gap between columns, built in
+				\item \SMCode{SMTable[gap=12pt]}: the gap between columns, built in
 			\end{itemize}
 			\medskip
 			{\small
-			\begin{gothamtable}[gap=12pt]{lcc}
+			\begin{SMTable}[gap=12pt]{lcc}
 				\toprule
 				Frame & Title bar & Footer \\
 				\midrule
 				\SMCode{standardframe} & yes & yes \\
 				\SMCmd{fullbleedframe} & no & no \\
 				\bottomrule
-			\end{gothamtable}\par}
+			\end{SMTable}\par}
 		\end{column}
 		\begin{column}{0.5\linewidth}
 			\SMCodeFile{snippets/1wa-1.tex}

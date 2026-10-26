@@ -24,14 +24,14 @@
 			any folder with a \SMCode{slide\_ids.csv}: slides, decks, images};
 		\node[part] (app) at (300pt,0) {{\SMCardHeadingFont SlideMage}\\[2pt]
 			the app: compiles decks, manages IDs, versions, images, transcripts};
-		\draw[gotham arrow, c_primary_highlight, thick] (fw.east) -- (pj.west);
-		\draw[gotham arrow, c_primary_highlight, thick] (app.west) -- (pj.east);
+		\draw[SMArrow, c_primary_highlight, thick] (fw.east) -- (pj.west);
+		\draw[SMArrow, c_primary_highlight, thick] (app.west) -- (pj.east);
 		% the workflow
 		\node[wstep, anchor=west] (s1) at (0,-84pt) {write slides};
 		\node[wstep, right=12pt of s1] (s2) {assemble decks};
 		\node[wstep, right=12pt of s2] (s3) {compile the deck versions};
 		\node[wstep, right=12pt of s3] (s4) {hand out PDFs, transcripts};
-		\foreach \a/\b in {s1/s2, s2/s3, s3/s4} \draw[gotham arrow, thick] (\a.east) -- (\b.west);
+		\foreach \a/\b in {s1/s2, s2/s3, s3/s4} \draw[SMArrow, thick] (\a.east) -- (\b.west);
 	\end{tikzillustration}
 	\par\medskip
 	Compiling means LuaLaTeX through \SMCode{latexmk}, which SlideMage starts for

@@ -49,7 +49,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, compat_names, project
+from . import compat_bibliography, compat_names, compat_own_theme, project
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -124,7 +124,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Use \\slide or \\slideversion for slides students should receive; keep omission "
         "calls for instructor-only content."),
     detect=_detect_omitslide,
-), compat_names.CHANGE]
+), compat_names.CHANGE, compat_own_theme.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).

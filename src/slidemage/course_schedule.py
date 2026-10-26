@@ -435,13 +435,13 @@ def render_group_table(group: CourseGroup, language: str = "de") -> str:
         r"\renewcommand{\arraystretch}{1.08}",
         # the project's table style (yellow rules, flush edges); same column
         # geometry as the former \tabcolsep 2pt + @{} edges
-        r"\begin{gothamtable}[gap=4pt]{p{.13\linewidth}p{.14\linewidth}p{.22\linewidth}p{.42\linewidth}}",
+        r"\begin{SMTable}[gap=4pt]{p{.13\linewidth}p{.14\linewidth}p{.22\linewidth}p{.42\linewidth}}",
         r"\toprule",
         heading + r" \\",
         r"\midrule",
         *rows,
         r"\bottomrule",
-        r"\end{gothamtable}",
+        r"\end{SMTable}",
     ))
 
 

@@ -23,7 +23,7 @@ def main():
     formula = re.search(r'\$[^$]+\$', lists)[0]
     figure = re.search(r'\\includegraphics\[[^\]]*\]\{[^}]*\}',
                       (root/'slides/1rb-EN-Figureframe-current.tex').read_text())[0]
-    table = re.search(r'\\begin\{gothamtable\}.*?\\end\{gothamtable\}',
+    table = re.search(r'\\begin\{SMTable\}.*?\\end\{SMTable\}',
                      (root/'slides/1wa-EN-Columns-and-Tables-current.tex').read_text(), re.S)[0]
     cases = [('formula', '1sv-EN-Lists-and-Formulas', formula),
              ('list', '1sv-EN-Lists-and-Formulas', lists),

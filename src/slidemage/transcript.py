@@ -389,7 +389,7 @@ def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[Dec
 
 
 def _resolve_version_ifs(text: str, version: str) -> str:
-    """Keep the branch of \\ifgotham<X>Version ... [\\else ...] \\fi that
+    """Keep the branch of \\ifSM<X>Version ... [\\else ...] \\fi that
     `version` compiles, drop the other one. Nested \\if...\\fi pairs are
     counted so an inner \\else/\\fi doesn't end the outer conditional.
     Before this (2026-09-30) both branches reached the transcript, so a
@@ -541,12 +541,12 @@ _CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 _UNWRAP_ENVIRONMENTS = ("minipage", "center", "column", "columns", "figure",
                         "table", "adjustbox", "besidefigure")
 # Beamer-style blocks: rendered as a titled quote so the label survives.
-_BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "gothamfloatinginfoblock",
-                       "gothamfloatingexampleblock", "gothamfloatingblock",
+_BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "SMFloatingInfoBlock",
+                       "SMFloatingExampleBlock", "SMFloatingBlock",
                        "alertblock", "exampleblock", "referenceblock", "block")
 _LIST_ENVIRONMENTS = {
     "itemize": "-",
-    "gothamalphaitemize": "-",
+    "SMAlphaItemize": "-",
     "enumerate": "1.",
 }
 
@@ -669,8 +669,8 @@ def _render_list(body: str, marker: str, depth: int, bib: dict) -> str:
 
 
 def _skip_optional_argument(body: str) -> str:
-    """Drop a leading [...] option (\\begin{gothamtable}[gap=12pt]{...},
-    \\begin{gothamfloatinginfoblock}[top=0pt]{...}{...})."""
+    """Drop a leading [...] option (\\begin{SMTable}[gap=12pt]{...},
+    \\begin{SMFloatingInfoBlock}[top=0pt]{...}{...})."""
     stripped = body.lstrip()
     if stripped.startswith("["):
         close = stripped.find("]")
@@ -683,7 +683,7 @@ def _render_block(body: str, label: str, bib: dict) -> str:
     """A beamer block becomes a titled Markdown quote."""
     title = ""
     stripped = _skip_optional_argument(body).lstrip()
-    if label.startswith("gothamfloating") and stripped.startswith("{"):
+    if label.startswith("SMFloating") and stripped.startswith("{"):
         # the floating variants take the block's width first: {6cm}{Title}
         _width, after = braced_argument(stripped, 0)
         if after > 0:
@@ -705,7 +705,7 @@ def _render_block(body: str, label: str, bib: dict) -> str:
 # a spec may contain macros (`{@{}l<{\hspace{12pt}}c@{}}` on slide btg), and
 # any character-class pattern that admits those also admits a real first
 # table cell. The signature is known, so use it.
-_TABLE_SPEC_ARGS = {"gothamtable": 1, "tabular": 1, "tabularx": 2}
+_TABLE_SPEC_ARGS = {"SMTable": 1, "tabular": 1, "tabularx": 2}
 
 
 def _strip_column_spec(body: str, count: int) -> str:

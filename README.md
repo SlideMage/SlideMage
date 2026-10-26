@@ -1604,13 +1604,13 @@ institution file, since none of this depends on the palette):
   the manual's slide `1x6` (Blocks, all six side by side) are worked
   examples. All six span the full frame
   width like any other block; for one narrow enough to place freely (e.g.
-  beside a table, inside a tikz overlay `\node`), use `gothamfloatingblock`
+  beside a table, inside a tikz overlay `\node`), use `SMFloatingBlock`
   instead — same title/body colors and font as `block`, just wrapped in an
   extra minipage of the caller's own chosen width:
-  `\begin{gothamfloatingblock}{5cm}{Title} ... \end{gothamfloatingblock}`.
+  `\begin{SMFloatingBlock}{5cm}{Title} ... \end{SMFloatingBlock}`.
   `slides/ha9-Monacorp-Truck-Lease-Breakeven-Rent-current.tex` is a worked
   example. `infoblock`'s own floating counterpart is
-  `gothamfloatinginfoblock` (same two-argument call shape), typically
+  `SMFloatingInfoBlock` (same two-argument call shape), typically
   anchored top-right against the institute logo via the same absolute-tikz-
   overlay corner pattern the institute logo itself uses, with a fixed
   `-\SMContentTopAlign+6.02pt` intrinsic gap correction on the anchor
@@ -1652,11 +1652,13 @@ if you want a particular slide vertically centered instead.
 ## Layout helpers (instead of per-slide adjustments)
 
 **Names:** everything this framework adds is named `\SM...` (`\SMContentTopAlign`,
-`\ifSMInstructorVersion`, TikZ style `SMImageBorder`); `\gotham...` names belong
-to the vendored Gotham theme only. Up to v5.2.0 the framework's own names were
-`\gotham...` too -- a project still using them is migrated with
+`\ifSMInstructorVersion`, TikZ style `SMImageBorder`, environment `SMTable`);
+`\gotham...` names belong to the vendored Gotham theme only. Up to v5.2.0 the
+framework's own macros were `\gotham...` too, and up to v9 so were its environments,
+counters, TikZ styles and beamer templates (`gothamtable`, `gotham arrow`, ...).
+Project compatibility migrates a project that still uses them when it is opened;
 `python -m slidemage.sm_rename <project folder>` (`--dry-run` first to see the
-counts).
+counts) does the v5.2.0 part.
 
 Added 2026-09-30, after an audit found the same hand-measured fixes repeated
 across hundreds of slides (and silently going stale whenever a central value
@@ -1684,7 +1686,7 @@ pixel-identical; everything below is what new slides should use.
   `corner=ne|nw|se|sw|e|w` (default `ne`; `e`/`w` = on the Right/Left Margin,
   centred between Top and Bottom Margin), `xshift=`, `yshift=`, `node={...}`.
   Without `width`/`height` the argument is arbitrary content; `block` for a
-  `gothamfloatinginfoblock` (lifts it by its own top padding, aligns its
+  `SMFloatingInfoBlock` (lifts it by its own top padding, aligns its
   visible right edge with the logo).
 - **Borders position the figure:** a node with the `SMImageBorder` style has
   its anchors on the border's *outer* edge, so a bordered figure anchored at a
@@ -1703,11 +1705,11 @@ pixel-identical; everything below is what new slides should use.
   position (or the Top Margin) and the Bottom Margin, Left to Right Margin.
 - **Bottom Margin** is now a length, `\SMContentBottomAlign`: the footer
   box plus the same gap the Top Margin leaves below the title bar.
-- **`\begin{gothamtable}[gap=12pt]{lccc}`** -- flush table edges (rules end
+- **`\begin{SMTable}[gap=12pt]{lccc}`** -- flush table edges (rules end
   at the text) with the column gap built in; after a `p`/`m`/`b` column the
-  gap is a real separator. Without the option a gothamtable is unchanged.
+  gap is a real separator. Without the option a SMTable is unchanged.
   Inside any block the rules are dark automatically.
-- **Floating blocks** (`gothamfloatingblock`/`...exampleblock`/`...infoblock`)
+- **Floating blocks** (`SMFloatingBlock`/`...exampleblock`/`...infoblock`)
   pad their body themselves: `[top=2mm, bottom=1.2mm]` by default, `0pt`
   for none.
 - **Reveals:** `\deckitem<3->` (an item revealed in the instructor deck, a
@@ -1718,7 +1720,7 @@ pixel-identical; everything below is what new slides should use.
 - **Small ones:** `\shrinklists{1|2|3}` (all list levels one/two/three sizes smaller; 3 is
   `\scriptsize` throughout, the floor),
   `\EUR` (euro sign in text and math), `\SMTikzmark{name}`, TikZ styles
-  `gotham highlight`, `gotham dotted highlight`, `gotham arrow`.
+  `SMHighlight`, `SMDottedHighlight`, `SMArrow`.
 - **`\SMCodeFile[keys]{snippets/abc-1.tex}`** (since v5.11.0) -- LaTeX
   source on a slide, read from its own small file at the project root (the
   slide then needs no `[fragile]` frame, and the code is exactly the text
@@ -1850,7 +1852,7 @@ look, not an inverted color scheme:
 The taller bar isn't a second box drawn on top the way `titleframe`'s is —
 it grows the gotham theme's *own* title box instead, by locally overriding
 the length that theme already sizes it from
-(`\gothamFrametitleBottompading`) plus the title font size, calibrated
+(`\SMFrametitleBottomPadding`) plus the title font size, calibrated
 against the rendered PDF to land the bar at almost exactly a third of the
 page. Growing the theme's own box like this (rather than fighting it with a
 separately-drawn one) means the white-patch-behind-the-logo machinery keeps
@@ -1872,7 +1874,7 @@ gotham's own template flows by default (which would instead leave a
 growing gap *below* a wrapped title). gotham's template has no built-in way
 to do this — its only two knobs are the top/bottom padding struts, both
 anchored to one end of a single top-down flow — so
-`\gothamFrametitleToppading` is computed fresh for every `sectionframe`,
+`\SMFrametitleTopPadding` is computed fresh for every `sectionframe`,
 from a separate measurement of the title text's own rendered height
 (`\SMSectionframeTitleBox`, built with the same font/approximate width
 gotham gives it) rather than left at a fixed value:
@@ -2992,7 +2994,7 @@ on everything that compiles.
 | `overlay` | warning | `\only<2-{...}` -- overlay specification without its closing `>` |
 | `optional-arg` | warning | `\item[label` without `]` on that line |
 | `heading-text` | warning | a content frame whose first line is a bare `\textbf{...}` directly above its list -- make it the list's first `\item` |
-| `table-edges` | warning | `\begin{gothamtable}{...}` with neither `[gap=...]` nor `@{}` edges: the rules run past the text on both sides (write `\begin{gothamtable}[gap=12pt]{lcc}`) |
+| `table-edges` | warning | `\begin{SMTable}{...}` with neither `[gap=...]` nor `@{}` edges: the rules run past the text on both sides (write `\begin{SMTable}[gap=12pt]{lcc}`) |
 
 Inside `verbatim`/`lstlisting`, `\verb`, `\iffalse ... \fi`, `\ExplSyntaxOn`/`\makeatletter`
 regions and macro-definition bodies the character checks are skipped. Not checked (needs a
@@ -3119,7 +3121,7 @@ A list label starts at the left edge of the bullet dot of its own level (12.76pt
 level), the way the source PowerPoint places it: enumerate numerals (level 1 additionally puts the item text at
 27.9pt, nested bullets unchanged; `\SMEnumerateTextExtra`), ellipsis labels via `\item[\SMBulletEllipsis]`,
 and a bullet template that is itself an ellipsis via `\setbeamertemplate{itemize subitem}{\SMBulletEllipsisScript}`.
-Hand-tuned label environments (`gothamnum*`/`gothamalpha*` itemize, `\SMTocLabelFlushLeft`, ...) keep their own
+Hand-tuned label environments (`SMNum*Itemize`/`SMAlpha*Itemize`, `\SMTocLabelFlushLeft`, ...) keep their own
 measured geometry. `python .scripts/check_list_labels.py <compiled.pdf>` measures every label of a compiled deck
 against this rule and lists the exceptions.
 

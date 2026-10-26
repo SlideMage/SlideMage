@@ -527,7 +527,7 @@
       "role": "informative",
       "status": "auto",
       "short": "A small bar chart with one bar highlighted, a dotted guide line and an arrow labeled \"peak\".",
-      "long": "Five blue bars of different heights. The fourth and tallest bar is enclosed in a red rounded rectangle (the gotham highlight style); a red dotted line (gotham dotted highlight) runs from the left to the top of that bar, and a red arrow (gotham arrow) labeled \"peak\" points at it from the upper left.",
+      "long": "Five blue bars of different heights. The fourth and tallest bar is enclosed in a red rounded rectangle (the SMHighlight style); a red dotted line (SMDottedHighlight) runs from the left to the top of that bar, and a red arrow (SMArrow) labeled \"peak\" points at it from the upper left.",
       "source": "Own illustration.",
       "takeaway_default": "The framework's TikZ styles mark a part of a chart.",
       "drafted_by": "claude-opus-5.5 (manual build)",

@@ -37,8 +37,8 @@
 	alt/.code args={<#1>#2#3}{\alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}}},
 	visible on/.style={alt={#1{}{invisible}}},
 }
-\usepackage{booktabs} % \toprule/\midrule/\bottomrule for gothamtable
-\usepackage{colortbl} % \arrayrulecolor{}, used by gothamtable to color those rules
+\usepackage{booktabs} % \toprule/\midrule/\bottomrule for SMTable
+\usepackage{colortbl} % \arrayrulecolor{}, used by SMTable to color those rules
 \usepackage{pifont} % \ding{51}/\ding{55} checkmark/X-mark glyphs, e.g. slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's own validity ratings
 \usepackage{pgfplots} % real-data line/bar charts (e.g. slides/3vp-Metallgesellschaft-Oil-Price-Chart-current.tex) -- confirmed safe alongside this deck's own \tableofcontents, see CONVERSION_NOTES.md's "beamer/TeX gotchas" entry
 \pgfplotsset{compat=1.18}
@@ -87,7 +87,7 @@
 \renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}
 
 % Colors, institute logo path, and the two logo-calibration lengths
-% (\SMLogoHeight, \SMFrametitleRightPadding = \gothamFrametitleRightpading)
+% (\SMLogoHeight, \SMFrametitleRightPadding = \SMFrametitleRightPadding)
 % are template settings: SlideMage_setup.tex defines each with its default
 % (the hook catalog), the template changes what it wants, and this file only
 % reads them -- shared machinery, no institution-specific branding. See e.g.
@@ -453,9 +453,9 @@
 % Each is exactly the option list the slides used, so switching a slide to
 % the name changes nothing on the page.
 \tikzset{
-	gotham highlight/.style={c_custom_red, very thick, rounded corners},   % red box around part of a figure/table (18x)
-	gotham dotted highlight/.style={densely dotted, thick, c_custom_red},  % red dotted guide line (19x)
-	gotham arrow/.style={-{Stealth[length=2mm]}},                         % the usual arrow tip (54x)
+	SMHighlight/.style={c_custom_red, very thick, rounded corners},   % red box around part of a figure/table (18x)
+	SMDottedHighlight/.style={densely dotted, thick, c_custom_red},  % red dotted guide line (19x)
+	SMArrow/.style={-{Stealth[length=2mm]}},                         % the usual arrow tip (54x)
 }
 
 % \SMTikzmark{name} -- a zero-size remember-picture node at the current
@@ -854,9 +854,9 @@
 % *real*, unmodified flalign* in a plain TeX group together with this
 % command, `{\SMTightDisplaySkips\begin{flalign*} ... \end{flalign*}}`,
 % rather than a new same-named environment -- tried that first
-% (`\newenvironment{gothamtightflalign*}{...\begin{flalign*}}{\end{flalign*}}`)
+% (`\newenvironment{SMTightFlalign*}{...\begin{flalign*}}{\end{flalign*}}`)
 % and it broke LaTeX's own environment-nesting tracking (`\@currenvir`),
-% surfacing as "\begin{flalign*} ... ended by \end{gothamtightflalign*}"
+% surfacing as "\begin{flalign*} ... ended by \end{SMTightFlalign*}"
 % and a fatal, PDF-less compile on the very first slide that used it. A
 % plain group sidesteps that class of bug entirely since it never
 % introduces a same-named wrapper environment.
@@ -899,7 +899,7 @@
 	}%
 }
 
-% \gothamFrametitleRightpading (left/right padding around the logo, chosen
+% \SMFrametitleRightPadding (left/right padding around the logo, chosen
 % to match its top/bottom margins -- measured against the title colorbox's
 % own top and bottom edges -- rather than the theme's 2.2ex default) is
 % also set by the per-university preamble, not here: the top/bottom margins
@@ -938,7 +938,7 @@
 % Let the yellow title bar visually stop short of the page's right edge, so
 % the logo sits on white instead of on yellow: paint a white patch spanning
 % the full height of the title bar behind the logo, then redraw the logo
-% (already positioned correctly by \gothamFrametitleRightpading above, via
+% (already positioned correctly by \SMFrametitleRightPadding above, via
 % the "SMLogoAnchor" node captured above) on top of it. This needs two
 % compilation passes: like any \tikz "remember picture", the node positions
 % are only available in the .aux file written by the previous run.
@@ -957,7 +957,7 @@
 % text even on titles with descenders (e.g. "Highlighting...").
 %
 % Factored into its own macro, rather than written directly into the
-% \addtobeamertemplate call below, so \gotham_no_inline_logo (a whole
+% \addtobeamertemplate call below, so \SMNoInlineLogo (a whole
 % separate frametitle template variant, further down) can reuse it too --
 % \addtobeamertemplate patches whatever template is *currently* installed
 % at the time it's called (gotham's own default one here), so a template
@@ -988,7 +988,7 @@
 	\begin{tikzpicture}[remember picture, overlay]
 		\path let \p1=(current page.north east), \p2=(SMTitleBottom) in
 			node[fill=SMCanvasColor, anchor=north east, inner sep=0pt, outer sep=0pt, name=SMMainPatch,
-			     minimum width=\SMLogoWidth+2\gothamFrametitleRightpading,
+			     minimum width=\SMLogoWidth+2\SMFrametitleRightPadding,
 			     minimum height=\y1-\y2] at (\x1,\y1) {};
 		\ifx\SMFrametitleFullHeightYellow\empty
 			\path let \p1=(current page.north east), \p2=(SMTitleBottom),
@@ -1008,7 +1008,7 @@
 		\ifx\SMFrametitleLogoFixed\empty
 			\node[anchor=center, inner sep=0pt] at (SMLogoAnchor.center) {\SMInstituteLogoGraphic};
 		\else
-			% inner ysep is derived, not \gothamFrametitleRightpading again:
+			% inner ysep is derived, not \SMFrametitleRightPadding again:
 			% the inline logo this fixed redraw must line up with is
 			% *vertically centered* in the title bar, and its resulting top
 			% margin (8.14pt, measured) is not exactly the horizontal
@@ -1020,20 +1020,20 @@
 			% inline logo's bottom edge, so subtracting \SMLogoHeight
 			% reproduces its top margin exactly, and re-measuring one
 			% constant keeps both in sync if the bar ever changes.
-			\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
+			\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
 			      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
 			      outer sep=0pt] at (current page.north east) {\SMInstituteLogoGraphic};
 		\fi
 		% Optional per-frame "chapter logo" (see \chapterlogo{} below): drawn
 		% immediately to the left of the main logo's white patch, on its own
 		% white patch, only when \SMChapterLogoPath is non-empty. Sized
-		% with exactly one \gothamFrametitleRightpading of its own padding, on
+		% with exactly one \SMFrametitleRightPadding of its own padding, on
 		% its outer (left) side only -- the inner (right) side is left flush
 		% against SMMainPatch, since that patch already contributes its
-		% own \gothamFrametitleRightpading of padding around the main logo.
+		% own \SMFrametitleRightPadding of padding around the main logo.
 		% This makes both gaps -- chapter logo to main logo, and chapter logo
 		% to where the yellow bar resumes -- come out equal, at exactly one
-		% \gothamFrametitleRightpading each, without double-counting or
+		% \SMFrametitleRightPadding each, without double-counting or
 		% needing a second length constant.
 		\ifx\SMChapterLogoPath\empty\else
 			\settowidth{\SMChapterLogoWidth}{\includegraphics[height=\SMLogoHeight]{\SMChapterLogoPath}}%
@@ -1049,7 +1049,7 @@
 				% unaffected.
 				\path let \p1=(current page.north east), \p2=(SMTitleBottom) in
 					node[fill=SMCanvasColor, anchor=east, inner sep=0pt, outer sep=0pt,
-					     minimum width=\SMChapterLogoWidth+\gothamFrametitleRightpading+0.5pt,
+					     minimum width=\SMChapterLogoWidth+\SMFrametitleRightPadding+0.5pt,
 					     minimum height=\y1-\y2] at ($(SMMainPatch.west)+(0.5pt,0)$) {};
 				% This bare `SMLogoAnchor.center` placement centers the
 				% chapter logo's own *bounding box* against the institute
@@ -1098,9 +1098,9 @@
 				% sectionframe's own much taller title bar leaves real room
 				% below the (fixed-position, near-the-top) institute logo, so
 				% stack the chapter logo directly under it instead of beside
-				% it, same right edge (\gothamFrametitleRightpading from the
+				% it, same right edge (\SMFrametitleRightPadding from the
 				% page's own right edge), separated by one more
-				% \gothamFrametitleRightpading of vertical gap -- reusing that
+				% \SMFrametitleRightPadding of vertical gap -- reusing that
 				% same length keeps every gap in this hook equal, same
 				% reasoning as the "beside" case's own comment above. No
 				% separate white patch needed here: SMMainPatch (above)
@@ -1119,7 +1119,7 @@
 				% than the institute logo above it, reading as
 				% off-center underneath it despite sharing the same right
 				% edge. Matching *width* instead, with the *same*
-				% `anchor=north east`/`inner xsep=\gothamFrametitleRightpading`
+				% `anchor=north east`/`inner xsep=\SMFrametitleRightPadding`
 				% the institute logo itself uses, makes the two share
 				% both edges (not just the right one) automatically --
 				% equal width plus a shared right edge means a shared
@@ -1136,8 +1136,8 @@
 				% ("beside") chapter-logo placement below instead, used by
 				% every other slide in the chapter. See that placement's own
 				% comment for the real fix.
-				\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
-				      inner ysep=\dimexpr\SMTitleBarBottomAlign+\gothamFrametitleRightpading\relax,
+				\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
+				      inner ysep=\dimexpr\SMTitleBarBottomAlign+\SMFrametitleRightPadding\relax,
 				      outer sep=0pt] at (current page.north east)
 					{\includegraphics[width=\SMLogoWidth]{\SMChapterLogoPath}};
 			\fi
@@ -1212,9 +1212,9 @@
 %
 % Doing so, though, means the logo no longer reserves *any* horizontal room
 % on the title's own line the way it used to -- so rightskip here widens
-% \gothamFrametitleRightpading to reserve the same width SMMainPatch
+% \SMFrametitleRightPadding to reserve the same width SMMainPatch
 % (the frametitle hook's white patch, drawn afterward) already reserves for
-% the logo column: \SMLogoWidth + 2*\gothamFrametitleRightpading. Without
+% the logo column: \SMLogoWidth + 2*\SMFrametitleRightPadding. Without
 % this, the title paragraph wraps as if that whole column were free text
 % space -- not an actual TeX overfull-hbox condition (no warning, the text
 % genuinely fits the *box's own* width), just a title that runs visually
@@ -1235,11 +1235,11 @@
 % uneven word-gaps on a short title (most noticeable exactly when a title is
 % long enough to wrap, i.e. always, for this template).
 \makeatletter
-\defbeamertemplate{frametitle}{gotham_no_inline_logo}{%
+\defbeamertemplate{frametitle}{SMNoInlineLogo}{%
 	\nointerlineskip
 	\begin{beamercolorbox}[wd=\paperwidth, sep=0pt,
-	                        leftskip=\gothamFrametitleLeftpading,
-	                        rightskip=\dimexpr\SMLogoWidth+2\gothamFrametitleRightpading\relax plus 1fil]{frametitle}
+	                        leftskip=\SMFrametitleLeftPadding,
+	                        rightskip=\dimexpr\SMLogoWidth+2\SMFrametitleRightPadding\relax plus 1fil]{frametitle}
 		\gotham@frametitlestrut@start
 		\insertframetitle
 		\ifx\insertframesubtitle\@empty\else
@@ -2115,7 +2115,7 @@
 
 % Per-frame "Image source(s):" auto-footnote (ALT_TEXT_NOTES.md phase 6 step
 % 3). The \includegraphics wrapper further down calls
-% gothamalt.recordSource() for every image (decorative or informative --
+% slidemage_alt.recordSource() for every image (decorative or informative --
 % source is independent of role, same reasoning as media/alt-text.json's own
 % ImageEntry.source), accumulating each frame's distinct, order-of-first-
 % -appearance source strings in Lua. These two commands are standardframe's
@@ -2136,7 +2136,7 @@
 \newif\ifSMImageSourcesHasText
 \newcommand{\SMImageSourcesText}{}
 \newcommand{\SMResetImageSources}{%
-	\ifluatex\directlua{gothamalt.resetFrameSources()}\fi
+	\ifluatex\directlua{slidemage_alt.resetFrameSources()}\fi
 }
 % \source{} is itself implemented as an empty-marker \footnote{} (see its
 % own definition further below) -- calling it here gives the auto-footnote
@@ -2154,7 +2154,7 @@
 \newcommand{\SMEmitImageSourceFootnote}{%
 	\ifluatex
 	\SMImageSourcesHasTextfalse
-	\directlua{gothamalt.emitSourceFootnote()}%
+	\directlua{slidemage_alt.emitSourceFootnote()}%
 	\ifSMImageSourcesHasText
 		\source{\SMImageSourceLabel: \SMImageSourcesText}%
 	\fi
@@ -2322,9 +2322,9 @@
 	% its own still ends up with this wrapper outermost.
 	\AtBeginDocument{%
 		\directlua{
-			local loaded = gothamalt.load()
+			local loaded = slidemage_alt.load()
 			if loaded == nil then
-				texio.write_nl("gothamalt: media/alt-text.csv not found -- "
+				texio.write_nl("slidemage_alt: media/alt-text.csv not found -- "
 					.. "decorative images will not be marked as artifacts.")
 			end
 		}%
@@ -2348,10 +2348,10 @@
 			% would need \protected@edef here instead.
 			\edef\SMAltReference{#4}%
 			\SMAltDecorativefalse
-			\directlua{gothamalt.mark("\luaescapestring{\SMAltReference}")}%
+			\directlua{slidemage_alt.mark("\luaescapestring{\SMAltReference}")}%
 			% Unconditional -- unlike SMAltInvisible below (informative
 			% images only), a source is recorded regardless of role.
-			\directlua{gothamalt.recordSource("\luaescapestring{\SMAltReference}", "\luaescapestring{\SMDeckLanguage}")}%
+			\directlua{slidemage_alt.recordSource("\luaescapestring{\SMAltReference}", "\luaescapestring{\SMDeckLanguage}")}%
 			% /Type /Layout is the PDF spec's artifact type for cosmetic design
 			% elements, which is what a decorative illustration is. Not
 			% /Background: that one means a fill or image behind the whole
@@ -2361,12 +2361,12 @@
 			% Emitted *before* the image, so the description precedes it in the
 			% content stream and therefore in extraction order -- a listener
 			% hears what the image is before reaching it, rather than after.
-			% gothamalt.altText prints nothing for a decorative image or one
+			% slidemage_alt.altText prints nothing for a decorative image or one
 			% with no short alt yet, so this line is inert until the manifest
 			% is filled in.
 			\SMAltHasTextfalse
 			\ifSMAltDecorative\else
-				\directlua{gothamalt.altText("\luaescapestring{\SMAltReference}", "\luaescapestring{\SMDeckLanguage}")}%
+				\directlua{slidemage_alt.altText("\luaescapestring{\SMAltReference}", "\luaescapestring{\SMDeckLanguage}")}%
 				\ifSMAltHasText\SMAltInvisible{\SMAltShort}\fi
 			\fi
 			\IfBooleanTF{#1}%
@@ -2396,13 +2396,13 @@
 % \begin/\end is the tikzpicture's content, completely unmodified.
 %
 % Role (decorative/informative) is looked up exactly the way an image's is
-% -- gothamalt.mark(), the same Lua call \includegraphics's own wrapper
+% -- slidemage_alt.mark(), the same Lua call \includegraphics's own wrapper
 % above makes, against the same media/alt-text.csv -- rather than a second
 % bracket argument SlideMage would otherwise have to text-edit into this
 % call in place every time the role changes. SlideMage writes this
 % illustration's own row into media/alt-text.json (and its compile-time
 % media/alt-text.csv projection) keyed "tikz:ID", never a real media/ path;
-% gothamalt.mark() itself needed no changes, since it already keys purely
+% slidemage_alt.mark() itself needed no changes, since it already keys purely
 % on whatever string it is given (SlideMage/alt_images.py).
 %
 % A decorative illustration is wrapped in the same \SMArtifactBegin{/Type
@@ -2428,7 +2428,7 @@
 \newenvironment{tikzillustration}[2][]{%
 	\ifluatex
 		\SMAltDecorativefalse
-		\directlua{gothamalt.mark("\luaescapestring{tikz:#2}")}%
+		\directlua{slidemage_alt.mark("\luaescapestring{tikz:#2}")}%
 		\ifSMAltDecorative\SMArtifactBegin{/Type /Background}\fi
 	\fi
 	\begin{tikzpicture}[#1]
@@ -2500,7 +2500,7 @@
 % with the logo's own right edge above it, rather than wherever the theme's
 % default footline margins would otherwise put it. Empirically calibrated
 % against the rendered PDF coordinates of both; re-measure and adjust if
-% \gothamFrametitleRightpading (the logo's own right inset) changes.
+% \SMFrametitleRightPadding (the logo's own right inset) changes.
 \newlength{\SMFooterRightShift}
 \setlength{\SMFooterRightShift}{4.6pt}
 
@@ -2578,7 +2578,7 @@
 	% around both of those bands are dropped too -- they were already
 	% pure no-ops.
 	%
-	% Registered as a new named variant ("gothampresenter"), not a
+	% Registered as a new named variant ("SMPresenter"), not a
 	% redefinition of beamer's own "default" -- confirmed directly that
 	% \defbeamertemplate*{note page}{default}{...} here errors ("Command
 	% \beamer@@tmpop@note page@default already defined"): both the
@@ -2587,7 +2587,7 @@
 	% which always errors on a name beamer's own outer theme already
 	% registered, star or not. Same pattern this file's own footnote
 	% template already uses just above (\defbeamertemplate{footnote}
-	% {gothamfn}{...} then \setbeamertemplate{footnote}[gothamfn]) --
+	% {SMFootnote}{...} then \setbeamertemplate{footnote}[SMFootnote]) --
 	% define-then-select instead of overwrite-in-place.
 	%
 	% \makeatletter/\makeatother wraps this specific block (not the whole
@@ -2597,7 +2597,7 @@
 	% above, the next opens well below), so @ is still catcode-other here
 	% otherwise -- confirmed directly rather than assumed.
 	\makeatletter
-	\defbeamertemplate{note page}{gothampresenter}{%
+	\defbeamertemplate{note page}{SMPresenter}{%
 		{%
 			\scriptsize
 			% The breadcrumb typesets the frame title (twice: once to measure, once
@@ -2645,7 +2645,7 @@
 		\nointerlineskip
 		\insertnote
 	}
-	\setbeamertemplate{note page}[gothampresenter]
+	\setbeamertemplate{note page}[SMPresenter]
 	\makeatother
 \fi
 % \SMHideFooterText: opt-in flag suppressing just \FooterText (the left
@@ -2868,14 +2868,14 @@
 % confirmed against slides/ZZU-Footnote-symbol-options-current.tex to
 % actually exist in Fira Sans.
 \ExplSyntaxOn
-\seq_new:N \g_gotham_footnote_symbols_seq
-\seq_gset_from_clist:Nn \g_gotham_footnote_symbols_seq { £,¥,₹,₽,₺,₴,₪,₫,₦,₡,₩,ƒ,¢,€ }
+\seq_new:N \g_SM_footnote_symbols_seq
+\seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { £,¥,₹,₽,₺,₴,₪,₫,₦,₡,₩,ƒ,¢,€ }
 \newcommand{\setfootnotesymbols}[1]{%
-	\seq_gset_from_clist:Nn \g_gotham_footnote_symbols_seq { #1 }
+	\seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { #1 }
 }
 \newcommand{\SMFnSymbol}[1]{%
-	\seq_item:Nn \g_gotham_footnote_symbols_seq
-		{ \int_eval:n { \int_mod:nn { #1 - 1 } { \seq_count:N \g_gotham_footnote_symbols_seq } + 1 } }
+	\seq_item:Nn \g_SM_footnote_symbols_seq
+		{ \int_eval:n { \int_mod:nn { #1 - 1 } { \seq_count:N \g_SM_footnote_symbols_seq } + 1 } }
 }
 \ExplSyntaxOff
 \renewcommand{\thefootnote}{\SMFnSymbol{\value{footnote}}}
@@ -3020,7 +3020,7 @@
 % (non-empty marker) apart from a \source{} call (marker forced empty) --
 % see \SMSideFootnoteMarkerShift above.
 \makeatletter
-\defbeamertemplate{footnote}{gothamfn}{%
+\defbeamertemplate{footnote}{SMFootnote}{%
 	\ifSMSideFootnotes
 		% Side mode (see \sidefootnotes above): append this footnote to the
 		% collector box instead of typesetting it here. \insertfootnotetext
@@ -3100,7 +3100,7 @@
 	\fi
 }
 \makeatother
-\setbeamertemplate{footnote}[gothamfn]
+\setbeamertemplate{footnote}[SMFootnote]
 
 % Draws the side-footnote strip (see \sidefootnotes above). Lives in the
 % footline template because that is typeset at page shipout, after the frame
@@ -3179,7 +3179,7 @@
 
 % A plain tabular with yellow \toprule/\midrule/\bottomrule, matching the
 % frametitle/footer accent color. Takes the same column-spec argument as
-% tabular itself, e.g. \begin{gothamtable}{lccc} ... \end{gothamtable}. Only
+% tabular itself, e.g. \begin{SMTable}{lccc} ... \end{SMTable}. Only
 % booktabs rules are colored (via \arrayrulecolor, scoped to this table by
 % \begingroup/\endgroup) -- if a table ever needs a plain black \hline too,
 % that's unaffected since \arrayrulecolor only recolors rules drawn *after*
@@ -3187,7 +3187,7 @@
 %
 % RULE-BLEED WARNING (2026-07-12, direct instruction: "make sure the table
 % lines do not extend beyond the text"), read this before writing a new
-% gothamtable: a plain column spec like `{lccc}` above leaves the default
+% SMTable: a plain column spec like `{lccc}` above leaves the default
 % \tabcolsep (6pt, or whatever a slide-local \setlength last set it to) as
 % *implicit* padding on the table's own outermost edges -- invisible to the
 % table's own text (which starts/ends flush with each column's actual
@@ -3203,19 +3203,19 @@
 % (non-\centering) table where the mismatch is easy to see against the
 % title's own left margin.
 %
-% (2026-09-30: write new tables as \begin{gothamtable}[gap=12pt]{...}
+% (2026-09-30: write new tables as \begin{SMTable}[gap=12pt]{...}
 % instead -- see "FLUSH EDGES BUILT IN" below; the rest of this comment
 % describes the hand-written form that option now produces.)
 % Not fixed here in the environment definition itself: doing so would
-% change every existing gothamtable's own column spacing out from under it
+% change every existing SMTable's own column spacing out from under it
 % (this environment has no way to tell "plain default spacing was intended"
 % apart from "the bleed was never noticed"). Fix per table instead, the
 % same three-part pattern every slide above uses -- worth reaching for by
-% default on any *new* gothamtable, not just when the bleed is spotted:
+% default on any *new* SMTable, not just when the bleed is spotted:
 %   {\setlength{\tabcolsep}{0pt}
-%   \begin{gothamtable}{@{}l<{\hspace{<gap>pt}}c<{\hspace{<gap>pt}}c@{}}
+%   \begin{SMTable}{@{}l<{\hspace{<gap>pt}}c<{\hspace{<gap>pt}}c@{}}
 %   ...
-%   \end{gothamtable}}
+%   \end{SMTable}}
 % -- \tabcolsep zeroed (scoped locally, e.g. by wrapping the whole call in
 % a `{...}` group, so it doesn't leak into later tables), explicit `@{}` at
 % both outer edges of the column spec (so booktabs/colortbl have no
@@ -3231,40 +3231,40 @@
 % this too).
 %
 % RE-CONFIRMED 2026-07-16, direct instruction, after this exact bleed
-% reappeared on essentially every gothamtable in a freshly-converted
+% reappeared on essentially every SMTable in a freshly-converted
 % chapter (Capital Budgeting Techniques) despite the warning above already
 % existing at the time -- the rule above is not optional/only-if-noticed,
-% it's the default way to write *any* new gothamtable, full stop. Check
-% every new gothamtable against it before considering a slide done, not
+% it's the default way to write *any* new SMTable, full stop. Check
+% every new SMTable against it before considering a slide done, not
 % just when a rendered page happens to make the bleed visually obvious.
 %
 % BLOCK-RULE-COLOR CONVENTION (2026-07-16, direct instruction): a
-% gothamtable placed *inside* any block environment (`infoblock`,
+% SMTable placed *inside* any block environment (`infoblock`,
 % `exampleblock`, `referenceblock`, `definitionblock`, plain `block`, or
-% their `gothamfloating*` wrappers) should use black rules, not this
+% their `SMFloating*Block` wrappers) should use black rules, not this
 % environment's own default yellow -- yellow-on-the-block's-own-tinted-
 % background reads poorly, unlike yellow-on-plain-white outside a block.
-% Override locally, *inside* `\begin{gothamtable}{...}`, before `\toprule`
-% (not before `\begin{gothamtable}` itself -- the environment's own
+% Override locally, *inside* `\begin{SMTable}{...}`, before `\toprule`
+% (not before `\begin{SMTable}` itself -- the environment's own
 % opening code sets yellow *after* its `\begingroup`, so a color set
 % before that point is simply overwritten; confirmed directly, first
 % attempt this same day):
-%   \begin{gothamtable}{...}
+%   \begin{SMTable}{...}
 %   	\arrayrulecolor{c_primary_dark}
 %   	\toprule
 %   	...
-%   \end{gothamtable}
+%   \end{SMTable}
 % Booktabs rules read `\arrayrulecolor` fresh at each rule, and
-% `\endgroup` (gothamtable's own closing code) resets it back to yellow
+% `\endgroup` (SMTable's own closing code) resets it back to yellow
 % afterward, so this never leaks into a later table. First applied on
 % slides/6ux-Example-51-BMA-Payback-Table-current.tex's own
-% `gothamfloatinginfoblock`.
+% `SMFloatingInfoBlock`.
 %
 % FLUSH EDGES BUILT IN (2026-09-30, direct instruction: "propose a more
 % systematic solution" for per-slide fixes -- 53 tables carried the
 % three-part pattern above by hand): give the column gap as an option and
 % write the plain column spec,
-%   \begin{gothamtable}[gap=12pt]{lccc} ... \end{gothamtable}
+%   \begin{SMTable}[gap=12pt]{lccc} ... \end{SMTable}
 % which produces exactly the hand-written form -- \tabcolsep 0pt, @{} at
 % both edges, <{\hspace{12pt}} after every column that is followed by
 % another one (not before an explicit @{...}/!{...} separator), *{n}{...}
@@ -3273,13 +3273,13 @@
 % instead: array places a <{...} suffix inside such a column's box, where
 % it only pads the end of the cell text and leaves the columns touching
 % (the hand-written pattern had exactly that flaw for p columns). The
-% expansion is done by SlideMage_measure.lua (gotham_layout.gap_spec).
+% expansion is done by SlideMage_measure.lua (slidemage_measure.gap_spec).
 % gap=12pt is the ordinary look (2 x beamer's 6pt \tabcolsep). Without the
 % option the environment behaves as it always has (plain tabular with
 % yellow rules), so every existing table is untouched.
 \makeatletter
-\pgfqkeys{/gothamtable}{
-	gap/.store in=\gothamtable@gap,
+\pgfqkeys{/SMTable}{
+	gap/.store in=\SMTable@gap,
 }
 \ifluatex
 	\SMLuaOnce{
@@ -3290,7 +3290,7 @@
 		end
 	}
 \fi
-\def\gothamtable@begin#1{\begin{tabular}{#1}}
+\def\SMTable@begin#1{\begin{tabular}{#1}}
 % BLOCK-RULE-COLOR, automatic (2026-09-30): inside any block (the
 % convention above) the rules default to c_primary_dark -- all 11 tables
 % placed in a block so far set that by hand. An \arrayrulecolor inside the
@@ -3302,24 +3302,24 @@
 \AtBeginEnvironment{infoblock}{\SM@inblocktrue}
 \AtBeginEnvironment{referenceblock}{\SM@inblocktrue}
 \AtBeginEnvironment{definitionblock}{\SM@inblocktrue}
-\NewDocumentEnvironment{gothamtable}{O{}m}{%
+\NewDocumentEnvironment{SMTable}{O{}m}{%
 	\begingroup
 	\ifSM@inblock
 		\arrayrulecolor{c_primary_dark}%
 	\else
 		\arrayrulecolor{c_primary_highlight}%
 	\fi
-	\let\gothamtable@gap\@empty
-	\pgfqkeys{/gothamtable}{#1}%
-	\ifx\gothamtable@gap\@empty
-		\def\gothamtable@spec{#2}%
+	\let\SMTable@gap\@empty
+	\pgfqkeys{/SMTable}{#1}%
+	\ifx\SMTable@gap\@empty
+		\def\SMTable@spec{#2}%
 	\else
 		\setlength{\tabcolsep}{0pt}%
-		\directlua{gotham_layout.set_gap_spec(
+		\directlua{slidemage_measure.set_gap_spec(
 			"\luaescapestring{\detokenize{#2}}",
-			"\luaescapestring{\detokenize\expandafter{\gothamtable@gap}}")}%
+			"\luaescapestring{\detokenize\expandafter{\SMTable@gap}}")}%
 	\fi
-	\expandafter\gothamtable@begin\expandafter{\gothamtable@spec}%
+	\expandafter\SMTable@begin\expandafter{\SMTable@spec}%
 }{%
 	\end{tabular}%
 	\endgroup
@@ -3457,7 +3457,7 @@
 \newlength{\SMColumnsTopCorrection}
 \setlength{\SMColumnsTopCorrection}{10.17pt}
 \SMLuaOnce{
-	gotham_list_has_no_visible_box = function()
+	slidemage_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
 		for n in node.traverse(head) do
 			if (n.id == node.id("hlist") or n.id == node.id("vlist")) and n.height > 32768 then
@@ -3476,7 +3476,7 @@
 	\ifnum0\ifdefined\SMTopAutoActive\SMTopAutoActive\fi=1
 		\def\SMColumnsAtTop{0}%
 	\else
-		\edef\SMColumnsAtTop{\directlua{tex.sprint(gotham_list_has_no_visible_box() and "1" or "0")}}%
+		\edef\SMColumnsAtTop{\directlua{tex.sprint(slidemage_list_has_no_visible_box() and "1" or "0")}}%
 	\fi
 	\ifnum\SMColumnsAtTop=1
 		\vspace*{-\SMColumnsTopCorrection}%
@@ -3518,7 +3518,7 @@
 % default. The other three, for reference (each maps to a length already
 % declared elsewhere, not a new one introduced here):
 % - "Left Margin": the default gap from the page's own left edge to the
-%   title text and body content -- \gothamFrametitleLeftpading
+%   title text and body content -- \SMFrametitleLeftPadding
 %   (beamerouterthemegotham.sty/beamerthemegotham.sty, 2.2ex, measured
 %   directly against the compiled PDF at 12.552pt in this deck's usual
 %   fonts -- see e.g. slides/tw5-Exercise-Leverage-and-ROE-Solution-current.tex's
@@ -3526,7 +3526,7 @@
 % - "Right Margin": the default gap from the page's own right edge to the
 %   institute logo (and, by the same convention, to anything else
 %   deliberately flush-right, e.g. a corner-anchored image) --
-%   \gothamFrametitleRightpading (0.28cm/7.93pt, this file's own
+%   \SMFrametitleRightPadding (0.28cm/7.93pt, this file's own
 %   \gothamInstituteLogoSquare placement above uses it directly as the
 %   logo's own inner sep).
 % - "Bottom Margin": the default gap between a frame's own body content
@@ -3763,17 +3763,17 @@
 \ifluatex
 	\SMLuaOnce{
 		luatexbase.add_to_callback("pre_shipout_filter", function(head)
-			if gotham_layout and gotham_layout.top_measure_page then
-				gotham_layout.top_measure_page(head)
+			if slidemage_measure and slidemage_measure.top_measure_page then
+				slidemage_measure.top_measure_page(head)
 			end
 			return true
-		end, "gotham top margin")
+		end, "slidemage top margin")
 	}
 	\AtBeginDocument{%
 		\InputIfFileExists{\jobname.top}{}{\typeout{No file \jobname.top.}}%     % "No file": see \jobname.ovl
 		\immediate\openout\SM@topfile=\jobname.top\relax
 	}
-	\AtEndDocument{\directlua{gotham_layout.top_emit()}\immediate\closeout\SM@topfile}
+	\AtEndDocument{\directlua{slidemage_measure.top_emit()}\immediate\closeout\SM@topfile}
 \fi
 % Before \begin{frame} (runs once per frame, not once per overlay page):
 % number the frame and fetch its correction from the previous run.
@@ -3790,7 +3790,7 @@
 % In the frame body, right after the pull-up: the start marker.
 \newcommand{\SM@topstart}{%
 	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
-		\directlua{gotham_layout.top_begin(\SM@topthis, \strip@pt\dimexpr\SM@topcorr\relax)}%
+		\directlua{slidemage_measure.top_begin(\SM@topthis, \strip@pt\dimexpr\SM@topcorr\relax)}%
 		\def\SMTopAutoActive{1}% this frame is measured: the columns hook stays out
 	\fi\fi\fi
 }
@@ -3798,7 +3798,7 @@
 % (\progressstrip): nothing after this marker counts as first content.
 \newcommand{\SM@topstop}{%
 	\ifluatex\ifSMAutoTopMargin
-		\directlua{gotham_layout.top_end(\SM@topthis)}%
+		\directlua{slidemage_measure.top_end(\SM@topthis)}%
 	\fi\fi
 }
 \makeatother
@@ -3966,10 +3966,10 @@
 % way (render, measure with exact text-position extraction, adjust) if
 % this is ever used at a different font size than this deck's normal
 % itemize `\small`.
-\newcounter{gothamalphaitem}
-\newcommand{\SMAlphaItem}{\stepcounter{gothamalphaitem}\alph{gothamalphaitem})}
-\newenvironment{gothamalphaitemize}{%
-	\setcounter{gothamalphaitem}{0}%
+\newcounter{SMAlphaItemCounter}
+\newcommand{\SMAlphaItem}{\stepcounter{SMAlphaItemCounter}\alph{SMAlphaItemCounter})}
+\newenvironment{SMAlphaItemize}{%
+	\setcounter{SMAlphaItemCounter}{0}%
 	\list{\SMAlphaItem}{%
 		% 4.75pt (2026-07-20, direct instruction: "half the width of the
 		% 'C' in 'Calculate'" -- \settowidth{C} at this deck's normal
@@ -4023,7 +4023,7 @@
 	\endlist
 }
 
-% Three siblings of \gothamalphaitemize above, same measured \list metrics
+% Three siblings of \SMAlphaItemize above, same measured \list metrics
 % (labelsep/labelwidth/leftmargin/itemindent/itemsep), only the label text
 % itself differs -- added 2026-08-09 for slides whose numbering has to
 % match a real external scheme (statute paragraph numbers, PowerPoint's
@@ -4032,10 +4032,10 @@
 % called directly from a slide file, and duplicating six short \setlength
 % lines three times is cheaper to read at the call site than a macro
 % layer over \newenvironment for four near-identical bodies.
-\newcounter{gothamnumitem}
-\newcommand{\SMNumItem}{\stepcounter{gothamnumitem}\arabic{gothamnumitem})}
-\newenvironment{gothamnumitemize}{%
-	\setcounter{gothamnumitem}{0}%
+\newcounter{SMNumItemCounter}
+\newcommand{\SMNumItem}{\stepcounter{SMNumItemCounter}\arabic{SMNumItemCounter})}
+\newenvironment{SMNumItemize}{%
+	\setcounter{SMNumItemCounter}{0}%
 	\list{\SMNumItem}{%
 		\setlength{\labelsep}{4.75pt}%
 		\setlength{\labelwidth}{9.1pt}%
@@ -4049,10 +4049,10 @@
 	\endlist
 }
 
-\newcounter{gothamalphaperioditem}
-\newcommand{\SMAlphaPeriodItem}{\stepcounter{gothamalphaperioditem}\alph{gothamalphaperioditem}.}
-\newenvironment{gothamalphaperioditemize}{%
-	\setcounter{gothamalphaperioditem}{0}%
+\newcounter{SMAlphaPeriodItemCounter}
+\newcommand{\SMAlphaPeriodItem}{\stepcounter{SMAlphaPeriodItemCounter}\alph{SMAlphaPeriodItemCounter}.}
+\newenvironment{SMAlphaPeriodItemize}{%
+	\setcounter{SMAlphaPeriodItemCounter}{0}%
 	\list{\SMAlphaPeriodItem}{%
 		\setlength{\labelsep}{4.75pt}%
 		\setlength{\labelwidth}{9.1pt}%
@@ -4066,10 +4066,10 @@
 	\endlist
 }
 
-\newcounter{gothamnumperioditem}
-\newcommand{\SMNumPeriodItem}{\stepcounter{gothamnumperioditem}\arabic{gothamnumperioditem}.}
-\newenvironment{gothamnumperioditemize}{%
-	\setcounter{gothamnumperioditem}{0}%
+\newcounter{SMNumPeriodItemCounter}
+\newcommand{\SMNumPeriodItem}{\stepcounter{SMNumPeriodItemCounter}\arabic{SMNumPeriodItemCounter}.}
+\newenvironment{SMNumPeriodItemize}{%
+	\setcounter{SMNumPeriodItemCounter}{0}%
 	\list{\SMNumPeriodItem}{%
 		\setlength{\labelsep}{4.75pt}%
 		\setlength{\labelwidth}{9.1pt}%
@@ -4698,7 +4698,7 @@
 % \SMContentTopShift machinery exactly as any other list would, so it
 % automatically stays consistent with the rest of the deck instead of
 % drifting out of sync with it later.
-\defbeamertemplate{section in toc}{gotham plain enumerate}{\item \inserttocsection}
+\defbeamertemplate{section in toc}{SMPlainEnumerate}{\item \inserttocsection}
 
 % Even with the plain-enumerate template above, \tableofcontents still
 % doesn't match this deck's own normal itemize spacing -- beamer's own
@@ -5269,7 +5269,7 @@
 % Mono text-mode substitute needed, unlike most Unicode symbol candidates
 % -- see SlideMage_template_uni-graz.tex's own "beamer/TeX gotchas" entry on
 % $\triangleq$ for why that matters here). Applied to every \exampleblock/
-% \gothamfloatingexampleblock in the deck via this shared template, not a
+% \SMFloatingExampleBlock in the deck via this shared template, not a
 % one-off per slide, matching how $\triangleq$ applies to every
 % definitionblock through its own shared template.
 \setbeamertemplate{block example begin}{
@@ -5295,7 +5295,7 @@
 % \linewidth (that's what block begin/end's own \hspace+minipage wrapper
 % above is measured against), so it can't be dropped into a fixed-width
 % spot (e.g. beside a table, inside a tikz overlay \node) without first
-% narrowing \linewidth some other way. \gothamfloatingblock just wraps a
+% narrowing \linewidth some other way. \SMFloatingBlock just wraps a
 % plain block in one more, *outer* minipage of the caller's own chosen
 % width -- block begin/end's own inner minipage then measures itself
 % against that narrower width instead of the frame's full one, nesting
@@ -5305,7 +5305,7 @@
 % overall width and (by taking it out of the normal document flow, left to
 % the caller) the position, not the look. Font size is also left to the
 % caller (wrap the whole environment in a size declaration, e.g.
-% {\footnotesize \begin{gothamfloatingblock}{5cm}{Excel} ... \end{gothamfloatingblock}})
+% {\footnotesize \begin{SMFloatingBlock}{5cm}{Excel} ... \end{SMFloatingBlock}})
 % rather than fixed here, since the right size depends entirely on how
 % much room the block ends up placed in.
 %
@@ -5313,25 +5313,25 @@
 % per-slide fixes): 20 of 27 floating blocks opened with a hand-written
 % \vspace{2mm} and 17 closed with \par\vspace{1.2mm} (or 1mm/3.4pt), to give
 % the body text room from the title bar and the block's bottom edge. All
-% three gothamfloating*block environments now do that themselves, via an
+% three SMFloating*Block environments now do that themselves, via an
 % optional key list:
-%   \begin{gothamfloatinginfoblock}[top=2mm, bottom=1.2mm]{6cm}{Title}
+%   \begin{SMFloatingInfoBlock}[top=2mm, bottom=1.2mm]{6cm}{Title}
 % Defaults top=2mm, bottom=1.2mm (the common values); 0pt inserts nothing
 % at all. Blocks that had no or other padding carry their own values
 % explicitly (e.g. [top=0pt]), so every block kept its exact look.
 \makeatletter
-\pgfqkeys{/gothamfloatingblock}{
+\pgfqkeys{/SMFloatingBlock}{
 	top/.store in=\SM@fb@top,
 	bottom/.store in=\SM@fb@bottom,
 }
 \newcommand{\SM@fb@begin}[1]{%
-	\pgfqkeys{/gothamfloatingblock}{top=2mm, bottom=1.2mm, #1}%
+	\pgfqkeys{/SMFloatingBlock}{top=2mm, bottom=1.2mm, #1}%
 	\ifdim\SM@fb@top=0pt \else\vspace{\SM@fb@top}\fi
 }
 \newcommand{\SM@fb@end}{%
 	\ifdim\SM@fb@bottom=0pt \else\par\vspace{\SM@fb@bottom}\fi
 }
-\NewDocumentEnvironment{gothamfloatingblock}{O{}mm}{%
+\NewDocumentEnvironment{SMFloatingBlock}{O{}mm}{%
 	\begin{minipage}{#2}
 	\begin{block}{#3}
 	\SM@fb@begin{#1}%
@@ -5346,13 +5346,13 @@
 % direct instruction, first used on
 % slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex
 % and slides/ha9-Monacorp-Truck-Lease-Breakeven-Rent-current.tex, both
-% switching an existing \gothamfloatingblock to the "example" green header
+% switching an existing \SMFloatingBlock to the "example" green header
 % instead of the plain violet one) -- not worth generalizing into a single
-% macro parameterized over the block name: \gothamfloatingblock's own body
+% macro parameterized over the block name: \SMFloatingBlock's own body
 % is only two lines, so a third variant is cheaper to just write out than
 % to build a block-name-dispatch layer for.
 \makeatletter
-\NewDocumentEnvironment{gothamfloatingexampleblock}{O{}mm}{%
+\NewDocumentEnvironment{SMFloatingExampleBlock}{O{}mm}{%
 	\begin{minipage}{#2}
 	\begin{exampleblock}{#3}
 	\SM@fb@begin{#1}%
@@ -5367,9 +5367,9 @@
 % first used on
 % slides/fr3-Forms-of-Capital-Market-Efficiency-Strong-Semistrong-Weak-current.tex's
 % own "Random walk" formula box, switched from the green
-% \gothamfloatingexampleblock to this blue one the same day).
+% \SMFloatingExampleBlock to this blue one the same day).
 \makeatletter
-\NewDocumentEnvironment{gothamfloatinginfoblock}{O{}mm}{%
+\NewDocumentEnvironment{SMFloatingInfoBlock}{O{}mm}{%
 	\begin{minipage}{#2}
 	\begin{infoblock}{#3}
 	\SM@fb@begin{#1}%
@@ -5380,9 +5380,9 @@
 }
 \makeatother
 
-% Every gothamfloatinginfoblock anchored top-right against the institute
+% Every SMFloatingInfoBlock anchored top-right against the institute
 % logo (the deck's standard
-% "(current page.north east)+(-\gothamFrametitleRightpading,-\SMContentTopAlign)"
+% "(current page.north east)+(-\SMFrametitleRightPadding,-\SMContentTopAlign)"
 % corner pattern) lands its own visible right edge short of the logo's,
 % by a fixed amount independent of the block's own chosen width (#1) --
 % \infoblock's underlying template insets its colored fill by
@@ -5411,13 +5411,13 @@
 % not this one.
 %
 % Use "-\SMFloatingInfoblockRightAlign" (not the bare
-% "-\gothamFrametitleRightpading") for a gothamfloatinginfoblock's own
+% "-\SMFrametitleRightPadding") for a SMFloatingInfoBlock's own
 % anchor node whenever its right edge is meant to align with the logo --
 % every current use of this pattern across the deck has been updated to
 % match; new slides using this same corner pattern should use this
 % length from the start rather than re-measuring their own one-off nudge.
 \newlength{\SMFloatingInfoblockRightAlign}
-\setlength{\SMFloatingInfoblockRightAlign}{\dimexpr\gothamFrametitleRightpading-3.165pt\relax}
+\setlength{\SMFloatingInfoblockRightAlign}{\dimexpr\SMFrametitleRightPadding-3.165pt\relax}
 
 % An infoblock's colored title bar starts 6.02pt below the top of its own
 % box (the block template's top padding); a floating infoblock anchored at
@@ -5443,7 +5443,7 @@
 % by hand,
 %   \vbox to 0pt{\vss\begin{tikzpicture}[overlay, remember picture]
 %     \node[anchor=north east, inner sep=0pt] at ($(current page.north east)
-%       +(-\gothamFrametitleRightpading,-\SMContentTopAlign)$) {...};
+%       +(-\SMFrametitleRightPadding,-\SMContentTopAlign)$) {...};
 %   \end{tikzpicture}}
 % The usual call (2026-10-01, direct instruction: "the width or height of
 % the figure has to be specified in the code, that's all that should be
@@ -5460,11 +5460,11 @@
 %                        border's outer edge sits on the margins
 %   corner=ne|nw|se|sw   which corner (default ne): Top/Bottom Margin
 %                        (\SMContentTopAlign/\SMContentBottomAlign)
-%                        and Right/Left Margin (\gothamFrametitleRightpading,
-%                        \gothamFrametitleLeftpading)
+%                        and Right/Left Margin (\SMFrametitleRightPadding,
+%                        \SMFrametitleLeftPadding)
 %   corner=e|w           on the Right/Left Margin, centred vertically between
 %                        Top and Bottom Margin
-%   block                the content is a gothamfloatinginfoblock: lifts it by
+%   block                the content is a SMFloatingInfoBlock: lifts it by
 %                        \SMFloatingInfoblockTopAlign and aligns its
 %                        visible right edge with the logo
 %                        (\SMFloatingInfoblockRightAlign)
@@ -5477,7 +5477,7 @@
 \makeatletter
 \newif\ifSM@cf@block
 \newif\ifSM@cf@border
-\pgfqkeys{/gothamcorner}{
+\pgfqkeys{/SMCorner}{
 	corner/.store in=\SM@cf@corner,
 	xshift/.store in=\SM@cf@x,
 	yshift/.store in=\SM@cf@y,
@@ -5491,7 +5491,7 @@
 % all keys back to their defaults, then the caller's
 \def\SM@cf@setkeys#1{%
 	\SM@cf@blockfalse\SM@cf@borderfalse
-	\pgfqkeys{/gothamcorner}{corner=ne, xshift=0pt, yshift=0pt, node={},
+	\pgfqkeys{/SMCorner}{corner=ne, xshift=0pt, yshift=0pt, node={},
 		width={}, height={}, gap=12pt, #1}%
 }
 % \SM@cf@content: the figure itself -- \includegraphics[width/height]{#1}
@@ -5520,27 +5520,27 @@
 		\edef\SM@cf@right{\SMFloatingInfoblockRightAlign}%
 		\edef\SM@cf@top{\dimexpr\SMContentTopAlign-\SMFloatingInfoblockTopAlign\relax}%
 	\else
-		\edef\SM@cf@right{\gothamFrametitleRightpading}%
+		\edef\SM@cf@right{\SMFrametitleRightPadding}%
 		\edef\SM@cf@top{\SMContentTopAlign}%
 	\fi
 	\def\SM@cf@anchor{north east}%
 	\edef\SM@cf@at{(current page.north east)+(-\SM@cf@right+\SM@cf@x,-\SM@cf@top+\SM@cf@y)}%
 	\ifdefstring{\SM@cf@corner}{nw}{%
 		\def\SM@cf@anchor{north west}%
-		\edef\SM@cf@at{(current page.north west)+(\gothamFrametitleLeftpading+\SM@cf@x,-\SM@cf@top+\SM@cf@y)}}{}%
+		\edef\SM@cf@at{(current page.north west)+(\SMFrametitleLeftPadding+\SM@cf@x,-\SM@cf@top+\SM@cf@y)}}{}%
 	\ifdefstring{\SM@cf@corner}{se}{%
 		\def\SM@cf@anchor{south east}%
 		\edef\SM@cf@at{(current page.south east)+(-\SM@cf@right+\SM@cf@x,\SMContentBottomAlign+\SM@cf@y)}}{}%
 	\ifdefstring{\SM@cf@corner}{sw}{%
 		\def\SM@cf@anchor{south west}%
-		\edef\SM@cf@at{(current page.south west)+(\gothamFrametitleLeftpading+\SM@cf@x,\SMContentBottomAlign+\SM@cf@y)}}{}%
+		\edef\SM@cf@at{(current page.south west)+(\SMFrametitleLeftPadding+\SM@cf@x,\SMContentBottomAlign+\SM@cf@y)}}{}%
 	% e/w: on the Right/Left Margin, centred vertically between Top and Bottom Margin
 	\ifdefstring{\SM@cf@corner}{e}{%
 		\def\SM@cf@anchor{east}%
 		\edef\SM@cf@at{(current page.north east)+(-\SM@cf@right+\SM@cf@x,-0.5\paperheight-0.5\SMContentTopAlign+0.5\SMContentBottomAlign+\SM@cf@y)}}{}%
 	\ifdefstring{\SM@cf@corner}{w}{%
 		\def\SM@cf@anchor{west}%
-		\edef\SM@cf@at{(current page.north west)+(\gothamFrametitleLeftpading+\SM@cf@x,-0.5\paperheight-0.5\SMContentTopAlign+0.5\SMContentBottomAlign+\SM@cf@y)}}{}%
+		\edef\SM@cf@at{(current page.north west)+(\SMFrametitleLeftPadding+\SM@cf@x,-0.5\paperheight-0.5\SMContentTopAlign+0.5\SMContentBottomAlign+\SM@cf@y)}}{}%
 	% TikZ's calc parser must see the coordinate itself, not a macro: build
 	% the \node call with everything but the content already expanded
 	\edef\SM@cf@cmd{\noexpand\node[anchor=\SM@cf@anchor, inner sep=0pt, outer sep=0pt%
@@ -5581,7 +5581,7 @@
 	\ifSM@cf@border\addtolength{\SM@bf@width}{\SMImageBorderWidth}\fi
 	\cornerfigure[yshift=-\SMBesideFigureTopGap,#1]{#2}%
 	% text column: from the text's left edge to the figure's left edge minus gap
-	\setlength{\SM@bf@width}{\dimexpr\linewidth+\beamer@rightmargin-\gothamFrametitleRightpading-\SM@bf@width-\SM@bf@gap\relax}%
+	\setlength{\SM@bf@width}{\dimexpr\linewidth+\beamer@rightmargin-\SMFrametitleRightPadding-\SM@bf@width-\SM@bf@gap\relax}%
 	\begin{minipage}[t]{\SM@bf@width}%
 }{%
 	\end{minipage}%
@@ -5604,8 +5604,8 @@
 % The position is a remember-picture coordinate, so like every overlay here
 % it needs the second compile.
 \newcount\SM@fit@count
-\def\SM@fit@settop#1{\coordinate (gothamfit@top) at #1;}
-\pgfqkeys{/gothamfit}{
+\def\SM@fit@settop#1{\coordinate (SMFit@top) at #1;}
+\pgfqkeys{/SMFit}{
 	top/.store in=\SM@fit@top,
 	gap/.store in=\SM@fit@gap,
 	valign/.store in=\SM@fit@valign,
@@ -5615,10 +5615,10 @@
 }
 \NewDocumentCommand{\fitfigure}{O{} m}{%
 	\begingroup
-	\pgfqkeys{/gothamfit}{top=here, gap=6pt, valign=center, halign=center,
+	\pgfqkeys{/SMFit}{top=here, gap=6pt, valign=center, halign=center,
 		bottom=\SMContentBottomAlign, node={}, #1}%
 	\global\advance\SM@fit@count by 1
-	\edef\SM@fit@name{gothamfit\the\SM@fit@count}%
+	\edef\SM@fit@name{SMFit\the\SM@fit@count}%
 	\ifdefstring{\SM@fit@top}{here}{%
 		\vbox to 0pt{\hbox{\tikz[remember picture, overlay]\coordinate (\SM@fit@name) at (0,0);}\vss}%
 	}{}%
@@ -5645,9 +5645,9 @@
 	\vbox to 0pt{\vss
 		\begin{tikzpicture}[overlay, remember picture]
 			\expandafter\SM@fit@settop\expandafter{\SM@fit@topcoord}%
-			\coordinate (gothamfit@bl) at ($(current page.south west)+(\gothamFrametitleLeftpading,\SM@fit@bottom)$);
-			\coordinate (gothamfit@r) at ($(current page.east)+(-\gothamFrametitleRightpading,0)$);
-			\path let \p1 = (gothamfit@top), \p2 = (gothamfit@bl), \p3 = (gothamfit@r) in
+			\coordinate (SMFit@bl) at ($(current page.south west)+(\SMFrametitleLeftPadding,\SM@fit@bottom)$);
+			\coordinate (SMFit@r) at ($(current page.east)+(-\SMFrametitleRightPadding,0)$);
+			\path let \p1 = (SMFit@top), \p2 = (SMFit@bl), \p3 = (SMFit@r) in
 				\pgfextra{%
 					\pgfmathsetlengthmacro\SM@fit@h{max(\y1-\SM@fit@gapexpr-\y2,1pt)}%
 					\pgfmathsetlengthmacro\SM@fit@w{max(\x3-\x2,1pt)}%
@@ -5676,7 +5676,7 @@
 % styling; only what's documented at each one differs). titleframe and
 % quoteframe can't be standardframe wrappers -- both are title-less, and
 % quoteframe replaces the whole body layout -- but still reuse its palette,
-% fonts, and margins (\gothamFrametitleLeftpading, the institute logo
+% fonts, and margins (\SMFrametitleLeftPadding, the institute logo
 % drawing command, etc.) rather than inventing new ones.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -5685,7 +5685,7 @@
 % One continuous yellow box -- like standardframe's own title bar -- flush
 % with the page's top and left edges, stopping short of the institute logo
 % on the right (the same margin already used around the logo elsewhere:
-% \SMLogoWidth + 2*\gothamFrametitleRightpading), holding the title and,
+% \SMLogoWidth + 2*\SMFrametitleRightPadding), holding the title and,
 % below it, a second line (author/term/whatever) in the same black text as
 % standardframe's own frametitle. Usage:
 %
@@ -5736,8 +5736,8 @@
 \newlength{\SMTitleframeBoxHeight}
 \setlength{\SMTitleframeBoxHeight}{187.147pt}
 \newlength{\SMTitleframeBoxWidth}
-\setlength{\SMTitleframeBoxWidth}{\dimexpr\paperwidth-\SMLogoWidth-2\gothamFrametitleRightpading\relax}
-% Text inset from the box's own edges: \gothamFrametitleLeftpading, the same
+\setlength{\SMTitleframeBoxWidth}{\dimexpr\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
+% Text inset from the box's own edges: \SMFrametitleLeftPadding, the same
 % length standardframe's own title text uses, plus \SMTitleframeTextSep
 % (2.5ex, matching this command's own former per-band beamercolorbox "sep").
 \newlength{\SMTitleframeTextSep}
@@ -5820,10 +5820,10 @@
 	\SMArtifactEnd
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
-		% inner ysep derived, not \gothamFrametitleRightpading -- see the
+		% inner ysep derived, not \SMFrametitleRightPadding -- see the
 		% frametitle hook's fixed-position logo redraw for why (matches the
 		% inline logo's vertically-centered position on every other frame).
-		\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
+		\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
 		      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
 		      outer sep=0pt]
 			at (current page.north east) {\gothamInstituteLogoSquare};
@@ -5832,9 +5832,9 @@
 	\setbox\SMTitleframeBox=\vbox{%
 		\hsize=\SMTitleframeBoxWidth
 		\parindent=0pt
-		\leftskip=\gothamFrametitleLeftpading
+		\leftskip=\SMFrametitleLeftPadding
 		\advance\leftskip by \SMTitleframeTextSep
-		\rightskip=\gothamFrametitleLeftpading
+		\rightskip=\SMFrametitleLeftPadding
 		\advance\rightskip by \SMTitleframeTextSep
 		% \SMTitleTextColor, not a literal color token -- follows the
 		% box color change right above (2026-07-16, direct instruction):
@@ -5916,7 +5916,7 @@
 	% \RenewDocumentCommand{\includegraphics}, "PDF accessibility" section)
 	% already does that job for every \includegraphics call site, this one
 	% included: it records the image's role/source with
-	% gothamalt.mark()/recordSource() and, for an informative image, emits
+	% slidemage_alt.mark()/recordSource() and, for an informative image, emits
 	% its short alt text as an invisible layer via \SMAltInvisible
 	% before the image itself. Nothing extra is needed at this call site.
 	\SMArtifactBegin{/Type /Background}%
@@ -6081,7 +6081,7 @@
 %
 % The taller bar is NOT a separately-drawn box the way titleframe's is (see
 % "Title slide" above): the gotham theme's own frametitle box already sizes
-% itself from \gothamFrametitleToppading/\gothamFrametitleBottompading plus
+% itself from \SMFrametitleTopPadding/\SMFrametitleBottomPadding plus
 % the title font's own strut height (beamerouterthemegotham.sty, the
 % "frametitle" template), so overriding those two lengths locally -- the
 % same trick already used below for the font/color overrides -- grows the
@@ -6164,7 +6164,7 @@
 % `toppading+\totalheightof{X}` (a *fixed reference glyph*, not the real
 % title), so the line's rendered height is toppading-driven, independent of
 % the title's own real height. `@end` is a zero-height `\rule` of depth
-% `\gothamFrametitleBottompading` (19.90pt for sectionframe) -- also fixed,
+% `\SMFrametitleBottomPadding` (19.90pt for sectionframe) -- also fixed,
 % not the real title's own depth. The real title text sits between these
 % two struts and contributes its own real height/depth to the same TeX
 % line, but a line's rendered depth is the *max* of every contributor, not
@@ -6215,7 +6215,7 @@
 % \SMSectionframeBottomGap is the *visual* target -- one huge-font line
 % height (baselineskip, measured directly from a deliberately 2-line test
 % title: the gap between the two lines' own rendered top edges). It is NOT
-% used directly as \gothamFrametitleBottompading: gotham's bottom strut
+% used directly as \SMFrametitleBottomPadding: gotham's bottom strut
 % (\gotham@frametitlestrut@end) consistently produces a visual gap about
 % 5.58pt *smaller* than the padding value fed into it (checked empirically,
 % same offset for both a one-line and a two-line test title, so it's a
@@ -6235,7 +6235,7 @@
 \newlength{\SMSectionframeHeightCorrection}
 \setlength{\SMSectionframeHeightCorrection}{16.03pt}% 12.1pt before the title measurement got a \strut (v5.28.0)
 \newlength{\SMSectionframeTitleWidth}
-\setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\gothamFrametitleLeftpading-\SMLogoWidth-2\gothamFrametitleRightpading\relax}
+\setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\SMFrametitleLeftPadding-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 \newbox\SMSectionframeTitleBox
 \newlength{\SMSectionframeBarBottom}
 \newenvironment{sectionframe}[2][t]{%
@@ -6260,11 +6260,11 @@
 		\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
 		\noindent\strut #2\par% \strut: the same line height for every title (v5.28.0)
 	}%
-	\setlength{\gothamFrametitleBottompading}{\dimexpr\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection\relax}
-	\setlength{\gothamFrametitleToppading}{\dimexpr\SMSectionframeBoxHeight-\gothamFrametitleBottompading-\ht\SMSectionframeTitleBox-\SMSectionframeRefDepth+\SMSectionframeHeightCorrection\relax}
+	\setlength{\SMFrametitleBottomPadding}{\dimexpr\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection\relax}
+	\setlength{\SMFrametitleTopPadding}{\dimexpr\SMSectionframeBoxHeight-\SMFrametitleBottomPadding-\ht\SMSectionframeTitleBox-\SMSectionframeRefDepth+\SMSectionframeHeightCorrection\relax}
 	\global\def\SMFrametitleFullHeightYellow{1}%
 	\global\def\SMFrametitleLogoFixed{1}%
-	\setbeamertemplate{frametitle}[gotham_no_inline_logo]%
+	\setbeamertemplate{frametitle}[SMNoInlineLogo]%
 	\setlength{\SMSectionframeBarBottom}{85.14bp}% constant since v5.28.0, see \SMSectionframeRefDepth
 	% \sectionfigure sets the side-footnote lengths \global (see there); the
 	% values from before this frame come back at \end{sectionframe}.
@@ -6447,10 +6447,10 @@
 	\SMArtifactEnd
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
-		% inner ysep derived, not \gothamFrametitleRightpading -- see the
+		% inner ysep derived, not \SMFrametitleRightPadding -- see the
 		% frametitle hook's fixed-position logo redraw for why (matches the
 		% inline logo's vertically-centered position on every other frame).
-		\node[anchor=north east, inner xsep=\gothamFrametitleRightpading,
+		\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
 		      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
 		      outer sep=0pt]
 			at (current page.north east) {\gothamInstituteLogoSquare};
@@ -6488,7 +6488,7 @@
 		% verified pixel-identical on all 18 other \quoteframe slides.
 		\node[anchor=center, inner sep=0pt]
 			at ($(current page.north west)+(0.5\SMTitleframeBoxWidth,-0.5\SMQuoteBoxHeight)$)
-			{\parbox[t]{\dimexpr\SMTitleframeBoxWidth-2\gothamFrametitleLeftpading\relax}{%
+			{\parbox[t]{\dimexpr\SMTitleframeBoxWidth-2\SMFrametitleLeftPadding\relax}{%
 				\leavevmode\hbox{}\tikz@textfont\tikz@text@action%
 				{\color{\SMTitleTextColor}\Large\itshape\textquotedblleft #1\textquotedblright%
 				\beamer@endpause\global\let\beamer@endpause\@empty}\par}};
@@ -6603,7 +6603,7 @@
 \makeatletter
 \newcommand{\SM@topstrip}{%
 	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
-		\directlua{gotham_layout.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripHeight\relax)}%
+		\directlua{slidemage_measure.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripHeight\relax)}%
 	\fi\fi\fi
 }
 \makeatother
@@ -6624,9 +6624,9 @@
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
 		\node[fill=c_tertiary_yellow, anchor=north west, outer sep=0pt,
-		      inner xsep=\gothamFrametitleLeftpading, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
+		      inner xsep=\SMFrametitleLeftPadding, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
 		      minimum height=11.19pt,
-		      text width=\dimexpr\paperwidth-2\gothamFrametitleLeftpading\relax,
+		      text width=\dimexpr\paperwidth-2\SMFrametitleLeftPadding\relax,
 		      align=left, text=c_primary_dark, font=\fontsize{6.3}{7.5}\selectfont]
 			at ($(current page.north west)+(0,-\SMTitleBarBottomAlign)$)
 			{\foreach \SMStepName [count=\SMStepIndex] in {#1}{%

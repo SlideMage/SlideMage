@@ -15,9 +15,10 @@ gothamImageBorder) and must stay in step with their definitions.
 
 Rule: an identifier "gotham" + an uppercase letter or "@" (optionally after
 "if") is renamed unless the Gotham theme itself uses it (THEME_NAMES).
-Lowercase continuations are left alone: they are the theme's (\\gothamset)
-or this project's environment names (gothamtable, gothamfloatinginfoblock,
-gothamnumitemize, ...), which stay as they are.
+Lowercase continuations are left alone by rename_text: they are the theme's
+(\\gothamset) or this project's environment names (gothamtable,
+gothamfloatinginfoblock, ...), which rename_identifiers renames in a second
+pass (v10.0.0, 2026-10-26, THEME_RENAMES).
 
 Command line, for another project's slides/decks/preambles:
     python -m slidemage.sm_rename <project folder> [--dry-run]
@@ -28,6 +29,8 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
+
+from .tex_source import is_commented
 
 # Every gotham... identifier the vendored theme files use (checked
 # 2026-10-01 against latex/beamer*gotham.sty and gotham.dtx).
@@ -59,6 +62,79 @@ gothamRightFiligrane gothamRightFooterPadding gothamVposLeftRotFooter
 gothamVposRightRotFooter gothamZerosectionframes
 """.split())
 
+# What the v10.0.0 rename (compat change "own-theme-and-content-names") turns into SlideMage names, by the
+# rule that every SlideMage TeX name starts with an uppercase SM and continues in CamelCase (Lua keeps its
+# lowercase style). Approved by the user on 2026-10-26. Four groups:
+# - the theme's four frametitle paddings (a theme name, renamed with the spelling fixed);
+# - SlideMage's own content names that carried Gotham's name: environments, counters (with the Counter
+#   suffix, since \SMAlphaItem etc. exist as label macros), TikZ styles, beamer templates;
+# - internals built from such names (\csname, pgfkeys, TikZ coordinates, expl3, Lua globals and callback);
+# - Python's own _GOTHAMTABLE_RE.
+# The other names the theme files define (THEME_NAMES minus the paddings) follow with the own theme.
+THEME_RENAMES = {
+    # theme registers that slides and templates use
+    "gothamFrametitleRightpading": "SMFrametitleRightPadding",
+    "gothamFrametitleLeftpading": "SMFrametitleLeftPadding",
+    "gothamFrametitleToppading": "SMFrametitleTopPadding",
+    "gothamFrametitleBottompading": "SMFrametitleBottomPadding",
+    # environments
+    "gothamtable": "SMTable",
+    "gothamfloatingblock": "SMFloatingBlock",
+    "gothamfloatinginfoblock": "SMFloatingInfoBlock",
+    "gothamfloatingexampleblock": "SMFloatingExampleBlock",
+    "gothamalphaitemize": "SMAlphaItemize",
+    "gothamnumitemize": "SMNumItemize",
+    "gothamalphaperioditemize": "SMAlphaPeriodItemize",
+    "gothamnumperioditemize": "SMNumPeriodItemize",
+    "gothamtightflalign": "SMTightFlalign",
+    # counters (and their \the...)
+    "gothamalphaitem": "SMAlphaItemCounter",
+    "gothamnumitem": "SMNumItemCounter",
+    "gothamalphaperioditem": "SMAlphaPeriodItemCounter",
+    "gothamnumperioditem": "SMNumPeriodItemCounter",
+    "thegothamalphaitem": "theSMAlphaItemCounter",
+    "thegothamnumitem": "theSMNumItemCounter",
+    "thegothamalphaperioditem": "theSMAlphaPeriodItemCounter",
+    "thegothamnumperioditem": "theSMNumPeriodItemCounter",
+    # TikZ styles
+    "gotham arrow": "SMArrow",
+    "gotham highlight": "SMHighlight",
+    "gotham dotted highlight": "SMDottedHighlight",
+    # beamer templates
+    "gotham plain enumerate": "SMPlainEnumerate",
+    "gothampresenter": "SMPresenter",
+    "gothamfn": "SMFootnote",
+    "gotham_no_inline_logo": "SMNoInlineLogo",
+    # internals
+    "gothamtable@spec": "SMTable@spec",
+    "gothamtable@gap": "SMTable@gap",
+    "gothamtable@begin": "SMTable@begin",
+    "gothamcorner": "SMCorner",
+    "gothamfit": "SMFit",
+    "gothamfit@top": "SMFit@top",
+    "gothamfit@bl": "SMFit@bl",
+    "gothamfit@r": "SMFit@r",
+    "g_gotham_footnote_symbols_seq": "g_SM_footnote_symbols_seq",
+    # Lua (lowercase) and Python
+    "gothamalt": "slidemage_alt",
+    "gotham_layout": "slidemage_measure",
+    "gotham_list_has_no_visible_box": "slidemage_list_has_no_visible_box",
+    "gotham top margin": "slidemage top margin",
+    "_GOTHAMTABLE_RE": "_SMTABLE_RE",
+}
+# The theme's names that stay until the own theme is forked (what THEME_RENAMES does not map).
+THEME_NAMES_REMAINING = frozenset(THEME_NAMES - {k for k in THEME_RENAMES if k.startswith("gothamFrametitle")})
+# Lowercase names of the theme itself, still used by SlideMage's framework.
+_THEME_LOWERCASE = frozenset({"gothamset", "gothamreset"})
+
+_IDENT = "A-Za-z0-9_@"
+_IDENTIFIER_RE = re.compile(
+    r"(?<![" + _IDENT + r"])(?:gothamfit(\d+)|("
+    + "|".join(re.escape(k) for k in sorted(THEME_RENAMES, key=len, reverse=True))
+    + r"))(?![" + _IDENT + r"])")
+# Any lowercase gotham... name: what a migration cannot place unless it is mapped or the theme's.
+_UNKNOWN_RE = re.compile(r"(?<![" + _IDENT + r"])gotham[a-z_@][" + _IDENT + r"]*")
+
 # "if": \newif's \ifgotham...; "the": a counter's \thegotham... (\newcounter)
 _NAME_RE = re.compile(r"(?<![A-Za-z])(if|the)?(gotham)(?=[A-Z@])([A-Za-z@]*)")
 
@@ -79,6 +155,37 @@ def rename_text(text: str, counts: Counter | None = None) -> str:
             counts[match.group(0)] += 1
         return (prefix or "") + "SM" + rest
     return _NAME_RE.sub(repl, text)
+
+
+def rename_identifiers(text: str, counts: Counter | None = None) -> str:
+    """Every old content name (THEME_RENAMES) in text, renamed. Whole identifiers only: gothamtable inside
+    \\begin{gothamtable}, gothamtable[gap=1pt], \\csname, a TikZ option list or a Lua string, but not
+    the middle of another word. Names with a space (gotham arrow) match as written."""
+    def repl(match: re.Match) -> str:
+        if match.group(1) is not None:
+            old, new = "gothamfit" + match.group(1), "SMFit" + match.group(1)
+        else:
+            old = match.group(2)
+            new = THEME_RENAMES[old]
+        if counts is not None:
+            counts[old] += 1
+        return new
+    return _IDENTIFIER_RE.sub(repl, text)
+
+
+def unknown_names(text: str, live_only: bool = False) -> list[tuple[int, str]]:
+    """(1-based line, name) of every gotham... name in text that THEME_RENAMES does not map and the theme
+    does not own: a project's own name or a wildcard in prose, which a migration reports instead of renaming.
+    With live_only, names in TeX comments do not count."""
+    found = []
+    for match in _UNKNOWN_RE.finditer(text):
+        name = match.group(0)
+        if name in _THEME_LOWERCASE or name in THEME_NAMES or name in THEME_RENAMES:
+            continue
+        if live_only and is_commented(text, match.start()):
+            continue
+        found.append((text.count("\n", 0, match.start()) + 1, name))
+    return found
 
 
 def rename_file(path: Path, counts: Counter | None = None, dry_run: bool = False) -> bool:

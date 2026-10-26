@@ -27,10 +27,10 @@ def _frame(body: str) -> str:
     (r"Load it: \SMCmd{input}\SMCode{\{SlideMage\_base\}}, "
      r"pin with \SMCmd{slideversion}\SMCode{\{abc-EN-X\}\{1-0-0\}}.",
      (r"`\input{SlideMage_base}`", r"`\slideversion{abc-EN-X}{1-0-0}`")),
-    (r"\SMCode{--project}, \SMCode{gothamtable[gap=12pt]}, "
+    (r"\SMCode{--project}, \SMCode{SMTable[gap=12pt]}, "
      r"\SMCode{\textbackslash setfootnotesymbols\{\textdagger,\S\}}, "
      r"\SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}}",
-     ("`--project`", "`gothamtable[gap=12pt]`", r"`\setfootnotesymbols{†,§}`", r"`\multilingualtext{Hello}{Hallo}`")),
+     ("`--project`", "`SMTable[gap=12pt]`", r"`\setfootnotesymbols{†,§}`", r"`\multilingualtext{Hello}{Hallo}`")),
 ])
 def test_inline_code_is_verbatim(ctx, tmp_path, body, expected):
     entry = _render(ctx, tmp_path, _frame(body))

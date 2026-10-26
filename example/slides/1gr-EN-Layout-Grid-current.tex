@@ -11,25 +11,25 @@
 			% the page
 			\draw[c_primary_gray, line width=0.4pt] (0,0) rectangle (\paperwidth,-\paperheight);
 			% title bar and footer
-			\fill[c_primary_dark] (0,0) rectangle (\paperwidth-\SMLogoWidth-2\gothamFrametitleRightpading,-\SMTitleBarBottomAlign);
+			\fill[c_primary_dark] (0,0) rectangle (\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding,-\SMTitleBarBottomAlign);
 			\fill[c_primary_dark] (0,-\paperheight) rectangle (\paperwidth,-\paperheight+\SMFooterBoxHeight);
 			% the margins
 			\draw[c_primary_highlight, densely dashed, line width=0.8pt]
 				(0,-\SMContentTopAlign) -- (\paperwidth,-\SMContentTopAlign)
 				(0,-\paperheight+\SMContentBottomAlign) -- (\paperwidth,-\paperheight+\SMContentBottomAlign)
-				(\gothamFrametitleLeftpading,0) -- (\gothamFrametitleLeftpading,-\paperheight)
-				(\paperwidth-\gothamFrametitleRightpading,0) -- (\paperwidth-\gothamFrametitleRightpading,-\paperheight);
+				(\SMFrametitleLeftPadding,0) -- (\SMFrametitleLeftPadding,-\paperheight)
+				(\paperwidth-\SMFrametitleRightPadding,0) -- (\paperwidth-\SMFrametitleRightPadding,-\paperheight);
 			% labels
 			\node[anchor=west, text=c_primary_highlight] at (60pt,-\SMContentTopAlign-10pt) {Top Margin: \textbackslash SMContentTopAlign};
 			\node[anchor=west, text=c_primary_highlight] at (60pt,-\paperheight+\SMContentBottomAlign+10pt) {Bottom Margin: \textbackslash SMContentBottomAlign};
 			\node[anchor=west, text=white] at (40pt,-0.55\SMTitleBarBottomAlign) {title bar: \textbackslash SMTitleBarBottomAlign};
 			% below the footer box: at this scale the box is thinner than the label
 			\node[anchor=north west, text=c_primary_dark] at (40pt,-\paperheight) {footer box: \textbackslash SMFooterBoxHeight};
-			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\gothamFrametitleLeftpading+10pt,-200pt) {Left Margin};
-			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\paperwidth-\gothamFrametitleRightpading-10pt,-200pt) {Right Margin};
+			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\SMFrametitleLeftPadding+10pt,-200pt) {Left Margin};
+			\node[anchor=west, rotate=90, text=c_primary_highlight] at (\paperwidth-\SMFrametitleRightPadding-10pt,-200pt) {Right Margin};
 			% a first line on the Top Margin
-			\fill[c_primary_highlight] (\gothamFrametitleLeftpading+3pt,-\SMContentTopAlign-28pt) circle (3pt);
-			\fill[c_primary_gray] (\gothamFrametitleLeftpading+12pt,-\SMContentTopAlign-30pt) rectangle (250pt,-\SMContentTopAlign-26pt);
+			\fill[c_primary_highlight] (\SMFrametitleLeftPadding+3pt,-\SMContentTopAlign-28pt) circle (3pt);
+			\fill[c_primary_gray] (\SMFrametitleLeftPadding+12pt,-\SMContentTopAlign-30pt) rectangle (250pt,-\SMContentTopAlign-26pt);
 		\end{tikzillustration}
 	\end{minipage}\hfill
 	\begin{minipage}[t]{0.46\linewidth}\vspace{0pt}

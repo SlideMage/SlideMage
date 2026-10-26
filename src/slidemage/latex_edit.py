@@ -252,9 +252,9 @@ INSERT_BLOCK_COMMANDS = [
         ("Reference block", "wrap_block", "referenceblock"),
         ("Definition block", "wrap_block", "definitionblock"),
         ("Info block", "wrap_block", "infoblock"),
-        ("Floating block", "wrap_block_floating", "gothamfloatingblock"),
-        ("Floating example block", "wrap_block_floating", "gothamfloatingexampleblock"),
-        ("Floating info block", "wrap_block_floating", "gothamfloatinginfoblock"),
+        ("Floating block", "wrap_block_floating", "SMFloatingBlock"),
+        ("Floating example block", "wrap_block_floating", "SMFloatingExampleBlock"),
+        ("Floating info block", "wrap_block_floating", "SMFloatingInfoBlock"),
     )
 ]
 
