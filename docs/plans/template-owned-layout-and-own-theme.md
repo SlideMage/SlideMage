@@ -575,6 +575,18 @@ mix it in.
    - the quick-reference slides, and a new manual slide "Making a template" that points at the catalog
    - German translations where they exist (hd5)
    - Regenerate the manual's screenshots or crops only if something visible changed.
+10. **No institution templates in the repository** (needed before the repository goes public).
+   - Move `example/SlideMage_template_uni-graz.tex` and `example/schemes/scheme_uni_graz/` to the real project
+     (`D:\uniCLOUD\Slidemaster`), next to its mci and uni-ibk templates. SlideMage's own template is the only
+     one the repository ships.
+   - Remove `example/media/screenshot-slide-template-uni-graz.png`, `-uni-ibk.png` and `-mci.png`. Slides 1pf
+     and hd5 show the slidemage template and the stress-test template of step 7 instead, with no institution
+     logos.
+   - Tests, REUSE.toml, the alt-text files, README and docs that name uni-graz follow. The key `uni-graz` stays
+     a valid user setting (cached previews, "Default template"); only the repository stops using it.
+   - The uni-graz regression baselines move to the set kept outside the repository.
+   - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
+     history and the course-system code (`online.uni-graz.at`).
 
 ## Open decisions (ask the user at the step named)
 
