@@ -15,14 +15,13 @@
   Detect views that produce the same slide output and reuse the rendered preview between them.
   Added **Render all views**, explicit/all-view tool requests and dependency-validated reuse.
   Successful matching tool renders reach the Preview; hidden and superseded results are reported.
-  Implementation plan: [Preview views: separate steps](PREVIEW_VIEWS_IMPLEMENTATION_PLAN.md).
 
 - [x] **Further optimize rendering and preview consistency.** Render once for views
   with equivalent supported rules and deck context, align thumbnail/main-pane
   fallback selection, and reduce cache-validation work on the UI thread. Include
   autosave request coalescing, content-based freshness after external Claude Code
   edits, and a batched rendering integration for selected-slide version updates.
-  Completed 18 October 2026; [plan](PREVIEW_RENDER_OPTIMIZATION_PLAN.md) and
+  Completed 18 October 2026;
   [validation evidence](PREVIEW_RENDER_OPTIMIZATION_VALIDATION.md).
 
 - [ ] **Set the default Claude Code chat model.** Add an option to the Claude switch

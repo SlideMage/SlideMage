@@ -2,7 +2,7 @@
 
 Status: section 1 implemented in v8.37.0 (`preview_build.PREVIEW_LATEXMKRC`, `RUN_XML_NOTE`, the framework's two
 "No file" lines); section 2 is a plan. Base: `feat/parallel-previews` @ 42c6ad0 (v8.36.0).
-Follows `docs/plans/parallel-previews-handoff.md` (option 2a/2b). Owner, 2026-10-20: **"Okay, don't skip biber,
+Follows the parallel-previews work (option 2a/2b). Owner, 2026-10-20: **"Okay, don't skip biber,
 but look into the third latexmk pass and make a plan for 2b."**
 
 ---
