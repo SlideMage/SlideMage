@@ -30,7 +30,7 @@ AUDITED_FRAMEWORK = {
     "SlideMage_setup.tex": "1b104d2b6805e18ee073726d5202ed858eff7ac65b62f8457ea249e4fc00d0b8",
     "SlideMage_base.tex": "0183326cdd7bea48143cbbf632c2d2e00075cc4d341a81f190e6e77b5346f601",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "15248861bab6d5f6202638b03d0f53a489f9dc9e295e7c8a67650cfc39018a55",
+    "beamerthemeSlideMage.sty": "5360ec7a2cd23cdd2ddb185300b1e3be10238e4e2721602134194d19c9e8d009",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "7bbfd6d86d3542fc782a827df4bf38bf544574020d0cb7f81adeb940dbc84174",
 }
