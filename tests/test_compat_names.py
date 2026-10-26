@@ -12,6 +12,10 @@ OLD_TEMPLATE = (
     "% SlideMage template name: University of Graz\n"
     "% Slidemaster preamble variant for Graz\n"
     "\\definecolor{c_primary_dark}{HTML}{3A4A5A}\n"
+    "\\newcommand{\\SMBulletColor}{c_primary_dark}\n"
+    "\\newlength{\\SMLogoHeight}\n"
+    "\\setlength{\\SMLogoHeight}{3ex}\n"
+    "\\setlength{\\gothamFrametitleRightpading}{0.28cm}\n"
     "\\input{Slidemaster_preamble_base}\n"
     "\\input{Slidemaster_project_macros}\n")
 OLD_DECK = (
@@ -85,7 +89,12 @@ def test_migrate_renames_and_rewrites(tmp_path):
     assert "\\input{SlideMage_base}\r\n\\input{SlideMage_project_macros}\r\n" in template   # CRLF kept
     assert "% Slidemaster preamble variant" in template                                     # comments stay
     deck = after["decks/course.tex"].decode()
-    assert "\\input{SlideMage_template_uni-graz}" in deck and "\\usetheme{gotham}" in deck
+    assert "\\input{SlideMage_template_uni-graz}" in deck and "\\usetheme" not in deck      # setup loads the theme
+    assert template.startswith("% SlideMage template name: University of Graz\r\n"
+                               "% Slidemaster preamble variant for Graz\r\n"
+                               "\\input{SlideMage_setup}\r\n\\definecolor")             # after the header, before the colors
+    assert "\\renewcommand{\\SMBulletColor}{c_primary_dark}\r\n\\setlength{\\SMLogoHeight}{3ex}\r\n" in template
+    assert "\\newlength" not in template and "\\setlength{\\SMFrametitleRightPadding}{0.28cm}" in template
     assert "\\SMUseBibliography[SlideMage.bib]" in deck
     assert "\\IfFileExists{SlideMage.bib}{\\addbibresource{SlideMage.bib}}{\\addbibresource{../SlideMage.bib}}" in deck
     assert "\\input{SlideMage_template_slidemage}" in after["decks/archive/old.tex"].decode()

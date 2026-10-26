@@ -21,7 +21,7 @@ def _no_framework_override(monkeypatch):
 
 
 def test_slidemage_template_detected():
-    preamble = "\\usetheme{gotham}\n\\input{SlideMage_template_slidemage}\n"
+    preamble = "\\input{SlideMage_template_slidemage}\n"
     assert slide_snapshot.detect_template(preamble) == "slidemage"
     assert slide_snapshot.TEMPLATES["slidemage"] == "SlideMage"
 
@@ -46,9 +46,20 @@ def test_preview_filenames_recognized():
 
 def test_framework_ships_the_template_and_its_logo():
     tex = (LATEX / "SlideMage_template_slidemage.tex").read_text(encoding="utf-8")
-    assert "\\input{SlideMage_base}" in tex
-    assert "\\newcommand{\\SMInstituteLogoPath}{slidemage-logo.pdf}" in tex
+    assert "\\input{SlideMage_setup}" in tex and "\\input{SlideMage_base}" in tex
+    # The SlideMage look is the setup catalog's default, logo included.
+    setup = (LATEX / "SlideMage_setup.tex").read_text(encoding="utf-8")
+    assert "\\newcommand{\\SMInstituteLogoPath}{slidemage-logo.pdf}" in setup
     assert (LATEX / "slidemage-logo.pdf").is_file()
+
+
+def test_shipped_templates_change_catalog_settings_instead_of_creating_them():
+    from slidemage import compat_setup
+    for path in (LATEX / "SlideMage_template_slidemage.tex", EXAMPLE / "SlideMage_template_uni-graz.tex"):
+        tex = path.read_text(encoding="utf-8")
+        for pattern in (compat_setup._NEWCOMMAND, compat_setup._NEWLENGTH, compat_setup._PADDING):
+            assert not compat_setup._live(pattern, tex), (path.name, pattern.pattern)
+        assert tex.index("\\input{SlideMage_setup}") < tex.index("\\input{SlideMage_base}")
     # No longer a per-project copy (v5.7.0/v5.8.0 had it in example/).
     assert not (EXAMPLE / "SlideMage_template_slidemage.tex").exists()
 

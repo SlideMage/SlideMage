@@ -25,7 +25,7 @@ PER_PAGE = GRID_ROWS * GRID_COLS
 FRONT_MATTER_ORDER = 0
 
 # Computed once per compile from this project's own preamble length
-# registers (\paperwidth, \gothamFrametitleRightpading, \SMFooterBoxHeight,
+# registers (\paperwidth, \SMFrametitleRightPadding, \SMFooterBoxHeight,
 # \SMTitleBarBottomAlign) rather than a hardcoded cm value, so it adapts
 # automatically to whichever institution's logo/padding the compiling deck
 # actually uses (each institution template sets these differently). Left-aligned
@@ -40,7 +40,7 @@ _GEOMETRY_TEX = r"""
 \newlength{\SMAppendixWBoundTmp}
 \newlength{\SMAppendixHBoundTmp}
 \setlength{\tabcolsep}{2pt}
-\setlength{\SMAppendixWBoundTmp}{\dimexpr\paperwidth-\gothamFrametitleRightpading-0.45cm\relax}
+\setlength{\SMAppendixWBoundTmp}{\dimexpr\paperwidth-\SMFrametitleRightPadding-0.45cm\relax}
 \setlength{\SMAppendixWBoundTmp}{0.98\SMAppendixWBoundTmp}
 \setlength{\SMAppendixWBoundTmp}{\dimexpr(\SMAppendixWBoundTmp-8\tabcolsep)/5\relax}
 \setlength{\SMAppendixHBoundTmp}{\dimexpr\paperheight-\SMFooterBoxHeight-\SMTitleBarBottomAlign\relax}

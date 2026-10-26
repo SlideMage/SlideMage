@@ -621,7 +621,6 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     omit = (r"\omitslideversion{1an-EN-Slide-Versions}{1-0-0}" if pinned
             else r"\omitslide{1an-EN-Slide-Versions}")
     write(root / "decks" / "omit-test.tex", r"""\documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \makeatletter\def\input@path{{../}}\makeatother
 \input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Omission test}

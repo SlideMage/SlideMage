@@ -59,7 +59,6 @@ Second reveal.\deckonly<2->[instructor]{Instructor content}
     (root / 'slides' / 'bbb-EN-Hidden-current.tex').write_text(
         r'\begin{standardframe}{Hidden}Instructor only\end{standardframe}')
     preamble = r'''\documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Preview integration}
 \ifdefined\deckversionoverride\deckversion[\deckversionoverride]\else\deckversion[instructor]\fi

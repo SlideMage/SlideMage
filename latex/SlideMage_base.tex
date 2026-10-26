@@ -1,5 +1,13 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
+% A template \input{}s SlideMage_setup (the theme and every template setting
+% with its default) before this file; a template from before SlideMage v9.0.0
+% does not, and SlideMage's Project compatibility update fixes it.
+\ifdefined\SMSetupLoaded\else
+	\PackageError{SlideMage}{The template does not \string\input{SlideMage_setup}}{%
+		Add \string\input{SlideMage_setup} at the top of the template, before its colors,
+		or run Info -> Project compatibility in SlideMage.}
+\fi
 % \SMLuaOnce{<lua>}: run Lua now AND remember it, so a precompiled format
 % (SlideMage's fast preview, see preview_format.py) can replay it. A LuaTeX
 % format stores TeX state but not Lua state: every global function, table and
@@ -78,16 +86,12 @@
 \let\SMOrigText\text
 \renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}
 
-% Color definition, institute logo path, and the two logo-calibration
-% lengths (\SMLogoHeight, \gothamFrametitleRightpading) all live in the
-% per-university preamble that \input{}s this file, not here -- this file
-% is shared machinery only, no institution-specific branding. Every color
-% token below (\c_primary_*, \c_secondary_*, \c_tertiary_*, \c_custom_*) and
-% \SMInstituteLogoPath/\SMLogoHeight/\gothamFrametitleRightpading
-% are assumed already defined by the time this file is reached -- see e.g.
-% SlideMage_template_uni-graz.tex for the Graz values, or
-% SlideMage_template_mci.tex/SlideMage_template_uni-ibk.tex for the
-% other two institutions this deck supports. \SMLogoWidth is the one
+% Colors, institute logo path, and the two logo-calibration lengths
+% (\SMLogoHeight, \SMFrametitleRightPadding = \gothamFrametitleRightpading)
+% are template settings: SlideMage_setup.tex defines each with its default
+% (the hook catalog), the template changes what it wants, and this file only
+% reads them -- shared machinery, no institution-specific branding. See e.g.
+% SlideMage_template_uni-graz.tex for the Graz values. \SMLogoWidth is the one
 % logo-derived length that *does* stay computed here (via \settowidth,
 % further below) rather than hardcoded per institution, since it already
 % adapts automatically to whatever image \SMInstituteLogoPath points at.

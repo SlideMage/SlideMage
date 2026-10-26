@@ -3,8 +3,9 @@
 """compat.py change "slidemage-names-and-setup-layer" (v9.0.0, BREAKING): the framework's
 files carry the SlideMage name instead of "Slidemaster".
 
-This module holds the part of the change that renames; the setup layer (decks lose
-their \\usetheme line, templates load SlideMage_setup) extends the same change.
+This module holds the part of the change that renames and runs the whole change;
+compat_setup.py holds the setup-layer rewrites (decks lose their \\usetheme line,
+templates load SlideMage_setup and change catalog settings instead of creating them).
 
 | Before                                  | After                              |
 |-----------------------------------------|------------------------------------|
@@ -34,6 +35,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from . import compat_setup
 from .compat_types import BREAKS, Change, Finding
 from .tex_source import is_commented
 
@@ -71,6 +73,11 @@ def _template_files(root: Path) -> list[Path]:
 def _new_template_name(old: str) -> str:
     key = _TEMPLATE_NAME.match(old).group(1)
     return NEW_BASE + ".tex" if key == "base" else f"{NEW_TEMPLATE_PREFIX}{key}.tex"
+
+
+def _new_template_files(root: Path) -> list[Path]:
+    """Templates that already carry the new name (a project the renaming half reached before the setup half)."""
+    return sorted(root.glob(NEW_TEMPLATE_PREFIX + "*.tex"))
 
 
 def _decks(root: Path) -> list[Path]:
@@ -194,8 +201,10 @@ class _Plan:
                 self.blocked_keys.add(key)
 
     def _plan_texts(self) -> None:
-        kinds = [(p, "tex") for p in _decks(self.root)]
-        kinds += [(p, "tex") for p in _template_files(self.root) if _TEMPLATE_NAME.match(p.name).group(1) not in self.blocked_keys]
+        kinds = [(p, "deck") for p in _decks(self.root)]
+        kinds += [(p, "template" if _TEMPLATE_NAME.match(p.name).group(1) != "base" else "tex")
+                  for p in _template_files(self.root) if _TEMPLATE_NAME.match(p.name).group(1) not in self.blocked_keys]
+        kinds += [(p, "template") for p in _new_template_files(self.root)]
         kinds += [(self.root / (OLD_MACROS + ".tex"), "tex")] if self.macros else []
         kinds += [(p, "rc") for p in _rc_files(self.root) + _script_files(self.root)]
         kinds += [(p, "json") for p in _json_files(self.root)]
@@ -204,6 +213,13 @@ class _Plan:
             if text is None:
                 continue
             new = rewrite(text, blocked_keys=self.blocked_keys, bib=self.bib, macros=self.macros)
+            if kind == "deck":
+                new = compat_setup.deck(new)
+            elif kind == "template":
+                new, problem = compat_setup.template(new)
+                if problem:
+                    self.problems.append(Finding(self._rel(path), 0, problem))
+            kind = "tex" if kind in ("deck", "template") else kind
             if new != text:
                 self.files[path] = new.encode("utf-8")
             for line in _leftovers(new, kind):
@@ -219,7 +235,7 @@ class _Plan:
 def detect(root: Path) -> list[Finding]:
     plan = _Plan(root)
     findings = [Finding(plan._rel(old), 0, f"is named {new.name} from now on") for old, new in plan.renames.items()]
-    findings += [Finding(plan._rel(path), 0, "names files or variables that were renamed")
+    findings += [Finding(plan._rel(path), 0, "names renamed files or variables, loads the theme itself or lacks the setup layer")
                  for path in plan.files if path not in plan.renames]
     return sorted(findings + plan.problems + plan.leftovers, key=lambda f: (f.file, f.line, f.message))
 
@@ -239,20 +255,28 @@ CHANGE = Change(
     id=CHANGE_ID,
     since="v9.0.0",
     severity=BREAKS,
-    title="The framework's files are named SlideMage, not Slidemaster",
+    title="The framework's files are named SlideMage, and templates load SlideMage_setup",
     description=(
         "Slidemaster_preamble_<key>.tex is now SlideMage_template_<key>.tex, "
         "Slidemaster_preamble_base.tex is SlideMage_base.tex, Slidemaster_project_macros.tex is "
         "SlideMage_project_macros.tex and Slidemaster.bib is SlideMage.bib. Decks, templates and "
         ".latexmkrc files name them, and the variable $SLIDEMASTER_LATEX is now $SLIDEMAGE_LATEX "
         "(also $SLIDEMASTER_PROJECT, now $SLIDEMAGE_PROJECT). A project that keeps the old names "
-        "does not compile against this framework."),
+        "does not compile against this framework. Templates now start with \\input{SlideMage_setup}, "
+        "which loads the beamer theme and defines every template setting with its default; a template "
+        "changes a setting (\\renewcommand, \\setlength) instead of creating it (\\newcommand, "
+        "\\newlength), and decks no longer load the theme (\\usetheme{gotham})."),
     fix=(
         "Rename the three kinds of project files, replace the old names inside your decks, "
         "templates and .latexmkrc files (\\input{Slidemaster_preamble_<key>} by "
         "\\input{SlideMage_template_<key>}, \\input{Slidemaster_preamble_base} by "
         "\\input{SlideMage_base}, Slidemaster.bib by SlideMage.bib, $SLIDEMASTER_LATEX by "
-        "$SLIDEMAGE_LATEX), and rename the environment variables you set yourself."),
+        "$SLIDEMAGE_LATEX), and rename the environment variables you set yourself. In each template, "
+        "add \\input{SlideMage_setup} before its colors, turn \\newcommand of \\SMInstituteLogoPath, "
+        "\\SMBulletColor, \\SMTitleBoxColor, \\SMTitleTextColor, \\SMFooterBoxColorDefault and "
+        "\\SMFooterTextColor into \\renewcommand, delete \\newlength{\\SMLogoHeight}, and write "
+        "\\SMFrametitleRightPadding for \\gothamFrametitleRightpading; in each deck, delete "
+        "\\usetheme{gotham}."),
     detect=detect,
     migrate=migrate,
 )

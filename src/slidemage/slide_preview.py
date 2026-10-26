@@ -189,7 +189,6 @@ def _sweep_stale_previews(ctx: project.ProjectContext) -> None:
 # wrong, not just unnecessary, here: it was confirmed to make biber
 # silently veto itself).
 GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \makeatletter
 \def\input@path{{../}}
 \makeatother

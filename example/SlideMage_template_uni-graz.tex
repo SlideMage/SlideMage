@@ -10,6 +10,8 @@
 % institution by \input{}ing this file instead of one of those, nothing
 % else changes.
 
+\input{SlideMage_setup}
+
 % Color definition (Graz palette, sourced from the original single-preamble
 % version of this project -- these are the University of Graz's own official
 % colors, not derived/approximated).
@@ -54,28 +56,27 @@
 % raster logo (schemes/scheme_uni_graz/Logo Uni Graz 4c-cropped.png, itself cropped
 % from schemes/scheme_uni_graz/Logo Uni Graz 4c.png's own symmetric transparent
 % margin -- both kept alongside as historical/fallback assets, not deleted).
-\newcommand{\SMInstituteLogoPath}{schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf}
-\newlength{\SMLogoHeight}
+\renewcommand{\SMInstituteLogoPath}{schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf}
 \setlength{\SMLogoHeight}{3ex}
 % Re-measured against the compiled PDF for this specific logo image -- see
 % SlideMage_base.tex's own comment on \gothamFrametitleRightpading
 % for why this needs re-measuring per institution rather than reusing
 % another one's value.
-\setlength{\gothamFrametitleRightpading}{0.28cm}
+\setlength{\SMFrametitleRightPadding}{0.28cm}
 
 % Itemize bullet color (2026-07-16, direct instruction): Graz keeps the
 % project's original behavior, bullets in the primary highlight color.
-\newcommand{\SMBulletColor}{c_primary_highlight}
+\renewcommand{\SMBulletColor}{c_primary_highlight}
 
 % Title bar and footer box/text colors (2026-07-16, direct instruction):
 % Graz keeps the project's original behavior throughout -- title/footer
 % boxes in the primary highlight color, title/footer text in the primary
 % dark color (unlike MCI/Innsbruck, which switch these to their own
 % secondary blue/white -- see SlideMage_template_mci.tex's own comment).
-\newcommand{\SMTitleBoxColor}{c_primary_highlight}
-\newcommand{\SMTitleTextColor}{c_primary_dark}
-\newcommand{\SMFooterBoxColorDefault}{c_primary_highlight}
-\newcommand{\SMFooterTextColor}{c_primary_dark}
+\renewcommand{\SMTitleBoxColor}{c_primary_highlight}
+\renewcommand{\SMTitleTextColor}{c_primary_dark}
+\renewcommand{\SMFooterBoxColorDefault}{c_primary_highlight}
+\renewcommand{\SMFooterTextColor}{c_primary_dark}
 
 % Code panels (\SMCodeFile), 2026-10-05, direct instruction: the defaults
 % (commands in the highlight yellow, comments in c_primary_gray, both on

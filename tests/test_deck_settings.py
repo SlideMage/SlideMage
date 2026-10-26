@@ -9,7 +9,6 @@ from slidemage.deck_settings import DeckSettings
 
 DECK = r"""% !TeX program = lualatex
 \documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \input{SlideMage_template_uni-graz}
 
 \deckoutputfolder{D:/Teaching/FM2/current} % all versions

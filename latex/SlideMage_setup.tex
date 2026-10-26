@@ -1,0 +1,114 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage setup layer and hook catalog (SlideMage v9.0.0).
+%
+% A template \input{}s this file first, sets whatever it wants to change from
+% the catalog below, then \input{}s SlideMage_base:
+%
+%   % SlideMage template name: My University
+%   \input{SlideMage_setup}
+%   \definecolor{c_primary_highlight}{HTML}{...}
+%   \renewcommand{\SMInstituteLogoPath}{schemes/my_logo.pdf}
+%   \setlength{\SMLogoHeight}{3ex}
+%   \input{SlideMage_base}
+%   ... additions only: dark-mode beamer colors, citation format, project macros
+%
+% Rules for a template:
+%   1. Before this file: only \SMDarkMode (written into the deck by SlideMage).
+%   2. Between this file and SlideMage_base: \setlength, \renewcommand,
+%      \definecolor and \colorlet on the names in this catalog. Every name
+%      exists already, so a misspelt \renewcommand is an error instead of a
+%      setting that silently does nothing.
+%   3. After SlideMage_base: additions only.
+%
+% Decks never load the beamer theme themselves; this file does. A length given
+% in ex or em is evaluated where the template sets it, in the normal body font,
+% after the theme has loaded its fonts.
+
+\newcommand{\SMSetupLoaded}{}
+
+% The beamer theme, with the body fonts.
+\usetheme{gotham}
+
+% ---------------------------------------------------------------------------
+% Palette
+% ---------------------------------------------------------------------------
+% The SlideMage look; a template redefines what it changes (usually all of
+% them). The framework combines these pairs, so a template should keep them
+% readable (WCAG 2.1): body text c_primary_dark on each c_secondary_* block
+% title color >= 4.5:1, title/footer text on its box color >= 4.5:1, white text
+% on c_primary_gray (highlightframe), link underline c_secondary_blue on the
+% canvas >= 3:1.
+%
+% SlideMage's own values: wherever possible a color the app itself uses
+% (src/slidemage/palette.py, qt_deck_table.py, assets/splash.png). White
+% title/footer text on c_primary_dark is 16.7:1, white on c_primary_gray 5.0:1.
+\definecolor{c_primary_dark}{HTML}{1e1e1e}      % body text, dark boxes; splash screen background (palette dark "bg")
+\definecolor{c_primary_highlight}{HTML}{0066cc} % accent: bullets, highlights; SlideMage button blue (Create PDF, progress bar, links)
+\definecolor{c_primary_gray}{HTML}{6f6f6f}      % highlightframe background; palette dark "disabled_fg", dark enough for white text
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{ba68c8}  % block titles (block); palette dark "tab_deck_editor"
+\definecolor{c_tertiary_violet}{HTML}{dcb4e4}   % block bodies; derived (50% white-blend)
+% Derived, not an app color: the button blue is too dark for the dark text
+% an infoblock title puts on it, the app's dark-mode link blue (4da6ff) too
+% light for a link underline on white; this one sits between them and passes
+% both (4.9:1 and 3.4:1).
+\definecolor{c_secondary_blue}{HTML}{3d8fe0}    % infoblock titles, link underline
+\definecolor{c_tertiary_blue}{HTML}{9ec7f0}     % derived (50% white-blend)
+\definecolor{c_secondary_green}{HTML}{4caf50}   % exampleblock titles; palette dark "status_pass"
+\definecolor{c_tertiary_green}{HTML}{81c784}    % palette dark "tab_slide_editor"
+\definecolor{c_secondary_red}{HTML}{f04848}     % alertblock titles; palette dark "status_fail"
+\definecolor{c_tertiary_red}{HTML}{f8a4a4}      % derived (50% white-blend)
+\definecolor{c_secondary_orange}{HTML}{ffb74d}  % reference block titles; palette dark "tab_archived"
+\definecolor{c_tertiary_orange}{HTML}{ffdba6}   % derived (50% white-blend)
+\definecolor{c_secondary_yellow}{HTML}{ffd500}  % logo/splash yellow
+\definecolor{c_tertiary_yellow}{HTML}{ffe066}   % deck editor's highlight yellow
+\definecolor{c_tertiary_gray}{HTML}{e4e4e4}     % block bodies, process boxes; palette light "panel_bg"
+% Supporting colors ("custom": not part of the palette proper).
+% c_custom_gray is hyperlink text, button fill and the quote attribution.
+\definecolor{c_custom_gray}{HTML}{2d2d2d}       % palette dark "panel_bg"
+\definecolor{c_custom_red}{HTML}{cc0000}        % palette light "status_fail"
+\definecolor{c_custom_green}{HTML}{1a8a1a}      % palette light "status_pass"
+\definecolor{c_custom_brown}{HTML}{996600}      % palette light "syntax_brace"
+
+% ---------------------------------------------------------------------------
+% Roles: which palette color a part of the slide uses (color names, read
+% when used, so they follow a redefined palette color)
+% ---------------------------------------------------------------------------
+\newcommand{\SMBulletColor}{c_primary_highlight}       % itemize bullets
+\newcommand{\SMTitleBoxColor}{c_primary_dark}          % frame title bar
+\newcommand{\SMTitleTextColor}{c_primary_white}        % frame title text
+\newcommand{\SMFooterBoxColorDefault}{c_primary_dark}  % footer box
+\newcommand{\SMFooterTextColor}{c_primary_white}       % footer text, slide id
+
+% Optional colors a template may define; SlideMage_base derives each one from
+% the palette when the template leaves it undefined:
+%   SMCanvasColor          slide background                  (white)
+%   SMCardBackgroundColor  SMCard fill                       (white)
+%   SMCardBorderColor      SMCard border                     (c_primary_dark)
+%   SMProcessBorderColor   SMProcess border, dark mode       (c_tertiary_gray)
+%   SMCodeKeywordColor     \SMCodeFile commands              (c_primary_highlight)
+%   SMCodeCommentColor     \SMCodeFile comments              (c_primary_gray)
+%   SMCodeBackgroundColor  \SMCodeFile panel                 (c_tertiary_gray)
+%   SMCodeTextColor        \SMCodeFile text                  (c_primary_dark)
+
+% ---------------------------------------------------------------------------
+% Logo
+% ---------------------------------------------------------------------------
+% A vector PDF cropped to its ink, found on the TeX search path (a project
+% path such as schemes/<name>/logo.pdf, or a file next to the template).
+\newcommand{\SMInstituteLogoPath}{slidemage-logo.pdf}
+\newlength{\SMLogoHeight}
+\setlength{\SMLogoHeight}{3ex}                         % logo height in the title bar
+
+% ---------------------------------------------------------------------------
+% Frame title bar
+% ---------------------------------------------------------------------------
+% Space around the frame title (the theme's registers under their SlideMage
+% names). The right padding is measured against the compiled PDF for the logo:
+% see SlideMage_base.tex's comment on \gothamFrametitleRightpading.
+\let\SMFrametitleTopPadding\gothamFrametitleToppading
+\let\SMFrametitleBottomPadding\gothamFrametitleBottompading
+\let\SMFrametitleLeftPadding\gothamFrametitleLeftpading
+\let\SMFrametitleRightPadding\gothamFrametitleRightpading
+\setlength{\SMFrametitleRightPadding}{0.28cm}

@@ -14,7 +14,6 @@ from slidemage.project import ProjectContext
 
 
 PREAMBLE = r"""\documentclass{beamer}
-\usetheme{gotham}
 \input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Equivalence probe}
 \def\SMFooterHide{deck}
@@ -110,6 +109,7 @@ def test_project_macro_override_and_framework_change_fail_closed(tmp_path, monke
     assert all(not d.certain for d in custom.decisions)
     framework = tmp_path / "framework"
     framework.mkdir()
+    shutil.copy2(REPO / "latex" / "SlideMage_setup.tex", framework)    # audited; the next file is not
     (framework / "SlideMage_base.tex").write_text("changed")
     monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
     changed = classify_views(specs(tmp_path / "changed", "Text"))
@@ -121,8 +121,11 @@ def test_footer_body_class_theme_and_conditional_preamble_are_not_proofs(tmp_pat
                               r"\newcommand{\FooterText}{\SMDeckVersion}")
     custom = classify_views(specs(tmp_path, "Text", preamble=footer))
     assert all(not d.certain for d in custom.decisions)
-    theme = PREAMBLE.replace(r"\usetheme{gotham}", r"\usetheme{mytheme}")
-    assert all(not d.certain for d in classify_views(specs(tmp_path / "theme", "Text", preamble=theme)).decisions)
+    # Since v9.0.0 the template loads the theme; a deck that loads one itself (even the stock one) is unaudited.
+    for name in ("gotham", "mytheme"):
+        theme = PREAMBLE.replace(r"\documentclass{beamer}", r"\documentclass{beamer}" + "\n" + rf"\usetheme{{{name}}}")
+        decisions = classify_views(specs(tmp_path / name, "Text", preamble=theme)).decisions
+        assert all(not d.certain and "loads a theme" in d.reasons[0] for d in decisions)
     conditional = PREAMBLE.replace(r"\def\SMFooterHide{deck}",
                                    r"\ifdefined\FLAG\def\SMFooterHide{deck}\fi")
     assert all(not d.certain for d in classify_views(specs(tmp_path / "conditional", "Text", preamble=conditional)).decisions)
