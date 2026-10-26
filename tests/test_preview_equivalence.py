@@ -3,11 +3,12 @@
 """The classifier proves only the audited framework rules it understands."""
 from dataclasses import replace
 from pathlib import Path
+import re
 import shutil
 
 import pytest
 
-from slidemage.preview_equivalence import classify_views
+from slidemage.preview_equivalence import AUDITED_FRAMEWORK, _digest, classify_views
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.preview_target import PreviewTarget
 from slidemage.project import ProjectContext
@@ -122,7 +123,7 @@ def test_footer_body_class_theme_and_conditional_preamble_are_not_proofs(tmp_pat
     custom = classify_views(specs(tmp_path, "Text", preamble=footer))
     assert all(not d.certain for d in custom.decisions)
     # Since v9.0.0 the template loads the theme; a deck that loads one itself (even the stock one) is unaudited.
-    for name in ("gotham", "mytheme"):
+    for name in ("SlideMage", "mytheme"):
         theme = PREAMBLE.replace(r"\documentclass{beamer}", r"\documentclass{beamer}" + "\n" + rf"\usetheme{{{name}}}")
         decisions = classify_views(specs(tmp_path / name, "Text", preamble=theme)).decisions
         assert all(not d.certain and "loads a theme" in d.reasons[0] for d in decisions)
@@ -218,3 +219,31 @@ def test_custom_bibliography_and_citation_inputs_fail_closed(tmp_path):
     assert all(not d.certain and "package" in d.reasons[0] for d in configured.decisions)
     cited = classify_views(specs(tmp_path / "cited", r"\fullcite{example}"))
     assert all(not d.certain and "fullcite" in d.reasons[0] for d in cited.decisions)
+
+
+def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_rule():
+    latex = REPO / "latex"
+    assert "beamerthemeSlideMage.sty" in AUDITED_FRAMEWORK
+    assert not any("gotham" in name.lower() for name in AUDITED_FRAMEWORK)
+    # every package the framework ships is pinned, so the custom-package rule never trips on our own files
+    assert {path.name for path in latex.glob("*.sty")} <= set(AUDITED_FRAMEWORK)
+    for name, digest in AUDITED_FRAMEWORK.items():
+        assert _digest((latex / name).read_bytes()) == digest, name
+    theme = (latex / "beamerthemeSlideMage.sty").read_text(encoding="utf-8")
+    assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode", theme)
+
+
+def test_another_package_next_to_the_theme_is_a_custom_package(tmp_path, monkeypatch):
+    framework = tmp_path / "framework"
+    shutil.copytree(REPO / "latex", framework)
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
+    same = classify_views(specs(tmp_path / "same", "Text"))     # a copy of the framework is the audited framework
+    assert all(d.certain for d in same.decisions)
+    (framework / "beamerthemeother.sty").write_text("\\ProvidesPackage{beamerthemeother}\n", encoding="utf-8")
+    other = classify_views(specs(tmp_path / "other", "Text"))
+    assert all(not d.certain and "custom package/class" in d.reasons[0] for d in other.decisions)
+    (framework / "beamerthemeother.sty").unlink()
+    (framework / "beamerthemeSlideMage.sty").write_text("% changed\n", encoding="utf-8")
+    changed = classify_views(specs(tmp_path / "changed", "Text"))
+    assert all(not d.certain and "unaudited framework file: beamerthemeSlideMage.sty" in d.reasons[0]
+               for d in changed.decisions)

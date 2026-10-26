@@ -1,7 +1,8 @@
 # SlideMage — project overview
 
 SlideMage is a LaTeX/beamer framework for research and teaching slides,
-built on the [Gotham beamer theme](https://github.com/) with an
+built on its own beamer theme (a modified fork of the
+[Gotham theme](https://gitlab.com/RomainNOEL/beamertheme-gotham)) with an
 institution-specific color/logo layer (Uni Graz, in this copy). SlideMage
 is a PySide6 (Qt) desktop app that sits on top of it: compiling decks,
 managing slide IDs and versions, drafting/reviewing image descriptions via
@@ -11,7 +12,7 @@ accessible transcripts, and an AI assistant that edits slides for you.
 This repository holds the framework and the app, not course content:
 real slides and decks live in separate project folders (the original one
 has hundreds of course slides, two more institution templates and several
-real course decks) that SlideMage opens. What's here: the Gotham theme, the Uni Graz institution layer, and one
+real course decks) that SlideMage opens. What's here: the SlideMage theme, the Uni Graz institution layer, and one
 small demo deck (~20 slides, all with uppercase test IDs — see "Slide IDs"
 below) that exercises every layout, the deck-version/reveal-step system,
 and the image-accessibility pipeline end to end. Everything below was
@@ -19,7 +20,7 @@ verified against an actual working copy while preparing it, not just
 described.
 
 **One repo, three parts.** `latex/` is the institution-independent
-framework (Gotham theme, `SlideMage_base.tex`,
+framework (SlideMage beamer theme, `SlideMage_setup.tex`, `SlideMage_base.tex`,
 `SlideMage_alt.lua`); `example/` is a complete SlideMage *project* —
 slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,
 which marks a project's root; `src/slidemage/` is SlideMage, the app. Paths like
@@ -171,12 +172,12 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
    on Linux/macOS; MiKTeX on Windows. `lualatex` is the *only* supported
-   engine — the Gotham theme loads Fira Sans via `fontspec`, which plain
+   engine — the SlideMage theme loads Fira Sans via `fontspec`, which plain
    `pdflatex` silently mis-renders instead of erroring, and slide content
    uses Unicode math comparison characters `xelatex` doesn't handle out of
    the box. Let your distribution auto-install missing packages on first
    compile (or install the `fira`/Fira Sans font package up front) —
-   `beamerfontthemegotham.sty` checks for the Fira Sans `.otf` files
+   `beamerthemeSlideMage.sty` checks for the Fira Sans `.otf` files
    directly and needs them findable. `biber` is needed too — the manual
    exercises the bibliography mechanism (see "Bibliography" above); plain
    `lualatex slidemage-manual.tex` alone leaves its one citation showing as

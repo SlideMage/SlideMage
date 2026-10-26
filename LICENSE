@@ -9,8 +9,9 @@ every file is also given in its header or in REUSE.toml.
   -------------------------------------  -------------------------------------------------  ------------------
   The SlideMage application              src/, tools/, packaging/, tests/, pyproject.toml   GPL-3.0-or-later
   The SlideMage LaTeX framework          latex/ (SlideMage_*.tex, *.lua, logos)             LPPL-1.3c+
-  The Gotham beamer theme (third party)  latex/beamer*gotham.sty, latex/gotham*             LPPL-1.3c, unchanged,
-                                                                                            (c) Romain Noël
+  The SlideMage beamer theme, a          latex/beamerthemeSlideMage.sty                     LPPL-1.3c,
+  modified version of the Gotham                                                            (c) Romain Noël and
+  theme v1.2.5.a (third-party origin)                                                       (c) the SlideMage authors
   Documentation and example project     README.md, docs/, example/                         CC-BY-SA-4.0
 
 * GPL-3.0-or-later   LICENSES/GPL-3.0-or-later.txt   https://www.gnu.org/licenses/gpl-3.0.html

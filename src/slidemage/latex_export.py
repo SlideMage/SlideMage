@@ -56,7 +56,8 @@ REPORTED_COMMANDS = {"input", "include", "includegraphics", "SMCodeFile", "lstin
 # These typeset a file's text as code; what is in it is not part of the build.
 LISTING_COMMANDS = {"SMCodeFile", "lstinputlisting"}
 IMPLIED_SUFFIXES = ("", ".tex", ".sty", ".cls")
-# \usetheme{gotham} loads beamerthemegotham.sty; \usecolortheme{x} beamercolorthemex.sty, and so on.
+# \usetheme{SlideMage} (in SlideMage_setup.tex; a deck never names it) loads beamerthemeSlideMage.sty;
+# \usecolortheme{x} beamercolorthemex.sty, and so on.
 THEME_RE = re.compile(r"\\use(?P<kind>color|font|inner|outer)?theme\s*(?:\[[^\]]*\])?\s*\{(?P<names>[^{}]+)\}")
 # fontspec's Path=fonts/ : a folder of font files, copied whole.
 FONT_DIR_RE = re.compile(r"\bPath\s*=\s*(?:\./)?([\w][\w./-]*)")

@@ -45,7 +45,7 @@
 
 % Restores genuine Computer Modern math fonts. Found 2026-07-15, direct
 % instruction ("math equations do not have serifs, look at vcv"): despite
-% fontspec being loaded with `no-math` (beamerfontthemegotham.sty), math
+% fontspec being loaded with `no-math` (beamerthemeSlideMage.sty), math
 % still wasn't landing on Computer Modern -- checked directly against a
 % compiled PDF's own per-glyph font names (pymupdf), not just eyeballed:
 % digits/math-italic letters were coming out as FiraSans-Light(Italic)
@@ -308,7 +308,7 @@
 % so that one difference is accepted rather than "fixed."
 \urlstyle{same}
 
-% gotham's own footnote color (beamercolorthemegotham.sty:
+% gotham's own footnote color (beamerthemeSlideMage.sty:
 % \setbeamercolor{footnote}{fg=normal~text.fg!90}) is a 90%-black gray --
 % against plain black body text, customgray links contrast clearly (found
 % while investigating a 2026-07-05 report that a footnote's own \href
@@ -318,7 +318,7 @@
 % barely distinguishable at footnote size, with only the underline giving
 % it away. Overridden to plain black here so a footnote link contrasts the
 % same way a body-text one does -- a one-line override of the theme's own
-% color (not editing beamercolorthemegotham.sty itself, which stays
+% color (not editing beamerthemeSlideMage.sty itself, which stays
 % untouched per its own upstream-file status), and a plausible general
 % legibility improvement for footnote text regardless of links.
 \setbeamercolor{footnote}{fg=c_primary_dark}
@@ -334,11 +334,11 @@
 % future footer color (e.g. a dark blue) without this override.
 \setbeamercolor{footline}{fg=\SMFooterTextColor}
 
-\colorlet{colorDark}{c_primary_dark} % FG in light/normal mode
+\colorlet{SMColorDark}{c_primary_dark} % FG in light/normal mode
 % Title bar background -- \SMTitleBoxColor, set by the per-university
 % preamble before \input{}ing this file (same idiom as
 % \SMBulletColor/\SMFooterBoxColorDefault above).
-\colorlet{colorA}{\SMTitleBoxColor} % frametitle, standin.out
+\colorlet{SMColorA}{\SMTitleBoxColor} % frametitle, standin.out
 
 % Slide canvas color: white unless the institution preamble set
 % SMCanvasColor first (Graz's dark mode, \SMDarkMode). The title-bar patches
@@ -346,7 +346,7 @@
 \makeatletter
 \@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}
 \makeatother
-\gothamset{background=light} % Needs to go after color redefinitions, so they are applied
+\SMApplyColorRoles % Needs to go after color redefinitions, so they are applied
 \setbeamercolor{background canvas}{bg=SMCanvasColor}
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
@@ -361,27 +361,24 @@
 	SMProcess/.style={draw=none, fill=c_tertiary_gray, text=c_primary_dark},
 }
 
-% gotham's own default behavior on \section{} (used for a deck's chapter
-% grouping/table of contents) is to auto-insert its *own* plain, unstyled
-% section-divider frame plus a small "current section highlighted in the
-% outline" frame, every time -- redundant with (and visually inconsistent
-% next to) this project's own hand-styled sectionframe (see README.md's
-% "Special frame types" section), which every chapter in this deck already
-% opens with as an explicit \slide{}. Disabled so \section{} only feeds
-% \tableofcontents (see slides/nkj-Agenda-current.tex) without also
-% inserting its own extra frames.
-\gothamset{sectionframe default=false}
-
-% Same reasoning, for \subsection{} (2026-07-15, direct instruction):
-% gotham's default subsection-divider frame is disabled too, so
-% \subsection{} calls still register in the PDF's own bookmark/outline
-% structure (Acrobat's "chapters" pane -- a plain PDF sectioning feature,
-% independent of whether beamer auto-inserts a frame for it) and still feed
-% \tableofcontents (see slides/nkj-Agenda-current.tex's own
-% `\tableofcontents[hideallsubsections]`, which then hides them from that
-% one slide specifically), without also spawning their own unstyled divider
-% slide in the middle of a chapter every time one is added.
-\gothamset{subsectionframe default=false}
+% The theme's divider frames for \part, \section, \subsection and \subsubsection
+% (\SMDividerFrames in beamerthemeSlideMage.sty) are off, so \section{} (used
+% for a deck's chapter grouping/table of contents) does not insert its own
+% plain, unstyled divider frame plus a small "current section highlighted in
+% the outline" frame -- redundant with (and visually inconsistent next to)
+% this project's own hand-styled sectionframe (see README.md's "Special frame
+% types" section), which every chapter in this deck already opens with as an
+% explicit \slide{}. \section{} only feeds \tableofcontents (see
+% slides/nkj-Agenda-current.tex).
+%
+% Same for \subsection{} (2026-07-15, direct instruction): \subsection{} calls
+% still register in the PDF's own bookmark/outline structure (Acrobat's
+% "chapters" pane -- a plain PDF sectioning feature, independent of whether
+% beamer auto-inserts a frame for it) and still feed 	ableofcontents (see
+% slides/nkj-Agenda-current.tex's own `	ableofcontents[hideallsubsections]`,
+% which then hides them from that one slide specifically), without also
+% spawning their own unstyled divider slide in the middle of a chapter every
+% time one is added.
 
 % Title text color -- \SMTitleTextColor, set by the per-university
 % preamble before \input{}ing this file (the title bar's own background
@@ -891,7 +888,7 @@
 % behaves as normal inline content) records this logo's exact page position
 % under the name "SMLogoAnchor", so it can be redrawn on top of a white
 % patch further down (see the "yellow box shorter than the page" block below).
-\renewcommand{\gothamInstituteLogoSquare}[1][\SMLogoHeight]{%
+\renewcommand{\SMInstituteLogo}[1][\SMLogoHeight]{%
 	\tikz[remember picture, baseline=(SMLogoAnchor.base)]{%
 		\node[inner sep=0pt, outer sep=0pt](SMLogoAnchor){%
 			\includegraphics[height=#1]{\SMInstituteLogoPath}%
@@ -923,7 +920,7 @@
 % (appendix_toc.py) -- direct instruction, 2026-09-15: "invisibly link the
 % university logo on the top right to the agenda slide in the appendix in
 % those versions of a deck that include the appendix agenda setup."
-% Deliberately not applied to \gothamInstituteLogoSquare above (the
+% Deliberately not applied to \SMInstituteLogo above (the
 % invisible in-flow instance, covered by a white patch and never seen or
 % clicked as "the logo" by a reader) or to \SMLogoWidth's own
 % measurement just above (a \settowidth box, never actually shown).
@@ -942,11 +939,11 @@
 % the "SMLogoAnchor" node captured above) on top of it. This needs two
 % compilation passes: like any \tikz "remember picture", the node positions
 % are only available in the .aux file written by the previous run.
-% (The redraw uses \includegraphics directly rather than
-% \usebeamertemplate{instituteLogo}/{includeLogo}: those templates rely on
-% gotham's internal property-list lookup, which is only valid in the
-% context of the original frametitle rendering and silently produces
-% nothing when re-invoked here.)
+% (The redraw uses \includegraphics directly rather than \SMInstituteLogo:
+% that macro is the invisible in-flow logo of the frametitle template,
+% redefined above. Gotham's instituteLogo/includeLogo templates, which the
+% theme called before v10.0.0, relied on an internal property-list lookup
+% that was only valid in the context of the original frametitle rendering.)
 % Additionally paints white across the *entire* width of the strip between
 % the logo's bottom edge and the title bar's actual bottom edge, so the
 % yellow ends flush with the logo's bottom (rather than extending further
@@ -960,7 +957,7 @@
 % \addtobeamertemplate call below, so \SMNoInlineLogo (a whole
 % separate frametitle template variant, further down) can reuse it too --
 % \addtobeamertemplate patches whatever template is *currently* installed
-% at the time it's called (gotham's own default one here), so a template
+% at the time it's called (the theme's own default one here), so a template
 % defined fresh afterwards doesn't inherit that patch automatically and
 % needs to invoke this explicitly instead.
 % Every edge-anchored node in this hook (and in every other page-corner
@@ -1206,8 +1203,8 @@
 % A frametitle template variant that drops the inline institute logo
 % entirely -- for use together with \SMFrametitleLogoFixed (which
 % redraws the logo separately, at a fixed position, making the inline one
-% pointless anyway). gotham's own template (beamerouterthemegotham.sty,
-% "default/gotham~subsameline") puts \nolinebreak\hfill{...logo...} directly
+% pointless anyway). The theme's own template (beamerthemeSlideMage.sty,
+% "SMSubsameline") puts \nolinebreak\hfill{...logo...} directly
 % after \insertframetitle; this variant drops that whole part.
 %
 % Doing so, though, means the logo no longer reserves *any* horizontal room
@@ -1240,13 +1237,13 @@
 	\begin{beamercolorbox}[wd=\paperwidth, sep=0pt,
 	                        leftskip=\SMFrametitleLeftPadding,
 	                        rightskip=\dimexpr\SMLogoWidth+2\SMFrametitleRightPadding\relax plus 1fil]{frametitle}
-		\gotham@frametitlestrut@start
+		\SM@frametitlestrut@start
 		\insertframetitle
 		\ifx\insertframesubtitle\@empty\else
-			{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\gothamFrameSubtitleSep \insertframesubtitle}%
-			\vspace*{\gothamFramesubtitleStrutend}%
+			{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\SMFrameSubtitleSep \insertframesubtitle}%
+			\vspace*{\SMFrameSubtitleStrutEnd}%
 		\fi
-		\gotham@frametitlestrut@end
+		\SM@frametitlestrut@end
 	\end{beamercolorbox}
 	\SMFrametitleHookCode
 }
@@ -1985,6 +1982,10 @@
 \def\SMOldPrefix{gotham}
 \expandafter\def\csname\SMOldPrefix SetOverlays\endcsname{\SMSetOverlays}
 \expandafter\def\csname\SMOldPrefix SetTopCorrection\endcsname{\SMSetTopCorrection}
+% A .aux written before v10.0.0 holds each subsection title (\SMAgendaSubsection)
+% as `\gotham@subsectiontitleformat {Title}`: the Gotham theme wrapped titles
+% in that no-op switch, which the SlideMage theme no longer has.
+\expandafter\let\csname\SMOldPrefix @subsectiontitleformat\endcsname\@empty
 \newcommand{\SMRecordOverlays}{%
 	\ifSMInstructorVersion\else
 		\immediate\write\SMOverlayFile{\string\SMSetOverlays{\the\c@framenumber}{\the\beamer@slideinframe}}%
@@ -2442,7 +2443,7 @@
 \setbeamerfont{frame footer}{size=\fontsize{5}{3}\selectfont} % {font size}{baseline skip} in pt
 
 % Shrinks the gap between footnotes and the footer box below them. The
-% theme positions the footer's content via \vspace*{\gothamFootlineVOffset}
+% theme positions the footer's content via \vspace*{\SMFootlineVOffset}
 % (a fixed, negative length) before it starts; making that more negative
 % turns out to give footnotes (which are placed just before the footer, and
 % stretch to fill whatever room remains via beamer's own
@@ -2481,10 +2482,10 @@
 % section started with; kept as two separate historical adjustments below
 % rather than collapsing them into one, so this back-and-forth stays
 % visible rather than silently disappearing.
-\addtolength{\gothamFootlineVOffset}{-1.3pt}
-\addtolength{\gothamFootlineVOffset}{1.4pt}
-\addtolength{\gothamFootlineVOffset}{-0.4pt}
-\addtolength{\gothamFootlineVOffset}{0.4pt}
+\addtolength{\SMFootlineVOffset}{-1.3pt}
+\addtolength{\SMFootlineVOffset}{1.4pt}
+\addtolength{\SMFootlineVOffset}{-0.4pt}
+\addtolength{\SMFootlineVOffset}{0.4pt}
 
 % 2026-07-06 (direct instruction): move footnotes down by half the
 % measured distance between a linked footnote's own underline and the
@@ -2494,7 +2495,7 @@
 % 0.87pt, applied as a further negative adjustment (more negative =
 % footnotes get pulled further down, per this section's own comment
 % above).
-\addtolength{\gothamFootlineVOffset}{-0.87pt}
+\addtolength{\SMFootlineVOffset}{-0.87pt}
 
 % Shifts the right end of the footer line (the frame number) so it lines up
 % with the logo's own right edge above it, rather than wherever the theme's
@@ -2507,7 +2508,7 @@
 % Nudges the footer text down within its own yellow box, to vertically
 % center it there: it previously sat noticeably closer to the box's top
 % edge than its bottom (0.14pt above vs. 1.12pt below, checked against the
-% rendered PDF's own text coordinates) since \gothamFootlineVOffset's own
+% rendered PDF's own text coordinates) since \SMFootlineVOffset's own
 % positioning (further up) turns out not to move this text at all (see its
 % comment above) -- this is a separate, additive leading \vspace* instead.
 \newlength{\SMFooterTextDrop}
@@ -2659,9 +2660,10 @@
 % no custom closing code to reset it in) -- safe because \SMHideFooterText
 % is only ever consumed here, once, immediately before being cleared.
 \newif\ifSMHideFooterText
-% gotham's own \defbeamertemplate*{standout}{gotham} (gotham.dtx) is what
-% `\begin{frame}[standout]` actually activates; \addtobeamertemplate's
-% "after" hook appends to it without needing to touch that upstream file.
+% The theme's own \defbeamertemplate*{standout}{SMDefault}
+% (beamerthemeSlideMage.sty) is what `\begin{frame}[standout]` actually
+% activates; \addtobeamertemplate's "after" hook appends to it without
+% needing to touch the theme.
 \addtobeamertemplate{standout}{}{\global\SMHideFooterTexttrue}
 
 % \SMSlideLanguageFooterTag -- resolved once here rather than inlined
@@ -2763,7 +2765,7 @@
 % \vbox to 0pt{...} forces this to occupy exactly zero space in the normal
 % vertical list, *without* switching into horizontal mode the way an hbox
 % (e.g. \raisebox) would -- inserting an hbox here forces LaTeX to open an
-% implicit paragraph before the theme's own \vspace*{\gothamFootlineVOffset}
+% implicit paragraph before the theme's own \vspace*{\SMFootlineVOffset}
 % runs, which changes how that \vspace behaves (it special-cases being at
 % the very start of vertical mode) and nudges the footer text down by a few
 % points. A \vbox is already vertical material, so it doesn't trigger that.
@@ -2830,7 +2832,7 @@
 % ...), but built from plain Unicode text characters instead: \fnsymbol's
 % symbols are typeset via \ensuremath{...}, i.e. in *math* mode, and the
 % theme loads fontspec with the "no-math" option (see
-% beamerfontthemegotham.sty) specifically so that Fira Sans -- the font
+% beamerthemeSlideMage.sty) specifically so that Fira Sans -- the font
 % fontspec puts everything else in -- is left in charge of text only, not
 % math; math mode therefore still falls back to LaTeX's default Computer
 % Modern math fonts. \fnsymbol's markers were consequently rendering in a
@@ -2856,7 +2858,7 @@
 % \input{SlideMage_template_uni-graz}) to replace the default marker set for every
 % \footnote{}/\source{} from then on. \seq_item:Nn (expl3's indexed lookup;
 % expl3 is already loaded by the gotham theme itself, see e.g.
-% beamerfontthemegotham.sty) is what removes the old \ifcase's hard 9-symbol
+% beamerthemeSlideMage.sty) is what removes the old \ifcase's hard 9-symbol
 % ceiling -- a custom list can be any length. Indexing wraps around (via
 % \int_mod:nn) rather than erroring past the end of the list, so an unusually
 % footnote-heavy slide degrades to repeating symbols instead of a hard
@@ -2910,7 +2912,7 @@
 \setbeamerfont{footnote}{size=\fontsize{3.2}{1.9}\selectfont}
 % A \footnote{\fullcite{key}} came out at body size: beamer patches biblatex's
 % bibliography drivers (beamerbaselocalstructure.sty) to apply the beamer fonts
-% "bibliography entry author/title/note", and beamerfontthemegotham.sty sets
+% "bibliography entry author/title/note", and beamerthemeSlideMage.sty sets
 % those to \normalsize. \textcite/\cite are unaffected (no driver). The footnote
 % templates below call this to put the three at footnote size again; the
 % template runs inside its own group, so a real \printbibliography keeps
@@ -3519,7 +3521,7 @@
 % declared elsewhere, not a new one introduced here):
 % - "Left Margin": the default gap from the page's own left edge to the
 %   title text and body content -- \SMFrametitleLeftPadding
-%   (beamerouterthemegotham.sty/beamerthemegotham.sty, 2.2ex, measured
+%   (beamerthemeSlideMage.sty, 2.2ex, measured
 %   directly against the compiled PDF at 12.552pt in this deck's usual
 %   fonts -- see e.g. slides/tw5-Exercise-Leverage-and-ROE-Solution-current.tex's
 %   own v1-1-0 comment for that same measured value).
@@ -3527,7 +3529,7 @@
 %   institute logo (and, by the same convention, to anything else
 %   deliberately flush-right, e.g. a corner-anchored image) --
 %   \SMFrametitleRightPadding (0.28cm/7.93pt, this file's own
-%   \gothamInstituteLogoSquare placement above uses it directly as the
+%   \SMInstituteLogo placement above uses it directly as the
 %   logo's own inner sep).
 % - "Bottom Margin": the default gap between a frame's own body content
 %   and the \source{}/footnote line below it. Unlike the other three, this
@@ -4141,7 +4143,7 @@
 % body is one single \ifcase chain, not a stable string to match against.
 % \itemize itself was *first* tried via \patchcmd{\itemize}{...}
 % (matching this deck's own established practice for beamer/theme
-% internals, e.g. beamerfontthemegotham.sty's own
+% internals, e.g. beamerthemeSlideMage.sty's own
 % \patchcmd{\beamer@title}{...}) -- this failed outright, confirmed
 % directly (\patchcmd's own failure branch fired, raising a clean
 % "Patching failed" error rather than silently doing nothing): recent
@@ -4846,7 +4848,7 @@
 % block/alertblock/exampleblock recolored to this project's own palette
 % (2026-07-05, direct instruction) instead of gotham's own default colors
 % -- gotham's own per-block-type color machinery (\gotham@block in
-% beamerinnerthemegotham.sty) turns out to be dead code, never actually
+% beamerthemeSlideMage.sty) turns out to be dead code, never actually
 % wired into any template, so these three blocks were rendering via plain
 % beamer's own stock templates/colors the whole time; overriding the
 % beamer color names directly here works regardless, since those stock
@@ -5029,7 +5031,7 @@
 \setbeamercolor{block title reference}{bg=c_secondary_orange, fg=c_primary_dark}
 \setbeamercolor{block body reference}{bg=c_tertiary_gray, fg=c_primary_dark}
 % block/alertblock/exampleblock's own titles render bold via
-% beamerfontthemegotham.sty's \setbeamerfont{block title}{series=\bfseries}
+% beamerthemeSlideMage.sty's \setbeamerfont{block title}{series=\bfseries}
 % (and an explicit ...alerted equivalent; example inherits it from
 % beamer's own base font-fallback chain, verified directly -- both
 % "Example"/"Caveat" titles on slides/ZZX-Definition-formula-current.tex
@@ -5144,7 +5146,7 @@
 % unlike plain block/alertblock/exampleblock below which are redefining
 % already-registered "default"-style bodies). `\triangleq` is a genuine
 % math symbol, so it needs `$...$` -- renders in this theme's math font
-% (Computer Modern, see beamerfontthemegotham.sty's `no-math` option),
+% (Computer Modern, see beamerthemeSlideMage.sty's `no-math` option),
 % a deliberate, visible one-glyph exception in an otherwise Fira Sans
 % title bar, the same tradeoff every other math symbol in this deck
 % already accepts.
@@ -5826,7 +5828,7 @@
 		\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
 		      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
 		      outer sep=0pt]
-			at (current page.north east) {\gothamInstituteLogoSquare};
+			at (current page.north east) {\SMInstituteLogo};
 	\end{tikzpicture}%
 	}%
 	\setbox\SMTitleframeBox=\vbox{%
@@ -6082,7 +6084,7 @@
 % The taller bar is NOT a separately-drawn box the way titleframe's is (see
 % "Title slide" above): the gotham theme's own frametitle box already sizes
 % itself from \SMFrametitleTopPadding/\SMFrametitleBottomPadding plus
-% the title font's own strut height (beamerouterthemegotham.sty, the
+% the title font's own strut height (beamerthemeSlideMage.sty, the
 % "frametitle" template), so overriding those two lengths locally -- the
 % same trick already used below for the font/color overrides -- grows the
 % *theme's own* box instead of fighting it with a second one. This also
@@ -6157,7 +6159,7 @@
 % neb/u97 did wrong.
 %
 % Root cause (traced into gotham.dtx's own
-% \gotham@frametitlestrut@start/@end, not just inferred): the toppading
+% \SM@frametitlestrut@start/@end, not just inferred): the toppading
 % formula's own `-\dp\SMSectionframeTitleBox` term assumes the title's
 % real descender depth gets reintroduced somewhere else in the box so it
 % nets out -- it doesn't. `@start` is a zero-depth `\rule` whose height is
@@ -6216,7 +6218,7 @@
 % height (baselineskip, measured directly from a deliberately 2-line test
 % title: the gap between the two lines' own rendered top edges). It is NOT
 % used directly as \SMFrametitleBottomPadding: gotham's bottom strut
-% (\gotham@frametitlestrut@end) consistently produces a visual gap about
+% (\SM@frametitlestrut@end) consistently produces a visual gap about
 % 5.58pt *smaller* than the padding value fed into it (checked empirically,
 % same offset for both a one-line and a two-line test title, so it's a
 % fixed per-box offset rather than something that scales with content) --
@@ -6228,7 +6230,7 @@
 % Similarly, the box's total rendered height comes out consistently ~11.4pt
 % *less* than toppading+measuredTitleHeight+bottompading would suggest --
 % the measured title box (built as a plain \vbox{...\par}) doesn't reproduce
-% gotham's own leading strut (\gotham@frametitlestrut@start, a zero-width
+% gotham's own leading strut (\SM@frametitlestrut@start, a zero-width
 % rule with an explicit height rather than natural interline glue) exactly,
 % and this correction closes that gap. Checked the same way as the bottom
 % one above: consistent across both the one-line and two-line test titles.
@@ -6453,7 +6455,7 @@
 		\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
 		      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
 		      outer sep=0pt]
-			at (current page.north east) {\gothamInstituteLogoSquare};
+			at (current page.north east) {\SMInstituteLogo};
 	\end{tikzpicture}%
 	}%
 	\vbox to 0pt{\vss

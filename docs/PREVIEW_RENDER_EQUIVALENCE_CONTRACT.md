@@ -31,8 +31,11 @@ settings and scope. Cached artifacts retain their original render timestamp. Pin
 never equated with a different file. Hidden views are resolved before any
 source analysis.
 
-Only the pinned framework files and the bundled Uni Graz institution template
-are trusted. The default template is accepted when its generated preamble
+Only the pinned framework files (the setup layer, the base preamble, the generic
+template, the SlideMage theme `beamerthemeSlideMage.sty` and the Lua files) and
+the bundled Uni Graz institution template are trusted. The theme contains no
+view-dependent rule (no version, footer-hide or deck-label condition; a test
+checks that), so pinning its text is the whole audit. The default template is accepted when its generated preamble
 matches the audited bundled version. Project/deck `.latexmkrc` files must match
 the audited search configuration; without `SLIDEMAGE_LATEX`, the stock
 `<project parent>/latex` fallback is used. The classifier checks for actual
@@ -54,7 +57,7 @@ this classifier does not inspect those executable inputs. The bundled default
 preamble may load BibLaTeX; a plain slide still qualifies if it does not use
 bibliography commands.
 
-With a compatible Gotham/SlideMage preamble that hides only the deck footer
+With a compatible SlideMage preamble that hides only the deck footer
 label, 58 of the 91 current slides in the bundled example qualify for a
 certain classification. Most remaining slides contain local macro definitions
 or commands outside the audited source set. This is a scope measure, not a

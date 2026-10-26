@@ -1,6 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage setup layer and hook catalog (SlideMage v9.0.0).
+% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v10.0.0).
 %
 % A template \input{}s this file first, sets whatever it wants to change from
 % the catalog below, then \input{}s SlideMage_base:
@@ -27,8 +27,9 @@
 
 \newcommand{\SMSetupLoaded}{}
 
-% The beamer theme, with the body fonts.
-\usetheme{gotham}
+% The beamer theme (beamerthemeSlideMage.sty, a modified fork of Romain Noel's
+% Gotham theme, LPPL 1.3c), with the body fonts. Only this file loads it.
+\usetheme{SlideMage}
 
 % ---------------------------------------------------------------------------
 % Palette
@@ -104,11 +105,55 @@
 % ---------------------------------------------------------------------------
 % Frame title bar
 % ---------------------------------------------------------------------------
-% Space around the frame title (the theme's registers under their SlideMage
-% names). The right padding is measured against the compiled PDF for the logo:
-% see SlideMage_base.tex's comment on \gothamFrametitleRightpading.
-\let\SMFrametitleTopPadding\gothamFrametitleToppading
-\let\SMFrametitleBottomPadding\gothamFrametitleBottompading
-\let\SMFrametitleLeftPadding\gothamFrametitleLeftpading
-\let\SMFrametitleRightPadding\gothamFrametitleRightpading
+% Space around the frame title (lengths of the theme, default 2.2ex each). The
+% right padding is measured against the compiled PDF for the logo: see
+% SlideMage_base.tex's comment on \SMFrametitleRightPadding.
 \setlength{\SMFrametitleRightPadding}{0.28cm}
+% Also the theme's, if a template needs them: \SMFrametitleTopPadding,
+% \SMFrametitleBottomPadding, \SMFrametitleLeftPadding; the text between title
+% and subtitle (\renewcommand{\SMFrameSubtitleSep}{\ ---~}) and the space below
+% the subtitle (\SMFrameSubtitleStrutEnd, 0pt); the footline box: \SMFootlineVOffset
+% (SlideMage_base.tex corrects it), \SMFootlineHeight, \SMFootlineDepth,
+% \SMFootlineHRightOffset, \SMRightFooterPadding.
+
+% ---------------------------------------------------------------------------
+% Optional theme features (all off: nothing visible changes until you use one)
+% ---------------------------------------------------------------------------
+% The SlideMage theme (beamerthemeSlideMage.sty) keeps four features of the
+% Gotham theme it was forked from. Use their commands here in the template,
+% between \input{SlideMage_setup} and \input{SlideMage_base}, never in a group.
+% They read the \part / \section / \subsection structure of the deck.
+%
+% Mini frames: one small mark per frame in a bar.
+%   \SMMiniFramesPosition{head|foot|left|right|none}     where the bar goes (none)
+%   \SMMiniFramesSpreading{spreading|centering|left|right}  how the marks are spread
+%   \SMMiniFramesSections{none|section|secsubsection}    names next to the marks
+%                                                         (section: beamer's own)
+%   \SMMiniFramesCompress{true|false}                    one row per section (true)
+%   \setbeamertemplate{mini frames}[SMBox|SMMiniBox|SMMiniBullet]   the mark (SMMiniBullet)
+%   \setbeamertemplate{mini frames bundle}[SMMini|SMNano]           the marks' set (SMMini)
+%
+% Progress bar: a bar that fills with the frame number.
+%   \SMProgressBarPosition{head|frametitle|foot|left|right|none}   where it goes (none)
+%   \SMProgressBarStyle{rectangle|rounded box}            its look (rectangle)
+%   \SMProgressBarDirection{tlbr|brlt}                    the direction it fills (tlbr)
+%   \SMProgressBarMiniFrames{true|false}                  mini frames inside the bar (false)
+%   \setlength{\SMProgressHeadFootLineheight}{1.2ex}      its thickness
+%   Left and right need a sidebar width: \setbeamersize{sidebar width left=1cm}.
+%   The bar counts to 100 frames (\inserttotalframenumber is 100, as in Gotham).
+%
+% Divider frames: beamer inserts a frame at each \part, \section, \subsection
+% or \subsubsection (SlideMage's own \sectionframe is a different thing).
+%   \SMDividerFrames{part,section,subsection,subsubsection|none}   the levels (none)
+%   \SMDividerLook{SMSimple|SMProgressbar|SMSplitvertSimple|SMSplitvertProgressbar|SMProgressvert}
+%                                                         how they look (SMProgressbar)
+%   \renewcommand{\SMSectionPageOptions}{...}              frame options per level (noframenumbering);
+%                                                         likewise \SMPartPageOptions,
+%                                                         \SMSubsectionPageOptions, ...
+%   \setlength{\SMSectionHOffset}{0pt}                     shifts the text of a divider
+%
+% Watermark: a text behind the frames.
+%   \SMWatermarkDefault{true|false}   on every frame (false); [watermark] and
+%                                     [nowatermark] switch single frames
+%   \SMWatermarkTemplate{SMDraft}     the background template to use; define your own
+%                                     with \defbeamertemplate{background}{<name>}{...}

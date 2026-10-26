@@ -593,7 +593,7 @@ def test_a_real_beamer_deck_is_read_slide_by_slide(tmp_path, monkeypatch):
     monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))
     ctx = ProjectContext.at(root)
     (root / "decks" / "read-test.tex").write_text(
-        "\\documentclass[aspectratio=169]{beamer}\n\\usetheme{gotham}\n\\makeatletter\\def\\input@path{{../}}\\makeatother\n"
+        "\\documentclass[aspectratio=169]{beamer}\n\\makeatletter\\def\\input@path{{../}}\\makeatother\n"
         "\\input{SlideMage_template_slidemage}\n\\newcommand{\\FooterText}{Readability test}\n"
         "\\begin{document}\n\\slide{1jv-EN-Anatomy-of-a-Project}\n\\slide{1c9-EN-Placing-Figures}\n\\end{document}\n",
         encoding="utf-8")

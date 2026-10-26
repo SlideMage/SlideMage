@@ -536,6 +536,22 @@ mix it in.
    - Slide 1gr, the snippets and every example slide use the new names. Compat change
      `own-theme-and-content-names`. Pixel-identical, with the same fonts in the PDF. Afterwards a grep for
      `gotham` finds only history, LICENSE/attribution text and the compat mapping.
+   - **Done 2026-10-26 (v10.0.0), notes for the later steps:**
+     - `latex/beamerthemeSlideMage.sty` is one file (2214 lines against 5626). Its kept features are switched by
+       `\SMMiniFramesPosition`, `\SMProgressBarPosition`, `\SMDividerFrames`/`\SMDividerLook` and
+       `\SMWatermarkDefault` (and siblings), documented at the end of `SlideMage_setup.tex`; the patches mini frames
+       apply to beamer's navigation are installed only when they are used. Round logo and circle bar were dropped
+       with the rest.
+     - Colour roles are `\SMColorA`..`E`, `\SMColorDark`, `\SMColorFG` ...; base calls `\SMApplyColorRoles` where it
+       called `\gothamset{background=light}`.
+     - Gotham's title/section patches of beamer's commands went with the format switches. Their one visible trace was
+       `\gotham@subsectiontitleformat` in `.aux` files (`\SMAgendaSubsection`); base keeps that name as a no-op.
+     - Gotham's footline called `\usebeamerfont{pagenumberinhead/foot}` (spaces lost under expl3 syntax), a font that
+       does not exist; the call is gone, nothing changed.
+     - `sm_rename.THEME_RENAMES` holds the surviving theme names, `THEME_REMOVED` the rest (reported by the compat
+       change, `\gothamset` included). `bundled_copies` reports a dropped Gotham file the project changed as kept.
+     - The manual still says "Gotham theme" on slide 1ym and in `media/alt-text.json`: step 9, since changing it
+       changes the render.
 3. **Consolidation.**
    - Base's replacements of theme parts move into the theme as their only definition.
    - Base loads its packages explicitly.

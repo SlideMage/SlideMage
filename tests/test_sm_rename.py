@@ -26,9 +26,31 @@ def test_theme_renames_follow_the_naming_rule():
         assert old.lower().startswith(("gotham", "_gotham", "thegotham", "g_gotham")), old
         assert new.startswith(("SM", "theSM", "g_SM", "_SM", "slidemage")), new
     tex_names = [new for new in sm_rename.THEME_RENAMES.values() if new.startswith("SM")]
-    assert all(name[2].isupper() for name in tex_names)
-    # the theme's own names are the remainder: nothing is both mapped and reserved for later
-    assert not sm_rename.THEME_NAMES_REMAINING & set(sm_rename.THEME_RENAMES)
+    assert all(name[2].isupper() or name[2] == "@" for name in tex_names)     # SMName, or SM@internal
+    # every name the Gotham theme had is renamed or removed with it, never both
+    assert not sm_rename.THEME_REMOVED & set(sm_rename.THEME_RENAMES)
+    assert sm_rename.THEME_NAMES <= set(sm_rename.THEME_RENAMES) | sm_rename.THEME_REMOVED
+
+
+def test_the_themes_own_names_have_the_names_the_plan_gives_them():
+    for old, new in {
+        "gothamFootlineVOffset": "SMFootlineVOffset", "gothamInstituteLogoSquare": "SMInstituteLogo",
+        "gothamFrameSubtitleSep": "SMFrameSubtitleSep", "gothamFramesubtitleStrutend": "SMFrameSubtitleStrutEnd",
+        "gotham@frametitlestrut@start": "SM@frametitlestrut@start", "gotham@frametitlestrut@end": "SM@frametitlestrut@end",
+        "gothamFrametitleToppading": "SMFrametitleTopPadding", "gothamFrametitleBottompading": "SMFrametitleBottomPadding",
+        "gothamFrametitleLeftpading": "SMFrametitleLeftPadding", "gothamFrametitleRightpading": "SMFrametitleRightPadding",
+    }.items():
+        assert sm_rename.THEME_RENAMES[old] == new
+    for gone in ("gothamset", "gothamreset", "gotham@block", "gothamFooterHOffset", "gothamProgressCircle",
+                 "gothamtitlepagebg"):
+        assert gone in sm_rename.THEME_REMOVED and gone not in sm_rename.THEME_RENAMES
+
+
+def test_removed_names_are_found_outside_comments_only():
+    text = "\\gothamset{a}\n\\gothamFooterHOffset % \\gothamreset\n% \\gothamset{b}\ngothamsetx"
+    assert sm_rename.removed_names(text) == [(1, "gothamset"), (2, "gothamFooterHOffset"), (2, "gothamreset"),
+                                              (3, "gothamset")]
+    assert sm_rename.removed_names(text, live_only=True) == [(1, "gothamset"), (2, "gothamFooterHOffset")]
 
 
 def test_rename_identifiers_handles_names_in_every_position():
@@ -38,7 +60,9 @@ def test_rename_identifiers_handles_names_in_every_position():
            r"\pgfqkeys{/gothamfit}{} (gothamfit@top) gothamfit3 \edef\x{gothamfit\the\n} "
            r"\g_gotham_footnote_symbols_seq \directlua{gothamalt.load() gotham_layout.top_end(1)} "
            r"\gothamFrametitleRightpading")
-    out = sm_rename.rename_identifiers(src)
+    out = sm_rename.rename_identifiers(src + r" \gothamFootlineVOffset \gothamInstituteLogoSquare[3ex]")
+    assert out.endswith(r" \SMFootlineVOffset \SMInstituteLogo[3ex]")
+    out = out[:-len(r" \SMFootlineVOffset \SMInstituteLogo[3ex]")]
     assert out == (r"\begin{SMTable}[gap=1pt]{l}\end{SMTable} \def\SMTable@spec{} "
                    r"\node[SMArrow, SMDottedHighlight] \setbeamertemplate{section in toc}[SMPlainEnumerate] "
                    r"\stepcounter{SMNumItemCounter}\theSMNumItemCounter \begin{SMNumItemize}\end{SMNumItemize} "
@@ -49,7 +73,7 @@ def test_rename_identifiers_handles_names_in_every_position():
 
 
 def test_rename_identifiers_leaves_prose_and_the_themes_own_names():
-    src = (r"The gotham theme, Gotham, \gothamset{x} \gotham@block \gothamFootlineVOffset \usetheme{gotham} "
+    src = (r"The gotham theme, Gotham, \gothamset{x} \gotham@block \gothamFooterHOffset \usetheme{gotham} "
            r"gothamtables mygothamtable gothamfitx")
     assert sm_rename.rename_identifiers(src) == src
 

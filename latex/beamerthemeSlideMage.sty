@@ -1,0 +1,2213 @@
+%%
+%% This is file `beamerthemeSlideMage.sty'.
+%%
+%% ===========================================================================
+%% THIS IS A MODIFIED VERSION of the LaTeX beamer theme "gotham"
+%% (beamertheme-gotham, version 1.2.5.a, 2026-04-02) by Romain NOËL.
+%% It is NOT the original theme, and Romain NOËL does not maintain, support
+%% or endorse it. Do not report problems with this file to him; report them
+%% to the SlideMage project (https://github.com/JuergenFleiss/slidemage).
+%%
+%% The original, unmodified theme is available at
+%%     https://gitlab.com/RomainNOEL/beamertheme-gotham
+%% (release v1.2.5.a: beamer{,color,font,inner,outer}themegotham.sty and
+%% gotham.dtx/gotham.ins).
+%% ===========================================================================
+%%
+%% beamerthemeSlideMage: the beamer theme of the SlideMage framework
+%% (https://github.com/JuergenFleiss/slidemage). SlideMage_setup.tex loads it
+%% with \usetheme{SlideMage}; a deck never names it.
+%%
+%% Copyright (C) 2023-20** by Romain NOËL <romainoel@free.fr>   (original work)
+%% Copyright (C) 2026 by Stefan Palan, Jürgen Fleiß              (modifications)
+%%
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3c
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%% http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%%
+%% This modified work has the LPPL maintenance status `maintained'.
+%% Its Current Maintainer is Stefan Palan. (Romain NOËL is the Current
+%% Maintainer of the original work only.)
+%%
+%% ---------------------------------------------------------------------------
+%% Changes against beamertheme-gotham 1.2.5.a (LPPL 1.3c, section 6)
+%% ---------------------------------------------------------------------------
+%% 1. The five files beamer{,color,font,inner,outer}themegotham.sty are merged
+%%    into this one file, in four sections: fonts, colors, inner, outer. Theme,
+%%    file and package are renamed (SlideMage), so that nothing here can be
+%%    mistaken for the original.
+%% 2. Every name this file defines is renamed from gotham... to SM... (CamelCase;
+%%    internal names \SM@... and \__SM_...), and the misspelt "pading" is
+%%    corrected: \SMFrametitle{Top,Bottom,Left,Right}Padding, \SMFootlineVOffset,
+%%    \SMInstituteLogo, \SMFrameSubtitleSep, \SMFrameSubtitleStrutEnd,
+%%    \SM@frametitlestrut@start/@end, \SM@strut. The colour roles (colorA,
+%%    colorDark, ...) became \SMColorA, \SMColorDark, ... and the Gotham palette
+%%    SMAnthracite, SMPaleYellow, ... Beamer template variants are named SM....
+%% 3. The \gothamset key interface and the option handling are removed. The
+%%    configuration is fixed to what SlideMage used: light background, native
+%%    blocks, anthracite colour set, no page numbering, no automatic divider
+%%    frames. The features that stay switchable are switched by the commands
+%%    documented in SlideMage_setup.tex (\SMMiniFramesPosition,
+%%    \SMMiniFramesSpreading, \SMMiniFramesSections, \SMMiniFramesCompress,
+%%    \SMProgressBarPosition, \SMProgressBarStyle, \SMProgressBarDirection,
+%%    \SMProgressBarMiniFrames, \SMDividerFrames, \SMDividerLook,
+%%    \SMWatermarkDefault, \SMWatermarkTemplate).
+%% 4. Removed: \gothamreset; the title page and its variants; the table of
+%%    contents templates and the automatic table-of-contents frames; side strips
+%%    and edging; the rotated footer and the footer templates with date, title
+%%    and author; the section headline; the round logo, the circle progress bar
+%%    and the circle page numbering; the subnewline frame title and all
+%%    continuation-title variants but the roman one; the frame-numbering styles
+%%    other than none; the standin frame and its colours; the dark, red and
+%%    transparent colour sets and block styles; the format (upper, lower,
+%%    titlecase) and shape switches for titles and headings together with the
+%%    patches of beamer's title, part, section, subsection and frame title
+%%    commands that served them; the frame options noBGC, nologo, nofootline,
+%%    nofooter, nopagenumber, edging, noedging, rotateFooter, noRotateFooter,
+%%    standin and toc; the XeLaTeX and "OT"-named font fallbacks. The theme
+%%    needs LuaLaTeX. The footline named a font ("page number in head/foot",
+%%    written with spaces that expl3 syntax drops) that does not exist and did
+%%    nothing; that call is gone.
+%% 5. Mini frames, progress bars (head, frame title, foot, left, right; as
+%%    rectangle or rounded box), the automatic part, section, subsection and
+%%    subsubsection divider frames with their five looks, and the watermark
+%%    background are kept, switched off by default. Their key plumbing (property
+%%    lists, repeated reset blocks) is replaced by the commands of item 3. The
+%%    patches that mini frames apply to beamer's \insertnavigation,
+%%    \sectionentry and \slideentry are installed only when they are switched on.
+%% ---------------------------------------------------------------------------
+%%
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/26}{10.0.0}
+  {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%   FONTS     %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage{ifxetex}
+\RequirePackage{ifluatex}
+
+\msg_new:nnn { SlideMage } { font-not-found }
+  { Could~not~find~font~'#1'.\c_space_tl }
+\msg_new:nnn { SlideMage } { fonts-not-available }
+  { No~suitable~fonts~found.~Using~fallback~fonts. }
+\msg_new:nnn { SlideMage } { requires-lualatex }
+  { The~SlideMage~theme~needs~LuaLaTeX~(Fira~fonts~and~Lua~code). }
+\msg_new:nnn { SlideMage } { unknown-choice }
+  { Unknown~choice~'#1'~for~#2. }
+
+\int_new:N \g__SM_fonts_not_found_int
+
+\cs_new_protected:Nn \__SM_check_font:n
+  {
+    \fontspec_font_if_exist:nF { #1 }
+      {
+        \fontspec_font_if_exist:nF { #1~Regular }
+          {
+            \int_incr:N \g__SM_fonts_not_found_int
+            \msg_warning:nnn { SlideMage } { font-not-found } { #1 }
+          }
+      }
+  }
+
+\cs_new_protected:Nn \__SM_if_fonts_available:nnn
+  {
+    \int_zero:N \g__SM_fonts_not_found_int
+    \clist_map_function:nN { #1 } \__SM_check_font:n
+    \int_compare:nTF { \g__SM_fonts_not_found_int = 0 } { #2 } { #3 }
+  }
+
+\sys_if_engine_luatex:TF
+  {
+    \@ifpackageloaded { fontspec }
+      { \PassOptionsToPackage { no-math } { fontspec } }
+      { \RequirePackage [ no-math ] { fontspec } }
+    \__SM_if_fonts_available:nnn
+      {
+        FiraSans-Light.otf, FiraSans-LightItalic.otf,
+        FiraSans-Regular.otf, FiraSans-Italic.otf
+      }
+      {
+        \setsansfont
+          [
+            ItalicFont = { FiraSans-LightItalic.otf },
+            BoldFont = { FiraSans-Regular.otf },
+            BoldItalicFont = { FiraSans-Italic.otf }
+          ]
+          { FiraSans-Light.otf }
+        \renewcommand { \ttdefault } { lmtt }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    \__SM_if_fonts_available:nnn { FiraMono-Medium.otf, FiraMono-Bold.otf }
+      { \setmonofont [ BoldFont = { FiraMono-Medium.otf } ] { FiraMono-Bold.otf } }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    \AtBeginEnvironment { tabular } { \addfontfeature { Numbers = { Monospaced } } }
+  }
+  { \msg_warning:nn { SlideMage } { requires-lualatex } }
+
+\setbeamerfont{frametitle}{size=\large, series=\bfseries, shape=\normalfont}
+\setbeamerfont{framesubtitle}{shape=\normalfont}
+\setbeamerfont{page~number~in~head/foot}{size=\footnotesize}
+\setbeamerfont{footline}{size=\scriptsize}
+
+\setbeamerfont{block~title}{size=\normalsize, series=\bfseries}
+\setbeamerfont{block~title~alerted}{size=\normalsize, series=\bfseries}
+\setbeamerfont{caption}{size=\small}
+\setbeamerfont{caption~name}{series=\bfseries}
+\setbeamerfont{description~item}{series=\bfseries}
+
+\setbeamerfont{bibliography~entry~author}{size=\normalsize, series=\normalfont}
+\setbeamerfont{bibliography~entry~title}{size=\normalsize, series=\bfseries}
+\setbeamerfont{bibliography~entry~location}{size=\normalsize, series=\normalfont}
+\setbeamerfont{bibliography~entry~note}{size=\small, series=\normalfont}
+\setbeamerfont{standout}{size=\Large, series=\bfseries}
+
+% Divider frames (\SMDividerFrames).
+\setbeamerfont{part~title}{shape=\normalfont}
+\setbeamerfont{section~title}{size=\Large, series=\bfseries, shape=\normalfont}
+\setbeamerfont{subsection~title}{size=\large, series=\bfseries, shape=\normalfont}
+\setbeamerfont{subsubsection~title}{size=\normalsize, series=\bfseries, shape=\normalfont}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%   COLORS    %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage{xcolor}
+
+\definecolor[named]{SMLightOrange}{HTML}{EB811B}
+\definecolor[named]{SMLightGreen}{HTML}{14B03D}
+\definecolor[named]{SMDeepYellowOrange}{RGB}{255, 204, 0}
+\definecolor[named]{SMAnthracite}{HTML}{2d3e50}
+\definecolor[named]{SMPaleYellow}{RGB}{255, 255, 240}
+\definecolor[named]{SMDarkBlack}{gray}{0.1}
+\definecolor[named]{SMMidGrey}{gray}{0.5}
+
+% The colour roles of the theme. SlideMage_base.tex redefines SMColorDark and
+% SMColorA from the template's colours and then calls \SMApplyColorRoles.
+\colorlet{SMColorPale}{SMPaleYellow}    % background
+\colorlet{SMColorDark}{SMDarkBlack}     % foreground
+\colorlet{SMColorA}{SMAnthracite}       % frame title bar, standout frame
+\colorlet{SMColorB}{SMMidGrey}          % grey background: blocks
+\colorlet{SMColorC}{SMDeepYellowOrange} % progress bars
+\colorlet{SMColorD}{SMLightOrange}      % alert
+\colorlet{SMColorE}{SMLightGreen}       % example
+
+% Assigns the roles from the colours above (light background) and sets the
+% beamer colours that follow them. Idempotent: call it after redefining
+% SMColorPale .. SMColorE.
+\NewDocumentCommand \SMApplyColorRoles { }
+  {
+    \colorlet{SMColorFG}{SMColorDark}
+    \colorlet{SMColorBG}{SMColorPale}
+    \colorlet{SMColorStandout}{SMColorA}
+    \colorlet{SMColorFrametitle}{SMColorA}
+    \colorlet{SMColorBackElement}{SMColorB}
+    \colorlet{SMColorProgBar}{SMColorC}
+    \colorlet{SMColorAlert}{SMColorD}
+    \colorlet{SMColorExample}{SMColorE}
+    \setbeamercolor{normal~text}{ fg=SMColorFG, bg=SMColorBG }
+    \usebeamercolor[fg]{normal~text}
+    \setbeamercolor{primary~palette}{
+      use=normal~text,
+      fg=normal~text.bg,
+      bg=normal~text.fg
+    }
+  }
+\SMApplyColorRoles
+
+% Native blocks: filled with the back-element grey, white text.
+\setbeamercolor{block~title}{
+  fg=SMColorPale,
+  bg=SMColorBackElement!90!fg
+}
+\setbeamercolor{block~body}{
+  use={block~title, normal~text},
+  bg=block~title.bg!50!normal~text.bg
+}
+\setbeamercolor{alerted~text}{
+  fg=SMColorAlert
+}
+\setbeamercolor{alertedBlock~text}{
+  fg=SMColorPale
+}
+\setbeamercolor{example~text}{
+  fg=SMColorPale
+}
+\setbeamercolor{block~title~alerted}{
+  use={block~title, alertedBlock~text},
+  bg=SMColorAlert,
+  fg=alertedBlock~text.fg
+}
+\setbeamercolor{block~title~example}{
+  use={block~title, example~text},
+  bg=SMColorExample,
+  fg=example~text.fg
+}
+
+\setbeamercolor{structure}{use=normal~text, fg=normal~text.fg}
+\setbeamercolor{titlelike}{use=normal~text, parent=normal~text}
+\setbeamercolor{section~in~toc}{use=normal~text, parent=normal~text}
+\setbeamercolor{subsection~in~toc}{use=normal~text, parent=normal~text}
+\setbeamercolor{subsubsection~in~toc}{use=normal~text, parent=normal~text}
+\setbeamercolor{progress~bar}{
+  use=alerted~text,
+  fg=SMColorProgBar,
+  bg=alerted~text.fg!50!black!30
+}
+\setbeamercolor{frametitle}{
+  use=primary~palette,
+  parent=primary~palette,
+  bg=SMColorFrametitle
+}
+\setbeamercolor{progress~bar~in~head/foot}{
+  use=progress~bar,
+  parent=progress~bar
+}
+\setbeamercolor{progress~bar~in~part~page}{
+  use=progress~bar,
+  parent=progress~bar
+}
+\setbeamercolor{progress~bar~in~section~page}{
+  use=progress~bar,
+  parent=progress~bar
+}
+\setbeamercolor{progress~bar~in~splitvert}{
+  use=progress~bar,
+  parent=progress~bar
+}
+\setbeamercolor{block~body~alerted}{use=block~body, parent=block~body}
+\setbeamercolor{block~body~example}{use=block~body, parent=block~body}
+\setbeamercolor{footnote}{fg=normal~text.fg!90}
+\setbeamercolor{footnote~mark}{fg=.}
+
+\setbeamercolor{SMFrametitleSection}{use=structure, fg=structure.bg}
+\setbeamercolor{standout}{use=primary~palette, bg=SMColorStandout, fg=primary~palette.bg}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%   INNER     %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage{calc}
+\RequirePackage{tikz}
+
+% ---- Frame options -------------------------------------------------------
+% \__SM_add_frame_key:nn {<key>} {<environment>}: the frame option <key> opens
+% <environment> at the start of the frame and closes it with the frame
+% (beamer's \beamer@reseteecodes).
+\seq_new:N \l__SM_frame_end_seq
+\cs_new_protected:Nn \__SM_add_frame_key:nn
+  {
+    \define@key{beamerframe}{ #1 }[true]
+      {
+        \begin{#2}
+        \seq_put_left:Nn \l__SM_frame_end_seq { \end{#2} }
+      }
+  }
+\apptocmd{\beamer@reseteecodes}{
+  \seq_use:Nn \l__SM_frame_end_seq {}
+  \seq_clear:N \l__SM_frame_end_seq
+}{}{}
+
+% [c]: centre the frame vertically (also with automatic breaks).
+\define@key{beamerframe}{c}[true]{
+  \beamer@frametopskip=0pt~plus~1fill\relax
+  \beamer@framebottomskip=0pt~plus~1fill\relax
+  \beamer@frametopskipautobreak=0pt~plus~.4\paperheight\relax
+  \beamer@framebottomskipautobreak=0pt~plus~.6\paperheight\relax
+  \def\beamer@initfirstlineunskip{}
+}
+
+% ---- Standout frame: [standout] ------------------------------------------
+\defbeamertemplate{background~canvas}{SMStandout}{
+  \ifbeamercolorempty[bg]{standout}{
+  }{
+    \usebeamercolor[bg]{standout}\color{bg}
+    \vrule~width\paperwidth~height\paperheight
+  }
+}
+\defbeamertemplate*{standout}{SMDefault}{
+  \setbeamertemplate{background~canvas}[SMStandout]
+  \usebeamerfont{standout}
+  \ifbeamercolorempty[bg]{primary~palette}{
+    \setbeamercolor{background~canvas}{
+      use=primary~palette,
+      bg=primary~palette.fg
+    }
+  }{
+    \setbeamercolor{background~canvas}{
+      use=primary~palette,
+      bg=primary~palette.bg
+    }
+  }
+  \setbeamercolor{local~structure}{fg=primary~palette.bg}
+  \usebeamercolor[fg]{primary~palette}
+}
+\newenvironment{SMStandoutFrame}{
+  \usebeamertemplate{standout}
+}{}
+\__SM_add_frame_key:nn { standout } { SMStandoutFrame }
+
+% ---- Watermark (off by default) ------------------------------------------
+% \SMWatermarkDefault{true} puts it on every frame, [watermark] / [nowatermark]
+% switch single frames; \SMWatermarkTemplate{<name>} picks the background
+% template (SMDraft, or your own \defbeamertemplate{background}{<name>}).
+\defbeamertemplate{background}{SMEmpty}{}
+\defbeamertemplate{background}{SMDraft}{
+  \begin{tikzpicture}[overlay,remember~picture]
+    \node[color=red, opacity=0.3, scale=5, rotate=45] at ([shift={(0,0)}]current~page.center) {DRAFT};
+  \end{tikzpicture}
+}
+\tl_new:N \g__SM_watermark_tl
+\tl_gset:Nn \g__SM_watermark_tl { SMDraft }
+\bool_new:N \g__SM_watermark_default_bool
+\NewDocumentCommand \SMWatermarkTemplate { m }
+  { \tl_gset:Nn \g__SM_watermark_tl {#1} }
+\NewDocumentCommand \SMWatermarkDefault { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { true }  { \bool_gset_true:N \g__SM_watermark_default_bool }
+        { false } { \bool_gset_false:N \g__SM_watermark_default_bool }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMWatermarkDefault } }
+  }
+\BeforeBeginEnvironment{frame}{
+  \bool_if:NTF \g__SM_watermark_default_bool
+    { \setbeamertemplate{background}[\g__SM_watermark_tl] }
+    { \setbeamertemplate{background}[SMEmpty] }
+}
+\newenvironment{SMWatermarkFrame}{
+  \setbeamertemplate{background}[\g__SM_watermark_tl]
+}{}
+\__SM_add_frame_key:nn { watermark } { SMWatermarkFrame }
+\newenvironment{SMNoWatermarkFrame}{
+  \setbeamertemplate{background}[SMEmpty]
+}{}
+\__SM_add_frame_key:nn { nowatermark } { SMNoWatermarkFrame }
+
+% ---- Text -----------------------------------------------------------------
+\setlength{\parskip}{0.5em}
+\linespread{1.15}
+
+\defbeamertemplate*{itemize~item}{SMDefault}{
+  \large
+  \setbeamertemplate{itemize~item}[circle]
+  \usebeamertemplate{itemize~item}
+}
+\defbeamertemplate*{itemize~subitem}{SMDefault}{
+  \scriptsize
+  \setbeamertemplate{itemize~subitem}[triangle]
+  \usebeamertemplate{itemize~subitem}
+}
+\defbeamertemplate*{itemize~subsubitem}{SMDefault}{
+  \Tiny
+  $\blacksquare$
+}
+
+\defbeamertemplate*{caption~label~separator}{SMDefault}{:~}
+\setbeamertemplate{caption}[numbered]
+
+% ---- Divider frames (off by default) ----------------------------------------
+% Beamer calls \AtBeginPart/\AtBeginSection/... at each \part/\section/...;
+% \SMDividerFrames{<levels>} makes those insert a divider frame, and
+% \SMDividerLook{<look>} picks how it looks: SMSimple, SMProgressbar,
+% SMSplitvertSimple, SMSplitvertProgressbar or SMProgressvert.
+\providebool{SMPartFrame}
+\providebool{SMSectionFrame}
+\providebool{SMSubsectionFrame}
+\providebool{SMSubsubsectionFrame}
+\cs_new_protected:Nn \__SM_add_divider_key:nnn
+  {
+    \define@key{beamerframe}{ #1 }[true]
+      {
+        \booltrue{SM#3Frame}
+        \begingroup
+        \usebeamertemplate{#2~frame}
+      }
+    \apptocmd{\beamer@reseteecodes}
+      {
+        \ifbool{SM#3Frame}
+          {
+            \endgroup
+            \boolfalse{SM#3Frame}
+          }
+          {}
+      }{}{}
+  }
+\__SM_add_divider_key:nnn { part } { part } { Part }
+\__SM_add_divider_key:nnn { section } { section } { Section }
+\__SM_add_divider_key:nnn { subsec } { subsection } { Subsection }
+\__SM_add_divider_key:nnn { subsubsec } { subsubsection } { Subsubsection }
+
+\providecommand{\SMPartPageOptions}{noframenumbering}
+\providecommand{\SMSectionPageOptions}{noframenumbering}
+\providecommand{\SMSubsectionPageOptions}{noframenumbering}
+\providecommand{\SMSubsubsectionPageOptions}{noframenumbering}
+
+% page titles of the divider frames
+\def\partname{\translate{Part}}
+\defbeamertemplate*{part~title}{SMDefault}{
+\usebeamercolor[fg]{part~title}
+\usebeamerfont{part~title}
+\partname \ \insertromanpartnumber
+\\[1.75ex]
+\insertpart
+}
+\defbeamertemplate*{section~title}{SMDefault}{
+\usebeamercolor[fg]{section~title}
+\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead
+}
+\defbeamertemplate*{subsection~title}{SMDefault}{
+\usebeamercolor[fg]{subsection~title}
+\usebeamerfont{subsection~title}
+\insertsectionnumber.\insertsubsectionnumber.~
+\insertsubsectionhead
+}
+\def\subsubsectionname{\translate{Subsubsection}}
+\def\insertsubsubsectionnumber{\arabic{subsubsection}}
+\def\subsubsectionpage{\usebeamertemplate*{subsubsection~page}}
+\defbeamertemplate*{subsubsection~title}{SMDefault}{
+\usebeamercolor[fg]{subsubsection~title}
+\usebeamerfont{subsubsection~title}
+\insertsectionnumber.\insertsubsectionnumber.\insertsubsubsectionnumber.~
+\insertsubsubsectionhead
+}
+
+% progress bar in the section page
+\newlength{\SM@progressonsectionpage}
+\newlength{\SMProgressSectionHeight}
+\setlength{\SMProgressSectionHeight}{3pt}
+
+\defbeamertemplate{progress~bar~in~section~page}{empty}{
+\vspace{\SMProgressSectionHeight+1ex}
+}
+
+% The progress bars count to 100 frames, as in Gotham (this replaces beamer's own total).
+\def\inserttotalframenumber{100}
+\defbeamertemplate{progress~bar~in~section~page}{display}{
+\setlength{\SM@progressonsectionpage}{
+\textwidth * \ratio{\insertframenumber~pt}{\inserttotalframenumber~pt}
+}
+\begin{tikzpicture}
+\fill[bg] (0,0) rectangle (\textwidth, \SMProgressSectionHeight);
+\fill[fg] (0,0) rectangle (\SM@progressonsectionpage, \SMProgressSectionHeight);
+\end{tikzpicture}
+}
+
+\newlength{\SMSectionHOffset}
+\setlength{\SMSectionHOffset}{0pt}
+
+% the five looks
+\defbeamertemplate{part~page}{SMProgressbarPage}{
+\centering
+\hspace*{\SMSectionHOffset}
+\begin{minipage}{22em}
+\centering
+\usebeamertemplate*{part~title}\\[-1ex]
+\usebeamertemplate*{progress~bar~in~section~page}
+\par
+\end{minipage}
+\par
+\vspace{\baselineskip}
+}
+\defbeamertemplate{section~page}{SMProgressbarPage}{
+\centering
+\hspace*{\SMSectionHOffset}
+\begin{minipage}{22em}
+\raggedright
+\usebeamertemplate*{section~title}\\[-1ex]
+\usebeamertemplate*{progress~bar~in~section~page}
+\par
+\end{minipage}
+\par
+\vspace{\baselineskip}
+}
+\defbeamertemplate{subsection~page}{SMProgressbarPage}{
+\centering
+\hspace*{\SMSectionHOffset}
+\begin{minipage}{22em}
+\raggedright
+\usebeamertemplate*{section~title}\\[-1ex]
+\usebeamertemplate*{progress~bar~in~section~page}
+\par
+\usebeamertemplate*{subsection~title}
+\end{minipage}
+\par
+\vspace{\baselineskip}
+}
+\defbeamertemplate{subsubsection~page}{SMProgressbarPage}{
+\centering
+\hspace*{\SMSectionHOffset}
+\begin{minipage}{22em}
+\raggedright
+\usebeamertemplate*{section~title}\\[-1ex]
+\usebeamertemplate*{progress~bar~in~section~page}
+\par
+\usebeamertemplate*{subsection~title}
+\par
+\usebeamertemplate*{subsubsection~title}
+\end{minipage}
+\par
+\vspace{\baselineskip}
+}
+\defbeamertemplate{background~canvas}{SMPart}{
+\ifbeamercolorempty[bg]{normal~text}{}{\color{bg}\vrule width\paperwidth height\paperheight}
+}
+\defbeamertemplate{background~canvas}{SMSection}{
+\setbeamertemplate{background~canvas}[SMPart]
+\usebeamertemplate{background~canvas}
+}
+\defbeamertemplate{background~canvas}{SMSubsection}{
+\setbeamertemplate{background~canvas}[SMPart]
+\usebeamertemplate{background~canvas}
+}
+\defbeamertemplate{background~canvas}{SMSubsubsection}{
+\setbeamertemplate{background~canvas}[SMPart]
+\usebeamertemplate{background~canvas}
+}
+\defbeamertemplate{part~frame}{SMSimple}{
+\setbeamertemplate{background~canvas}[SMPart]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[empty]
+\setbeamertemplate{part~page}[SMProgressbarPage]
+   % \usebeamertemplate*{part~page}% activated automatically
+}
+
+\defbeamertemplate{section~frame}{SMSimple}{
+\setbeamertemplate{background~canvas}[SMSection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[empty]
+\setbeamertemplate{section~page}[SMProgressbarPage]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+
+\defbeamertemplate{subsection~frame}{SMSimple}{
+\setbeamertemplate{background~canvas}[SMSubsection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[empty]
+\setbeamertemplate{subsection~page}[SMProgressbarPage]
+   % \usebeamertemplate*{subsection~page}% activated automatically
+}
+
+\defbeamertemplate{subsubsection~frame}{SMSimple}{
+\setbeamertemplate{background~canvas}[SMSubsubsection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[empty]
+\setbeamertemplate{subsubsection~page}[SMProgressbarPage]
+   % \usebeamertemplate*{subsubsection~page}% activated automatically
+}
+
+\defbeamertemplate{part~frame}{SMProgressbar}{
+\setbeamertemplate{background~canvas}[SMPart]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[display]
+\setbeamertemplate{part~page}[SMProgressbarPage]
+   % \usebeamertemplate*{part~page}% activated automatically
+}
+
+\defbeamertemplate{section~frame}{SMProgressbar}{
+\setbeamertemplate{background~canvas}[SMSection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[display]
+\setbeamertemplate{section~page}[SMProgressbarPage]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+
+\defbeamertemplate{subsection~frame}{SMProgressbar}{
+\setbeamertemplate{background~canvas}[SMSubsection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[display]
+\setbeamertemplate{subsection~page}[SMProgressbarPage]
+   % \usebeamertemplate*{subsection~page}% activated automatically
+}
+
+\defbeamertemplate{subsubsection~frame}{SMProgressbar}{
+\setbeamertemplate{background~canvas}[SMSubsubsection]
+\setbeamercolor{frametitle}{
+use={frametitleSection, normal~text},
+bg=frametitleSection.fg,
+fg=normal~text.fg
+}
+\setbeamertemplate{progress~bar~in~section~page}[display]
+\setbeamertemplate{subsubsection~page}[SMProgressbarPage]
+   % \usebeamertemplate*{subsubsection~page}% activated automatically
+}
+\defbeamertemplate{progress~bar~in~splitvert}{empty}{
+\vspace{-0.5ex}
+}
+
+\defbeamertemplate*{progress~bar~in~splitvert}{display}{
+\setlength{\SM@progressonsectionpage}{
+\paperwidth * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+\begin{tikzpicture}
+\fill[bg] (0,0) rectangle (\paperwidth, \SMProgressSectionHeight);
+\fill[fg] (0,0) rectangle (\SM@progressonsectionpage, \SMProgressSectionHeight);
+\end{tikzpicture}
+}
+
+\defbeamertemplate{part~page}{SMSplitvertPage}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor] (current~page.north~west) rectangle ([shift = {(0, -0.45\paperheight)}] current~page.north~east);
+\end{tikzpicture}
+}
+
+\begin{minipage}[b][0.45\paperheight]{\textwidth}
+\centering
+\usebeamertemplate*{part~title}
+\end{minipage}
+\\[-0.1\baselineskip]
+\hspace*{-1.0cm}\noindent
+\usebeamertemplate*{progress~bar~in~splitvert}
+
+\newline
+\begin{minipage}[t][0.5\paperheight]{\textwidth}
+\end{minipage}
+}
+\defbeamertemplate{part~frame}{SMSplitvertProgressbar}{
+\setbeamertemplate{background~canvas}[SMPart]
+\setbeamercolor{part~title}{use=frametitle, fg=frametitle.fg}
+\setbeamertemplate{progress~bar~in~splitvert}[display]
+\setbeamertemplate{part~page}[SMSplitvertPage]
+   % \usebeamertemplate*{part~page}% activated automatically
+}
+\defbeamertemplate{part~frame}{SMSplitvertSimple}{
+\setbeamertemplate{background~canvas}[SMPart]
+\setbeamercolor{part~title}{use=frametitle, fg=frametitle.fg}
+\setbeamertemplate{progress~bar~in~splitvert}[empty]
+\setbeamertemplate{part~page}[SMSplitvertPage]
+   % \usebeamertemplate*{part~page}% activated automatically
+}
+\defbeamertemplate{section~page}{SMSplitvertPage}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor] (current~page.north~west) rectangle ([shift = {(0, -0.45\paperheight)}] current~page.north~east);
+\end{tikzpicture}
+}
+
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[b][0.45\paperheight]{\textwidth}
+\usebeamertemplate*{section~title}
+\end{minipage}
+\\[-0.1\baselineskip]
+\hspace*{-1.0cm}\noindent
+\usebeamertemplate*{progress~bar~in~splitvert}
+
+\newline
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[t][0.5\paperheight]{\textwidth}
+\usebeamerfont{subsection~title}
+\usebeamercolor[bg]{frametitle}
+\end{minipage}
+}
+\defbeamertemplate{section~frame}{SMSplitvertProgressbar}{
+\setbeamertemplate{background~canvas}[SMSection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamertemplate{progress~bar~in~splitvert}[display]
+\setbeamertemplate{section~page}[SMSplitvertPage]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+\defbeamertemplate{section~frame}{SMSplitvertSimple}{
+\setbeamertemplate{background~canvas}[SMSection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamertemplate{progress~bar~in~splitvert}[empty]
+\setbeamertemplate{section~page}[SMSplitvertPage]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+
+\defbeamertemplate{subsection~page}{SMSplitvertPage}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor] (current~page.north~west) rectangle ([shift = {(0, -0.45\paperheight)}] current~page.north~east);
+\end{tikzpicture}
+}
+
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[b][0.45\paperheight]{\textwidth}
+\usebeamertemplate*{section~title}
+\end{minipage}
+\\[-0.1\baselineskip]
+\hspace*{-1.0cm}\noindent
+\usebeamertemplate*{progress~bar~in~splitvert}
+
+\newline
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[t][0.5\paperheight]{\textwidth}
+\usebeamerfont{subsection~title}
+\usebeamercolor[bg]{frametitle}
+\usebeamertemplate*{subsection~title}
+\end{minipage}
+}
+\defbeamertemplate{subsection~frame}{SMSplitvertProgressbar}{
+\setbeamertemplate{background~canvas}[SMSubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamercolor{subsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamertemplate{progress~bar~in~splitvert}[display]
+\setbeamertemplate{subsection~page}[SMSplitvertPage]
+   % \usebeamertemplate*{subsection~page}% activated automatically
+}
+\defbeamertemplate{subsection~frame}{SMSplitvertSimple}{
+\setbeamertemplate{background~canvas}[SMSubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamercolor{subsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamertemplate{progress~bar~in~splitvert}[empty]
+\setbeamertemplate{subsection~page}[SMSplitvertPage]
+   % \usebeamertemplate*{subsection~page}% activated automatically
+}
+
+\defbeamertemplate{subsubsection~page}{SMSplitvertPage}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor] (current~page.north~west) rectangle ([shift = {(0, -0.45\paperheight)}] current~page.north~east);
+\end{tikzpicture}
+}
+
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[b][0.45\paperheight]{\textwidth}
+\usebeamertemplate*{section~title}
+\end{minipage}
+\\[-0.1\baselineskip]
+\hspace*{-1.0cm}\noindent
+\usebeamertemplate*{progress~bar~in~splitvert}
+
+\newline
+\hspace*{\SMSectionHOffset}
+\begin{minipage}[t][0.5\paperheight]{\textwidth}
+\usebeamerfont{subsubsection~title}
+\usebeamercolor[bg]{frametitle}
+\usebeamertemplate*{subsection~title}
+\par
+\usebeamertemplate*{subsubsection~title}
+\end{minipage}
+}
+\defbeamertemplate{subsubsection~frame}{SMSplitvertProgressbar}{
+\setbeamertemplate{background~canvas}[SMSubsubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamercolor{subsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamercolor{subsubsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamertemplate{progress~bar~in~splitvert}[display]
+\setbeamertemplate{subsubsection~page}[SMSplitvertPage]
+   % \usebeamertemplate*{subsubsection~page}% activated automatically
+}
+\defbeamertemplate{subsubsection~frame}{SMSplitvertSimple}{
+\setbeamertemplate{background~canvas}[SMSubsubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamercolor{section~title}{use=frametitle, fg=frametitle.fg}
+\setbeamercolor{subsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamercolor{subsubsection~title}{use=frametitle, fg=frametitle.bg}
+\setbeamertemplate{progress~bar~in~splitvert}[empty]
+\setbeamertemplate{subsubsection~page}[SMSplitvertPage]
+   % \usebeamertemplate*{subsubsection~page}% activated automatically
+}
+\defbeamertemplate{part~page}{SMProgressvert}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+\setlength{\SM@progressonsectionpage}{
+\paperheight * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\colorlet{SM@@tempColorB}{fg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor]
+([shift={(0,0)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~east) --
+([shift={(0,0)}] current~page.north~east)
+--cycle;
+\node[color=SM@@tempColorB, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{part~title}
+\partname \ \insertromanpartnumber
+\\[1.75ex]
+\insertpart
+}
+};
+
+\clip
+([shift={(0,0)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+
+\fill[color=SM@@tempColorB]
+([shift={(0,0)}]current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+\node[color=SM@@tempColor, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{part~title}
+\partname \ \insertromanpartnumber
+\\
+\insertpart
+}
+};
+\end{tikzpicture}
+}
+}
+\defbeamertemplate{part~frame}{SMProgressvert}{
+\setbeamertemplate{background~canvas}[SMPart]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamertemplate{part~page}[SMProgressvert]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+
+\defbeamertemplate{section~page}{SMProgressvert}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+\setlength{\SM@progressonsectionpage}{
+\paperheight * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\colorlet{SM@@tempColorB}{fg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor]
+([shift={(0,0)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~east) --
+([shift={(0,0)}] current~page.north~east)
+--cycle;
+\node[color=SM@@tempColorB, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+};
+
+\clip
+([shift={(0,0)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+
+\fill[color=SM@@tempColorB]
+([shift={(0,0)}]current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+\node[color=SM@@tempColor, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+};
+\end{tikzpicture}
+}
+}
+\defbeamertemplate{section~frame}{SMProgressvert}{
+\setbeamertemplate{background~canvas}[SMSection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamertemplate{section~page}[SMProgressvert]
+   % \usebeamertemplate*{section~page}% activated automatically
+}
+
+\defbeamertemplate{subsection~page}{SMProgressvert}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+\setlength{\SM@progressonsectionpage}{
+\paperheight * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\colorlet{SM@@tempColorB}{fg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor]
+([shift={(0,0)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~east) --
+([shift={(0,0)}] current~page.north~east)
+--cycle;
+\node[color=SM@@tempColorB, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+\\
+{\usebeamerfont{subsection~title}
+\insertsectionnumber.\insertsubsectionnumber.~
+\insertsubsectionhead}
+};
+
+\clip
+([shift={(0,0)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+
+\fill[color=SM@@tempColorB]
+([shift={(0,0)}]current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+\node[color=SM@@tempColor, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+\\
+{\usebeamerfont{subsection~title}
+\insertsectionnumber.\insertsubsectionnumber.~
+\insertsubsectionhead}
+};
+\end{tikzpicture}
+}
+}
+\defbeamertemplate{subsection~frame}{SMProgressvert}{
+\setbeamertemplate{background~canvas}[SMSubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamertemplate{subsection~page}[SMProgressvert]
+   % \usebeamertemplate*{subsection~page}% activated automatically
+}
+
+\defbeamertemplate{subsubsection~page}{SMProgressvert}{
+\ifx\beamer@frametitle\@empty
+\vspace*{-0.05\paperheight}
+\else %}{
+\vspace*{-0.165\paperheight}
+\fi %}
+\setlength{\SM@progressonsectionpage}{
+\paperheight * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+{
+\usebeamercolor{frametitle}\colorlet{SM@@tempColor}{bg}
+\colorlet{SM@@tempColorB}{fg}
+\begin{tikzpicture}[overlay, remember~picture]
+\fill[color=SM@@tempColor]
+([shift={(0,0)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~west) --
+([shift={(0,-\SM@progressonsectionpage)}] current~page.north~east) --
+([shift={(0,0)}] current~page.north~east)
+--cycle;
+\node[color=SM@@tempColorB, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+\\
+{\usebeamerfont{subsection~title}
+\insertsectionnumber.\insertsubsectionnumber.~
+\insertsubsectionhead}
+\\
+{\usebeamerfont{subsubsection~title}
+\insertsectionnumber.\insertsubsectionnumber.\insertsubsubsectionnumber.~
+\insertsubsubsectionhead}
+};
+
+\clip
+([shift={(0,0)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+
+\fill[color=SM@@tempColorB]
+([shift={(0,0)}]current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~west) --
+([shift={(0,\paperheight-\SM@progressonsectionpage)}] current~page.south~east) --
+([shift={(0,0)}] current~page.south~east)
+--cycle;
+\node[color=SM@@tempColor, align=left, text~width=0.8\textwidth] at ([shift={(\SMSectionHOffset,0)}] current~page.center) {
+{\usebeamerfont{section~title}
+\insertsectionnumber.~
+\insertsectionhead}
+\\
+{\usebeamerfont{subsection~title}
+\insertsectionnumber.\insertsubsectionnumber.~
+\insertsubsectionhead}
+\\
+{\usebeamerfont{subsubsection~title}
+\insertsectionnumber.\insertsubsectionnumber.\insertsubsubsectionnumber.~
+\insertsubsubsectionhead}
+};
+\end{tikzpicture}
+}
+}
+\defbeamertemplate{subsubsection~frame}{SMProgressvert}{
+\setbeamertemplate{background~canvas}[SMSubsubsection]
+\setlength{\SMSectionHOffset}{1cm}
+\setbeamertemplate{subsubsection~page}[SMProgressvert]
+   % \usebeamertemplate*{subsubsection~page}% activated automatically
+}
+
+% #1 the \AtBegin... command, #2 the page command, #3 the macro holding the
+% frame options, #4 the frame option that selects the look.
+\cs_new_protected:Npn \__SM_enable_divider:nnnn #1#2#3#4
+  {
+    \use:c {#1}
+      {
+        \ifbeamer@inframe
+          \use:c {#2}
+        \else
+          \tl_if_empty:cTF {#3}
+            { \frame [ c, #4 ] { \use:c {#2} } }
+            {
+              \edef \l__SM_divider_options_tmp { c, \use:c {#3} , #4 }
+              \expandafter \frame \expandafter [ \l__SM_divider_options_tmp ] { \use:c {#2} }
+            }
+        \fi
+      }
+  }
+\NewDocumentCommand \SMDividerFrames { m }
+  {
+    \AtBeginPart { }
+    \AtBeginSection { }
+    \AtBeginSubsection { }
+    \AtBeginSubsubsection { }
+    \clist_map_inline:nn {#1}
+      {
+        \str_case:nnF {##1}
+          {
+            { none } { }
+            { part }
+              { \__SM_enable_divider:nnnn { AtBeginPart } { partpage } { SMPartPageOptions } { part } }
+            { section }
+              { \__SM_enable_divider:nnnn { AtBeginSection } { sectionpage } { SMSectionPageOptions } { section } }
+            { subsection }
+              { \__SM_enable_divider:nnnn { AtBeginSubsection } { subsectionpage } { SMSubsectionPageOptions } { subsec } }
+            { subsubsection }
+              { \__SM_enable_divider:nnnn { AtBeginSubsubsection } { subsubsectionpage } { SMSubsubsectionPageOptions } { subsubsec } }
+          }
+          { \msg_error:nnnn { SlideMage } { unknown-choice } {##1} { SMDividerFrames } }
+      }
+  }
+\NewDocumentCommand \SMDividerLook { m }
+  {
+    \clist_map_inline:nn { part, section, subsection, subsubsection }
+      {
+        \cs_if_exist:cTF { beamer@@tmpop@##1~frame@#1 }
+          { \setbeamertemplate{##1~frame}[#1] }
+          { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMDividerLook } }
+      }
+  }
+\SMDividerLook { SMProgressbar }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%   OUTER     %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage{xfp}
+\RequirePackage{calc}
+\RequirePackage{tikz}
+
+% No navigation symbols, no headline.
+\setbeamertemplate{navigation~symbols}{}
+\setbeamertemplate{headline}{}
+
+% ---- Frame title ----------------------------------------------------------
+% The space around the frame title. Templates set these lengths.
+\newlength{\SMFrametitleTopPadding}
+\newlength{\SMFrametitleBottomPadding}
+\newlength{\SMFrametitleLeftPadding}
+\newlength{\SMFrametitleRightPadding}
+\setlength{\SMFrametitleTopPadding}{2.2ex}
+\setlength{\SMFrametitleBottomPadding}{2.2ex}
+\setlength{\SMFrametitleLeftPadding}{2.2ex}
+\setlength{\SMFrametitleRightPadding}{2.2ex}
+\providecommand{\SM@strut}{
+  \vphantom{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz (/)}
+}
+
+\providecommand{\SM@frametitlestrut@start}{
+  \rule{0pt}{\SMFrametitleTopPadding + \totalheightof{X}}
+}
+\providecommand{\SM@frametitlestrut@end}{
+  \rule[-\SMFrametitleBottomPadding]{0pt}{\SMFrametitleBottomPadding}
+}
+
+% The institute logo in the frame title; SlideMage_base.tex redefines it.
+\providecommand{\SMInstituteLogo}[1][4ex]{
+}
+
+\providecommand{\SMFrameSubtitleSep}{
+  \ ---~
+}
+\newlength{\SMFrameSubtitleStrutEnd}
+\setlength{\SMFrameSubtitleStrutEnd}{0pt}
+
+% Title and subtitle on one line, the logo at the right end.
+\defbeamertemplate{frametitle}{SMSubsameline}{
+  \nointerlineskip
+  \begin{beamercolorbox}[
+    wd=\paperwidth,
+    sep=0pt,
+    leftskip=\SMFrametitleLeftPadding,
+    rightskip=\SMFrametitleRightPadding,
+  ]{frametitle}
+  \SM@frametitlestrut@start
+  \insertframetitle
+  \ifx\insertframesubtitle\@empty
+  \else
+    {\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\SMFrameSubtitleSep \insertframesubtitle}
+    \vspace*{\SMFrameSubtitleStrutEnd}
+  \fi
+  \nolinebreak
+  \hfill{
+    \raisebox{0pt}[0pt][0pt]{
+      \raisebox{.5\fontcharht\font`E-0.5\height}{
+        \SMInstituteLogo
+      }
+    }
+  }
+  \SM@frametitlestrut@end
+  \end{beamercolorbox}
+}
+\setbeamertemplate{frametitle}[SMSubsameline]
+
+% The continuation marker of a frame broken by allowframebreaks: (i), (ii), ...
+\defbeamertemplate*{frametitle~continuation}{SMRoman}{
+  \usebeamerfont{frametitle}
+  {
+    (\romannumeral \insertcontinuationcount)
+  }
+}
+
+% ---- Footline -------------------------------------------------------------
+\newlength{\SMFootlineVOffset}
+\newlength{\SMFootlineHeight}
+\newlength{\SMFootlineDepth}
+\newlength{\SMFootlineHRightOffset}
+\newlength{\SMRightFooterPadding}
+
+\setlength{\SMFootlineVOffset}{-0.5ex}
+\setlength{\SMFootlineDepth}{0.1ex}
+\setlength{\SMFootlineHeight}{1.5ex}
+\setlength{\SMFootlineHRightOffset}{\spaceskip}
+\setlength{\SMRightFooterPadding}{3.5ex}
+
+\defbeamertemplate*{frame~footer}{SMEmpty}{}
+\defbeamertemplate*{footline}{SMFootline}{
+  \vspace*{\SMFootlineVOffset}
+  \begin{beamercolorbox}[
+    wd=\textwidth,
+    sep=0pt,
+    leftskip=3ex,
+    rightskip=3ex,
+    ht={\SMFootlineHeight},
+    dp={\SMFootlineDepth},
+  ]{footline}
+  \ifbeamertemplateempty{frame~footer}{
+    \hfill \ \SM@strut
+  }{
+    \usebeamertemplate*{frame~footer}
+  }
+  \hspace{\SMRightFooterPadding}
+  {\usebeamertemplate{page~number~in~head/foot}}
+  \hspace*{\SMFootlineHRightOffset}
+  \end{beamercolorbox}
+}
+
+% No page numbering.
+\defbeamertemplate{page~number~in~head/foot}{none}{ }
+\setbeamertemplate{page~number~in~head/foot}[none]
+
+
+% ---- Mini frames and progress bars (off by default) -----------------------
+% \SMMiniFramesPosition{head|foot|left|right|none} and
+% \SMProgressBarPosition{head|frametitle|foot|left|right|none} put the mini
+% frame navigation and the progress bar into the headline, the frame title, the
+% footline or the left or right sidebar. Use them in the preamble, between
+% \input{SlideMage_setup} and \input{SlideMage_base}; they (re)build the
+% headline, frame title, footline and sidebar templates. Left and right need a
+% sidebar width (\setbeamersize{sidebar width left=...}).
+\newlength{\SM@temp@heightFrametitle}
+\newlength{\SM@temp@PaperheightFrametitle}
+\newlength{\SM@progressinheadfoot}
+\newlength{\SMProgressHeadFootLineheight}
+\setlength{\SMProgressHeadFootLineheight}{1.2ex}
+\tl_new:N \l__SM_minif_tmpa_tl
+\tl_new:N \l__SM_minif_tmpb_tl
+\newlength{\SM@temp@MiniframeSubsecDim}
+\newlength{\SM@temp@MiniframeSecDim}
+\def\SM@temp@lastSec{-1}
+
+\cs_new_protected:Nn \__SM_set_template:nn
+  {
+    \cs_if_exist:cTF { beamer@@tmpop@#1@#2 }
+      { \setbeamertemplate{#1}[#2] }
+      {
+        \PackageError{beamerthemeSlideMage}
+          { The~beamer~template~named~'#1'~with~the~option~'#2'~does~not~exist }
+          { helping~message~unknown~setbeamertemplate~option }
+      }
+  }
+
+\defbeamertemplate{section~in~head/foot}{SMSecSubsec}{
+  \insertsectionhead
+  \ifx\insertsubsection\empty\else
+    \ifdefempty{\subsecname}{\relax}{
+      \ \textbar\ \insertsubsectionhead
+    }
+  \fi
+}
+\defbeamertemplate{section~in~head/foot~shaded}{SMSecSubsec}{
+  \insertsectionhead
+}
+\defbeamertemplate{section~in~head/foot}{SMEmpty}{
+  \vspace{3.875ex}
+}
+\defbeamertemplate{section~in~head/foot~shaded}{SMEmpty}{
+  \vspace{3.875ex}
+}
+\defbeamertemplate*{mini~nav~progress~head/foot}{SMMiniFrames}
+{
+\begin{beamercolorbox}[ignorebg]{section~in~head/foot}
+\hfuzz=\paperwidth
+\insertnavigation{\paperwidth}
+\vspace{0.05cm}
+\end{beamercolorbox}
+}
+\defbeamertemplate*{mini~nav~progress~left}{SMMiniFrames}
+{
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-\SMProgressHeadFootLineheight}
+
+\vspace{-0.6\paperheight}
+\rotatebox{90}{
+\begin{beamercolorbox}[ignorebg]{section~in~head/foot}
+\hfuzz=\SM@temp@PaperheightFrametitle
+\insertnavigation{\SM@temp@PaperheightFrametitle}
+\end{beamercolorbox}
+}
+}
+\defbeamertemplate*{mini~nav~progress~right}{SMMiniFrames}
+{
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-\SMProgressHeadFootLineheight}
+
+\vspace{\SM@temp@heightFrametitle}
+\hspace{-2.3em}
+\rotatebox{-90}{
+\begin{beamercolorbox}[ignorebg]{section~in~head/foot}
+\hfuzz=\SM@temp@PaperheightFrametitle
+\insertnavigation{\SM@temp@PaperheightFrametitle}
+\end{beamercolorbox}
+}
+}
+
+%% Mini frame shapes
+%% Select the bullets shape
+\defbeamertemplate{mini~frame}{SMBox}
+{
+\begin{pgfpicture}{0pt}{0pt}{.1cm}{.1cm}
+\pgfpathrectangle{\pgfpointorigin}{\pgfpoint{0.1cm}{0.1cm}}
+\pgfusepath{fill,stroke}
+\end{pgfpicture}
+}[action]{
+\setbeamersize{mini~frame~size=.14cm, mini~frame~offset=.05cm}
+}
+\defbeamertemplate{mini~frame~in~current~subsection}{SMBox}
+{
+\begin{pgfpicture}{0pt}{0pt}{.1cm}{.1cm}
+\pgfpathrectangle{\pgfpointorigin}{\pgfpoint{0.1cm}{0.1cm}}
+\pgfusepath{stroke}
+\end{pgfpicture}
+}
+
+\defbeamertemplate{mini~frame}{SMMiniBox}
+{
+\begin{pgfpicture}{0pt}{0pt}{.05cm}{.05cm}
+\pgfpathrectangle{\pgfpointorigin}{\pgfpoint{0.05cm}{0.05cm}}
+\pgfusepath{fill,stroke}
+\end{pgfpicture}
+}[action]{
+\setbeamersize{mini~frame~size=.08cm, mini~frame~offset=.05cm}
+}
+\defbeamertemplate{mini~frame~in~current~subsection}{SMMiniBox}
+{
+\begin{pgfpicture}{0pt}{0pt}{.05cm}{.05cm}
+\pgfpathrectangle{\pgfpointorigin}{\pgfpoint{0.05cm}{0.05cm}}
+\pgfusepath{stroke}
+\end{pgfpicture}
+}
+
+\defbeamertemplate{mini~frame}{SMMiniBullet}
+{
+\beamer@xelatex@fixminiframes
+\begin{pgfpicture}{0pt}{0pt}{0.05cm}{0.05cm}
+\pgfpathcircle{\pgfpoint{0.03cm}{0.03cm}}{0.03cm}
+\pgfusepath{fill,stroke}
+\end{pgfpicture}
+}[action]{
+\setbeamersize{mini~frame~size=.09cm, mini~frame~offset=.05cm}
+}
+\defbeamertemplate{mini~frame~in~current~subsection}{SMMiniBullet}
+{
+\beamer@xelatex@fixminiframes
+\begin{pgfpicture}{0pt}{0pt}{0.05cm}{0.05cm}
+\pgfpathcircle{\pgfpoint{0.03cm}{0.03cm}}{0.03cm}
+\pgfusepath{stroke}
+\end{pgfpicture}
+}
+
+%% Mini frame bundles
+\defbeamertemplate*{miniframe~home}{beamer}{
+}
+\defbeamertemplate*{miniframe~current~slide}{beamer}{
+\usebeamertemplate{mini~frame}
+}
+\defbeamertemplate*{miniframe~done~current~section}{beamer}{
+\usebeamertemplate{mini~frame~in~current~subsection}
+}
+\defbeamertemplate*{miniframe~todo~current~section}{beamer}{
+\usebeamertemplate{mini~frame~in~current~subsection}
+}
+\defbeamertemplate*{miniframe~done~other~section}{beamer}{
+\usebeamertemplate{mini~frame~in~other~subsection}
+}
+\defbeamertemplate*{miniframe~todo~other~section}{beamer}{
+\usebeamertemplate{mini~frame~in~other~subsection}
+}
+\defbeamertemplate*{miniframe~section~current}{beamer}{}
+\defbeamertemplate*{miniframe~section~done}{beamer}{}
+\defbeamertemplate*{miniframe~section~todo}{beamer}{}
+\defbeamertemplate*{miniframe~subsection~current}{beamer}{}
+\defbeamertemplate*{miniframe~subsection~todo}{beamer}{}
+\defbeamertemplate*{miniframe~subsection~done}{beamer}{}
+\defbeamertemplate*{miniframe~section~done~in~other~section}{default}[1][50]
+{
+\color{fg!#1!bg}\usebeamertemplate{miniframe~section~done}
+}
+\defbeamertemplate*{miniframe~section~todo~in~other~section}{default}[1][50]
+{
+\color{fg!#1!bg}\usebeamertemplate{miniframe~section~todo}
+}
+\defbeamertemplate*{miniframe~subsection~done~in~other~section}{default}[1][50]
+{
+\color{fg!#1!bg}\usebeamertemplate{miniframe~subsection~done}
+}
+\defbeamertemplate*{miniframe~subsection~todo~in~other~section}{default}[1][50]
+{
+\color{fg!#1!bg}\usebeamertemplate{miniframe~subsection~todo}
+}
+
+\defbeamertemplate{miniframe~home}{SMMini}{
+\resizebox{0.85\beamer@boxsize}{\beamer@boxsize}{$\equiv$}
+}
+\defbeamertemplate{miniframe~current~slide}{SMMini}{
+\usebeamercolor[fg]{alerted~text}
+\usebeamertemplate{mini~frame}
+}
+\defbeamertemplate{miniframe~done~current~section}{SMMini}{
+\usebeamertemplate{mini~frame}
+}
+\defbeamertemplate{miniframe~todo~current~section}{SMMini}{
+\usebeamertemplate{mini~frame~in~current~subsection}
+}
+\defbeamertemplate{miniframe~done~other~section}{SMMini}[1][50]{
+\color{fg!#1!bg}\usebeamertemplate{mini~frame}
+}
+\defbeamertemplate{miniframe~todo~other~section}{SMMini}[1][50]{
+\color{fg!#1!bg}\usebeamertemplate{mini~frame~in~other~subsection}
+}
+\defbeamertemplate{miniframe~section~current}{SMMini}{
+\fontsize{3pt}{0pt}\selectfont
+\tl_use:N \l__SM_minif_tmpa_tl
+\hspace{1.pt}
+}
+\defbeamertemplate{miniframe~section~done}{SMMini}{
+\fontsize{3pt}{0pt}\selectfont
+\tl_use:N \l__SM_minif_tmpa_tl
+\hspace{1.pt}
+}
+\defbeamertemplate{miniframe~section~todo}{SMMini}{
+\fontsize{3pt}{0pt}\selectfont
+\tl_use:N \l__SM_minif_tmpa_tl
+\hspace{1.pt}
+}
+\defbeamertemplate{miniframe~subsection~current}{SMMini}{
+\usebeamercolor[fg]{alerted~text}
+\hspace{-0.15pt}
+\resizebox{\beamer@boxsize}{!}{\hspace{-0.75pt}$\blacklozenge$}
+}
+\defbeamertemplate{miniframe~subsection~todo}{SMMini}{
+\hspace{-0.15pt}
+\resizebox{\beamer@boxsize}{!}{\hspace{-0.75pt}$\lozenge$}
+}
+\defbeamertemplate{miniframe~subsection~done}{SMMini}{
+\hspace{-0.15pt}
+\resizebox{\beamer@boxsize}{!}{\hspace{-0.75pt}$\blacklozenge$}
+}
+
+\defbeamertemplate{miniframe~home}{SMNano}{
+\scalebox{0.5}[0.95]{$\equiv$}
+}
+\defbeamertemplate{miniframe~current~slide}{SMNano}{
+o
+}
+\defbeamertemplate{miniframe~done~current~section}{SMNano}{
+x
+}
+\defbeamertemplate{miniframe~todo~current~section}{SMNano}{
+$\cdot$
+}
+\defbeamertemplate{miniframe~done~other~section}{SMNano}{
+x
+}
+\defbeamertemplate{miniframe~todo~other~section}{SMNano}{
+$\cdot$
+}
+\defbeamertemplate{miniframe~section~current}{SMNano}{
+\tl_use:N \l__SM_minif_tmpa_tl
+}
+\defbeamertemplate{miniframe~section~done}{SMNano}{
+\tl_use:N \l__SM_minif_tmpa_tl
+}
+\defbeamertemplate{miniframe~section~todo}{SMNano}{
+\tl_use:N \l__SM_minif_tmpa_tl
+}
+\defbeamertemplate{miniframe~subsection~current}{SMNano}{
+\usebeamercolor[fg]{alerted~text}$\diamond$
+}
+\defbeamertemplate{miniframe~subsection~todo}{SMNano}{
+$\diamond$
+}
+\defbeamertemplate{miniframe~subsection~done}{SMNano}{
+$\diamond$
+}
+
+\defbeamertemplateparent{mini~frames~bundle}
+{  miniframe~home, miniframe~current~slide,
+miniframe~done~current~section, miniframe~todo~current~section, miniframe~done~other~section, miniframe~todo~other~section,
+miniframe~section~current, miniframe~section~done, miniframe~section~todo,
+miniframe~subsection~current, miniframe~subsection~done, miniframe~subsection~todo,
+}{}
+
+% Helpers of the \insertnavigation patches (see \SMMiniFramesSpreading).
+\providebool{SMZerosectionframes}
+\boolfalse{SMZerosectionframes}
+\providecommand{\SMInsertNavlength}{
+  \ifbool{SMZerosectionframes}{
+    \hskip-0.5ex~plus~1fill
+  }{
+    \hskip-1.875ex~plus-1fill
+  }%
+}
+\providecommand{\SMPatchInsertNav}{
+  \box\beamer@sectionbox\hfil\hskip.3cm
+}
+\providecommand{\SMPatchSectionentry}{
+  \hskip1.875ex~plus~1fill
+}
+\providecommand{\SMPatchSectionbox}{
+  \ht\beamer@sectionbox=1.875ex
+  \dp\beamer@sectionbox=0.75ex
+}
+
+% Beamer's \slideentry, extended with the section number and a subsection symbol
+% (installed by \__SM_install_nav_patches:).
+\newcommand{\SM@slideentry}[6]{%
+   %section number, subsection number, slide number, first/last frame, page number, part number
+\ifnum#6=\c@part\ifnum#3>0%\ifnum#6=\c@part\ifnum#1>0\ifnum#3>0 MODIF
+\ifbeamer@compress%
+\advance\beamer@xpos by1\relax%
+\else%
+\ifnum#2=0%
+\beamer@ypos@offset=1\relax%
+\fi%
+\beamer@xpos=#3\relax%
+\beamer@ypos=#2\relax%
+\advance\beamer@ypos by \beamer@ypos@offset\relax%
+\fi%
+%% Add section number and subsection symbol to miniframes.
+%% MODIF below, inspired from https://tex.stackexchange.com/questions/722523
+\ifnum#3=1%\c@subsectionslide=#3 % if =1, so it has been reset  => new section or subsection
+\ifnum#1>0\ifnum#2<2% => there no subsection in this section.
+\ifnum\SM@temp@lastSec=#1%
+\else%
+\tl_set:Nn \l__SM_minif_tmpa_tl {#1}
+\settowidth{\SM@temp@MiniframeSecDim}{\usebeamertemplate{miniframe~section~current}}%
+\hbox to 0pt{%
+\beamer@tempdim=-\beamer@vboxoffset%
+\advance\beamer@tempdim by-\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@ypos%
+\advance\beamer@tempdim by -.05cm%
+\raise\beamer@tempdim\hbox{%
+\beamer@tempdim=\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@xpos%
+\advance\beamer@tempdim by -\beamer@boxsize%
+\advance\beamer@tempdim by -\SM@temp@MiniframeSecDim% NEW
+\advance\beamer@tempdim by 1pt%
+\kern\beamer@tempdim%
+\global\beamer@section@min@dim\beamer@tempdim%
+\hbox{\beamer@link(#4){%
+\ifnum\c@section=#1%
+\ifnum\c@subsectionslide=#3%
+\usebeamertemplate{miniframe~section~current}
+\else%
+\ifnum\c@subsectionslide<#3
+\usebeamertemplate{miniframe~section~todo}
+\else%
+\usebeamertemplate{miniframe~section~done}
+\fi%
+\fi%
+\else% \ifnum\c@section=#1%
+\ifnum\c@section<#1
+\usebeamertemplate{miniframe~section~todo~in~other~section}
+\else%
+\usebeamertemplate{miniframe~section~done~in~other~section}
+\fi%
+\fi% \ifnum\c@section=#1
+}}%
+}%
+}%
+\def\SM@temp@lastSec{#1}%
+\fi%
+\fi\fi%
+\ifnum#2>0%
+\ifbeamertemplateempty{miniframe~subsection~current}{
+}{
+\tl_set:Nn \l__SM_minif_tmpb_tl {#2}
+\settowidth{\SM@temp@MiniframeSubsecDim}{}%\usebeamertemplate{miniframe~subsection~current}}%
+\addtolength{\SM@temp@MiniframeSubsecDim}{+1.\beamer@boxsize}%
+\advance\beamer@xpos by1\relax%
+\hbox to 0pt{%
+\beamer@tempdim=-\beamer@vboxoffset%
+\advance\beamer@tempdim by-\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@ypos%
+\advance\beamer@tempdim by -.05cm%
+\raise\beamer@tempdim\hbox{%
+\beamer@tempdim=\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@xpos%
+\advance\beamer@tempdim by -\beamer@boxsize%
+\advance\beamer@tempdim by -\SM@temp@MiniframeSubsecDim% NEW
+\advance\beamer@tempdim by 1pt%
+\kern\beamer@tempdim%
+\global\beamer@section@min@dim\beamer@tempdim%
+\hbox{\beamer@link(#4){%
+\ifnum\c@section=#1%
+\ifnum\c@subsection=#2%
+\ifnum\c@subsectionslide=#3%
+\usebeamertemplate{miniframe~subsection~current}
+\else%
+\ifnum\c@subsectionslide<#3
+\usebeamertemplate{miniframe~subsection~todo}
+\else%
+\usebeamertemplate{miniframe~subsection~done}
+\fi%
+\fi%
+\else% \ifnum\c@subsection=#2%
+\ifnum\c@subsection<#2
+\usebeamertemplate{miniframe~subsection~todo}
+\else%
+\usebeamertemplate{miniframe~subsection~done}
+\fi%
+\fi% \ifnum\c@subsection=#2%
+\else% \ifnum\c@section=#1%
+\ifnum\c@section<#1
+\usebeamertemplate{miniframe~subsection~todo~in~other~section}
+\else%
+\usebeamertemplate{miniframe~subsection~done~in~other~section}
+\fi%
+\fi% \ifnum\c@section=#1
+}}% \hbox{\beamer@link
+}% raisebox
+}% hbox
+}% end if template empty
+\fi% \ifnum#2>0
+\else
+\ifbeamer@compress%
+\else%
+\ifbeamertemplateempty{miniframe~subsection~current}{
+}{
+\advance\beamer@xpos by 1\relax%
+}
+\fi%
+\fi% \ifnum#3=1
+
+%% end of modif to add section number and subsection symbol.
+\hbox to 0pt{%
+\beamer@tempdim=-\beamer@vboxoffset%
+\advance\beamer@tempdim by-\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@ypos%
+\advance\beamer@tempdim by -.05cm%
+\raise\beamer@tempdim\hbox{%
+\beamer@tempdim=\beamer@boxsize%
+\multiply\beamer@tempdim by\beamer@xpos%
+\advance\beamer@tempdim by -\beamer@boxsize%
+\advance\beamer@tempdim by 1pt%
+\kern\beamer@tempdim
+\global\beamer@section@min@dim\beamer@tempdim
+\hbox{\beamer@link(#4){%
+\usebeamerfont{mini~frame}%
+%%
+%% CHANGE FROM HERE: I rewrote this part.
+\def\SM@temp@i{1/1}
+\def\SM@temp@ii{#4}
+\ifx\SM@temp@i\SM@temp@ii
+\usebeamertemplate{miniframe~home}
+\else
+\ifnum\c@section=#1%
+\ifnum\c@subsection=#2%
+\usebeamercolor[fg]{mini~frame}%
+\ifnum\c@subsectionslide=#3%
+\usebeamertemplate{miniframe~current~slide}
+\else%
+\ifnum\c@subsectionslide<#3
+\usebeamertemplate{miniframe~todo~current~section}
+\else%
+\usebeamertemplate{miniframe~done~current~section}
+\fi%
+\fi%
+\else% \ifnum\c@subsection=#2%
+\usebeamercolor{mini~frame}%
+\ifnum\c@subsection<#2
+\usebeamertemplate{miniframe~todo~other~section}
+\else%
+\usebeamertemplate{miniframe~done~other~section}
+\fi%
+\fi% \ifnum\c@subsection=#2%
+\else% \ifnum\c@section=#1%
+\usebeamercolor{mini~frame}%
+\ifnum\c@section<#1
+\usebeamertemplate{miniframe~todo~other~section}
+\else%
+\usebeamertemplate{miniframe~done~other~section}
+\fi%
+\fi% \ifnum\c@section=#1
+\fi% \ifx\SM@temp@i\SM@temp@ii
+}}}\hskip-10cm plus 1fil%
+}\fi% \ifnum#1>0\ifnum#3>0%
+\else% \ifnum#6=\c@part
+\fakeslideentry{#1}{#2}{#3}{#4}{#5}{#6}%
+\fi\ignorespaces%
+}%
+
+\ExplSyntaxOff
+\newcommand{\SM@patch@navigation}{%
+  \patchcmd{\insertnavigation}{\hskip-1.875ex plus-1fill}{%
+    \ifnum\value{section}=0%
+      \ifnum\value{framenumber}>0%
+        \hskip-0ex%
+        \global\booltrue{SMZerosectionframes}%
+      \fi\fi%
+    \SMInsertNavlength%
+  }{}{}%
+  % Remove hfill between sections => flush right bullet bar, if not corrected.
+  \patchcmd{\sectionentry}{\hskip1.875ex plus 1fill}{\SMPatchSectionentry}{}{}%
+  % Centering the bullet bar
+  \patchcmd{\insertnavigation}{\box\beamer@sectionbox\hfil\hskip.3cm}{\SMPatchInsertNav}{}{}%
+  \patchcmd{\insertnavigation}{\ht\beamer@sectionbox=1.875ex%
+    \dp\beamer@sectionbox=0.75ex%
+  }{%
+    \SMPatchSectionbox
+  }{}{}%
+  \patchcmd{\sectionentry}{\ht\beamer@sectionbox=1.875ex%
+    \dp\beamer@sectionbox=0.75ex%
+  }{%
+    \SMPatchSectionbox
+  }{}{}%
+}
+\ExplSyntaxOn
+\bool_new:N \g__SM_nav_patched_bool
+\cs_new_protected:Nn \__SM_install_nav_patches:
+  {
+    \bool_if:NF \g__SM_nav_patched_bool
+      {
+        \bool_gset_true:N \g__SM_nav_patched_bool
+        \let \slideentry \SM@slideentry
+        \SM@patch@navigation
+      }
+  }
+
+%% Progress bars
+\cs_new_protected:Npn \__SM_rectangle_box_progressbar:n #1
+{
+\setlength{\SM@progressinheadfoot}{
+#1 * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+
+\begin{beamercolorbox}[wd=#1]{progress~bar~in~head/foot}
+\begin{tikzpicture}
+\usebeamercolor{progress~bar~in~head/foot}
+
+\fill[color=progress~bar~in~head/foot.bg]
+(0pt, 0pt) rectangle ++ (#1, \SMProgressHeadFootLineheight)
+;
+
+\bool_if:NTF \g__SM_progbar_advancement_tlbr_bool {
+\fill[color=progress~bar~in~head/foot.fg]
+(0pt, 0pt) rectangle ++ (\SM@progressinheadfoot, \SMProgressHeadFootLineheight)
+;
+}{
+\fill[color=progress~bar~in~head/foot.fg]
+(#1, \SMProgressHeadFootLineheight) rectangle ++ (-\SM@progressinheadfoot, -\SMProgressHeadFootLineheight)
+;
+}
+
+\bool_if:NTF \g__SM_pmfn_bool {
+\node at (#1/2, \SMProgressHeadFootLineheight/2)
+[text~height=0.1pt, text~depth=0.05pt, inner~sep=0pt] %draw=red,
+{
+\usebeamercolor[fg]{normal~text}
+\raisebox{0.5\SMProgressHeadFootLineheight+1.4pt}[0pt][0pt]{
+\hfuzz=#1
+\insertnavigation{#1}
+}
+}
+;
+}{
+}
+\end{tikzpicture}
+\end{beamercolorbox}
+}
+
+\defbeamertemplate{progress~bar~in~head/foot}{SMRectangle}{
+\nointerlineskip
+\__SM_rectangle_box_progressbar:n {\paperwidth}
+}
+
+\defbeamertemplate{progress~bar~in~left}{SMRectangle}{
+\nointerlineskip
+
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+
+\vspace{0.12275\paperheight}
+\rotatebox{90}{
+\__SM_rectangle_box_progressbar:n {\SM@temp@PaperheightFrametitle}
+}
+}
+\defbeamertemplate{progress~bar~in~right}{SMRectangle}{
+\nointerlineskip
+
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+
+\hspace{-\SMProgressHeadFootLineheight}
+\vspace{\SM@temp@heightFrametitle-27.75pt}
+\rotatebox{-90}{
+\__SM_rectangle_box_progressbar:n {\SM@temp@PaperheightFrametitle}
+}
+}
+
+\cs_new_protected:Npn \__SM_rounded_box_progressbar:nnnn #1#2#3#4
+{
+\setlength{\SM@progressinheadfoot}{
+#2#1 * \ratio{\insertframenumber pt}{\inserttotalframenumber pt}
+}
+
+\begin{beamercolorbox}[wd=#1, ht=1.035\SMProgressHeadFootLineheight]{#3}
+\;\hfill
+\begin{tikzpicture}[rounded~corners=0.5\SMProgressHeadFootLineheight, very~thin]
+\usebeamercolor{progress~bar~in~head/foot}
+
+\shade[top~color=progress~bar~in~head/foot.bg!65, bottom~color=progress~bar~in~head/foot.bg!65, middle~color=progress~bar~in~head/foot.bg]
+(0pt, 0pt) rectangle ++ (#2#1, \SMProgressHeadFootLineheight)
+;
+
+\bool_if:NTF \g__SM_progbar_advancement_tlbr_bool {
+\shade[draw=progress~bar~in~head/foot.fg, top~color=progress~bar~in~head/foot.fg!70, bottom~color=progress~bar~in~head/foot.fg!70, middle~color=progress~bar~in~head/foot.fg]
+(0pt, 0pt) rectangle ++ (\SM@progressinheadfoot, \SMProgressHeadFootLineheight)
+;
+}{
+\shade[draw=progress~bar~in~head/foot.fg, top~color=progress~bar~in~head/foot.fg!70, bottom~color=progress~bar~in~head/foot.fg!70, middle~color=progress~bar~in~head/foot.fg]
+(#2#1, \SMProgressHeadFootLineheight) rectangle ++ (-\SM@progressinheadfoot, -\SMProgressHeadFootLineheight)
+;
+}
+
+\bool_if:NTF \g__SM_pmfn_bool {
+\node at (#2#1/2, \SMProgressHeadFootLineheight/2)
+[text~height=0.1pt, text~depth=0.05pt, inner~sep=0pt] %draw=red,
+{
+\usebeamercolor[fg]{normal~text}
+\raisebox{0.5\SMProgressHeadFootLineheight+1.4pt}[0pt][0pt]{
+\hfuzz=#2#1
+\insertnavigation{#2#1}
+}
+}
+;
+}{
+}
+\end{tikzpicture}
+#4
+\hfill \;
+\end{beamercolorbox}
+}
+
+\defbeamertemplate{progress~bar~in~head/foot}{SMRoundedBox}{
+\nointerlineskip
+\__SM_rounded_box_progressbar:nnnn {\paperwidth}{0.93}{footline}{
+\hfill
+\raisebox{0.5\SMProgressHeadFootLineheight-1.75pt}[0pt][0pt]{
+\fontsize{5pt}{0pt}\selectfont
+\usebeamercolor[fg]{normal~text}
+\fp_eval:n {round(\insertframenumber*100/\inserttotalframenumber,0)}\,\%
+}
+}
+}
+
+\defbeamertemplate{progress~bar~in~left}{SMRoundedBox}{
+\nointerlineskip
+
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+
+\vspace{0.12275\paperheight}
+\rotatebox{90}{
+\__SM_rounded_box_progressbar:nnnn {\SM@temp@PaperheightFrametitle}{0.89}{footline}{
+\hfill
+\raisebox{0.5\SMProgressHeadFootLineheight-1.75pt}[0pt][0pt]{
+\fontsize{5pt}{0pt}\selectfont
+\fp_eval:n {round(\insertframenumber*100/\inserttotalframenumber,0)}\,\%
+}
+}
+}
+}
+\defbeamertemplate{progress~bar~in~right}{SMRoundedBox}{
+\nointerlineskip
+
+\settoheight{\SM@temp@heightFrametitle}{\SM@strut}
+\addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
+
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+
+\hspace{-\SMProgressHeadFootLineheight-0.2pt}
+\vspace{\SM@temp@heightFrametitle-27.75pt}
+\rotatebox{-90}{
+\__SM_rounded_box_progressbar:nnnn {\SM@temp@PaperheightFrametitle}{0.89}{footline}{
+\hfill
+\raisebox{0.5\SMProgressHeadFootLineheight-1.75pt}[0pt][0pt]{
+\fontsize{5pt}{0pt}\selectfont
+\fp_eval:n {round(\insertframenumber*100/\inserttotalframenumber,0)}\,\%
+}
+}
+}
+}
+
+% ---- The switches ------------------------------------------------------------
+% How the mini frames are spread in the bar:
+% spreading (default), centering, left or right.
+\NewDocumentCommand \SMMiniFramesSpreading { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { spreading }
+          {
+            \renewcommand{\SMInsertNavlength}{
+              \ifbool{SMZerosectionframes}{
+                \hskip-0.5ex
+              }{
+                \hskip-1.875ex~plus-1fill
+              }%
+            }
+            \renewcommand{\SMPatchInsertNav}{
+              \box\beamer@sectionbox\hfil\hskip.3cm
+            }
+            \renewcommand{\SMPatchSectionentry}{
+              \hskip1.875ex~plus~1fill
+            }
+          }
+        { centering }
+          {
+            \renewcommand{\SMInsertNavlength}{
+              \ifbool{SMZerosectionframes}{
+                \hskip-0.5ex~plus~1fill
+              }{
+                \hfill
+              }%
+            }
+            \renewcommand{\SMPatchInsertNav}{
+              \box\beamer@sectionbox\hfill\hskip.3cm
+            }
+            \renewcommand{\SMPatchSectionentry}{
+              \hskip~3.5ex
+            }
+          }
+        { left }
+          {
+            \renewcommand{\SMInsertNavlength}{
+              \ifbool{SMZerosectionframes}{
+                \hskip-0.5ex
+              }{
+                \hskip-1.875ex~plus-1fill
+              }%
+            }
+            \renewcommand{\SMPatchInsertNav}{
+              \box\beamer@sectionbox\hfil\hskip.3cm
+            }
+            \renewcommand{\SMPatchSectionentry}{
+              \hskip~3.5ex
+            }
+          }
+        { right }
+          {
+            \renewcommand{\SMInsertNavlength}{
+              \ifbool{SMZerosectionframes}{
+                \hskip-0.5ex~plus~1fill
+              }{
+                \hskip-1.875ex~plus-1fill
+              }%
+            }
+            \renewcommand{\SMPatchInsertNav}{
+              \box\beamer@sectionbox\hfil\hskip.3cm
+            }
+            \renewcommand{\SMPatchSectionentry}{
+              \hskip~3.5ex
+            }
+          }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMMiniFramesSpreading } }
+  }
+
+% What the mini frame bar shows next to the frames: none, section (default, beamer's
+% own) or secsubsection (section and subsection names).
+\NewDocumentCommand \SMMiniFramesSections { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { none }
+          {
+            \__SM_set_template:nn { section~in~head/foot~shaded } { SMEmpty }
+            \__SM_set_template:nn { section~in~head/foot } { SMEmpty }
+            \renewcommand{\SMPatchSectionbox}{
+              \ht\beamer@sectionbox=0pt
+              \dp\beamer@sectionbox=0pt
+            }
+          }
+        { section }
+          {
+            \__SM_set_template:nn { section~in~head/foot~shaded } { default }
+            \__SM_set_template:nn { section~in~head/foot } { default }
+          }
+        { secsubsection }
+          {
+            \__SM_set_template:nn { section~in~head/foot~shaded } { SMSecSubsec }
+            \__SM_set_template:nn { section~in~head/foot } { SMSecSubsec }
+          }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMMiniFramesSections } }
+  }
+
+% Compress the mini frames of a section into one row: true (default) or false.
+\NewDocumentCommand \SMMiniFramesCompress { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { true }  { \beamer@compresstrue }
+        { false } { \beamer@compressfalse }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMMiniFramesCompress } }
+  }
+
+\bool_new:N \g__SM_progbar_advancement_tlbr_bool
+\bool_gset_true:N \g__SM_progbar_advancement_tlbr_bool
+\bool_new:N \g__SM_pmfn_bool
+\bool_gset_false:N \g__SM_pmfn_bool
+\tl_new:N \g__SM_mfpos_tl
+\tl_gset:Nn \g__SM_mfpos_tl { none }
+\tl_new:N \g__SM_pbpos_tl
+\tl_gset:Nn \g__SM_pbpos_tl { none }
+
+% Direction of the progress bar: tlbr (left to right, top to bottom; default)
+% or brlt.
+\NewDocumentCommand \SMProgressBarDirection { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { tlbr } { \bool_gset_true:N \g__SM_progbar_advancement_tlbr_bool }
+        { brlt } { \bool_gset_false:N \g__SM_progbar_advancement_tlbr_bool }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMProgressBarDirection } }
+  }
+
+% rectangle (default) or rounded box.
+\NewDocumentCommand \SMProgressBarStyle { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { rectangle }
+          {
+            \__SM_set_template:nn { progress~bar~in~head/foot } { SMRectangle }
+            \__SM_set_template:nn { progress~bar~in~left } { SMRectangle }
+            \__SM_set_template:nn { progress~bar~in~right } { SMRectangle }
+          }
+        { rounded~box }
+          {
+            \__SM_set_template:nn { progress~bar~in~head/foot } { SMRoundedBox }
+            \__SM_set_template:nn { progress~bar~in~left } { SMRoundedBox }
+            \__SM_set_template:nn { progress~bar~in~right } { SMRoundedBox }
+          }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMProgressBarStyle } }
+  }
+
+% true: the mini frames are drawn inside the progress bar (and the section
+% names next to the mini frames are dropped); false (default): they are not.
+\NewDocumentCommand \SMProgressBarMiniFrames { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { true }
+          {
+            \bool_gset_true:N \g__SM_pmfn_bool
+            \__SM_set_template:nn { section~in~head/foot~shaded } { SMEmpty }
+            \__SM_set_template:nn { section~in~head/foot } { SMEmpty }
+            \renewcommand{\SMPatchSectionbox}{
+              \ht\beamer@sectionbox=0.ex
+              \dp\beamer@sectionbox=0.ex
+            }
+            \__SM_install_nav_patches:
+          }
+        { false } { \bool_gset_false:N \g__SM_pmfn_bool }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMProgressBarMiniFrames } }
+  }
+
+% Rebuilds headline, frame title, footline and sidebars to their theme defaults
+% and adds the mini frames and the progress bar where they are switched on.
+\cs_new_protected:Nn \__SM_nav_apply:
+  {
+    \setbeamertemplate{headline}{}
+    \setbeamertemplate{frametitle}[SMSubsameline]
+    \setbeamertemplate{footline}[SMFootline]
+    \setbeamertemplate{sidebar~left}{}
+    \setbeamertemplate{sidebar~right}{}
+    \exp_args:NV \str_case:nnF \g__SM_mfpos_tl
+      {
+        { head }
+          { \addtobeamertemplate{headline}{}{\usebeamertemplate*{mini~nav~progress~head/foot}} }
+        { foot }
+          { \addtobeamertemplate{footline}{}{\usebeamertemplate*{mini~nav~progress~head/foot}} }
+        { left }
+          { \addtobeamertemplate{sidebar~left}{}{\usebeamertemplate*{mini~nav~progress~left}} }
+        { right }
+          { \addtobeamertemplate{sidebar~right}{}{\usebeamertemplate*{mini~nav~progress~right}} }
+      }
+      { }
+    \exp_args:NV \str_case:nnF \g__SM_pbpos_tl
+      {
+        { head }
+          { \addtobeamertemplate{headline}{}{\usebeamertemplate*{progress~bar~in~head/foot}} }
+        { frametitle }
+          { \addtobeamertemplate{frametitle}{}{\usebeamertemplate*{progress~bar~in~head/foot}} }
+        { foot }
+          { \addtobeamertemplate{footline}{}{\usebeamertemplate*{progress~bar~in~head/foot}} }
+        { left }
+          { \addtobeamertemplate{sidebar~left}{}{\usebeamertemplate*{progress~bar~in~left}} }
+        { right }
+          { \addtobeamertemplate{sidebar~right}{}{\usebeamertemplate*{progress~bar~in~right}} }
+      }
+      { }
+  }
+
+\NewDocumentCommand \SMMiniFramesPosition { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { none } { }
+        { head } { }
+        { foot } { }
+        { left } { }
+        { right } { }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMMiniFramesPosition } }
+    \tl_gset:Nn \g__SM_mfpos_tl {#1}
+    \tl_if_eq:NnF \g__SM_mfpos_tl { none } { \__SM_install_nav_patches: }
+    \__SM_nav_apply:
+  }
+\NewDocumentCommand \SMProgressBarPosition { m }
+  {
+    \str_case:nnF {#1}
+      {
+        { none } { }
+        { head } { }
+        { frametitle } { }
+        { foot } { }
+        { left } { }
+        { right } { }
+      }
+      { \msg_error:nnnn { SlideMage } { unknown-choice } {#1} { SMProgressBarPosition } }
+    \tl_gset:Nn \g__SM_pbpos_tl {#1}
+    \__SM_nav_apply:
+  }
+
+% Defaults: bullets, the mini bundle, compressed, spread, beamer's section names,
+% rectangle bars.
+\setbeamertemplate{mini~frames}[SMMiniBullet]
+\setbeamertemplate{mini~frames~bundle}[SMMini]
+\SMMiniFramesCompress { true }
+\SMMiniFramesSpreading { spreading }
+\SMProgressBarStyle { rectangle }
+
+%% End of file `beamerthemeSlideMage.sty'.

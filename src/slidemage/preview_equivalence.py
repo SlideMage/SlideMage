@@ -25,14 +25,12 @@ AUDITED_FRAMEWORK = {
     # v9.0.0: the setup layer (theme, palette and template settings with their defaults); no view-dependent rule.
     # v10.0.0 (step 2a): base, the Lua files and the example template only rename gotham... content names to SM...;
     # no rule, argument or view-dependent branch changed.
-    "SlideMage_setup.tex": "ec37b78a9076090dc5f297980165f9379bc8e1de3ea0072c4eac807cc9d40eca",
-    "SlideMage_base.tex": "f8736e360e97ecccbcb78688bc36c739a51cb7bf67ad105ade198c56f5f134bb",
+    # v10.0.0 (step 2b): the five Gotham theme files are replaced by beamerthemeSlideMage.sty, a pruned and renamed fork;
+    # it holds no version, footer-hide or deck-label rule (checked by test_the_pins_are_the_frameworks_files...).
+    "SlideMage_setup.tex": "5c6e79190b3733f974bc1e92d0edc97acc7d8c0365a2897483605107d62db1d9",
+    "SlideMage_base.tex": "7c2b1a20b467aa79f7ccc69f61aa7cefa40f4ee41e658676e557f0c53f4ed7e3",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
-    "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
-    "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
-    "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
-    "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
+    "beamerthemeSlideMage.sty": "4a4628f226e5c51fd5072959ccbe96bf225bc05759821353fdadfceeb39eb4f7",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "7bbfd6d86d3542fc782a827df4bf38bf544574020d0cb7f81adeb940dbc84174",
 }
