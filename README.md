@@ -391,7 +391,7 @@ copied package files in `texmf/` record the exact originals.
 
 ## Directory layout
 
-- `beamerthemeSlideMage.sty` — the beamer theme (since v10.0.0): a pruned and
+- `beamerthemeSlideMage.sty` — the beamer theme (since v9.1.0): a pruned and
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
   loads it, decks never name it. It holds the Fira font setup, the colour roles,
@@ -1660,7 +1660,7 @@ no `\gotham...` name is left: up to v5.2.0 the framework's own macros were
 `\gotham...`, up to v9 so were its environments, counters, TikZ styles and beamer
 templates (`gothamtable`, `gotham arrow`, ...), and up to v9 the vendored Gotham
 theme's own names (`\gothamFootlineVOffset`, `\gothamInstituteLogoSquare`, ...), which are
-`\SM...` since v10.0.0 (`\SMFootlineVOffset`, `\SMInstituteLogo`, ...).
+`\SM...` since v9.1.0 (`\SMFootlineVOffset`, `\SMInstituteLogo`, ...).
 Project compatibility migrates a project that still uses them when it is opened;
 `python -m slidemage.sm_rename <project folder>` (`--dry-run` first to see the
 counts) does the v5.2.0 part.

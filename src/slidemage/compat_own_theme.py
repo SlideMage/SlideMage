@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat.py change "own-theme-and-content-names" (v10.0.0, BREAKING): the names SlideMage's content
+"""compat.py change "own-theme-and-content-names" (v9.1.0, BREAKING): the names SlideMage's content
 carried from the Gotham theme become SlideMage names (sm_rename.THEME_RENAMES, approved 2026-10-26), and the
 Gotham theme's own names become the names of the SlideMage theme (beamerthemeSlideMage.sty).
 
@@ -186,7 +186,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v10.0.0",
+    since="v9.1.0",
     severity=BREAKS,
     title="SlideMage has its own beamer theme, and its names no longer carry Gotham's",
     description=(

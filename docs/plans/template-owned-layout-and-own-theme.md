@@ -536,7 +536,7 @@ mix it in.
    - Slide 1gr, the snippets and every example slide use the new names. Compat change
      `own-theme-and-content-names`. Pixel-identical, with the same fonts in the PDF. Afterwards a grep for
      `gotham` finds only history, LICENSE/attribution text and the compat mapping.
-   - **Done 2026-10-26 (v10.0.0), notes for the later steps:**
+   - **Done 2026-10-26 (v9.1.0), notes for the later steps:**
      - `latex/beamerthemeSlideMage.sty` is one file (2214 lines against 5626). Its kept features are switched by
        `\SMMiniFramesPosition`, `\SMProgressBarPosition`, `\SMDividerFrames`/`\SMDividerLook` and
        `\SMWatermarkDefault` (and siblings), documented at the end of `SlideMage_setup.tex`; the patches mini frames

@@ -28,4 +28,4 @@ it: report problems with it to the SlideMage project
 (https://github.com/JuergenFleiss/slidemage), not to him. The original, unmodified
 theme (beamer*themegotham.sty, gotham.dtx, gotham.ins) is available from
 https://gitlab.com/RomainNOEL/beamertheme-gotham. SlideMage versions before
-v10.0.0 shipped it unchanged in this folder.
+v9.1.0 shipped it unchanged in this folder.

@@ -942,7 +942,7 @@
 % (The redraw uses \includegraphics directly rather than \SMInstituteLogo:
 % that macro is the invisible in-flow logo of the frametitle template,
 % redefined above. Gotham's instituteLogo/includeLogo templates, which the
-% theme called before v10.0.0, relied on an internal property-list lookup
+% theme called before v9.1.0, relied on an internal property-list lookup
 % that was only valid in the context of the original frametitle rendering.)
 % Additionally paints white across the *entire* width of the strip between
 % the logo's bottom edge and the title bar's actual bottom edge, so the
@@ -1982,7 +1982,7 @@
 \def\SMOldPrefix{gotham}
 \expandafter\def\csname\SMOldPrefix SetOverlays\endcsname{\SMSetOverlays}
 \expandafter\def\csname\SMOldPrefix SetTopCorrection\endcsname{\SMSetTopCorrection}
-% A .aux written before v10.0.0 holds each subsection title (\SMAgendaSubsection)
+% A .aux written before v9.1.0 holds each subsection title (\SMAgendaSubsection)
 % as `\gotham@subsectiontitleformat {Title}`: the Gotham theme wrapped titles
 % in that no-op switch, which the SlideMage theme no longer has.
 \expandafter\let\csname\SMOldPrefix @subsectiontitleformat\endcsname\@empty

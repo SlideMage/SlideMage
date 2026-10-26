@@ -294,7 +294,7 @@ def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
 
 
 def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, bundle):
-    """v10.0.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
+    """v9.1.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
     Gotham files are removed, one the user edited stays where it is (reported as kept), and nothing is pending
     afterwards."""
     latex, _ = bundle
@@ -312,7 +312,7 @@ def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, 
     assert framework.add == ["beamerthemeSlideMage.sty"]
     assert sorted(framework.remove) == ["beamerthemegotham.sty", "gotham.dtx"]
     assert framework.kept == ["beamerouterthemegotham.sty"]
-    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v10.0.0", now=NOW)
+    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v9.1.0", now=NOW)
     assert (copy / "beamerthemeSlideMage.sty").read_text() == "theme\n"
     assert not (copy / "beamerthemegotham.sty").exists() and not (copy / "gotham.dtx").exists()
     assert (copy / "beamerouterthemegotham.sty").read_text() == "my edit\n"
