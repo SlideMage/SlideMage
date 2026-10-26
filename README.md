@@ -393,6 +393,13 @@ copied package files in `texmf/` record the exact originals.
 
 - `beamerthemegotham.sty` and friends, `gotham.dtx`/`gotham.ins` — the Gotham
   theme itself. Don't edit; these are the upstream theme sources.
+- `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):
+  loads the beamer theme (decks never name it) and defines every setting a
+  template may change, each with its default and a comment — the `c_*`
+  palette (SlideMage's own colours), the role colours (`\SMBulletColor`,
+  `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight` and the
+  title-bar paddings (`\SMFrametitleRightPadding`, ...). The one file a
+  template author reads.
 - `SlideMage_base.tex` — the project's shared customization
   layer: the footer (course name + slide ID + frame number), the
   `\slide{}`/`\slideversion{}` loading commands (and their student-version-
@@ -402,16 +409,20 @@ copied package files in `texmf/` record the exact originals.
   presenter-attention — see "Special frame types" below). Institution-
   agnostic: everything here refers to colors/logos only through the names
   the institution layer below defines.
-- `SlideMage_template_uni-graz.tex` — a thin institution layer: the `c_*`
-  color palette definitions, the institute logo path, and the per-logo
-  calibration lengths, followed by `\input{SlideMage_base}`. A
-  deck picks its institution by `\input{}`ing this file (never the base
-  file directly). The original project has two more of these (for two
-  other institutions), each following exactly this same pattern with its
-  own colors/logo and nothing else different — not included in this copy,
-  but add your own the same way if you need a second institution: copy
-  this file, swap the `c_*` colors and `\SMInstituteLogoPath`, keep
-  the trailing `\input{SlideMage_base}` line.
+- `SlideMage_template_uni-graz.tex` — a thin institution layer:
+  `\input{SlideMage_setup}`, then the settings it changes from the catalog
+  (the `c_*` color palette, `\renewcommand{\SMInstituteLogoPath}{...}`, the
+  per-logo calibration lengths with `\setlength`), followed by
+  `\input{SlideMage_base}`. A deck picks its institution by `\input{}`ing
+  this file (never the base file directly). The original project has two
+  more of these (for two other institutions), each following exactly this
+  same pattern with its own colors/logo and nothing else different — not
+  included in this copy, but add your own the same way if you need a second
+  institution: copy this file, swap the `c_*` colors and
+  `\SMInstituteLogoPath`, keep the leading `\input{SlideMage_setup}` and the
+  trailing `\input{SlideMage_base}` line. A template only changes catalog
+  settings (`\renewcommand`, `\setlength`, `\definecolor`), so a misspelt
+  name is an error rather than a silent no-op.
 - `latex/SlideMage_template_slidemage.tex` (with `latex/slidemage-logo.pdf`)
   — the generic **SlideMage template** (since v5.7.0; part of the framework
   since v5.9.0), for decks that don't belong to an institution: the
@@ -512,7 +523,6 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 
 ```latex
 \documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \input{SlideMage_template_uni-graz}
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
@@ -2188,7 +2198,7 @@ content runs):
 `standardframe` automatically resets this on `\end{frame}`, so it only
 applies to the one frame that follows the `\chapterlogo{}` call — every other
 slide is unaffected unless it opts in the same way. The chapter logo is drawn
-at the same height as the main logo, with exactly one `\gothamFrametitleRightpading`
+at the same height as the main logo, with exactly one `\SMFrametitleRightPadding`
 of margin on both sides (to the main logo, and to where the yellow bar
 resumes) — the same length already used around the main logo, not a new
 constant.
@@ -3009,7 +3019,7 @@ else the folder with `slide_ids.csv` above the PDF, else
 `$SLIDEMAGE_PROJECT`). Exit code 1 if anything is reported. The Right Margin
 is the logo's visible right edge, measured on the rendered page (since
 v5.15.1); in every template it coincides with the framework's own Right Margin,
-`\gothamFrametitleRightpading` from the page edge.
+`\SMFrametitleRightPadding` from the page edge.
 
 ## Slide previews
 
