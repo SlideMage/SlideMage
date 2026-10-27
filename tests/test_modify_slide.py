@@ -158,9 +158,8 @@ def test_render_failure_keeps_change_and_review_mark(env, monkeypatch):
     assert ai_review.is_unreviewed(env.project, env.path)
 
 
-@pytest.mark.parametrize("slide", ["abc", SLIDE, "xyz", "slides/xyz-DE-Hallo-current.tex"])
 @pytest.mark.parametrize("reverse_only", [False, True])
-def test_switch_resolves_translation_partner_and_marks_translation(env, slide, reverse_only):
+def test_switch_resolves_translation_partner_and_marks_translation(env, reverse_only):
     original = env.path.read_text()
     translated = env.root / "slides/xyz-DE-Hallo-current.tex"
     translated.write_text(original.replace("%% Included in decks: test", "%% Translation of: abc-EN-Hello"))
@@ -168,11 +167,39 @@ def test_switch_resolves_translation_partner_and_marks_translation(env, slide, r
         env.path.write_text(original.replace("%% Included in decks: test", "%% DE translation: xyz-DE-Hallo"))
     original_bytes = env.path.read_bytes()
     env.ws._context = replace(env.ws.context(), language="DE")
-    result = modify(env, slide=slide)
+    result = modify(env, slide="abc", expected=translated.read_text())
     assert not result.is_error, result.text
+    assert "abc in DE is its partner xyz-DE-Hallo" in result.text
     assert "Edited point" in translated.read_text() and env.path.read_bytes() == original_bytes
     assert env.shown == [translated] and env.renders[0][3] == "DE"
     assert ai_review.unreviewed(env.project)[translated.relative_to(env.root).as_posix()]["kind"] == "translation"
+
+
+@pytest.mark.parametrize("language, slide, target_language", [
+    ("EN", "slides/xyz-DE-Hallo-current.tex", "DE"),
+    ("EN", SLIDE, "EN"),
+    ("DE", SLIDE, "EN"),
+    ("DE", "slides/xyz-DE-Hallo-current.tex", "DE"),
+])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_explicit_path_edits_that_file_and_checks_its_expected_text(env, language, slide, target_language, absolute):
+    original = env.path.read_text()
+    translated = env.root / "slides/xyz-DE-Hallo-current.tex"
+    translated.write_text(original.replace("%% Included in decks: test", "%% Translation of: abc-EN-Hello")
+                          .replace("First point", "Erster Punkt"))
+    env.path.write_text(original.replace("%% Included in decks: test", "%% DE translation: xyz-DE-Hallo"))
+    target = env.root / slide
+    other = translated if target == env.path else env.path
+    other_before = other.read_bytes()
+    before = target.read_text()
+    old = "Erster Punkt" if target == translated else "First point"
+    env.ws._context = replace(env.ws.context(), language=language)
+    result = modify(env, slide=str(target) if absolute else slide, expected=before,
+                    edits=[{"old": old, "new": "Edited point"}])
+    assert not result.is_error, result.text
+    assert "Edited point" in target.read_text() and other.read_bytes() == other_before
+    assert env.shown == [target] and env.renders[0][3] == target_language
+    assert "is its partner" not in result.text
 
 
 @pytest.mark.parametrize("args", [dict(), dict(edits=[], body="text"), dict(edits=[]), dict(edits=[None]),

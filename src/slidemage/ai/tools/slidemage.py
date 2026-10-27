@@ -319,10 +319,10 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
 
 
 @tool("modify_slide",
-      "Change an existing slide in the edited language with ordered exact replacements or full text. "
+      "Change an existing slide with ordered exact replacements or full text. "
       "Checks, writes (open editor or file), marks Not reviewed, renders once and shows the preview. "
       "Frozen versions and protected changes are refused; a compile failure keeps the change.",
-      {"slide": {"type": "string", "description": "Slide id or project path; follows the EN/DE switch to its linked partner."},
+      {"slide": {"type": "string", "description": "A bare slide id follows the EN/DE switch to its linked partner; an explicit path is used as given."},
        "edits": {"type": "array", "minItems": 1, "description": "Ordered replacements; each old must match exactly once.",
                  "items": {"type": "object", "properties": {"old": {"type": "string", "minLength": 1},
                                                           "new": {"type": "string"}},
@@ -337,9 +337,14 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     _not_frozen(ctx.project, path)
     if slide_kind(ctx.project, path) != "current" or not path.is_file():
         raise ToolError("modify_slide needs an existing live slide id or slides/*-current.tex path.")
-    links = slide_language.TranslationLinks(ctx.project.slides_dir)
-    if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), ctx.workspace.context().language):
-        path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+    note = ""
+    slide = args["slide"].strip()
+    if _BARE_ID.match(slide):
+        language = ctx.workspace.context().language
+        links = slide_language.TranslationLinks(ctx.project.slides_dir)
+        if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), language):
+            path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+            note = f"{slide} in {language} is its partner {partner}"
     ctx.check_scope(path)
     before, revision = current_revision(ctx.workspace, path)
     if "expected" in args and (slide_versioning.without_plus(args["expected"])
@@ -360,9 +365,9 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
                                 "nothing written. Copy enough current text to match exactly once.")
             after = after.replace(edit["old"], edit["new"], 1)
     if after == before:
-        return f"{relative(ctx.root, path)} ({revision}): nothing to change."
+        return f"{note + '. ' if note else ''}{relative(ctx.root, path)} ({revision}): nothing to change."
     kind = "translation" if slide_language.TRANSLATION_OF_RE.search(before) else "edit"
-    return apply_slide(ctx, path, before, after, kind=kind, note=f"base: {revision}")
+    return apply_slide(ctx, path, before, after, kind=kind, note=f"{note + '; ' if note else ''}base: {revision}")
 
 
 @tool("add_slide",

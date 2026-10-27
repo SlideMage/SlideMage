@@ -793,5 +793,5 @@ def test_modify_slide_checks_resolved_language_partner(box, root, monkeypatch):
     box.box.ctx.scope, box.box.ctx.focus_slide = "slide", root / SLIDE
     monkeypatch.setattr(slidemage_tools.slide_language.TranslationLinks, "find", lambda *args: "abd-EN-Second")
     assert "abd-EN-Second-current.tex" in box.error(
-        "modify_slide", slide=SLIDE, edits=[{"old": "First", "new": "Changed"}])
+        "modify_slide", slide="abc", edits=[{"old": "First", "new": "Changed"}])
     assert not box.of_type(EditProposed)
