@@ -540,12 +540,43 @@ is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs
     package is defined; tell the website side if one is made.
 - **Private themes stay out of the catalogue.** A theme carrying a university's logo and corporate design is not
   ours to publish. Its repository is private, so the catalogue builder could not download its asset, and
-  `hidden: true` would still publish its URL in the test catalogue. Such a theme is installed with the plugin
-  installer's **"Install from file…"** (`docs/PLUGINS_PLAN.md`, Phase 1) from the `.smtheme` asset of its private
-  release, and updated the same way. The file-install path must therefore accept a `.smtheme` and run the same checks
-  as a catalogue install, minus the pinned SHA-256: a valid `theme.toml`, no files outside the package, and a key that
-  does not shadow a bundled template. Later, if it is worth it, SlideMage could download a private release directly
-  with the user's GitHub token (the updater already keeps one per user and machine). That is not needed for step 11.
+  `hidden: true` would still publish its URL in the test catalogue. SlideMage installs such a theme **directly
+  from its private GitHub repository, with the user's own token, and offers its updates** (user decision
+  2026-10-27):
+  - **Token:** the GitHub token SlideMage already keeps for its own updates (`updater.py`: Settings → General,
+    stored as `github_token` in `config_dir()`, never in a project; `$SLIDEMAGE_GITHUB_TOKEN` wins). It needs
+    read access to the theme repository's releases: for a fine-grained token, Repository permissions → Contents:
+    Read-only, with the theme repository among its selected repositories. One token covers SlideMage and all of a
+    user's theme repositories; no second token setting.
+  - **Catch, to check against GitHub's documentation at step 11:** as far as known, a fine-grained token can only
+    reach repositories owned by one user or organization that the token's owner selects, and not a personal
+    repository of someone else where they are only a collaborator. If that holds, Jürgen could not read
+    `stpalan/slidemage-theme-uni-graz` with a fine-grained token; only a classic token with the broad `repo` scope
+    would work, which grants write access to all of his repositories. The clean way: keep the private theme
+    repositories in a GitHub organization, e.g. `slidemage-themes`, and give Jürgen read access to the Graz
+    repository there. He then makes a fine-grained token with that organization as its resource owner. The
+    organization may have to allow or approve fine-grained tokens. Settle this before creating the repository.
+  - **Adding a theme:** Settings → Themes → "Add theme from GitHub…" takes `owner/name`. SlideMage lists the
+    repository's releases through the API (`/repos/{owner}/{name}/releases`, never `/releases/latest`, for the
+    same reason as the catalogue rule above) and installs the newest **eligible** one. Eligible means: published,
+    not a draft or pre-release, carrying `<key>-<version>.smtheme` and its `.sha256`, the download matching that
+    hash, its `theme.toml` version equal to the tag, and `requires_slidemage` satisfied. A release the owner
+    withdraws (deleted, or turned into a pre-release) is no longer eligible. The SHA-256 here only guards against a
+    damaged download; trust comes from the user choosing the repository.
+  - **Where it comes from:** the install records its source next to the theme
+    (`config_dir()/themes/<key>/source.json`: repository, version, release id, installed at). A theme installed from
+    the catalogue records the catalogue instead, and one installed from a file records nothing and is never updated.
+  - **Updates:** at start, at the app updater's cadence and under its update setting (no network when updates
+    are off), SlideMage checks each GitHub-sourced theme for a newer eligible release. It offers it with the
+    release's notes: Install now / Not now / Skip this version. It never installs one silently. A higher major
+    version (a theme's breaking change) says so. Installing re-renders previews only of decks that use the key.
+  - **Failures stay quiet and harmless:** no token, an expired token, lost access or no network leave the installed
+    version working. Settings → Themes shows why the check failed, worded like the updater's messages (404 = no
+    access or no release; 401/403 = token refused, with the permission it needs).
+  - **"Install from file…"** (`docs/PLUGINS_PLAN.md`, Phase 1) also accepts a `.smtheme`, for offline use or a
+    theme mailed around. It runs the same package checks (valid `theme.toml`, no files outside the package, a key
+    that does not shadow a bundled template) and is never updated.
+  - **A project's own copy of the template still wins** (section 8 above), so a project can freeze a version.
 
 ## Steps
 
@@ -839,9 +870,13 @@ mix it in.
    - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
      history and the course-system code (`online.uni-graz.at`).
 11. **Private institution themes** (user request 2026-10-27; after step 10, and after the plugins plan's Phase 1 has
-    an installer with "Install from file…").
-   - **Uni Graz: a private repository shared with Jürgen Fleiß only.** Proposed name `stpalan/slidemage-theme-uni-graz`,
-     private, Jürgen invited as a collaborator (read access is enough unless he maintains it too). It holds one theme
+    an installer). Includes the private-repository install and update of section 8 ("Private themes stay out of
+    the catalogue"): "Add theme from GitHub…", `source.json`, the update check and offer, and the error messages.
+    Tests use a fake GitHub API, as the updater's tests do.
+   - **Uni Graz: a private repository shared with Jürgen Fleiß only.** Proposed name `slidemage-themes/uni-graz` in a
+     GitHub organization, or `stpalan/slidemage-theme-uni-graz` if fine-grained tokens can reach a collaborator's
+     repository after all (see the catch in section 8). Private, Jürgen with read access (write only if he maintains
+     it too). It holds one theme
      package as section 8 defines it: `theme.toml`, `SlideMage_template_uni-graz.tex`, `schemes/scheme_uni_graz/`,
      its layout profile file if it gets one, `preview.png`, `LICENSE`, `README.md`, `CHANGELOG.md`. Each version is a
      tagged GitHub release with the `uni-graz-<version>.smtheme` asset and a `.sha256` file, following the website's
@@ -850,22 +885,20 @@ mix it in.
    - **Licence of a private theme:** the TeX file can stay LPPL-1.3c+ like the framework, but the logo and the
      university's corporate design are not ours to license. `LICENSE` and `README.md` say so: the logo files are the
      university's, used with its permission for its members' teaching, and must not be passed on.
-   - **Uni Innsbruck and MCI.** They are in the user's real project only (`D:\uniCLOUD\Slidemaster`) and in nobody
-     else's hands. Proposed: package them the same way, one private repository each
-     (`stpalan/slidemage-theme-uni-ibk`, `stpalan/slidemage-theme-mci`), shared with nobody for now. Separate
-     repositories, because GitHub grants access per repository: each can later be shared with colleagues at that
-     institution without exposing the others. The cheaper alternative is to keep both as project templates in the
-     real project, with no repository and no package. That is the state after step 10 anyway, and it works, but they
-     then exist only in that project and its backups. User decision, see "Open decisions".
+   - **Uni Innsbruck and MCI stay local for now** (user decision 2026-10-27): project templates in the real project
+     (`D:\uniCLOUD\Slidemaster`), with no repository and no package. They then exist only in that project and its
+     backups. If they are ever shared, they become private theme repositories like Graz's, one per institution,
+     because GitHub grants access per repository.
    - **The real project** keeps working throughout: its own `SlideMage_template_<key>.tex` copies win over an
-     installed theme of the same key (section 8). Once the themes are installed, the project copies can go. Then the
-     project uses the released versions, and a template change happens in the theme repository instead of the
-     project. Ask the user before removing them.
+     installed theme of the same key (section 8). Once the Graz theme is installed from its repository, the project's
+     Graz copy can go. Then the project uses the released versions, and a Graz template change happens in the theme
+     repository instead of the project. Ask the user before removing it. The Innsbruck and MCI copies stay.
    - **Tests and regressions:** the uni-graz, uni-ibk and mci regression entries already live outside the repository
      (`C:\Users\ms\SlideMage\regression\`). They keep running against the installed themes. A test fixture theme for the
      installer (a tiny `.smtheme` with no institution content) goes into `tests/fixtures/`.
    - **Website side:** nothing to list, since private themes are never in the catalogue. Tell them that the theme
-     package's first real users are private, so the file install matters as much as the catalogue.
+     package's first real users install from a private repository, so a theme repository should follow the same
+     release rules whether or not it is listed.
 
 ## Open decisions (ask the user at the step named)
 
@@ -878,9 +911,11 @@ mix it in.
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
 - **Step 10 at the latest: the theme package** (section 8): files, release asset and manifest, install location
   and how a project uses it. Then tell the website side.
-- **Step 11: Uni Innsbruck and MCI** — one private repository each, packaged like Uni Graz (proposed), or project
-  templates in the real project only. Also confirm the Graz repository's name and Jürgen's access level (read or
-  write).
+- **Step 11: Uni Innsbruck and MCI.** **Decided by the user on 2026-10-27: they stay local**, as project templates
+  in the real project. Private theme repositories install and update from GitHub with the user's token (section 8,
+  also decided on 2026-10-27).
+- **Step 11, still open:** the Graz repository's home (a GitHub organization or `stpalan/...`, depending on the
+  fine-grained-token catch in section 8) and Jürgen's access level (read or write).
 
 ## Risks
 
