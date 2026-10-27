@@ -110,8 +110,8 @@ def test_a_notification_gets_no_body_and_unknown_methods_an_error(mcp):
 def test_tools_list_names_the_claude_code_tools_with_their_schemas(mcp_tools):
     tools = mcp_tools.rpc("tools/list")["result"]["tools"]
     names = [t["name"] for t in tools]
-    assert names == ["get_focus", "show_slide", "read_buffer", "read_selection", "list_slides", "lint", "render_preview", "refresh_preview", "check_readability", "read_guide", "add_slide", "create_slide", "modify_slide", "make_qr_code", "translate_slide", "switch_to_deck_mode", "refresh_deck_previews"]
-    assert [t.spec.name for t in CLAUDE_CODE_READ_ONLY] == names[:-7]
+    assert names == ["get_focus", "show_slide", "read_buffer", "read_selection", "list_slides", "lint", "render_preview", "refresh_preview", "check_readability", "read_guide", "add_slide", "insert_slide", "create_slide", "modify_slide", "make_qr_code", "translate_slide", "switch_to_deck_mode", "refresh_deck_previews"]
+    assert [t.spec.name for t in CLAUDE_CODE_READ_ONLY] == names[:-8]
     assert all(t["description"] and t["inputSchema"]["type"] == "object" for t in tools)
     # the chat's file tools are Claude Code's own, and the compile is not offered
     assert not {"read_file", "edit_file", "write_file", "compile_deck"} & set(names)
@@ -196,16 +196,16 @@ def test_failed_insertion_returns_existing_slide_and_retry_never_duplicates(mcp_
     id_slug = created.name.removesuffix("-current.tex")
     path = created.relative_to(mcp.root).as_posix()
     text = result["content"][0]["text"]
-    assert id_slug in text and path in text and f"add_slide(existing='{id_slug}', after='abc')" in text
+    assert id_slug in text and path in text and f"insert_slide(slide='{id_slug}', after='abc')" in text
     assert (created, None) in mcp.workspace.changed and deck.read_bytes() == original_deck
     id_store = mcp.workspace.project.slide_ids_csv.read_bytes()
     slide_text = created.read_bytes()
     monkeypatch.setattr(deck_editor, "insert_slide_call", original_insert)
     existing = {"id": id_slug[:3], "id_slug": id_slug, "path": path}[retry]
-    assert "Inserted slide" in mcp.text("add_slide", existing=existing, after="abc")
+    assert "Inserted slide" in mcp.text("insert_slide", slide=existing, after="abc")
     inserted = deck.read_bytes()
     # The second retry is safe even if its anchor no longer exists.
-    assert "already in test" in mcp.text("add_slide", existing=existing, after="zzz")
+    assert "already in test" in mcp.text("insert_slide", slide=existing, after="zzz")
     calls = deck_editor.parse_slide_calls(next(d for d in scan_decks(mcp.workspace.project) if d.name == "test"))
     assert [c.id_slug for c in calls] == ["abc-EN-Hello", id_slug, "abd-EN-Second"]
     assert deck.read_bytes() == inserted and created.read_bytes() == slide_text
@@ -228,11 +228,11 @@ def test_deck_becoming_dirty_after_creation_returns_recoverable_error(mcp_tools,
     result = mcp.call("add_slide", slug="Dirty", title="T")
     assert result["isError"] and "unsaved edits" in result["content"][0]["text"]
     created, = (mcp.root / "slides").glob("*-EN-Dirty-current.tex")
-    assert created.name in result["content"][0]["text"] and "existing=" in result["content"][0]["text"]
+    assert created.name in result["content"][0]["text"] and "insert_slide(slide=" in result["content"][0]["text"]
     assert deck.read_bytes() == before and mcp.workspace.buffer_text(deck) == "unsaved deck edits"
-    assert mcp.call("add_slide", existing=created.relative_to(mcp.root).as_posix())["isError"]
+    assert mcp.call("insert_slide", slide=created.relative_to(mcp.root).as_posix())["isError"]
     mcp.workspace.dirty.clear()
-    assert "Inserted slide" in mcp.text("add_slide", existing=created.relative_to(mcp.root).as_posix())
+    assert "Inserted slide" in mcp.text("insert_slide", slide=created.relative_to(mcp.root).as_posix())
 
 
 def test_real_stale_deck_during_creation_keeps_newer_text_and_allows_retry(mcp_tools, monkeypatch):
@@ -248,10 +248,10 @@ def test_real_stale_deck_during_creation_keeps_newer_text_and_allows_retry(mcp_t
 
     monkeypatch.setattr(slide_add, "create_new", change_deck)
     result = mcp.call("add_slide", slug="Stale", title="T")
-    assert result["isError"] and "existing=" in result["content"][0]["text"]
+    assert result["isError"] and "insert_slide(slide=" in result["content"][0]["text"]
     created, = (mcp.root / "slides").glob("*-EN-Stale-current.tex")
     assert deck.read_text() == newer
-    assert "Inserted slide" in mcp.text("add_slide", existing=created.relative_to(mcp.root).as_posix())
+    assert "Inserted slide" in mcp.text("insert_slide", slide=created.relative_to(mcp.root).as_posix())
     assert "% changed while creating\n" in deck.read_text()
     assert list((mcp.root / "slides").glob("*-EN-Stale-current.tex")) == [created]
 

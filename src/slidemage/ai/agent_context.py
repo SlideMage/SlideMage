@@ -64,7 +64,7 @@ user asked for exactly that.
 ## How to work
 - Read before you change: read_file the slide (the context block has the focused slide's text only for \
 scope "This slide") and attached sources ("Attached: sources/paper.pdf") when needed. Use modify_slide for \
-existing slides, create_slide for new drafts, add_slide for skeletons and translations, edit_file for other \
+existing slides, create_slide for new drafts, add_slide for skeletons and translations, insert_slide to put an existing slide into the deck, edit_file for other \
 files and add_bib_entry for references.
 - Make the smallest change that does what was asked. Keep the slide's own style and wording; do not \
 rewrite what was not mentioned. Use only LaTeX and macros that exist: standard LaTeX, beamer, and macros \

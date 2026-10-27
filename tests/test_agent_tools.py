@@ -13,7 +13,7 @@ import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import compiler, preview_target, slide_snapshot, update_all_previews
+from slidemage import ai_review, compiler, preview_target, slide_snapshot, update_all_previews
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -405,7 +405,7 @@ def test_add_slide_rechecks_dirty_deck_after_confirmation(box, root):
     box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
     text = box.error("add_slide", slug="Pending", title="T")
     created, = (root / "slides").glob("*-EN-Pending-current.tex")
-    assert created.name in text and "unsaved edits" in text and "existing=" in text
+    assert created.name in text and "unsaved edits" in text and "insert_slide(slide=" in text
     assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
     applied, = box.of_type(EditApplied)
     assert applied.path == created and applied.note == "not added to a deck"
@@ -418,11 +418,11 @@ def test_insert_existing_slide_requires_consent_and_rechecks_dirty_deck(box, roo
     deck = root / "decks/test.tex"
     before = deck.read_bytes()
     box.ws.approve = False
-    assert "rejected" in box.error("add_slide", existing=path)
+    assert "rejected" in box.error("insert_slide", slide=path)
     assert deck.read_bytes() == before
     box.ws.approve = True
     box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
-    assert "unsaved edits" in box.error("add_slide", existing=path)
+    assert "unsaved edits" in box.error("insert_slide", slide=path)
     assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
 
 
@@ -431,7 +431,7 @@ def test_insert_existing_rejects_missing_frozen_non_slide_and_outside_files(box,
     (root / "slides/abc-EN-Hello-v1-0-0.tex").write_text("frozen")
     files = set((root / "slides").iterdir())
     before = (root / "decks/test.tex").read_bytes()
-    assert box.run("add_slide", existing=path).is_error
+    assert box.run("insert_slide", slide=path).is_error
     assert set((root / "slides").iterdir()) == files
     assert (root / "decks/test.tex").read_bytes() == before
 
@@ -845,3 +845,39 @@ def test_fields_and_qr_height_are_checked_by_schema(box):
     for height in (True, "0.5"):
         assert box.error("make_qr_code", kind="url", fields={"url": "a.org"}, height=height) == (
             "Argument 'height' must be of type number.")
+
+
+def test_insert_slide_after_and_already_present(box, root):
+    box.ok("add_slide", slug="Insert", title="T", add_to_deck=False)
+    created, = (root / "slides").glob("*-EN-Insert-current.tex")
+    slide = created.name.removesuffix("-current.tex")
+    box.events.clear()
+    assert "after abc" in box.ok("insert_slide", slide=slide, after="abc")
+    deck = root / "decks/test.tex"
+    text = deck.read_text()
+    assert text.index("abc-EN-Hello") < text.index(slide) < text.index("abd-EN-Second")
+    applied, = box.of_type(EditApplied)
+    assert applied.path == deck and not applied.undoable
+    assert (deck, applied.before) in box.ws.changed
+    assert "decks/test.tex" in ai_review.unreviewed(box.ws.project)[created.relative_to(root).as_posix()]["decks"]
+    box.events.clear()
+    assert "already in test" in box.ok("insert_slide", slide=slide, after="missing")
+    assert not box.events and deck.read_text() == text
+
+
+def test_insert_slide_refuses_dirty_deck_and_slide_scope(box, root):
+    box.ok("add_slide", slug="Insert", title="T", add_to_deck=False)
+    slide = next((root / "slides").glob("*-EN-Insert-current.tex")).name.removesuffix("-current.tex")
+    deck = root / "decks/test.tex"
+    before = deck.read_bytes()
+    box.events.clear()
+    box.box.ctx.scope = "slide"
+    assert "switch_to_deck_mode" in box.error("insert_slide", slide=slide)
+    box.box.ctx.scope = None
+    box.ws.dirty.add(deck)
+    assert "unsaved edits" in box.error("insert_slide", slide=slide)
+    assert not box.events and deck.read_bytes() == before
+
+
+def test_add_slide_rejects_existing_argument(box):
+    assert "Unknown argument 'existing'" in box.error("add_slide", existing="abc")
