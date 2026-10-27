@@ -2816,3 +2816,32 @@ NEW: Switch now keeps your unsent prompt, and Find anything can show all results
 - Switching the Claude Code model with Switch now puts the prompt you had typed but not sent back into the input box.
 - In Find anything, a list of slides or text matches that is cut short ends with Show all, which lists every one of them.
 - The scroll bar in Settings no longer touches the text next to it.
+
+v8.64.1 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 1): The "This slide" scope is enforced by the agent tools themselves, not only by the Claude Code hook. Over MCP, modify_slide, create_slide and add_slide could change any slide or deck while the scope was Slide; the built-in chat had the scope as context text only. ToolContext now carries the scope and the focused slide (None: unrestricted, as for the headless tasks); edit_file, write_file and modify_slide (on the file actually written, after the EN/DE partner) refuse a slide or deck other than the focused slide, and add_slide and create_slide refuse in Slide scope since they change the deck, all pointing to switch_to_deck_mode. One rule for hook and tools (claude_scope.scope_problem, deck_problem). Agent.run sets the scope per request; the Claude Code session reads it with the focus on the GUI thread per MCP call. Tests in test_agent_tools.py, test_agent.py, test_mcp_server.py and test_claude_code_gui.py.
+
+NEW: In "This slide" mode, the assistant can no longer change other slides or the deck.
+- Before, the built-in chat and the tools Claude Code uses through SlideMage could still reach other slides; now they ask to switch to Deck mode first.
+
+v8.64.2 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 3): One source of tool guidance. The chat's system prompt (agent_context.SYSTEM_PROMPT) and Claude Code's ORIENTATION re-described the tools' arguments, defaults and results and had drifted from the tool descriptions: both called refresh_deck_previews "legacy Instructor snapshots (only)" while it refreshes all course views by default. The prompts now keep the workflow (read before changing, which tool for which job, what is slow, readability fixes, protected parts, answer style) and leave what a tool does to its description (SYSTEM_PROMPT 5.4k to 4.4k characters, ORIENTATION 3.3k to 2.5k). read_file, check_readability and write_file descriptions are more precise. test_tool_guidance.py fails when a prompt names a tool its assistant does not have.
+
+NEW: The assistant gets shorter, consistent instructions about SlideMage's tools.
+
+v8.64.3 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 2): modify_slide edits the file it was given. It followed the EN/DE switch to the linked translation partner even for an explicit path, so an edit aimed at a DE slide while editing in EN landed on the EN slide, and a given expected text was compared with the partner's and failed as "changed since you read it". Now only a bare slide id ("1y8") follows the switch, and the result says so ("1y8 in DE is its partner xyz-DE-Hallo"); a path is used as given. The scope check stays on the file actually written. Tests in test_modify_slide.py and test_agent_tools.py.
+
+NEW: The assistant's slide edits land on the slide it named.
+- Before, an edit of a German slide while editing in English could change the English version instead.
+
+v8.64.4 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 4): The agent tools' arguments are checked one level deeper. check_arguments looked at top-level types and enums only, so each tool checked nested input by hand or not at all. It now follows the schema down: types including number (not a boolean), enum, minLength, minItems, array items and nested objects' properties, required and additionalProperties, and its errors name the path the model passed ("Argument 'edits[2].old' must be of type string."). modify_slide's own check of its edits and make_qr_code's of the height type are gone; a QR code's fields must be text (a phone number sent as a number would lose its leading zero), a bibliography entry's may still be numbers (a year). Tests in test_agent_tools.py.
+
+NEW: The assistant gets clearer messages when it calls a tool with wrong arguments.
+
+v8.65.0 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md steps 5-7): One preview path, insert_slide, and cleanups of the agent tools.
+
+After the assistant writes a slide, its preview now comes from the same batch path as render_preview (preview_batch_output gets an explicit language and a show flag; _render_preview is gone), so the image after modify_slide or create_slide and the one render_preview gives for that slide agree. The target is resolved before the slide is shown, a hidden slide is not shown, and showing the slide in focus keeps its occurrence in the deck (GuiWorkspace.show_slide), so the pane accepts the image of a slide the deck calls twice.
+
+Inserting an existing slide into the deck is its own tool, insert_slide (slide, after); add_slide only creates (a skeleton or a translation copy) and no longer takes existing. A translation is placed after its source, read from the editor's buffer. create_slide's deck is optional: the open deck by default, still refused when another is named.
+
+CLAUDE_CODE_READ_ONLY is CLAUDE_CODE_PRE_APPROVED (refresh_preview writes the preview cache); a failed tool call logs tool_end with error; each call gets its own copy of the tool context; edits.not_frozen is public. test_chat_gui's closed-file edit runs in the scope Deck, as v8.64.1 requires. Tests in test_modify_slide.py, test_chat_gui.py, test_agent_tools.py, test_create_slide.py, test_translation_placement.py and test_mcp_server.py.
+
+NEW: After the assistant edits a slide, the preview shows it in the slide's own language and position.
+- Before, the preview after an edit and a preview the assistant asked for could show different languages, or the wrong copy of a slide used twice in a deck.

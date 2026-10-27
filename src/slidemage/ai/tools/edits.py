@@ -31,7 +31,7 @@ from .files import current_text, project_path, relative
 
 EDITABLE_SUFFIXES = (".tex", ".bib", ".md", ".txt", ".csv", ".json", ".sty", ".cls", ".yaml", ".yml")
 MAX_NEW_FILE_CHARS = 200_000
-def _not_frozen(ctx: ProjectContext, path: Path) -> None:
+def not_frozen(ctx: ProjectContext, path: Path) -> None:
     if slide_kind(ctx, path) == "frozen":
         raise ToolError(f"{path.name} is a frozen version of a slide: a historical record, read-only. "
                         "Edit the slide's -current.tex file instead.")
@@ -41,7 +41,7 @@ def _editable(ctx: ToolContext, arg: str) -> Path:
     path = project_path(ctx.root, arg)
     if path.suffix.lower() not in EDITABLE_SUFFIXES:
         raise ToolError(f"{path.name}: only text files can be changed ({', '.join(EDITABLE_SUFFIXES)}).")
-    _not_frozen(ctx.project, path)
+    not_frozen(ctx.project, path)
     return path
 
 
@@ -59,7 +59,7 @@ def write_text(workspace: Workspace, path: Path, before: str, after: str, *,
     """Put `after` in place of `before` in the buffer if `path` is open, else on disk. Returns
     whether it went into the buffer; ToolError when it could not be done (also for a frozen version, whichever
     caller asks: the headless tasks and undo reach this without `_editable`)."""
-    _not_frozen(workspace.project, path)
+    not_frozen(workspace.project, path)
     via_buffer = workspace.is_open(path)
     if via_buffer:
         problem = workspace.apply_to_buffer(path, before, after)
@@ -118,6 +118,7 @@ def _applied(ctx: ToolContext, path: Path, before: str, after: str, via_buffer: 
       ("path", "old_text", "new_text"))
 def edit_file(ctx: ToolContext, args: dict) -> str:
     path = _editable(ctx, args["path"])
+    ctx.check_scope(path)
     old, new = args["old_text"], args["new_text"]
     if not old:
         raise ToolError("old_text is empty. To create a file use write_file.")
@@ -146,13 +147,14 @@ def edit_file(ctx: ToolContext, args: dict) -> str:
 
 
 @tool("write_file",
-      "Create a new text file in the project (not for slides: use add_slide; never overwrites -- an "
+      "Create a new text file in the project (not for slides: use create_slide or add_slide; never overwrites -- an "
       "existing file is changed with edit_file).",
       {"path": {"type": "string", "description": "Project-relative path of the new file."},
        "content": {"type": "string", "description": "The file's text."}},
       ("path", "content"))
 def write_file(ctx: ToolContext, args: dict) -> str:
     path = _editable(ctx, args["path"])
+    ctx.check_scope(path)
     content = args["content"].replace("\r\n", "\n")
     if path.exists():
         raise ToolError(f"{relative(ctx.root, path)} exists already. Change it with edit_file.")

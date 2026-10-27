@@ -126,7 +126,8 @@ def test_terminal_stop_cancels_current_toolbox(qapp, tmp_path):
     session._lock, session._generation = threading.Lock(), 0
     session._cancel = compiler.CancelToken()
     session.workspace = Workspace(ProjectContext.at(tmp_path))
-    session.workspace.on_gui = lambda fn: fn()
+    session.workspace.on_gui = lambda fn, default=None: fn()
+    session.scope = "deck"
     session.workspace.begin_request = lambda: None
     session._timer = SimpleNamespace(stop=lambda: None)
     session._sync = SimpleNamespace(stop=lambda **k: None)
