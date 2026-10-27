@@ -98,10 +98,13 @@ The union of what the three handovers ask for:
 | Process | `add_entry_point(name, fn)`; `entry_point_command(name)` gives the argv (`SlideMage --plugin claude:hook` frozen, `python -m slidemage --plugin claude:hook` from source) | claude |
 | Terminal | `terminal()`: a PTY in the assistant card; the plugin supplies argv and env. The external-edit watch, switched on while the terminal runs | claude |
 | Focus | the current deck, slide and scope; `protected_regions` (read) | claude |
-| Decks | `add_deck_marker("course URL")`: read and write `%% SlideMage <key>: …` in the preamble; deck editing (insert slides, mint slide ids) | campusonline |
-| UI | `add_deck_settings_tab(..., footer_action=...)`, `add_command`, `add_menu_entry("Deck", ...)`, `add_sidebar_box(size="compact", when=...)` | campusonline |
+| Decks | a deck (`name`, `path`, `text`, `groups`); `edit_deck_text(deck, change)` (refuses if the file changed meanwhile, like `deck_editor.apply`); `insert_slides`, `insert_positions`, `deck_language`. The handover's `add_deck_marker` is dropped: the plugin parses its own comment (`course_link.py`) | campusonline |
+| UI | `add_deck_settings_tab(..., footer_action=...)`, `add_command`, `add_menu_entry("Deck", ...)`, `add_sidebar_box(size="compact", when=...)`, the kit widgets `Page`, `Field`, `caption` | campusonline |
 | Rendering | `add_render_priority(fn: Deck -> bool)` | campusonline |
-| Misc | `cache_dir()`, `run_in_background`, `log`, `show_message`, `open_url`, `app_version` | all |
+| Misc | `cache_dir()`, `legacy_cache_dir()` (where core kept a file before the plugin, e.g. `course-schedules.json`), `run_in_background`, `log`, `show_message`, `open_url`, `app_version` | all |
+
+The CampusOnline side of this table is drafted in the plugin's own repository as a `typing.Protocol`
+(`campusonline/host.py`, its step 2); `plugin_api` should be built to that.
 
 The API is versioned by `api_version`, not by SlideMage's version. An incompatible change means
 `api_version = 2`, and SlideMage keeps loading `api_version = 1` plugins for at least one major version.
@@ -192,17 +195,17 @@ Release **v9.0.0**: the plugin host, `api_version = 1`. `hello` installs from `i
 
 ### Phase 2: CampusOnline as the first plugin
 
-**2.1 Host calls for CampusOnline:** `add_deck_marker`, `add_deck_settings_tab` with a footer action,
-`add_command`, `add_menu_entry`, `add_sidebar_box`, `add_render_priority`, `cache_dir`, deck editing. Core
-callers use them first, so they are tested before anything moves.
+The plugin side has its own plan: `docs/PLAN.md` in `~/github/slidemage-plugin-campusonline` (branch
+`plugin-campusonline` on Jürgen's private fork `JuergenFleiss/SlideMageS` until it gets its public repository).
+Done there: the history filtered from `stpalan/SlideMage` `develop`, the template adopted, the package
+standard-library only, with what still needs SlideMage in `bridge/`. Then: the host Protocol, the Course tab and
+the box, moving the old cache. Its steps 5–6 wait for this phase.
 
-**2.2 Into the plugin's repository** (Jürgen, CampusOnline handover §5):
-1. Run `filter-repo` in a fresh clone. The handover clones `github.com/JuergenFleiss/slidemage.git`; the
-   remote here is `stpalan/SlideMage`, so check which one has the full history.
-2. Move the files into the handover's layout.
-3. Wire `activate(host)`.
-4. Add the new "Course" tab and the sidebar box.
-5. Read the old `course-schedules.json` once.
+**2.1 Host calls for CampusOnline**, built to the plugin's `campusonline/host.py` Protocol. Core callers use
+them first, so they are tested before anything moves.
+
+**2.2 The plugin onto the real `plugin_api`** (plugin plan step 5): `bridge/` is deleted, and the plugin's tests
+run against the oldest and newest SlideMage it allows.
 
 **2.3 Cut from core:** the files and code of 2.2. The tests move with them (`test_course_schedule`,
 `test_admin_slides*` and `test_course_url`, plus the course cases of `test_background_renders`,
@@ -290,4 +293,9 @@ both listed before it ships. The first start offers each person the plugins they
 3. ~~Who writes the stdlib Anthropic client~~: Jürgen, first (phase 4).
 4. **CampusOnline handover §7:** Jürgen to decide the repository owner, a Settings tab, and what goes in the box.
 5. **Install from file:** anything that passes the checks (planned), or only ids in the catalogue?
-6. **Which repository URL the `filter-repo` commands should clone** (2.2).
+6. ~~Which repository the `filter-repo` commands clone~~: done from `stpalan/SlideMage` (the handover's
+   `JuergenFleiss/slidemage.git` doesn't exist).
+7. **From the CampusOnline plan, for Stefan:**
+   - The template's `build.py --check` misses relative imports that leave the package (`from ..x import`).
+   - Bundle the whole stdlib (2.5), or offer an HTTP GET helper in `plugin_api` that also handles proxies and
+     certificates?
