@@ -353,12 +353,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
                         f"Read it again and retry. Current text ({revision}, first 1500 characters):\n{before[:1500]}")
     after = args.get("body", before)
     if "edits" in args:
-        if not args["edits"]:
-            raise ToolError("edits must contain at least one replacement.")
-        for index, edit in enumerate(args["edits"], 1):
-            if (not isinstance(edit, dict) or set(edit) != {"old", "new"}
-                    or not all(isinstance(edit[key], str) for key in ("old", "new")) or not edit["old"]):
-                raise ToolError(f"Edit {index} needs a nonempty old string and a new string.")
+        for index, edit in enumerate(args["edits"], 1):      # their shape is the schema's (check_arguments)
             count = after.count(edit["old"])
             if count != 1:
                 raise ToolError(f"Edit {index}: old occurs {count} times in {relative(ctx.root, path)}; "
@@ -606,7 +601,8 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
       "description, url; location: place (address, 'lat, lng' or a map link), label, map_link (google, geo, osm). "
       "With several codes on one slide give each a caption such as 'QR 1' that the text refers to.",
       {"kind": {"type": "string", "enum": list(qr_code.KINDS)},
-       "fields": {"type": "object", "description": "Field name to text, as listed for the kind."},
+       "fields": {"type": "object", "additionalProperties": {"type": "string"},
+                  "description": "Field name to text, as listed for the kind."},
        "caption": {"type": "string", "description": "Text under the code; default none. 'auto' for the link, "
                                                     "address, name, event or place."},
        "height": {"type": "number", "description": "Share of \\textheight, default 0.6 (a lecture hall's back row); "
@@ -625,7 +621,7 @@ def make_qr_code(ctx: ToolContext, args: dict) -> str:
     caption = (args.get("caption") or "").strip()
     mode = qr_code.CAPTION_CONTENT if caption == "auto" else qr_code.CAPTION_CUSTOM if caption else qr_code.CAPTION_NONE
     height = args.get("height", qr_code.DEFAULT_HEIGHT)
-    if not isinstance(height, (int, float)) or isinstance(height, bool) or not 0 < height <= qr_code.MAX_HEIGHT:
+    if not 0 < height <= qr_code.MAX_HEIGHT:
         raise ToolError(f"The height is a share of \\textheight between 0 and {qr_code.MAX_HEIGHT}.")
     try:
         made = qr_code.create(ctx.project, spec, height=float(height), caption_mode=mode,

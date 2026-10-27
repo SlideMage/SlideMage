@@ -795,3 +795,53 @@ def test_modify_slide_checks_resolved_language_partner(box, root, monkeypatch):
     assert "abd-EN-Second-current.tex" in box.error(
         "modify_slide", slide="abc", edits=[{"old": "First", "new": "Changed"}])
     assert not box.of_type(EditProposed)
+
+
+def test_recursive_argument_validation():
+    from slidemage.ai.tools.base import ToolError, check_arguments, tool
+
+    @tool("example", "", {
+        "edits": {"type": "array", "minItems": 1, "items": {
+            "type": "object", "properties": {"old": {"type": "string", "minLength": 1},
+                                              "new": {"type": "string", "enum": ["yes", "no"]}},
+            "required": ["old", "new"], "additionalProperties": False}},
+        "fields": {"type": "object", "properties": {"known": {"type": "integer"}},
+                   "additionalProperties": {"type": "array", "items": {"type": "number"}}},
+        "number": {"type": "number"},
+    }, ("edits",))
+    def example(ctx, args):
+        return ""
+
+    valid = {"edits": [{"old": "a", "new": "yes"}], "fields": {"known": 1, "extra": [1, 2.5]}}
+    check_arguments(example.spec, valid)
+    check_arguments(example.spec, {**valid, "number": 0})
+    check_arguments(example.spec, {**valid, "number": 1.5})
+    cases = [
+        ({}, "Missing required argument 'edits'."),
+        ({**valid, "unexpected": 1}, "Unknown argument 'unexpected'. Known: edits, fields, number."),
+        ({"edits": []}, "Argument 'edits' needs at least 1 item."),
+        ({"edits": [1]}, "Argument 'edits[0]' must be of type object."),
+        ({"edits": [{"old": "a", "new": "yes"}, {"old": "b", "new": "no"},
+                    {"old": 1, "new": "yes"}]}, "Argument 'edits[2].old' must be of type string."),
+        ({"edits": [{"old": "", "new": "yes"}]}, "Argument 'edits[0].old' needs at least 1 character."),
+        ({"edits": [{"old": "a"}]}, "Missing required argument 'edits[0].new'."),
+        ({"edits": [{"old": "a", "new": "maybe"}]}, "Argument 'edits[0].new' must be one of: yes, no."),
+        ({"edits": [{"old": "a", "new": "yes", "other": 1}]},
+         "Unknown argument 'edits[0].other'. Known: old, new."),
+        ({**valid, "number": True}, "Argument 'number' must be of type number."),
+        ({**valid, "fields": {"known": True}}, "Argument 'fields.known' must be of type integer."),
+        ({**valid, "fields": {"extra": [True]}}, "Argument 'fields.extra[0]' must be of type number."),
+    ]
+    for args, expected in cases:
+        with pytest.raises(ToolError) as exc:
+            check_arguments(example.spec, args)
+        assert str(exc.value) == expected
+
+
+def test_fields_and_qr_height_are_checked_by_schema(box):
+    assert "fields.year" not in box.error("add_bib_entry", kind="book", fields={"year": 2024})   # a year as number is fine
+    assert box.error("make_qr_code", kind="url", fields={"url": False}) == (
+        "Argument 'fields.url' must be of type string.")
+    for height in (True, "0.5"):
+        assert box.error("make_qr_code", kind="url", fields={"url": "a.org"}, height=height) == (
+            "Argument 'height' must be of type number.")

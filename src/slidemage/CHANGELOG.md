@@ -2830,3 +2830,7 @@ v8.64.3 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 2): modify_
 
 NEW: The assistant's slide edits land on the slide it named.
 - Before, an edit of a German slide while editing in English could change the English version instead.
+
+v8.64.4 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 4): The agent tools' arguments are checked one level deeper. check_arguments looked at top-level types and enums only, so each tool checked nested input by hand or not at all. It now follows the schema down: types including number (not a boolean), enum, minLength, minItems, array items and nested objects' properties, required and additionalProperties, and its errors name the path the model passed ("Argument 'edits[2].old' must be of type string."). modify_slide's own check of its edits and make_qr_code's of the height type are gone; a QR code's fields must be text (a phone number sent as a number would lose its leading zero), a bibliography entry's may still be numbers (a year). Tests in test_agent_tools.py.
+
+NEW: The assistant gets clearer messages when it calls a tool with wrong arguments.

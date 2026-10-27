@@ -65,28 +65,51 @@ def tool(name: str, description: str, properties: dict, required: tuple[str, ...
     return wrap
 
 
-_JSON_TYPES = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
+_JSON_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "object": dict, "array": list}
 
 
 def check_arguments(spec: ToolSpec, args: object) -> None:
-    """Raise ToolError unless `args` fits the tool's schema (required, types, enums). The model's
-    input is untrusted: a tool function can rely on this much."""
+    """Raise ToolError unless `args` fits the tool's schema (required, types, enums, minLength, minItems, and
+    the same for array items and nested objects). The model's input is untrusted: a tool function can rely on this much."""
     if not isinstance(args, dict):
         raise ToolError("The arguments must be a JSON object.")
-    properties = spec.schema["properties"]
-    for name in spec.schema["required"]:
-        if name not in args:
-            raise ToolError(f"Missing required argument '{name}'.")
-    for name, value in args.items():
-        if name not in properties:
-            raise ToolError(f"Unknown argument '{name}'. Known: {', '.join(properties)}.")
-        wanted = properties[name].get("type")
+
+    def check(value: object, schema: dict, path: str) -> None:
+        wanted = schema.get("type")
         python_type = _JSON_TYPES.get(wanted)
         if python_type is not None and (
-                not isinstance(value, python_type) or (wanted == "integer" and isinstance(value, bool))):
-            raise ToolError(f"Argument '{name}' must be of type {wanted}.")
-        if "enum" in properties[name] and value not in properties[name]["enum"]:
-            raise ToolError(f"Argument '{name}' must be one of: {', '.join(properties[name]['enum'])}.")
+                not isinstance(value, python_type) or (wanted in ("integer", "number") and isinstance(value, bool))):
+            raise ToolError(f"Argument '{path}' must be of type {wanted}.")
+        if "enum" in schema and value not in schema["enum"]:
+            raise ToolError(f"Argument '{path}' must be one of: {', '.join(str(v) for v in schema['enum'])}.")
+        if isinstance(value, str) and "minLength" in schema and len(value) < schema["minLength"]:
+            minimum = schema["minLength"]
+            raise ToolError(f"Argument '{path}' needs at least {minimum} character{'s' if minimum != 1 else ''}.")
+        if isinstance(value, list):
+            if "minItems" in schema and len(value) < schema["minItems"]:
+                minimum = schema["minItems"]
+                raise ToolError(f"Argument '{path}' needs at least {minimum} item{'s' if minimum != 1 else ''}.")
+            if "items" in schema:
+                for index, item in enumerate(value):
+                    check(item, schema["items"], f"{path}[{index}]")
+        if isinstance(value, dict):
+            properties = schema.get("properties", {})
+            for name in schema.get("required", []):
+                if name not in value:
+                    child = f"{path}.{name}" if path else name
+                    raise ToolError(f"Missing required argument '{child}'.")
+            for name, item in value.items():
+                child = f"{path}.{name}" if path else name
+                if name in properties:
+                    check(item, properties[name], child)
+                else:
+                    additional = schema.get("additionalProperties", True)
+                    if additional is False:
+                        raise ToolError(f"Unknown argument '{child}'. Known: {', '.join(properties)}.")
+                    if isinstance(additional, dict):
+                        check(item, additional, child)
+
+    check(args, spec.schema, "")
 
 
 class ToolBox:
