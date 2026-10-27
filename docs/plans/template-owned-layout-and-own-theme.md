@@ -260,8 +260,8 @@ Every length and number now hardcoded in base and the theme goes into exactly on
 
 | Class | Lives in | Template may change it | Examples (initial assignment; step 5 completes and verifies it) |
 |---|---|---|---|
-| Design hook | setup catalog | yes | logo path and height; frametitle top/bottom/left/right padding; title, footer and bullet colors; title-frame box height, text sep, band gap, bottom pad; section-frame box height; quote box height and attribution gap; footer box height; side-footnote width; block side margin and title-marker width; progress-strip height; text margins (.45cm); list spacing ratios; image border width; Top Margin (41.58pt); text sizes of footer, slide id, footnotes, code, block titles; `\parskip`, `\linespread` (default from the profile) |
-| Font metric | layout profile | no, it picks a profile | font files and weight mapping; ascender ratio (0.935); line-box top strut; code/inline-code fonts and scale; card heading font; math-font handling; each calibration that stays font-dependent after step 5 |
+| Design hook | setup catalog | yes | logo path and height; frametitle top/bottom/left/right padding; title, footer and bullet colors; title-frame box height, text sep, band gap, bottom pad; section-frame box height; quote box height and attribution gap; footer box height; side-footnote width; block side margin and title-marker width; progress-strip height; text margins (.45cm); list spacing ratios; image border width; Top Margin (41.58pt); text sizes of footer, slide id, footnotes, code, block titles |
+| Font metric | layout profile | no, it picks a profile | font files and weight mapping; ascender ratio (0.935); line-box top strut; code/inline-code fonts and scale; card heading font; math-font handling; `\parskip`, `\linespread` (`\SMParskip`, `\SMLinespread`; user decision 2026-10-27, they are not hooks); each calibration that stays font-dependent after step 5 |
 | Derived | base | no (follows its inputs) | title-frame box width, logo width, content bottom, section-frame true bottom, left margin (= frametitle left padding + strut, today 12.55pt) |
 | Internal | base or theme, private `\SM@...` | no | struts, temporaries, bookkeeping |
 | Obsolete | deleted | n/a | calibrations the automatic Top Margin already corrects; prove each with a pixel-identical render before deleting |
@@ -660,6 +660,106 @@ mix it in.
      identical. Otherwise write them as metric expressions, and only failing that as profile values.
    - Design values become catalog hooks.
    - Pixel-identical. Any intended difference needs the user's approval with before/after images.
+   - **Inventory 2026-10-27** (redone against v9.3.0; `b:` = `SlideMage_base.tex`, `t:` = `beamerthemeSlideMage.sty`,
+     `s:` = `SlideMage_setup.tex`, `p:` = `SlideMage_layout_fira.tex`, `m:` = `SlideMage_measure.lua`). Classes: **H**
+     design hook (catalog, a template may change it), **M** font metric (layout profile, a template cannot change it),
+     **D** derived (base, an expression of its inputs), **I** internal (stays where it is), **O** obsolete (try as 0, delete
+     if the render stays identical). "Q" marks a value whose class was unclear; it keeps the conservative class and sits
+     in the questions for the user. Where a trial decides between two classes the row says so; the result is in the
+     "Done" notes below. Two rules shape the table: a value that a slide reads by name (the real project reads
+     `\SMContentTopAlign` 319×, `\SMFooterBoxHeight` 89×, `\SMTitleBarBottomAlign` 77×, `\SMMinipageTopCorrection`
+     122×, `\SMFlatItemizeTopCorrection` 123×, ...) stays defined under that name whatever its class; and a hook is a
+     value, never a piece of code (colours, logo and fonts of the profile are not repeated here).
+
+     | Name | Where | Value | Class | Reason |
+     |---|---|---|---|---|
+     | `\SMTopMargin` | s:152 | 41.58bp | H | already a hook (step 4) |
+     | `\SMLogoHeight`, `\SMInstituteLogoPath`, colour roles | s:118-142 | 3ex, file, names | H | already hooks |
+     | `\SMFrametitleTopPadding`, `...BottomPadding`, `...LeftPadding` | t:1128-1135 | 2.2ex each | H | space around the title; plan table. Definition moves from the theme to the catalog |
+     | `\SMFrametitleRightPadding` | t:1131, s:160 | 2.2ex, set to 0.28cm in setup | H | same; the theme's 2.2ex default is dead (setup always overrides it), so the catalog holds 0.28cm |
+     | `\SMFrameSubtitleStrutEnd`, `\SMFrameSubtitleSep` | t:1147-1151 | 0pt, ` ---~` | H | space/text between title and subtitle; already mentioned in the catalog |
+     | `\SMFootlineVOffset` | t:1571, b:2026-2039 | -0.5ex, then +/-1.3, 1.4, 0.4, 0.4, 0.87pt = net -0.77pt | H (Q) | the gap between footnotes and the footer box; the five `\addtolength` lines collapse to one value `-0.5ex-0.77pt` (same sp). Hand-measured against an underlined link at Fira, so it could also be M: kept as a hook, which changes nothing unless a template sets it |
+     | `\SMFootlineHeight`, `\SMFootlineDepth` | t:1572-1573 | 1.5ex, 0.1ex | H | footline box |
+     | `\SMRightFooterPadding` | t:1575 | 3.5ex | H | gap before the frame number |
+     | footline `leftskip`/`rightskip` | t:1583-1584 | 3ex | H | new `\SMFootlineSidePadding` (the footer's inner side padding) |
+     | `\SMFootlineHRightOffset` | t:1574 | `\spaceskip` = 0pt | I | always 0pt, not a hook (step 3 said so); dropped from the catalog's list of theme names |
+     | `\SMFooterBoxHeight` | t:1629 | 7.26pt | H | plan table; read by slides |
+     | `\SMFooterTextDrop` | b:2056 | -0.49pt | M | centres the footer text in the box, measured at Fira (0.14pt above vs 1.12pt below) |
+     | `\SMFooterRightShift` | b:2047 | 4.6pt | M (D?) | aligns the frame number with the logo's right edge: font part (3ex, 3.5ex paddings) plus `\SMFrametitleRightPadding`. Trial: express as `RightPadding - c` with c in the profile |
+     | footer text size `\fontsize{5}{3}` | b:1984 | 5/3 | H | new `\SMFooterTextSize` (plan table: text size of the footer) |
+     | slide-id size `\fontsize{4}{4}` | b:2273 | 4/4 | H | new `\SMFooterIDSize` (plan table: slide id) |
+     | footer pieces `\hspace*{2em}`, `-4em`, `\vspace*{0.4ex}` | b:2275-2278 | em/ex | I (Q) | positions of the id and number inside the footer, tuned by eye at Fira; moving them to the profile or the catalog changes no pixel, but it is unclear which they are |
+     | footnote size `\fontsize{3.2}{1.9}` (five places) | t:1764, 1773-1776 | 3.2/1.9 | H | new `\SMFootnoteSize` |
+     | `\footnotesep` | t:1680 | 3pt | H | new `\SMFootnoteSep` |
+     | footnote `\lineskip` | t:1893, 1926 | 0.6pt | I | mechanics of the footnote strut, tied to `\SMFootnoteSize` |
+     | `\SMFootnoteRightShift` | t:1797 | 4.8pt | M (D?) | the footnote's right edge against the logo's: same case as `\SMFooterRightShift` |
+     | `\SMSideFootnoteHsize` | t:1841 | 207pt | H | plan table: side-footnote width |
+     | `\SMSideFootnoteTopSep`, `\SMSideFootnoteRightInset` (default), `\SMSideFootnoteMarkerShift` | t:1847, 1851, 1865 | 3pt, 2pt, 1.3pt | H | the strip's gap to the title bar / the page edge / the marker |
+     | side-footnote offsets `+2.1pt`, `+3.1pt`, `-2.31pt` | b:4742, 5009, 5010 | pt | I (Q) | gap between a side image and its footnote strip; calibrated at Fira, unclear whether design or font |
+     | `\SMBlockSideMargin`, `\SMBlockTitleMarkerWidth` | t:2115, 2188 | 4.20pt, 16pt | H | plan table |
+     | block box mechanics `colsep*=.75ex`, `\vskip-0.5pt`, `-.25ex`, `-.75ex` (six templates) | t:2262-2475 | | I | the pairs that make a block's title and body meet; part of the template code, not a choice |
+     | bullet radius, `\SMBulletDotBlack` 1.7pt, `!` marker 7/7, `\textcircled{\scriptsize i}` | t:2129, 2425, 2311 | | I | glyph geometry |
+     | `\SMImageBorderWidth` | b:339 | 2.5pt | H | plan table |
+     | `\SMWarningSignPadding`, `...BorderWidth` | b:625-627 | 6pt, 4.5pt | H | look of `\SMWarningSign` |
+     | `\SMTallItemBaseRatio` | b:699 | 0.3 | H | list spacing ratio (plan table) |
+     | `\SMTightDisplaySkip` | b:766 | 3pt | H | display spacing in a list |
+     | `\SMItemizeLevelDropSpaceRatioI-IV` | b:3564-3598 | 0.5, 0.3, 0.2, 0.5 | H | plan table |
+     | `\SMItemsepRatioI-IV` | b:3705-3708 | 0.4, 0.24, 0.15, 0.09 | H | plan table |
+     | `\SMItemizeLevelOpenSpaceRatioI-III` | b:3770-3772 | 0.02, 0.15, 0.02 | H | plan table |
+     | `\SMBesideFigureTopGap` | b:4258 | 0.2em | H | already a macro, documented as a default |
+     | `\SMItemStep`, `\SMBulletWidth`, `\leftmargini`-`iv` | b:3207-3215 | measured | D | from the bullet and `\labelsep` |
+     | label-item list `\labelsep`, `\labelwidth` (four environments) | b:3095-3096, 3152-3153, 3169-3170, 3186-3187 | 4.75pt, 9.1pt | M | width of "a)" at the small itemize size; four copies become two profile lengths `\SMLabelItemSep`, `\SMLabelItemWidth` |
+     | label-item list `\itemsep` (four environments) | b:3126, 3157, 3174, 3191 | 2.5pt | H | `\SMLabelItemItemsep`; a choice (tuned so a boundary reads more open than a wrapped line) |
+     | `\SMEnumerateLabelWidth` box, nested enumerate `\labelwidth`/`\labelsep`/`\leftmargin`, `7.85pt` | b:3381, 3485-3493 | 20.33pt, 5.25pt, 13.1pt, 7.85pt | M | numeral widths at Fira; calibrated by measuring; four profile lengths `\SMEnumerateLabelBox`, `...NestedLabelSep`, `...NestedLeftMargin`, `...NestedMinNumber` |
+     | `\SMEnumerateTextExtra` | b:3449 | 6.3pt | M | the numeral column of the outer enumerate at Fira |
+     | `\SMTocLabelExtraGap` | b:3917 | `\wd` of "0" | D | measured |
+     | `\SMContentTopAlign` | b:2489 | 41.58pt | H (Q) | the Top Margin as a coordinate for overlays (corner figures, floating blocks, `\SMFit`); it is 41.58pt while `\SMTopMargin` is 41.58bp, 0.156pt apart, so the two cannot become one without a visible 0.156pt move of every overlay: both stay. Question for the user |
+     | `\SMTitleBarBottomAlign` | b:2538 | 25.32pt | H (Q; trial: not derivable exactly) | the bottom edge of the title bar = paddings + title strut + logo; trial: as an expression of the hooks. If it cannot be exact it stays a hook with a note that the paddings are tied to it |
+     | `\SMContentBottomAlign` | b:4121 | footer + top align - bar bottom | D | already derived |
+     | `\SMContentTopShift` | b:2578 | 11.5964pt | M (trial: not obsolete) | pull-up of every top-aligned frame; the automatic Top Margin measures and corrects it. Still live for frames the measurement does not manage: `sectionframe` (calibrated against it), `\SMManualTopMargin`, `\SMAutoTopMarginfalse`. Trial: 0 with `\SMSectionframeContentDrop` rewritten for the shift |
+     | `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation` | b:2592, 2636 | 10.17pt, 13.76pt | M (trial: live) | only active where the measurement is not (the `[c]` frame, `sectionframe`, manual); trial 0, else profile |
+     | `\SMMinipageTopCorrection`, `\SMMinipageWithCornerImageExtraCorrection` | b:2721, 2753 | 9.38pt, 10.35pt | O (M) | read by slides as `\SMReduceContentTopShift{...}`, whose effect the measurement removes. The names stay defined; trial 0, else profile |
+     | `\SMSideImageFrameMinipageCorrection` | b:2784, 2803 | 8.2pt, then 6.26pt | O (M) | set twice (the first line is dead); same trial |
+     | `\SMFlatItemizeTopCorrection` | b:2840, 2855 | 1.834pt, then 0.01pt | O | set twice (the first is dead); effectively 0 already |
+     | `\SMContentTopShiftReduction` and the three `\SM...ContentTopShift` commands | b:2812-2864 | 0pt | I | the plumbing the corrections feed |
+     | `\SMFloatingInfoblockRightAlign` | b:4103 | `RightPadding - 3.165pt` | I (Q) | the infoblock's visible edge against the logo; the 3.165pt is a hand-measured constant at Fira with the block margins (4.20pt) in it; unclear whether it derives from `\SMBlockSideMargin` |
+     | `\SMFloatingInfoblockTopAlign` | b:4112 | 6.02pt | I (Q) | same case |
+     | `\SMTitleframeBoxHeight`, `...TextSep`, `...BandGap`, `...BottomPad` | b:4420, 4427, 4429, 4445 | 187.147pt, 2.5ex, 0.8ex, 41pt | H | plan table. The comment calls the 41pt "empirical", calibrated to 1.5 subtitle lines at Fira, so it could be M; kept as a hook (Q) |
+     | `\SMTitleframeBoxWidth`, `\SMSectionframeTitleWidth` | b:4422, 4921 | page - logo - paddings | D | already derived |
+     | `\SMSectionframeBoxHeight` | b:4826 | 85.04pt | H | plan table |
+     | `\SMSectionframeTrueBoxBottom` | b:4887 | 85.04pt | D | the same number as the box height; becomes `\SMSectionframeBoxHeight` |
+     | `\SMSectionframeContentDrop` | b:4824 | 11.5pt | H (O) | text drop under the bar; written against `\SMContentTopShift` (see that row) |
+     | `\SMSectionframeRefDepth`, `...BottomGap`, `...BottomPadCorrection`, `...HeightCorrection` | b:4897, 4908, 4910, 4919 | 4.42pt, 14.32pt, 5.58pt, 16.03pt | M | corrections of the section title measurement at Fira (`\strut`, descender) |
+     | `\SMSectionframeBarBottom` | b:4951 | 85.14bp | I (Q) | "constant since v5.28.0" for the side figure; 0.42pt below the box height plus ref depth, unclear whether derived |
+     | `\SMQuoteBoxHeight`, `\SMQuoteAttributionGap` | b:5055, 5057 | 0.8`\paperheight`, 1.8ex | H | plan table |
+     | `\SMProgressStripHeight` | b:5285 | 11.08pt | H | plan table. The strip's node (`text height=6.2pt`, `text depth=2pt`, `inner ysep=1.5pt`, `minimum height=11.19pt`, font 6.3/7.5, `\vspace{-3pt}`, b:5310-5320) stays inside the command (I): it is the strip's font fit |
+     | `\SMCodeSize` | b:5336 | 6.6/8.2 | H | plan table: code text size; moves to the catalog |
+     | code panel `\fboxsep`, `breakindent` | b:5368, 5379 | 3pt, 1.5em | I | listing mechanics |
+     | `\SMChapterAgendaMaxHeight` and `14pt` | b:5460, 5603 | 0pt (auto), 14pt | I | a slide-level knob and the clearance of the auto fit |
+     | text margins | t:1124 | .45cm | H | new `\SMTextMarginLeft`, `\SMTextMarginRight`; applied by a theme command that the base calls after the template |
+     | `\parskip`, `\linespread` | p:106-107 | 0.5em, 1.15 | M | profile values `\SMParskip`, `\SMLinespread` (user decision 2026-10-27); section 2's table row is corrected |
+     | `\SMFontAscender` | p:103 | 0.935 | M | derived from the font; the number is the fallback |
+     | optional features: `\SMProgressSectionHeight`, `\SMSectionHOffset`, `\SMProgressHeadFootLineheight`, mini-frame and bar numbers | t:437-3150 | 3pt, 0pt, 1.2ex, ... | I | off by default; the switches and the three lengths the catalog names are the interface, the rest is feature code |
+     | `\SMHrefUnderline` thickness 0.2pt, drop `-0.35ex` | b:216-228 | | I | scaled from footnote to body size; mechanics |
+     | `\SMTikzmark` `yshift=2pt`, `\SMArrow` tip 2mm, `\SMUnderbrace` amplitude 4pt/raise 1pt/below 6pt, mugshot arc 0.25cm | b:360, 368, 581, 1598-1600 | | I | drawing styles slides use; a template may redefine the tikz style |
+     | key defaults of `SMFloatingBlock` (2mm, 1.2mm), `\SMCorner` (`gap=12pt`), `\SMFit` (`gap=6pt`) | b:4011, 4178, 4301 | | I | defaults of command keys, documented at the command |
+     | presenter note page (0.3em, 4pt, 3pt, 7pt, 9pt, 0.95, 17.4pt, 30.8pt) | b:2169-2185 | | I | layout of the presenter's note page, not of a slide |
+     | zero-size boxes, `inner sep=0pt`, `\tabcolsep` 0pt, `\parindent` 0pt, `\vbox to 0pt` | b, ~140 places | 0pt | I | structure, not values |
+     | Lua: `SMALL_PICTURE` 6pt, `MIN_ROOM_PT` 1, `MIN_SIZE` 0.5pt, ratio 0.85, convergence 0.01pt / 0.0005, `MARKER_ID` | m:249-263, 393, 675-679 | | I | thresholds of the measurement algorithm |
+     | Lua: top margin and ascender | m | | | gone in step 4 (parameters of `configure`) |
+     | Python: `check_layout.py` `TOP_MARGIN = 41.58`, `LEFT_MARGIN = 12.55` | tools | | D | read from the PDF in step 6 |
+
+     Counts (74 rows; a row can hold several names; the class before a bracket): H 34, M 9, D 7, I 19, O 5 (the O rows may
+     end as M, see the trials).
+   - **Done 2026-10-27 (v9.4.0), notes for the later steps:**
+     - **Hooks.** Defined in `SlideMage_setup.tex` after `\usetheme` (the theme and the base no longer define them): text margins `\SMTextMarginLeft/Right`; `\SMFrametitle{Top,Bottom,Left,Right}Padding`, `\SMFrameSubtitleSep`, `\SMFrameSubtitleStrutEnd`; `\SMFooterBoxHeight`, `\SMFooterTextSize`, `\SMFooterIDSize`, `\SMFootlineHeight/Depth/SidePadding`, `\SMRightFooterPadding`, `\SMFootlineVOffset` (default `-0.5ex-0.77pt`: the base's five `\addtolength` lines summed in sp); `\SMFootnoteSize`, `\SMFootnoteSep`, the four `\SMSideFootnote...` lengths; `\SMBlockSideMargin`, `\SMBlockTitleMarkerWidth`; `\SMTitleframe{BoxHeight,TextSep,BandGap,BottomPad}`, `\SMSectionframe{BoxHeight,ContentDrop}`, `\SMQuote{BoxHeight,AttributionGap}`, `\SMProgressStripHeight`; the list ratio macros, `\SMTallItemBaseRatio`, `\SMLabelItemItemsep`, `\SMTightDisplaySkip`, `\SMBesideFigureTopGap`; `\SMImageBorderWidth`, `\SMWarningSign{Padding,BorderWidth}`, `\SMCodeSize`; `\SMContentTopAlign`, `\SMTitleBarBottomAlign`. Block, frametitle, caption and bibliography sizes are beamer fonts: a template uses `\setbeamerfont` after setup (documented in the catalog). The one new name that is not a rename is `\SMFootlineSidePadding`.
+     - **Evaluation point.** Hooks in ex/em stay in the preamble's normal font, as before, except `\SMFootlineSidePadding`: the footline template had a literal `3ex` evaluated inside the footline's `\scriptsize`, so it is a macro (`3ex`), not a length. The first compare after the move differed on every page in exactly that (4.6pt on the footer); a numeric dump of every `\SM...` length before and after (in sp) is the fast check for this kind of slip.
+     - **`\SMApplyLayoutHooks`.** A template changes hooks after the theme has loaded, so what must reach registers that are not SlideMage's own (`\beamer@leftmargin`, `\footnotesep`, the `footnote` beamer font) is applied by this theme macro, which the base calls right after `\SMApplyColorRoles`. Add anything of that kind there.
+     - **Profile.** `SlideMage_layout_fira.tex` gained a 'Calibrations' section: `\SMFooterTextDrop`, `\SMFooterRightShift`, `\SMFootnoteRightShift`, `\SMEnumerateLabelBox/NestedLabelSep/NestedLeftMargin/NestedMinNumber/TextExtra`, `\SMLabelItemWidth/Sep`, `\SMSectionframe{RefDepth,BottomGap,BottomPadCorrection,HeightCorrection}`, `\SMContentTopShift`, `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation`. A profile for another font (step 7) must define all of them; the catalog header's list of what a profile defines should be extended then.
+     - **Calibration trials** (in-repo compare = manual and its copy, two templates, three versions, 72 dpi pixel hashes). (1) `\SMContentTopShift` at 0 with the section divider's drop rewritten: not identical, 11 of 92 pages differ in 3-6 pixels by up to 17 levels. The automatic Top Margin records its correction to 0.001pt, so a different pull-up lands a thousandth elsewhere. Kept (profile). (2) The two column corrections at 0: not identical, a `columns` below a paragraph moves about 10pt down (manual page 3); they are live in frames the measurement does not manage. Kept (profile). (3) `\SMMinipageTopCorrection`, `...WithCornerImageExtraCorrection`, `...SideImageFrameMinipageCorrection`, `\SMFlatItemizeTopCorrection` at 0: no slide of the manual reads them, so the in-repo compare says nothing; the copy of the real project (122 slides read the first, 123 the last, 5274 pages, 48 renders) is identical. Deleted as values, the names stay defined as 0pt for the slides that read them (the base comment says so). (4) `\SMTitleBarBottomAlign` as `TopPadding + totalheight(X) - 0.5 fontcharht(E) + 0.5 LogoHeight` in the frame title font (= 25.3233pt, the measured 25.32pt is 0.0033pt off): not identical, 14-16 pixels at the logo's trim patch on every page and 594 on the appendix thumbnails. Kept as a hook with the number. (5) `\SMFootnoteRightShift` (4.8pt) and `\SMFooterRightShift` (4.6pt) are close to `text margin right - right padding` = 4.837pt (the footer's by a glyph overhang of 0.24pt): not exact, not tried, both stay profile numbers. (6) `\SMSectionframeTrueBoxBottom` is now `\SMSectionframeBoxHeight` (the same 85.04pt).
+     - **Not a hook, left in place** (inventory class I, Q): the footer's `2em`/`-4em`/`0.4ex` pieces, the side-footnote offsets `+2.1pt`, `+3.1pt`, `-2.31pt`, `\SMFloatingInfoblockRightAlign` (`RightPadding - 3.165pt`) and `TopAlign` (6.02pt), `\SMSectionframeBarBottom` (85.14bp) and the progress strip's node geometry. They are font-or-design mixtures; see the questions below.
+     - **Open for the user.** (a) `\SMContentTopAlign` 41.58pt against `\SMTopMargin` 41.58bp: equal in intent, 0.156pt apart in fact; deriving one from the other moves every overlay figure, floating block and `\SMFit` by 0.156pt (0.05mm, not seen by eye, but not pixel-identical), and would let a template change the Top Margin without re-measuring. Needs a yes, with before/after images if wanted. (b) `\SMTitleBarBottomAlign`: same kind of question, deriving it removes the second hand-kept number but changes 14-16 pixels per page at the logo. (c) Should the footer and footnote right shifts follow `\SMFrametitleRightPadding` (a 0.04pt / 0.24pt visible move on the default look)? (d) Is `\SMFootlineVOffset`'s -0.77pt a design choice (kept as hook) or a font calibration? (e) Is the 41pt `\SMTitleframeBottomPad` a hook (kept) or a Fira calibration?
+     - **Consumers.** `appendix_toc.py` reads `\SMTextMarginLeft` where it had `.45cm` (and `\SMFrametitleRightPadding`, as before); `check_layout.py` keeps its constants (step 6 replaces them) with a comment naming the hooks; `ai/guides.py` names none of the moved values. Pins renewed (setup, profile, base, theme); no view-dependent rule entered them.
 6. **Effective margins for the tools.** Base writes the PDF info keys; `check_layout.py` reads them.
 7. **Proof and calibration.**
    - Add the `lmsans` profile.

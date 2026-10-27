@@ -1,7 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
 % SlideMage layout profile "fira": Fira Sans Light for text, Fira Mono for code
-% (SlideMage v9.3.0).
+% (SlideMage v9.4.0).
 %
 % A layout profile holds everything that depends on the font: which font files
 % load and how their weights map onto \textbf and \textit, the code fonts, the
@@ -105,6 +105,70 @@
 % loaded, with the normal font in force, so the em is this font's.
 \newcommand{\SMLinespread}{1.15}
 \newcommand{\SMParskip}{0.5em}
+
+% Calibrations -------------------------------------------------------------------------
+% Lengths that were measured against the rendered PDF at Fira Sans Light and Fira Mono
+% (SlideMage v9.4.0 collects them here; they sat in SlideMage_base.tex). They are numbers
+% of this font, so they belong with it: a template does not change them, and a profile for
+% another font gives its own (the calibration deck of a later step measures them).
+%
+% The footer. The text in its box: the frame footer sat noticeably closer to the top edge
+% of the box than to the bottom (0.14pt above against 1.12pt below).
+\newlength{\SMFooterTextDrop}
+\setlength{\SMFooterTextDrop}{-0.49pt}
+% The right end of the footer line (the frame number) against the logo's right edge above
+% it, and the right end of a footnote against the same edge.
+\newlength{\SMFooterRightShift}
+\setlength{\SMFooterRightShift}{4.6pt}
+\newlength{\SMFootnoteRightShift}
+\setlength{\SMFootnoteRightShift}{4.8pt}
+% Numbered lists. A nested enumerate sets its numeral in a right-aligned box whose width puts
+% a single-digit numeral flush with the text of the item above (20.33pt; 19.23pt left the
+% widest digit, "6.", up to 1.05pt left of it); the numeral may be wider than the dot
+% column (7.85pt) and the list keeps a left margin and label gap of its own. The outer
+% enumerate's numeral column is wider than a bullet by the last length.
+\newlength{\SMEnumerateLabelBox}
+\setlength{\SMEnumerateLabelBox}{20.33pt}
+\newlength{\SMEnumerateNestedLabelSep}
+\setlength{\SMEnumerateNestedLabelSep}{5.25pt}
+\newlength{\SMEnumerateNestedLeftMargin}
+\setlength{\SMEnumerateNestedLeftMargin}{13.1pt}
+\newlength{\SMEnumerateNestedMinNumber}
+\setlength{\SMEnumerateNestedMinNumber}{7.85pt}
+\newlength{\SMEnumerateTextExtra}
+\setlength{\SMEnumerateTextExtra}{6.3pt}
+% Lists with letter or number labels ("a)", "1."): the box that holds a label at the small
+% itemize size with a little clearance (9.1pt), and the gap between it and the text: 2pt
+% plus half the width of a "C" (4.75pt).
+\newlength{\SMLabelItemWidth}
+\setlength{\SMLabelItemWidth}{9.1pt}
+\newlength{\SMLabelItemSep}
+\setlength{\SMLabelItemSep}{4.75pt}
+% The section divider frame measures its title with a \strut and corrects what remains:
+% the depth of the reference text, the gap under the title and its correction, and the
+% height correction.
+\newlength{\SMSectionframeRefDepth}
+\setlength{\SMSectionframeRefDepth}{4.42pt}
+\newlength{\SMSectionframeBottomGap}
+\setlength{\SMSectionframeBottomGap}{14.32pt}
+\newlength{\SMSectionframeBottomPadCorrection}
+\setlength{\SMSectionframeBottomPadCorrection}{5.58pt}
+\newlength{\SMSectionframeHeightCorrection}
+\setlength{\SMSectionframeHeightCorrection}{16.03pt}
+
+% The pull-up of a top-aligned frame (standardframe) and the corrections of the frames the
+% automatic Top Margin does not manage (the [c] frame, sectionframe, \SMManualTopMargin,
+% \SMAutoTopMarginfalse). In every other frame the measurement corrects what is left, but not
+% to the last digit: with these at 0 the frames of the manual land a thousandth of a point
+% elsewhere and 11 of 92 pages differ in a few pixels (v9.4.0 trial), and a \begin{columns} below
+% a paragraph still needs the 10.17pt, so none of the three goes. 11.5964pt is 40% more than
+% the original 7.33pt (the Top Margin was reduced to 60%).
+\newlength{\SMContentTopShift}
+\setlength{\SMContentTopShift}{11.5964pt}
+\newlength{\SMColumnsTopCorrection}
+\setlength{\SMColumnsTopCorrection}{10.17pt}      % columns[t] starts 10.17pt below a list
+\newlength{\SMColumnsTTopCompensation}
+\setlength{\SMColumnsTTopCompensation}{13.76pt}  % columns[T] has taken part of that back
 
 % Code fonts ----------------------------------------------------------------------
 % \SMCodeFile (listings) and the like use Fira Mono Regular; the theme's \ttfamily

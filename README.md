@@ -408,6 +408,9 @@ copied package files in `texmf/` record the exact originals.
   the framework measures against: `\SMFontAscender` (0.935 em; used only where
   the loaded font gives none: SlideMage reads it from the font and hands it, with
   the Top Margin, to `SlideMage_measure.lua`), `\SMLinespread` and `\SMParskip`.
+  It also holds the numbers measured against this font (since v9.4.0): the footer text drop and
+  right shifts, the label widths of numbered and lettered lists, the section divider's title
+  corrections. A template does not change them; it picks a profile or ships its own.
   A template picks its profile before it loads the setup layer,
   `\newcommand{\SMLayoutProfile}{name}` (`fira` if it says nothing), and
   `SlideMage_setup.tex` inputs `SlideMage_layout_<name>.tex`. A project can keep a
@@ -423,7 +426,9 @@ copied package files in `texmf/` record the exact originals.
   template may change, each with its default and a comment — the `c_*`
   palette (SlideMage's own colours), the role colours (`\SMBulletColor`,
   `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight`, the Top Margin
-  (`\SMTopMargin`) and the title-bar paddings (`\SMFrametitleRightPadding`, ...).
+  (`\SMTopMargin`), the title-bar paddings (`\SMFrametitleRightPadding`, ...), and since v9.4.0 every
+  other design value: text margins, footer and footnote sizes and spacing, block margins, title,
+  section, quote and progress-strip frame sizes, list spacing ratios, image border width, code size.
   It also inputs the layout profile. The one file a template author reads.
 - `SlideMage_base.tex` — the project's shared customization
   layer: the footer (course name + slide ID + frame number), the

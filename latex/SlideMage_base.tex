@@ -261,6 +261,9 @@
 % The colour roles of the theme follow the template's palette: SMColorDark and SMColorA, the canvas
 % default and the roles (beamerthemeSlideMage.sty). Needs to go after the template's color redefinitions.
 \SMApplyColorRoles
+% The hooks that go into registers of beamer's and LaTeX's own (text margins, footnote font
+% and spacing): needs to go after the template as well.
+\SMApplyLayoutHooks
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -335,8 +338,7 @@
 % image content on one slide and not another, which reads as "heavier" even
 % at an identical stroke width -- see the SMImageBorder padding gotcha
 % below).
-\newlength{\SMImageBorderWidth}
-\setlength{\SMImageBorderWidth}{2.5pt}
+% (\SMImageBorderWidth, 2.5pt, is a hook of SlideMage_setup.tex.)
 % outer sep = half the stroke (2026-10-01, direct instruction: "if a figure
 % has a border, that border should determine its position"): a bordered
 % node's anchors (north east, west, ...) sit on the border's *outer* edge, so
@@ -621,10 +623,7 @@
 % rewrapping to a handful of lines isn't a smooth function of width, but
 % close enough for the short warning-sign text this is meant for; a
 % caller can always nudge #5 if a specific case lands visibly off.
-\newlength{\SMWarningSignPadding}
-\setlength{\SMWarningSignPadding}{6pt}
-\newlength{\SMWarningSignBorderWidth}
-\setlength{\SMWarningSignBorderWidth}{4.5pt}
+% (\SMWarningSignPadding, 6pt, and \SMWarningSignBorderWidth, 4.5pt, are hooks of SlideMage_setup.tex.)
 \newsavebox{\SMWarningSignBox}
 \newlength{\SMWarningSignW}
 \newlength{\SMWarningSignH}
@@ -696,7 +695,7 @@
 % on slides/u74-Example-Dynamic-Mattress-Company-Periods-current.tex (see
 % this macro's own comment above) -- so no visual change there, while now
 % correctly scaling up/down at every other level and font override.
-\newcommand{\SMTallItemBaseRatio}{0.3}
+% (\SMTallItemBaseRatio, 0.3, is a hook of SlideMage_setup.tex.)
 \newlength{\SMTallItemBaseUnit}
 \newlength{\SMTallItemSpace}
 % The optional argument is either a number (the multiplier above -- any
@@ -762,8 +761,7 @@
 % and a fatal, PDF-less compile on the very first slide that used it. A
 % plain group sidesteps that class of bug entirely since it never
 % introduces a same-named wrapper environment.
-\newlength{\SMTightDisplaySkip}
-\setlength{\SMTightDisplaySkip}{3pt}
+% (\SMTightDisplaySkip, 3pt, is a hook of SlideMage_setup.tex.)
 \newcommand{\SMTightDisplaySkips}{%
 	\abovedisplayskip=\SMTightDisplaySkip
 	\abovedisplayshortskip=\SMTightDisplaySkip
@@ -1981,7 +1979,7 @@
 % strip they are drawn in are the theme's (beamerthemeSlideMage.sty); the footer text, which
 % depends on the deck version, is the "frame footer" template below.
 % Smaller footer + a bit of padding under it
-\setbeamerfont{frame footer}{size=\fontsize{5}{3}\selectfont} % {font size}{baseline skip} in pt
+\setbeamerfont{frame footer}{size=\SMFooterTextSize} % the catalog: {font size}{baseline skip} in pt
 
 % Shrinks the gap between footnotes and the footer box below them. The
 % theme positions the footer's content via \vspace*{\SMFootlineVOffset}
@@ -2023,10 +2021,9 @@
 % section started with; kept as two separate historical adjustments below
 % rather than collapsing them into one, so this back-and-forth stays
 % visible rather than silently disappearing.
-\addtolength{\SMFootlineVOffset}{-1.3pt}
-\addtolength{\SMFootlineVOffset}{1.4pt}
-\addtolength{\SMFootlineVOffset}{-0.4pt}
-\addtolength{\SMFootlineVOffset}{0.4pt}
+% (v9.4.0: the adjustments are one value now, the default of the catalog's
+% \SMFootlineVOffset in SlideMage_setup.tex: -0.5ex-1.3pt+1.4pt-0.4pt+0.4pt-0.87pt
+% = -0.5ex-0.77pt.)
 
 % 2026-07-06 (direct instruction): move footnotes down by half the
 % measured distance between a linked footnote's own underline and the
@@ -2036,24 +2033,10 @@
 % 0.87pt, applied as a further negative adjustment (more negative =
 % footnotes get pulled further down, per this section's own comment
 % above).
-\addtolength{\SMFootlineVOffset}{-0.87pt}
 
-% Shifts the right end of the footer line (the frame number) so it lines up
-% with the logo's own right edge above it, rather than wherever the theme's
-% default footline margins would otherwise put it. Empirically calibrated
-% against the rendered PDF coordinates of both; re-measure and adjust if
-% \SMFrametitleRightPadding (the logo's own right inset) changes.
-\newlength{\SMFooterRightShift}
-\setlength{\SMFooterRightShift}{4.6pt}
-
-% Nudges the footer text down within its own yellow box, to vertically
-% center it there: it previously sat noticeably closer to the box's top
-% edge than its bottom (0.14pt above vs. 1.12pt below, checked against the
-% rendered PDF's own text coordinates) since \SMFootlineVOffset's own
-% positioning (further up) turns out not to move this text at all (see its
-% comment above) -- this is a separate, additive leading \vspace* instead.
-\newlength{\SMFooterTextDrop}
-\setlength{\SMFooterTextDrop}{-0.49pt}
+% (\SMFooterRightShift, which lines the frame number up with the logo's right edge above
+% it, and \SMFooterTextDrop, which centres the footer text in its box, are numbers of the
+% font: the layout profile defines them, since v9.4.0.)
 
 % The footer no longer shows a compile date/time (removed in v8.25.0: a
 % changing stamp made every wrapper and PDF differ between compiles). The
@@ -2270,7 +2253,7 @@
 		\fi
 	\fi
 	\hfill%
-	{\fontsize{4}{4}\selectfont \SMFooterIDStrut
+	{\SMFooterIDSize \SMFooterIDStrut
 		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi)%
 		\else\ifSMFooterShowDeck(\SMDeckVersionText)\fi\fi}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
@@ -2485,8 +2468,7 @@
 % slides/nt4-Exercise-CAPM-5-current.tex) all land their first line's own
 % top edge at y=41.58pt post-change, not 44.0pt. Re-measure and adjust
 % again if \SMContentTopShift ever changes in the future.
-\newlength{\SMContentTopAlign}
-\setlength{\SMContentTopAlign}{41.58pt}
+% (v9.4.0: \SMContentTopAlign, 41.58pt, is a hook of SlideMage_setup.tex.)
 
 % For a "side filler image" -- a decorative image stuck flush to the page's
 % own right edge (zero margin) with its top edge flush against the title
@@ -2534,8 +2516,7 @@
 % (titleframe/quoteframe/the hook's fixed-position redraw) derive their
 % vertical inset from: visible-bar-bottom minus \SMLogoHeight is
 % exactly the inline logo's own vertically-centered top margin.
-\newlength{\SMTitleBarBottomAlign}
-\setlength{\SMTitleBarBottomAlign}{25.32pt}
+% (v9.4.0: \SMTitleBarBottomAlign, 25.32pt, is a hook of SlideMage_setup.tex.)
 
 % Note on the [t] default below: it top-aligns content within the frame
 % (beamer's own default is vertical centering, "c"), so slides don't have
@@ -2564,7 +2545,7 @@
 % not portable between slides even for superficially similar content (see
 % slides/zgz-EBIT-Definition-current.tex's own v1-2-0 comment for a case
 % where an earlier, wrong correction was carried over uncritically).
-\newlength{\SMContentTopShift}
+% (\SMContentTopShift is defined by the layout profile since v9.4.0; its history is below.)
 % 11.5964pt (2026-07-22, direct instruction: "reduce the Top Margin"
 % generally, tested at 20%/30%/40% smaller against
 % slides/8s8-Unit-Investment-Trusts-current.tex before settling on 40% --
@@ -2575,7 +2556,6 @@
 % standardframe applies this same pull-up before any per-slide
 % \SMIncreaseContentTopShift/\SMReduceContentTopShift correction,
 % changing it here shifts the baseline project-wide, not just on 8s8.
-\setlength{\SMContentTopShift}{11.5964pt}
 
 % A `columns` environment that is the first content of a frame starts its first line
 % ~10.17pt lower than a plain list does (measured on 5s6/vbb/yxv/c2t/n83/tj4/eey/yvw: first
@@ -2588,8 +2568,7 @@
 % (\vbox to 0pt{...}) in front of the columns do not count, so a slide that puts such a
 % picture first needs no special treatment either. (\prevdepth cannot tell: those zero-size
 % boxes already set it.) Checked in LuaTeX by walking the current list.
-\newlength{\SMColumnsTopCorrection}
-\setlength{\SMColumnsTopCorrection}{10.17pt}
+% (\SMColumnsTopCorrection is defined by the layout profile since v9.4.0.)
 \SMLuaOnce{
 	slidemage_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
@@ -2632,8 +2611,7 @@
 % \leavevmode, which clears it, so a list at the top of a [T] column kept its \topsep --
 % zero at normal size, but a smaller list (\shrinklists, \small) loads \@listi's 4pt and
 % started that much below a figure beside it that sat on the Top Margin.
-\newlength{\SMColumnsTTopCompensation}
-\setlength{\SMColumnsTTopCompensation}{13.76pt}
+% (\SMColumnsTTopCompensation is defined by the layout profile since v9.4.0.)
 \makeatletter
 \define@key{beamer@col}{T}[true]{%
 	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
@@ -2702,6 +2680,12 @@
 % slides/bdh-Working-Capital-Example-current.tex's first content line
 % lands within 0.1pt of slides/jyn-Categorization-current.tex's own
 % (200.917pt vs. 200.871pt/200.980pt in the compiled PDF).
+% v9.4.0: the four corrections below (SMMinipageTopCorrection, SMMinipageWithCornerImageExtraCorrection,
+% SMSideImageFrameMinipageCorrection, SMFlatItemizeTopCorrection) are 0pt. The automatic Top Margin (below) moves
+% every frame it manages onto the Top Margin, so the slides that pass them to \SMReduceContentTopShift or
+% \SMIncreaseContentTopShift land where they did: a copy of a real project's 16 decks (5274 pages, 122 slides
+% that read SMMinipageTopCorrection, 123 SMFlatItemizeTopCorrection) rendered pixel-identically with the
+% values at 0. The names stay defined because slides read them. The numbers in the comments are history.
 \newlength{\SMMinipageTopCorrection}
 % 9.38pt (2026-07-22, re-measured): the previous 7.6pt value went stale
 % the moment \SMContentTopShift itself was increased (7.33pt ->
@@ -2718,7 +2702,7 @@
 % this deck's current 41.58pt Top Margin reference -- not slide-specific
 % noise, the same deterministic amount on every one of them. Re-measure
 % and adjust again if \SMContentTopShift ever changes in the future.
-\setlength{\SMMinipageTopCorrection}{9.38pt}
+\setlength{\SMMinipageTopCorrection}{0pt}% obsolete since v9.4.0 (9.38pt before): the automatic Top Margin corrects it; slides still read the name
 
 % A *third* minipage-top correction, on top of \SMMinipageTopCorrection
 % above rather than replacing it, for a minipage whose own first internal
@@ -2750,7 +2734,7 @@
 % actually uses `\pause` itself, so this isn't specific to that -- the
 % image-inside-minipage-as-first-content shape alone is what triggers it.
 \newlength{\SMMinipageWithCornerImageExtraCorrection}
-\setlength{\SMMinipageWithCornerImageExtraCorrection}{10.35pt}
+\setlength{\SMMinipageWithCornerImageExtraCorrection}{0pt}% obsolete since v9.4.0 (10.35pt before), see above
 
 % A *different* minipage-top correction, specifically for a minipage+
 % itemize sitting as the first content of a `sideimageframe` (2026-07-06,
@@ -2781,7 +2765,6 @@
 % not the generic `\SMMinipageTopCorrection`/
 % `\SMFlatItemizeTopCorrection` this deck uses everywhere else.
 \newlength{\SMSideImageFrameMinipageCorrection}
-\setlength{\SMSideImageFrameMinipageCorrection}{8.2pt}
 
 % 6.26pt (2026-07-22, re-measured): stale for the same reason
 % \SMMinipageTopCorrection above went stale -- \SMContentTopShift
@@ -2800,7 +2783,7 @@
 % (8.2pt - 1.94pt), not an increase -- caught by re-measuring after a
 % first, wrong-direction attempt at 10.14pt drove the four-slide cluster
 % to y=37.70pt, further from target instead of closer.
-\setlength{\SMSideImageFrameMinipageCorrection}{6.26pt}
+\setlength{\SMSideImageFrameMinipageCorrection}{0pt}% obsolete since v9.4.0 (6.26pt before, 8.2pt originally), see above
 
 % Opt-in override: reduces standardframe's \SMContentTopShift pull-up by
 % this amount for the frame currently being opened. Empty-default-style flag
@@ -2837,7 +2820,6 @@
 % 0.05pt of each other) -- so this correction is for *plain* itemize-first
 % standardframes only, never combined with \SMMinipageTopCorrection.
 \newlength{\SMFlatItemizeTopCorrection}
-\setlength{\SMFlatItemizeTopCorrection}{1.834pt}
 
 % 0.01pt (2026-07-22, re-measured): stale for the same reason
 % \SMMinipageTopCorrection above went stale -- \SMContentTopShift
@@ -2852,7 +2834,7 @@
 % itself, so every flat-itemize slide's own
 % `\SMIncreaseContentTopShift{\SMFlatItemizeTopCorrection}` line
 % keeps working unchanged.
-\setlength{\SMFlatItemizeTopCorrection}{0.01pt}
+\setlength{\SMFlatItemizeTopCorrection}{0pt}% obsolete since v9.4.0 (0.01pt before, 1.834pt originally), see above
 
 % Opposite-direction counterpart to \SMReduceContentTopShift: *increases*
 % the pull-up instead of reducing it (needed for \SMFlatItemizeTopCorrection
@@ -3092,8 +3074,8 @@
 		% \leftmargin=\labelwidth+\labelsep always cancels \labelsep back
 		% out of the label box's own position), so this widens the gap
 		% without reopening the Left-Margin question already solved above.
-		\setlength{\labelsep}{4.75pt}%
-		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\labelsep}{\SMLabelItemSep}%
+		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
 		\setlength{\itemindent}{0pt}%
@@ -3123,7 +3105,7 @@
 		% kmf; re-verify against both nt4 and kmf directly if this is
 		% ever changed again -- they're this environment's own tightest
 		% (most items) and originally-tuned-against cases respectively.
-		\setlength{\itemsep}{2.5pt}%
+		\setlength{\itemsep}{\SMLabelItemItemsep}%
 	}
 	\raggedright% plain \list defaults to justified+hyphenated text, unlike
 	% this deck's own itemize (which calls this too, further below) --
@@ -3149,12 +3131,12 @@
 \newenvironment{SMNumItemize}{%
 	\setcounter{SMNumItemCounter}{0}%
 	\list{\SMNumItem}{%
-		\setlength{\labelsep}{4.75pt}%
-		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\labelsep}{\SMLabelItemSep}%
+		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
 		\setlength{\itemindent}{0pt}%
-		\setlength{\itemsep}{2.5pt}%
+		\setlength{\itemsep}{\SMLabelItemItemsep}%
 	}
 	\raggedright%
 }{%
@@ -3166,12 +3148,12 @@
 \newenvironment{SMAlphaPeriodItemize}{%
 	\setcounter{SMAlphaPeriodItemCounter}{0}%
 	\list{\SMAlphaPeriodItem}{%
-		\setlength{\labelsep}{4.75pt}%
-		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\labelsep}{\SMLabelItemSep}%
+		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
 		\setlength{\itemindent}{0pt}%
-		\setlength{\itemsep}{2.5pt}%
+		\setlength{\itemsep}{\SMLabelItemItemsep}%
 	}
 	\raggedright%
 }{%
@@ -3183,12 +3165,12 @@
 \newenvironment{SMNumPeriodItemize}{%
 	\setcounter{SMNumPeriodItemCounter}{0}%
 	\list{\SMNumPeriodItem}{%
-		\setlength{\labelsep}{4.75pt}%
-		\setlength{\labelwidth}{9.1pt}%
+		\setlength{\labelsep}{\SMLabelItemSep}%
+		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
 		\setlength{\itemindent}{0pt}%
-		\setlength{\itemsep}{2.5pt}%
+		\setlength{\itemsep}{\SMLabelItemItemsep}%
 	}
 	\raggedright%
 }{%
@@ -3378,7 +3360,7 @@
 % case. +1.1pt of box width (confirmed +1pt width -> +1pt numeral
 % position, per this comment's own note above) covers that with a small
 % margin, re-confirmed against the recompiled PDF.
-\newcommand{\SMEnumerateLabelWidth}{\renewcommand{\makelabel}[1]{\makebox[20.33pt][r]{##1}}}
+\newcommand{\SMEnumerateLabelWidth}{\renewcommand{\makelabel}[1]{\makebox[\SMEnumerateLabelBox][r]{##1}}}
 
 % Automatic version of the above (2026-07-23, background-task follow-up
 % flagged in slides/kfh-Asset-Allocation-Process-current.tex's own v1-1-0
@@ -3445,8 +3427,7 @@
 % itself is kept defined, both for this override to reuse and as a manual
 % escape hatch (e.g. a differently-calibrated width some future slide might
 % need).
-\newlength{\SMEnumerateTextExtra}
-\setlength{\SMEnumerateTextExtra}{6.3pt}
+% (v9.4.0: \SMEnumerateTextExtra, 6.3pt, is defined by the layout profile.)
 \makeatletter
 \renewcommand{\beamer@enum@}{%
 	\beamer@computepref\@itemdepth% sets \beameritemnestingprefix
@@ -3482,15 +3463,15 @@
 					% "numeral slot + \labelsep" puts the numeral's left edge at the dot's
 					% and the text of every line at the same x (13.1pt from the parent's
 					% text, i.e. where the first line always was).
-					\setlength{\labelwidth}{20.33pt}%
-					\setlength{\labelsep}{5.25pt}%
-					\setlength{\leftmargin}{13.1pt}%
-					\def\makelabel##1{\makebox[20.33pt][r]{{%
+					\setlength{\labelwidth}{\SMEnumerateLabelBox}%
+					\setlength{\labelsep}{\SMEnumerateNestedLabelSep}%
+					\setlength{\leftmargin}{\SMEnumerateNestedLeftMargin}%
+					\def\makelabel##1{\makebox[\SMEnumerateLabelBox][r]{{%
 							\setbox\@tempboxa\hbox{##1}%
-							\ifdim\wd\@tempboxa>7.85pt
+							\ifdim\wd\@tempboxa>\SMEnumerateNestedMinNumber
 								\box\@tempboxa
 							\else
-								\hbox to 7.85pt{\unhbox\@tempboxa\hss}%
+								\hbox to \SMEnumerateNestedMinNumber{\unhbox\@tempboxa\hss}%
 							\fi}}}%
 				\else
 					% Level-1 numerals start at the left edge of the level-1 bullet
@@ -3561,8 +3542,6 @@
 % instead, and writing the literal "em" back on at the point of use
 % (`\addvspace{\SMItemizeLevelDropSpaceRatioI em}`), so it's
 % recomputed fresh, against whatever font is live, every time.
-\newcommand{\SMItemizeLevelDropSpaceRatioI}{0.5}
-\newcommand{\SMItemizeLevelDropSpaceRatioII}{0.3}
 % Level 3's own drop-space, for when a closed *4th*-level list returns
 % control to a level-3 item -- added 2026-07-15 alongside the 4th itemize
 % level itself (search "subsubsub" further above). Interpolated from the
@@ -3572,7 +3551,6 @@
 % slides/hrg-Exchange-Rate-Quotation-Forward-current.tex to measure
 % against. Re-derive properly (render, measure, adjust) if this ever
 % looks visibly off on a real slide.
-\newcommand{\SMItemizeLevelDropSpaceRatioIII}{0.2}
 % Level 4's own drop-space, for when a closed level-4 list returns control
 % to a level-3 item -- added 2026-07-21 alongside \SMItemsepRatioIV.
 % \@itemdepth at this hook's fire time is the depth of the list that *just
@@ -3595,7 +3573,6 @@
 % smaller than that level's own closing-transition gap); raised until
 % re-measurement cleared it with a comfortable margin again, matching the
 % margin every other level's own pair already has.
-\newcommand{\SMItemizeLevelDropSpaceRatioIV}{0.5}
 \AtEndEnvironment{itemize}{%
 	% Force vertical mode before \addvspace below (2026-09-22, found while
 	% isolating a "Something's wrong--perhaps a missing \item" error that
@@ -3702,10 +3679,6 @@
 %   starting at 0.5) fixed it. Re-verify rule III directly against ZZO's own
 %   compiled PDF (don't assume it still holds on paper) if any of these ratios is
 %   ever changed again.
-\newcommand{\SMItemsepRatioI}{0.4}
-\newcommand{\SMItemsepRatioII}{0.24}
-\newcommand{\SMItemsepRatioIII}{0.15}
-\newcommand{\SMItemsepRatioIV}{0.09}
 
 % Per-level "opening" space -- the gap between a level-n item and the
 % first item of a level-(n+1) list that immediately follows it, as
@@ -3767,9 +3740,6 @@
 % before (see \SMItemizeLevelDropSpaceRatioIV's own comment) --
 % re-measure the *whole* table after touching any single one of these,
 % not just the transition being changed.
-\newcommand{\SMItemizeLevelOpenSpaceRatioI}{0.02}
-\newcommand{\SMItemizeLevelOpenSpaceRatioII}{0.15}
-\newcommand{\SMItemizeLevelOpenSpaceRatioIII}{0.02}
 \AtBeginEnvironment{itemize}{%
 	% Same \ifhmode\unskip\par\fi guard as \AtEndEnvironment{itemize} above,
 	% and for the identical reason -- see that hook's own comment for the
@@ -4255,7 +4225,6 @@
 % much (\SMBesideFigureTopGap, default 0.2em of the surrounding text), so the
 % figure's top edge meets the top of the first line's letters. Give
 % yshift=0pt among the keys to put the figure on the margin again.
-\newcommand*{\SMBesideFigureTopGap}{0.2em}
 \newlength{\SM@bf@width}
 \NewDocumentEnvironment{besidefigure}{O{} +m}{%
 	\SM@cf@setkeys{#1}%
@@ -4416,17 +4385,11 @@
 % against the old two-band design's own rendered PDF coordinates (before
 % this change): its second band's bottom edge sat 187.147pt below the page's
 % top edge.
-\newlength{\SMTitleframeBoxHeight}
-\setlength{\SMTitleframeBoxHeight}{187.147pt}
 \newlength{\SMTitleframeBoxWidth}
 \setlength{\SMTitleframeBoxWidth}{\dimexpr\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 % Text inset from the box's own edges: \SMFrametitleLeftPadding, the same
 % length standardframe's own title text uses, plus \SMTitleframeTextSep
 % (2.5ex, matching this command's own former per-band beamercolorbox "sep").
-\newlength{\SMTitleframeTextSep}
-\setlength{\SMTitleframeTextSep}{2.5ex}
-\newlength{\SMTitleframeBandGap}
-\setlength{\SMTitleframeBandGap}{0.8ex}
 % Because the leading blank space above the text (further down) is itself
 % computed as "box height minus the content's own natural height", the
 % content's *bottom* padding is the only thing that determines how far the
@@ -4441,8 +4404,6 @@
 % size (~20.6pt/line here) above the box's bottom edge; re-measure and
 % adjust if the subtitle's font size, or beamer's own default top-of-frame
 % vskip, ever change.
-\newlength{\SMTitleframeBottomPad}
-\setlength{\SMTitleframeBottomPad}{41pt}
 \newbox\SMTitleframeBox
 \makeatletter
 \newcommand{\titleframe}[2]{%
@@ -4820,10 +4781,6 @@
 % already, before this code regains control). All lengths here calibrated
 % against the rendered PDF's own coordinates; re-measure and adjust if the
 % title/body font sizes change.
-\newlength{\SMSectionframeContentDrop}
-\setlength{\SMSectionframeContentDrop}{11.5pt}% 10pt before v5.28.0: the text sat 7.4pt under a bar that is 85pt tall
-\newlength{\SMSectionframeBoxHeight}
-\setlength{\SMSectionframeBoxHeight}{85.04pt}
 % \SMSectionframeTrueBoxBottom (2026-07-25, direct instruction: "the
 % image extends into the title box" on neb/u97 -- followed by "tyn actually
 % looks fine, find out what is really driving this issue/difference"):
@@ -4884,7 +4841,7 @@
 % \SMSectionframeRefDepth below), so the "true" bottom is the same 85.04 for
 % every title; the old 89.19pt value only fitted titles without descenders.
 \newlength{\SMSectionframeTrueBoxBottom}
-\setlength{\SMSectionframeTrueBoxBottom}{85.04pt}
+\setlength{\SMSectionframeTrueBoxBottom}{\SMSectionframeBoxHeight}
 % \SMSectionframeRefDepth (v5.28.0): the depth the toppading formula assumes for
 % the title. It used to subtract the title's own measured depth, which nothing
 % adds back, so a title without descenders ("Slides", "Decks and deck
@@ -4893,8 +4850,6 @@
 % 4.42pt) every title gets the 85.04bp bar the calibrated constants below were
 % fitted to, and \SMSectionframeBarBottom (where \sectionfigure starts) is that
 % same constant.
-\newlength{\SMSectionframeRefDepth}
-\setlength{\SMSectionframeRefDepth}{4.42pt}
 % \SMSectionframeBottomGap is the *visual* target -- one huge-font line
 % height (baselineskip, measured directly from a deliberately 2-line test
 % title: the gap between the two lines' own rendered top edges). It is NOT
@@ -4904,10 +4859,6 @@
 % same offset for both a one-line and a two-line test title, so it's a
 % fixed per-box offset rather than something that scales with content) --
 % \SMSectionframeBottomPadCorrection adds that back.
-\newlength{\SMSectionframeBottomGap}
-\setlength{\SMSectionframeBottomGap}{14.32pt}
-\newlength{\SMSectionframeBottomPadCorrection}
-\setlength{\SMSectionframeBottomPadCorrection}{5.58pt}
 % Similarly, the box's total rendered height comes out consistently ~11.4pt
 % *less* than toppading+measuredTitleHeight+bottompading would suggest --
 % the measured title box (built as a plain \vbox{...\par}) doesn't reproduce
@@ -4915,8 +4866,6 @@
 % rule with an explicit height rather than natural interline glue) exactly,
 % and this correction closes that gap. Checked the same way as the bottom
 % one above: consistent across both the one-line and two-line test titles.
-\newlength{\SMSectionframeHeightCorrection}
-\setlength{\SMSectionframeHeightCorrection}{16.03pt}% 12.1pt before the title measurement got a \strut (v5.28.0)
 \newlength{\SMSectionframeTitleWidth}
 \setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\SMFrametitleLeftPadding-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 \newbox\SMSectionframeTitleBox
@@ -5051,10 +5000,6 @@
 % A *command*, not an environment -- see the identically-reasoned comment on
 % titleframe just above for why: the same beamercolorbox-spanning-a-custom-
 % environment's-begin/end problem would apply here too, for the same reason.
-\newlength{\SMQuoteBoxHeight}
-\setlength{\SMQuoteBoxHeight}{0.8\paperheight}
-\newlength{\SMQuoteAttributionGap}
-\setlength{\SMQuoteAttributionGap}{1.8ex}
 % \@empty (the empty-attribution check below) needs \makeatletter.
 % \quotesource{text} -- opt-in \source{} for \quoteframe (call *before*
 % \quoteframe{}{}, same set-then-consume pattern as \chapterlogo{}
@@ -5281,8 +5226,6 @@
 % as it sits below the title bar on any other frame, whatever the body starts with (v5.30.5; the
 % frame used to be exempt from the measurement, with a fixed -3pt, which left a paragraph
 % 10pt and a list 14pt below the strip against the usual 16pt -- direct instruction, slide 1j2).
-\newlength{\SMProgressStripHeight}
-\setlength{\SMProgressStripHeight}{11.08pt}
 \makeatletter
 \newcommand{\SM@topstrip}{%
 	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
@@ -5333,7 +5276,6 @@
 % SlideMage's transcript shows the file as a code block, and the pre-render
 % check reports a missing file.
 \usepackage{listings}
-\newcommand{\SMCodeSize}{\fontsize{6.6}{8.2}\selectfont}
 % Every control sequence, backslash included, is a keyword: the backslash is
 % made a letter and is the keyword prefix (listings' prefix keywords need a
 % non-empty keyword list to be active, hence the dummy). An escaped \% and a

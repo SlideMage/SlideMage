@@ -1,6 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.3.0).
+% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.4.0).
 %
 % A template \input{}s this file first, sets whatever it wants to change from
 % the catalog below, then \input{}s SlideMage_base:
@@ -152,18 +152,144 @@
 \newcommand{\SMTopMargin}{41.58bp}
 
 % ---------------------------------------------------------------------------
+% Page geometry (overlay coordinates)
+% ---------------------------------------------------------------------------
+% Where overlays (\cornerfigure, \SMFit, floating blocks) and the frames with a
+% side image start, as distances from the page's edge. They are consequences of
+% the title bar and the Top Margin, kept as numbers: a template that changes
+% those must re-measure these from the compiled PDF (tools/check_layout.py).
+\newlength{\SMContentTopAlign}
+\setlength{\SMContentTopAlign}{41.58pt}      % the Top Margin as a coordinate (kept in step with \SMTopMargin by hand)
+\newlength{\SMTitleBarBottomAlign}
+\setlength{\SMTitleBarBottomAlign}{25.32pt}  % the bottom edge of the title bar (where it ends beside the logo)
+
+% ---------------------------------------------------------------------------
+% Text margins
+% ---------------------------------------------------------------------------
+\newlength{\SMTextMarginLeft}
+\setlength{\SMTextMarginLeft}{.45cm}           % left and right margin of the content text
+\newlength{\SMTextMarginRight}
+\setlength{\SMTextMarginRight}{.45cm}
+
+% ---------------------------------------------------------------------------
 % Frame title bar
 % ---------------------------------------------------------------------------
-% Space around the frame title (lengths of the theme, default 2.2ex each). The
-% right padding is measured against the compiled PDF for the logo: see
-% SlideMage_base.tex's comment on \SMFrametitleRightPadding.
+% Space around the frame title. The right padding is measured against the
+% compiled PDF for the logo: see SlideMage_base.tex's comment on
+% \SMFrametitleRightPadding.
+\newlength{\SMFrametitleTopPadding}
+\setlength{\SMFrametitleTopPadding}{2.2ex}
+\newlength{\SMFrametitleBottomPadding}
+\setlength{\SMFrametitleBottomPadding}{2.2ex}
+\newlength{\SMFrametitleLeftPadding}
+\setlength{\SMFrametitleLeftPadding}{2.2ex}
+\newlength{\SMFrametitleRightPadding}
 \setlength{\SMFrametitleRightPadding}{0.28cm}
-% Also the theme's, if a template needs them: \SMFrametitleTopPadding,
-% \SMFrametitleBottomPadding, \SMFrametitleLeftPadding; the text between title
-% and subtitle (\renewcommand{\SMFrameSubtitleSep}{\ ---~}) and the space below
-% the subtitle (\SMFrameSubtitleStrutEnd, 0pt); the footline box: \SMFootlineVOffset
-% (SlideMage_base.tex corrects it), \SMFootlineHeight, \SMFootlineDepth,
-% \SMFootlineHRightOffset, \SMRightFooterPadding.
+\newcommand{\SMFrameSubtitleSep}{\ ---\space}   % the text between title and subtitle
+\newlength{\SMFrameSubtitleStrutEnd}
+\setlength{\SMFrameSubtitleStrutEnd}{0pt}       % the space below the subtitle
+
+% ---------------------------------------------------------------------------
+% Footer and footnotes
+% ---------------------------------------------------------------------------
+\newlength{\SMFooterBoxHeight}
+\setlength{\SMFooterBoxHeight}{7.26pt}          % height of the footer box
+\newcommand{\SMFooterTextSize}{\fontsize{5}{3}\selectfont}   % footer text: {font size}{baseline skip} in pt
+\newcommand{\SMFooterIDSize}{\fontsize{4}{4}\selectfont}     % the slide id in the footer
+\newlength{\SMFootlineHeight}
+\setlength{\SMFootlineHeight}{1.5ex}            % the footline box: height above the baseline
+\newlength{\SMFootlineDepth}
+\setlength{\SMFootlineDepth}{0.1ex}             % and depth below it
+\newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left and right end of the footline (a macro: its ex is the footline font's)
+\newlength{\SMRightFooterPadding}
+\setlength{\SMRightFooterPadding}{3.5ex}        % the gap before the frame number
+\newlength{\SMFootlineVOffset}
+% The footnotes' distance from the footer box (more negative = closer). The last
+% part was measured at Fira: an underlined link in a footnote sits 1.74pt above the
+% box, and the offset moves the footnotes down by half of that, -0.87pt, after two
+% earlier nudges; -0.5ex-0.77pt is their sum.
+\setlength{\SMFootlineVOffset}{-0.5ex-0.77pt}
+\newcommand{\SMFootnoteSize}{\fontsize{3.2}{1.9}\selectfont}  % footnote text, as the footer's
+\newlength{\SMFootnoteSep}
+\setlength{\SMFootnoteSep}{3pt}                 % the space between two footnotes
+% Side footnotes (\sidefootnotes, \sectionfigure): the strip along the page's right edge.
+\newlength{\SMSideFootnoteHsize}
+\setlength{\SMSideFootnoteHsize}{207pt}         % its length, from the title bar down to the footer
+\newlength{\SMSideFootnoteTopSep}
+\setlength{\SMSideFootnoteTopSep}{3pt}          % the gap between the title bar and the strip
+\newlength{\SMSideFootnoteRightInset}
+\setlength{\SMSideFootnoteRightInset}{2pt}      % the gap to the page's right edge (frames with a side image set their own)
+\newlength{\SMSideFootnoteMarkerShift}
+\setlength{\SMSideFootnoteMarkerShift}{1.3pt}   % shifts a real footnote's marker right, onto \source's left edge
+
+% ---------------------------------------------------------------------------
+% Blocks
+% ---------------------------------------------------------------------------
+\newlength{\SMBlockSideMargin}
+\setlength{\SMBlockSideMargin}{4.20pt}          % the margin on each side of a block
+\newlength{\SMBlockTitleMarkerWidth}
+\setlength{\SMBlockTitleMarkerWidth}{16pt}      % the width of the marker in a block title
+% The block titles' sizes are beamer fonts: \setbeamerfont{block title}{size=\large}
+% (also "block title alerted", "block title info", "block title reference") after
+% this file changes them. The same goes for the frame title ("frametitle", \large),
+% the caption ("caption", \small) and the bibliography entries ("bibliography entry
+% author/title/location/note").
+
+% ---------------------------------------------------------------------------
+% Frame types
+% ---------------------------------------------------------------------------
+\newlength{\SMTitleframeBoxHeight}
+\setlength{\SMTitleframeBoxHeight}{187.147pt}   % \titleframe: height of the title box
+\newlength{\SMTitleframeTextSep}
+\setlength{\SMTitleframeTextSep}{2.5ex}         % the title and the subtitle
+\newlength{\SMTitleframeBandGap}
+\setlength{\SMTitleframeBandGap}{0.8ex}         % the gap above the band
+\newlength{\SMTitleframeBottomPad}
+\setlength{\SMTitleframeBottomPad}{41pt}        % the space under the last line, about 1.5 subtitle lines
+\newlength{\SMSectionframeBoxHeight}
+\setlength{\SMSectionframeBoxHeight}{85.04pt}   % \sectionframe: height of the bar
+\newlength{\SMSectionframeContentDrop}
+\setlength{\SMSectionframeContentDrop}{11.5pt}  % the text's drop under the bar
+\newlength{\SMQuoteBoxHeight}
+\setlength{\SMQuoteBoxHeight}{0.8\paperheight}  % \quoteframe: height of the box
+\newlength{\SMQuoteAttributionGap}
+\setlength{\SMQuoteAttributionGap}{1.8ex}       % the gap above the attribution
+\newlength{\SMProgressStripHeight}
+\setlength{\SMProgressStripHeight}{11.08pt}     % \progressstrip: height of the strip
+
+% ---------------------------------------------------------------------------
+% Lists
+% ---------------------------------------------------------------------------
+% Gaps in units of the em of the list's font, so they follow \shrinklists and
+% \small. I-IV are the nesting levels.
+\newcommand{\SMItemsepRatioI}{0.4}              % between two items of level I-IV
+\newcommand{\SMItemsepRatioII}{0.24}
+\newcommand{\SMItemsepRatioIII}{0.15}
+\newcommand{\SMItemsepRatioIV}{0.09}
+\newcommand{\SMItemizeLevelDropSpaceRatioI}{0.5}    % after a list of level I-IV closed
+\newcommand{\SMItemizeLevelDropSpaceRatioII}{0.3}
+\newcommand{\SMItemizeLevelDropSpaceRatioIII}{0.2}
+\newcommand{\SMItemizeLevelDropSpaceRatioIV}{0.5}
+\newcommand{\SMItemizeLevelOpenSpaceRatioI}{0.02}   % before a list of level II-IV opens
+\newcommand{\SMItemizeLevelOpenSpaceRatioII}{0.15}
+\newcommand{\SMItemizeLevelOpenSpaceRatioIII}{0.02}
+\newcommand{\SMTallItemBaseRatio}{0.3}          % the extra space \tallitem adds above an item
+\newlength{\SMLabelItemItemsep}
+\setlength{\SMLabelItemItemsep}{2.5pt}          % between two items of the lists with "a)" / "1." labels
+\newlength{\SMTightDisplaySkip}
+\setlength{\SMTightDisplaySkip}{3pt}            % above and below a display in \SMTightDisplaySkips
+\newcommand{\SMBesideFigureTopGap}{0.2em}       % how far besidefigure lowers its figure
+
+% ---------------------------------------------------------------------------
+% Drawings, code
+% ---------------------------------------------------------------------------
+\newlength{\SMImageBorderWidth}
+\setlength{\SMImageBorderWidth}{2.5pt}          % line width of SMImageBorder
+\newlength{\SMWarningSignPadding}
+\setlength{\SMWarningSignPadding}{6pt}          % \SMWarningSign: space around the text
+\newlength{\SMWarningSignBorderWidth}
+\setlength{\SMWarningSignBorderWidth}{4.5pt}    % and the width of its border
+\newcommand{\SMCodeSize}{\fontsize{6.6}{8.2}\selectfont}      % the text of \SMCodeFile
 
 % ---------------------------------------------------------------------------
 % Optional theme features (all off: nothing visible changes until you use one)
