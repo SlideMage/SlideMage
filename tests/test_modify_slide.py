@@ -13,7 +13,7 @@ import pytest
 from agent_fakes import FakeWorkspace, call
 
 from slidemage.ai import claude_hook
-from slidemage import ai_review, compiler, preview_target, slide_snapshot
+from slidemage import ai_review, compiler, deck_outline, preview_target, slide_snapshot
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
 from slidemage.ai.mcp_server import McpServer
 from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox, undo_edit
@@ -152,10 +152,57 @@ def test_render_failure_keeps_change_and_review_mark(env, monkeypatch):
         raise RuntimeError("! Undefined control sequence.\nl.4 \\unknown")
     monkeypatch.setattr(preview_target, "render_text", fail)
     result = modify(env)
-    assert result.is_error and "Undefined control sequence" in result.text and "stays in place" in result.text
+    assert result.is_error and "Undefined control sequence" in result.text and "did not compile" in result.text
+    assert "The slide stays in place; edit this file to fix it." in result.text
     assert SLIDE in result.text and "Edited point" in env.path.read_text()
     assert env.shown == [env.path] and len(env.renders) == 1
     assert ai_review.is_unreviewed(env.project, env.path)
+
+
+def test_explicit_german_edit_and_following_preview_use_same_source(env):
+    original = env.path.read_text()
+    translated = env.root / "slides/xyz-DE-Hallo-current.tex"
+    translated.write_text(original.replace("%% Included in decks: test", "%% Translation of: abc-EN-Hello"))
+    env.path.write_text(original.replace("%% Included in decks: test", "%% DE translation: xyz-DE-Hallo"))
+    result = modify(env, slide=str(translated))
+    assert not result.is_error, result.text
+    assert env.renders[0][0].source_path == translated and env.renders[0][3] == "DE"
+    env.ws._context = replace(env.ws.context(), language="DE")
+    preview = env.box.execute(call("render_preview", slide=str(translated)))
+    assert not preview.is_error, preview.text
+    assert result.images == preview.images == [PNG]
+
+
+def test_hidden_edit_does_not_show_or_render(env):
+    deck = env.ws.context().deck.path
+    deck.write_text(deck.read_text().replace(r'\slide{abc-EN-Hello}',
+                                             r'\conditionalslide[during-course]{abc-EN-Hello}'))
+    result = modify(env)
+    assert not result.is_error and "hidden" in result.text and not result.images
+    assert not env.shown and not env.renders
+
+
+@pytest.mark.parametrize("focused", [True, False])
+def test_show_uses_prepared_occurrence_before_focus_changes(env, monkeypatch, focused):
+    deck_path = env.ws.context().deck.path
+    deck_path.write_text(deck_path.read_text().replace(r'\slide{abc-EN-Hello}',
+        '\\slidestep{abc-EN-Hello}{1}\n\\slidestep{abc-EN-Hello}{3}'))
+    deck = next(d for d in scan_decks(env.project) if d.name == "test")
+    rows = [row for row in deck_outline.resolve_slots(env.project, deck, 'instructor', 'EN') if row.slot.call.id == 'abc']
+    env.ws._context = replace(env.ws.context(), deck=deck, slide_id='abc' if focused else 'abd',
+                              occurrence_key=rows[-1].key)
+    order = []
+    def show(path):
+        order.append('show')
+        env.ws._context = replace(env.ws.context(), occurrence_key=None)
+    publish = env.ws.publish_preview_result
+    monkeypatch.setattr(env.ws, 'show_slide', show)
+    monkeypatch.setattr(env.ws, 'publish_preview_result', lambda result, ticket:
+                        order.append('publish') or publish(result, ticket))
+    result = modify(env)
+    assert not result.is_error, result.text
+    assert env.renders[0][0].occurrence_key == rows[-1 if focused else 0].key
+    assert order == ['show', 'publish']
 
 
 @pytest.mark.parametrize("reverse_only", [False, True])

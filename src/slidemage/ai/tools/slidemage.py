@@ -180,11 +180,13 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     return preview_batch_output(ctx, slide_or_file(ctx, args.get("slide")), args.get("view"))
 
 
-def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, saved=False) -> tuple[str, list[bytes]]:
+def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, saved=False,
+                         language: str | None = None, show: bool = False) -> tuple[str, list[bytes]]:
     """One captured batch for chat and MCP; image numbers refer to returned image order."""
     context = ctx.workspace.context()
-    language = slide_language.own_language(path.name) if saved else context.language
-    language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
+    if language is None:
+        language = slide_language.own_language(path.name) if saved else context.language
+        language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
     context = replace(context, language=language,
                       deck=open_deck(ctx) if context.deck is not None else None)
     try:
@@ -193,6 +195,9 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
         raise ToolError(str(exc)) from None
     if saved and any(spec.target.is_frozen_alone for spec in requests):
         raise ToolError(f"{path.name} is a frozen version; only the current slide has a cached preview.")
+    if show and any(not spec.target.hidden for spec in requests):
+        # Preparation keeps the focused occurrence for the same bare id, otherwise the first occurrence.
+        ctx.workspace.show_slide(path)
     results = ctx.workspace.render_preview_batch(path, view, saved=saved, force=saved,
                                                  cancel=ctx.cancel, requests=requests)
     lines, images = [], []
@@ -235,28 +240,6 @@ def slide_target(project, deck: Deck | None, path: Path, view: str, language: st
                                             occurrence_key=occurrence_key)[0][1]
     except ValueError:
         return None
-
-
-def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None,
-                    show: bool = False) -> tuple[str, list[bytes]]:
-    context = ctx.workspace.context()
-    language = language or context.language
-    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view, language,
-                          occurrence_key=context.occurrence_key)
-    if target is None:
-        raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
-    if target.hidden:
-        return f"{target.source_path.name} is hidden in {context.view}, {language}.", []
-    text, source = current_revision(ctx.workspace, target.source_path)
-    if show:
-        ctx.workspace.show_slide(path)
-    try:
-        png = ctx.workspace.render_preview(target, text, context.view, language,
-                                           ctx.cancel)
-    except RuntimeError as exc:
-        raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
-    timing.event(ctx.root, "render_done", file=path.name)
-    return f"{path.name} ({source}) as {context.view}, {language}:", [png]
 
 
 def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
@@ -311,10 +294,11 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
     status += "\nLint: " + (warnings or "no problems found.")
     try:
         language = slide_language.own_language(path.name)
-        rendered, images = _render_preview(ctx, path,
-                                          language=language if language in slide_language.TRANSLATION_LANGUAGES else None, show=True)
+        rendered, images = preview_batch_output(ctx, path, view=None,
+                                                language=language if language in slide_language.TRANSLATION_LANGUAGES else None,
+                                                show=True)
     except ToolError as exc:
-        raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\n{exc}") from None
+        raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\nThe slide did not compile:\n{exc}") from None
     return f"{status}\n{rendered}", images
 
 

@@ -874,6 +874,19 @@ def test_create_slide_shows_its_returned_preview_in_the_real_window(env, monkeyp
     assert len(rendered) == 1 and result.images
 
 
+def test_show_slide_keeps_the_focused_occurrence(env):
+    from slidemage import deck_outline
+
+    deck = env.window.state.deck
+    key = deck_outline.resolve_slots(env.window.project, deck, 'instructor', 'EN')[0].key
+    env.window.state.set_focused_slide('abc', occurrence_key=key)
+    on_thread(lambda: env.chat.workspace.show_slide(env.path))
+    assert env.window.state.focused_occurrence == key
+    on_thread(lambda: env.chat.workspace.show_slide(env.root / 'slides/abd-EN-Second-current.tex'))
+    assert env.window.state.focused_occurrence == deck_outline.resolve_slots(
+        env.window.project, deck, 'instructor', 'EN')[1].key
+
+
 @pytest.mark.parametrize("dirty", [False, True])
 def test_modify_slide_uses_fresh_real_editor_snapshot(env, monkeypatch, dirty):
     from slidemage import ai_review, preview_target, slide_snapshot
