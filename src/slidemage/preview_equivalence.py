@@ -42,9 +42,15 @@ AUDITED_FRAMEWORK = {
     # the theme and the base lose their definitions), the font calibrations move into the profile, four obsolete
     # corrections are 0pt. Re-audited: no version, footer-hide or deck-label rule entered the setup layer, the theme or
     # the profile (the theme test checks the last two); the base kept the frame footer and its deck-version text.
-    "SlideMage_setup.tex": "76955c528e60ae3340e100d8de22054685b14208ccd5eadde8459f1a703965b1",
-    "SlideMage_layout_fira.tex": "9dfb1c25fc51c229bd15273918793eb86ff117ca1fa114006528d12a0101759c",
-    "SlideMage_base.tex": "2d64c473a931135aeba8ad0d72b73de5188092bd31b09ff63b336b339e95fd4b",
+    # v9.6.0 (step 7): the layout profile SlideMage_layout_lmsans.tex (new, pinned: Latin Modern Sans, offered to users);
+    # the base writes two more keys into the PDF info dictionary (the ascender and the title bar's bottom edge, for
+    # tools/check_layout.py); the setup file only documents the profiles and the calibration recipe, the fira profile
+    # only a comment. Re-audited: no version, footer-hide or deck-label rule entered either profile (the profile test
+    # checks every profile the framework ships), and the base gained two \hypersetup lines.
+    "SlideMage_setup.tex": "9c3363b1bcbc698e5fb25180dc385b375030e059f2238b134784440e1fea4098",
+    "SlideMage_layout_fira.tex": "d3d1a1c1e9e6e524c3cec6a38758b6af34227c0ea4a7a12d4dabf5dd2d619557",
+    "SlideMage_layout_lmsans.tex": "06807d78427aeaa9675ba3226cae9b2fbbbe02b164214cebc85abfda5693552f",
+    "SlideMage_base.tex": "689d01da8870fd146a185891b4639a8d42edbd9a6d3eb66f35ea69a69e05acd8",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "ab17f8162f196bc3234493ef63bc1c3c19774f126a5aba368740f28448ceeb68",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",

@@ -1,0 +1,48 @@
+% !TeX program = lualatex
+% The calibration deck: every frame type and list depth once, for a layout profile.
+% Compile it with a template that uses the profile (the stress-test template of this
+% project, or any other: tools/calibrate_font_profile.py swaps the \input below), then
+% run tools/check_layout.py on the PDF and tools/calibrate_font_profile.py on the project.
+\documentclass[aspectratio=169]{beamer}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{SlideMage_template_stress-test}
+
+\newcommand{\FooterText}{Calibration deck}
+
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]
+\fi
+\decklanguage[en]
+
+\begin{document}
+
+	\slide{ZC1-EN-Title-Frame}
+	\slide{ZC2-EN-Section-Frame}
+	\slide{ZC3-EN-Bullet-Lists}
+	\slide{ZC4-EN-Numbered-Lists}
+	\slide{ZC5-EN-Labelled-Lists}
+	\slide{ZC6-EN-Columns}
+	\slide{ZC7-EN-Blocks}
+	\slide{ZC8-EN-Footnotes}
+	\slide{ZC9-EN-Quote-Frame}
+	\slide{ZCA-EN-Side-Image-Frame}
+	\slide{ZCB-EN-Figure-Frame}
+	\slide{ZCC-EN-Highlight-Frame}
+	\slide{ZCD-EN-Standout}
+	\slide{ZCE-EN-Full-Bleed}
+	\slide{ZCF-EN-Step-Strip}
+	\slide{ZCG-EN-Code-and-Warning}
+	\slide{ZCH-EN-Reveal-Steps}
+	\slide{ZCI-EN-Manual-Top-Margin}
+	\slide{ZCJ-EN-Manual-Columns-t}
+	\slide{ZCK-EN-Manual-Columns-T}
+	\slide{ZCL-EN-Nested-Numerals}
+
+\end{document}

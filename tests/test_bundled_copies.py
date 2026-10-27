@@ -324,4 +324,5 @@ def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
     names = bundled_copies.framework_files(Path(__file__).resolve().parents[1] / "latex")
     assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
     assert "SlideMage_layout_fira.tex" in names             # v9.3.0: a new framework file reaches projects
+    assert "SlideMage_layout_lmsans.tex" in names           # v9.6.0: so does the Latin Modern Sans profile
     assert not [n for n in names if "gotham" in n.lower()]

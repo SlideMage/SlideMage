@@ -1,0 +1,152 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage template name: Stress test (test only)
+%
+% A TEST template, not a look to use. It picks the Latin Modern Sans layout profile and
+% overrides every hook of the catalog in SlideMage_setup.tex with a value that is clearly
+% different from the default: colors, logo and its size, the Top Margin, text margins,
+% title bar paddings, footer, footnotes, blocks, frame types and list spacing. If a part of
+% the framework still reads a hardcoded number instead of its hook, a deck compiled with
+% this template shows it (tools/check_layout.py reads the margins from the PDF, so a
+% template with other margins must come out clean). The calibration deck of this project
+% exercises every frame type and list depth with it.
+%
+% It lives here, outside example/ and latex/, so that SlideMage never offers it to users.
+% tests/test_template_catalog.py checks that every hook of the catalog is set below.
+%
+% The values keep the constraints the catalog names where a checker depends on them:
+% the footnote text stays smaller than the footer text (3.4pt against 6pt and 5pt), the
+% canvas stays white for check_layout.py's test (a tint of 1/255 per channel at most), and
+% the content margins stay at or beyond the title bar's.
+\newcommand{\SMLayoutProfile}{lmsans}
+\input{SlideMage_setup}
+
+% Palette: every color of the catalog.
+\definecolor{c_primary_dark}{HTML}{14213d}
+\definecolor{c_primary_highlight}{HTML}{c2410c}
+\definecolor{c_primary_gray}{HTML}{4b5563}
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{a5b4fc}
+\definecolor{c_tertiary_violet}{HTML}{e0e7ff}
+\definecolor{c_secondary_blue}{HTML}{7dd3fc}
+\definecolor{c_tertiary_blue}{HTML}{e0f2fe}
+\definecolor{c_secondary_green}{HTML}{86efac}
+\definecolor{c_tertiary_green}{HTML}{dcfce7}
+\definecolor{c_secondary_red}{HTML}{fca5a5}
+\definecolor{c_tertiary_red}{HTML}{fee2e2}
+\definecolor{c_secondary_orange}{HTML}{fdba74}
+\definecolor{c_tertiary_orange}{HTML}{ffedd5}
+\definecolor{c_secondary_yellow}{HTML}{fde047}
+\definecolor{c_tertiary_yellow}{HTML}{fef08a}
+\definecolor{c_tertiary_gray}{HTML}{e5e7eb}
+\definecolor{c_custom_gray}{HTML}{1f2937}
+\definecolor{c_custom_red}{HTML}{b91c1c}
+\definecolor{c_custom_green}{HTML}{15803d}
+\definecolor{c_custom_brown}{HTML}{92400e}
+
+% Roles.
+\renewcommand{\SMBulletColor}{c_custom_green}
+\renewcommand{\SMTitleBoxColor}{c_custom_green}
+\renewcommand{\SMTitleTextColor}{c_primary_white}
+\renewcommand{\SMFooterBoxColorDefault}{c_primary_gray}
+\renewcommand{\SMFooterTextColor}{c_primary_white}
+
+% Optional colors.
+\definecolor{SMCanvasColor}{HTML}{FFFEFC}
+\definecolor{SMCardBackgroundColor}{HTML}{f5f3ff}
+\definecolor{SMCardBorderColor}{HTML}{14213d}
+\definecolor{SMProcessBorderColor}{HTML}{9ca3af}
+\definecolor{SMCodeKeywordColor}{HTML}{b91c1c}
+\definecolor{SMCodeCommentColor}{HTML}{4b5563}
+\definecolor{SMCodeBackgroundColor}{HTML}{fef9c3}
+\definecolor{SMCodeTextColor}{HTML}{1f2937}
+
+% Logo: another file, and bigger.
+\renewcommand{\SMInstituteLogoPath}{media/chapter-logo-building-blocks.pdf}
+\setlength{\SMLogoHeight}{4.5ex}
+
+% Top Margin and the coordinates that follow from it and the title bar.
+\renewcommand{\SMTopMargin}{50bp}
+\setlength{\SMContentTopAlign}{50bp}
+\setlength{\SMTitleBarBottomAlign}{30.54pt}
+
+% Text margins.
+\setlength{\SMTextMarginLeft}{0.7cm}
+\setlength{\SMTextMarginRight}{0.6cm}
+
+% Frame title bar.
+\setlength{\SMFrametitleTopPadding}{3ex}
+\setlength{\SMFrametitleBottomPadding}{2.6ex}
+\setlength{\SMFrametitleLeftPadding}{3.2ex}
+\setlength{\SMFrametitleRightPadding}{0.5cm}
+\renewcommand{\SMFrameSubtitleSep}{\ \textbar\ }
+\setlength{\SMFrameSubtitleStrutEnd}{2pt}
+
+% Footer and footnotes.
+\setlength{\SMFooterBoxHeight}{9pt}
+\renewcommand{\SMFooterTextSize}{\fontsize{6}{4}\selectfont}
+\renewcommand{\SMFooterIDSize}{\fontsize{5}{5}\selectfont}
+\setlength{\SMFootlineHeight}{2ex}
+\setlength{\SMFootlineDepth}{0.2ex}
+\renewcommand{\SMFootlineSidePadding}{4ex}
+\setlength{\SMRightFooterPadding}{4.5ex}
+\setlength{\SMFootlineVOffset}{-0.1ex+0.4pt}
+\renewcommand{\SMFootnoteSize}{\fontsize{3.4}{2.1}\selectfont}
+\setlength{\SMFootnoteSep}{4pt}
+\setlength{\SMSideFootnoteHsize}{190pt}
+\setlength{\SMSideFootnoteTopSep}{5pt}
+\setlength{\SMSideFootnoteRightInset}{4pt}
+\setlength{\SMSideFootnoteMarkerShift}{2pt}
+
+% Blocks, and the sizes of the texts that are beamer fonts.
+\setlength{\SMBlockSideMargin}{6pt}
+\setlength{\SMBlockTitleMarkerWidth}{18pt}
+\setbeamerfont{block title}{size=\normalsize}
+\setbeamerfont{frametitle}{size=\Large}
+\setbeamerfont{caption}{size=\footnotesize}
+
+% Frame types.
+\setlength{\SMTitleframeBoxHeight}{178pt}
+\setlength{\SMTitleframeTextSep}{3.5ex}
+\setlength{\SMTitleframeBandGap}{1.2ex}
+\setlength{\SMTitleframeBottomPad}{55pt}
+\setlength{\SMSectionframeBoxHeight}{100pt}
+\setlength{\SMSectionframeContentDrop}{14pt}
+\setlength{\SMQuoteBoxHeight}{0.7\paperheight}
+\setlength{\SMQuoteAttributionGap}{2.5ex}
+\setlength{\SMProgressStripHeight}{13pt}
+
+% Lists.
+\renewcommand{\SMItemsepRatioI}{0.5}
+\renewcommand{\SMItemsepRatioII}{0.3}
+\renewcommand{\SMItemsepRatioIII}{0.2}
+\renewcommand{\SMItemsepRatioIV}{0.12}
+\renewcommand{\SMItemizeLevelDropSpaceRatioI}{0.6}
+\renewcommand{\SMItemizeLevelDropSpaceRatioII}{0.4}
+\renewcommand{\SMItemizeLevelDropSpaceRatioIII}{0.3}
+\renewcommand{\SMItemizeLevelDropSpaceRatioIV}{0.6}
+\renewcommand{\SMItemizeLevelOpenSpaceRatioI}{0.05}
+\renewcommand{\SMItemizeLevelOpenSpaceRatioII}{0.2}
+\renewcommand{\SMItemizeLevelOpenSpaceRatioIII}{0.05}
+\renewcommand{\SMTallItemBaseRatio}{0.4}
+\setlength{\SMLabelItemItemsep}{3.5pt}
+\setlength{\SMTightDisplaySkip}{5pt}
+\renewcommand{\SMBesideFigureTopGap}{0.4em}
+
+% Drawings, code.
+\setlength{\SMImageBorderWidth}{3.5pt}
+\setlength{\SMWarningSignPadding}{8pt}
+\setlength{\SMWarningSignBorderWidth}{3pt}
+\renewcommand{\SMCodeSize}{\fontsize{6.2}{7.8}\selectfont}
+
+% The optional theme features (mini frames, progress bar, divider frames, watermark): on
+% in the stress deck only, which defines \StressOptionalFeatures. The calibration deck
+% stays plain, so that tools/check_layout.py has the ordinary chrome to measure.
+\ifdefined\StressOptionalFeatures
+	\SMMiniFramesPosition{head}
+	\SMProgressBarPosition{foot}
+	\SMDividerFrames{section}
+	\SMWatermarkDefault{true}
+\fi
+
+\input{SlideMage_base}

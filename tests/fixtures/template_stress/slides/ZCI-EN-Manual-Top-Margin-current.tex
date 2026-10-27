@@ -1,0 +1,13 @@
+%% Calibration deck: three frames the automatic Top Margin does not manage (\SMManualTopMargin): a list
+%% first, a top-aligned columns environment first, a [T] columns environment first. The first line of
+%% each must sit on the Top Margin by the profile's \SMContentTopShift, \SMColumnsTopCorrection and
+%% \SMColumnsTTopCompensation, which is what tools/calibrate_font_profile.py measures here.
+\setSlideVersion{1-0-0}
+%% layout-check: skip top -- a manual-top frame keeps the profile's fixed pull-up, which is fitted to the catalog's default title bar and Top Margin; this template has others (known limit, see the step 7 notes in the plan)
+\SMManualTopMargin
+\begin{standardframe}{Manual top margin: a list first}
+	\begin{itemize}
+		\item The first line sits on the Top Margin
+		\item Second item
+	\end{itemize}
+\end{standardframe}

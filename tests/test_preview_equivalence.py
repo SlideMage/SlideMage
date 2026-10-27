@@ -110,7 +110,7 @@ def test_project_macro_override_and_framework_change_fail_closed(tmp_path, monke
     assert all(not d.certain for d in custom.decisions)
     framework = tmp_path / "framework"
     framework.mkdir()
-    for audited in ("SlideMage_setup.tex", "SlideMage_layout_fira.tex"):
+    for audited in ("SlideMage_setup.tex", "SlideMage_layout_fira.tex", "SlideMage_layout_lmsans.tex"):
         shutil.copy2(REPO / "latex" / audited, framework)    # audited; the next file is not
     (framework / "SlideMage_base.tex").write_text("changed")
     monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))

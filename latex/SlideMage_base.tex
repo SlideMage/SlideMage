@@ -268,12 +268,16 @@
 % The effective margins, for tools/check_layout.py (SlideMage v9.5.0): custom keys of the PDF's
 % info dictionary, in bp (PDF units, what the tool measures in). SMTopMargin is the Top Margin
 % (\SMTopMargin), SMLeftMargin the frame title text's left edge (\SMFrametitleLeftPadding). A template
-% has set its hooks by now; a slide cannot change them.
+% has set its hooks by now; a slide cannot change them. SMTitleBarBottom (v9.6.0) is the bottom edge of
+% the title bar (\SMTitleBarBottomAlign): the tool tells a frame with the ordinary title bar by it.
+% SMFontAscender, the text font's ascender, follows once it is known (below, with the Lua file).
 \ExplSyntaxOn
 \edef\SMPDFInfoTopMargin{\dim_to_decimal_in_bp:n{\SMTopMargin}}
 \edef\SMPDFInfoLeftMargin{\dim_to_decimal_in_bp:n{\SMFrametitleLeftPadding}}
+\edef\SMPDFInfoTitleBarBottom{\dim_to_decimal_in_bp:n{\SMTitleBarBottomAlign}}
 \ExplSyntaxOff
-\hypersetup{pdfinfo={SMTopMargin={\SMPDFInfoTopMargin}, SMLeftMargin={\SMPDFInfoLeftMargin}}}
+\hypersetup{pdfinfo={SMTopMargin={\SMPDFInfoTopMargin}, SMLeftMargin={\SMPDFInfoLeftMargin},
+	SMTitleBarBottom={\SMPDFInfoTitleBarBottom}}}
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -2417,6 +2421,7 @@
 		slidemage_measure.configure{top_margin = "\SMTopMargin", ascender = \SMFontAscender}
 	}
 \fi
+\hypersetup{pdfinfo={SMFontAscender={\SMFontAscender}}}
 \def\SMTable@begin#1{\begin{tabular}{#1}}
 % BLOCK-RULE-COLOR, automatic (2026-09-30): inside any block (the
 % convention above) the rules default to c_primary_dark -- all 11 tables

@@ -1,0 +1,19 @@
+%% Calibration deck: a manual-top frame that starts with a [T] columns environment (\SMColumnsTTopCompensation).
+%% layout-check: skip top -- a manual-top frame keeps the profile's fixed pull-up, which is fitted to the catalog's default title bar and Top Margin; this template has others (known limit, see the step 7 notes in the plan)
+\setSlideVersion{1-0-0}
+\SMManualTopMargin
+\begin{standardframe}{Manual top margin: columns[T] first}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item The first line sits on the Top Margin
+				\item Second item
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\begin{itemize}
+				\item The same, beside it
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

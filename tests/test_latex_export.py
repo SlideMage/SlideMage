@@ -123,6 +123,16 @@ def test_the_profile_a_template_names_comes_along_instead_of_the_default(project
     assert result.missing == []
 
 
+def test_the_shipped_lmsans_profile_comes_along_for_a_template_that_picks_it(project):
+    project = own_profile_project(project, "\\newcommand{\\SMLayoutProfile}{lmsans}")
+    result = export(project, "own")
+    assert "SlideMage_layout_lmsans.tex" in result.files and "SlideMage_layout_fira.tex" not in result.files
+    assert result.missing == []
+    # it is the framework's own file, byte for byte, in the exported folder
+    shipped = (Path(__file__).resolve().parents[1] / "latex" / "SlideMage_layout_lmsans.tex").read_bytes()
+    assert (result.folder / "SlideMage_layout_lmsans.tex").read_bytes() == shipped
+
+
 def test_a_template_without_a_profile_line_gets_the_default_profile(project):
     assert "SlideMage_layout_fira.tex" in set(export(project, "plain").files)
 

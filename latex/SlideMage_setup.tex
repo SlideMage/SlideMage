@@ -37,22 +37,54 @@
 %
 %   \newcommand{\SMLayoutProfile}{myfont}      % before \input{SlideMage_setup}; fira is the default
 %
-% SlideMage ships "fira" (SlideMage_layout_fira.tex, today's look). A project may
-% keep its own profile next to its templates: the TeX search path finds
-% SlideMage_layout_<name>.tex there. A template does not change a profile's
-% numbers; it picks a profile or ships its own.
+% SlideMage ships two profiles:
+%   fira    SlideMage_layout_fira.tex: Fira Sans Light and Fira Mono, today's look and
+%           the default (the fonts come with SlideMage's installer, not with TeX).
+%   lmsans  SlideMage_layout_lmsans.tex: Latin Modern Sans and Latin Modern Mono, which
+%           every TeX distribution has. A template uses it with
+%             \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
+% A project may keep its own profile next to its templates: the TeX search path finds
+% SlideMage_layout_<name>.tex there. A template does not change a profile's numbers; it
+% picks a profile or ships its own.
+%
+% What a profile defines (SlideMage_layout_fira.tex is the model; a test checks that every
+% other profile defines each of these names):
+%   fonts           the text font (\sfdefault with its weight mapping and \ttdefault), the
+%                   mono font (\ttfamily), \SMCodeFont, \SMInlineCodeFont, \SMCardHeadingFont,
+%                   and the math handling that goes with them
+%   metrics         \SMFontAscender (the ascender in em, used where the font gives none of
+%                   its own), \SMLinespread, \SMParskip
+%   calibrations    lengths measured against the rendered PDF for this font:
+%                     \SMFooterTextDrop \SMFooterRightShift \SMFootnoteRightShift
+%                     \SMContentTopShift \SMColumnsTopCorrection \SMColumnsTTopCompensation
+%                     \SMEnumerateLabelBox \SMEnumerateNestedLabelSep
+%                     \SMEnumerateNestedLeftMargin \SMEnumerateNestedMinNumber
+%                     \SMEnumerateTextExtra \SMLabelItemWidth \SMLabelItemSep
+%                     \SMSectionframeRefDepth \SMSectionframeBottomGap
+%                     \SMSectionframeBottomPadCorrection \SMSectionframeHeightCorrection
 %
 % Recipe for a new profile:
 %   1. Copy SlideMage_layout_fira.tex to SlideMage_layout_<name>.tex and change the
-%      fonts. A profile must define: the text and code fonts (\sfdefault, \ttdefault,
-%      \SMCodeFont, \SMInlineCodeFont, \SMCardHeadingFont), \SMFontAscender (the
-%      ascender in em, used where the font gives none of its own), \SMLinespread
-%      and \SMParskip.
-%   2. Compile the calibration deck with a test template that uses the profile.
-%   3. Run tools/check_layout.py on the result.
-%   4. Adjust the profile's numbers until the report is clean.
-% (A calibration deck and tools/calibrate_font_profile.py, which prints suggested
-% values from the same measurement, come with a later step of the redesign.)
+%      fonts (and \SMFontAscender, \SMLinespread, \SMParskip).
+%   2. python tools/calibrate_font_profile.py --profile <name>
+%      It compiles the calibration deck of tests/fixtures/template_stress/ with the
+%      profile under the SlideMage template (the catalog's defaults) and prints, for each
+%      calibration it can measure, the current value and the one the PDF suggests.
+%   3. Put the suggestions into the profile's "Calibrations" section and run the tool
+%      again until every line reads ok. The ones it does not measure
+%      (\SMEnumerateLabelBox, \SMEnumerateTextExtra and the three section-frame
+%      corrections other than the height one) stay as in the Fira profile until a slide
+%      shows them wrong.
+%   4. Compile the calibration deck with a template that picks the profile and run
+%      tools/check_layout.py on the PDF (the stress-test template of that project does
+%      this for lmsans). It reads the margins from the PDF, so a template with other
+%      margins is checked against its own. Adjust until the report is clean.
+% The last block of the tool's output lists catalog hooks that follow from the font and
+% that the template holds, not the profile: with a profile other than fira a template
+% sets \SMTitleBarBottomAlign (where the title bar ends) and, with it, \SMTopMargin and
+% \SMContentTopAlign. Calibrations that read other catalog hooks (the footer's and the
+% footnotes' right edges against the logo, the pull-up of a frame the automatic Top
+% Margin does not manage) are fitted to the catalog's defaults for those hooks.
 
 \newcommand{\SMSetupLoaded}{}
 

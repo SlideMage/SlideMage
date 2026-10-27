@@ -28,8 +28,10 @@ between title bar and footer -- with a comment line in its own slide file:
 (several checks comma-separated, or "all"). Exempted findings are counted, not listed.
 
 The Top and Left Margin are the deck's own: SlideMage_base.tex writes them into the PDF
-(info keys SMTopMargin, SMLeftMargin, since v9.5.0); an older PDF is checked against
-the SlideMage template's 41.58 and 12.55. Exemptions are read from the slide files of the project the PDF
+(info keys SMTopMargin, SMLeftMargin, since v9.5.0), and since v9.6.0 also the text font's
+ascender (SMFontAscender) and the title bar's bottom edge (SMTitleBarBottom), so that a template
+with another font, other margins or another title bar is checked against its own values. An
+older PDF is checked against the SlideMage template's 41.58, 12.55, 0.935 and 25.2. Exemptions are read from the slide files of the project the PDF
 belongs to: --project, else the folder with slide_ids.csv above the PDF, else
 $SLIDEMAGE_PROJECT.
 
@@ -53,10 +55,15 @@ TOP_MARGIN = 41.58       # top of a plain first body line's line box (\SMTopMarg
 LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding
 # Both are only the fallback for a PDF from before SlideMage v9.5.0: since then the base writes the deck's own
 # margins into the PDF's info dictionary (SMTopMargin, SMLeftMargin, in bp), which pdf_margins() reads.
-FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it
+FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it (the fallback: see usual_footnote_top)
+FOOTNOTE_MARKER_ALLOWANCE = 1.5  # a footnote line with its raised marker has a line box this much higher than a \source line
 FOOTER_GAP = 1.0         # minimum clearance above footnotes / footer box
 FOOTER_TEXT_MIN_SIZE = 3.6  # footer text is 3.99 pt and up; footnote/source lines 3.19 pt
-FIRA_ASCENDER = 0.935    # Fira Sans ascender / em: a text line's top is baseline - this x size
+FIRA_ASCENDER = 0.935    # Fira Sans ascender / em: a text line's top is baseline - this x size (the fallback: SMFontAscender)
+TITLE_BAR_BOTTOM = 25.23    # the visible bottom edge of the SlideMage template's title bar, bp (the fallback: SMTitleBarBottom)
+TITLE_BAR_TOLERANCE = 5.0   # a frame whose title bar ends this far from it has a title bar of another kind
+# Fonts of displayed maths (and of the symbols in it): a line set only in these is not body text.
+MATH_FONT_RE = re.compile(r"^(?:[A-Z]{6}\+)?(?:LMRoman|LMMath|CM(?:R|MI|SY|EX|BX|SS|TT|M)|MSAM|MSBM|EUFM|EUSM|rsfs|STIX|Cambria)")
 
 ID_RE = re.compile(r"slide id: (\w+)")
 SKIP_RE = re.compile(r"^\s*%+\s*layout-check:\s*skip\s+([a-z, ]+)", re.M)
@@ -121,9 +128,10 @@ def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float) -> floa
     return width - 9.6
 
 
-def pdf_margins(doc: fitz.Document) -> tuple[float, float]:
-    """The deck's Top and Left Margin from its PDF's info dictionary (keys SMTopMargin and SMLeftMargin,
-    written by SlideMage_base.tex), each falling back to the constant when the PDF lacks it."""
+def pdf_info(doc: fitz.Document) -> dict[str, float]:
+    """The deck's own numbers from its PDF's info dictionary (SMTopMargin, SMLeftMargin, SMFontAscender,
+    SMTitleBarBottom, written by SlideMage_base.tex), each falling back to the SlideMage template's
+    value when the PDF lacks it."""
     def read(key: str, default: float) -> float:
         try:
             kind, ref = doc.xref_get_key(-1, "Info")
@@ -133,15 +141,25 @@ def pdf_margins(doc: fitz.Document) -> tuple[float, float]:
             return float(value) if kind in ("string", "real", "int") else default
         except (ValueError, RuntimeError):
             return default
-    return read("SMTopMargin", TOP_MARGIN), read("SMLeftMargin", LEFT_MARGIN)
+    return {"top_margin": read("SMTopMargin", TOP_MARGIN), "left_margin": read("SMLeftMargin", LEFT_MARGIN),
+            "ascender": read("SMFontAscender", FIRA_ASCENDER),
+            "title_bar_bottom": read("SMTitleBarBottom", TITLE_BAR_BOTTOM)}
+
+
+def pdf_margins(doc: fitz.Document) -> tuple[float, float]:
+    """The deck's Top and Left Margin (pdf_info's first two numbers)."""
+    info = pdf_info(doc)
+    return info["top_margin"], info["left_margin"]
 
 
 class Page:
     """The measurable pieces of one page: frame chrome and body content."""
 
-    def __init__(self, page: fitz.Page, top_margin: float = TOP_MARGIN, left_margin: float = LEFT_MARGIN):
+    def __init__(self, page: fitz.Page, top_margin: float = TOP_MARGIN, left_margin: float = LEFT_MARGIN,
+                 ascender: float = FIRA_ASCENDER, title_bar_bottom: float = TITLE_BAR_BOTTOM):
         self.page = page
         self.top_margin, self.left_margin = top_margin, left_margin
+        self.ascender, self.title_bar_bottom = ascender, title_bar_bottom
         self.w, self.h = page.rect.width, page.rect.height
         text = page.get_text()
         m = ID_RE.search(text)
@@ -161,7 +179,7 @@ class Page:
         feet = [d for d in drawings if d.get("fill") is not None and not is_white(d["fill"])
                 and d["rect"].width > self.w - 1 and d["rect"].y1 > self.h - 0.5]
         self.footer_top = min((d["rect"].y0 for d in feet), default=self.h)
-        self.standard = self.slide_id is not None and 20 < self.bar_bottom < 30
+        self.standard = self.slide_id is not None and abs(self.bar_bottom - self.title_bar_bottom) < TITLE_BAR_TOLERANCE
 
         # logo: its visible right edge, the Right Margin
         self.logo_right = logo_visible_right(page, self.w, self.bar_bottom)
@@ -170,7 +188,7 @@ class Page:
         self.footnotes: list[fitz.Rect] = []
         self.vertical: list[fitz.Rect] = []                  # rotated text lines
         # horizontal text lines: (rect, baseline y, largest font size, glyph-box top,
-        # set in the body font Fira Sans -- not only maths fonts)
+        # set in a body font -- not only maths fonts)
         self.baselines: list[tuple[fitz.Rect, float, float, float, bool]] = []
         self.has_strip = False                               # \progressstrip under the bar
         top, bottom = self.bar_bottom + 0.3, self.footer_top - 0.3
@@ -192,18 +210,18 @@ class Page:
                 r = fitz.Rect(line["bbox"])
                 if not r.intersects(page.rect) or r.is_empty:
                     continue
-                # top = baseline - Fira Sans ascender, from the non-superscript
+                # top = baseline - the text font's ascender, from the non-superscript
                 # spans only: a footnote marker or a math font's taller ascender
                 # would otherwise lift the line box without the text moving
                 body_spans = [s for s in spans if not s["flags"] & 1] or spans
-                r.y0 = min(s["origin"][1] - FIRA_ASCENDER * s["size"] for s in body_spans)
+                r.y0 = min(s["origin"][1] - self.ascender * s["size"] for s in body_spans)
                 label = "".join(s["text"] for s in spans).strip()
                 if abs(line["dir"][1]) > 0.5:
                     self.vertical.append(r)      # rotated (source strip, axis label)
                 else:
                     self.baselines.append((r, max(s["origin"][1] for s in spans),
                                            max(s["size"] for s in spans), line["bbox"][1],
-                                           any("Fira" in s["font"] for s in spans)))
+                                           any(not MATH_FONT_RE.match(s["font"]) for s in spans)))
                 # a footnote line an overfull frame pushed into (or under) the footer
                 # box still counts -- it is smaller than any footer text
                 size = max(s["size"] for s in spans)
@@ -327,7 +345,7 @@ class Page:
                            f"Right Margin ({self.logo_right:.2f}): {lab[:40]!r}")
         return out[:3]
 
-    def check_bottom(self, tol):
+    def check_bottom(self, tol, footnote_last_top=FOOTNOTE_LAST_TOP):
         out = []
         limit = (min(r.y0 for r in self.footnotes) if self.footnotes else self.footer_top) - FOOTER_GAP
         fn_top = min((r.y0 for r in self.footnotes), default=self.footer_top)
@@ -346,9 +364,9 @@ class Page:
                        f"({limit + FOOTER_GAP:.2f}): {lab[:40]!r}")
         if self.standard and self.footnotes:
             last = max(r.y0 for r in self.footnotes)
-            if last > FOOTNOTE_LAST_TOP + max(tol, 0.3):
-                out.append(f"last footnote line at {last:.2f}, {last - FOOTNOTE_LAST_TOP:.2f} below its "
-                           f"usual {FOOTNOTE_LAST_TOP} (frame overfull?)")
+            if last > footnote_last_top + max(tol, 0.3):
+                out.append(f"last footnote line at {last:.2f}, {last - footnote_last_top:.2f} below its "
+                           f"usual {footnote_last_top:.2f} (frame overfull?)")
         return out
 
     def check_bleed(self, tol):
@@ -378,6 +396,16 @@ class Page:
                 out.append(f"table rules {rs[0].x0:.2f}-{rs[0].x1:.2f} extend past the text "
                            f"{tx0:.2f}-{tx1:.2f} (left {left:.2f}, right {right:.2f})")
         return out
+
+
+def usual_footnote_top(pages: list[Page]) -> float:
+    """Where the last footnote line of a frame sits when nothing pushes it. The footer, the footnote size and
+    the footnote offset are the template's, so the number is the deck's own: the highest last line of any
+    frame (an overfull frame pushes it lower, never higher), plus FOOTNOTE_MARKER_ALLOWANCE for the frames
+    whose last line is a source line, which has no raised marker to lift its line box. A deck without a
+    footnote keeps the SlideMage template's."""
+    tops = [max(r.y0 for r in p.footnotes) for p in pages if p.standard and p.footnotes]
+    return min(tops) + FOOTNOTE_MARKER_ALLOWANCE if tops else FOOTNOTE_LAST_TOP
 
 
 def jitter(prev: Page, cur: Page, tol) -> list[str]:
@@ -418,8 +446,10 @@ def main(argv=None) -> int:
     for path in args.pdf:
         doc = fitz.open(path)
         project = find_project(Path(path), args.project)
-        top_margin, left_margin = pdf_margins(doc)
-        pages = [Page(p, top_margin, left_margin) for p in doc]
+        info = pdf_info(doc)
+        pages = [Page(p, info["top_margin"], info["left_margin"], info["ascender"], info["title_bar_bottom"])
+                 for p in doc]
+        footnote_top = usual_footnote_top(pages)
         # consecutive pages of one slide = its overlay steps
         group_of: dict[int, list[Page]] = {}
         start = 0
@@ -441,7 +471,8 @@ def main(argv=None) -> int:
                     if last_of_group:   # once per slide, over all its steps
                         findings += [(c, f) for f in getattr(page, "check_" + c)(args.tol, group_of[number - 1])]
                 else:
-                    findings += [(c, f) for f in getattr(page, "check_" + c)(args.tol)]
+                    extra = (footnote_top,) if c == "bottom" else ()
+                    findings += [(c, f) for f in getattr(page, "check_" + c)(args.tol, *extra)]
             prev = page
             skips = set() if args.ignore_exemptions or not page.slide_id else exemptions(project, page.slide_id)
             for c, f in findings:

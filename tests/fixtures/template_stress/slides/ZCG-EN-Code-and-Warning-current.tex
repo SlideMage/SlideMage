@@ -1,0 +1,17 @@
+%% Calibration deck: a code panel, inline code, a warning sign, math in a list, a text beside a figure.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Code, inline code and math}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.5\linewidth}
+			Inline code: \SMCode{standardframe} and \SMCmd{footnote}, then text in the body font.
+			\begin{itemize}
+				\item An equation: $E[R_i]=r_f+\beta_i\,(E[R_m]-r_f)$ and \text{plain} words
+				\item \textbf{Bold}, \emph{emphasis}, \textbf{\emph{both}} in the body font
+			\end{itemize}
+			\SMWarningSign{330pt}{205pt}{Watch out!}{2.5}{-8}
+		\end{column}
+		\begin{column}{0.46\linewidth}
+			\SMCodeFile{snippets/ZCG-1.tex}
+		\end{column}
+	\end{columns}
+\end{standardframe}

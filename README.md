@@ -30,7 +30,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, the layout profile `SlideMage_layout_fira.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -415,12 +415,34 @@ copied package files in `texmf/` record the exact originals.
   `\newcommand{\SMLayoutProfile}{name}` (`fira` if it says nothing), and
   `SlideMage_setup.tex` inputs `SlideMage_layout_<name>.tex`. A project can keep a
   profile of its own next to its templates; the TeX search path finds it, and
-  Export LaTeX takes it along. *Recipe for a new profile:* (1) copy
-  `SlideMage_layout_fira.tex` and change the fonts, (2) compile a deck with a test
-  template that uses the profile, (3) run `tools/check_layout.py` on the PDF,
-  (4) adjust the profile's numbers until the report is clean. (The calibration
-  deck and `tools/calibrate_font_profile.py`, which suggests the numbers, follow
-  in a later step of the framework redesign.)
+  Export LaTeX takes it along.
+- `SlideMage_layout_lmsans.tex` — the second **layout profile** (since v9.6.0): Latin
+  Modern Sans and Latin Modern Mono, which every TeX distribution has, so decks set
+  in it compile on a machine without the Fira fonts. A template uses it with
+  `\newcommand{\SMLayoutProfile}{lmsans}` before `\input{SlideMage_setup}`. It defines
+  everything the Fira profile defines, with numbers measured for Latin Modern Sans. Its
+  ascender is read from the font (0.806 em). Because a profile cannot change the
+  template's hooks, a template that picks it also sets `\SMTitleBarBottomAlign` (the
+  title bar ends higher with this font: 22.17pt against Fira's 25.32pt) and, with it,
+  `\SMTopMargin` and `\SMContentTopAlign`; `tools/calibrate_font_profile.py` prints
+  them.
+  *Recipe for a new profile:* (1) copy `SlideMage_layout_fira.tex` and change the
+  fonts, (2) run `python tools/calibrate_font_profile.py --profile <name>`: it compiles
+  the calibration deck of `tests/fixtures/template_stress/` with the profile under the
+  SlideMage template, measures the PDF and prints each calibration with its current
+  value and the suggested one, (3) put the suggestions into the profile and run it again
+  until every line says `ok`, (4) compile the calibration deck with a template that picks
+  the profile and run `tools/check_layout.py` on the PDF (it reads the margins, the
+  ascender and the title bar's bottom edge from the PDF, so a template with other margins
+  is checked against its own), adjust until the report is clean.
+- `tests/fixtures/template_stress/` — a **test project**, never offered by the app (it
+  is neither in `example/` nor in `latex/`): the template `SlideMage_template_stress-test.tex`,
+  which picks `lmsans` and sets every hook of the catalog to a clearly different value,
+  the calibration deck (`decks/calibration.tex`: every frame type, every list depth and
+  kind, columns, blocks, footnotes) and a small deck with the optional theme features
+  switched on. A test checks that the template sets every hook of the catalog, that every
+  hook is read by the base or the theme, and that the shipped templates set catalog names
+  only.
 - `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):
   loads the beamer theme (decks never name it) and defines every setting a
   template may change, each with its default and a comment — the `c_*`
@@ -3071,7 +3093,12 @@ deck's own (since v9.5.0): `SlideMage_base.tex` writes them into the PDF's info
 dictionary as `SMTopMargin` (`\SMTopMargin`) and `SMLeftMargin`
 (`\SMFrametitleLeftPadding`, the title text's left edge), in PDF units, so a
 template that changes them is checked against its own values. A PDF from before
-v9.5.0 is checked against the SlideMage template's 41.58 and 12.55.
+v9.5.0 is checked against the SlideMage template's 41.58 and 12.55. Since v9.6.0 the PDF also
+records the text font's ascender (`SMFontAscender`, how far a text line's top is above its baseline)
+and where the title bar ends (`SMTitleBarBottom`), so a deck in another font or with another title
+bar is checked against its own, and the last footnote line of a frame is compared with the highest
+one in the deck rather than with a constant. The stress-test project (`tests/fixtures/template_stress/`)
+is the first deck whose template has other margins, another font and another title bar, and comes out clean.
 
 ## Slide previews
 

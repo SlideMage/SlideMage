@@ -54,6 +54,13 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 
+# The images the stress-test project's calibration deck uses are the example project's own.
+[[annotations]]
+path = ["tests/fixtures/template_stress/media/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
 # The licence texts themselves and this overview.
 [[annotations]]
 path = ["LICENSE", "THIRD_PARTY_NOTICES.md", "REUSE.toml", "LICENSES/**"]
