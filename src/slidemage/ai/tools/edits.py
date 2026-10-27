@@ -118,6 +118,7 @@ def _applied(ctx: ToolContext, path: Path, before: str, after: str, via_buffer: 
       ("path", "old_text", "new_text"))
 def edit_file(ctx: ToolContext, args: dict) -> str:
     path = _editable(ctx, args["path"])
+    ctx.check_scope(path)
     old, new = args["old_text"], args["new_text"]
     if not old:
         raise ToolError("old_text is empty. To create a file use write_file.")
@@ -153,6 +154,7 @@ def edit_file(ctx: ToolContext, args: dict) -> str:
       ("path", "content"))
 def write_file(ctx: ToolContext, args: dict) -> str:
     path = _editable(ctx, args["path"])
+    ctx.check_scope(path)
     content = args["content"].replace("\r\n", "\n")
     if path.exists():
         raise ToolError(f"{relative(ctx.root, path)} exists already. Change it with edit_file.")

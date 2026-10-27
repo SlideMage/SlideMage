@@ -368,3 +368,35 @@ def test_claude_refresh_with_explicit_instructor_stays_single_view(mcp_tools, mo
     response = client.call('refresh_preview', view='instructor')
     assert not response['isError'] and seen == ['instructor']
     assert 'abc: instructor, EN: rendered' in response['content'][0]['text']
+
+
+def test_slide_scope_refuses_another_slide_over_http(root):
+    deck = next(d for d in scan_decks(ProjectContext.at(root)) if d.name == "test")
+    workspace = FakeWorkspace(root, WorkspaceContext(deck=deck, slide_id="abc", path=root / SLIDE))
+
+    def toolbox():
+        box = build_toolbox(workspace, lambda _e: None, compiler.CancelToken(), EDIT_AUTO, tools=CLAUDE_CODE_TOOLS)
+        box.ctx.scope, box.ctx.focus_slide = "slide", root / SLIDE
+        return box
+
+    server = McpServer(toolbox)
+    server.start()
+    try:
+        result = Client(server).call("modify_slide", slide="abd", edits=[{"old": "First", "new": "Changed"}])
+        assert result["isError"] and "switch_to_deck_mode" in result["content"][0]["text"]
+        assert "First" in (root / "slides/abd-EN-Second-current.tex").read_text()
+    finally:
+        server.stop()
+
+
+def test_slide_scope_refusal_in_mcp_handler(mcp_tools):
+    original = mcp_tools.server._make_toolbox
+
+    def toolbox():
+        box = original()
+        box.ctx.scope, box.ctx.focus_slide = "slide", mcp_tools.root / SLIDE
+        return box
+
+    mcp_tools.server._make_toolbox = toolbox
+    result = mcp_tools.call("modify_slide", slide="abd", edits=[{"old": "First", "new": "Changed"}])
+    assert result["isError"] and "switch_to_deck_mode" in result["content"][0]["text"]

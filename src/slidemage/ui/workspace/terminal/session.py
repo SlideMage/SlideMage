@@ -156,9 +156,16 @@ class ClaudeCodeSession(QObject):
         """The tools for one MCP call, looking at the window as it is now."""
         with self._lock:
             cancel = self._cancel
-        self.workspace.on_gui(self.workspace.begin_request)
-        return build_toolbox(self.workspace, lambda _event: None, cancel, EDIT_AUTO,
-                             tools=CLAUDE_CODE_TOOLS)
+
+        def focus():
+            self.workspace.begin_request()
+            return self.scope, self.workspace.context().path
+
+        scope, path = self.workspace.on_gui(focus, (claude_scope.SLIDE, None))
+        box = build_toolbox(self.workspace, lambda _event: None, cancel, EDIT_AUTO, tools=CLAUDE_CODE_TOOLS)
+        box.ctx.scope = scope
+        box.ctx.focus_slide = claude_scope.slide_focus(box.ctx.root, path)
+        return box
 
     # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread
     # (queued, so possibly after a Restart or the shutdown) is checked against the generation again.

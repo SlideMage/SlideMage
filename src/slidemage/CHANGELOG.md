@@ -2816,3 +2816,8 @@ NEW: Switch now keeps your unsent prompt, and Find anything can show all results
 - Switching the Claude Code model with Switch now puts the prompt you had typed but not sent back into the input box.
 - In Find anything, a list of slides or text matches that is cut short ends with Show all, which lists every one of them.
 - The scroll bar in Settings no longer touches the text next to it.
+
+v8.64.1 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 1): The "This slide" scope is enforced by the agent tools themselves, not only by the Claude Code hook. Over MCP, modify_slide, create_slide and add_slide could change any slide or deck while the scope was Slide; the built-in chat had the scope as context text only. ToolContext now carries the scope and the focused slide (None: unrestricted, as for the headless tasks); edit_file, write_file and modify_slide (on the file actually written, after the EN/DE partner) refuse a slide or deck other than the focused slide, and add_slide and create_slide refuse in Slide scope since they change the deck, all pointing to switch_to_deck_mode. One rule for hook and tools (claude_scope.scope_problem, deck_problem). Agent.run sets the scope per request; the Claude Code session reads it with the focus on the GUI thread per MCP call. Tests in test_agent_tools.py, test_agent.py, test_mcp_server.py and test_claude_code_gui.py.
+
+NEW: In "This slide" mode, the assistant can no longer change other slides or the deck.
+- Before, the built-in chat and the tools Claude Code uses through SlideMage could still reach other slides; now they ask to switch to Deck mode first.

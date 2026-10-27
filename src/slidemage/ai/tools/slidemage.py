@@ -340,6 +340,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     links = slide_language.TranslationLinks(ctx.project.slides_dir)
     if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), ctx.workspace.context().language):
         path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+    ctx.check_scope(path)
     before, revision = current_revision(ctx.workspace, path)
     if "expected" in args and (slide_versioning.without_plus(args["expected"])
                                != slide_versioning.without_plus(before)):      # the "+" is no change
@@ -382,6 +383,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
                           "needs a different language. The body is copied from it; translate it in place."},
        "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}})
 def add_slide(ctx: ToolContext, args: dict) -> str:
+    ctx.check_scope()
     existing = (args.get("existing") or "").strip()
     created = None
     if existing:
@@ -475,6 +477,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
       ("title", "slug", "body", "deck"))
 def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
+    ctx.check_scope()
     deck = open_deck(ctx)
 
     def check_deck() -> None:

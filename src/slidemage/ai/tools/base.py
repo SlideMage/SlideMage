@@ -10,6 +10,7 @@ from pathlib import Path
 
 from ... import compiler, timing
 from ...project import ProjectContext
+from ..claude_scope import deck_problem, scope_problem
 from ..agent_types import EDIT_ASK, AgentEvent, ToolCall, ToolResult, ToolSpec
 from ..workspace import Workspace
 
@@ -27,11 +28,19 @@ class ToolContext:
     cancel: compiler.CancelToken         # set by the user's Stop
     mode: str = EDIT_ASK                 # EDIT_ASK / EDIT_AUTO; the chat may flip it between calls
     call_id: str = ""                    # of the tool call being run
+    scope: str | None = None             # None leaves tools unrestricted
+    focus_slide: Path | None = None
 
     @property
     def root(self) -> Path:
         """The project folder, resolved."""
         return self.project.root.resolve()
+
+    def check_scope(self, path: Path | None = None) -> None:
+        """ToolError if writing `path` (None: changing the deck) is outside the scope."""
+        problem = deck_problem(self.scope) if path is None else scope_problem(self.scope, self.root, self.focus_slide, path)
+        if problem:
+            raise ToolError(problem)
 
 
 # What a tool function returns: the text for the model, or text plus images to look at.

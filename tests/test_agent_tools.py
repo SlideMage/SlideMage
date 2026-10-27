@@ -757,3 +757,41 @@ def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root
 def test_preview_tools_reject_invalid_view(box):
     assert "Argument 'view' must be one of" in box.error('render_preview', view='student')
     assert "Argument 'view' must be one of" in box.error('refresh_preview', view='student')
+
+
+@pytest.mark.parametrize("scope", ["slide", "deck", None])
+def test_scope_guards_writing_tools(box, root, monkeypatch, scope):
+    box.box.ctx.scope = scope
+    box.box.ctx.focus_slide = root / SLIDE
+    other = "slides/abd-EN-Second-current.tex"
+    monkeypatch.setattr(slidemage_tools, "apply_slide", lambda *args, **kwargs: ("applied", []))
+    args = {"old_text": "First", "new_text": "Changed"}
+    if scope == "slide":
+        assert "switch_to_deck_mode" in box.error("edit_file", path=other, **args)
+        assert "switch_to_deck_mode" in box.error("modify_slide", slide=other, edits=[{"old": "First", "new": "Changed"}])
+        assert "switch_to_deck_mode" in box.error("write_file", path="decks/new.tex", content="x")
+        assert "switch_to_deck_mode" in box.error("add_slide", slug="New", title="New", add_to_deck=False)
+        assert "switch_to_deck_mode" in box.error("create_slide", title="New", slug="New", body="x", deck="test")
+        assert not box.of_type(EditProposed)
+    else:
+        assert "Changed" in box.ok("edit_file", path=other, **args)
+        assert box.ok("modify_slide", slide=other, edits=[{"old": "Changed", "new": "Again"}]) == "applied"
+        assert "Created" in box.ok("write_file", path="decks/new.tex", content="x")
+        assert "Created" in box.ok("add_slide", slug="New", title="New", add_to_deck=False)
+        assert box.ok("create_slide", title="New", slug="Other", body="x", deck="test") == "applied"
+    assert "Changed" in box.ok("edit_file", path=SLIDE, **args)
+    assert box.ok("modify_slide", slide=SLIDE, edits=[{"old": "Changed", "new": "Again"}]) == "applied"
+
+
+def test_write_file_allows_focused_new_file_in_slide_scope(box, root):
+    path = root / "slides" / "drafts" / "new.tex"
+    box.box.ctx.scope, box.box.ctx.focus_slide = "slide", path
+    assert "Created" in box.ok("write_file", path="slides/drafts/new.tex", content="x")
+
+
+def test_modify_slide_checks_resolved_language_partner(box, root, monkeypatch):
+    box.box.ctx.scope, box.box.ctx.focus_slide = "slide", root / SLIDE
+    monkeypatch.setattr(slidemage_tools.slide_language.TranslationLinks, "find", lambda *args: "abd-EN-Second")
+    assert "abd-EN-Second-current.tex" in box.error(
+        "modify_slide", slide=SLIDE, edits=[{"old": "First", "new": "Changed"}])
+    assert not box.of_type(EditProposed)
