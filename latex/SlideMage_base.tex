@@ -18,6 +18,11 @@
 	\directlua{#1}%
 	\global\SMLuaReplayList\expandafter{\the\SMLuaReplayList\directlua{#1}}%
 }
+% The packages this file uses, loaded here explicitly (the theme loads most of them already, which makes
+% each \usepackage below a no-op): iftex for \ifluatex, fontspec for \newfontfamily, xcolor for the colors.
+\usepackage{iftex}
+\usepackage{fontspec}
+\usepackage{xcolor}
 \usepackage{etoolbox} % \AtEndEnvironment, used for the itemize level-drop spacing below
 \usepackage{tikz} % For painting a white box over title bar
 \usetikzlibrary{calc}
@@ -158,23 +163,6 @@
 % call site.
 \hypersetup{colorlinks=true, urlcolor=c_custom_gray, linkcolor=c_custom_gray, citecolor=black}
 
-% Non-linear navigation (direct instruction, 2026-09-15): beamer's own
-% \beamergotobutton{}/\beamerreturnbutton{}/\beamerskipbutton{} (the
-% pill-shaped buttons meant to pair with \hyperlink{}, see this project's
-% own "Non-linear navigation" README section) render in beamer's stock
-% structure-derived gray by default -- confirmed directly by rendering
-% one, since gotham's own color theme never touches the "button"/"button
-% border" beamer colors at all. Restyled to this project's own
-% c_custom_gray (institution-specific -- defined once per institution
-% preamble before this file is \input{}ed, same "value supplied
-% externally, referenced lazily" idiom as \SMInstituteLogoPath just
-% above's own \hypersetup line already relies on) with white text/glyph,
-% border matching the fill for a clean solid pill rather than a
-% mismatched outline color. \color{bg}/\usebeamercolor[fg]{button
-% border} inside beamerinnerthemedefault.sty's own "button" template are
-% exactly what these two \setbeamercolor calls feed.
-\setbeamercolor{button}{bg=c_custom_gray, fg=white}
-\setbeamercolor{button border}{fg=c_custom_gray}
 
 \let\SMOrigHref\href
 \newsavebox{\SMHrefTextBox}
@@ -308,46 +296,11 @@
 % so that one difference is accepted rather than "fixed."
 \urlstyle{same}
 
-% gotham's own footnote color (beamerthemeSlideMage.sty:
-% \setbeamercolor{footnote}{fg=normal~text.fg!90}) is a 90%-black gray --
-% against plain black body text, customgray links contrast clearly (found
-% while investigating a 2026-07-05 report that a footnote's own \href
-% didn't read as a link the way body-text ones like the "Moodle" link on
-% slides/hxr-Administrative-Details-current.tex do); against gotham's own
-% dimmed footnote gray, the same customgray is only 25/255 lighter and
-% barely distinguishable at footnote size, with only the underline giving
-% it away. Overridden to plain black here so a footnote link contrasts the
-% same way a body-text one does -- a one-line override of the theme's own
-% color (not editing beamerthemeSlideMage.sty itself, which stays
-% untouched per its own upstream-file status), and a plausible general
-% legibility improvement for footnote text regardless of links.
-\setbeamercolor{footnote}{fg=c_primary_dark}
 
-% Footer text color (\FooterText/slide id/frame number) -- \SMFooterTextColor,
-% set by the per-university preamble before \input{}ing this file (the
-% footer box's own background color, \SMFooterBoxColorDefault above, is
-% a separate, independently configurable setting). No explicit
-% \setbeamercolor{footline}{...} existed before this -- the footer text
-% simply inherited whatever "normal text" foreground already was (black),
-% which happened to read fine against every frame's own yellow/orange
-% footer box so far, but wouldn't automatically read against an arbitrary
-% future footer color (e.g. a dark blue) without this override.
-\setbeamercolor{footline}{fg=\SMFooterTextColor}
 
-\colorlet{SMColorDark}{c_primary_dark} % FG in light/normal mode
-% Title bar background -- \SMTitleBoxColor, set by the per-university
-% preamble before \input{}ing this file (same idiom as
-% \SMBulletColor/\SMFooterBoxColorDefault above).
-\colorlet{SMColorA}{\SMTitleBoxColor} % frametitle, standin.out
-
-% Slide canvas color: white unless the institution preamble set
-% SMCanvasColor first (Graz's dark mode, \SMDarkMode). The title-bar patches
-% around the logo use it too, so they match the canvas.
-\makeatletter
-\@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}
-\makeatother
-\SMApplyColorRoles % Needs to go after color redefinitions, so they are applied
-\setbeamercolor{background canvas}{bg=SMCanvasColor}
+% The colour roles of the theme follow the template's palette: SMColorDark and SMColorA, the canvas
+% default and the roles (beamerthemeSlideMage.sty). Needs to go after the template's color redefinitions.
+\SMApplyColorRoles
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -380,11 +333,6 @@
 % spawning their own unstyled divider slide in the middle of a chapter every
 % time one is added.
 
-% Title text color -- \SMTitleTextColor, set by the per-university
-% preamble before \input{}ing this file (the title bar's own background
-% color, \SMTitleBoxColor/colorA above, is a separate, independently
-% configurable setting).
-\setbeamercolor{frametitle}{fg=\SMTitleTextColor}
 
 % A color leak from \titleframe/\quoteframe into whichever frame follows
 % them is fixed in standardframe's own opening code below (search
@@ -394,8 +342,6 @@
 % beamer's own "frame" isn't a plain \newenvironment etoolbox's
 % \AtBeginEnvironment can patch that way, so the hook silently never fired.
 
-% Set content text margins
-\setbeamersize{text margin left=.45cm, text margin right=.45cm}
 
 %\colorlet{colorPale}{gPaleYell} % BG in light/normal mode
 %\colorlet{colorDark}{gDarkBlack} % FG in light/normal mode
@@ -865,36 +811,6 @@
 	\belowdisplayskip=\SMTightDisplaySkip
 	\belowdisplayshortskip=\SMTightDisplaySkip}
 
-% Set logo
-% \SMInstituteLogoPath (a plain \newcommand storing an image path,
-% same idiom as \SMChapterLogoPath below) and \SMLogoHeight (a
-% length) are both defined by the per-university preamble that \input{}s
-% this file, before this file is reached -- see e.g.
-% SlideMage_template_uni-graz.tex. Whichever source image
-% \SMInstituteLogoPath points at should have any symmetric margin of
-% empty transparent pixels around the actual logo artwork trimmed off first
-% (see SlideMage_template_uni-graz.tex's own comment on why: an untrimmed
-% margin makes \includegraphics's box bigger than the visible logo, so the
-% logo's right-hand margin ends up looking bigger than its top/bottom
-% margins, since only the latter get absorbed into vertical centering).
-% \SMLogoHeight is the single source of truth for the logo's rendered
-% size: it drives the (invisible) in-flow logo below, the white patch's
-% width further down, and the visible redrawn logo, so those three can never
-% drift out of sync with each other again (that drift -- redrawing a smaller
-% logo than the one the patch/position were sized for -- is what caused the
-% left/right margins around the logo to come out uneven).
-
-% The tikz node wrapper (remember picture, but not overlay, so it still
-% behaves as normal inline content) records this logo's exact page position
-% under the name "SMLogoAnchor", so it can be redrawn on top of a white
-% patch further down (see the "yellow box shorter than the page" block below).
-\renewcommand{\SMInstituteLogo}[1][\SMLogoHeight]{%
-	\tikz[remember picture, baseline=(SMLogoAnchor.base)]{%
-		\node[inner sep=0pt, outer sep=0pt](SMLogoAnchor){%
-			\includegraphics[height=#1]{\SMInstituteLogoPath}%
-		};%
-	}%
-}
 
 % \SMFrametitleRightPadding (left/right padding around the logo, chosen
 % to match its top/bottom margins -- measured against the title colorbox's
@@ -905,349 +821,12 @@
 % re-measured and set per institution whenever its own logo/height differs
 % from another's.
 
-% Logo width, used below to size the white patch behind it.
-\newlength{\SMLogoWidth}
+% The logo macro \SMInstituteLogo, the frame title hook that paints the white patch behind the
+% logo and redraws it (\SMFrametitleHookCode), \chapterlogo and the template without the inline
+% logo (SMNoInlineLogo) are the theme's (beamerthemeSlideMage.sty). The logo width, which the
+% hook uses to size the white patch, is measured here from the template's logo path and height.
 \settowidth{\SMLogoWidth}{\includegraphics[height=\SMLogoHeight]{\SMInstituteLogoPath}}
 
-% \SMInstituteLogoGraphic: the *visible* logo redraw (both call sites
-% below use this, not a literal \includegraphics) -- an invisible link to
-% the generated appendix's own agenda slide, but only on a compile that
-% actually has one (\ifdefined\SMAppendixTocOverride, \def'd by
-% compiler.py's wrapper exactly when SlideMage's "Generate appendix
-% TOC" checkbox is on, the same \ifdefined-hook pattern as
-% \SMPresenterModeOverride/\deckversionoverride). \hypertarget{
-% SMAppendixAgenda}{} is placed on that generated agenda slide itself
-% (appendix_toc.py) -- direct instruction, 2026-09-15: "invisibly link the
-% university logo on the top right to the agenda slide in the appendix in
-% those versions of a deck that include the appendix agenda setup."
-% Deliberately not applied to \SMInstituteLogo above (the
-% invisible in-flow instance, covered by a white patch and never seen or
-% clicked as "the logo" by a reader) or to \SMLogoWidth's own
-% measurement just above (a \settowidth box, never actually shown).
-\newcommand{\SMInstituteLogoGraphic}{%
-	\ifdefined\SMAppendixTocOverride
-		\hyperlink{SMAppendixAgenda}{\includegraphics[height=\SMLogoHeight]{\SMInstituteLogoPath}}%
-	\else
-		\includegraphics[height=\SMLogoHeight]{\SMInstituteLogoPath}%
-	\fi
-}
-
-% Let the yellow title bar visually stop short of the page's right edge, so
-% the logo sits on white instead of on yellow: paint a white patch spanning
-% the full height of the title bar behind the logo, then redraw the logo
-% (already positioned correctly by \SMFrametitleRightPadding above, via
-% the "SMLogoAnchor" node captured above) on top of it. This needs two
-% compilation passes: like any \tikz "remember picture", the node positions
-% are only available in the .aux file written by the previous run.
-% (The redraw uses \includegraphics directly rather than \SMInstituteLogo:
-% that macro is the invisible in-flow logo of the frametitle template,
-% redefined above. Gotham's instituteLogo/includeLogo templates, which the
-% theme called before v9.1.0, relied on an internal property-list lookup
-% that was only valid in the context of the original frametitle rendering.)
-% Additionally paints white across the *entire* width of the strip between
-% the logo's bottom edge and the title bar's actual bottom edge, so the
-% yellow ends flush with the logo's bottom (rather than extending further
-% down under the title text too) while the box's width and top position
-% stay unchanged. Checked against measured PDF coordinates that the title
-% text's own (font-metric, not just this-string's-glyphs) lowest descender
-% still clears the logo's bottom edge by about 1.3pt, so this doesn't clip
-% text even on titles with descenders (e.g. "Highlighting...").
-%
-% Factored into its own macro, rather than written directly into the
-% \addtobeamertemplate call below, so \SMNoInlineLogo (a whole
-% separate frametitle template variant, further down) can reuse it too --
-% \addtobeamertemplate patches whatever template is *currently* installed
-% at the time it's called (the theme's own default one here), so a template
-% defined fresh afterwards doesn't inherit that patch automatically and
-% needs to invoke this explicitly instead.
-% Every edge-anchored node in this hook (and in every other page-corner
-% overlay in this file) needs an explicit "outer sep=0pt" alongside its
-% "inner sep=0pt": tikz's default outer sep is 0.5\pgflinewidth (0.2pt at
-% the default 0.4pt line width), and a node's edge/corner anchors sit on
-% the *outer* boundary -- outer sep past the filled rectangle -- so an
-% anchor placed exactly on a page corner leaves the fill itself 0.2pt
-% short of that corner on the anchored sides. Found 2026-07-16 (direct
-% instruction: a hairline white line above/left of titleframe's and
-% quoteframe's yellow boxes, their right edges 0.4pt off the standard
-% title bar's own visible yellow edge, and their logos 0.2pt left of
-% every other frame's) by measuring the compiled PDF's drawn rectangles:
-% every affected fill/image was inset by exactly 0.199bp = 0.2pt from
-% its anchor. This is also the same offset the footer box's own comment
-% (further down) had earlier measured, worked around with a hand-nudged
-% anchor, and left as "root cause not chased further" -- now chased:
-% it *is* a general property of every edge/corner-anchored tikz node,
-% not something specific to that one construction. (Center anchors are
-% unaffected -- outer sep is symmetric around the center -- so the
-% SMLogoAnchor.center redraw below doesn't need it.)
-\newcommand{\SMFrametitleHookCode}{%
-	\SMAgendaFrametitleHook% records the frame title for \SMChapterAgenda
-	\tikz[remember picture, overlay]\node(SMTitleBottom){};%
-	\begin{tikzpicture}[remember picture, overlay]
-		\path let \p1=(current page.north east), \p2=(SMTitleBottom) in
-			node[fill=SMCanvasColor, anchor=north east, inner sep=0pt, outer sep=0pt, name=SMMainPatch,
-			     minimum width=\SMLogoWidth+2\SMFrametitleRightPadding,
-			     minimum height=\y1-\y2] at (\x1,\y1) {};
-		\ifx\SMFrametitleFullHeightYellow\empty
-			\path let \p1=(current page.north east), \p2=(SMTitleBottom),
-			          \p3=(SMLogoAnchor.south), \p4=(current page.west) in
-				node[fill=SMCanvasColor, anchor=north west, inner sep=0pt, outer sep=0pt,
-				     minimum width=\x1-\x4, minimum height=\y3-\y2] at (\x4,\y3) {};
-		\fi
-		% Normally redrawn at SMLogoAnchor's own position (wherever the
-		% invisible in-flow logo -- on the same line as the title text --
-		% ended up). \SMFrametitleLogoFixed instead redraws it at a fixed
-		% page-corner position, independent of where the title text sits --
-		% for a frame type (sectionframe) whose title is deliberately *not*
-		% at the position a normal frame's title/logo line would put it.
-		% SMMainPatch already covers the full logo column from the page
-		% top down to the box's true bottom edge (above), so it's already
-		% blank there regardless of which position is used.
-		\ifx\SMFrametitleLogoFixed\empty
-			\node[anchor=center, inner sep=0pt] at (SMLogoAnchor.center) {\SMInstituteLogoGraphic};
-		\else
-			% inner ysep is derived, not \SMFrametitleRightPadding again:
-			% the inline logo this fixed redraw must line up with is
-			% *vertically centered* in the title bar, and its resulting top
-			% margin (8.14pt, measured) is not exactly the horizontal
-			% padding (0.28cm = 7.97pt) -- close enough that the pre-outer-sep-fix
-			% code's accidental extra 0.2pt masked the difference, but a
-			% visible micro-jump when flipping pages once the fix landed.
-			% Rather than a fresh calibrated constant:
-			% \SMTitleBarBottomAlign (the visible bar bottom) *is* the
-			% inline logo's bottom edge, so subtracting \SMLogoHeight
-			% reproduces its top margin exactly, and re-measuring one
-			% constant keeps both in sync if the bar ever changes.
-			\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
-			      inner ysep=\dimexpr\SMTitleBarBottomAlign-\SMLogoHeight\relax,
-			      outer sep=0pt] at (current page.north east) {\SMInstituteLogoGraphic};
-		\fi
-		% Optional per-frame "chapter logo" (see \chapterlogo{} below): drawn
-		% immediately to the left of the main logo's white patch, on its own
-		% white patch, only when \SMChapterLogoPath is non-empty. Sized
-		% with exactly one \SMFrametitleRightPadding of its own padding, on
-		% its outer (left) side only -- the inner (right) side is left flush
-		% against SMMainPatch, since that patch already contributes its
-		% own \SMFrametitleRightPadding of padding around the main logo.
-		% This makes both gaps -- chapter logo to main logo, and chapter logo
-		% to where the yellow bar resumes -- come out equal, at exactly one
-		% \SMFrametitleRightPadding each, without double-counting or
-		% needing a second length constant.
-		\ifx\SMChapterLogoPath\empty\else
-			\settowidth{\SMChapterLogoWidth}{\includegraphics[height=\SMLogoHeight]{\SMChapterLogoPath}}%
-			\ifx\SMFrametitleLogoFixed\empty
-				% The patch's right edge is nudged 0.5pt *past* SMMainPatch's own
-				% west edge (i.e. slightly overlapping it) rather than exactly
-				% touching it -- both are solid white, so the overlap itself is
-				% invisible, but touching them exactly left a hairline yellow seam
-				% at the join (a real, if sub-millimetre, gap that persisted across
-				% recompiles, most likely PDF fill-antialiasing at the shared edge
-				% of two separately-filled abutting shapes). The logo image itself
-				% (below) is *not* shifted, so the actual margin it defines is
-				% unaffected.
-				\path let \p1=(current page.north east), \p2=(SMTitleBottom) in
-					node[fill=SMCanvasColor, anchor=east, inner sep=0pt, outer sep=0pt,
-					     minimum width=\SMChapterLogoWidth+\SMFrametitleRightPadding+0.5pt,
-					     minimum height=\y1-\y2] at ($(SMMainPatch.west)+(0.5pt,0)$) {};
-				% This bare `SMLogoAnchor.center` placement centers the
-				% chapter logo's own *bounding box* against the institute
-				% logo's, which is also its *visual* center for every
-				% chapter-logo asset in current use (a single roughly-solid
-				% icon). One asset -- "beyond CAPM" (media/chapter-logo-
-				% beyond-capm-cropped.pdf), built from two stacked elements,
-				% a small "beyond" wordmark in italic script sitting above
-				% the larger boxed "CAPM" -- used to read as sitting too low
-				% under plain bounding-box centering, since its transparent
-				% background above "beyond" pulls the bbox's own center
-				% upward relative to the box's visual center. Originally
-				% "fixed" with a per-asset \ifstrequal{\SMChapterLogoPath}
-				% nudge here (+1.53pt for this one path only) -- removed
-				% 2026-08-24, direct instruction, once that nudge turned out
-				% to have never actually applied: etoolbox's \ifstrequal
-				% compares via \detokenize, which does not expand its
-				% argument, so \ifstrequal{\SMChapterLogoPath}{...} always
-				% stringified the *macro's name*, never its value, and
-				% silently took the false (unnudged) branch on every compile
-				% (same root cause documented on \decklanguage's own
-				% \ifstrequal fix, LANGUAGE_NOTES.md). Fixed at the asset
-				% level instead of in code: media/chapter-logo-beyond-capm-
-				% cropped.pdf now carries ~82.34pt of solid white padding
-				% added to its own bottom edge (measured, not guessed --
-				% shifts the "CAPM" box's own outline, drawn at native y
-				% [85.35, 463.15] on a 466.15pt-tall original page, to sit
-				% exactly at the padded page's own vertical center, so plain
-				% bounding-box centering places it correctly with no
-				% special-cased LaTeX branch at all; confirmed on a real
-				% compile: the box's rendered center landed at y=16.67pt,
-				% matching the institute logo's own true center of 16.66pt
-				% to within rounding). Every other chapter logo needs no such
-				% treatment and is untouched.
-				\node[anchor=east, inner sep=0pt, outer sep=0pt] at (SMMainPatch.west |- SMLogoAnchor.center)
-					{\includegraphics[height=\SMLogoHeight]{\SMChapterLogoPath}};
-			\else
-				% \SMFrametitleLogoFixed frames (currently: sectionframe)
-				% have no inline logo/SMLogoAnchor node at all (see
-				% uni_graz_no_inline_logo's own comment above) -- the "beside"
-				% placement above relies on that node for its own vertical
-				% position, so it can't be reused here. Direct instruction
-				% (2026-07-24, first raised on
-				% slides/6vt-Sustainable-Investments-Section-Overview-current.tex):
-				% "place the green symbol below the logo on the top right" --
-				% sectionframe's own much taller title bar leaves real room
-				% below the (fixed-position, near-the-top) institute logo, so
-				% stack the chapter logo directly under it instead of beside
-				% it, same right edge (\SMFrametitleRightPadding from the
-				% page's own right edge), separated by one more
-				% \SMFrametitleRightPadding of vertical gap -- reusing that
-				% same length keeps every gap in this hook equal, same
-				% reasoning as the "beside" case's own comment above. No
-				% separate white patch needed here: SMMainPatch (above)
-				% already spans this exact column's full height, from the
-				% page top down to the title bar's true bottom, so this
-				% column is already blank regardless of which placement is
-				% used.
-				%
-				% 2026-07-24 (direct instruction, general rule for this
-				% "below" placement, not just 6vt): sized by *width* to
-				% \SMLogoWidth (the institute logo's own rendered
-				% width) instead of by height to \SMLogoHeight --
-				% the two icons' aspect ratios differ enough that
-				% height-matching (the "beside" case's own convention,
-				% still correct there) left the chapter logo narrower
-				% than the institute logo above it, reading as
-				% off-center underneath it despite sharing the same right
-				% edge. Matching *width* instead, with the *same*
-				% `anchor=north east`/`inner xsep=\SMFrametitleRightPadding`
-				% the institute logo itself uses, makes the two share
-				% both edges (not just the right one) automatically --
-				% equal width plus a shared right edge means a shared
-				% left edge and a shared horizontal center for free, no
-				% separate centering computation needed.
-				%
-				% 2026-08-10 (direct instruction): a same-day attempt to also
-				% vertically center this "below" placement (reworking this to
-				% \anchor=east at the midpoint of a same-height-as-the-
-				% institute-logo notional slot) was reverted the same day, on
-				% direct instruction -- this "below" placement (sectionframe/
-				% 65b's own chapter-divider slide) was already fine as-is; the
-				% actual vertical-centering request was about the *other*
-				% ("beside") chapter-logo placement below instead, used by
-				% every other slide in the chapter. See that placement's own
-				% comment for the real fix.
-				\node[anchor=north east, inner xsep=\SMFrametitleRightPadding,
-				      inner ysep=\dimexpr\SMTitleBarBottomAlign+\SMFrametitleRightPadding\relax,
-				      outer sep=0pt] at (current page.north east)
-					{\includegraphics[width=\SMLogoWidth]{\SMChapterLogoPath}};
-			\fi
-		\fi
-	\end{tikzpicture}%
-}
-\addtobeamertemplate{frametitle}{}{\SMFrametitleHookCode}
-
-% \chapterlogo{path} opts a single upcoming standardframe into an extra logo
-% (e.g. a topic/chapter icon) next to the main institute logo -- see the
-% frametitle hook above for how it's drawn. Call it *before* \begin{standardframe},
-% since the frame title (and this hook) is typeset as part of \begin{frame}
-% itself, before any frame-body content would run. standardframe resets this
-% back to empty on \end{frame} (below), so it only ever applies to the one
-% frame that follows the \chapterlogo{} call, never leaking into the next slide.
-% Both the set and the reset use \global\def (checked empirically, via
-% \typeout, against the frametitle hook's actual view of this macro on a
-% following frame): beamer's frame environment opens its own TeX group around
-% the frame body, so a plain (local) assignment done in standardframe's
-% closing code -- which runs right after \end{frame} -- was silently undone
-% once that group actually closed, reviving the *previous* value instead of
-% the reset. \global\renewcommand alone wasn't enough to fix it (still leaked
-% into the next frame) -- only dropping to the lower-level \global\def did.
-\newlength{\SMChapterLogoWidth}
-% Plain \def, not \newcommand: \newcommand makes a \long macro, which never
-% \ifx-matches the non-long \empty the hooks test against.
-\def\SMChapterLogoPath{}
-\newcommand{\chapterlogo}[1]{\global\def\SMChapterLogoPath{#1}}
-
-% \SMFrametitleFullHeightYellow: opt-out for the frametitle hook's
-% "trim yellow to the logo's bottom edge" white patch (see the hook above) --
-% empty (default) keeps that trim; non-empty skips it, letting the yellow
-% show all the way down to the title box's own true bottom edge instead.
-% That trim exists to erase a normally-tiny (~1-2pt) sliver of yellow that
-% would otherwise stick out below the logo on an ordinary short title bar --
-% harmless there, but sectionframe's deliberately tall bar turns that
-% "tiny sliver" into most of the box, silently wiping out nearly all of the
-% intended yellow with white. sectionframe sets this (globally, same
-% set/reset reasoning as \SMChapterLogoPath above); standardframe resets
-% it back to empty on \end{frame}, so it's opt-in per frame like the others.
-\def\SMFrametitleFullHeightYellow{}% \def, not \newcommand: see \SMChapterLogoPath
-
-% \SMFrametitleLogoFixed: opt-in for the frametitle hook's logo redraw
-% (see the hook above) to use a fixed page-corner position instead of
-% wherever the title text's own line puts it. Normally the two coincide (the
-% logo sits inline with the title, gotham's own design), which is exactly
-% why this is off by default -- but sectionframe's title is deliberately
-% *not* where a normal frame's title sits (bottom-anchored within a much
-% taller bar), and letting the logo follow it down there would put it
-% somewhere no other slide in the deck ever has it. Same set/reset reasoning
-% and mechanism as \SMChapterLogoPath/\SMFrametitleFullHeightYellow
-% above.
-\def\SMFrametitleLogoFixed{}% \def, not \newcommand: see \SMChapterLogoPath
-
-% \SMFooterBoxColor: the footer box's own fill color (see the footline
-% hook further down), overridable per frame the same set-before/reset-after
-% way as the flags above -- default \SMFooterBoxColorDefault (set by the
-% per-university preamble before \input{}ing this file, same "value
-% supplied externally, referenced lazily" idiom as \SMBulletColor/
-% \SMInstituteLogoPath), matching every frame's title bar by default;
-% highlightframe overrides it to match its own (likewise overridable) title
-% bar color, \SMHighlightColor, so both boxes change together with a
-% single retargeting.
-\newcommand{\SMFooterBoxColor}{\SMFooterBoxColorDefault}
-
-% A frametitle template variant that drops the inline institute logo
-% entirely -- for use together with \SMFrametitleLogoFixed (which
-% redraws the logo separately, at a fixed position, making the inline one
-% pointless anyway). The theme's own template (beamerthemeSlideMage.sty,
-% "SMSubsameline") puts \nolinebreak\hfill{...logo...} directly
-% after \insertframetitle; this variant drops that whole part.
-%
-% Doing so, though, means the logo no longer reserves *any* horizontal room
-% on the title's own line the way it used to -- so rightskip here widens
-% \SMFrametitleRightPadding to reserve the same width SMMainPatch
-% (the frametitle hook's white patch, drawn afterward) already reserves for
-% the logo column: \SMLogoWidth + 2*\SMFrametitleRightPadding. Without
-% this, the title paragraph wraps as if that whole column were free text
-% space -- not an actual TeX overfull-hbox condition (no warning, the text
-% genuinely fits the *box's own* width), just a title that runs visually
-% underneath the white patch and logo drawn on top of it afterward, which
-% looks identical to clipped/hidden text. (An earlier, wrong diagnosis of
-% this same visual symptom blamed gotham's \nolinebreak forcing an overfull
-% line -- checked by testing gotham's original template installed with a
-% long \huge title and no changes at all, which reproduces something that
-% *looks* the same; but the actual fix needed here turned out to be this
-% rightskip, not removing \nolinebreak, which was really addressing a red
-% herring from an isolated test that happened not to include a competing
-% logo column at all.)
-%
-% "plus 1fil" on that rightskip keeps every line ragged-right (its own
-% natural width, however short of the margin that leaves) rather than fully
-% justified -- without it, a wrapped multi-line title's non-last lines get
-% stretched to exactly fill the available width, which reads as oddly wide,
-% uneven word-gaps on a short title (most noticeable exactly when a title is
-% long enough to wrap, i.e. always, for this template).
-\makeatletter
-\defbeamertemplate{frametitle}{SMNoInlineLogo}{%
-	\nointerlineskip
-	\begin{beamercolorbox}[wd=\paperwidth, sep=0pt,
-	                        leftskip=\SMFrametitleLeftPadding,
-	                        rightskip=\dimexpr\SMLogoWidth+2\SMFrametitleRightPadding\relax plus 1fil]{frametitle}
-		\SM@frametitlestrut@start
-		\insertframetitle
-		\ifx\insertframesubtitle\@empty\else
-			{\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\SMFrameSubtitleSep \insertframesubtitle}%
-			\vspace*{\SMFrameSubtitleStrutEnd}%
-		\fi
-		\SM@frametitlestrut@end
-	\end{beamercolorbox}
-	\SMFrametitleHookCode
-}
-\makeatother
 
 
 % Define slideID as a simple value holder (initially empty)
@@ -2439,6 +2018,9 @@
 }
 
 % Footer
+% The footer box on the footline, the footnote template with its symbols, \sidefootnotes and the
+% strip they are drawn in are the theme's (beamerthemeSlideMage.sty); the footer text, which
+% depends on the deck version, is the "frame footer" template below.
 % Smaller footer + a bit of padding under it
 \setbeamerfont{frame footer}{size=\fontsize{5}{3}\selectfont} % {font size}{baseline skip} in pt
 
@@ -2737,425 +2319,8 @@
 	\vspace*{0.4ex}%
 }
 
-% Give the footer the same yellow-box treatment as the title bar, but --
-% unlike the title bar, which is tall for visual weight -- only as tall as
-% the footer's own text plus equal padding above and below.
-%
-% This paints a yellow patch *behind* the theme's own footline rather than
-% replacing that template's content, because \usebeamertemplate{frame~footer}
-% (which is what actually typesets \FooterText etc.) only produces its
-% content when invoked from the theme's own original footline template --
-% calling it again from anywhere else (a redefined footline, the frame body,
-% a \settoheight measurement, ...) silently produces nothing. It's
-% positioned from "current page.south" (the page's own bottom-left corner)
-% rather than a \tikz "remember picture" node tracking the footer's actual
-% position, since there's no per-frame content to track: the footer text
-% (in its actual 5pt font, per \setbeamerfont{frame footer} above -- despite
-% the "page number in head/foot" font switch inside the theme's footline
-% template, this is the font that actually ends up applied) sits at a fixed
-% distance from the bottom of the page on every frame.
-%
-% \SMFooterBoxHeight below is calibrated to that actual measured
-% position (checked via the PDF's own text coordinates, not just visually):
-% the text sits about 0.84pt above the page's bottom edge and spans about
-% one em of its own 5pt font, plus a bit of padding above and below. If the
-% footer font size changes, this will need re-measuring.
-\newlength{\SMFooterBoxHeight}
-\setlength{\SMFooterBoxHeight}{7.26pt}
-% \vbox to 0pt{...} forces this to occupy exactly zero space in the normal
-% vertical list, *without* switching into horizontal mode the way an hbox
-% (e.g. \raisebox) would -- inserting an hbox here forces LaTeX to open an
-% implicit paragraph before the theme's own \vspace*{\SMFootlineVOffset}
-% runs, which changes how that \vspace behaves (it special-cases being at
-% the very start of vertical mode) and nudges the footer text down by a few
-% points. A \vbox is already vertical material, so it doesn't trigger that.
-% \SMArtifactBegin/\SMArtifactEnd (defined above, "PDF accessibility"
-% comment) wrap both this box *and* the original footline template's own
-% content (the theme's \usebeamertemplate{frame footer} call, i.e.
-% \FooterText/slide id/page number) -- \addtobeamertemplate's "after" slot
-% runs once the wrapped-around original template content has finished, so
-% \SMArtifactEnd there closes the same marked-content span this begins.
-% The footer box's own south-west corner originally measured 0.2pt short
-% of the page's actual left/bottom edges on every slide checked
-% (2026-07-06, direct instruction: "check whether the footer ... has a bit
-% of white on its left and below") -- confirmed directly against the
-% compiled PDF's own drawn rectangle (consistently ~0.199pt in from both
-% edges, not a one-off), unlike the title bar (gotham's own native
-% frametitle background, a completely different mechanism -- normal TeX
-% box placement, not a tikz "current page" lookup), which sits exactly
-% flush at (0,0). At the time, the root cause wasn't chased further and
-% the box was fixed by hand-nudging the anchor 0.2pt past the corner and
-% padding the size to match. Root cause since found (2026-07-16, while
-% chasing the identical hairline on titleframe/quoteframe -- see the
-% frametitle hook's own comment above): tikz's default outer sep
-% (0.5\pgflinewidth = 0.2pt) puts every edge/corner anchor 0.2pt outside
-% the filled rectangle, on *every* edge-anchored node, so the earlier
-% "nothing else anchored to a page corner shows the same offset" turned
-% out to be wrong. "outer sep=0pt" below is the real fix, replacing the
-% nudge-and-pad workaround; the box now lands exactly flush by
-% construction rather than by measured compensation.
-\addtobeamertemplate{footline}{%
-	\SMArtifactBegin{/Type /Pagination /Subtype /Footer}%
-	\vbox to 0pt{%
-	\vss
-	\begin{tikzpicture}[remember picture, overlay]
-		\node[fill=\SMFooterBoxColor, anchor=south west, inner sep=0pt, outer sep=0pt,
-		      minimum width=\paperwidth, minimum height=\SMFooterBoxHeight]
-			at (current page.south west) {};
-	\end{tikzpicture}%
-	}%
-}{\SMArtifactEnd}
 
-% Footnotes: small font (smaller than the footer's own 5pt), symbol markers
-% (*, dagger, ...) instead of arabic numbers, right-aligned (flush with the
-% logo's own right edge, like the footer's frame number), no rule above
-% them, and tightened-up line spacing.
-%
-% Line spacing needs two different levers, not just \baselineskip, because
-% at this font size (5pt) \baselineskip's normal value is *smaller* than the
-% font's own natural line height, so TeX falls back to \lineskip (a flat
-% add-on) between every line regardless -- \baselineskip itself turns out to
-% have no effect here at all. That fallback \lineskip is what governs
-% spacing *within* a single (wrapped) footnote's own lines: reduced only a
-% tiny amount, from the default 1pt.
-% The *between*-footnote gap is inflated by a separate mechanism entirely:
-% \footnotesep, a rule LaTeX inserts before every individual footnote entry
-% (measured to be 7.7pt here -- clearly sized for a much bigger font than
-% ours), so that's what actually needs the bigger reduction; \parskip
-% (tried first) turned out to have no visible effect on it.
-\setlength{\footnotesep}{3pt}
-% \reset@font\footnotesize is applied by beamer's own footnote machinery
-% before this template runs (beamerbaseframecomponents.sty), so the font
-% size has to be set again here to actually take effect.
-\renewcommand{\footnoterule}{}
-% Same marker sequence as LaTeX's own \fnsymbol (*, dagger, double dagger,
-% ...), but built from plain Unicode text characters instead: \fnsymbol's
-% symbols are typeset via \ensuremath{...}, i.e. in *math* mode, and the
-% theme loads fontspec with the "no-math" option (see
-% beamerthemeSlideMage.sty) specifically so that Fira Sans -- the font
-% fontspec puts everything else in -- is left in charge of text only, not
-% math; math mode therefore still falls back to LaTeX's default Computer
-% Modern math fonts. \fnsymbol's markers were consequently rendering in a
-% different font than the surrounding text (checked by comparing rendered
-% glyph shapes) -- most visible as a marker that looked shifted left of
-% flush-left text next to it (e.g. a \source{} line, which has no marker of
-% its own), since Computer Modern's symbol glyphs have different sidebearings
-% than Fira Sans's. Plain characters typeset with no \ensuremath wrapper stay
-% in text mode and pick up whatever font is already active at the call site,
-% i.e. Fira Sans -- matching the rest of the footnote.
-% Literal Unicode characters, not the \textdagger/\textdaggerdbl/\textbardbl
-% kernel commands: those need the textcomp/TS1 setup to render as plain text,
-% and silently fall back to \ensuremath{...} (i.e. math mode, the very thing
-% this replaces \fnsymbol to avoid -- see the comment above) when that isn't
-% loaded. LuaLaTeX plus fontspec maps raw UTF-8 input straight to the current
-% font's (Fira Sans's) own glyphs with no encoding layer in between, which is
-% the entire point of using them -- so writing the characters directly, with
-% no wrapper command, guarantees they stay in text mode and stay in Fira Sans.
-%
-% The sequence itself is user-configurable via \setfootnotesymbols{...} (a
-% comma-separated list, e.g. \setfootnotesymbols{*,+,#}) -- call it anywhere
-% from that point in the deck onward (e.g. once, right after
-% \input{SlideMage_template_uni-graz}) to replace the default marker set for every
-% \footnote{}/\source{} from then on. \seq_item:Nn (expl3's indexed lookup;
-% expl3 is already loaded by the gotham theme itself, see e.g.
-% beamerthemeSlideMage.sty) is what removes the old \ifcase's hard 9-symbol
-% ceiling -- a custom list can be any length. Indexing wraps around (via
-% \int_mod:nn) rather than erroring past the end of the list, so an unusually
-% footnote-heavy slide degrades to repeating symbols instead of a hard
-% failure; slides/ZZU-Footnote-symbol-options-current.tex is a reference
-% sheet of candidate Unicode symbols to build a custom list from.
-%
-% Project-wide default (chosen deliberately, not the classic */dagger/etc.
-% set): a currency-sign sequence, in this specific order. All 14 were
-% confirmed against slides/ZZU-Footnote-symbol-options-current.tex to
-% actually exist in Fira Sans.
-\ExplSyntaxOn
-\seq_new:N \g_SM_footnote_symbols_seq
-\seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { £,¥,₹,₽,₺,₴,₪,₫,₦,₡,₩,ƒ,¢,€ }
-\newcommand{\setfootnotesymbols}[1]{%
-	\seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { #1 }
-}
-\newcommand{\SMFnSymbol}[1]{%
-	\seq_item:Nn \g_SM_footnote_symbols_seq
-		{ \int_eval:n { \int_mod:nn { #1 - 1 } { \seq_count:N \g_SM_footnote_symbols_seq } + 1 } }
-}
-\ExplSyntaxOff
-\renewcommand{\thefootnote}{\SMFnSymbol{\value{footnote}}}
-% A \footnote{} called inside a minipage doesn't use \thefootnote/\c@footnote
-% at all -- LaTeX's own minipage machinery silently switches to a separate
-% counter/display command, \c@mpfootnote/\thempfootnote, normally displayed
-% via \@alph (a, b, c, ...). Found 2026-07-14 converting
-% slides/j6h-Foreign-Exchange-Market-current.tex (its first slide combining
-% \footnote{} with a minipage, since a narrowed text column was added
-% alongside a corner chart): the footnote *text* still correctly landed in
-% this deck's usual bottom-of-frame collection (beamer's own footnote
-% storage isn't minipage-scoped), but the *marker*, both inline and at the
-% bottom, showed as a plain "a"/"b"/"c" instead of this project's own
-% currency-symbol sequence. Redefined the same way as \thefootnote so any
-% future \footnote{} inside a minipage picks up the right symbol too --
-% \c@mpfootnote resets to 0 for every new minipage on its own (unlike
-% \c@footnote, which needs standardframe's own explicit per-frame reset
-% below), which happens to already match this deck's "restart every slide"
-% footnote convention for the common case of one minipage per frame.
-\renewcommand{\thempfootnote}{\SMFnSymbol{\value{mpfootnote}}}
-% Every footnote goes to the frame's own footnote block, also from inside a
-% minipage/column (beamer's class option "framefootnotes", i.e. \footnote
-% defaults to [frame]) -- 2026-10-01, direct instruction ("one footnote is
-% not combined with the other footnotes ... fix that generally", mje): a
-% \footnote{} or \source{} inside a minipage used to be set right below that
-% minipage, apart from the frame's other footnotes, and slides moved it out
-% of the minipage by hand (fk7, xv8). It now also counts with the frame's
-% \c@footnote, so its marker continues the frame's sequence.
-\makeatletter
-\beamer@framefootnotestrue
-\makeatother
-\setbeamerfont{footnote}{size=\fontsize{3.2}{1.9}\selectfont}
-% A \footnote{\fullcite{key}} came out at body size: beamer patches biblatex's
-% bibliography drivers (beamerbaselocalstructure.sty) to apply the beamer fonts
-% "bibliography entry author/title/note", and beamerthemeSlideMage.sty sets
-% those to \normalsize. \textcite/\cite are unaffected (no driver). The footnote
-% templates below call this to put the three at footnote size again; the
-% template runs inside its own group, so a real \printbibliography keeps
-% the theme's sizes. Only the size is overridden, series/shape stay.
-\newcommand{\SMFootnoteBibFonts}{%
-	\setbeamerfont{bibliography entry author}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry title}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry location}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry note}{size=\fontsize{3.2}{1.9}\selectfont}%
-}
-% Beamer's own \@makefnmark (used for the marker both inline in the body
-% text and again next to the footnote itself) hard-codes the "footnote
-% mark" beamerfont onto it -- an *absolute* size, unrelated to whatever
-% text surrounds it -- which is why the inline markers looked tinier than
-% a normal superscript when that was set to this footnote's own small size:
-% a fixed size that looks fine amid 3.2pt footnote text looks minuscule
-% amid much bigger body text. Reverting to plain LaTeX's own \@makefnmark
-% instead makes it a normal \textsuperscript of whatever font size is
-% already active at each call site -- proportionally scaled either way, so
-% it looks like a normal superscript inline, and still comes out small next
-% to the (small) footnote text since \usebeamerfont{footnote} above is
-% already active there by the time it's invoked.
-\makeatletter
-\renewcommand{\@makefnmark}{\hbox{\@textsuperscript{\normalfont\@thefnmark}}}
-\makeatother
-% \raggedleft's own \rightskip (0pt) is flush with the frame's normal body
-% text margin, not the logo's edge above it; this pushes further right by
-% the difference between the two, empirically calibrated (like
-% \SMFooterRightShift above) against the rendered PDF coordinates of
-% both -- re-measure and adjust if the text margins or logo inset change.
-\newlength{\SMFootnoteRightShift}
-\setlength{\SMFootnoteRightShift}{4.8pt}
 
-% Side footnotes: \sidefootnotes (called *before* \begin{standardframe}, like
-% \chapterlogo{}) moves that one frame's footnotes -- including \source{} lines,
-% which are footnotes underneath -- from their usual spot above the footer to a
-% vertical strip along the right edge of the page, rotated 90 degrees counter-
-% clockwise: the text starts just above the footer box and reads bottom-to-top,
-% as if the usual bottom-right footnote block had been turned on its side (with
-% one deliberate difference: the lines are flush with the strip's bottom end,
-% not the top -- see the \raggedright comment in the template below).
-% standardframe resets the switch
-% on \end{frame} (same \global mechanics as \chapterlogo{} -- see the comment
-% there for why a plain local assignment doesn't survive beamer's frame group),
-% so it opts in only the single frame that follows, and any frame type derived
-% from standardframe inherits the behaviour automatically.
-%
-% How it works: the footnote *template* below branches on this switch. In side
-% mode it typesets each footnote into \SMSideFootnotesBox (a plain box
-% register accumulated across the frame's footnotes) instead of contributing
-% anything to beamer's own bottom-of-frame footnote insert, and the footline
-% hook further down draws that box -- rotated -- as a tikz overlay once the
-% whole frame body has run. The footline is the right place to draw from: it is
-% typeset at page shipout, i.e. after every \footnote{} in the body has already
-% executed, whereas e.g. the frametitle would run too early and find the box
-% empty. (Beamer also typesets the footline once per frame just to *measure*
-% it, at \begin{frame} time -- before any footnotes exist -- which is why the
-% drawing hook guards on \ifvoid: the measurement pass must not consume, or
-% try to draw, a box that doesn't exist yet.)
-%
-% Known quirk: a footnote with an overlay spec (\footnote<2->{...}) is
-% collected -- and therefore shown -- on *every* overlay slide of its frame in
-% side mode. Beamer implements covered footnotes by typesetting them invisibly
-% in place, which relocating the text into a box register defeats.
-\newif\ifSMSideFootnotes
-\newcommand{\sidefootnotes}{\global\SMSideFootnotestrue}
-\newbox\SMSideFootnotesBox
-% The rotated block's line width, i.e. the vertical run the strip may occupy
-% down the right edge of the page: from just below the title bar to just above
-% the footer's yellow box. Like \SMFooterBoxHeight above, calibrated
-% against the measured PDF coordinates: the title bar's bottom edge sits
-% 219.57pt above the page's bottom edge; minus \SMSideFootnoteTopSep (3pt),
-% \SMFooterBoxHeight (7.26pt), and ~2pt of clearance above the footer box
-% leaves 207pt. Re-measure if the frametitle font or its padding ever changes.
-\newlength{\SMSideFootnoteHsize}
-\setlength{\SMSideFootnoteHsize}{207pt}
-% Gap between the title bar's bottom edge and the top end of the strip. The
-% text itself sits at the strip's *bottom* end (it is \raggedright, i.e.
-% flush with the line start, which the rotation turns into bottom-aligned),
-% so this gap only matters for footnotes long enough to fill the whole run.
-\newlength{\SMSideFootnoteTopSep}
-\setlength{\SMSideFootnoteTopSep}{3pt}
-% Distance from the page's right edge to the strip's outer edge -- the rotated
-% counterpart of the small gap the bottom footnotes keep above the footer box.
-\newlength{\SMSideFootnoteRightInset}
-\setlength{\SMSideFootnoteRightInset}{2pt}
-% A real footnote's marker (e.g. "*") sits in an \hbox of its own whose
-% *ink* -- unlike \source{}'s marker, which is emptied to nothing and so has
-% no ink at all -- extends slightly left of that hbox's own nominal left
-% edge (ordinary optical behaviour for a small centred glyph like an
-% asterisk, exaggerated further by \@makefnmark's superscript raise). With
-% every footnote's paragraph starting flush at the same \noindent left edge,
-% that overhang made real footnotes' markers visibly poke out to the left of
-% \source{}'s flush-left text above/below them. This shift nudges real
-% footnotes' *entire* line (marker, comma, and text together) right by that
-% overhang, so the marker's ink -- not the text after it -- lines up with
-% \source{}'s left edge; \source{} itself is untouched; empirically
-% calibrated against the rendered PDF, like the other shift constants here.
-\newlength{\SMSideFootnoteMarkerShift}
-\setlength{\SMSideFootnoteMarkerShift}{1.3pt}
-
-% A new template variant (rather than reusing beamer's own "default", which
-% it has already defined and then refuses to redefine) that we immediately
-% activate below.
-% Wrapped in \makeatletter (unlike the rest of this section) because the side
-% branch below tests \@thefnmark against \@empty to tell a real footnote
-% (non-empty marker) apart from a \source{} call (marker forced empty) --
-% see \SMSideFootnoteMarkerShift above.
-\makeatletter
-\defbeamertemplate{footnote}{SMFootnote}{%
-	\ifSMSideFootnotes
-		% Side mode (see \sidefootnotes above): append this footnote to the
-		% collector box instead of typesetting it here. \insertfootnotetext
-		% carries beamer's own \rule\z@\footnotesep lead-in and
-		% \@finalstrut\strutbox tail along with it (beamer bakes both into the
-		% text it hands the template), so the between-footnote spacing and the
-		% strutbox rebuild work exactly as in the bottom branch below -- and,
-		% equally, nothing of the footnote (not even the spacing rule) is left
-		% behind in beamer's bottom-of-frame insert, which therefore stays
-		% visually empty. No \SMFootnoteRightShift here: that constant
-		% compensates the *bottom* block's \raggedleft for the text-margin-vs-
-		% logo-edge difference, while the strip's position is set directly by
-		% the tikz node in the footline hook.
-		\global\setbox\SMSideFootnotesBox\vbox{%
-			\unvbox\SMSideFootnotesBox
-			\hsize\SMSideFootnoteHsize
-			\usebeamerfont{footnote}%
-			\SMFootnoteBibFonts
-			\setlength{\lineskip}{0.6pt}%
-			\settoheight{\dimen0}{Xy}%
-			\settodepth{\dimen1}{Xy}%
-			\setbox\strutbox\hbox{\vrule height\dimen0 depth\dimen1 width0pt}%
-			\parindent 1em\noindent%
-			% \raggedright, not the bottom block's \raggedleft: after the
-			% rotation, the line start is the *bottom* end of the strip, so
-			% this makes the text begin just above the footer box and run
-			% upward (rather than hang down from the title bar).
-			\raggedright
-			% \source{} forces \thefootnote (hence \@thefnmark) empty, so this
-			% only fires for a real footnote's marker -- see
-			% \SMSideFootnoteMarkerShift above for why it needs the shift
-			% and \source{} doesn't. The "\," below (a separator between the
-			% marker and the footnote text) needs the same guard: it used to
-			% run unconditionally, so an empty-marker \source{} still got a
-			% thin space's worth of leading indent before its own text --
-			% invisible under the *bottom* block's \raggedleft (nothing there
-			% depends on the left edge), but a real, visible defect here under
-			% \raggedright, where the left edge is exactly what's on display:
-			% a wrapped \source{}'s first line sat measurably indented from
-			% its own second line, which never picks up that one-time leading
-			% space (2026-07-12, direct instruction: "the first line seems
-			% indented compared to the second, which it shouldn't be").
-			\ifx\@thefnmark\@empty
-				\insertfootnotetext\par%
-			\else
-				\hspace*{\SMSideFootnoteMarkerShift}\insertfootnotemark\,\insertfootnotetext\par%
-			\fi
-		}%
-	\else
-	\usebeamerfont{footnote}%
-	\SMFootnoteBibFonts
-	\setlength{\lineskip}{0.6pt}%
-	% beamer's footnote machinery resets to plain \footnotesize (a much
-	% bigger font) before this template runs, and switching to our own
-	% smaller font via \usebeamerfont doesn't update \strutbox to match --
-	% so the invisible strut beamer appends after every footnote
-	% (\@finalstrut\strutbox) is still sized for \footnotesize, silently
-	% padding out extra depth below the last line. Rebuilding \strutbox
-	% from this font's own measured metrics removes that padding, which is
-	% most of the gap between the footnotes and the footer box below them.
-	\settoheight{\dimen0}{Xy}%
-	\settodepth{\dimen1}{Xy}%
-	\setbox\strutbox\hbox{\vrule height\dimen0 depth\dimen1 width0pt}%
-	\parindent 1em\noindent%
-	\raggedleft
-	\advance\rightskip by -\SMFootnoteRightShift%
-	% Same \@thefnmark emptiness guard as the side-footnote branch above,
-	% for the same reason (an empty marker still leaving behind the "\,"
-	% separator's own leading thin space) -- invisible here under
-	% \raggedleft, where the left edge is never on display, but the same
-	% underlying defect, so fixed the same way for consistency.
-	\ifx\@thefnmark\@empty
-		\insertfootnotetext\par%
-	\else
-		\insertfootnotemark\,\insertfootnotetext\par%
-	\fi
-	\fi
-}
-\makeatother
-\setbeamertemplate{footnote}[SMFootnote]
-
-% Draws the side-footnote strip (see \sidefootnotes above). Lives in the
-% footline template because that is typeset at page shipout, after the frame
-% body -- and with it every \footnote{} call -- has run, so the collector box
-% is complete by the time this executes. The \ifvoid guard doubles as the
-% protection against beamer's measure-the-footline pass at \begin{frame} time
-% (see the \sidefootnotes comment). \box (not \copy) empties the register
-% globally as a side effect, which is exactly right: each overlay slide of a
-% frame re-executes the body and re-collects its footnotes from scratch, so
-% whatever this slide's footline draws must not leak into the next slide.
-%
-% The strip is drawn from the footline, whose text colour is the footer's
-% (white on the SlideMage template's dark footer): the box is therefore set in the
-% footnote colour explicitly, as the bottom footnotes are -- before (until
-% v5.30.5) a rotated footnote came out white on white where the footer text is white.
-%
-% Node geometry: tikz pins the node's *unrotated* anchor corner at the given
-% coordinate and rotates the box counter-clockwise around it, so anchor=south
-% east (the end of the collected block's last line) ends up as the strip's
-% top-east corner: from there the block extends down the page (its lines run
-% bottom-to-top, last footnote nearest the page edge), with the \raggedright
-% text sitting at the strip's bottom end, just above the footer box (see the
-% comment in the footnote template above). The y-coordinate
-% comes from the same remembered SMTitleBottom node the title-bar patches
-% already use (same two-pass .aux mechanics -- see "Title bar and logo").
-% The \ifcsname guard skips the drawing while the SMTitleBottom shape is
-% entirely unknown to pgf (i.e. no frametitle has been typeset yet in this
-% run *and* nothing was inherited from a previous run's .aux) -- without it,
-% referencing the node is a hard error rather than the usual harmless
-% first-pass misplacement. In that situation the position would have been
-% garbage anyway, and the frame-start clearing in standardframe below mops up
-% the box this branch leaves unconsumed.
-\makeatletter
-\addtobeamertemplate{footline}{%
-	\ifvoid\SMSideFootnotesBox\else
-		\ifcsname pgf@sh@ns@SMTitleBottom\endcsname
-		\vbox to 0pt{% zero-space trick, as in the yellow-box footline hook above
-		\vss
-		\begin{tikzpicture}[remember picture, overlay]
-			\node[rotate=90, anchor=south east, inner sep=0pt]
-				at ($(SMTitleBottom -| current page.east)+(-\SMSideFootnoteRightInset,-\SMSideFootnoteTopSep)$)
-				{\usebeamercolor[fg]{footnote}\color{footnote.fg}\box\SMSideFootnotesBox};
-		\end{tikzpicture}%
-		}%
-		\fi
-	\fi
-}{}
-% Empties the side-footnote collector (used by standardframe at frame start).
-% Defined here, inside the \makeatletter block, because \voidb@x needs @ to be
-% a letter at tokenization time -- standardframe's own definition below sits
-% outside any \makeatletter region.
-\newcommand{\SMClearSideFootnotesBox}{\global\setbox\SMSideFootnotesBox=\box\voidb@x}
-\makeatother
 
 % \source{text} -- for a "Source: ..."/"Image source: ..."/etc. citation line
 % (common at the bottom/edge of a converted PowerPoint slide) that should look
@@ -3853,10 +3018,7 @@
 	% without shipping a footline.
 	\SMClearSideFootnotesBox%
 	\SMResetImageSources%
-	\setbeamertemplate{itemize item}{\SMBulletDot}%
-	\setbeamertemplate{itemize subitem}{\SMBulletDot}%
-	\setbeamertemplate{itemize subsubitem}{\SMBulletDot}%
-	\setbeamertemplate{itemize subsubsubitem}{\SMBulletDot}% 4th level, see its own comment further below (search "subsubsub")
+	% The itemize bullets are the theme's (\SMBulletDot, beamerthemeSlideMage.sty).
 	% Only for top-aligned frames (the default, #1=t): a [c]-centered frame
 	% (2026-07-22, direct instruction, found while centering
 	% slides/bw9-Pearson-Correlation-Illustration-current.tex/agc/crj) was
@@ -3893,25 +3055,6 @@
 	\global\def\SMFooterBoxColor{\SMFooterBoxColorDefault}% opt-in only for the frame just closed
 }
 
-% The bullet itself: a small filled circle, matching the source PowerPoint
-% deck's own round bullets (a plain \textbullet, tried first, is too
-% small/thin in Fira Sans at any standard text size to read as a solid dot
-% -- a tikz-drawn circle gives full control over the actual rendered size
-% instead of depending on the font's own glyph design). baseline=-0.65ex
-% roughly centers it on the surrounding text's x-height, the same vertical
-% position a font's own bullet glyph would normally sit at.
-%
-% Its fill color is \SMBulletColor, not a literal color token here --
-% set by the per-university preamble before \input{}ing this file, same
-% "value supplied externally, referenced lazily" idiom as
-% \SMInstituteLogoPath/\SMLogoHeight above (\SMBulletDot's own
-% body only expands \SMBulletColor when a bullet actually gets drawn,
-% long after this \newcommand runs). Graz's own bullets are its primary
-% highlight color (matching this project's original, single-institution
-% behavior); MCI's and Innsbruck's are their own secondary blue instead
-% (2026-07-16, direct instruction) -- see each institution's own
-% SlideMage_template_*.tex for its \SMBulletColor setting.
-\newcommand{\SMBulletDot}{\tikz[baseline=-0.65ex]{\fill[\SMBulletColor] circle (1.7pt);}}
 
 % "a)"/"b)"/"c)"-labeled list, for exercise sub-tasks that read better
 % lettered than bulleted (2026-07-20, direct instruction, first used on
@@ -4136,7 +3279,7 @@
 % to sensible defaults (no extra spacing hook, plain text color) rather
 % than raising an error, same as any other beamer template/color that a
 % given theme never bothers to set; the actual bullet symbol still needs
-% its own \SMBulletDot template below, added explicitly the same way
+% its own \SMBulletDot template (in the theme), added explicitly the same way
 % as the existing 3 levels, not left to whatever fallback beamer has for
 % an unset "itemize subsubsubitem" template.
 % \beamer@computepref is patched wholesale (not via \patchcmd) since its
@@ -4687,22 +3830,8 @@
 }
 \makeatother
 
-% A \tableofcontents-driven agenda slide (see
-% slides/nkj-Agenda-current.tex) needs the exact same top-margin/line-
-% spacing as every other list in this deck, not whatever gotham's own
-% "section in toc" templates use (both "gotham bullet" and "gotham simple"
-% carry their own spacing/rule/font choices, tuned for gotham's generic
-% look, not this project's own itemize metrics). Rather than re-tuning a
-% *third* set of constants to match, this template just emits a plain
-% \item -- wrapping the whole \tableofcontents call in a real
-% \begin{enumerate}...\end{enumerate} then makes each section entry a
-% genuine enumerate item, reusing this file's own \leftmargini/\itemsep/
-% \SMContentTopShift machinery exactly as any other list would, so it
-% automatically stays consistent with the rest of the deck instead of
-% drifting out of sync with it later.
-\defbeamertemplate{section in toc}{SMPlainEnumerate}{\item \inserttocsection}
 
-% Even with the plain-enumerate template above, \tableofcontents still
+% Even with the plain-enumerate template (SMPlainEnumerate, defined in the theme), \tableofcontents still
 % doesn't match this deck's own normal itemize spacing -- beamer's own
 % \beamer@sectionintoc (beamerbasetoc.sty), which wraps *every* section
 % entry regardless of which "section in toc" template is active,
@@ -4845,225 +3974,10 @@
 % For a course's own title slide, section-topic overview, quote, figure-only,
 % and presenter-attention slides, see the five environments below.
 
-% block/alertblock/exampleblock recolored to this project's own palette
-% (2026-07-05, direct instruction) instead of gotham's own default colors
-% -- gotham's own per-block-type color machinery (\gotham@block in
-% beamerthemeSlideMage.sty) turns out to be dead code, never actually
-% wired into any template, so these three blocks were rendering via plain
-% beamer's own stock templates/colors the whole time; overriding the
-% beamer color names directly here works regardless, since those stock
-% templates read their colors from these same standard names (block~title/
-% block~body and their ~alerted/~example variants) via beamercolorbox.
-% Body background is the same c_tertiary_gray for all four
-% block types (including referenceblock below) -- only each one's own
-% title/header background differs. block's own header went
-% gray→secondaryblue→secondaryviolet across three separate direct
-% instructions in as many days -- secondaryviolet is the one actually in
-% effect now.
-\setbeamercolor{block title}{bg=c_secondary_violet, fg=c_primary_dark}
-\setbeamercolor{block body}{bg=c_tertiary_gray, fg=c_primary_dark}
-\setbeamercolor{block title example}{bg=c_secondary_green, fg=c_primary_dark}
-\setbeamercolor{block body example}{bg=c_tertiary_gray, fg=c_primary_dark}
-\setbeamercolor{block title alerted}{bg=c_secondary_red, fg=c_primary_dark}
-\setbeamercolor{block body alerted}{bg=c_tertiary_gray, fg=c_primary_dark}
-
-% All four block types' left/right margins widened to match a top-level
-% itemize bullet's own text indent (2026-07-05, direct instruction: "the
-% blocks should not have a smaller left-hand margin than the content
-% text") -- a plain block spans \linewidth as-is, which lines up with the
-% *frame's* own text margin, not with an itemize bullet's own text (which
-% sits further right, past the bullet symbol and its gap) -- measured
-% directly against a compiled slide with both an itemize and a block
-% (slides/afa-Excursus-Price-Formation-current.tex): a bullet's own text
-% starts 12.96pt further right than a plain block's left edge did.
-%
-% First attempt used changepage's \adjustwidth, on paper the "correct" tool
-% for temporarily changing margins around a chunk of content -- it silently
-% does *nothing* inside a beamer frame (beamer computes \linewidth/\hsize
-% through its own internal frame-geometry machinery, not the page-geometry
-% registers changepage adjusts, which are meant for article/report-style
-% documents), and *loading the package at all* actively corrupted the
-% title bar/logo on every frame (some interaction with gotham's own
-% tikz/remember-picture-based title-bar drawing, not chased further since
-% the package needed to go regardless) -- caught by actually compiling and
-% looking, not assumed to work from the package's own documented purpose.
-% Fixed instead with a plain \hspace{}+\begin{minipage}{\linewidth-2\times}
-% wrapped around each block type's own begin/end template pair below --
-% minipage genuinely resets \linewidth to its own local width for anything
-% typeset inside it (already relied on elsewhere in this deck, e.g. the
-% side-by-side text/image slides), which a bare beamercolorbox alone
-% doesn't do on its own.
-%
-% 12.96pt matched a *second*-level bullet's own dot (which happens to
-% coincide almost exactly with where a *first*-level bullet's own *text*
-% starts, both ~21.6pt in from the frame's raw margin -- a coincidence of
-% this deck's specific bullet-dot/gap/font metrics, not a general rule) --
-% corrected the next day (direct instruction: align with the *first*-level
-% bullet's own margin instead) to 4.20pt, matching a first-level bullet's
-% own dot position (~12.84pt in from the frame's raw margin) instead.
-\newlength{\SMBlockSideMargin}
-\setlength{\SMBlockSideMargin}{4.20pt}
-
-% Bullets inside any block type render black (c_primary_dark), not this
-% deck's usual yellow \SMBulletColor -- yellow-on-gray (a block's own
-% c_tertiary_gray body background) reads far weaker than yellow-on-white,
-% and doesn't match this deck's own definition/example/reference/info/alert
-% marker symbols, which are already black (2026-07-24, direct instruction,
-% first raised on slides/tbi-Definitions-Moral-Licensing-Cleansing-current.tex,
-% "in blocks generally"). Scoped to each block's own outer minipage (opened
-% in "block ... begin", closed in "block ... end" -- a genuine TeX group
-% boundary, confirmed by rendering: the black override doesn't leak into
-% the frame's ordinary itemize bullets outside the block), so calling this
-% once per block-begin template is enough -- no matching "reset" call is
-% needed at block-end.
-\newcommand{\SMBulletDotBlack}{\tikz[baseline=-0.65ex]{\fill[c_primary_dark] circle (1.7pt);}}
-\newcommand{\SMSetBlockBullets}{%
-	\setbeamertemplate{itemize item}{\SMBulletDotBlack}%
-	\setbeamertemplate{itemize subitem}{\SMBulletDotBlack}%
-	\setbeamertemplate{itemize subsubitem}{\SMBulletDotBlack}%
-	\setbeamertemplate{itemize subsubsubitem}{\SMBulletDotBlack}%
-}
-
-% Shared helper for a block title bar that carries a marker symbol flush
-% right, opposite the title text (currently: infoblock's circled "i",
-% definitionblock's $\triangleq$, exampleblock's $\in$ -- see each of
-% those three's own template for the direct instruction behind its own
-% marker choice). 2026-07-08, direct instruction, after infoblock's own
-% "circled i nearly touching the title text" report on a two-line title
-% (slides/u5h-Long-term-Bonds-Provisions-current.tex's own "Denomination,
-% face value, or principal" step) -- generalized here so the same fix
-% covers all three marker types at once, and any future one, rather than
-% patching each block's own template separately.
-%
-% The marker itself is placed via a zero-width box *before* the title
-% text, not via a trailing `\hfill<marker>` the way all three started out
-% (definitionblock/exampleblock still do, until updated below) -- `\hfill`
-% only fills space on whatever *line* it ends up typeset on, so for a
-% title long enough to wrap onto a second line, `\hfill<marker>` lands on
-% that second line instead of the first, printing the marker at the
-% bottom right of the box instead of the top right (this is the same root
-% cause infoblock's own marker already had fixed once already, see that
-% template's own comment for the fuller writeup of *that* bug specifically
-% -- this pushes the same fix out to the other two, and adds the part
-% that bug's own fix didn't yet cover, below).
-% `\makebox[0pt][l]{\hspace{\linewidth}\makebox[0pt][r]{<marker>}}` fixes
-% *that* much on its own: the outer zero-width box doesn't displace the
-% title text at all (still starts at the same point, still wraps however
-% it needs to), but *inside* that zero-width box the marker is placed at
-% a fixed horizontal offset (this box's own full \linewidth) from the
-% title's own starting point, i.e. always the top right corner of the
-% title bar regardless of how the title text itself wraps.
-%
-% What that alone still doesn't fix -- and what this round's actual
-% report was about -- is the title text itself having no *awareness* that
-% a marker will render on top of wherever it happens to end: a title just
-% long enough to reach close to the marker's own fixed position, without
-% actually needing to wrap, ends up visually touching or running under
-% it. Fixed by also wrapping the title text itself in a
-% `\begin{minipage}[t]{\linewidth-\SMBlockTitleMarkerWidth}`, one
-% \SMBlockTitleMarkerWidth narrower than the full title bar, so the
-% text itself wraps *before* reaching the marker's own reserved space
-% instead of running into it -- confirmed directly against the compiled
-% PDF on the exact case from the report. \SMBlockTitleMarkerWidth is
-% one shared reserved width for all three current marker types rather
-% than a separate hand-measured width per symbol, which would need
-% re-measuring by hand every time a new marker is added -- comfortably
-% covers the widest of the three (checked directly) with a bit to spare.
-% #1 = the marker's own content (e.g. \textcircled{\scriptsize i}, or a
-% math-mode symbol like $\triangleq$); #2 = the title text
-% (\insertblocktitle). Call as
-% \SMBlockTitleWithMarker{<marker>}{\insertblocktitle} in place of a
-% bare \insertblocktitle, after the usual \usebeamerfont* call.
-\newlength{\SMBlockTitleMarkerWidth}
-\setlength{\SMBlockTitleMarkerWidth}{16pt}
-% 2026-07-08 (direct instruction), two more fixes to this same helper:
-% - A title long enough to wrap onto a second line
-%   (slides/u5h-Long-term-Bonds-Provisions-current.tex's own
-%   "Denomination, face value, or principal") read as *justified* rather
-%   than left-aligned -- the minipage below had no explicit alignment, so
-%   it fell back to LaTeX's default full justification, which only ever
-%   visibly stretches a line short of the box's own right edge, i.e. only
-%   shows up once a title is long enough to actually wrap. Every other
-%   (single-line, shorter) title already looked left-aligned regardless,
-%   since a line that's naturally shorter than the box is never stretched
-%   whether or not justification is on -- confirmed directly, this is why
-%   the bug went unnoticed until a title finally wrapped. `\raggedright`
-%   fixes it without needing anything different for the single-line case.
-% - Different titles' own title *bars* rendered at different heights
-%   depending on whether that particular title's text happened to include
-%   a descender (e.g. "Security"/"y", "Moody's rating at issue date"/"y")
-%   or not (e.g. "Registered", "Trustee") -- the same class of bug already
-%   fixed on slides/qxr-Introduction-to-R-Assignments-current.tex's own
-%   colorboxes (see that slide's own comment): a box that tightly wraps its
-%   own text naturally varies in height/depth with that text's own
-%   ascenders/descenders. A leading `\strut` gives every title's first (and
-%   for all but this one current title, only) line the same guaranteed
-%   minimum height/depth, matching the qxr fix's own reasoning -- confirmed
-%   directly, every current info/definition/example block title bar now
-%   renders at the same height regardless of its own text.
-\newcommand{\SMBlockTitleWithMarker}[2]{%
-	\makebox[0pt][l]{\hspace{\linewidth}\makebox[0pt][r]{#1}}%
-	\begin{minipage}[t]{\dimexpr\linewidth-\SMBlockTitleMarkerWidth\relax}\raggedright\strut#2\end{minipage}%
-}
-
-% A fourth block type, for a reference/citation-style callout (first used
-% on slides/afa-Excursus-Price-Formation-current.tex and
-% slides/4r7-IPO-Underpricing-International-current.tex, both replacing
-% an earlier rotated hand-drawn callout box) -- beamer has no built-in
-% "reference" block variant, so this defines one from scratch, mirroring
-% exactly how beamer's own alertblock/exampleblock are built (compare
-% beamerbaselocalstructure.sty's \newenvironment<>{alertblock} and
-% beamerinnerthemedefault.sty's "block alerted begin/end" templates).
-%
-% First attempt (2026-07-05) copied these under the "rounded" style/
-% beamerboxesrounded, on the wrong assumption that "rounded" was this
-% deck's active block style generally -- it renders with visibly rounded
-% corners, caught by the user, unlike block/alertblock/exampleblock's own
-% square corners. Those three actually use beamerinnerthemedefault.sty's
-% *starred* "default"-style templates (plain beamercolorbox, no rounding),
-% which \defbeamertemplate*'s star selects immediately when that inner
-% theme loads, regardless of beamer's own \defbeamertemplateparent{blocks}
-% fallback to "rounded" -- gotham's own inner theme derives from
-% beamerinnerthemedefault, so "default" (square) was the deck's real active
-% style the whole time. Rewritten below to match that "default" style
-% exactly (plain beamercolorbox instead of beamerboxesrounded) for
-% consistent square corners across all four block types.
-\setbeamercolor{block title reference}{bg=c_secondary_orange, fg=c_primary_dark}
-\setbeamercolor{block body reference}{bg=c_tertiary_gray, fg=c_primary_dark}
-% block/alertblock/exampleblock's own titles render bold via
-% beamerthemeSlideMage.sty's \setbeamerfont{block title}{series=\bfseries}
-% (and an explicit ...alerted equivalent; example inherits it from
-% beamer's own base font-fallback chain, verified directly -- both
-% "Example"/"Caveat" titles on slides/ZZX-Definition-formula-current.tex
-% render in the same heavier FiraSans-Regular as "Definition" despite
-% gotham never setting "block title example" explicitly). "reference" is a
-% brand new type name unknown to any of that inheritance, so it fell back
-% to a plain, non-bold font with no color-analogous safety net (unlike
-% \setbeamercolor{block title reference} above, colors for genuinely new
-% names still resolve fine) -- caught only by comparing the actual
-% rendered font name in the compiled PDF (FiraSans-Light, matching plain
-% body text) against block/alertblock/exampleblock's own (FiraSans-Regular,
-% this deck's de facto "bold" for Fira Sans), not by eye alone. Explicit
-% setting needed, matching gotham's own two.
-\setbeamerfont{block title reference}{size=\normalsize, series=\bfseries}
-\defbeamertemplate*{block reference begin}{default}[1][]
-{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title reference}
-		\usebeamerfont*{block title reference}\strut\insertblocktitle%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title reference}
-	{}
-	{\ifbeamercolorempty[bg]{block body reference}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body reference}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode,#1]{block body reference}%
-		\ifbeamercolorempty[bg]{block body reference}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\defbeamertemplate*{block reference end}{default}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
+% The block templates (block, alerted, example, reference, info and definition begin and end), their
+% colors and the helpers they use (\SMBlockSideMargin, \SMBlockTitleWithMarker, \SMSetBlockBullets,
+% \SMAlertMarker) are the theme's (beamerthemeSlideMage.sty); the three block types the beamer
+% environments do not have are defined here.
 \newenvironment<>{referenceblock}[1]{%
 	\begin{actionenv}#2%
 		\def\insertblocktitle{#1}%
@@ -5073,55 +3987,6 @@
 		\usebeamertemplate{block reference end}%
 	\end{actionenv}}
 
-% A sixth block type, for general background/context info that isn't
-% itself a definition, example, or reference citation (2026-07-06, direct
-% instruction: "use secondaryblue for a new type of info block") -- built
-% the same from-scratch way as referenceblock just above (a brand-new
-% style name needs \defbeamertemplate*'s registering form, not
-% \setbeamertemplate -- see referenceblock's own comment for why). Marker
-% is a circled "i" (\textcircled{\scriptsize i}, the generic LaTeX-kernel
-% \textcircled -- not a Unicode "circled i" character: this deck's own
-% Fira Sans/Fira Mono have no glyph for that codepoint either, the same
-% missing-glyph problem \triangleq's own comment already found for
-% definitionblock, and \textcircled sidesteps it entirely since it just
-% draws a plain circle symbol around an ordinary letter rather than
-% depending on one precomposed font glyph existing at all).
-%
-% The marker is placed via a zero-width box *before* \insertblocktitle,
-% not via a trailing \hfill\textcircled{...} the way it first looked most
-% natural to write -- \hfill only fills space on whatever line it's
-% typeset on, and for a title long enough to wrap onto a second line (2026-07-08,
-% found on the last reveal step of slides/ib3-Long-term-Bonds-Repayment-current.tex),
-% \hfill\textcircled{...} then lands on that *second* line instead of the
-% first, printing the marker at the bottom right of the box instead of the
-% top right. Fixed originally with a one-off zero-width-box trick here;
-% generalized the same day into the shared \SMBlockTitleWithMarker
-% helper (see its own comment, near \SMBlockSideMargin above) once a
-% *second*, related bug turned up on this exact block type (a long title
-% visually touching the marker even without wrapping) -- that helper is
-% what's actually called below now, not a copy of this trick inline.
-\setbeamercolor{block title info}{bg=c_secondary_blue, fg=c_primary_dark}
-\setbeamercolor{block body info}{bg=c_tertiary_gray, fg=c_primary_dark}
-\setbeamerfont{block title info}{size=\normalsize, series=\bfseries}
-\defbeamertemplate*{block info begin}{default}[1][]
-{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title info}
-		\usebeamerfont*{block title info}%
-		\SMBlockTitleWithMarker{\textcircled{\scriptsize i}}{\insertblocktitle}%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title info}
-	{}
-	{\ifbeamercolorempty[bg]{block body info}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body info}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode,#1]{block body info}%
-		\ifbeamercolorempty[bg]{block body info}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\defbeamertemplate*{block info end}{default}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
 \newenvironment<>{infoblock}[1]{%
 	\begin{actionenv}#2%
 		\def\insertblocktitle{#1}%
@@ -5131,43 +3996,6 @@
 		\usebeamertemplate{block info end}%
 	\end{actionenv}}
 
-% A fifth block type, for a "this introduces/defines a term" callout,
-% visually distinguished from a plain \block (2026-07-06, direct
-% instruction: "I would like to distinguish definition blocks from other
-% blocks") by a $\triangleq$ symbol sitting flush right in the title bar,
-% opposite the title text itself. Exact same colors/margins/font as plain
-% \block (reuses "block title"/"block body", not a new color pair) --
-% only the title-bar content differs, one extra `\hfill$\triangleq$`
-% after `\insertblocktitle` -- so this mirrors referenceblock's own
-% from-scratch pattern above (a brand new "definition" style name via
-% \defbeamertemplate*, not \setbeamertemplate, for the same reason
-% referenceblock's own comment gives: this style name has never been
-% registered before, so the *-registration form is the correct one here,
-% unlike plain block/alertblock/exampleblock below which are redefining
-% already-registered "default"-style bodies). `\triangleq` is a genuine
-% math symbol, so it needs `$...$` -- renders in this theme's math font
-% (Computer Modern, see beamerthemeSlideMage.sty's `no-math` option),
-% a deliberate, visible one-glyph exception in an otherwise Fira Sans
-% title bar, the same tradeoff every other math symbol in this deck
-% already accepts.
-\defbeamertemplate*{block definition begin}{default}[1][]
-{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex,#1]{block title}
-		\usebeamerfont*{block title}\SMBlockTitleWithMarker{$\triangleq$}{\insertblocktitle}%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title}
-	{}
-	{\ifbeamercolorempty[bg]{block body}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode,#1]{block body}%
-		\ifbeamercolorempty[bg]{block body}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\defbeamertemplate*{block definition end}{default}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
 \newenvironment<>{definitionblock}[1]{%
 	\begin{actionenv}#2%
 		\def\insertblocktitle{#1}%
@@ -5177,120 +4005,6 @@
 		\usebeamertemplate{block definition end}%
 	\end{actionenv}}
 
-% block/alertblock/exampleblock begin/end: same body as
-% beamerinnerthemedefault.sty's own "default"-style templates (the ones
-% actually in effect, per the comment above referenceblock), plus the
-% minipage margin wrapper around each pair -- set via plain
-% \setbeamertemplate{block begin}{...} (overriding the *body* of the
-% existing "default" style directly) rather than
-% \defbeamertemplate*{block begin}{default}{...} like referenceblock's own
-% (new) templates above. The two look almost interchangeable but aren't:
-% \defbeamertemplate* internally does a \newcommand-based *registration* of
-% a style name, which errors outright ("... already defined") when that
-% exact template+style pair already exists, as "block begin"/"default" and
-% the other two pairs already do (registered once by
-% beamerinnerthemedefault.sty itself) -- caught only by compiling and
-% reading the log, not from any visible symptom in the rendered PDF (LaTeX
-% recovers from the error by leaving the *original* stock template body in
-% place, so these three blocks kept working and even picked up their new
-% *colors* correctly via \setbeamercolor above, since color lookups happen
-% at render time either way -- just silently without the margin fix, which
-% *is* baked into the template body itself). \setbeamertemplate{name}{body}
-% (no style-name argument) instead does a plain \def of that style's
-% existing body storage, which is exactly "redefine what's already there"
-% and carries no such restriction -- the correct tool whenever the target
-% template+style pair is already registered, as opposed to
-% \defbeamertemplate*, which is only for registering a style name for the
-% very first time (as referenceblock's brand-new "reference" style name
-% needs). Dropped the stock templates' own "#1" optional-argument slot
-% (extra beamercolorbox options) in the process: nothing in this deck ever
-% calls \usebeamertemplate{block begin}[...] with a bracket argument to
-% populate it, so it was always empty in practice anyway.
-% \strut before \insertblocktitle here, and in "block alerted"/"block
-% reference" below: same title-bar-height-vs-descender fix as
-% \SMBlockTitleWithMarker's own comment above -- these three don't go
-% through that helper at all (no marker symbol), so needed the same
-% `\strut` added directly instead.
-\setbeamertemplate{block begin}{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex]{block title}
-		\usebeamerfont*{block title}\strut\insertblocktitle%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title}
-	{}
-	{\ifbeamercolorempty[bg]{block body}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode]{block body}%
-		\ifbeamercolorempty[bg]{block body}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\setbeamertemplate{block end}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
-
-% Warning-triangle marker for alertblock (direct instruction, 2026-07-12),
-% same \SMBlockTitleWithMarker treatment as definitionblock's
-% $\triangleq$/exampleblock's $\in$/infoblock's \textcircled{\scriptsize i}
-% above. No single built-in glyph renders a triangle-with-exclamation-mark
-% in this deck's fonts (checked the same way \triangleq's own comment
-% did), so it's hand-drawn: a plain tikz outline triangle with a bold "!"
-% centered inside, sized by eye against \textcircled{\scriptsize i} until
-% the two read as the same visual weight in a block title bar.
-\newcommand{\SMAlertMarker}{%
-	\tikz[baseline=-0.6ex]{
-		\draw[line width=1.1pt, line join=round] (-0.2,-0.11) -- (0.2,-0.11) -- (0,0.31) -- cycle;
-		\node[font=\fontsize{7}{7}\selectfont\bfseries] at (0,0.01) {!};
-	}%
-}
-\setbeamertemplate{block alerted begin}{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex]{block title alerted}
-		\usebeamerfont*{block title alerted}\SMBlockTitleWithMarker{\SMAlertMarker}{\insertblocktitle}%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title alerted}
-	{}
-	{\ifbeamercolorempty[bg]{block body alerted}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body alerted}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode]{block body alerted}%
-		\ifbeamercolorempty[bg]{block body alerted}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\setbeamertemplate{block alerted end}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
-
-% $\in$ ("is an instance/element of") flush right in the title bar
-% (2026-07-06, direct instruction, mirroring definitionblock's own
-% $\triangleq$ -- "what symbol would you propose ... to symbolize an
-% example?"): a concrete example is naturally "an instance of" the general
-% concept it illustrates, the same relationship $\in$ already denotes
-% between an element and a set/class -- and, same as $\triangleq$, it's a
-% math-mode symbol with a real Computer Modern glyph (no Fira Sans/Fira
-% Mono text-mode substitute needed, unlike most Unicode symbol candidates
-% -- see SlideMage_template_uni-graz.tex's own "beamer/TeX gotchas" entry on
-% $\triangleq$ for why that matters here). Applied to every \exampleblock/
-% \SMFloatingExampleBlock in the deck via this shared template, not a
-% one-off per slide, matching how $\triangleq$ applies to every
-% definitionblock through its own shared template.
-\setbeamertemplate{block example begin}{
-	\hspace{\SMBlockSideMargin}\begin{minipage}{\dimexpr\linewidth-2\SMBlockSideMargin\relax}
-	\SMSetBlockBullets%
-	\par\vskip\medskipamount%
-	\begin{beamercolorbox}[colsep*=.75ex]{block title example}
-		\usebeamerfont*{block title example}\SMBlockTitleWithMarker{$\in$}{\insertblocktitle}%
-	\end{beamercolorbox}\noframebreak%
-	{\parskip0pt\par}%
-	\ifbeamercolorempty[bg]{block title example}
-	{}
-	{\ifbeamercolorempty[bg]{block body example}{}{\nointerlineskip\vskip-0.5pt}}%
-	\usebeamerfont{block body example}%
-	\begin{beamercolorbox}[colsep*=.75ex,vmode]{block body example}%
-		\ifbeamercolorempty[bg]{block body example}{\vskip-.25ex}{\vskip-.75ex}\vbox{}%
-}
-\setbeamertemplate{block example end}
-{\end{beamercolorbox}\vskip\smallskipamount\end{minipage}}
 
 % A narrower, freely-positionable version of \begin{block}{...} (2026-07-06,
 % direct instruction) -- a plain block always spans the *current*
