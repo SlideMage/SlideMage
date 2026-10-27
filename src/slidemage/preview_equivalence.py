@@ -38,11 +38,15 @@ AUDITED_FRAMEWORK = {
     # the Top Margin setting; the base hands the ascender and the Top Margin to SlideMage_measure.lua. Re-audited: no
     # version, footer-hide or deck-label rule entered the profile (test_the_pins_are_the_frameworks_files... checks it
     # for the theme and the profile), and the base lost only font code.
-    "SlideMage_setup.tex": "9d2a0e6a20f87a6c8c7e11aef403d2882a2b593ab80a22518940a56f34956afa",
-    "SlideMage_layout_fira.tex": "9c079598ab82eed16333d24cbf7934b964e0079f68f5b25d1608fe7cd3131ea8",
-    "SlideMage_base.tex": "ce91867d1bfcfb226ea36424c147001f38bc8b9a439944e2fd15e09c6e33d728",
+    # v9.4.0 (step 5): the design values become catalog hooks in the setup layer (lengths, ratios, text sizes, margins;
+    # the theme and the base lose their definitions), the font calibrations move into the profile, four obsolete
+    # corrections are 0pt. Re-audited: no version, footer-hide or deck-label rule entered the setup layer, the theme or
+    # the profile (the theme test checks the last two); the base kept the frame footer and its deck-version text.
+    "SlideMage_setup.tex": "0e9e5799651556be5b28890cfe26f76b7c026e5423f16245f3c29527973b7838",
+    "SlideMage_layout_fira.tex": "66a4d88ffe7c2b26d46e8d49ab00d511c36dac28e965db9108145f084fca8d71",
+    "SlideMage_base.tex": "fc2e29919c668ee97793fe9b032ee0a87e4ed7db215a6b843653c8927da41d7b",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "9114c6142c0d048e02cdd22ce67f71a442d6fcd12df8b4bd3f4b30ba8a15bbb0",
+    "beamerthemeSlideMage.sty": "de2398ee0ad4dc41f8ba7ded3bb0ea147c3d9fafa756e243d8a3b8e36129e73a",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "3dc20806363e8b328f1fa902f24b1074fea247e73169296e5caa7a6ce57907c5",
 }
