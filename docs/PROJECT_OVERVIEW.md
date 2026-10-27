@@ -177,8 +177,8 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
    uses Unicode math comparison characters `xelatex` doesn't handle out of
    the box. Let your distribution auto-install missing packages on first
    compile (or install the `fira`/Fira Sans font package up front) —
-   `beamerthemeSlideMage.sty` checks for the Fira Sans `.otf` files
-   directly and needs them findable. `biber` is needed too — the manual
+   the layout profile `SlideMage_layout_fira.tex` checks for the Fira Sans `.otf`
+   files directly and needs them findable. `biber` is needed too — the manual
    exercises the bibliography mechanism (see "Bibliography" above); plain
    `lualatex slidemage-manual.tex` alone leaves its one citation showing as
    the raw key `markowitz1952` instead of a formatted reference.

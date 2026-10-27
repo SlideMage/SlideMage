@@ -48,48 +48,8 @@
 \usepackage{pgfplots} % real-data line/bar charts (e.g. slides/3vp-Metallgesellschaft-Oil-Price-Chart-current.tex) -- confirmed safe alongside this deck's own \tableofcontents, see CONVERSION_NOTES.md's "beamer/TeX gotchas" entry
 \pgfplotsset{compat=1.18}
 
-% Restores genuine Computer Modern math fonts. Found 2026-07-15, direct
-% instruction ("math equations do not have serifs, look at vcv"): despite
-% fontspec being loaded with `no-math` (beamerthemeSlideMage.sty), math
-% still wasn't landing on Computer Modern -- checked directly against a
-% compiled PDF's own per-glyph font names (pymupdf), not just eyeballed:
-% digits/math-italic letters were coming out as FiraSans-Light(Italic)
-% (this deck's own body-text sans font) and operators/parens as CMSS10
-% (Computer Modern's *sans-serif* shape, not its serif one). Root cause:
-% beamer's own base classes redefine the math alphabets to follow the
-% presentation's sans-serif text font by default, specifically so math
-% matches an all-sans deck -- `no-math` only stops *fontspec* from doing
-% this, it has no say over beamer's own separate override. Beamer ships
-% the standard fix for exactly this case: a font theme named "serif"
-% with an "onlymath" option that restores ordinary (Latin
-% Modern/Computer-Modern-equivalent) math fonts without touching any of
-% the surrounding sans-serif text. Confirmed directly afterward: every
-% glyph in a re-checked formula now reports as LMRoman*/CMR10/CMMI8 (all
-% genuinely serif), not FiraSans/CMSS10.
-\usefonttheme[onlymath]{serif}
-
-% \text{} (amsmath, used throughout for plain-word operands inside math,
-% e.g. \text{E}[\tilde{R}_M]) is a separate mechanism from the math
-% alphabets \usefonttheme[onlymath]{serif} above just fixed: unlike
-% \mathrm/\mathit/etc., \text{} is defined to typeset in whatever the
-% *surrounding running text* font is at that point in the document, not a
-% math alphabet -- so on this deck's all-Fira body text, \text{} inside a
-% formula still comes out in Fira Sans (and picks up italic if the
-% enclosing text happens to be italicized), even though the digits/
-% operators around it are correctly Computer Modern. Found 2026-07-20 on
-% slides/2gd-Analyzing-Reward-to-Risk-Ratio-CAPM-current.tex's own
-% \text{E}/\text{Cov} operands. Fixed generally, project-wide, by wrapping
-% \text{}'s argument in an explicit upright-Computer-Modern font switch --
-% \usefont{OT1}{cmr}{m}{n} rather than \mathrm{} (which would pull in
-% \text{}'s own math-alphabet substitution logic unnecessarily) or
-% \textrm{} (which switches *family* only, so still comes out italic
-% inside an italicized context, which \text{} should never do here) --
-% deliberately hardcoding "not italic" (shape n) rather than inheriting
-% the ambient shape, since \text{}'s whole purpose in this deck's formulas
-% is plain upright labels (E, Cov, "the" CAPM, ...), regardless of
-% whatever font context happens to surround the formula itself.
-\let\SMOrigText\text
-\renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}
+% The math fonts (Computer Modern next to the sans text font) and the \text{} wrapper that
+% goes with them are font handling: SlideMage_layout_\SMLayoutProfile.tex, input by SlideMage_setup.
 
 % Colors, institute logo path, and the two logo-calibration lengths
 % (\SMLogoHeight, \SMFrametitleRightPadding = \SMFrametitleRightPadding)
@@ -308,7 +268,6 @@
 \@ifundefinedcolor{SMCardBorderColor}{\colorlet{SMCardBorderColor}{c_primary_dark}}{}
 \@ifundefinedcolor{SMProcessBorderColor}{\colorlet{SMProcessBorderColor}{c_tertiary_gray}}{}
 \makeatother
-\newcommand{\SMCardHeadingFont}{\bfseries}
 \tikzset{
 	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_primary_dark},
 	SMProcess/.style={draw=none, fill=c_tertiary_gray, text=c_primary_dark},
@@ -416,7 +375,7 @@
 \newcommand{\SMTikzword}[2]{\tikz[remember picture, baseline=(#1.base)] \node[inner sep=0pt, outer sep=0pt] (#1) {#2};}
 
 % \SMLineTop -- a zero-width strut as tall as a text line's *line box*
-% (0.935em above the baseline, Fira Sans' ascender: the box the Top Margin is
+% (\SMFontAscender em above the baseline, the text font's ascender, 0.935 for Fira Sans: the box the Top Margin is
 % measured on). Put at the start of the first line of a text column that sits
 % next to a figure in top-aligned minipages,
 %   \begin{minipage}[t]{0.4\linewidth}\vspace{0pt}
@@ -429,7 +388,7 @@
 % (2026-10-01, m2k: its two minipages were vertically *centred*, LaTeX's
 % default, and the text column started 12pt below the Top Margin;
 % check_layout.py's `coltop` check now reports that pattern).
-\newcommand{\SMLineTop}{\rule{0pt}{0.935em}}
+\newcommand{\SMLineTop}{\rule{0pt}{\SMFontAscender em}}
 
 % \EUR -- the euro sign in Fira Sans, in text and in math alike. In math,
 % \text{\texteuro} came out in the math font's style ("Euro symbols ...
@@ -2455,6 +2414,14 @@
 		if path then
 			dofile(path)
 		end
+	}
+	% The two numbers the Top Margin measurement needs. The ascender is read from the text font in
+	% force (luaotfload's OpenType metrics) and replaces the layout profile's \SMFontAscender where
+	% the font gives one; the Top Margin is the template's (SlideMage_setup.tex). Not replayed by
+	% a precompiled format: the macro it sets lives in the format.
+	\begingroup\normalfont\selectfont\directlua{slidemage_measure.derive_ascender()}\endgroup
+	\SMLuaOnce{
+		slidemage_measure.configure{top_margin = "\SMTopMargin", ascender = \SMFontAscender}
 	}
 \fi
 \def\SMTable@begin#1{\begin{tabular}{#1}}
@@ -5366,7 +5333,6 @@
 % SlideMage's transcript shows the file as a code block, and the pre-render
 % check reports a missing file.
 \usepackage{listings}
-\newfontfamily\SMCodeFont{FiraMono-Regular.otf}[BoldFont=FiraMono-Medium.otf]
 \newcommand{\SMCodeSize}{\fontsize{6.6}{8.2}\selectfont}
 % Every control sequence, backslash included, is a keyword: the backslash is
 % made a letter and is the keyword prefix (listings' prefix keywords need a
@@ -5421,7 +5387,6 @@
 % typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
 % `code`. Ligatures=TeXOff: code shows -- and `` as typed, not as an en dash
 % and a curly quote (fontspec's default for \newfontfamily).
-\newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9, Ligatures=TeXOff]
 \newcommand{\SMInlineCodeStyle}{}
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont\SMInlineCodeStyle #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\SMInlineCodeStyle\textbackslash #1}}

@@ -191,9 +191,10 @@ end
 -- (a user_defined whatsit) at the start of its body. At shipout the page
 -- is walked in document order; the first visible flow content after the
 -- marker is measured:
---   a text line   -> baseline - 0.935 x its largest glyph size (Fira Sans'
---                    ascender: the "line box" top every measurement in this
---                    project uses; 41.58bp for a plain first line)
+--   a text line   -> baseline - ascender x its largest glyph size (the text
+--                    font's ascender: the "line box" top every measurement in
+--                    this project uses; 41.58bp for a plain first line in
+--                    Fira Sans, SlideMage's default layout profile)
 --   an image/rule -> its top edge (a table's \toprule, a picture)
 --   a TikZ picture in the flow -> its bounding box top (not looked into:
 --                    its content is placed by PDF transforms, not by nodes)
@@ -205,8 +206,46 @@ end
 -- the second run lands on the margin and the file stays unchanged).
 ---------------------------------------------------------------------------
 
-local TOP_MARGIN_BP = 41.58
-local ASCENDER = 0.935
+-- The Top Margin (bp) and the text font's ascender (em) come from the template
+-- and the layout profile: SlideMage_base.tex calls slidemage_measure.configure
+-- right after loading this file. Nothing is assumed here.
+local TOP_MARGIN_BP, ASCENDER
+
+local function configured()
+  if not (TOP_MARGIN_BP and ASCENDER) then
+    error("slidemage_measure.configure{top_margin=..., ascender=...} was not called")
+  end
+end
+
+-- configure{top_margin = <bp number | "41.58bp" | any TeX dimension string>,
+--           ascender   = <em number>}
+function slidemage_measure.configure(config)
+  local margin = config.top_margin
+  if type(margin) == "string" then
+    -- "<number>bp" is read as written (a TeX dimension would be rounded to
+    -- scaled points first); any other unit goes through TeX
+    local bp = margin:match("^%s*([%d.]+)%s*bp%s*$")
+    margin = tonumber(bp) or tex.sp(margin) * 72 / 72.27 / 65536
+  end
+  if margin then TOP_MARGIN_BP = margin end
+  if config.ascender then ASCENDER = tonumber(config.ascender) end
+end
+
+-- The ascender of the font in force, in em, from luaotfload's OpenType metrics
+-- (f.parameters.ascender, the font's ascent scaled to its size), rounded to four
+-- digits: 0.935 for FiraSans-Light. Sets the macro \SMFontAscender to it, or
+-- leaves the layout profile's number where the font has no usable value.
+function slidemage_measure.derive_ascender()
+  local f = font.getfont(font.current())
+  local ascent = f and f.parameters and f.parameters.ascender
+  if ascent and f.size and f.size > 0 then
+    local em = ascent / f.size
+    if em > 0.3 and em < 1.5 then
+      token.set_macro("SMFontAscender", tostring(math.floor(em * 10000 + 0.5) / 10000), "global")
+    end
+  end
+end
+
 local MARKER_ID = 20260930
 local SP_PER_PT = 65536
 local BP_PER_PT = 72 / 72.27
@@ -577,6 +616,7 @@ end
 -- shipout: measure this page. The last page of a frame wins (its final
 -- overlay state).
 function slidemage_measure.top_measure_page(box)
+  configured()
   local events = {}
   if box.id == VLIST then
     events_v(box, 0, events)
@@ -610,6 +650,7 @@ end
 -- \AtEndDocument: the new corrections, written through TeX (\write) to
 -- \jobname.top, which TeX opened in the aux directory latexmk uses
 function slidemage_measure.top_emit()
+  configured()
   local keys = {}
   for index in pairs(slidemage_measure.top_applied) do
     keys[#keys + 1] = index

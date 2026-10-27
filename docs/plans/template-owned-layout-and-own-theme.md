@@ -619,6 +619,40 @@ mix it in.
    - The ascender and Top Margin go from TeX to Lua; the ascender is derived where luaotfload allows it.
    - `latex_export` finds the profile.
    - Pixel-identical.
+   - **Done 2026-10-27 (v9.3.0), notes for the later steps:**
+     - `latex/SlideMage_layout_fira.tex` holds, in the old order: the fontspec load with `no-math`, the availability
+       check and warnings (moved out of the theme with their `\msg_new` texts), the Fira Sans weight mapping, Fira Mono,
+       the tabular figures, then `\SMFontAscender`, `\SMLinespread` and `\SMParskip`, `\SMCodeFont`,
+       `\SMInlineCodeFont`, `\SMCardHeadingFont`, and the `onlymath` serif font theme with the `\text` wrapper (all from
+       the base). The theme sets sizes only.
+     - Load order: setup inputs the profile (`\providecommand{\SMLayoutProfile}{fira}`, `\IfFileExists`, a
+       `\PackageError` when missing) right before `\usetheme`. The theme still applies `\parskip` and `\linespread` at its
+       old place, now from `\SMParskip` (`0.5em`) and `\SMLinespread` (`1.15`), so the em is evaluated in the same font
+       as before. The `\usefonttheme[onlymath]{serif}` and `\text` code ran after the template before and now runs
+       before it; the render did not change, but a template that loads a package redefining `\text` is the case to watch.
+     - **Ascender.** luaotfload keeps it on the font table: `font.getfont(id).parameters.ascender / size` (the font's
+       `metadata.ascender` / `units`, 935 / 1000), which gives 0.935 for FiraSans-Light. The base calls
+       `slidemage_measure.derive_ascender()` right after loading the Lua file, inside a group with `\normalfont`
+       selected; it rounds to four digits (so the value equals the old literal exactly) and sets `\SMFontAscender`
+       globally, so `\SMLineTop` (`\rule{0pt}{\SMFontAscender em}`) follows. The profile's 0.935 is only the fallback
+       for a font without that value (a test with a different fallback still gave 0.935).
+     - **Top Margin.** New catalog hook `\SMTopMargin`, a macro holding a dimension: `41.58bp` (bp, because Lua measures
+       in PDF units). It is not a length on purpose: a `\setlength` would round to scaled points first and shift the
+       measured corrections by up to 1e-5 bp; Lua reads a value written as `<number>bp` exactly and sends any other
+       unit through `tex.sp`. The base calls `slidemage_measure.configure{top_margin=..., ascender=...}` through
+       `\SMLuaOnce` (so a precompiled format replays it) right after loading the Lua file, since the Lua is not loaded
+       before that; the Lua constants are gone and a missing `configure` is an error.
+     - **For step 5.** `\SMContentTopAlign` is still `41.58pt` while the Top Margin is `41.58bp` (0.17pt apart): they
+       are two numbers, not one, so decide whether `\SMContentTopAlign` derives from `\SMTopMargin`. The font-calibrated
+       lengths of the inventory were not touched. The theme still requires `ifxetex` and `ifluatex`, which nothing uses.
+     - Consumers: `latex_export.PROFILE_RE` reads `\newcommand`/`\renewcommand`/`\def` of `\SMLayoutProfile` in any scanned
+       text, falls back to `fira` (a test ties that to setup's `\providecommand`), reports a profile that exists nowhere.
+       `deck_snapshot` copies the framework whole and records a project profile as an input (test added); `bundled_copies`
+       and `packaging/slidemage.spec` take the new file without a change; `REUSE.toml` covers it by its SPDX header.
+       `preview_equivalence` pins `SlideMage_layout_fira.tex`; a project profile of another name is only reachable through
+       a template, and a template with an unaudited digest is rendered on its own; a project file named like a pinned
+       profile is a shadow. The audit found no view-dependent rule in the profile (the test that guards the theme now
+       checks the profile too).
 5. **Classify every remaining value.**
    - Go through the inventory (section 2's table; the full list is in the 2026-10-23 inventory, which this
      step redoes against the code as it stands then) and decide each length.

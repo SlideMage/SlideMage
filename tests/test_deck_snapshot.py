@@ -56,6 +56,7 @@ def tree(tmp_path, monkeypatch):
     write(root / "decks" / "t-Other.tex", DECK)
     write(root / "SlideMage_template_uni-graz.tex", "graz\n")
     write(root / "SlideMage.bib", "@book{x, title={X}}\n")
+    write(root / "SlideMage_layout_mine.tex", "% a project's own layout profile\n")
     write(root / "slides" / "1aa-EN-One-current.tex", "slide one\n")
     write(root / "slides" / "1bb-EN-Unused-current.tex", "not used\n")
     write(root / "media" / "used.png", b"png")
@@ -89,6 +90,7 @@ def tree(tmp_path, monkeypatch):
             wrapper,
             cwd / "decks" / deck_file,
             cwd / "SlideMage_template_uni-graz.tex",
+            cwd / "SlideMage_layout_mine.tex",
             cwd / "slides" / "1aa-EN-One-current.tex",
             cwd / "media" / "used.png",
             fw / "SlideMage_base.tex",
@@ -165,7 +167,7 @@ def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     snap = result.path
     assert snap == root / "snapshots" / "t-Deck_2026-10-07_14-12"
     proj = snap / "Proj"
-    for rel in ("decks/t-Deck.tex", "SlideMage_template_uni-graz.tex",
+    for rel in ("decks/t-Deck.tex", "SlideMage_template_uni-graz.tex", "SlideMage_layout_mine.tex",
                 "slides/1aa-EN-One-current.tex", "media/used.png", "SlideMage.bib",
                 ".latexmkrc", "decks/.latexmkrc", "slide_ids.csv", "media/alt-text.csv"):
         assert (proj / rel).is_file(), rel

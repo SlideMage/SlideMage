@@ -30,7 +30,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, the layout profile `SlideMage_layout_fira.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -394,19 +394,37 @@ copied package files in `texmf/` record the exact originals.
 - `beamerthemeSlideMage.sty` — the beamer theme (since v9.1.0): a pruned and
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
-  loads it, decks never name it. It holds the Fira font setup, the colour roles,
+  loads it, decks never name it. It holds the colour roles,
   the frame title and footline templates, since v9.2.0 also the logo macro and frame
   title hook, the footnote template, the block templates and the itemize bullets
   (`SlideMage_base.tex` no longer replaces them), and four optional features that are off
   until a template switches them on (mini frames, progress bars, automatic
-  divider frames, a watermark — see the end of `SlideMage_setup.tex`).
+  divider frames, a watermark — see the end of `SlideMage_setup.tex`). Since v9.3.0
+  it sets font *sizes* only; the font files come from the layout profile below.
+- `SlideMage_layout_fira.tex` — a **layout profile** (since v9.3.0): everything that
+  depends on the font. It loads Fira Sans Light (with its weight mapping: Regular
+  is the bold) and Fira Mono, defines `\SMCodeFont`, `\SMInlineCodeFont` and
+  `\SMCardHeadingFont`, keeps the math in Computer Modern, and gives the metrics
+  the framework measures against: `\SMFontAscender` (0.935 em; used only where
+  the loaded font gives none: SlideMage reads it from the font and hands it, with
+  the Top Margin, to `SlideMage_measure.lua`), `\SMLinespread` and `\SMParskip`.
+  A template picks its profile before it loads the setup layer,
+  `\newcommand{\SMLayoutProfile}{name}` (`fira` if it says nothing), and
+  `SlideMage_setup.tex` inputs `SlideMage_layout_<name>.tex`. A project can keep a
+  profile of its own next to its templates; the TeX search path finds it, and
+  Export LaTeX takes it along. *Recipe for a new profile:* (1) copy
+  `SlideMage_layout_fira.tex` and change the fonts, (2) compile a deck with a test
+  template that uses the profile, (3) run `tools/check_layout.py` on the PDF,
+  (4) adjust the profile's numbers until the report is clean. (The calibration
+  deck and `tools/calibrate_font_profile.py`, which suggests the numbers, follow
+  in a later step of the framework redesign.)
 - `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):
   loads the beamer theme (decks never name it) and defines every setting a
   template may change, each with its default and a comment — the `c_*`
   palette (SlideMage's own colours), the role colours (`\SMBulletColor`,
-  `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight` and the
-  title-bar paddings (`\SMFrametitleRightPadding`, ...). The one file a
-  template author reads.
+  `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight`, the Top Margin
+  (`\SMTopMargin`) and the title-bar paddings (`\SMFrametitleRightPadding`, ...).
+  It also inputs the layout profile. The one file a template author reads.
 - `SlideMage_base.tex` — the project's shared customization
   layer: the footer (course name + slide ID + frame number), the
   `\slide{}`/`\slideversion{}` loading commands (and their student-version-

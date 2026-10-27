@@ -88,9 +88,14 @@
 %%    definition) and the table-of-contents template SMPlainEnumerate. Colours that
 %%    depend on the template are still derived by \SMApplyColorRoles, which the base
 %%    calls after the template.
+%% 7. (v9.3.0) The font loading is gone from this file: the sans and mono fonts with
+%%    their weight mapping, the tabular figures and the messages about missing fonts
+%%    moved to the layout profile SlideMage_layout_fira.tex, which SlideMage_setup.tex
+%%    loads before the theme. \parskip and \linespread read the profile's \SMParskip and
+%%    \SMLinespread (0.5em and 1.15) where they were set before.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/27}{9.2.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/27}{9.3.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -100,64 +105,12 @@
 \RequirePackage{ifxetex}
 \RequirePackage{ifluatex}
 
-\msg_new:nnn { SlideMage } { font-not-found }
-  { Could~not~find~font~'#1'.\c_space_tl }
-\msg_new:nnn { SlideMage } { fonts-not-available }
-  { No~suitable~fonts~found.~Using~fallback~fonts. }
-\msg_new:nnn { SlideMage } { requires-lualatex }
-  { The~SlideMage~theme~needs~LuaLaTeX~(Fira~fonts~and~Lua~code). }
 \msg_new:nnn { SlideMage } { unknown-choice }
   { Unknown~choice~'#1'~for~#2. }
 
-\int_new:N \g__SM_fonts_not_found_int
-
-\cs_new_protected:Nn \__SM_check_font:n
-  {
-    \fontspec_font_if_exist:nF { #1 }
-      {
-        \fontspec_font_if_exist:nF { #1~Regular }
-          {
-            \int_incr:N \g__SM_fonts_not_found_int
-            \msg_warning:nnn { SlideMage } { font-not-found } { #1 }
-          }
-      }
-  }
-
-\cs_new_protected:Nn \__SM_if_fonts_available:nnn
-  {
-    \int_zero:N \g__SM_fonts_not_found_int
-    \clist_map_function:nN { #1 } \__SM_check_font:n
-    \int_compare:nTF { \g__SM_fonts_not_found_int = 0 } { #2 } { #3 }
-  }
-
-\sys_if_engine_luatex:TF
-  {
-    \@ifpackageloaded { fontspec }
-      { \PassOptionsToPackage { no-math } { fontspec } }
-      { \RequirePackage [ no-math ] { fontspec } }
-    \__SM_if_fonts_available:nnn
-      {
-        FiraSans-Light.otf, FiraSans-LightItalic.otf,
-        FiraSans-Regular.otf, FiraSans-Italic.otf
-      }
-      {
-        \setsansfont
-          [
-            ItalicFont = { FiraSans-LightItalic.otf },
-            BoldFont = { FiraSans-Regular.otf },
-            BoldItalicFont = { FiraSans-Italic.otf }
-          ]
-          { FiraSans-Light.otf }
-        \renewcommand { \ttdefault } { lmtt }
-      }
-      { \msg_warning:nn { SlideMage } { fonts-not-available } }
-    \__SM_if_fonts_available:nnn { FiraMono-Medium.otf, FiraMono-Bold.otf }
-      { \setmonofont [ BoldFont = { FiraMono-Medium.otf } ] { FiraMono-Bold.otf } }
-      { \msg_warning:nn { SlideMage } { fonts-not-available } }
-    \AtBeginEnvironment { tabular } { \addfontfeature { Numbers = { Monospaced } } }
-  }
-  { \msg_warning:nn { SlideMage } { requires-lualatex } }
-
+% The font files come from the layout profile that SlideMage_setup.tex loads before
+% this theme (SlideMage_layout_fira.tex): the theme sets sizes only, and applies
+% the profile's \linespread and \parskip under TEXT below.
 \setbeamerfont{frametitle}{size=\large, series=\bfseries, shape=\normalfont}
 \setbeamerfont{framesubtitle}{shape=\normalfont}
 \setbeamerfont{page~number~in~head/foot}{size=\footnotesize}
@@ -400,8 +353,8 @@
 \__SM_add_frame_key:nn { nowatermark } { SMNoWatermarkFrame }
 
 % ---- Text -----------------------------------------------------------------
-\setlength{\parskip}{0.5em}
-\linespread{1.15}
+\setlength{\parskip}{\SMParskip}
+\linespread{\SMLinespread}
 
 % The bullet is \SMBulletDot on all four levels (see below).
 \defbeamertemplate*{itemize~item}{SMDefault}{\SMBulletDot}

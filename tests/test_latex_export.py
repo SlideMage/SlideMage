@@ -88,6 +88,7 @@ def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
     assert {"SlideMage_template_uni-graz.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
             "SlideMage_measure.lua", "SlideMage_setup.tex", "beamerthemeSlideMage.sty", "SlideMage.bib",
+            "SlideMage_layout_fira.tex",
             "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf", "snippets/zz2-1.tex", ".latexmkrc"} <= names
     assert not any(n.startswith(("decks/", "latex/")) for n in names)
     # the deck never names the theme: only SlideMage_setup.tex does, and that is where the export finds it
@@ -95,6 +96,41 @@ def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     setup = (Path(__file__).resolve().parents[1] / "latex" / "SlideMage_setup.tex").read_text(encoding="utf-8")
     assert "usetheme" not in deck_text and "\\usetheme{SlideMage}" in setup
     assert not any("gotham" in n.lower() for n in names)
+
+
+def test_setups_default_profile_is_the_one_the_export_assumes():
+    latex = Path(__file__).resolve().parents[1] / "latex"
+    setup = (latex / "SlideMage_setup.tex").read_text(encoding="utf-8")
+    assert "\\providecommand{\\SMLayoutProfile}{%s}" % latex_export.DEFAULT_PROFILE in setup
+    assert (latex / f"{latex_export.PROFILE_PREFIX}{latex_export.DEFAULT_PROFILE}.tex").is_file()
+
+
+def own_profile_project(project, profile_line, template="mine"):
+    """The project gets a template that names a layout profile (one in its root, unless the name is a ghost) and a deck."""
+    root = project.root
+    (root / f"SlideMage_template_{template}.tex").write_text(
+        profile_line + "\n\\input{SlideMage_setup}\n\\input{SlideMage_base}\n", encoding="utf-8")
+    (root / "SlideMage_layout_mine.tex").write_text("\\newcommand{\\SMFontAscender}{0.9}\n", encoding="utf-8")
+    (root / "decks" / "own.tex").write_text(
+        HEAD.format(template=template, calls="\\slide{zz1-EN-One}"), encoding="utf-8")
+    return ProjectContext.at(root)
+
+
+def test_the_profile_a_template_names_comes_along_instead_of_the_default(project):
+    project = own_profile_project(project, "\\newcommand{\\SMLayoutProfile}{mine}")
+    result = export(project, "own")
+    assert "SlideMage_layout_mine.tex" in result.files and "SlideMage_layout_fira.tex" not in result.files
+    assert result.missing == []
+
+
+def test_a_template_without_a_profile_line_gets_the_default_profile(project):
+    assert "SlideMage_layout_fira.tex" in set(export(project, "plain").files)
+
+
+def test_a_profile_the_template_names_but_nobody_has_is_reported(project):
+    project = own_profile_project(project, "\\def\\SMLayoutProfile{ghost}")
+    result = export(project, "own")
+    assert "SlideMage_layout_ghost.tex" in result.missing and "SlideMage_layout_fira.tex" not in result.files
 
 
 def test_a_file_shown_as_code_is_copied_but_not_read_for_references(project):
