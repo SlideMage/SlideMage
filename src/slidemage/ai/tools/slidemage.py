@@ -465,24 +465,24 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
 
 @tool("create_slide",
       "Draft the complete LaTeX frame body yourself, then create, insert, mark Not reviewed, render and "
-      "show it in one call. deck must name the open deck. Invalid bodies write nothing; a compile "
-      "failure keeps the slide for one edit. Use add_slide for skeletons or translations in place.",
+      "show it in one call. deck defaults to the open deck; if given, it must name it. Invalid bodies write "
+      "nothing; a compile failure keeps the slide for one edit. Use add_slide for skeletons or translations in place.",
       {"title": {"type": "string", "description": "Slide title (plain text)."},
        "slug": {"type": "string", "description": "Hyphenated letters and digits, e.g. Capital-Budgeting."},
        "body": {"type": "string", "description": "Complete LaTeX frame, without a document wrapper or managed header."},
-       "deck": {"type": "string", "description": "Required open deck name or project/absolute deck path."},
+       "deck": {"type": "string", "description": "Default: the open deck; if given, must name it."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default edited language."},
        "after": {"type": "string", "description": "Slide id; default end of deck, or directly after the source for a translation."},
        "translation_of": {"type": "string", "description": "Source slide id; preserve its protected body regions."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
-      ("title", "slug", "body", "deck"))
+      ("title", "slug", "body"))
 def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     ctx.check_scope()
     deck = open_deck(ctx)
 
     def check_deck() -> None:
-        wanted = args["deck"].strip()
-        matches = wanted in (deck.name, deck.path.name) or (
+        wanted = args["deck"].strip() if "deck" in args else ""
+        matches = "deck" not in args or wanted in (deck.name, deck.path.name) or (
             bool(wanted) and project_path(ctx.root, wanted) == deck.path.resolve())
         if not matches or not ctx.workspace.is_open_deck(deck.path):
             raise ToolError(f"Requested deck '{wanted}' is not the open deck {deck.name}; no slide created.")

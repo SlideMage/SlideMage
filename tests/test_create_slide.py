@@ -45,7 +45,7 @@ def env(root, monkeypatch):
 
 
 def create(env, **args):
-    return env.box.execute(call("create_slide", **(dict(title="Draft", slug="Draft", body=BODY, deck="test") | args)))
+    return env.box.execute(call("create_slide", **(dict(title="Draft", slug="Draft", body=BODY) | args)))
 
 
 def new_slides(env):
@@ -77,6 +77,28 @@ def test_one_call_creates_inserts_marks_renders_and_shows(env, deck, after):
     applied = [event for event in env.events if isinstance(event, EditApplied)]
     assert len(applied) == 2
     assert applied[-1].after == path.read_text() and not applied[-1].undoable
+
+
+def test_omitted_deck_creates_in_the_open_deck(env):
+    result = create(env)
+    assert not result.is_error, result.text
+    path, = new_slides(env)
+    assert path.name.removesuffix("-current.tex") in env.deck.path.read_text()
+
+
+def test_omitted_deck_requires_an_open_deck(env):
+    env.workspace._context = replace(env.workspace.context(), deck=None)
+    result = create(env)
+    assert result.is_error and "No deck is open. Decks: test" in result.text
+    assert not new_slides(env) and not env.workspace.changed
+
+
+def test_omitted_deck_is_rechecked_after_confirmation(env):
+    env.box.ctx.mode = EDIT_ASK
+    env.workspace.before_confirm = lambda: setattr(env.workspace, "_context", replace(env.workspace.context(), deck=None))
+    result = create(env)
+    assert result.is_error and "not the open deck" in result.text
+    assert not new_slides(env) and not env.workspace.changed
 
 
 def test_the_new_slide_is_rendered_with_the_header_that_names_its_deck(env):
