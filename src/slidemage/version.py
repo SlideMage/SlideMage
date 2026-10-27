@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .processes import command_output
 
-VERSION_NUMBER = "v8.64.4"
+VERSION_NUMBER = "v8.65.0"
 
 # Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
 # skipping the introduction.

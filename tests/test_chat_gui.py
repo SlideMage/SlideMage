@@ -296,6 +296,7 @@ def test_a_closed_file_is_edited_on_disk_and_undone_there(env):
     other = env.root / "slides" / "abd-EN-Second-current.tex"      # not the slide shown: no buffer
     assert env.window.centre.source.file_for(other) is None
     env.chat._set_mode(EDIT_AUTO)
+    env.chat.scope.set_current("deck")       # another slide: in the scope Slide the edit is refused
     script(env, reply("", call("edit_file", **{**EDIT, "path": "slides/abd-EN-Second-current.tex"})), reply("Changed."))
     ask(env)
     card = widgets(env, DiffCard)[0]
