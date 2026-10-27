@@ -44,7 +44,7 @@ AUDITED_FRAMEWORK = {
     # the profile (the theme test checks the last two); the base kept the frame footer and its deck-version text.
     "SlideMage_setup.tex": "76955c528e60ae3340e100d8de22054685b14208ccd5eadde8459f1a703965b1",
     "SlideMage_layout_fira.tex": "9dfb1c25fc51c229bd15273918793eb86ff117ca1fa114006528d12a0101759c",
-    "SlideMage_base.tex": "50d1e051143e2c71e2951a6eaf58fb413f168cfb2366543e264e5c386884511a",
+    "SlideMage_base.tex": "2d64c473a931135aeba8ad0d72b73de5188092bd31b09ff63b336b339e95fd4b",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "ab17f8162f196bc3234493ef63bc1c3c19774f126a5aba368740f28448ceeb68",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",

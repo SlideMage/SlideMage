@@ -6,12 +6,12 @@ Checks, per page (all coordinates in PDF units, the same "pt" every measurement
 in the slide comments and the preamble uses -- 41.58 Top Margin etc.):
 
   top     first body content (text, image or drawing) starts on the Top Margin line
-          (41.58, the top of a plain first line's line box); only on frames with the
+          (41.58 in the SlideMage template, the top of a plain first line's line box); only on frames with the
           ordinary title bar
   coltop  every column starts there too: a text line with nothing above it in its own
           horizontal range sits on the Top Margin (text beside a taller figure in
           vertically centred minipages fails this)
-  left    no body content left of the Left Margin (12.55, the title text's left edge)
+  left    no body content left of the Left Margin (12.55 in the SlideMage template: the title text's left edge)
   right   no body content right of the Right Margin (the logo's right edge), except
           things deliberately flush with the page edge (side images, strips)
   bottom  body content stays clear of the footnote/source lines and the footer box, and
@@ -27,8 +27,9 @@ between title bar and footer -- with a comment line in its own slide file:
 
 (several checks comma-separated, or "all"). Exempted findings are counted, not listed.
 
-The margins are the framework's (SlideMage_base.tex), the same in
-every template. Exemptions are read from the slide files of the project the PDF
+The Top and Left Margin are the deck's own: SlideMage_base.tex writes them into the PDF
+(info keys SMTopMargin, SMLeftMargin, since v9.5.0); an older PDF is checked against
+the SlideMage template's 41.58 and 12.55. Exemptions are read from the slide files of the project the PDF
 belongs to: --project, else the folder with slide_ids.csv above the PDF, else
 $SLIDEMAGE_PROJECT.
 
@@ -49,8 +50,9 @@ import fitz
 CHECKS = ("top", "coltop", "left", "right", "bottom", "bleed", "jitter")
 
 TOP_MARGIN = 41.58       # top of a plain first body line's line box (\SMTopMargin in SlideMage_setup.tex, 41.58bp)
-LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding plus the strut
-# Both are the SlideMage template's values; the PDF's own margins replace them in a later step of the framework redesign.
+LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding
+# Both are only the fallback for a PDF from before SlideMage v9.5.0: since then the base writes the deck's own
+# margins into the PDF's info dictionary (SMTopMargin, SMLeftMargin, in bp), which pdf_margins() reads.
 FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it
 FOOTER_GAP = 1.0         # minimum clearance above footnotes / footer box
 FOOTER_TEXT_MIN_SIZE = 3.6  # footer text is 3.99 pt and up; footnote/source lines 3.19 pt
@@ -119,11 +121,27 @@ def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float) -> floa
     return width - 9.6
 
 
+def pdf_margins(doc: fitz.Document) -> tuple[float, float]:
+    """The deck's Top and Left Margin from its PDF's info dictionary (keys SMTopMargin and SMLeftMargin,
+    written by SlideMage_base.tex), each falling back to the constant when the PDF lacks it."""
+    def read(key: str, default: float) -> float:
+        try:
+            kind, ref = doc.xref_get_key(-1, "Info")
+            if kind != "xref":
+                return default
+            kind, value = doc.xref_get_key(int(ref.split()[0]), key)
+            return float(value) if kind in ("string", "real", "int") else default
+        except (ValueError, RuntimeError):
+            return default
+    return read("SMTopMargin", TOP_MARGIN), read("SMLeftMargin", LEFT_MARGIN)
+
+
 class Page:
     """The measurable pieces of one page: frame chrome and body content."""
 
-    def __init__(self, page: fitz.Page):
+    def __init__(self, page: fitz.Page, top_margin: float = TOP_MARGIN, left_margin: float = LEFT_MARGIN):
         self.page = page
+        self.top_margin, self.left_margin = top_margin, left_margin
         self.w, self.h = page.rect.width, page.rect.height
         text = page.get_text()
         m = ID_RE.search(text)
@@ -243,9 +261,9 @@ class Page:
         if not cands:
             return []
         y, kind, label = min(cands)
-        if abs(y - TOP_MARGIN) > tol:
-            return [f"first content at {y:.2f} ({'+' if y > TOP_MARGIN else ''}{y - TOP_MARGIN:.2f} "
-                    f"vs. Top Margin {TOP_MARGIN}): {kind} {label[:40]!r}"]
+        if abs(y - self.top_margin) > tol:
+            return [f"first content at {y:.2f} ({'+' if y > self.top_margin else ''}{y - self.top_margin:.2f} "
+                    f"vs. Top Margin {self.top_margin:.2f}): {kind} {label[:40]!r}"]
         return []
 
     def check_coltop(self, tol, group=None):
@@ -273,7 +291,7 @@ class Page:
         out = []
         for r, lab in sorted(texts, key=lambda t: t[0].y0):
             b, _, raw, _ = base_of[id(r)]
-            if r.y0 <= TOP_MARGIN + max(tol, 3.0) or raw <= TOP_MARGIN + max(tol, 3.0):
+            if r.y0 <= self.top_margin + max(tol, 3.0) or raw <= self.top_margin + max(tol, 3.0):
                 continue      # on the margin (raw: tall maths -- brackets, fractions -- reaching it)
             if r.y0 <= first + 0.5:
                 continue      # the first content of the slide: that is `top`'s finding
@@ -287,18 +305,18 @@ class Page:
             if any(q.contains(centre) for q in graphics):
                 continue
             above = [q for k, q, _ in page.items
-                     if q is not r and q.y0 < r.y0 - 0.5 and q.y1 > TOP_MARGIN - 5
+                     if q is not r and q.y0 < r.y0 - 0.5 and q.y1 > self.top_margin - 5
                      and min(q.x1, r.x1) - max(q.x0, r.x0) > 1]
             if not above:
-                out.append(f"column starts at {r.y0:.2f} (+{r.y0 - TOP_MARGIN:.2f} vs. Top Margin "
-                           f"{TOP_MARGIN}) with nothing above it: {lab[:40]!r}")
+                out.append(f"column starts at {r.y0:.2f} (+{r.y0 - self.top_margin:.2f} vs. Top Margin "
+                           f"{self.top_margin:.2f}) with nothing above it: {lab[:40]!r}")
         return out[:2]
 
     def check_left(self, tol):
         out = []
         for k, r, lab in self.items:
-            if r.x0 < LEFT_MARGIN - tol and r.x0 > 0.5:
-                out.append(f"{k} starts at x={r.x0:.2f} (Left Margin {LEFT_MARGIN}): {lab[:40]!r}")
+            if r.x0 < self.left_margin - tol and r.x0 > 0.5:
+                out.append(f"{k} starts at x={r.x0:.2f} (Left Margin {self.left_margin:.2f}): {lab[:40]!r}")
         return out[:3]
 
     def check_right(self, tol):
@@ -400,7 +418,8 @@ def main(argv=None) -> int:
     for path in args.pdf:
         doc = fitz.open(path)
         project = find_project(Path(path), args.project)
-        pages = [Page(p) for p in doc]
+        top_margin, left_margin = pdf_margins(doc)
+        pages = [Page(p, top_margin, left_margin) for p in doc]
         # consecutive pages of one slide = its overlay steps
         group_of: dict[int, list[Page]] = {}
         start = 0

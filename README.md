@@ -3066,7 +3066,12 @@ else the folder with `slide_ids.csv` above the PDF, else
 `$SLIDEMAGE_PROJECT`). Exit code 1 if anything is reported. The Right Margin
 is the logo's visible right edge, measured on the rendered page (since
 v5.15.1); in every template it coincides with the framework's own Right Margin,
-`\SMFrametitleRightPadding` from the page edge.
+`\SMFrametitleRightPadding` from the page edge. The Top and Left Margin are the
+deck's own (since v9.5.0): `SlideMage_base.tex` writes them into the PDF's info
+dictionary as `SMTopMargin` (`\SMTopMargin`) and `SMLeftMargin`
+(`\SMFrametitleLeftPadding`, the title text's left edge), in PDF units, so a
+template that changes them is checked against its own values. A PDF from before
+v9.5.0 is checked against the SlideMage template's 41.58 and 12.55.
 
 ## Slide previews
 

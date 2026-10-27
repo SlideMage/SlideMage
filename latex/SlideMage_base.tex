@@ -265,6 +265,16 @@
 % and spacing): needs to go after the template as well.
 \SMApplyLayoutHooks
 
+% The effective margins, for tools/check_layout.py (SlideMage v9.5.0): custom keys of the PDF's
+% info dictionary, in bp (PDF units, what the tool measures in). SMTopMargin is the Top Margin
+% (\SMTopMargin), SMLeftMargin the frame title text's left edge (\SMFrametitleLeftPadding). A template
+% has set its hooks by now; a slide cannot change them.
+\ExplSyntaxOn
+\edef\SMPDFInfoTopMargin{\dim_to_decimal_in_bp:n{\SMTopMargin}}
+\edef\SMPDFInfoLeftMargin{\dim_to_decimal_in_bp:n{\SMFrametitleLeftPadding}}
+\ExplSyntaxOff
+\hypersetup{pdfinfo={SMTopMargin={\SMPDFInfoTopMargin}, SMLeftMargin={\SMPDFInfoLeftMargin}}}
+
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
 \@ifundefinedcolor{SMCardBackgroundColor}{\colorlet{SMCardBackgroundColor}{white}}{}
