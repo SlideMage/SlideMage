@@ -2775,3 +2775,8 @@ NEW: The Local | Cloud switch moved into the AI assistant, and a finished backgr
 - When all previews are rendered, a green "All previews are up to date." appears next to the progress dial.
 - Changing the Claude Code model in AI setup while Claude Code is running asks whether to switch the running session now, keeping the conversation and anything you had typed but not sent (press Up), or start a new conversation.
 - The SlideMage manual (F1) is up to date.
+
+v8.61.1 (2026-10-27, pre-publication clean-up: the wizard sprite sheet was a 2.4 MB PNG, most of the weight of the shipped assets): The AI-edit animation's sprite sheet (assets/wizard-poses.png, used by wizard_portal.WizardPortal) is now assets/wizard-poses.webp, a lossy WebP at quality 90 with the same 1536x1024 size and alpha channel: 403 KB instead of 2.4 MB, and no visible difference on the workspace's background (mean colour error under 3 of 255). A lossless PNG could not get below 1.8 MB because the sprites are painted, not flat colour, and a 256-colour PNG showed dithering noise in the beards. Qt loads it through the qwebp image-format plugin, which PySide6 ships and the PyInstaller build already collects (it is in the installed build's PySide6/plugins/imageformats). The SlideMage manual needs no change, nothing the user sees is different.
+
+NEW: The AI-edit wizard animation's image is much smaller (2.4 MB to 0.4 MB), so SlideMage's download is smaller.
+- No visible change; the wizard looks the same.
