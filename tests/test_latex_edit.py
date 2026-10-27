@@ -136,7 +136,7 @@ def test_enter_after_begin_opens_the_matching_end_with_the_cursor_inside():
 
 
 def test_enter_after_begin_adds_no_end_when_every_begin_has_one_already():
-    # Enter at the end of a \begin line whose \end is already there put a second \end under it (v8.65.0).
+    # Enter at the end of a \begin line whose \end is already there put a second \end under it (v8.66.0).
     line = "\\begin{sectionframe}{Preregistration}"
     text = f"\\setSlideVersion{{1-0-0}}\n{line}\n\\end{{sectionframe}}\n"
     assert le.smart_return(line, True, text) == le.Edit("\n\t", 2)

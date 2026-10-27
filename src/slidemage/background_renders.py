@@ -667,7 +667,7 @@ class BackgroundRenderer:
         # Each slide counts once per plan. Counted twice were a slide the plan found right apart from its page number,
         # when that was refreshed (582 -> 598 left, v8.52.4), and a slide a job found current: a batch the plan still
         # held when the same batch, on its way already, had finished; a batch stopped part-way and run again; a reveal
-        # render of a current slide. A view then showed more renders than it has (268 / 252, v8.65.0).
+        # render of a current slide. A view then showed more renders than it has (268 / 252, v8.66.0).
         with self._working_lock:
             if unit.label in self._counted:
                 return

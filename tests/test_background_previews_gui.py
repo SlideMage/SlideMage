@@ -177,7 +177,7 @@ def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
 
 
 def test_the_chip_opens_the_status_window_which_pauses_renders_now_and_leaves_decks_out(window, monkeypatch):
-    # The chip had a menu of its own that said less than the window; both open the window now (v8.65.0).
+    # The chip had a menu of its own that said less than the window; both open the window now (v8.66.0).
     controller = window.background
     name = window.state.deck.name
     # The renderer's planning thread replaces its progress at any time; this one stays for the test.

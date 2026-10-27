@@ -32,11 +32,12 @@ from ... import (
 )
 from ...deck_editor import VIEWS
 from ...deck_scan import Deck
+from ...slide_protection import protected_problem, slide_kind
 from .. import guides
 from ..agent_types import EditApplied
 from .base import ToolContext, ToolError, tool
 from ...tex_source import blanked_verbatim, braced_argument
-from .edits import _not_frozen, protected_problem, propose, slide_kind, write_text
+from .edits import not_frozen, propose, write_text
 from .files import current_revision, current_text, project_path, relative
 
 LIST_LIMIT = 300
@@ -100,7 +101,7 @@ def _insertion_error(ctx: ToolContext, created: slide_add.CreatedSlide, deck: De
     anchor = f", after={after!r}" if after else ""
     return (f"Slide {created.id_slug} already exists at {relative(ctx.root, created.path)}, "
             f"but could not be inserted into {deck.name}: {exc}. "
-            f"Retry insertion only with add_slide(existing={created.id_slug!r}{anchor}) "
+            f"Retry insertion only with insert_slide(slide={created.id_slug!r}{anchor}) "
             f"once {deck.name} is ready and open; do not create another slide.")
 
 
@@ -180,11 +181,13 @@ def render_preview(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
     return preview_batch_output(ctx, slide_or_file(ctx, args.get("slide")), args.get("view"))
 
 
-def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, saved=False) -> tuple[str, list[bytes]]:
+def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, saved=False,
+                         language: str | None = None, show: bool = False) -> tuple[str, list[bytes]]:
     """One captured batch for chat and MCP; image numbers refer to returned image order."""
     context = ctx.workspace.context()
-    language = slide_language.own_language(path.name) if saved else context.language
-    language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
+    if language is None:
+        language = slide_language.own_language(path.name) if saved else context.language
+        language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
     context = replace(context, language=language,
                       deck=open_deck(ctx) if context.deck is not None else None)
     try:
@@ -193,6 +196,9 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
         raise ToolError(str(exc)) from None
     if saved and any(spec.target.is_frozen_alone for spec in requests):
         raise ToolError(f"{path.name} is a frozen version; only the current slide has a cached preview.")
+    if show and any(not spec.target.hidden for spec in requests):
+        # Preparation keeps the focused occurrence for the same bare id, otherwise the first occurrence.
+        ctx.workspace.show_slide(path)
     results = ctx.workspace.render_preview_batch(path, view, saved=saved, force=saved,
                                                  cancel=ctx.cancel, requests=requests)
     lines, images = [], []
@@ -235,28 +241,6 @@ def slide_target(project, deck: Deck | None, path: Path, view: str, language: st
                                             occurrence_key=occurrence_key)[0][1]
     except ValueError:
         return None
-
-
-def _render_preview(ctx: ToolContext, path: Path, *, language: str | None = None,
-                    show: bool = False) -> tuple[str, list[bytes]]:
-    context = ctx.workspace.context()
-    language = language or context.language
-    target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view, language,
-                          occurrence_key=context.occurrence_key)
-    if target is None:
-        raise ToolError(f"{path.name} is not a slide file, so there is nothing to preview.")
-    if target.hidden:
-        return f"{target.source_path.name} is hidden in {context.view}, {language}.", []
-    text, source = current_revision(ctx.workspace, target.source_path)
-    if show:
-        ctx.workspace.show_slide(path)
-    try:
-        png = ctx.workspace.render_preview(target, text, context.view, language,
-                                           ctx.cancel)
-    except RuntimeError as exc:
-        raise ToolError(f"The slide ({source}) did not compile:\n{str(exc)[-1500:]}") from None
-    timing.event(ctx.root, "render_done", file=path.name)
-    return f"{path.name} ({source}) as {context.view}, {language}:", [png]
 
 
 def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
@@ -311,18 +295,19 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
     status += "\nLint: " + (warnings or "no problems found.")
     try:
         language = slide_language.own_language(path.name)
-        rendered, images = _render_preview(ctx, path,
-                                          language=language if language in slide_language.TRANSLATION_LANGUAGES else None, show=True)
+        rendered, images = preview_batch_output(ctx, path, view=None,
+                                                language=language if language in slide_language.TRANSLATION_LANGUAGES else None,
+                                                show=True)
     except ToolError as exc:
-        raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\n{exc}") from None
+        raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\nThe slide did not compile:\n{exc}") from None
     return f"{status}\n{rendered}", images
 
 
 @tool("modify_slide",
-      "Change an existing slide in the edited language with ordered exact replacements or full text. "
+      "Change an existing slide with ordered exact replacements or full text. "
       "Checks, writes (open editor or file), marks Not reviewed, renders once and shows the preview. "
       "Frozen versions and protected changes are refused; a compile failure keeps the change.",
-      {"slide": {"type": "string", "description": "Slide id or project path; follows the EN/DE switch to its linked partner."},
+      {"slide": {"type": "string", "description": "A bare slide id follows the EN/DE switch to its linked partner; an explicit path is used as given."},
        "edits": {"type": "array", "minItems": 1, "description": "Ordered replacements; each old must match exactly once.",
                  "items": {"type": "object", "properties": {"old": {"type": "string", "minLength": 1},
                                                           "new": {"type": "string"}},
@@ -334,12 +319,18 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     if ("edits" in args) == ("body" in args):
         raise ToolError("Pass exactly one of edits or body.")
     path = project_path(ctx.root, str(slide_or_file(ctx, args["slide"])))
-    _not_frozen(ctx.project, path)
+    not_frozen(ctx.project, path)
     if slide_kind(ctx.project, path) != "current" or not path.is_file():
         raise ToolError("modify_slide needs an existing live slide id or slides/*-current.tex path.")
-    links = slide_language.TranslationLinks(ctx.project.slides_dir)
-    if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), ctx.workspace.context().language):
-        path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+    note = ""
+    slide = args["slide"].strip()
+    if _BARE_ID.match(slide):
+        language = ctx.workspace.context().language
+        links = slide_language.TranslationLinks(ctx.project.slides_dir)
+        if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), language):
+            path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
+            note = f"{slide} in {language} is its partner {partner}"
+    ctx.check_scope(path)
     before, revision = current_revision(ctx.workspace, path)
     if "expected" in args and (slide_versioning.without_plus(args["expected"])
                                != slide_versioning.without_plus(before)):      # the "+" is no change
@@ -347,32 +338,26 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
                         f"Read it again and retry. Current text ({revision}, first 1500 characters):\n{before[:1500]}")
     after = args.get("body", before)
     if "edits" in args:
-        if not args["edits"]:
-            raise ToolError("edits must contain at least one replacement.")
-        for index, edit in enumerate(args["edits"], 1):
-            if (not isinstance(edit, dict) or set(edit) != {"old", "new"}
-                    or not all(isinstance(edit[key], str) for key in ("old", "new")) or not edit["old"]):
-                raise ToolError(f"Edit {index} needs a nonempty old string and a new string.")
+        for index, edit in enumerate(args["edits"], 1):      # their shape is the schema's (check_arguments)
             count = after.count(edit["old"])
             if count != 1:
                 raise ToolError(f"Edit {index}: old occurs {count} times in {relative(ctx.root, path)}; "
                                 "nothing written. Copy enough current text to match exactly once.")
             after = after.replace(edit["old"], edit["new"], 1)
     if after == before:
-        return f"{relative(ctx.root, path)} ({revision}): nothing to change."
+        return f"{note + '. ' if note else ''}{relative(ctx.root, path)} ({revision}): nothing to change."
     kind = "translation" if slide_language.TRANSLATION_OF_RE.search(before) else "edit"
-    return apply_slide(ctx, path, before, after, kind=kind, note=f"base: {revision}")
+    return apply_slide(ctx, path, before, after, kind=kind, note=f"{note + '; ' if note else ''}base: {revision}")
 
 
 @tool("add_slide",
       "Create a new slide (fresh id, header, the frame's skeleton) and put its \\slide call into the deck. "
-      "Fill in its body afterwards. Pass existing (id or path) to insert a created slide without minting "
-      "another; if already in the deck this is a no-op. Frame types: see read_guide('frames'). To TRANSLATE a slide, "
+      "Fill in its body afterwards. Use insert_slide for an existing slide. "
+      "Frame types: see read_guide('frames'). To TRANSLATE a slide, "
       "always pass translation_of (the source slide id) and language: the new slide starts as a copy of the "
       "source, is linked to it both ways, and is then translated in place. Never translate by "
       "creating an unlinked slide.",
-      {"existing": {"type": "string", "description": "Existing live slide id or path; insertion only, ignores creation options."},
-       "slug": {"type": "string", "description": "Required for creation: hyphenated letters and digits, e.g. 'Capital-Budgeting'."},
+      {"slug": {"type": "string", "description": "Required for creation: hyphenated letters and digits, e.g. 'Capital-Budgeting'."},
        "title": {"type": "string", "description": "Required for creation: the frame title (plain text)."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Default standardframe."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default: the edited language."},
@@ -382,29 +367,17 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
                           "needs a different language. The body is copied from it; translate it in place."},
        "add_to_deck": {"type": "boolean", "description": "Default true; false creates the file only."}})
 def add_slide(ctx: ToolContext, args: dict) -> str:
-    existing = (args.get("existing") or "").strip()
-    created = None
-    if existing:
-        path = (slide_or_file(ctx, existing) if _BARE_ID.match(existing) or existing.endswith(".tex")
-                else project_path(ctx.root, str(slide_add.slide_path(ctx.project, existing))))
-        if path.parent != ctx.project.slides_dir.resolve() or not path.name.endswith(slide_language.CURRENT_SUFFIX) or not path.is_file():
-            raise ToolError(f"'{existing}' is not an existing live slide; pass its id or slides/*-current.tex path.")
-        created = slide_add.CreatedSlide(path.name.removesuffix(slide_language.CURRENT_SUFFIX), path)
-        if not args.get("add_to_deck", True):
-            raise ToolError("existing needs add_to_deck=true to insert the slide.")
-    else:
-        for name in ("slug", "title"):
-            if name not in args:
-                raise ToolError(f"Missing required argument '{name}' for creation; use existing to insert a slide.")
+    ctx.check_scope()
+    for name in ("slug", "title"):
+        if name not in args:
+            raise ToolError(f"Missing required argument '{name}' for creation; use insert_slide to insert a slide.")
     slug, title = args.get("slug", "").strip(), args.get("title", "").strip()
     frame = args.get("frame", slide_add.STANDARD_FRAME)
     language = args.get("language") or ctx.workspace.context().language
-    if not existing and not slide_add.SLUG_RE.match(slug):
+    if not slide_add.SLUG_RE.match(slug):
         raise ToolError("The slug may contain only letters, digits and single hyphens, e.g. 'Capital-Budgeting'.")
     source_id_slug = ""
-    if existing:
-        body = ""
-    elif (args.get("translation_of") or "").strip():
+    if (args.get("translation_of") or "").strip():
         source = slide_or_file(ctx, args["translation_of"])
         source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
         if not slide_add.slide_path(ctx.project, source_id_slug).exists():
@@ -417,26 +390,20 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
     deck, insert_at, indent, where, spec, after = None, 0, "", "not added to a deck", slide_add.CallSpec("slide"), ""
     if args.get("add_to_deck", True):
         deck = open_deck(ctx)
-        calls = deck_editor.parse_slide_calls(deck)
-        if created and any(c.source_filename == created.path.name for c in calls):
-            return f"Slide {created.id_slug} ({relative(ctx.root, created.path)}) is already in {deck.name}; no change."
         after, spec = _translation_placement(deck, source_id_slug, (args.get("after") or "").strip())
         insert_at, indent, where = _insertion(ctx, deck, after)
-    planned = deck.path if existing else slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
-    proposal = deck_editor.format_call("slide", created.id_slug) if existing else body
-    if not propose(ctx, planned, "", proposal, f"{'Insert slide' if existing else 'New slide'} {where}"):
+    planned = slide_add.slide_path(ctx.project, f"(new id)-{language}-{slug}")
+    if not propose(ctx, planned, "", body, f"New slide {where}"):
         raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
-    if not existing:
-        try:
-            created = (slide_add.create_copy(ctx.project, source_id_slug, slug, language) if source_id_slug
-                       else slide_add.create_new(ctx.project, slug, language, frame, title))
-        except (OSError, ValueError) as exc:
-            raise ToolError(f"The slide was not created: {exc}") from None
-    if not existing:
-        ai_review.mark(ctx.project, created.path, "translation" if source_id_slug else "draft", "add_slide")
-        if source_id_slug:
-            ai_review.mark(ctx.project, source, "translation", "add_slide: translation partner")
-        ctx.workspace.review_changed()
+    try:
+        created = (slide_add.create_copy(ctx.project, source_id_slug, slug, language) if source_id_slug
+                   else slide_add.create_new(ctx.project, slug, language, frame, title))
+    except (OSError, ValueError) as exc:
+        raise ToolError(f"The slide was not created: {exc}") from None
+    ai_review.mark(ctx.project, created.path, "translation" if source_id_slug else "draft", "add_slide")
+    if source_id_slug:
+        ai_review.mark(ctx.project, source, "translation", "add_slide: translation partner")
+    ctx.workspace.review_changed()
     failure = ""
     if deck is not None:
         try:
@@ -446,40 +413,72 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
             ai_review.inserted_slides(ctx.project, deck.path, deck.text, updated, "add_slide")
             ctx.workspace.review_changed()
             ctx.workspace.file_changed(deck.path, deck.text)
-            if existing:
-                ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
         except (deck_editor.StaleFileError, ValueError, OSError, ToolError) as exc:
             failure = _insertion_error(ctx, created, deck, after, exc)
             where = "not added to a deck"
-    if not existing:
-        ctx.workspace.file_changed(created.path, None)
-        ctx.emit(EditApplied(ctx.call_id, created.path, "", body, False, undoable=False, note=where))
+    ctx.workspace.file_changed(created.path, None)
+    ctx.emit(EditApplied(ctx.call_id, created.path, "", body, False, undoable=False, note=where))
     if failure:
         raise ToolError(failure)
     detail = ("It is a copy of the source, linked to it: translate its text in place." if source_id_slug
-              else "It holds the frame skeleton: fill in its body.") if not existing else ""
-    return f"{'Inserted' if existing else 'Created'} slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}. {detail}".strip()
+              else "It holds the frame skeleton: fill in its body.")
+    return f"Created slide {created.id_slug} ({relative(ctx.root, created.path)}), {where}. {detail}"
+
+
+@tool("insert_slide",
+      "Insert an existing live slide into the open deck; if it is already present, do nothing.",
+      {"slide": {"type": "string", "description": "Existing live slide id or slides/*-current.tex path."},
+       "after": {"type": "string", "description": "Slide id to insert after; default the end of the deck, "
+                 "or directly after the translation source."}}, required=("slide",))
+def insert_slide(ctx: ToolContext, args: dict) -> str:
+    ctx.check_scope()
+    slide = args["slide"].strip()
+    path = (slide_or_file(ctx, slide) if _BARE_ID.match(slide) or slide.endswith(".tex")
+            else project_path(ctx.root, str(slide_add.slide_path(ctx.project, slide))))
+    if path.parent != ctx.project.slides_dir.resolve() or not path.name.endswith(slide_language.CURRENT_SUFFIX) or not path.is_file():
+        raise ToolError(f"'{slide}' is not an existing live slide; pass its id or slides/*-current.tex path.")
+    created = slide_add.CreatedSlide(path.name.removesuffix(slide_language.CURRENT_SUFFIX), path)
+    deck = open_deck(ctx)
+    if any(c.source_filename == path.name for c in deck_editor.parse_slide_calls(deck)):
+        return f"Slide {created.id_slug} ({relative(ctx.root, path)}) is already in {deck.name}; no change."
+    source = slide_language.TRANSLATION_OF_RE.search(current_text(ctx.workspace, path))
+    after, spec = _translation_placement(deck, source.group(1) if source else "", (args.get("after") or "").strip())
+    insert_at, indent, where = _insertion(ctx, deck, after)
+    if not propose(ctx, deck.path, "", deck_editor.format_call(spec.macro, created.id_slug, spec.version, spec.conditions, spec.steps), f"Insert slide {where}"):
+        raise ToolError("The user rejected this slide. Do not repeat it; ask what they would prefer.")
+    try:
+        if ctx.workspace.is_dirty(deck.path):
+            raise ToolError("the deck has unsaved edits in the editor; ask the user to save it first")
+        updated = _insert_call(deck, insert_at, indent, created.id_slug, spec)
+        ai_review.inserted_slides(ctx.project, deck.path, deck.text, updated, "insert_slide")
+        ctx.workspace.review_changed()
+        ctx.workspace.file_changed(deck.path, deck.text)
+        ctx.emit(EditApplied(ctx.call_id, deck.path, deck.text, updated, False, undoable=False, note=where))
+    except (deck_editor.StaleFileError, ValueError, OSError, ToolError) as exc:
+        raise ToolError(_insertion_error(ctx, created, deck, after, exc)) from None
+    return f"Inserted slide {created.id_slug} ({relative(ctx.root, path)}), {where}."
 
 
 @tool("create_slide",
       "Draft the complete LaTeX frame body yourself, then create, insert, mark Not reviewed, render and "
-      "show it in one call. deck must name the open deck. Invalid bodies write nothing; a compile "
-      "failure keeps the slide for one edit. Use add_slide for skeletons or translations in place.",
+      "show it in one call. deck defaults to the open deck; if given, it must name it. Invalid bodies write "
+      "nothing; a compile failure keeps the slide for one edit. Use add_slide for skeletons or translations in place.",
       {"title": {"type": "string", "description": "Slide title (plain text)."},
        "slug": {"type": "string", "description": "Hyphenated letters and digits, e.g. Capital-Budgeting."},
        "body": {"type": "string", "description": "Complete LaTeX frame, without a document wrapper or managed header."},
-       "deck": {"type": "string", "description": "Required open deck name or project/absolute deck path."},
+       "deck": {"type": "string", "description": "Default: the open deck; if given, must name it."},
        "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default edited language."},
        "after": {"type": "string", "description": "Slide id; default end of deck, or directly after the source for a translation."},
        "translation_of": {"type": "string", "description": "Source slide id; preserve its protected body regions."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
-      ("title", "slug", "body", "deck"))
+      ("title", "slug", "body"))
 def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
+    ctx.check_scope()
     deck = open_deck(ctx)
 
     def check_deck() -> None:
-        wanted = args["deck"].strip()
-        matches = wanted in (deck.name, deck.path.name) or (
+        wanted = args["deck"].strip() if "deck" in args else ""
+        matches = "deck" not in args or wanted in (deck.name, deck.path.name) or (
             bool(wanted) and project_path(ctx.root, wanted) == deck.path.resolve())
         if not matches or not ctx.workspace.is_open_deck(deck.path):
             raise ToolError(f"Requested deck '{wanted}' is not the open deck {deck.name}; no slide created.")
@@ -598,7 +597,8 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
       "description, url; location: place (address, 'lat, lng' or a map link), label, map_link (google, geo, osm). "
       "With several codes on one slide give each a caption such as 'QR 1' that the text refers to.",
       {"kind": {"type": "string", "enum": list(qr_code.KINDS)},
-       "fields": {"type": "object", "description": "Field name to text, as listed for the kind."},
+       "fields": {"type": "object", "additionalProperties": {"type": "string"},
+                  "description": "Field name to text, as listed for the kind."},
        "caption": {"type": "string", "description": "Text under the code; default none. 'auto' for the link, "
                                                     "address, name, event or place."},
        "height": {"type": "number", "description": "Share of \\textheight, default 0.6 (a lecture hall's back row); "
@@ -617,7 +617,7 @@ def make_qr_code(ctx: ToolContext, args: dict) -> str:
     caption = (args.get("caption") or "").strip()
     mode = qr_code.CAPTION_CONTENT if caption == "auto" else qr_code.CAPTION_CUSTOM if caption else qr_code.CAPTION_NONE
     height = args.get("height", qr_code.DEFAULT_HEIGHT)
-    if not isinstance(height, (int, float)) or isinstance(height, bool) or not 0 < height <= qr_code.MAX_HEIGHT:
+    if not 0 < height <= qr_code.MAX_HEIGHT:
         raise ToolError(f"The height is a share of \\textheight between 0 and {qr_code.MAX_HEIGHT}.")
     try:
         made = qr_code.create(ctx.project, spec, height=float(height), caption_mode=mode,
