@@ -645,6 +645,12 @@ mix it in.
    - the manual's slides 1ym (framework box: "the Gotham theme"), 1pf (one look, several institutions: a
      template is now colors, logo, fonts and layout) and 1gr (layout grid)
    - the quick-reference slides, and a new manual slide "Making a template" that points at the catalog
+   - a new manual slide "What a compile reads, in order" (user request, 2026-10-27), in the section
+     "Appendix: Reference", because it is technical. A diagram of the final load order: the deck, its template,
+     the setup layer with the catalog defaults, the theme, the layout profile, the base, the project macros and
+     the slides, plus the Lua files. Each file says in a few words what it owns (look, fonts and metrics, layout
+     rules, the template's own choices), and the slide shows where a template or a project's own file overrides
+     a default. Make it after steps 4-7, so it shows the order as it ends up; next to "Making a template".
    - German translations where they exist (hd5)
    - Regenerate the manual's screenshots or crops only if something visible changed.
 10. **No institution templates in the repository** (needed before the repository goes public).
