@@ -23,6 +23,7 @@ from slidemage.ai.agent_types import (
     EditRejected,
 )
 from slidemage.ai.tools import build_toolbox, focus, undo_edit
+from slidemage.ai.tools.base import ToolError, tool
 from slidemage.ai.tools import files as files_module
 from slidemage.ai.tools import previews as previews_tools
 from slidemage.ai.tools import slidemage as slidemage_tools
@@ -73,6 +74,39 @@ class Box:
 @pytest.fixture
 def box(root):
     return Box(root)
+
+
+def test_failed_calls_log_tool_end(box, monkeypatch):
+    events = []
+    monkeypatch.setattr("slidemage.timing.event", lambda root, name, **fields: events.append((name, fields)))
+
+    @tool("fail", "Fail", {})
+    def fail(ctx, args):
+        raise ToolError("failed")
+
+    box.box._tools["fail"] = fail
+    assert box.run("fail").is_error
+    assert events == [("tool_start", {"tool": "fail"}), ("tool_end", {"tool": "fail", "error": True})]
+    events.clear()
+    assert box.run("unknown").is_error
+    assert events == []
+
+
+def test_calls_get_separate_contexts_and_current_mode(box):
+    contexts = []
+
+    @tool("capture", "Capture context", {})
+    def capture(ctx, args):
+        contexts.append(ctx)
+        return "ok"
+
+    box.box._tools["capture"] = capture
+    first, second = call("capture"), call("capture")
+    box.box.execute(first)
+    box.box.ctx.mode = EDIT_AUTO
+    box.box.execute(second)
+    assert [(ctx.call_id, ctx.mode) for ctx in contexts] == [(first.id, EDIT_ASK), (second.id, EDIT_AUTO)]
+    assert contexts[0] is not contexts[1] and box.box.ctx.call_id == ""
 
 
 # -- confinement ------------------------------------------------------------------------------------

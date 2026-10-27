@@ -16,7 +16,7 @@ from mcp_client import Client
 from slidemage import compiler, deck_editor, preview_target, slide_add, slide_snapshot
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ai.mcp_server import PROTOCOL_VERSIONS, McpServer
-from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY, CLAUDE_CODE_TOOLS, build_toolbox
+from slidemage.ai.tools import CLAUDE_CODE_PRE_APPROVED, CLAUDE_CODE_TOOLS, build_toolbox
 from slidemage.ai.workspace import WorkspaceContext
 from slidemage.deck_scan import scan_decks
 
@@ -111,7 +111,7 @@ def test_tools_list_names_the_claude_code_tools_with_their_schemas(mcp_tools):
     tools = mcp_tools.rpc("tools/list")["result"]["tools"]
     names = [t["name"] for t in tools]
     assert names == ["get_focus", "show_slide", "read_buffer", "read_selection", "list_slides", "lint", "render_preview", "refresh_preview", "check_readability", "read_guide", "add_slide", "insert_slide", "create_slide", "modify_slide", "make_qr_code", "translate_slide", "switch_to_deck_mode", "refresh_deck_previews"]
-    assert [t.spec.name for t in CLAUDE_CODE_READ_ONLY] == names[:-8]
+    assert [t.spec.name for t in CLAUDE_CODE_PRE_APPROVED] == names[:-8]
     assert all(t["description"] and t["inputSchema"]["type"] == "object" for t in tools)
     # the chat's file tools are Claude Code's own, and the compile is not offered
     assert not {"read_file", "edit_file", "write_file", "compile_deck"} & set(names)
