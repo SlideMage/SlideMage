@@ -585,7 +585,8 @@ mix it in.
      - Base loads `iftex`, `fontspec`, `xcolor`, `etoolbox`, `tikz`; it uses neither `calc` syntax nor `xfp` (the theme does
        and keeps loading both).
      - The theme has no other load-time computation that reads a catalog name. `\SMFootlineHRightOffset` takes `\spaceskip`
-       (always 0pt) and is not a hook.4. **Layout profiles.**
+       (always 0pt) and is not a hook.
+4. **Layout profiles.**
    - Fonts move from the theme into `SlideMage_layout_fira.tex`.
    - `\SMLayoutProfile` takes effect.
    - The ascender and Top Margin go from TeX to Lua; the ascender is derived where luaotfload allows it.
