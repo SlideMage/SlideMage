@@ -589,7 +589,7 @@ mix it in.
        footline text, buttons, canvas, frame title text and blocks (block, alerted, example, reference, info; the
        theme's own native-block colours and `alertedBlock`/`example text` are gone); the text margins; `\SMBulletDot`
        as the `itemize item/subitem/subsubitem/subsubsubitem` template (no longer set at the start of every
-       `standardframe`; a bare `\begin{frame}` now gets SlideMage's bullet too); `\SMInstituteLogo`, `\SMInstituteLogoGraphic`,
+       `standardframe`; a bare `\begin{frame}` now gets SlideMage's bullet too, approved by the user on 2026-10-27 with before/after images); `\SMInstituteLogo`, `\SMInstituteLogoGraphic`,
        `\SMFrametitleHookCode`, `\chapterlogo` with `\SMChapterLogoPath`, `\SMFrametitleFullHeightYellow`,
        `\SMFrametitleLogoFixed`, `\SMFooterBoxColor`, the `SMNoInlineLogo` template and `\SMLogoWidth` (the length);
        `\SMFooterBoxHeight` and the footer box; the footnote template `SMFootnote`, the symbols, `\sidefootnotes` and the
