@@ -22,7 +22,7 @@ from ..cli import CLAUDE_HOOK_FLAG
 from ..processes import no_console_kwargs
 from .claude_scope import FOCUS_ENV
 from .image_instructions import IMAGE_DESCRIPTION_RULES
-from .tools import CLAUDE_CODE_READ_ONLY
+from .tools import CLAUDE_CODE_PRE_APPROVED
 
 SERVER_NAME = "slidemage"
 TOKEN_ENV = "SLIDEMAGE_MCP_TOKEN"
@@ -106,13 +106,13 @@ def mcp_config(url: str) -> dict:
 
 
 def settings(hook: str) -> dict:
-    """Extra settings for this session only: the protected-region hook, and the read-only tools allowed
+    """Extra settings for this session only: the protected-region hook, and the pre-approved tools allowed
     without asking (add_slide asks, like any tool that changes files)."""
     return {
         "hooks": {"PreToolUse": [{"matcher": HOOK_MATCHER, "hooks": [{"type": "command", "command": hook}]}],
                   "PostToolUse": [{"matcher": HOOK_MATCHER, "hooks": [{"type": "command", "command": hook}]}],
                   "UserPromptSubmit": [{"hooks": [{"type": "command", "command": hook}]}]},
-        "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]}}
+        "permissions": {"allow": [f"mcp__{SERVER_NAME}__{t.spec.name}" for t in CLAUDE_CODE_PRE_APPROVED]}}
 
 
 def build_command(claude: Path, url: str, hook: str | None = None, *,

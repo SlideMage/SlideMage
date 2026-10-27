@@ -16,7 +16,7 @@ import pytest
 
 from slidemage import cli
 from slidemage.ai import claude_launch, claude_scope
-from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY
+from slidemage.ai.tools import CLAUDE_CODE_PRE_APPROVED
 
 URL = "http://127.0.0.1:4711/mcp"
 
@@ -82,7 +82,7 @@ def test_the_command_line_carries_the_mcp_server_the_hook_and_the_orientation(tm
         "PostToolUse": [{"matcher": "Edit|Write|MultiEdit", "hooks": [
             {"type": "command", "command": "HOOK COMMAND"}]}],
         "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "HOOK COMMAND"}]}]}
-    assert settings["permissions"]["allow"] == [f"mcp__slidemage__{t.spec.name}" for t in CLAUDE_CODE_READ_ONLY]
+    assert settings["permissions"]["allow"] == [f"mcp__slidemage__{t.spec.name}" for t in CLAUDE_CODE_PRE_APPROVED]
     assert "add_slide" not in " ".join(settings["permissions"]["allow"])        # it changes files: Claude asks
     assert "create_slide" not in " ".join(settings["permissions"]["allow"])
     assert "modify_slide" not in " ".join(settings["permissions"]["allow"])

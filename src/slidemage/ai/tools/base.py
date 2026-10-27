@@ -5,7 +5,7 @@ the context every function gets (2026-10-10, UI redesign step 10a)."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ... import compiler, timing
@@ -128,14 +128,16 @@ class ToolBox:
         found = self._tools.get(call.name)
         if found is None:
             return ToolResult(call.id, f"There is no tool '{call.name}'. Tools: {', '.join(self._tools)}.", True)
-        self.ctx.call_id = call.id
+        ctx = replace(self.ctx, call_id=call.id)
         timing.event(self.ctx.root, "tool_start", tool=call.name)
         try:
             check_arguments(found.spec, call.input)
-            output = found.run(self.ctx, call.input)
+            output = found.run(ctx, call.input)
         except ToolError as exc:
+            timing.event(ctx.root, "tool_end", tool=call.name, error=True)
             return ToolResult(call.id, str(exc), True)
         except Exception as exc:  # noqa: BLE001 -- a bug in a tool must not end the chat
+            timing.event(ctx.root, "tool_end", tool=call.name, error=True)
             return ToolResult(call.id, f"{call.name} failed unexpectedly: {type(exc).__name__}: {exc}", True)
         text, images = (output, []) if isinstance(output, str) else output
         timing.event(self.ctx.root, "tool_end", tool=call.name)

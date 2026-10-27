@@ -32,11 +32,12 @@ from ... import (
 )
 from ...deck_editor import VIEWS
 from ...deck_scan import Deck
+from ...slide_protection import protected_problem, slide_kind
 from .. import guides
 from ..agent_types import EditApplied
 from .base import ToolContext, ToolError, tool
 from ...tex_source import blanked_verbatim, braced_argument
-from .edits import _not_frozen, protected_problem, propose, slide_kind, write_text
+from .edits import not_frozen, propose, write_text
 from .files import current_revision, current_text, project_path, relative
 
 LIST_LIMIT = 300
@@ -334,7 +335,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     if ("edits" in args) == ("body" in args):
         raise ToolError("Pass exactly one of edits or body.")
     path = project_path(ctx.root, str(slide_or_file(ctx, args["slide"])))
-    _not_frozen(ctx.project, path)
+    not_frozen(ctx.project, path)
     if slide_kind(ctx.project, path) != "current" or not path.is_file():
         raise ToolError("modify_slide needs an existing live slide id or slides/*-current.tex path.")
     note = ""
