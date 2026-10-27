@@ -1725,6 +1725,21 @@ pixel-identical; everything below is what new slides should use.
   heavy and wide next to the Fira Sans Light body text). `\SMCmd{slide}`
   prints `\slide`; the argument is typeset, so write `\_`, `\{`, `\}` as in
   any text. The transcript shows both as `code`.
+- **`\SMQRCode[height]{media/qr-x.pdf}{caption}`** (since v8.62.0) -- a QR
+  code with an optional caption centred under it (`{}` for none): the link,
+  or a text such as `QR 1` that the slide refers to. `[height]` defaults to
+  `0.6\textheight`; the caption's look is `\SMQRCodeCaptionStyle`
+  (`\scriptsize`). An inline box, so several codes go side by side, and
+  `\cornerfigure{\SMQRCode{...}{...}}` puts one in a corner. The Source
+  view's **QR** button, after Insert and Cite, makes the file: a link (default), an email, a contact
+  (vCard), a calendar event or a map location (an address, coordinates or a
+  pasted map link; a Google Maps link, a `geo:` URI or OpenStreetMap), with
+  a live preview, the recommended height for a seminar room and a lecture
+  hall (a phone reads a module from about 500 times its size away; the
+  farthest seat is about 4 or 8 screen heights away), PDF or PNG in
+  `media/`, and a copy as PDF, PNG, SVG or EPS anywhere else. The assistant
+  makes codes with its `make_qr_code` tool. What a code was made from is
+  kept in `media/qr-codes.json`, its alt text in `media/alt-text.json`.
 - **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
   overlay arrow can point at it (`(name.south)`, ...) and follows it when the
   layout moves; transcripts keep the word.

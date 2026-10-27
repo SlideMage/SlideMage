@@ -21,8 +21,9 @@ from . import compiler, slide_preview
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
 AUDITED_FRAMEWORK = {
-    # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
-    "Slidemaster_preamble_base.tex": "eea0fce61896f21fdb863b6e69bb1a69eb922fe9dacf0cacde662e4f47b0fc2b",
+    # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); v8.62.0: \SMQRCode, an
+    # image and a caption in a box. No view-dependent rule.
+    "Slidemaster_preamble_base.tex": "b05e6ccc1754953696c80a1f0a86440a0e9c5526c53d3b87dc78807823c58731",
     "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
@@ -70,7 +71,7 @@ _SOURCE_SAFE = {
     "hskip", "medskip", "smallskip", "bigskip", "newline", "linebreak",
     "SMChapterAgenda", "SMAgendaTitle", "SMLink", "sectionfigure",
     "titleframe", "chapterlogo", "SMFinalStateForStudents", "fullbleedframe",
-    "progressstrip", "SMBulletEllipsis", "SMCodeFont",
+    "progressstrip", "SMBulletEllipsis", "SMCodeFont", "SMQRCode",
     "deckonly", "deckuncover", "deckvisible", "conditionalpause", "deckreveal",
     "deckrevealfinal", "deckitem", "SMFullBleedLayers", "SMImage", "SMAltImage",
     "SMAltText", "SI", "frac", "sqrt", "left", "right", "times", "cdot",

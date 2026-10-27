@@ -12,6 +12,7 @@ itself: the caller starts its process with that size. Copy and paste go through 
 from __future__ import annotations
 
 import base64
+import json
 import os
 from pathlib import Path
 
@@ -180,6 +181,13 @@ class TerminalWidget(QWidget):
 
     def reset(self) -> None:
         self.bridge.reset_terminal.emit()
+
+    def read_screen(self, callback) -> None:
+        """`callback(lines)` with the screen's lines, each [shown, with its dim cells as spaces] (terminal.js's
+        screenLines; [] before the page has started)."""
+        # As JSON text: a nested array does not come through runJavaScript's conversion reliably.
+        self._page.runJavaScript("JSON.stringify(typeof screenLines === 'function' ? screenLines() : [])",
+                                 lambda result: callback(json.loads(result) if isinstance(result, str) else []))
 
     def set_tokens(self, tokens: Tokens) -> None:
         self.bridge.set_theme(theme_json(tokens))

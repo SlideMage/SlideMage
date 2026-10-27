@@ -1076,6 +1076,8 @@ _FIGURE_COMMAND_RE = re.compile(
     r"\\(?:cornerfigure|fitfigure|sectionfigure)\s*(?:\[[^\]]*\])?\s*\{")
 _PROGRESS_STRIP_RE = re.compile(r"\\progressstrip\s*\{")
 _WARNING_SIGN_RE = re.compile(r"\\SMWarningSign\s*(?:\[[^\]]*\])?\s*\{")
+# \SMQRCode[height]{image}{caption}: the code is described in its own section, the caption stays.
+_QR_CODE_RE = re.compile(r"\\SMQRCode\s*(?:\[[^\]]*\])?\s*\{")
 _TOC_RE = re.compile(r"\\tableofcontents\s*(?:\[([^\]]*)\])?")
 _TOC_SECTIONS_RE = re.compile(r"sections\s*=\s*\{?\s*([\d\s,\-]+)\}?")
 _TOC_SLOT_RE = re.compile(r"\x02SMTOC:([\d,\-]*)\x02")
@@ -1155,6 +1157,8 @@ def _convert_body(text: str, bib: dict, depth: int = 0) -> str:
     text = _LAYOUT_COMMAND_RE.sub(" ", text)
     text = _figure_commands(text)
     text = _replace_command(text, _PROGRESS_STRIP_RE, 2, _progress_strip)
+    text = _replace_command(text, _QR_CODE_RE, 2,
+                            lambda arguments: f"\n{arguments[1].strip()}\n" if arguments[1].strip() else " ")
     text = _replace_command(text, _WARNING_SIGN_RE, 5,
                             lambda arguments: f"⚠ {arguments[2].strip()}")
     text = _GRAPHICS_RE.sub(" ", text)

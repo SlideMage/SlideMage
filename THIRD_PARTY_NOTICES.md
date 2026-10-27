@@ -30,6 +30,7 @@ built with.
 | PySide6_WebEngine | 6.12.0.140 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | https://pyside.org |
 | python-pptx | 1.0.2 | MIT | https://github.com/scanny/python-pptx/blob/master/HISTORY.rst |
 | pywinpty | 3.1.0 | MIT License | https://github.com/andfoy/pywinpty/blob/main/CHANGELOG.md |
+| segno | 1.6.6 | BSD-3-Clause | https://github.com/heuer/segno/ |
 | shiboken6 | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
 | sniffio | 1.3.1 | MIT OR Apache-2.0 | https://github.com/python-trio/sniffio |
 | truststore | 0.10.5 | MIT | https://truststore.readthedocs.io |

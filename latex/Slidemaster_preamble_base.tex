@@ -6706,6 +6706,29 @@
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont\SMInlineCodeStyle #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\SMInlineCodeStyle\textbackslash #1}}
 
+% \SMQRCode[height]{image}{caption} -- a QR code SlideMage made (2026-10-25,
+% direct instruction: the Source view's Insert QR, the assistant's
+% make_qr_code; src/slidemage/qr_code.py), the code at [height] (default
+% 0.6\textheight: a lecture hall's back row needs about that) with an
+% optional caption centred under it, as wide as the code -- the link, or a
+% text such as "QR 1" that the slide refers to; {} for none. An inline box:
+% several codes go side by side or in columns, and
+% \cornerfigure{\SMQRCode{...}{...}} puts one in a corner. The caption's
+% look is \SMQRCodeCaptionStyle, which a template may redefine.
+\newsavebox{\SMQRCodeBox}
+\providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
+\NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m}{%
+	\begingroup
+	\sbox{\SMQRCodeBox}{\includegraphics[height=#1]{#2}}%
+	\begin{minipage}[t]{\wd\SMQRCodeBox}%
+		\centering\usebox{\SMQRCodeBox}%
+		\if\relax\detokenize{#3}\relax\else
+			\par{\SMQRCodeCaptionStyle #3\par}%     the code's own white border is the gap
+		\fi
+	\end{minipage}%
+	\endgroup
+}
+
 % Navigation for readers (2026-10-04, SlideMage manual: readers must find
 % their way without knowing that the logo is a hidden link). Three opt-in
 % pieces, each usable in any deck:

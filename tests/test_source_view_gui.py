@@ -452,7 +452,7 @@ def test_switching_autosave_on_saves_what_waits(pane, slides):
 
 
 def test_a_long_file_name_is_cut_in_a_narrow_pane_and_whole_in_its_tooltip(pane, slides):
-    path = slides / "xyz-EN-A-Very-Long-Slide-Title-That-Does-Not-Fit-current.tex"
+    path = slides / "xyz-EN-A-Very-Long-Slide-Title-That-Does-Not-Fit-Even-Beside-The-Whole-Toolbar-current.tex"
     path.write_text(BODY, encoding="utf-8")
     pane.resize(320, 400)
     pane.show()

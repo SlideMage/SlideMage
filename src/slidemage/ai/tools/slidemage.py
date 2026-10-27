@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The SlideMage tools: the deck's slides, lint, previews, new slides, citations, compiling and
-the guides (2026-10-10, UI redesign step 10a). Each is a thin layer over the backend module that
-does the real work for the rest of the application (deck_outline, latex_lint, preview_target,
-slide_add + deck_editor, bibliography, compiler); nothing here parses or writes a file format.
+the guides (2026-10-10, UI redesign step 10a), QR codes (2026-10-25). Each is a thin layer over
+the backend module that does the real work for the rest of the application (deck_outline, latex_lint, preview_target,
+slide_add + deck_editor, bibliography, qr_code, compiler); nothing here parses or writes a file format.
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from ... import (
     deck_scan,
     latex_lint,
     preview_target,
+    qr_code,
     slide_add,
     slide_ids,
     slide_language,
@@ -587,6 +588,45 @@ def add_bib_entry(ctx: ToolContext, args: dict) -> str:
     ctx.workspace.file_changed(bib, previous)
     ctx.emit(EditApplied(ctx.call_id, bib, "", entry, False, undoable=False, note="New entry"))
     return f"Added @{kind}{{{key}}} to {bib.name}. Cite it with \\fullcite{{{key}}}."
+
+
+@tool("make_qr_code",
+      "Make a QR code file in media/ (PDF; never overwrites one) and get the \\SMQRCode call that shows it, "
+      "for you to put on a slide with modify_slide or an edit. Fields by kind -- url: url; email: to, subject, "
+      "body; contact (vCard): name, organization, title, email, phone, website, street, postcode, city, country; "
+      "event: title, start ('2026-12-14 10:00', or '2026-12-14' with all_day 'true'), end, all_day, location, "
+      "description, url; location: place (address, 'lat, lng' or a map link), label, map_link (google, geo, osm). "
+      "With several codes on one slide give each a caption such as 'QR 1' that the text refers to.",
+      {"kind": {"type": "string", "enum": list(qr_code.KINDS)},
+       "fields": {"type": "object", "description": "Field name to text, as listed for the kind."},
+       "caption": {"type": "string", "description": "Text under the code; default none. 'auto' for the link, "
+                                                    "address, name, event or place."},
+       "height": {"type": "number", "description": "Share of \\textheight, default 0.6 (a lecture hall's back row); "
+                                                   "the result gives the recommended heights."},
+       "corner": {"type": "string", "enum": [c for c in qr_code.CORNERS if c],
+                  "description": "Put the code in this corner of the content area (\\cornerfigure); default: "
+                                 "where the call is put."},
+       "name": {"type": "string", "description": "File name in media/ without suffix; default from the caption."}},
+      ("kind", "fields"))
+def make_qr_code(ctx: ToolContext, args: dict) -> str:
+    kind, given = args["kind"], args["fields"]
+    unknown = [name for name in given if name not in qr_code.FIELDS[kind]]
+    if unknown:
+        raise ToolError(f"A {kind} code has no field(s) {', '.join(unknown)}. Fields: {', '.join(qr_code.FIELDS[kind])}.")
+    spec = qr_code.QRSpec(kind, {name: str(value) for name, value in given.items()}, qr_code.default_error(kind))
+    caption = (args.get("caption") or "").strip()
+    mode = qr_code.CAPTION_CONTENT if caption == "auto" else qr_code.CAPTION_CUSTOM if caption else qr_code.CAPTION_NONE
+    height = args.get("height", qr_code.DEFAULT_HEIGHT)
+    if not isinstance(height, (int, float)) or isinstance(height, bool) or not 0 < height <= qr_code.MAX_HEIGHT:
+        raise ToolError(f"The height is a share of \\textheight between 0 and {qr_code.MAX_HEIGHT}.")
+    try:
+        made = qr_code.create(ctx.project, spec, height=float(height), caption_mode=mode,
+                              caption=caption if mode == qr_code.CAPTION_CUSTOM else "", name=args.get("name", ""),
+                              corner=args.get("corner", ""))
+    except ValueError as exc:
+        raise ToolError(str(exc)) from None
+    ctx.workspace.file_changed(made.path, None)
+    return f"Made {made.image}. {made.note}\nPut this on the slide:\n{made.snippet}"
 
 
 @tool("compile_deck",

@@ -321,7 +321,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
 
         /* Form controls, everywhere: a field on the page color with a line
            under it (prototype v3), a ring when it has the focus. */
-        QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+        QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QDateTimeEdit, QComboBox {{
             {font}
             font-size: 13.5px;
             background-color: {t.bg};
@@ -335,24 +335,24 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             placeholder-text-color: {t.text_3};
         }}
         QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-        QComboBox:focus, QComboBox:on {{
+        QDateTimeEdit:focus, QComboBox:focus, QComboBox:on {{
             border-color: {t.info};
         }}
         QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled, QSpinBox:disabled,
-        QDoubleSpinBox:disabled, QComboBox:disabled {{
+        QDoubleSpinBox:disabled, QDateTimeEdit:disabled, QComboBox:disabled {{
             color: {t.text_4};
             border-bottom-color: {t.line};
         }}
-        QComboBox {{
+        QComboBox, QDateTimeEdit {{
             padding-right: 28px;
         }}
-        QComboBox::drop-down {{
+        QComboBox::drop-down, QDateTimeEdit::drop-down {{
             subcontrol-origin: padding;
             subcontrol-position: center right;
             width: 26px;
             border: none;
         }}
-        QComboBox::down-arrow {{
+        QComboBox::down-arrow, QDateTimeEdit::down-arrow {{
             image: url({icons["chevron_down"]});
             width: 18px;
             height: 18px;

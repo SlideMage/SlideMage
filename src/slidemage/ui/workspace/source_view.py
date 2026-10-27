@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from ... import latex_edit, slide_versioning
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
+from ..dialogs import qr_code as qr_dialog
 from ..dialogs.citation import CitationDialog
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, Surface
@@ -159,6 +160,11 @@ class SourcePane(Surface):
         self._cite_button.setToolTip("Insert a citation of an entry of Slidemaster.bib")
         self._cite_button.clicked.connect(self._open_citation_popover)
         row.addWidget(self._cite_button)
+        # "QR" beside Insert and Cite: the row sets the pane's minimum width (Split view).
+        self._qr_button = Button("QR", "ghost", compact=True)
+        self._qr_button.setToolTip("Insert a QR code for a link, an email, a contact, a calendar event or a map location")
+        self._qr_button.clicked.connect(self._open_qr_dialog)
+        row.addWidget(self._qr_button)
         row.addStretch(1)
         self._tools_button = Button("Tools ▾", "ghost", compact=True)
         self._tools_button.clicked.connect(self._open_tools_menu)
@@ -498,6 +504,24 @@ class SourcePane(Surface):
             popover = CitationPopover(self.app.project)
             popover.add_reference_requested.connect(self.add_reference)
             self._ask(popover, self._cite_button)
+
+    def _open_qr_dialog(self) -> None:
+        """The QR code sheet; its call replaces the selection, or, to update a code, the call it was opened on."""
+        if self._current is None or self._current.editor.is_read_only():
+            return
+        editor = self._current.editor
+        text, (start, end) = editor.text(), editor.selection_range()
+        existing = qr_dialog.existing_call(self.app.project, text, start, end)
+        dialog = qr_dialog.QRCodeDialog(self, self.app.project, existing)
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        if existing is not None:
+            # Qt counts UTF-16 units, selection_range() characters.
+            cursor = editor.textCursor()
+            cursor.setPosition(latex_edit.utf16_len(text[:existing.start]))
+            cursor.setPosition(latex_edit.utf16_len(text[:existing.end]), QTextCursor.MoveMode.KeepAnchor)
+            editor.setTextCursor(cursor)
+        editor.replace_selection(dialog.snippet)
 
     def _ask(self, popover: Popover, anchor: QWidget) -> None:
         """Show `popover` under `anchor`; what it chooses replaces the selection."""
