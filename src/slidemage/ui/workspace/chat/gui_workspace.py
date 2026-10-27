@@ -249,10 +249,11 @@ class GuiWorkspace(Workspace):
     def show_slide(self, path: Path) -> None:
         def show() -> None:
             window, slide_id = self.window, bare_id(path.name)
+            occurrence = window.state.focused_occurrence if window.state.focused_slide == slide_id else None
             window.state.set_language(own_language(path.name))
             deck = window.state.deck
             if deck is not None and any(call.id == slide_id for call in deck_editor.parse_slide_calls(deck)):
-                window.state.set_focused_slide(slide_id)     # as "Go to slide": the preview follows
+                window.state.set_focused_slide(slide_id, occurrence_key=occurrence)  # the preview follows
             else:
                 window.open_slide_editor(self._local(path))
             if window.state.mode not in ("preview", "split"):

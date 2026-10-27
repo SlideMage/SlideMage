@@ -56,6 +56,10 @@ DEFAULT_BASELINE: Version = (1, 0, 0)
 # app_settings key (Settings -> General, off by default): leaving a slide that was edited and carries a
 # "+" asks whether to make it a version now (CentreColumn._offer_version).
 ASK_ON_LEAVE_SETTING_KEY = "ask_update_version_on_leave"
+# app_settings key (Settings -> General, off by default): a deck compile typesets a slide that carries a "+" as it
+# is now. Off, it typesets the slide's last version, the frozen file of the version on its "+" line
+# (saved_version_lines).
+RENDER_CHANGES_SETTING_KEY = "render_slide_changes_in_decks"
 
 _EMBEDDED_VERSION_RE = re.compile(r"\\setSlideVersion\{(\d+)-(\d+)-(\d+)(\+?)\}")
 # Matches the whole tool-managed line, trailing newline included, so
@@ -277,6 +281,26 @@ def changed_slides(ctx: ProjectContext, deck, language: str) -> list[str]:
         if marker is not None and marker[1]:
             found[call.id_slug] = None
     return list(found)
+
+
+def saved_version_lines(ctx: ProjectContext, deck, language: str) -> list[str]:
+    """The lines a deck compile's wrapper starts with so that each slide `deck` calls with a "+" (changed_slides)
+    is typeset from its last version's frozen file instead of its current file: LaTeX's file substitution
+    (\\declare@file@substitution, LaTeX 2020-10), which \\slide{} and the other calls' \\input{slides/<id>-current.tex}
+    then follow. Nothing in the framework or the deck changes. A slide whose frozen file is missing keeps its
+    current file. No lines when no slide qualifies."""
+    from . import slide_language, slide_source
+
+    substitutions = []
+    for slug in changed_slides(ctx, deck, language):
+        marker = parse_marker(slide_source.read_slide_source(ctx.slides_dir / slide_language.current_name(slug))[0])
+        if marker is None:
+            continue
+        frozen = slide_language.frozen_name(slug, format_hyphen(marker[0]))
+        if (ctx.slides_dir / frozen).is_file():
+            substitutions.append(f"\\declare@file@substitution{{slides/{slide_language.current_name(slug)}}}"
+                                 f"{{slides/{frozen}}}")
+    return ["\\makeatletter", *substitutions, "\\makeatother"] if substitutions else []
 
 
 def _content(text: str) -> str:

@@ -10,7 +10,7 @@ from test_agent_tools import LF, SLIDE, Box
 from test_readability import body, footer, pdf_of, record_for, slide, title
 
 from slidemage import preview_target
-from slidemage.ai.tools import CLAUDE_CODE_READ_ONLY, TOOLS
+from slidemage.ai.tools import CLAUDE_CODE_PRE_APPROVED, TOOLS
 from slidemage.ai.workspace import WorkspaceContext
 from slidemage.deck_scan import scan_decks
 
@@ -51,7 +51,7 @@ def deck_record(box, root, *draws):
 
 def test_the_tool_is_read_only_and_offered_to_claude_code_without_asking():
     assert any(t.spec.name == "check_readability" for t in TOOLS)
-    assert [t.spec.name for t in CLAUDE_CODE_READ_ONLY].count("check_readability") == 1
+    assert [t.spec.name for t in CLAUDE_CODE_PRE_APPROVED].count("check_readability") == 1
     spec = next(t.spec for t in TOOLS if t.spec.name == "check_readability")
     assert set(spec.schema["properties"]) == {"slide", "deck"} and spec.schema["required"] == []
 

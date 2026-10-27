@@ -553,7 +553,7 @@ class LatexPlainTextEdit(QPlainTextEdit):
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not self.isReadOnly() \
                 and not self.textCursor().hasSelection():
             cursor = self.textCursor()
-            self._insert(latex_edit.smart_return(cursor.block().text(), cursor.atBlockEnd()))
+            self._insert(latex_edit.smart_return(cursor.block().text(), cursor.atBlockEnd(), self.toPlainText()))
             return
         super().keyPressEvent(event)
 

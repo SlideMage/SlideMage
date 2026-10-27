@@ -273,3 +273,16 @@ def test_the_first_cloud_request_needs_consent_once(ctx, workspace):
 
 def test_a_local_provider_never_asks(ctx, workspace):
     assert run(ScriptedProvider(reply("fine")), workspace)[0].reason == "end_turn"
+
+
+@pytest.mark.parametrize("scope,refused", [("slide", True), ("deck", False)])
+def test_run_enforces_scope_on_tool_calls(workspace, scope, refused):
+    edit = call("edit_file", path="slides/abd-EN-Second-current.tex", old_text="First", new_text="Changed")
+    provider = ScriptedProvider(reply("", edit), reply("Done."))
+    history = []
+    agent = Agent(provider, workspace, mode=EDIT_AUTO)
+    agent.run(history, "Change it", scope=scope)
+    result = history[2].results[0]
+    assert result.is_error == refused
+    if refused:
+        assert "switch_to_deck_mode" in result.text

@@ -17,7 +17,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
-from ... import compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
+from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
 from ... import pptx_export, slide_language, slide_snapshot, slide_versioning, update_all_previews
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
@@ -212,7 +212,10 @@ def _confirm_build(window, result: latex_lint.CheckResult, what: str) -> bool:
 def _confirm_changed_slides(window, decks: list[Deck], what: str) -> bool:
     """A snapshot or an export is a record: warn when a slide a deck calls has changes since its last
     version (a "+" on its version line), so no version stands for what is being recorded. False when the
-    user cancelled; "Update Version of all changed slides" in the ⋮ menu makes them versions first."""
+    user cancelled; "Update Version of all changed slides" in the ⋮ menu makes them versions first. Only when
+    Settings → General compiles decks with those changes: by default the compile takes each slide's last version."""
+    if not app_settings.get(window.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+        return True
     lines = []
     for deck in decks:
         changed = slide_versioning.changed_slides(window.project, deck, window.state.language)

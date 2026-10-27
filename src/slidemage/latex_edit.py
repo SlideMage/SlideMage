@@ -20,7 +20,7 @@ from typing import NamedTuple, Optional
 from urllib.parse import quote, urlsplit
 
 from . import slide_import
-from .tex_source import braced_argument
+from .tex_source import COMMENT_RE, braced_argument
 
 # The editor's tab width: Settings -> General stores it under this key.
 DEFAULT_TAB_WIDTH_CHARS = 2
@@ -349,12 +349,15 @@ _NO_AUTO_END_ENVIRONMENTS = {"standardframe"}
 _ITEM_LINE_RE = re.compile(r"^\\item\b(\[[^\]]*\])?")
 
 
-def smart_return(line: str, at_end: bool) -> Edit:
+def smart_return(line: str, at_end: bool, text: Optional[str] = None) -> Edit:
     """The text Enter inserts at the cursor in `line` (`at_end`: the cursor is at
     its end). A new line continues the leading whitespace (tabs: this
     project's convention). At the end of a `\\begin{ENV}` line it also opens
     the matching \\end{ENV} below at the same indentation, with the cursor
-    one tab deeper in between (on `\\item ` for a list). After an `\\item` it
+    one tab deeper in between (on `\\item ` for a list) -- unless `text`, the
+    whole file, has an \\end{ENV} for every \\begin{ENV} already (outside
+    comments): then only the line inside opens, and no second \\end{} lands
+    under the first. After an `\\item` it
     starts the next item with the same label. A \\begin{} typed mid-line falls
     back to plain continuation, since a second \\end{} spliced into the middle
     of a line would corrupt it."""
@@ -365,12 +368,21 @@ def smart_return(line: str, at_end: bool) -> Edit:
         if matches and matches[-1].group(1) not in _NO_AUTO_END_ENVIRONMENTS:
             env = matches[-1].group(1)
             item_line = f"{indent}\t\\item " if env in LIST_ENVIRONMENTS else f"{indent}\t"
+            if text is not None and _is_closed(text, env):
+                return Edit(f"\n{item_line}", 1 + len(item_line))
             return Edit(f"\n{item_line}\n{indent}\\end{{{env}}}", 1 + len(item_line))
         item = _ITEM_LINE_RE.match(line[len(indent):])
         if item:
             text = f"\n{indent}\\item{item.group(1) or ''} "
             return Edit(text, len(text))
     return Edit("\n" + indent, 1 + len(indent))
+
+
+def _is_closed(text: str, env: str) -> bool:
+    """Whether `text` has as many \\end{env} as \\begin{env}, comments left out."""
+    code = COMMENT_RE.sub("", text)
+    name = re.escape(env)
+    return len(re.findall(rf"\\end\{{{name}\}}", code)) >= len(re.findall(rf"\\begin\{{{name}\}}", code))
 
 
 # -- braces, the header comment, the .bib -------------------------------------------

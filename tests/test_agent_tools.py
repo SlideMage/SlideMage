@@ -13,7 +13,7 @@ import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import compiler, preview_target, slide_snapshot, update_all_previews
+from slidemage import ai_review, compiler, preview_target, slide_snapshot, update_all_previews
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -23,6 +23,7 @@ from slidemage.ai.agent_types import (
     EditRejected,
 )
 from slidemage.ai.tools import build_toolbox, focus, undo_edit
+from slidemage.ai.tools.base import ToolError, tool
 from slidemage.ai.tools import files as files_module
 from slidemage.ai.tools import previews as previews_tools
 from slidemage.ai.tools import slidemage as slidemage_tools
@@ -73,6 +74,39 @@ class Box:
 @pytest.fixture
 def box(root):
     return Box(root)
+
+
+def test_failed_calls_log_tool_end(box, monkeypatch):
+    events = []
+    monkeypatch.setattr("slidemage.timing.event", lambda root, name, **fields: events.append((name, fields)))
+
+    @tool("fail", "Fail", {})
+    def fail(ctx, args):
+        raise ToolError("failed")
+
+    box.box._tools["fail"] = fail
+    assert box.run("fail").is_error
+    assert events == [("tool_start", {"tool": "fail"}), ("tool_end", {"tool": "fail", "error": True})]
+    events.clear()
+    assert box.run("unknown").is_error
+    assert events == []
+
+
+def test_calls_get_separate_contexts_and_current_mode(box):
+    contexts = []
+
+    @tool("capture", "Capture context", {})
+    def capture(ctx, args):
+        contexts.append(ctx)
+        return "ok"
+
+    box.box._tools["capture"] = capture
+    first, second = call("capture"), call("capture")
+    box.box.execute(first)
+    box.box.ctx.mode = EDIT_AUTO
+    box.box.execute(second)
+    assert [(ctx.call_id, ctx.mode) for ctx in contexts] == [(first.id, EDIT_ASK), (second.id, EDIT_AUTO)]
+    assert contexts[0] is not contexts[1] and box.box.ctx.call_id == ""
 
 
 # -- confinement ------------------------------------------------------------------------------------
@@ -405,7 +439,7 @@ def test_add_slide_rechecks_dirty_deck_after_confirmation(box, root):
     box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
     text = box.error("add_slide", slug="Pending", title="T")
     created, = (root / "slides").glob("*-EN-Pending-current.tex")
-    assert created.name in text and "unsaved edits" in text and "existing=" in text
+    assert created.name in text and "unsaved edits" in text and "insert_slide(slide=" in text
     assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
     applied, = box.of_type(EditApplied)
     assert applied.path == created and applied.note == "not added to a deck"
@@ -418,11 +452,11 @@ def test_insert_existing_slide_requires_consent_and_rechecks_dirty_deck(box, roo
     deck = root / "decks/test.tex"
     before = deck.read_bytes()
     box.ws.approve = False
-    assert "rejected" in box.error("add_slide", existing=path)
+    assert "rejected" in box.error("insert_slide", slide=path)
     assert deck.read_bytes() == before
     box.ws.approve = True
     box.ws.before_confirm = lambda: box.ws.open(deck, "user's pending edits", dirty=True)
-    assert "unsaved edits" in box.error("add_slide", existing=path)
+    assert "unsaved edits" in box.error("insert_slide", slide=path)
     assert deck.read_bytes() == before and box.ws.buffer_text(deck) == "user's pending edits"
 
 
@@ -431,7 +465,7 @@ def test_insert_existing_rejects_missing_frozen_non_slide_and_outside_files(box,
     (root / "slides/abc-EN-Hello-v1-0-0.tex").write_text("frozen")
     files = set((root / "slides").iterdir())
     before = (root / "decks/test.tex").read_bytes()
-    assert box.run("add_slide", existing=path).is_error
+    assert box.run("insert_slide", slide=path).is_error
     assert set((root / "slides").iterdir()) == files
     assert (root / "decks/test.tex").read_bytes() == before
 
@@ -757,3 +791,127 @@ def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root
 def test_preview_tools_reject_invalid_view(box):
     assert "Argument 'view' must be one of" in box.error('render_preview', view='student')
     assert "Argument 'view' must be one of" in box.error('refresh_preview', view='student')
+
+
+@pytest.mark.parametrize("scope", ["slide", "deck", None])
+def test_scope_guards_writing_tools(box, root, monkeypatch, scope):
+    box.box.ctx.scope = scope
+    box.box.ctx.focus_slide = root / SLIDE
+    other = "slides/abd-EN-Second-current.tex"
+    monkeypatch.setattr(slidemage_tools, "apply_slide", lambda *args, **kwargs: ("applied", []))
+    args = {"old_text": "First", "new_text": "Changed"}
+    if scope == "slide":
+        assert "switch_to_deck_mode" in box.error("edit_file", path=other, **args)
+        assert "switch_to_deck_mode" in box.error("modify_slide", slide=other, edits=[{"old": "First", "new": "Changed"}])
+        assert "switch_to_deck_mode" in box.error("write_file", path="decks/new.tex", content="x")
+        assert "switch_to_deck_mode" in box.error("add_slide", slug="New", title="New", add_to_deck=False)
+        assert "switch_to_deck_mode" in box.error("create_slide", title="New", slug="New", body="x", deck="test")
+        assert not box.of_type(EditProposed)
+    else:
+        assert "Changed" in box.ok("edit_file", path=other, **args)
+        assert box.ok("modify_slide", slide=other, edits=[{"old": "Changed", "new": "Again"}]) == "applied"
+        assert "Created" in box.ok("write_file", path="decks/new.tex", content="x")
+        assert "Created" in box.ok("add_slide", slug="New", title="New", add_to_deck=False)
+        assert box.ok("create_slide", title="New", slug="Other", body="x", deck="test") == "applied"
+    assert "Changed" in box.ok("edit_file", path=SLIDE, **args)
+    assert box.ok("modify_slide", slide=SLIDE, edits=[{"old": "Changed", "new": "Again"}]) == "applied"
+
+
+def test_write_file_allows_focused_new_file_in_slide_scope(box, root):
+    path = root / "slides" / "drafts" / "new.tex"
+    box.box.ctx.scope, box.box.ctx.focus_slide = "slide", path
+    assert "Created" in box.ok("write_file", path="slides/drafts/new.tex", content="x")
+
+
+def test_modify_slide_checks_resolved_language_partner(box, root, monkeypatch):
+    box.box.ctx.scope, box.box.ctx.focus_slide = "slide", root / SLIDE
+    monkeypatch.setattr(slidemage_tools.slide_language.TranslationLinks, "find", lambda *args: "abd-EN-Second")
+    assert "abd-EN-Second-current.tex" in box.error(
+        "modify_slide", slide="abc", edits=[{"old": "First", "new": "Changed"}])
+    assert not box.of_type(EditProposed)
+
+
+def test_recursive_argument_validation():
+    from slidemage.ai.tools.base import ToolError, check_arguments, tool
+
+    @tool("example", "", {
+        "edits": {"type": "array", "minItems": 1, "items": {
+            "type": "object", "properties": {"old": {"type": "string", "minLength": 1},
+                                              "new": {"type": "string", "enum": ["yes", "no"]}},
+            "required": ["old", "new"], "additionalProperties": False}},
+        "fields": {"type": "object", "properties": {"known": {"type": "integer"}},
+                   "additionalProperties": {"type": "array", "items": {"type": "number"}}},
+        "number": {"type": "number"},
+    }, ("edits",))
+    def example(ctx, args):
+        return ""
+
+    valid = {"edits": [{"old": "a", "new": "yes"}], "fields": {"known": 1, "extra": [1, 2.5]}}
+    check_arguments(example.spec, valid)
+    check_arguments(example.spec, {**valid, "number": 0})
+    check_arguments(example.spec, {**valid, "number": 1.5})
+    cases = [
+        ({}, "Missing required argument 'edits'."),
+        ({**valid, "unexpected": 1}, "Unknown argument 'unexpected'. Known: edits, fields, number."),
+        ({"edits": []}, "Argument 'edits' needs at least 1 item."),
+        ({"edits": [1]}, "Argument 'edits[0]' must be of type object."),
+        ({"edits": [{"old": "a", "new": "yes"}, {"old": "b", "new": "no"},
+                    {"old": 1, "new": "yes"}]}, "Argument 'edits[2].old' must be of type string."),
+        ({"edits": [{"old": "", "new": "yes"}]}, "Argument 'edits[0].old' needs at least 1 character."),
+        ({"edits": [{"old": "a"}]}, "Missing required argument 'edits[0].new'."),
+        ({"edits": [{"old": "a", "new": "maybe"}]}, "Argument 'edits[0].new' must be one of: yes, no."),
+        ({"edits": [{"old": "a", "new": "yes", "other": 1}]},
+         "Unknown argument 'edits[0].other'. Known: old, new."),
+        ({**valid, "number": True}, "Argument 'number' must be of type number."),
+        ({**valid, "fields": {"known": True}}, "Argument 'fields.known' must be of type integer."),
+        ({**valid, "fields": {"extra": [True]}}, "Argument 'fields.extra[0]' must be of type number."),
+    ]
+    for args, expected in cases:
+        with pytest.raises(ToolError) as exc:
+            check_arguments(example.spec, args)
+        assert str(exc.value) == expected
+
+
+def test_fields_and_qr_height_are_checked_by_schema(box):
+    assert "fields.year" not in box.error("add_bib_entry", kind="book", fields={"year": 2024})   # a year as number is fine
+    assert box.error("make_qr_code", kind="url", fields={"url": False}) == (
+        "Argument 'fields.url' must be of type string.")
+    for height in (True, "0.5"):
+        assert box.error("make_qr_code", kind="url", fields={"url": "a.org"}, height=height) == (
+            "Argument 'height' must be of type number.")
+
+
+def test_insert_slide_after_and_already_present(box, root):
+    box.ok("add_slide", slug="Insert", title="T", add_to_deck=False)
+    created, = (root / "slides").glob("*-EN-Insert-current.tex")
+    slide = created.name.removesuffix("-current.tex")
+    box.events.clear()
+    assert "after abc" in box.ok("insert_slide", slide=slide, after="abc")
+    deck = root / "decks/test.tex"
+    text = deck.read_text()
+    assert text.index("abc-EN-Hello") < text.index(slide) < text.index("abd-EN-Second")
+    applied, = box.of_type(EditApplied)
+    assert applied.path == deck and not applied.undoable
+    assert (deck, applied.before) in box.ws.changed
+    assert "decks/test.tex" in ai_review.unreviewed(box.ws.project)[created.relative_to(root).as_posix()]["decks"]
+    box.events.clear()
+    assert "already in test" in box.ok("insert_slide", slide=slide, after="missing")
+    assert not box.events and deck.read_text() == text
+
+
+def test_insert_slide_refuses_dirty_deck_and_slide_scope(box, root):
+    box.ok("add_slide", slug="Insert", title="T", add_to_deck=False)
+    slide = next((root / "slides").glob("*-EN-Insert-current.tex")).name.removesuffix("-current.tex")
+    deck = root / "decks/test.tex"
+    before = deck.read_bytes()
+    box.events.clear()
+    box.box.ctx.scope = "slide"
+    assert "switch_to_deck_mode" in box.error("insert_slide", slide=slide)
+    box.box.ctx.scope = None
+    box.ws.dirty.add(deck)
+    assert "unsaved edits" in box.error("insert_slide", slide=slide)
+    assert not box.events and deck.read_bytes() == before
+
+
+def test_add_slide_rejects_existing_argument(box):
+    assert "Unknown argument 'existing'" in box.error("add_slide", existing="abc")

@@ -478,3 +478,18 @@ def test_saved_chat_choice_applies_on_start_and_restart(env):
     ai_profile.set_model_choice(env.window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "opus:high")
     env.view.restart_button.click()
     wait_until(lambda: json.loads(env.log.read_text())["argv"][:4] == ["--model", "opus", "--effort", "high"])
+
+
+def test_mcp_toolbox_reads_scope_and_focus_on_gui_thread(env):
+    from slidemage.ai import claude_scope
+
+    session = session_module.ClaudeCodeSession(env.window, env.fake)
+    try:
+        env.window.open_slide_editor(env.path)
+        box = on_thread(session._toolbox)
+        assert box.ctx.scope == claude_scope.SLIDE and box.ctx.focus_slide == env.path
+        session.set_scope(claude_scope.DECK)
+        box = on_thread(session._toolbox)
+        assert box.ctx.scope == claude_scope.DECK and box.ctx.focus_slide == env.path
+    finally:
+        session.shutdown()

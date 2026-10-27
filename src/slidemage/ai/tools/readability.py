@@ -22,13 +22,13 @@ DECK_SLIDE_LIMIT = 40      # slides with findings named in a deck's answer befor
       "audience: text size relative to the slide height (body, headings, sources and footnotes, text in figures), "
       "images shown too small, contrast, clipped or overlapping text, too much text, line spacing. Deterministic, "
       "measured on the rendered pages, and it changes nothing. A slide is rendered as a draft (the unsaved buffer "
-      "included) in the user's view and language; a deck uses its compiled PDF and says so if that is out of date "
+      "included) in the user's view and the slide's own EN/DE language (otherwise the workspace language); a deck uses its compiled PDF and says so if that is out of date "
       "(compile it first; this tool does not). Every finding gives the measured value, the threshold and a "
       "suggestion.",
       {"slide": {"type": "string", "description": "A slide id (1y8) or a path; default the slide in focus."},
        "deck": {"type": "string",
                 "description": "Check this deck's compiled PDF instead of one slide: a deck name, or 'open' for the "
-                               "open deck."}})
+                               "open deck. Do not combine with slide."}})
 def check_readability(ctx: ToolContext, args: dict) -> str:
     if args.get("slide") and args.get("deck"):
         raise ToolError("Give a slide or a deck, not both.")
