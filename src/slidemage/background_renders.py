@@ -231,7 +231,8 @@ class BackgroundRenderer:
         self._working_lock = threading.Lock()
         self._outstanding: dict[str, tuple] = {}
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
-        self._counted: set[str] = set()         # labels the plan counts as fresh already (only their page number differs)
+        self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
+        self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
 
     # -- settings ------------------------------------------------------------------------
 
@@ -384,11 +385,14 @@ class BackgroundRenderer:
 
     def scan(self) -> list:
         """Everything outstanding, in the order it is rendered: [(sort key, unit)], and the progress counts.
-        Units that are only out of step in their page number come after all the others."""
+        Units that are only out of step in their page number come after all the others. A slide that failed and is
+        not tried again by itself is tried once more, on its own, when nothing else is outstanding."""
         decks_progress: list[DeckProgress] = []
         first: list = []
         numbering: list = []
+        last: list = []                     # failed, not tried after the others yet: (rank, unit, progress, view)
         single: set[str] = set()
+        counted: set[str] = set()
         usage = {u["deck"]: u for u in self.store.deck_usage()}
         for deck_rank, deck in enumerate(self.ordered_decks()):
             progress = DeckProgress(deck.name)
@@ -407,16 +411,20 @@ class BackgroundRenderer:
                         if found.final and found.state is not render_key.Freshness.FAILED:
                             progress.fresh += 1
                             progress.count(view, 1)
+                            counted.add(unit.label)
                         elif found.state is render_key.Freshness.FAILED:
                             if found.failure and self.store.may_retry(found.failure):
                                 first.append(((deck_rank, language_rank, view_rank, order), unit))
                                 single.add(unit.label)          # a batch holding it would fail again
+                            elif not self.store.tried_last(found.key):
+                                last.append(((deck_rank, language_rank, view_rank, order), unit, progress, view))
                             else:
                                 progress.failed += 1
                                 progress.count(view, 2)
                         elif found.usable and found.record and found.record.get("origin") == ORIGIN_BACKGROUND:
                             progress.fresh += 1                  # right, apart from its page number: refreshed last
                             progress.count(view, 1)
+                            counted.add(unit.label)
                             numbering.append(((deck_rank, language_rank, view_rank, order), unit))
                         else:
                             first.append(((deck_rank, language_rank, view_rank, order), unit))
@@ -424,8 +432,18 @@ class BackgroundRenderer:
         decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
                            if not d.archived and not d.is_test_deck and d.name in off]
         plan = first + [((1000 + k[0],) + k[1:], u) for k, u in numbering]
+        last_try: set[str] = set()
+        for rank, unit, progress, view in last:
+            if plan:                        # the others first: until then it counts as failed
+                progress.failed += 1
+                progress.count(view, 2)
+            else:                           # outstanding again, rendered on its own
+                plan.append(((2000 + rank[0],) + rank[1:], unit))
+                single.add(unit.label)
+                last_try.add(unit.label)
+        self._last_try = last_try
         self._single = single
-        self._counted = {unit.label for _rank, unit in numbering}
+        self._counted = counted
         failures = self.store_failures_count()
         with self._working_lock:
             # What runs now, from the workers' own list under their lock: copied from the old progress, a render that
@@ -646,11 +664,14 @@ class BackgroundRenderer:
             self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
 
     def _count_fresh(self, unit: render_key.Unit) -> None:
-        if unit.label in self._counted:
-            # Counted as fresh by the plan (right apart from its page number) and refreshed now: counted again, the
-            # number left ran ahead by a batch and the next plan put it back up (582 -> 598, v8.52.4).
-            self._counted.discard(unit.label)
-            return
+        # Each slide counts once per plan. Counted twice were a slide the plan found right apart from its page number,
+        # when that was refreshed (582 -> 598 left, v8.52.4), and a slide a job found current: a batch the plan still
+        # held when the same batch, on its way already, had finished; a batch stopped part-way and run again; a reveal
+        # render of a current slide. A view then showed more renders than it has (268 / 252, v8.65.0).
+        with self._working_lock:
+            if unit.label in self._counted:
+                return
+            self._counted.add(unit.label)
         counted = self.progress.deck(unit.deck)
         if counted is not None and counted.fresh < counted.total:
             counted.fresh += 1
@@ -686,7 +707,9 @@ class BackgroundRenderer:
             raise _transient("the slide file is being written")
         found = self.resolver.lookup(unit, key)
         if found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
-            return None
+            if unit.label not in self._last_try or self.store.tried_last(key):
+                return None
+            self.store.note_last_try(key)       # noted first: a try that never ends is not made again and again
         if found.state is render_key.Freshness.FRESH and (origin == ORIGIN_REVEAL or found.final):
             self.store.link_decks(found.record["name"], [unit.deck])
             return found.record["name"]
@@ -718,6 +741,8 @@ class BackgroundRenderer:
                     unstable=not manifest.stable, width=STORE_WIDTH)
         replace = (found.record is not None and found.state is render_key.Freshness.FRESH_NUMBERING_DIFFERS
                    and found.record.get("origin") == origin)
+        if found.state is render_key.Freshness.FAILED or self.store.failure(key) is not None:
+            self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
         return self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
 
     @staticmethod
