@@ -860,6 +860,24 @@ def test_dont_ask_again_turns_the_setting_off(centre, asked):
     assert len(asked.calls) == 1
 
 
+def test_closing_asks_about_the_slide_still_on_show_and_those_left_before_only_with_the_setting(centre, project, asked):
+    state = centre.state
+    state.set_mode("source")
+    state.set_focused_slide("aaa")
+    centre.source.current.editor.insertPlainText("edit ")
+    centre.source.flush_all()                              # the close saves first
+    centre.offer_versions_on_close()                       # off by default: nothing asked
+    assert asked.calls == []
+    ask_on_leave(centre)
+    centre.source.current.editor.insertPlainText("more ")
+    centre.source.flush_all()
+    asked.answer["update"] = True
+    centre.offer_versions_on_close()                       # aaa is still on show, and is asked about
+    assert asked.calls == [("aaa", (1, 1, 0))] and asked.updated == ["aaa-EN-One"]
+    centre.offer_versions_on_close()                       # once per visit
+    assert len(asked.calls) == 1
+
+
 # -- a click in the Preview builds no editor (v8.39.5) ------------------------------------------------
 
 def click(centre, project, slide, name, **kwargs):

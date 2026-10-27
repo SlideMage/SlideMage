@@ -228,6 +228,8 @@ INSERT_COMMANDS = [
     Insert("Code file…", "code_file", hint="\\SMCodeFile{snippets/…}"),
     Insert("\\conditionalpause[instructor]", "literal"),
     Insert("\\only<2->{...}", "wrap_macro", "only<2->"),
+    # an image or other content in the bottom-right corner of the content area, as an overlay
+    Insert("\\cornerfigure[corner=se]{...}", "wrap_macro", "cornerfigure[corner=se]"),
     Insert("\\tallitem", "literal"),
     Insert("\\tallitemnobullet", "literal"),
     # all list levels one font size smaller, for a slide whose text doesn't
@@ -295,9 +297,10 @@ def insert_edit(insert: Insert, selected: str, indent: str) -> Optional[Edit]:
     return None
 
 
-# The format buttons: (button text, macro) -- I, B, U and Tt, then the two words.
+# The format buttons: (button text, macro) -- I, B, U and Tt, then the word. Source (\source) left the row
+# 2026-10-26, direct request.
 FORMAT_MACROS = [("I", "textit"), ("B", "textbf"), ("U", "underline"), ("Tt", "texttt")]
-WORD_MACROS = [("Source", "source"), ("Footnote", "footnote")]
+WORD_MACROS = [("Footnote", "footnote")]
 
 # The text colors of the institution preamble, which nearly every deck \inputs.
 # A few names resolve to another hex per institution, so a swatch is an

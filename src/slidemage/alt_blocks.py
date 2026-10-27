@@ -70,8 +70,9 @@ MUGSHOT_RE = re.compile(r"\\SMMugshot\s*\{")
 # finds. They were invisible to referenced_images() until 2026-10-04 (found
 # in the SlideMage manual: an image placed only with besidefigure had no
 # slide in its `used_on`, so no takeaway and no transcript entry).
+# \SMQRCode[height]{file}{caption} (2026-10-25, qr_code.py): the same shape.
 FIGURE_HELPER_RE = re.compile(
-    r"\\(?:cornerfigure|fitfigure|sectionfigure|begin\{besidefigure\})\s*(?:\[[^\]]*\])?\s*\{")
+    r"\\(?:cornerfigure|fitfigure|sectionfigure|SMQRCode|begin\{besidefigure\})\s*(?:\[[^\]]*\])?\s*\{")
 
 # \begin{tikzillustration}[options]{ID} ... \end{tikzillustration}
 # (Slidemaster_preamble_base.tex) -- a hand-drawn tikz diagram with no

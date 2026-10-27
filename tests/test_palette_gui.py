@@ -170,6 +170,29 @@ def test_a_slide_outside_the_deck_opens_in_the_source_view(window, monkeypatch):
     assert [p.name for p in opened] == [f"{outside}-current.tex"]
 
 
+def test_a_slide_from_outside_the_deck_keeps_the_focus_when_it_is_saved(window):
+    """2026-10-26: edited and saved (or rendered), a slide opened from Find anything that the deck does not show
+    lost the focus to the slide shown before -- the slide list's rebuild focused its highlighted row again."""
+    rows = window.slide_list.rows()
+    before = rows[0].call.id
+    window.state.set_focused_slide(before)
+    in_deck = {r.call.id_slug for r in rows}
+    outside = next(s for s in slide_ids.list_id_slugs(window.project) if s not in in_deck)
+    palette = window.palette
+    palette.open()
+    type_text(palette, outside)
+    palette._run(palette._entries.index(next(e for e in palette._entries if e.label == outside)))
+    outside_id = outside.split("-")[0]
+    assert window.state.focused_slide == outside_id
+    assert window.slide_list.tree.currentItem() is None                # no row of the deck stays highlighted
+    window.centre.source.current.editor.insertPlainText("% edit\n")
+    window.centre.source.save()                                       # Ctrl+S, which also renders
+    window.slide_list.rebuild()                                       # what a save does after its pause
+    assert window.state.focused_slide == outside_id
+    window.state.set_focused_slide(before)                            # a deck slide again: its row is highlighted
+    assert window.slide_list.tree.data_of(window.slide_list.tree.currentItem()).call.id == before
+
+
 def test_another_deck_is_found_by_name_and_switched_to(window):
     other = replace(window.state.deck, name="other-deck", path=window.state.deck.path.with_name("other-deck.tex"))
     window.decks.append(other)
@@ -199,13 +222,37 @@ def test_from_three_characters_the_files_are_searched_and_a_hit_opens_at_its_lin
     assert palette._debounce.isActive()
     wait_until(lambda: palette._hits_query == "citation")
     assert palette._entries[palette._current].label == current
-    hits = [e for e in palette._entries if e.group.startswith(TEXT_HITS)]
+    hits = [e for e in palette._entries if e.group.startswith(TEXT_HITS) and not e.keep_open]
     assert hits and len(hits) <= palette_module.MAX_HITS and all(e.detail and e.meta.startswith("line ") for e in hits)
     assert palette._entries[-1] is not hits[-1] and palette._entries[-1].group == CHAT      # the chat stays last
     palette._run(palette._entries.index(hits[0]))
     path, line = opened[0]
     assert path.is_file() and line == int(hits[0].meta.removeprefix("line "))
     assert path.read_text(encoding="utf-8").splitlines()[line - 1].lower().count("citation")
+
+
+def test_show_all_lists_every_match_and_keeps_the_palette_open(window):
+    """2026-10-26: only MAX_HITS matches were listed, with no way to see the others."""
+    from slidemage import slide_search
+
+    palette = window.palette
+    palette.open()
+    type_text(palette, "slide")
+    many = [slide_search.SearchHit(window.project.root / "slides" / f"x{i}.tex", i + 1, f"hit {i}", "slide")
+            for i in range(palette_module.MAX_HITS + 5)]
+    palette._on_found("slide", many)
+    group = [e for e in palette._entries if e.group.startswith(TEXT_HITS)]
+    show_all = group[-1]
+    assert show_all.keep_open and show_all.label == f"Show all {len(many)} matches"
+    assert len(group) == palette_module.MAX_HITS + 1 and group[0].group == f"{TEXT_HITS} (10 of {len(many)})"
+    palette._run(palette._entries.index(show_all))
+    assert palette.isVisible()
+    group = [e for e in palette._entries if e.group.startswith(TEXT_HITS)]
+    assert [e.label for e in group] == [f"hit {i}" for i in range(len(many))] and group[0].group == TEXT_HITS
+    assert palette._entries[palette._current].label == f"hit {palette_module.MAX_HITS}"   # where Show all was
+    type_text(palette, "slides")                                                           # a new search: 10 again
+    palette._on_found("slides", many)
+    assert len([e for e in palette._entries if e.group.startswith(TEXT_HITS)]) == palette_module.MAX_HITS + 1
 
 
 def test_typing_on_discards_the_hits_of_the_old_text_and_closing_stops_the_search(window):

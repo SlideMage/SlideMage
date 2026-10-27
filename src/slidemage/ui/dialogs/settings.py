@@ -431,7 +431,7 @@ class SettingsSheet(ModalSheet):
                                   ("Ollama", self.ollama), ("Prompts", self.prompts),
                                   ("Presentation", self.presentation), ("Project", self.project_tab),
                                   ("About", self.about)):
-            self.add_tab(label, tab_widget)
+            self.add_tab(label, tab_widget, scroll=True)
         self.add_button("Close", kind="primary", role="accept")
         self.cloud.cloud_changed.connect(self.reload_models)
         self.ollama.changed.connect(self.reload_models)

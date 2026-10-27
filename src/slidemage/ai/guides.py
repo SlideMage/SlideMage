@@ -68,6 +68,10 @@ Images, notes and text helpers.
 - \\cornerfigure[height=5cm, border]{media/x.png} puts an image in a corner as an overlay;
   \\begin{besidefigure}[height=5cm]{media/x.png} text \\end{besidefigure} puts text beside it;
   \\fitfigure{media/x.png} scales an image to the room left in the frame.
+- QR codes (a link, email, contact, calendar event, map location): make_qr_code makes the file and gives
+  \\SMQRCode[0.60\\textheight]{media/qr-x.pdf}{caption}, no caption by default; corner="se" (ne, sw, nw) puts it
+  in \\cornerfigure, a corner of the content area. Several codes on a slide each get a caption
+  ('QR 1') the text refers to. Keep at least the recommended height; a code may get a slide of its own.
 - Speaker notes: \\note{...} anywhere inside the frame body. Invisible in every normal compile.
 - Code in running text: \\SMCode{text}; a command name: \\SMCmd{slide}; a source file as a code
   panel: \\SMCodeFile{snippets/<id>-1.tex}.

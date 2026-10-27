@@ -18,7 +18,7 @@ slide", the second "Text in project files", which opens the file at the line of 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
@@ -38,6 +38,7 @@ DEBOUNCE_MS = 200     # a pause after the last key before they are
 MAX_SLIDES = 8
 MAX_DECKS = 5
 MAX_HITS = 10
+SHOW_ALL_LIMIT = 200  # what "Show all" lists at most: rows are widgets (2026-10-26, direct request)
 CARD_WIDTH = 620      # the prototype's
 CARD_TOP = 110
 LIST_HEIGHT = 440
@@ -58,6 +59,7 @@ class Entry:
     detail: str = ""            # a second, muted line
     tone: str = ""
     enabled: bool = True
+    keep_open: bool = False     # runs in the palette (Show all): it stays open
 
 
 def words_of(query: str) -> list[str]:
@@ -111,7 +113,7 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
             entries.append(Entry(GO_TO_SLIDE, id_slug,
                                  lambda s=id_slug: window.open_slide_editor(window.project.slides_dir / slide_language.current_name(s)),
                                  GROUP_ICONS[GO_TO_SLIDE], "not in this deck"))
-    return entries[:MAX_SLIDES]
+    return entries                  # the palette shows MAX_SLIDES of them, or all after Show all
 
 
 def deck_entries(window, words: list[str]) -> list[Entry]:
@@ -122,9 +124,9 @@ def deck_entries(window, words: list[str]) -> list[Entry]:
 
 
 def hit_entries(window, hits: list[slide_search.SearchHit]) -> list[Entry]:
-    group = TEXT_HITS if len(hits) <= MAX_HITS else f"{TEXT_HITS} ({MAX_HITS} of {len(hits)})"
-    return [Entry(group, hit.title, lambda h=hit: window.open_slide_editor(h.path, line=h.line),
-                  GROUP_ICONS[TEXT_HITS], f"line {hit.line}", detail=hit.snippet) for hit in hits[:MAX_HITS]]
+    """Every hit; the palette shows MAX_HITS of them, or all after Show all."""
+    return [Entry(TEXT_HITS, hit.title, lambda h=hit: window.open_slide_editor(h.path, line=h.line),
+                  GROUP_ICONS[TEXT_HITS], f"line {hit.line}", detail=hit.snippet) for hit in hits]
 
 
 class _SearchWorker(QThread):
@@ -154,6 +156,7 @@ class CommandPalette(QWidget):
         self._project_slugs: list[str] = []
         self._hits: list[slide_search.SearchHit] = []
         self._hits_query = ""
+        self._expanded: set[str] = set()     # the groups whose Show all was chosen, for the text typed now
         self._worker: Optional[_SearchWorker] = None
         self._previous_focus: Optional[QWidget] = None   # gets the keyboard back when the palette closes
         self.setObjectName(q.PALETTE)
@@ -285,6 +288,7 @@ class CommandPalette(QWidget):
     def _on_text(self, _text: str) -> None:
         self.stop_search()
         self._hits, self._hits_query = [], ""
+        self._expanded.clear()          # Show all is for one search
         self._refresh()
         if len(self._query()) >= MIN_TEXT_QUERY:
             self._debounce.start()
@@ -296,10 +300,10 @@ class CommandPalette(QWidget):
         before = self._entries[self._current] if 0 <= self._current < len(self._entries) else None
         entries = command_entries(self._window, words)
         if words:
-            entries += slide_entries(self._window, words, self._project_slugs)
+            entries += self._limited(slide_entries(self._window, words, self._project_slugs), MAX_SLIDES, "slides")
             entries += deck_entries(self._window, words)
         if self._hits_query == query:
-            entries += hit_entries(self._window, self._hits)
+            entries += self._limited(hit_entries(self._window, self._hits), MAX_HITS, "matches")
         if len(query) >= MIN_TEXT_QUERY:
             entries.append(Entry(CHAT, f"Ask the chat: “{query}”", lambda: self._window.ask_chat(query),
                                  GROUP_ICONS[CHAT], ai_profile.resolve(self._window.project, ai_profile.CHAT).label))
@@ -308,6 +312,34 @@ class CommandPalette(QWidget):
         kept = next((i for i, e in enumerate(entries) if before and (e.group, e.label) == (before.group, before.label)),
                     None)
         self._set_current(kept if kept is not None else self._first_enabled())
+
+    def _limited(self, entries: list[Entry], limit: int, noun: str) -> list[Entry]:
+        """The first `limit` of a group's entries and a Show all row, or (after Show all) up to SHOW_ALL_LIMIT of them;
+        the heading says how many there are when not all are listed."""
+        if len(entries) <= limit:
+            return entries
+        group, total = entries[0].group, len(entries)
+        if group in self._expanded:
+            shown = entries[:SHOW_ALL_LIMIT]
+            if total <= SHOW_ALL_LIMIT:
+                return shown
+        else:
+            shown = entries[:limit]
+        heading = f"{group} ({len(shown)} of {total})"
+        listed = [replace(e, group=heading) for e in shown]
+        if group not in self._expanded:
+            more = min(total, SHOW_ALL_LIMIT)
+            label = f"Show all {more} {noun}" if more == total else f"Show the first {more} {noun}"
+            listed.append(Entry(heading, label, lambda g=group: self._expand(g), "unfold_more", keep_open=True))
+        return listed
+
+    def _expand(self, group: str) -> None:
+        """Show all: the group lists every entry; the row that was Show all becomes the next entry."""
+        index = next((i for i, e in enumerate(self._entries) if e.keep_open and e.group.startswith(group)),
+                     self._current)
+        self._expanded.add(group)
+        self._refresh()
+        self._set_current(min(index, len(self._entries) - 1))
 
     def _show_entries(self) -> None:
         layout = self._list_layout
@@ -358,7 +390,8 @@ class CommandPalette(QWidget):
             return
         entry = self._entries[index]
         if entry.enabled and entry.run is not None:
-            self.hide()
+            if not entry.keep_open:
+                self.hide()
             entry.run()
 
     # -- the text search -----------------------------------------------------------------

@@ -81,8 +81,10 @@ def test_a_menu_choice_without_a_form_inserts_at_once(pane):
     editor = pane.current.editor
     pane._on_insert_chosen("block:4")            # Definition block
     assert editor.text().startswith("\\begin{definitionblock}{}")
-    pane._on_insert_chosen("cmd:7")              # Both languages
+    pane._on_insert_chosen("cmd:8")              # Both languages
     assert "\\multilingualtext{}{}" in editor.text()
+    pane._on_insert_chosen("cmd:4")              # \cornerfigure[corner=se]{...}, the cursor in its braces
+    assert "\\cornerfigure[corner=se]{}" in editor.text()
 
 
 def test_the_code_file_form_lists_the_snippets_and_suggests_the_slides_next_name(pane, project):
