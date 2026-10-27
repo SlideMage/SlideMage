@@ -15,7 +15,7 @@ DETAIL = CourseDetail(
     number="355.001", title="Bachelorkurs (Management Science)",
     semester="Wintersemester 2026/27",
     lecturers=(
-        Lecturer("Andreas", "Darmann", "Vortragende*r"),
+        Lecturer("Erika", "Musterfrau", "Vortragende*r"),
         Lecturer("Jürgen", "Fleiß", "Vortragende*r"),
     ),
 )
@@ -65,7 +65,7 @@ def test_plan_makes_a_slide_for_each_part_asked_for():
     specs = admin_slides.plan_slides("de", detail=DETAIL, lecturers=DETAIL.lecturers[1:], group=GROUP)
     assert [suffix for suffix, _ in specs] == ["Title-Slide", "Course-Sessions"]
     title, sessions = (source for _, source in specs)
-    assert "Jürgen Fleiß" in title and "Andreas Darmann" not in title
+    assert "Jürgen Fleiß" in title and "Erika Musterfrau" not in title
     assert r"\textbf{Datum} & \textbf{Zeit}" in sessions and "Abhaltung — Vorbesprechung" in sessions
     assert [suffix for suffix, _ in admin_slides.plan_slides("de", detail=DETAIL, lecturers=DETAIL.lecturers)] == [
         "Title-Slide"]

@@ -67,7 +67,7 @@ COURSE_DATA_JSON = json.dumps({
                     "semesterDto": {"semesterDesignation": {"value": "Wintersemester 2026/27"}},
                     "lectureships": [
                         {
-                            "identityLibDto": {"firstName": "Andreas", "lastName": "Darmann"},
+                            "identityLibDto": {"firstName": "Erika", "lastName": "Musterfrau"},
                             "teachingFunction": {"name": "Vortragende*r"},
                         },
                         {
@@ -299,7 +299,7 @@ def test_parse_course_detail_shape():
         number="355.001", title="Bachelorkurs (Management Science)",
         semester="Wintersemester 2026/27",
         lecturers=(
-            Lecturer("Andreas", "Darmann", "Vortragende*r"),
+            Lecturer("Erika", "Musterfrau", "Vortragende*r"),
             Lecturer("Jürgen", "Fleiß", "Vortragende*r"),
         ),
     )
@@ -308,7 +308,7 @@ def test_parse_course_detail_shape():
 def test_render_title_slide_escapes_and_joins_selected_lecturers():
     detail = parse_course_detail(COURSE_DATA_JSON)
     rendered = render_title_slide(detail, detail.lecturers[:1])
-    assert rendered == r"\titleframe{Bachelorkurs (Management Science)}{Andreas Darmann\\Wintersemester 2026/27}"
+    assert rendered == r"\titleframe{Bachelorkurs (Management Science)}{Erika Musterfrau\\Wintersemester 2026/27}"
 
 
 def test_parse_course_detail_reads_languages_of_instruction_main_first():

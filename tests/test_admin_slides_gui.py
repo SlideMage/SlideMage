@@ -64,7 +64,7 @@ def test_multiple_groups_and_lecturers_build_combined_preview(tmp_path, monkeypa
     assert [tab.group_combo.itemText(i) for i in range(tab.group_combo.count())] == [g.name for g in groups.groups]
     assert "05.10.2026" in tab.preview.toPlainText()
     assert "Bachelorkurs (Management Science)" in tab.preview.toPlainText()
-    assert "Andreas Darmann, Jürgen Fleiß" in tab.preview.toPlainText()
+    assert "Erika Musterfrau, Jürgen Fleiß" in tab.preview.toPlainText()
     assert [suffix for suffix, _ in tab.slide_specs] == ["Title-Slide", "Course-Sessions"]
     assert changes
 
@@ -74,7 +74,7 @@ def test_multiple_groups_and_lecturers_build_combined_preview(tmp_path, monkeypa
 
     checkbox, _ = tab._lecturer_checks[0]
     checkbox.setChecked(False)
-    assert "Andreas Darmann" not in tab.preview.toPlainText()
+    assert "Erika Musterfrau" not in tab.preview.toPlainText()
     assert "Jürgen Fleiß" in tab.preview.toPlainText()
 
     tab.sessions_check.setChecked(False)
