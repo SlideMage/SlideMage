@@ -473,6 +473,25 @@ def test_add_bib_entry_validates(box):
         "author": "A, B", "title": "T", "year": "2000", "publisher": "P"})
 
 
+def test_make_qr_code_writes_media_and_returns_the_call(box, root):
+    out = box.ok("make_qr_code", kind="url", fields={"url": "uni-graz.at/course"}, caption="QR 1")
+    assert (root / "media" / "qr-1.pdf").is_file() and box.ws.changed[-1][0] == root / "media" / "qr-1.pdf"
+    assert out.endswith("\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}") and "Lecture hall ≥" in out
+    out = box.ok("make_qr_code", kind="event", fields={"title": "Exam", "start": "2026-12-14 10:00"}, height=0.8,
+                 caption="auto")
+    assert "\\SMQRCode[0.80\\textheight]{media/qr-exam-2026-12-14-10-00.pdf}{Exam, 2026-12-14 10:00}" in out
+    assert box.ok("make_qr_code", kind="url", fields={"url": "a.org"}).endswith("{}")               # no caption
+    out = box.ok("make_qr_code", kind="url", fields={"url": "b.org"}, corner="se")
+    assert out.endswith("\\cornerfigure[corner=se]{\\SMQRCode[0.60\\textheight]{media/qr-b-org.pdf}{}}")
+
+
+def test_make_qr_code_validates(box):
+    assert "no field(s) colour" in box.error("make_qr_code", kind="url", fields={"url": "a.org", "colour": "red"})
+    assert "not an email address" in box.error("make_qr_code", kind="email", fields={"to": "nobody"})
+    assert "Enter the start" in box.error("make_qr_code", kind="event", fields={"title": "x"})
+    assert "share of" in box.error("make_qr_code", kind="url", fields={"url": "a.org"}, height=2)
+
+
 def test_compile_deck_reports_per_pdf_and_the_latex_errors(box, root):
     assert box.ok("compile_deck") == "test: ok"
     assert box.ws.compiled == [("test", "instructor")]

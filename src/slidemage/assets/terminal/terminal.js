@@ -44,6 +44,28 @@ function keyHandler(event) {
   return true;
 }
 
+// The lines on the screen, each as [shown, with its dim cells as spaces], for terminal/draft.py: Claude Code's
+// unsent prompt is the box's text that is not dim (its placeholder is).
+function screenLines() {
+  if (!term) return [];
+  const buffer = term.buffer.active;
+  const lines = [];
+  for (let y = buffer.viewportY; y < buffer.viewportY + term.rows; y++) {
+    const line = buffer.getLine(y);
+    if (!line) continue;
+    let shown = "", solid = "";
+    for (let x = 0; x < term.cols; x++) {
+      const cell = line.getCell(x);
+      if (!cell || cell.getWidth() === 0) continue;
+      const chars = cell.getChars() || " ";
+      shown += chars;
+      solid += cell.isDim() ? " ".repeat(chars.length) : chars;
+    }
+    lines.push([shown, solid]);
+  }
+  return lines;
+}
+
 function start() {
   term = new Terminal({
     fontFamily: '"Roboto Mono", monospace', fontSize: 12, lineHeight: 1.15, cursorBlink: true,

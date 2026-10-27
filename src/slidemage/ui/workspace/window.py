@@ -566,6 +566,9 @@ class WorkspaceWindow(QMainWindow):
                     # bar), a read-only buffer, or any other handled save failure.
                     if not saved or file.dirty:
                         return False
+        # Ending leaves every slide edited on this visit, the one on show too: the Update version question of
+        # leaving a changed slide, with its setting on (2026-10-26, direct request).
+        self.centre.offer_versions_on_close()
         return True
 
     def _on_open_project(self) -> None:

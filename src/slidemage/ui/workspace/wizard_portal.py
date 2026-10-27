@@ -38,12 +38,12 @@ class WizardPortal(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        asset = Path(__file__).parents[2] / "assets" / "wizard-poses.png"
+        asset = Path(__file__).parents[2] / "assets" / "wizard-poses.webp"
         if not asset.is_file():
-            asset = Path(__file__).with_name("wizard-poses.png")
+            asset = Path(__file__).with_name("wizard-poses.webp")
         sheet = QPixmap(str(asset))
         if sheet.isNull():
-            raise FileNotFoundError("Wizard animation asset wizard-poses.png is missing")
+            raise FileNotFoundError("Wizard animation asset wizard-poses.webp is missing")
         # The casting wands extend slightly past nominal cell boundaries.
         # Use the transparent gutters so every star stays with its wizard.
         width, height = sheet.width(), sheet.height()

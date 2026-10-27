@@ -22,6 +22,7 @@ CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59cb4d818b7249"
 AUDITED_FRAMEWORK = {
     # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
+    # v8.62.0 (merged from develop): \SMQRCode in the base, an image and a caption in a box; no view-dependent rule.
     # v9.0.0: the setup layer (theme, palette and template settings with their defaults); no view-dependent rule.
     # v9.1.0 (step 2a): base, the Lua files and the example template only rename gotham... content names to SM...;
     # no rule, argument or view-dependent branch changed.
@@ -33,7 +34,7 @@ AUDITED_FRAMEWORK = {
     # the theme (the theme test above still passes), the patches are the same, in the same order, and the setup file
     # only names the new theme version.
     "SlideMage_setup.tex": "9a5eda4b111e4d91e92f09e713004bf8fac40d432399d7f8a489996f5a2e75b6",
-    "SlideMage_base.tex": "4d99cc800af07f8003245d1c3e4403ca485dbb3594bcaa3dc765ebc6a1af64de",
+    "SlideMage_base.tex": "19eac4cc21dd2c96de294b77d55dedade5acc721a50f5f67f05a3a5d8175e2d8",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "9be57bf8ad169ee26f66978a891a14b58b0dae8efbf73729aaec726e5c2c8eba",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
@@ -82,7 +83,7 @@ _SOURCE_SAFE = {
     "hskip", "medskip", "smallskip", "bigskip", "newline", "linebreak",
     "SMChapterAgenda", "SMAgendaTitle", "SMLink", "sectionfigure",
     "titleframe", "chapterlogo", "SMFinalStateForStudents", "fullbleedframe",
-    "progressstrip", "SMBulletEllipsis", "SMCodeFont",
+    "progressstrip", "SMBulletEllipsis", "SMCodeFont", "SMQRCode",
     "deckonly", "deckuncover", "deckvisible", "conditionalpause", "deckreveal",
     "deckrevealfinal", "deckitem", "SMFullBleedLayers", "SMImage", "SMAltImage",
     "SMAltText", "SI", "frac", "sqrt", "left", "right", "times", "cdot",

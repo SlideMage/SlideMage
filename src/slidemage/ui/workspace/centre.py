@@ -501,11 +501,18 @@ class CentreColumn(QFrame):
             # after the switch
             QTimer.singleShot(0, lambda: self._offer_version(left))
 
-    def _offer_version(self, path: Path) -> None:
+    def offer_versions_on_close(self) -> None:
+        """Closing the window (or switching projects, or restarting for an update) leaves every slide edited on
+        this visit, the one on show included: each is offered Update Version as if it were left."""
+        for path in sorted(self._edited):
+            self._offer_version(path, closing=True)
+
+    def _offer_version(self, path: Path, *, closing: bool = False) -> None:
         """Settings -> General, "Ask about Update Version when leaving a changed slide": the slide's current
         file `path` was edited in the Source view and now carries a "+" -- ask whether to make it a version
-        (Update Version, as its button does). Asked once per visit with edits; "Not now" leaves the "+"."""
-        if path not in self._edited or path == self._path:
+        (Update Version, as its button does). Asked once per visit with edits; "Not now" leaves the "+".
+        Edits that were discarded instead of saved (AutoSave off) are not asked about: they cannot be written."""
+        if path not in self._edited or (path == self._path and not closing):
             return                         # not edited on this visit, or shown again already
         self._edited.discard(path)
         if not app_settings.get(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False):

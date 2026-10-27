@@ -376,6 +376,31 @@ def test_switch_session_saves_the_draft_with_esc_esc_then_resumes(window, monkey
     assert not view.switch_session()
 
 
+def test_switch_session_types_the_unsent_prompt_into_the_restarted_session(window, monkeypatch, qapp):
+    """2026-10-26: the prompt typed but not sent was gone after Switch now (Esc Esc alone did not keep it)."""
+    from slidemage.ui.workspace.terminal import view as view_mod
+    view = window.assistant.claude_code
+    session = _Session("sonnet", "high")
+    rule = "─" * 30
+    screens = [[[rule, rule], ["> Shorten the title", "> Shorten the title"], [rule, rule]],     # before: the draft
+               [["Resuming…", "Resuming…"]],                                                    # not up yet
+               [[rule, rule], ['> Try "…"', ">" + " " * 8], [rule, rule]]]                       # the new, empty box
+
+    class Terminal:
+        def read_screen(self, callback):
+            callback(screens.pop(0) if len(screens) > 1 else screens[0])
+
+    restarted = []
+    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
+    monkeypatch.setattr(view, "session", session)
+    monkeypatch.setattr(view, "terminal", Terminal())
+    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
+    monkeypatch.setattr(view_mod, "DRAFT_POLL_MS", 10)
+    assert view.switch_session()
+    QTest.qWait(view_mod.ESC_GAP_MS + view_mod.SAVE_DRAFT_MS + 300)
+    assert restarted == [True] and session.typed == [b"\x1b", b"\x1b", b"Shorten the title"]
+
+
 def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
     # v8.23.0: the cells are a fixed share of the popover; the open list is as wide as its longest name
     long_name = "hf.co/unsloth/translategemma-12b-it-GGUF:Q8_0"

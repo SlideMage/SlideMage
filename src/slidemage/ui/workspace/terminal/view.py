@@ -30,11 +30,14 @@ from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, IconButton, IconLabel, SegmentedControl, Surface, caption
 from ..attachments import place_file, save_image
 from ..state import WorkspaceState
+from .draft import input_box_shown, paste_bytes, prompt_draft
 from .tasks import TaskRunner, bubbles
 
 SETUP, TERMINAL = 0, 1
 # switch_session: the pause between the two Esc of Esc Esc, and the time Claude Code gets to save the draft.
 ESC_GAP_MS, SAVE_DRAFT_MS = 250, 600
+# switch_session: how often and how long the restarted Claude Code is looked at for its input box, to type the draft.
+DRAFT_POLL_MS, DRAFT_WAIT_MS = 300, 20_000
 NEVER_SENT = "Cloud stays selected. Nothing is sent and no other model is used"
 INSTALL_TEXT = ("SlideMage runs your own Claude Code here, in the project folder, with your Claude "
                 "subscription. It is not installed on this computer (or not found).")
@@ -211,16 +214,43 @@ class ClaudeCodeView(Surface):
         self.terminal.focus_terminal()
 
     def switch_session(self) -> bool:
-        """Move the running Claude Code onto the saved default model and effort, keeping its conversation: Esc Esc
-        first, which puts a half-typed prompt into Claude Code's input history (Up brings it back) and stops a reply
-        that is running, then a restart with --resume (ClaudeCodeSession.start). /model would also make the model
-        Claude Code's own default for every session, which SlideMage leaves alone. False without a running session."""
+        """Move the running Claude Code onto the saved default model and effort, keeping its conversation and the
+        prompt typed but not sent: that is read off the screen (draft.py), then Esc Esc stops a reply that is
+        running (and puts the prompt into Claude Code's input history too), then a restart with --resume
+        (ClaudeCodeSession.start), and once the new input box is up the prompt is typed into it again, not sent.
+        /model would also make the model Claude Code's own default for every session, which SlideMage leaves alone.
+        False without a running session."""
         if not self.session_live:
             return False
+        if self.terminal is None:
+            self._switch_keeping("")
+        else:
+            self.terminal.read_screen(lambda lines: self._switch_keeping(prompt_draft(lines)))
+        return True
+
+    def _switch_keeping(self, draft: str) -> None:
+        if not self.session_live:
+            return
         self.session.write(b"\x1b")
         QTimer.singleShot(ESC_GAP_MS, lambda: self.session_live and self.session.write(b"\x1b"))
-        QTimer.singleShot(ESC_GAP_MS + SAVE_DRAFT_MS, lambda: self.restart(resume=True))
-        return True
+        QTimer.singleShot(ESC_GAP_MS + SAVE_DRAFT_MS, lambda: self._resume_with(draft))
+
+    def _resume_with(self, draft: str) -> None:
+        self.restart(resume=True)
+        if draft and self.terminal is not None:
+            self._restore_draft(draft, DRAFT_WAIT_MS // DRAFT_POLL_MS)
+
+    def _restore_draft(self, draft: str, tries: int) -> None:
+        """Type `draft` into the restarted Claude Code's input box once it is on the screen, empty; looked for every
+        DRAFT_POLL_MS for DRAFT_WAIT_MS, after which the draft is only in Claude Code's input history (Esc Esc)."""
+        def check(lines: list) -> None:
+            if not self.session_live:
+                return
+            if input_box_shown(lines):
+                self.session.write(paste_bytes(draft))
+            elif tries > 1:
+                self._restore_draft(draft, tries - 1)
+        QTimer.singleShot(DRAFT_POLL_MS, lambda: self.terminal is not None and self.terminal.read_screen(check))
 
     def _set_attachable(self) -> None:
         self.attach_button.setEnabled(self.session is not None and self.session.running)

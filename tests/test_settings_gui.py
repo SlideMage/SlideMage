@@ -93,6 +93,30 @@ def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qap
     assert open_sheet(qapp, tab=OLLAMA).current_tab() == OLLAMA
 
 
+def test_the_sheet_fits_the_screen_and_its_tabs_scroll(qapp):
+    """The General tab is taller than many screens (2026-10-26: cut off at the bottom, with no way to reach
+    Close): the sheet opens at most 85 % of the screen high and the tab scrolls."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QScrollArea
+
+    from slidemage.ui.kit.widgets import SCROLL_GAP
+
+    sheet = open_sheet(qapp)
+    sheet.show()
+    qapp.processEvents()
+    screen = sheet.screen().availableGeometry()
+    assert sheet.frameGeometry().height() <= screen.height() and sheet.height() <= int(screen.height() * 0.85)
+    area = sheet._stack.currentWidget()
+    assert isinstance(area, QScrollArea) and area.widget() is sheet.general
+    if sheet.general.sizeHint().height() > area.viewport().height():
+        assert area.verticalScrollBar().maximum() > 0      # what does not fit can be scrolled to
+        bar = area.verticalScrollBar()
+        bar_left = bar.mapTo(area, QPoint(0, 0)).x()
+        content_right = area.viewport().mapTo(area, QPoint(area.viewport().width(), 0)).x()
+        assert bar.isVisible() and bar_left - content_right >= SCROLL_GAP            # a gap before the scroll bar
+    sheet.close()
+
+
 # -- General -----------------------------------------------------------------------------------
 
 def test_dark_mode_and_tab_width_reach_the_window_as_they_change(qapp):

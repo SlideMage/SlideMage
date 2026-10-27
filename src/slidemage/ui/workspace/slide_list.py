@@ -24,7 +24,7 @@ import time
 from typing import Callable, Optional
 import weakref
 
-from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -413,6 +413,8 @@ class SlideList(QWidget):
         selected = {r.key for r in self.tree.selected_rows()} if same_deck else set()
         current = self.tree.data_of(self.tree.currentItem())
         current_key = current.key if same_deck and isinstance(current, SlideRow) else None
+        # the focused slide is a row here (so when it is gone, the slide that took its place gets the focus)
+        focus_in_deck = isinstance(current, SlideRow) and current.matches(self.state.focused_slide)
         current_index = next((i for i, item in enumerate(self.tree.slide_items())
                               if item is self.tree.currentItem()), 0)
         scroll = self.tree.verticalScrollBar().value()
@@ -445,7 +447,11 @@ class SlideList(QWidget):
         self.tree.verticalScrollBar().setValue(scroll)
         self._apply_filter()
         self.tree.itemSelectionChanged.emit()   # it was blocked while rebuilding
-        if not preserve_focus:
+        # A slide focused from outside the deck keeps the focus: a row is made the focused slide only when the
+        # focused slide was or is one of the deck's (2026-10-26: a save of a slide opened from Find anything
+        # focused the slide shown before it again).
+        focused = self.state.focused_slide
+        if not preserve_focus and (focused is None or focus_in_deck or self._item_of(focused) is not None):
             self._on_current_changed(self.tree.currentItem(), None)
         self.add_bar.setEnabled(deck is not None)
 
@@ -483,6 +489,11 @@ class SlideList(QWidget):
 
     # -- state <-> tree ------------------------------------------------------------
 
+    def _item_of(self, slide_id: Optional[str]) -> Optional[QTreeWidgetItem]:
+        """The row of the focused slide `slide_id` (its focused occurrence, when it is in the deck twice)."""
+        return next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)
+                     and (self.state.focused_occurrence is None or self.tree.data_of(i).key == self.state.focused_occurrence)), None)
+
     def _on_current_changed(self, item: Optional[QTreeWidgetItem], _previous) -> None:
         row = self.tree.data_of(item)
         if isinstance(row, SlideRow):
@@ -491,9 +502,16 @@ class SlideList(QWidget):
     def _on_state_focus(self, slide_id: Optional[str]) -> None:
         """Another part of the window focused a slide (the source editor, the palette's Go to
         slide): it is shown even if the Find box hides it or its section is closed."""
-        item = next((i for i in self.tree.slide_items() if self.tree.data_of(i).matches(slide_id)
-                     and (self.state.focused_occurrence is None or self.tree.data_of(i).key == self.state.focused_occurrence)), None)
+        item = self._item_of(slide_id)
         if item is None:
+            if slide_id is not None:
+                # A slide this deck does not show (opened from Find anything): no row stays highlighted, or the
+                # next rebuild (a save, a render) would focus the slide shown before again (2026-10-26).
+                self.tree.blockSignals(True)
+                self.tree.setCurrentIndex(QModelIndex())
+                self.tree.clearSelection()
+                self.tree.blockSignals(False)
+                self._on_selection_changed()
             return
         head = item.parent()
         self.tree.collapsed.discard(self.tree.data_of(head).title)

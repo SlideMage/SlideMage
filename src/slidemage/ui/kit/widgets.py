@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QStyle,
@@ -1277,6 +1278,9 @@ class ModeBadge(QFrame):
         return self.label.text()
 
 
+SCROLL_GAP = 14          # px between a scrolling sheet tab's content and its scroll bar
+
+
 class ModalSheet(QDialog):
     """Modal dialog with a title, optional tabs and a button row.
 
@@ -1305,6 +1309,7 @@ class ModalSheet(QDialog):
         self._tabs.setExpanding(False)
         self._tabs.hide()
         self._stack = QStackedWidget()
+        self._scrolling: list[QScrollArea] = []      # the tabs added with scroll=True
         self._footer = QHBoxLayout()
         self._footer.setSpacing(8)
         self._footer.addStretch(1)
@@ -1323,11 +1328,46 @@ class ModalSheet(QDialog):
         """A small widget (a badge) on its own line under the title, at the left."""
         self._root.insertWidget(1, widget, 0, Qt.AlignmentFlag.AlignLeft)
 
-    def add_tab(self, label: str, widget: QWidget) -> int:
+    def add_tab(self, label: str, widget: QWidget, *, scroll: bool = False) -> int:
+        """`scroll`: the tab scrolls when it is taller than the sheet, and the sheet opens no taller than
+        SCREEN_SHARE of the screen (fit_to_screen) -- for a tab that can outgrow a laptop screen."""
         self._tabs.addTab(label)
+        if scroll:
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            area.setFrameShape(QScrollArea.Shape.NoFrame)
+            area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            area.setObjectName(q.SURFACE)
+            area.viewport().setObjectName(q.SURFACE)
+            # A gap between the text and the scroll bar: right-aligned text ran up to it (2026-10-26).
+            area.setViewportMargins(0, 0, SCROLL_GAP, 0)
+            area.setWidget(widget)
+            self._scrolling.append(area)
+            widget = area
         index = self._stack.addWidget(widget)
         self._tabs.setVisible(self._tabs.count() > 1)
         return index
+
+    SCREEN_SHARE = 0.85
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._scrolling:
+            self.fit_to_screen()
+
+    def fit_to_screen(self) -> None:
+        """As tall as its tallest scrolling tab needs, at most SCREEN_SHARE of the screen it opens on (2026-10-26:
+        the Settings sheet ran off even a high-resolution screen, with no way to reach its bottom)."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        tallest = max(area.widget().sizeHint().height() for area in self._scrolling)
+        chrome = self.sizeHint().height() - max(area.sizeHint().height() for area in self._scrolling)
+        limit = int(screen.availableGeometry().height() * self.SCREEN_SHARE)
+        self.resize(self.width(), max(self.minimumSizeHint().height(), min(limit, tallest + chrome)))
+        frame = self.frameGeometry()
+        frame.moveCenter(screen.availableGeometry().center())
+        self.move(frame.topLeft())
 
     def set_current_tab(self, index: int) -> None:
         self._tabs.setCurrentIndex(index)
