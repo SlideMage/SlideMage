@@ -1120,19 +1120,24 @@ fg=normal~text.fg
 \setbeamertemplate{navigation~symbols}{}
 \setbeamertemplate{headline}{}
 
-% Content text margins.
-\setbeamersize{text~margin~left=.45cm, text~margin~right=.45cm}
+% ---- Layout hooks -----------------------------------------------------------
+% The hooks of the catalog (SlideMage_setup.tex) that must be pushed into registers that are
+% not SlideMage's own. A template changes the hooks after this theme has loaded, so the base
+% calls this once after the template, next to \SMApplyColorRoles. Every other hook is read
+% where it is used.
+\newcommand{\SMApplyLayoutHooks}{%
+	% Content text margins.
+	\setbeamersize{text~margin~left=\SMTextMarginLeft, text~margin~right=\SMTextMarginRight}
+	% The space between two footnotes.
+	\setlength{\footnotesep}{\SMFootnoteSep}
+	% The footnotes' font. The bibliography fonts are set again inside the footnote
+	% template (\SMFootnoteBibFonts).
+	\setbeamerfont{footnote}{size=\SMFootnoteSize}
+}
 
 % ---- Frame title ----------------------------------------------------------
-% The space around the frame title. Templates set these lengths.
-\newlength{\SMFrametitleTopPadding}
-\newlength{\SMFrametitleBottomPadding}
-\newlength{\SMFrametitleLeftPadding}
-\newlength{\SMFrametitleRightPadding}
-\setlength{\SMFrametitleTopPadding}{2.2ex}
-\setlength{\SMFrametitleBottomPadding}{2.2ex}
-\setlength{\SMFrametitleLeftPadding}{2.2ex}
-\setlength{\SMFrametitleRightPadding}{2.2ex}
+% The space around the frame title (\SMFrametitle{Top,Bottom,Left,Right}Padding) is a hook of
+% the catalog.
 \providecommand{\SM@strut}{
   \vphantom{ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz (/)}
 }
@@ -1144,11 +1149,8 @@ fg=normal~text.fg
   \rule[-\SMFrametitleBottomPadding]{0pt}{\SMFrametitleBottomPadding}
 }
 
-\providecommand{\SMFrameSubtitleSep}{
-  \ ---~
-}
-\newlength{\SMFrameSubtitleStrutEnd}
-\setlength{\SMFrameSubtitleStrutEnd}{0pt}
+% The text between title and subtitle (\SMFrameSubtitleSep) and the space below the subtitle
+% (\SMFrameSubtitleStrutEnd) are hooks of the catalog.
 
 % Title and subtitle on one line, the logo at the right end.
 \defbeamertemplate{frametitle}{SMSubsameline}{
@@ -1562,17 +1564,10 @@ fg=normal~text.fg
 }
 
 % ---- Footline -------------------------------------------------------------
-\newlength{\SMFootlineVOffset}
-\newlength{\SMFootlineHeight}
-\newlength{\SMFootlineDepth}
+% \SMFootlineVOffset, \SMFootlineHeight, \SMFootlineDepth, \SMFootlineSidePadding and
+% \SMRightFooterPadding are hooks of the catalog.
 \newlength{\SMFootlineHRightOffset}
-\newlength{\SMRightFooterPadding}
-
-\setlength{\SMFootlineVOffset}{-0.5ex}
-\setlength{\SMFootlineDepth}{0.1ex}
-\setlength{\SMFootlineHeight}{1.5ex}
 \setlength{\SMFootlineHRightOffset}{\spaceskip}
-\setlength{\SMRightFooterPadding}{3.5ex}
 
 \defbeamertemplate*{frame~footer}{SMEmpty}{}
 \defbeamertemplate*{footline}{SMFootline}{
@@ -1580,8 +1575,8 @@ fg=normal~text.fg
   \begin{beamercolorbox}[
     wd=\textwidth,
     sep=0pt,
-    leftskip=3ex,
-    rightskip=3ex,
+    leftskip=\SMFootlineSidePadding,
+    rightskip=\SMFootlineSidePadding,
     ht={\SMFootlineHeight},
     dp={\SMFootlineDepth},
   ]{footline}
@@ -1625,8 +1620,7 @@ fg=normal~text.fg
 % the text sits about 0.84pt above the page's bottom edge and spans about
 % one em of its own 5pt font, plus a bit of padding above and below. If the
 % footer font size changes, this will need re-measuring.
-\newlength{\SMFooterBoxHeight}
-\setlength{\SMFooterBoxHeight}{7.26pt}
+% (\SMFooterBoxHeight is a hook of the catalog.)
 % \vbox to 0pt{...} forces this to occupy exactly zero space in the normal
 % vertical list, *without* switching into horizontal mode the way an hbox
 % (e.g. \raisebox) would -- inserting an hbox here forces LaTeX to open an
@@ -1677,7 +1671,7 @@ fg=normal~text.fg
 % (measured to be 7.7pt here -- clearly sized for a much bigger font than
 % ours), so that's what actually needs the bigger reduction; \parskip
 % (tried first) turned out to have no visible effect on it.
-\setlength{\footnotesep}{3pt}
+% (3pt: the catalog's \SMFootnoteSep, applied by \SMApplyLayoutHooks.)
 % \reset@font\footnotesize is applied by beamer's own footnote machinery
 % before this template runs (beamerbaseframecomponents.sty), so the font
 % size has to be set again here to actually take effect.
@@ -1761,7 +1755,7 @@ fg=normal~text.fg
 % of the minipage by hand (fk7, xv8). It now also counts with the frame's
 % \c@footnote, so its marker continues the frame's sequence.
 \beamer@framefootnotestrue
-\setbeamerfont{footnote}{size=\fontsize{3.2}{1.9}\selectfont}
+% (The footnote font, \SMFootnoteSize in the catalog, is set by \SMApplyLayoutHooks.)
 % A \footnote{\fullcite{key}} came out at body size: beamer patches biblatex's
 % bibliography drivers (beamerbaselocalstructure.sty) to apply the beamer fonts
 % "bibliography entry author/title/note", and beamerthemeSlideMage.sty sets
@@ -1770,10 +1764,10 @@ fg=normal~text.fg
 % template runs inside its own group, so a real \printbibliography keeps
 % the theme's sizes. Only the size is overridden, series/shape stay.
 \newcommand{\SMFootnoteBibFonts}{%
-	\setbeamerfont{bibliography entry author}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry title}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry location}{size=\fontsize{3.2}{1.9}\selectfont}%
-	\setbeamerfont{bibliography entry note}{size=\fontsize{3.2}{1.9}\selectfont}%
+	\setbeamerfont{bibliography entry author}{size=\SMFootnoteSize}%
+	\setbeamerfont{bibliography entry title}{size=\SMFootnoteSize}%
+	\setbeamerfont{bibliography entry location}{size=\SMFootnoteSize}%
+	\setbeamerfont{bibliography entry note}{size=\SMFootnoteSize}%
 }
 % Beamer's own \@makefnmark (used for the marker both inline in the body
 % text and again next to the footnote itself) hard-codes the "footnote
@@ -1793,8 +1787,7 @@ fg=normal~text.fg
 % the difference between the two, empirically calibrated (like
 % \SMFooterRightShift above) against the rendered PDF coordinates of
 % both -- re-measure and adjust if the text margins or logo inset change.
-\newlength{\SMFootnoteRightShift}
-\setlength{\SMFootnoteRightShift}{4.8pt}
+% (\SMFootnoteRightShift is defined by the layout profile.)
 
 % Side footnotes: \sidefootnotes (called *before* \begin{standardframe}, like
 % \chapterlogo{}) moves that one frame's footnotes -- including \source{} lines,
@@ -1837,18 +1830,15 @@ fg=normal~text.fg
 % 219.57pt above the page's bottom edge; minus \SMSideFootnoteTopSep (3pt),
 % \SMFooterBoxHeight (7.26pt), and ~2pt of clearance above the footer box
 % leaves 207pt. Re-measure if the frametitle font or its padding ever changes.
-\newlength{\SMSideFootnoteHsize}
-\setlength{\SMSideFootnoteHsize}{207pt}
+% (\SMSideFootnoteHsize is a hook of the catalog.)
 % Gap between the title bar's bottom edge and the top end of the strip. The
 % text itself sits at the strip's *bottom* end (it is \raggedright, i.e.
 % flush with the line start, which the rotation turns into bottom-aligned),
 % so this gap only matters for footnotes long enough to fill the whole run.
-\newlength{\SMSideFootnoteTopSep}
-\setlength{\SMSideFootnoteTopSep}{3pt}
+% (\SMSideFootnoteTopSep is a hook of the catalog.)
 % Distance from the page's right edge to the strip's outer edge -- the rotated
 % counterpart of the small gap the bottom footnotes keep above the footer box.
-\newlength{\SMSideFootnoteRightInset}
-\setlength{\SMSideFootnoteRightInset}{2pt}
+% (\SMSideFootnoteRightInset, 2pt, is a hook of the catalog; the frames with a side image set it for themselves.)
 % A real footnote's marker (e.g. "*") sits in an \hbox of its own whose
 % *ink* -- unlike \source{}'s marker, which is emptied to nothing and so has
 % no ink at all -- extends slightly left of that hbox's own nominal left
@@ -1861,8 +1851,7 @@ fg=normal~text.fg
 % overhang, so the marker's ink -- not the text after it -- lines up with
 % \source{}'s left edge; \source{} itself is untouched; empirically
 % calibrated against the rendered PDF, like the other shift constants here.
-\newlength{\SMSideFootnoteMarkerShift}
-\setlength{\SMSideFootnoteMarkerShift}{1.3pt}
+% (\SMSideFootnoteMarkerShift is a hook of the catalog.)
 
 % A new template variant (rather than reusing beamer's own "default", which
 % it has already defined and then refuses to redefine) that we immediately
@@ -2111,8 +2100,7 @@ fg=normal~text.fg
 % corrected the next day (direct instruction: align with the *first*-level
 % bullet's own margin instead) to 4.20pt, matching a first-level bullet's
 % own dot position (~12.84pt in from the frame's raw margin) instead.
-\newlength{\SMBlockSideMargin}
-\setlength{\SMBlockSideMargin}{4.20pt}
+% (\SMBlockSideMargin is a hook of the catalog.)
 
 % Bullets inside any block type render black (c_primary_dark), not this
 % deck's usual yellow \SMBulletColor -- yellow-on-gray (a block's own
@@ -2184,8 +2172,7 @@ fg=normal~text.fg
 % (\insertblocktitle). Call as
 % \SMBlockTitleWithMarker{<marker>}{\insertblocktitle} in place of a
 % bare \insertblocktitle, after the usual \usebeamerfont* call.
-\newlength{\SMBlockTitleMarkerWidth}
-\setlength{\SMBlockTitleMarkerWidth}{16pt}
+% (\SMBlockTitleMarkerWidth is a hook of the catalog.)
 % 2026-07-08 (direct instruction), two more fixes to this same helper:
 % - A title long enough to wrap onto a second line
 %   (slides/u5h-Long-term-Bonds-Provisions-current.tex's own
