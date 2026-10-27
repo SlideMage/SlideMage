@@ -514,7 +514,38 @@ is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs
     compile and preview, so it is offered like a bundled template and a project uses it by choosing its key, as
     today. A project copy of the same key wins (as project templates do now), which also lets a user freeze it.
 - **Then report the definition to the website side**, which adds `"themes"` to the schema, the builder and the
-  pages. The institution templates leaving the repository in step 10 are the first candidates.
+  pages. The institution templates leaving the repository in step 10 are packaged first (step 11), but they are
+  private and never listed (below).
+- **What the website side settled on 2026-10-27** (`docs/Handover_2026-10-27-Website-To-App.md`), which a theme
+  package inherits:
+  - Catalogue URL `https://slidemage.org/plugins/index.json` (final; hard-code it), test catalogue
+    `https://slidemage.org/plugins/index-test.json`, pages under `https://slidemage.org/plugins/`. Never the old
+    `stpalan.github.io` address.
+  - `"themes"` is an optional top-level field, so `schema` stays 1. The catalogue client ignores unknown top-level
+    fields, so an app released before themes keeps working once they appear. Schema: copy
+    `schema/plugins-index.schema.json` from `stpalan/slidemage-website` (its `$id` is
+    `https://slidemage.org/schema/plugins-index-1.json`), not from a handover.
+  - A release must carry `README.md` and `CHANGELOG.md` at its tag, or the builder refuses it. An optional
+    `.sha256` asset uses the `sha256sum` format (`<64 hex>  <file name>`). Compiled files (`.pyc .pyo .so .pyd .dll
+    .dylib .exe`) in the asset refuse the release; a theme has none. Icon: `website/icon.svg` (no scripts, event
+    handlers, `javascript:` or `foreignObject`) or `website/icon.png`, square, at least 128 px; for a theme,
+    `preview.png` is the natural source.
+  - The app installs what the catalogue pins (version, URL, SHA-256), **never a repository's "latest release"**:
+    GitHub can mark a broken or withdrawn release "Latest".
+  - Registry key `hidden: true` puts an entry only into `index-test.json`, with no page. The id `submit` is
+    reserved.
+  - The plugin rule "package folder = id with hyphens as underscores" exists because a plugin is a Python
+    package. A theme is not imported, so its id stays the template key, hyphens and all (`uni-graz`).
+  - A theme template repository, like `stpalan/slidemage-plugin-template` for plugins, is worth offering once the
+    package is defined; tell the website side if one is made.
+- **Private themes stay out of the catalogue.** A theme carrying a university's logo and corporate design is not
+  ours to publish. Its repository is private, so the catalogue builder could not download its asset, and
+  `hidden: true` would still publish its URL in the test catalogue. Such a theme is installed with the plugin
+  installer's **"Install from file…"** (`docs/PLUGINS_PLAN.md`, Phase 1) from the `.smtheme` asset of its private
+  release, and updated the same way. The file-install path must therefore accept a `.smtheme` and run the same checks
+  as a catalogue install, minus the pinned SHA-256: a valid `theme.toml`, no files outside the package, and a key that
+  does not shadow a bundled template. Later, if it is worth it, SlideMage could download a private release directly
+  with the user's GitHub token (the updater already keeps one per user and machine). That is not needed for step 11.
 
 ## Steps
 
@@ -761,6 +792,12 @@ mix it in.
      - **Open for the user.** (a) `\SMContentTopAlign` 41.58pt against `\SMTopMargin` 41.58bp: equal in intent, 0.156pt apart in fact; deriving one from the other moves every overlay figure, floating block and `\SMFit` by 0.156pt (0.05mm, not seen by eye, but not pixel-identical), and would let a template change the Top Margin without re-measuring. Needs a yes, with before/after images if wanted. (b) `\SMTitleBarBottomAlign`: same kind of question, deriving it removes the second hand-kept number but changes 14-16 pixels per page at the logo. (c) Should the footer and footnote right shifts follow `\SMFrametitleRightPadding` (a 0.04pt / 0.24pt visible move on the default look)? (d) Is `\SMFootlineVOffset`'s -0.77pt a design choice (kept as hook) or a font calibration? (e) Is the 41pt `\SMTitleframeBottomPad` a hook (kept) or a Fira calibration?
      - **Consumers.** `appendix_toc.py` reads `\SMTextMarginLeft` where it had `.45cm` (and `\SMFrametitleRightPadding`, as before); `check_layout.py` keeps its constants (step 6 replaces them) with a comment naming the hooks; `ai/guides.py` names none of the moved values. Pins renewed (setup, profile, base, theme); no view-dependent rule entered them.
 6. **Effective margins for the tools.** Base writes the PDF info keys; `check_layout.py` reads them.
+   - **Done 2026-10-27 (v9.5.0), notes for the later steps:** the keys are `SMTopMargin` (`\SMTopMargin`) and
+     `SMLeftMargin` (`\SMFrametitleLeftPadding`: the old constant 12.55 was exactly this length, 12.552bp, the
+     strut has no width), in bp rather than the pt section 5 named, because the tool measures in PDF units. Written
+     by the base right after `\SMApplyLayoutHooks`; `check_layout.pdf_margins()` reads them and falls back to
+     41.58/12.55 for older PDFs. The Right Margin stays measured on the logo. Step 7's stress-test template is the
+     first deck whose margins differ; check there that `check_layout.py` is clean against them.
 7. **Proof and calibration.**
    - Add the `lmsans` profile.
    - Add a minimal test project, `tests/fixtures/template_stress/` (a `slide_ids.csv`, one deck, a few slides),
@@ -801,6 +838,34 @@ mix it in.
      the definition to the website side.
    - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
      history and the course-system code (`online.uni-graz.at`).
+11. **Private institution themes** (user request 2026-10-27; after step 10, and after the plugins plan's Phase 1 has
+    an installer with "Install from file…").
+   - **Uni Graz: a private repository shared with Jürgen Fleiß only.** Proposed name `stpalan/slidemage-theme-uni-graz`,
+     private, Jürgen invited as a collaborator (read access is enough unless he maintains it too). It holds one theme
+     package as section 8 defines it: `theme.toml`, `SlideMage_template_uni-graz.tex`, `schemes/scheme_uni_graz/`,
+     its layout profile file if it gets one, `preview.png`, `LICENSE`, `README.md`, `CHANGELOG.md`. Each version is a
+     tagged GitHub release with the `uni-graz-<version>.smtheme` asset and a `.sha256` file, following the website's
+     release rules, so the theme could move into the catalogue unchanged if the university ever allows it. Creating
+     the repository, pushing to it and inviting Jürgen are outward actions: ask the user before each.
+   - **Licence of a private theme:** the TeX file can stay LPPL-1.3c+ like the framework, but the logo and the
+     university's corporate design are not ours to license. `LICENSE` and `README.md` say so: the logo files are the
+     university's, used with its permission for its members' teaching, and must not be passed on.
+   - **Uni Innsbruck and MCI.** They are in the user's real project only (`D:\uniCLOUD\Slidemaster`) and in nobody
+     else's hands. Proposed: package them the same way, one private repository each
+     (`stpalan/slidemage-theme-uni-ibk`, `stpalan/slidemage-theme-mci`), shared with nobody for now. Separate
+     repositories, because GitHub grants access per repository: each can later be shared with colleagues at that
+     institution without exposing the others. The cheaper alternative is to keep both as project templates in the
+     real project, with no repository and no package. That is the state after step 10 anyway, and it works, but they
+     then exist only in that project and its backups. User decision, see "Open decisions".
+   - **The real project** keeps working throughout: its own `SlideMage_template_<key>.tex` copies win over an
+     installed theme of the same key (section 8). Once the themes are installed, the project copies can go. Then the
+     project uses the released versions, and a template change happens in the theme repository instead of the
+     project. Ask the user before removing them.
+   - **Tests and regressions:** the uni-graz, uni-ibk and mci regression entries already live outside the repository
+     (`C:\Users\ms\SlideMage\regression\`). They keep running against the installed themes. A test fixture theme for the
+     installer (a tiny `.smtheme` with no institution content) goes into `tests/fixtures/`.
+   - **Website side:** nothing to list, since private themes are never in the catalogue. Tell them that the theme
+     package's first real users are private, so the file install matters as much as the catalogue.
 
 ## Open decisions (ask the user at the step named)
 
@@ -813,6 +878,9 @@ mix it in.
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
 - **Step 10 at the latest: the theme package** (section 8): files, release asset and manifest, install location
   and how a project uses it. Then tell the website side.
+- **Step 11: Uni Innsbruck and MCI** — one private repository each, packaged like Uni Graz (proposed), or project
+  templates in the real project only. Also confirm the Graz repository's name and Jürgen's access level (read or
+  write).
 
 ## Risks
 
