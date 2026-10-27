@@ -48,8 +48,9 @@ import fitz
 
 CHECKS = ("top", "coltop", "left", "right", "bottom", "bleed", "jitter")
 
-TOP_MARGIN = 41.58       # top of a plain first body line's line box
-LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75)
+TOP_MARGIN = 41.58       # top of a plain first body line's line box (\SMTopMargin in SlideMage_setup.tex, 41.58bp)
+LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding plus the strut
+# Both are the SlideMage template's values; the PDF's own margins replace them in a later step of the framework redesign.
 FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it
 FOOTER_GAP = 1.0         # minimum clearance above footnotes / footer box
 FOOTER_TEXT_MIN_SIZE = 3.6  # footer text is 3.99 pt and up; footnote/source lines 3.19 pt

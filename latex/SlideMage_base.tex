@@ -2545,7 +2545,7 @@
 % not portable between slides even for superficially similar content (see
 % slides/zgz-EBIT-Definition-current.tex's own v1-2-0 comment for a case
 % where an earlier, wrong correction was carried over uncritically).
-\newlength{\SMContentTopShift}
+% (\SMContentTopShift is defined by the layout profile since v9.4.0; its history is below.)
 % 11.5964pt (2026-07-22, direct instruction: "reduce the Top Margin"
 % generally, tested at 20%/30%/40% smaller against
 % slides/8s8-Unit-Investment-Trusts-current.tex before settling on 40% --
@@ -2556,7 +2556,6 @@
 % standardframe applies this same pull-up before any per-slide
 % \SMIncreaseContentTopShift/\SMReduceContentTopShift correction,
 % changing it here shifts the baseline project-wide, not just on 8s8.
-\setlength{\SMContentTopShift}{11.5964pt}
 
 % A `columns` environment that is the first content of a frame starts its first line
 % ~10.17pt lower than a plain list does (measured on 5s6/vbb/yxv/c2t/n83/tj4/eey/yvw: first
@@ -2569,8 +2568,7 @@
 % (\vbox to 0pt{...}) in front of the columns do not count, so a slide that puts such a
 % picture first needs no special treatment either. (\prevdepth cannot tell: those zero-size
 % boxes already set it.) Checked in LuaTeX by walking the current list.
-\newlength{\SMColumnsTopCorrection}
-\setlength{\SMColumnsTopCorrection}{10.17pt}
+% (\SMColumnsTopCorrection is defined by the layout profile since v9.4.0.)
 \SMLuaOnce{
 	slidemage_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
@@ -2613,8 +2611,7 @@
 % \leavevmode, which clears it, so a list at the top of a [T] column kept its \topsep --
 % zero at normal size, but a smaller list (\shrinklists, \small) loads \@listi's 4pt and
 % started that much below a figure beside it that sat on the Top Margin.
-\newlength{\SMColumnsTTopCompensation}
-\setlength{\SMColumnsTTopCompensation}{13.76pt}
+% (\SMColumnsTTopCompensation is defined by the layout profile since v9.4.0.)
 \makeatletter
 \define@key{beamer@col}{T}[true]{%
 	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
@@ -2683,6 +2680,12 @@
 % slides/bdh-Working-Capital-Example-current.tex's first content line
 % lands within 0.1pt of slides/jyn-Categorization-current.tex's own
 % (200.917pt vs. 200.871pt/200.980pt in the compiled PDF).
+% v9.4.0: the four corrections below (SMMinipageTopCorrection, SMMinipageWithCornerImageExtraCorrection,
+% SMSideImageFrameMinipageCorrection, SMFlatItemizeTopCorrection) are 0pt. The automatic Top Margin (below) moves
+% every frame it manages onto the Top Margin, so the slides that pass them to \SMReduceContentTopShift or
+% \SMIncreaseContentTopShift land where they did: a copy of a real project's 16 decks (5274 pages, 122 slides
+% that read SMMinipageTopCorrection, 123 SMFlatItemizeTopCorrection) rendered pixel-identically with the
+% values at 0. The names stay defined because slides read them. The numbers in the comments are history.
 \newlength{\SMMinipageTopCorrection}
 % 9.38pt (2026-07-22, re-measured): the previous 7.6pt value went stale
 % the moment \SMContentTopShift itself was increased (7.33pt ->
@@ -2699,7 +2702,7 @@
 % this deck's current 41.58pt Top Margin reference -- not slide-specific
 % noise, the same deterministic amount on every one of them. Re-measure
 % and adjust again if \SMContentTopShift ever changes in the future.
-\setlength{\SMMinipageTopCorrection}{9.38pt}
+\setlength{\SMMinipageTopCorrection}{0pt}% obsolete since v9.4.0 (9.38pt before): the automatic Top Margin corrects it; slides still read the name
 
 % A *third* minipage-top correction, on top of \SMMinipageTopCorrection
 % above rather than replacing it, for a minipage whose own first internal
@@ -2731,7 +2734,7 @@
 % actually uses `\pause` itself, so this isn't specific to that -- the
 % image-inside-minipage-as-first-content shape alone is what triggers it.
 \newlength{\SMMinipageWithCornerImageExtraCorrection}
-\setlength{\SMMinipageWithCornerImageExtraCorrection}{10.35pt}
+\setlength{\SMMinipageWithCornerImageExtraCorrection}{0pt}% obsolete since v9.4.0 (10.35pt before), see above
 
 % A *different* minipage-top correction, specifically for a minipage+
 % itemize sitting as the first content of a `sideimageframe` (2026-07-06,
@@ -2762,7 +2765,6 @@
 % not the generic `\SMMinipageTopCorrection`/
 % `\SMFlatItemizeTopCorrection` this deck uses everywhere else.
 \newlength{\SMSideImageFrameMinipageCorrection}
-\setlength{\SMSideImageFrameMinipageCorrection}{8.2pt}
 
 % 6.26pt (2026-07-22, re-measured): stale for the same reason
 % \SMMinipageTopCorrection above went stale -- \SMContentTopShift
@@ -2781,7 +2783,7 @@
 % (8.2pt - 1.94pt), not an increase -- caught by re-measuring after a
 % first, wrong-direction attempt at 10.14pt drove the four-slide cluster
 % to y=37.70pt, further from target instead of closer.
-\setlength{\SMSideImageFrameMinipageCorrection}{6.26pt}
+\setlength{\SMSideImageFrameMinipageCorrection}{0pt}% obsolete since v9.4.0 (6.26pt before, 8.2pt originally), see above
 
 % Opt-in override: reduces standardframe's \SMContentTopShift pull-up by
 % this amount for the frame currently being opened. Empty-default-style flag
@@ -2818,7 +2820,6 @@
 % 0.05pt of each other) -- so this correction is for *plain* itemize-first
 % standardframes only, never combined with \SMMinipageTopCorrection.
 \newlength{\SMFlatItemizeTopCorrection}
-\setlength{\SMFlatItemizeTopCorrection}{1.834pt}
 
 % 0.01pt (2026-07-22, re-measured): stale for the same reason
 % \SMMinipageTopCorrection above went stale -- \SMContentTopShift
@@ -2833,7 +2834,7 @@
 % itself, so every flat-itemize slide's own
 % `\SMIncreaseContentTopShift{\SMFlatItemizeTopCorrection}` line
 % keeps working unchanged.
-\setlength{\SMFlatItemizeTopCorrection}{0.01pt}
+\setlength{\SMFlatItemizeTopCorrection}{0pt}% obsolete since v9.4.0 (0.01pt before, 1.834pt originally), see above
 
 % Opposite-direction counterpart to \SMReduceContentTopShift: *increases*
 % the pull-up instead of reducing it (needed for \SMFlatItemizeTopCorrection

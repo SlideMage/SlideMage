@@ -1,7 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
 % SlideMage layout profile "fira": Fira Sans Light for text, Fira Mono for code
-% (SlideMage v9.3.0).
+% (SlideMage v9.4.0).
 %
 % A layout profile holds everything that depends on the font: which font files
 % load and how their weights map onto \textbf and \textit, the code fonts, the
@@ -155,6 +155,20 @@
 \setlength{\SMSectionframeBottomPadCorrection}{5.58pt}
 \newlength{\SMSectionframeHeightCorrection}
 \setlength{\SMSectionframeHeightCorrection}{16.03pt}
+
+% The pull-up of a top-aligned frame (standardframe) and the corrections of the frames the
+% automatic Top Margin does not manage (the [c] frame, sectionframe, \SMManualTopMargin,
+% \SMAutoTopMarginfalse). In every other frame the measurement corrects what is left, but not
+% to the last digit: with these at 0 the frames of the manual land a thousandth of a point
+% elsewhere and 11 of 92 pages differ in a few pixels (v9.4.0 trial), and a \begin{columns} below
+% a paragraph still needs the 10.17pt, so none of the three goes. 11.5964pt is 40% more than
+% the original 7.33pt (the Top Margin was reduced to 60%).
+\newlength{\SMContentTopShift}
+\setlength{\SMContentTopShift}{11.5964pt}
+\newlength{\SMColumnsTopCorrection}
+\setlength{\SMColumnsTopCorrection}{10.17pt}      % columns[t] starts 10.17pt below a list
+\newlength{\SMColumnsTTopCompensation}
+\setlength{\SMColumnsTTopCompensation}{13.76pt}  % columns[T] has taken part of that back
 
 % Code fonts ----------------------------------------------------------------------
 % \SMCodeFile (listings) and the like use Fira Mono Regular; the theme's \ttfamily

@@ -93,9 +93,16 @@
 %%    moved to the layout profile SlideMage_layout_fira.tex, which SlideMage_setup.tex
 %%    loads before the theme. \parskip and \linespread read the profile's \SMParskip and
 %%    \SMLinespread (0.5em and 1.15) where they were set before.
+%% 8. (v9.4.0) The lengths and settings that are design choices are defined by the catalog
+%%    in SlideMage_setup.tex and no longer here: the frame title paddings and subtitle
+%%    settings, the footline lengths (new \SMFootlineSidePadding in place of the literal
+%%    3ex), \SMFooterBoxHeight, the footnote size and spacing, the side-footnote lengths, the
+%%    block side margin and title marker width, and the text margins, which the new macro
+%%    \SMApplyLayoutHooks applies after the template. \SMFootnoteRightShift moved to the
+%%    layout profile.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/27}{9.3.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/27}{9.4.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
