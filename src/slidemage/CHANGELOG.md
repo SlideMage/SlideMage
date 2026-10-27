@@ -2825,6 +2825,7 @@ NEW: In "This slide" mode, the assistant can no longer change other slides or th
 v8.64.2 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 3): One source of tool guidance. The chat's system prompt (agent_context.SYSTEM_PROMPT) and Claude Code's ORIENTATION re-described the tools' arguments, defaults and results and had drifted from the tool descriptions: both called refresh_deck_previews "legacy Instructor snapshots (only)" while it refreshes all course views by default. The prompts now keep the workflow (read before changing, which tool for which job, what is slow, readability fixes, protected parts, answer style) and leave what a tool does to its description (SYSTEM_PROMPT 5.4k to 4.4k characters, ORIENTATION 3.3k to 2.5k). read_file, check_readability and write_file descriptions are more precise. test_tool_guidance.py fails when a prompt names a tool its assistant does not have.
 
 NEW: The assistant gets shorter, consistent instructions about SlideMage's tools.
+- The assistant's instructions about SlideMage's tools are shorter and no longer contradict the tool descriptions.
 
 v8.64.3 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 2): modify_slide edits the file it was given. It followed the EN/DE switch to the linked translation partner even for an explicit path, so an edit aimed at a DE slide while editing in EN landed on the EN slide, and a given expected text was compared with the partner's and failed as "changed since you read it". Now only a bare slide id ("1y8") follows the switch, and the result says so ("1y8 in DE is its partner xyz-DE-Hallo"); a path is used as given. The scope check stays on the file actually written. Tests in test_modify_slide.py and test_agent_tools.py.
 
@@ -2834,6 +2835,7 @@ NEW: The assistant's slide edits land on the slide it named.
 v8.64.4 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 4): The agent tools' arguments are checked one level deeper. check_arguments looked at top-level types and enums only, so each tool checked nested input by hand or not at all. It now follows the schema down: types including number (not a boolean), enum, minLength, minItems, array items and nested objects' properties, required and additionalProperties, and its errors name the path the model passed ("Argument 'edits[2].old' must be of type string."). modify_slide's own check of its edits and make_qr_code's of the height type are gone; a QR code's fields must be text (a phone number sent as a number would lose its leading zero), a bibliography entry's may still be numbers (a year). Tests in test_agent_tools.py.
 
 NEW: The assistant gets clearer messages when it calls a tool with wrong arguments.
+- When the assistant passes a tool wrong arguments, the message now says which one is wrong, also inside nested input.
 
 v8.65.0 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md steps 5-7): One preview path, insert_slide, and cleanups of the agent tools.
 
