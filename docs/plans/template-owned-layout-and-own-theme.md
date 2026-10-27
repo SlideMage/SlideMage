@@ -489,6 +489,33 @@ Keep the design (the template owns the citation format) and remove the copying:
 
 Base keeps stock defaults.
 
+### 8. Theme packages for the catalogue
+
+Decided by the user on 2026-10-27: themes are offered through the same catalogue as plugins
+(`https://slidemage.org/plugins/index.json`, a top-level `"themes"` list beside `"plugins"`, `[[theme]]` entries in
+the website's registry), with the same release, approval, pinning and SHA-256 rules, and the app installs them
+through the plugin installer. The catalogue cannot list themes until this redesign defines what a theme package
+is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs/Handover_2026-10-27-Website-To-App.md`
+(section 5), both on develop's working tree; the plugin package is in `docs/PLUGINS_PLAN.md` section 2.1.
+
+- **Word clash:** a catalogue "theme" is what this plan calls a *template* (the institution layer:
+  `SlideMage_template_<key>.tex` plus its scheme folder), not a beamer theme. `beamerthemeSlideMage.sty` is
+  framework and never ships separately. Say so in the definition and on the website.
+- **Constraint on steps 4-7:** a template must stay self-contained so it can be packaged: one template file, its
+  `schemes/scheme_<key>/` folder, and at most its own layout profile file. Nothing of it may assume it sits in the
+  project root, and nothing in `latex/` may name a particular institution.
+- **Proposal, to settle by step 10 at the latest** (user decision):
+  - Files: `theme.toml` (id = template key, name, version, `requires_slidemage`, summary, author, homepage,
+    license, layout profile used), `SlideMage_template_<key>.tex`, `schemes/scheme_<key>/`, optional
+    `SlideMage_layout_<name>.tex`, `preview.png` for the catalogue, LICENSE, README.md, CHANGELOG.md.
+  - Release asset: a zip `<key>-<version>.smtheme` on the theme repository's GitHub release; the manifest
+    differs from `plugin.toml` (no `api_version`, `needs` or `network`, since a theme runs no Python).
+  - Installed unpacked in `config_dir()/themes/<key>/`. SlideMage puts that folder on `TEXINPUTS` for every
+    compile and preview, so it is offered like a bundled template and a project uses it by choosing its key, as
+    today. A project copy of the same key wins (as project templates do now), which also lets a user freeze it.
+- **Then report the definition to the website side**, which adds `"themes"` to the schema, the builder and the
+  pages. The institution templates leaving the repository in step 10 are the first candidates.
+
 ## Steps
 
 Each step is one commit, or a few, with:
@@ -601,6 +628,8 @@ mix it in.
    - Tests, REUSE.toml, the alt-text files, README and docs that name uni-graz follow. The key `uni-graz` stays
      a valid user setting (cached previews, "Default template"); only the repository stops using it.
    - The uni-graz regression baselines move to the set kept outside the repository.
+   - The theme package (section 8) is defined by now, and the moved templates are its first candidates. Report
+     the definition to the website side.
    - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
      history and the course-system code (`online.uni-graz.at`).
 
@@ -611,6 +640,8 @@ mix it in.
 - **Before step 5: may a template override a layout-profile value directly**, or only pick a profile? Proposed:
   only pick one, or ship its own profile file. That keeps the rule "a profile's numbers belong together".
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
+- **Step 10 at the latest: the theme package** (section 8): files, release asset and manifest, install location
+  and how a project uses it. Then tell the website side.
 
 ## Risks
 
