@@ -395,7 +395,9 @@ copied package files in `texmf/` record the exact originals.
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
   loads it, decks never name it. It holds the Fira font setup, the colour roles,
-  the frame title and footline templates and four optional features that are off
+  the frame title and footline templates, since v9.2.0 also the logo macro and frame
+  title hook, the footnote template, the block templates and the itemize bullets
+  (`SlideMage_base.tex` no longer replaces them), and four optional features that are off
   until a template switches them on (mini frames, progress bars, automatic
   divider frames, a watermark — see the end of `SlideMage_setup.tex`).
 - `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):

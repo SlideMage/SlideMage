@@ -27,10 +27,15 @@ AUDITED_FRAMEWORK = {
     # no rule, argument or view-dependent branch changed.
     # v9.1.0 (step 2b): the five Gotham theme files are replaced by beamerthemeSlideMage.sty, a pruned and renamed fork;
     # it holds no version, footer-hide or deck-label rule (checked by test_the_pins_are_the_frameworks_files...).
-    "SlideMage_setup.tex": "1b104d2b6805e18ee073726d5202ed858eff7ac65b62f8457ea249e4fc00d0b8",
-    "SlideMage_base.tex": "0183326cdd7bea48143cbbf632c2d2e00075cc4d341a81f190e6e77b5346f601",
+    # v9.2.0 (step 3): the parts of the theme that the base replaced move into the theme (colors, margins, bullets,
+    # logo macro and frame title hook, footer box, footnote and block templates); the frame footer, which carries the
+    # deck label, stays in the base. Re-audited: no version, footer-hide or deck-label rule left the base or entered
+    # the theme (the theme test above still passes), the patches are the same, in the same order, and the setup file
+    # only names the new theme version.
+    "SlideMage_setup.tex": "9a5eda4b111e4d91e92f09e713004bf8fac40d432399d7f8a489996f5a2e75b6",
+    "SlideMage_base.tex": "4d99cc800af07f8003245d1c3e4403ca485dbb3594bcaa3dc765ebc6a1af64de",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "5360ec7a2cd23cdd2ddb185300b1e3be10238e4e2721602134194d19c9e8d009",
+    "beamerthemeSlideMage.sty": "9be57bf8ad169ee26f66978a891a14b58b0dae8efbf73729aaec726e5c2c8eba",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "7bbfd6d86d3542fc782a827df4bf38bf544574020d0cb7f81adeb940dbc84174",
 }

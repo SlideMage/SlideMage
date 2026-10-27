@@ -557,7 +557,35 @@ mix it in.
    - Base loads its packages explicitly.
    - Load-time computations that depend on hooks move to base or to the point of use.
    - Pixel-identical. Not breaking.
-4. **Layout profiles.**
+   - **Done 2026-10-27 (v9.2.0), notes for the later steps:**
+     - Moved into `beamerthemeSlideMage.sty` (base 6998 → 5712 lines, theme 2213 → 3467): the colours of footnote,
+       footline text, buttons, canvas, frame title text and blocks (block, alerted, example, reference, info; the
+       theme's own native-block colours and `alertedBlock`/`example text` are gone); the text margins; `\SMBulletDot`
+       as the `itemize item/subitem/subsubitem/subsubsubitem` template (no longer set at the start of every
+       `standardframe`; a bare `\begin{frame}` now gets SlideMage's bullet too); `\SMInstituteLogo`, `\SMInstituteLogoGraphic`,
+       `\SMFrametitleHookCode`, `\chapterlogo` with `\SMChapterLogoPath`, `\SMFrametitleFullHeightYellow`,
+       `\SMFrametitleLogoFixed`, `\SMFooterBoxColor`, the `SMNoInlineLogo` template and `\SMLogoWidth` (the length);
+       `\SMFooterBoxHeight` and the footer box; the footnote template `SMFootnote`, the symbols, `\sidefootnotes` and the
+       side-footnote lengths and strip; the six block templates with `\SMBlockSideMargin`, `\SMBlockTitleMarkerWidth`,
+       `\SMBlockTitleWithMarker`, `\SMSetBlockBullets`, `\SMBulletDotBlack`, `\SMAlertMarker`; `SMPlainEnumerate`.
+     - The theme is expl3 syntax, so the moved code sits between `\ExplSyntaxOff` and `\ExplSyntaxOn` and is the base's
+       text unchanged (its `\makeatletter` pairs dropped, `@` is a letter in a package).
+     - `beamer` colours are read when used, so `\setbeamercolor{footline}{fg=\SMFooterTextColor}` and the like are plain
+       theme-load code. Only the `\colorlet`s are eager: `\SMApplyColorRoles` (public, called by the base after the
+       template) sets `SMColorDark` from `c_primary_dark`, `SMColorA` from `\SMTitleBoxColor` and the canvas default, then
+       runs the roles; the theme runs the internal `\__SM_apply_color_roles:` alone at load.
+     - The patches on the `frametitle` and `footline` templates (logo hook, footer box, side-footnote strip) are applied by
+       `\SM@patchTemplates`, at the end of the theme and again at the end of `\__SM_nav_apply:`. Folding them into the template
+       would have put them after the mini frames and the progress bar. Checked with a deck that switches mini frames,
+       progress bar, divider frames and the watermark on (head/foot/frametitle positions): identical to the old tree.
+     - Stays in base: the `frame footer` template, its font and `\ifSMHideFooterText` (the footer carries the deck
+       version, and the theme must hold no view-dependent rule: `test_the_pins_are_the_frameworks_files...`), the
+       standout patch `\global\SMHideFooterTexttrue`, `\SMLogoWidth`'s `\settowidth` (reads the catalog), the environments
+       `referenceblock`, `infoblock`, `definitionblock`, `\source`, the list environments and `\SMBulletWidth`.
+     - Base loads `iftex`, `fontspec`, `xcolor`, `etoolbox`, `tikz`; it uses neither `calc` syntax nor `xfp` (the theme does
+       and keeps loading both).
+     - The theme has no other load-time computation that reads a catalog name. `\SMFootlineHRightOffset` takes `\spaceskip`
+       (always 0pt) and is not a hook.4. **Layout profiles.**
    - Fonts move from the theme into `SlideMage_layout_fira.tex`.
    - `\SMLayoutProfile` takes effect.
    - The ascender and Top Margin go from TeX to Lua; the ascender is derived where luaotfload allows it.
