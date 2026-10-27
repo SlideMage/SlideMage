@@ -16,7 +16,7 @@ from .base import Tool, ToolBox, ToolContext, ToolError
 from .edits import undo_edit
 
 TOOLS = [files.read_file, files.find_files, files.search, edits.edit_file, edits.write_file,
-         slidemage.list_slides, slidemage.lint, slidemage.render_preview, slidemage.add_slide, slidemage.create_slide,
+         slidemage.list_slides, slidemage.lint, slidemage.render_preview, slidemage.add_slide, slidemage.insert_slide, slidemage.create_slide,
          slidemage.modify_slide, slidemage.add_bib_entry, slidemage.make_qr_code, slidemage.compile_deck, slidemage.read_guide,
          previews.refresh_preview, previews.refresh_deck_previews, readability.check_readability]
 
@@ -26,7 +26,7 @@ TOOLS = [files.read_file, files.find_files, files.search, edits.edit_file, edits
 CLAUDE_CODE_READ_ONLY = [focus.get_focus, focus.show_slide, focus.read_buffer, focus.read_selection, slidemage.list_slides, slidemage.lint,
                          slidemage.render_preview, previews.refresh_preview, readability.check_readability,
                          slidemage.read_guide]
-CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, slidemage.create_slide, slidemage.modify_slide, slidemage.make_qr_code, focus.translate_slide,
+CLAUDE_CODE_TOOLS = [*CLAUDE_CODE_READ_ONLY, slidemage.add_slide, slidemage.insert_slide, slidemage.create_slide, slidemage.modify_slide, slidemage.make_qr_code, focus.translate_slide,
                      focus.switch_to_deck_mode, previews.refresh_deck_previews]
 
 __all__ = ["CLAUDE_CODE_READ_ONLY", "CLAUDE_CODE_TOOLS", "TOOLS", "Tool", "ToolBox", "ToolContext", "ToolError", "build_toolbox", "undo_edit"]
