@@ -708,6 +708,8 @@ mix it in.
   and whether frozen slide versions are migrated.
 - **Before step 5: may a template override a layout-profile value directly**, or only pick a profile? Proposed:
   only pick one, or ship its own profile file. That keeps the rule "a profile's numbers belong together".
+  **Decided by the user on 2026-10-27: a template only picks a profile or ships its own profile file; it never
+  overrides a single profile value.** So profile values are not catalog hooks.
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
 - **Step 10 at the latest: the theme package** (section 8): files, release asset and manifest, install location
   and how a project uses it. Then tell the website side.
