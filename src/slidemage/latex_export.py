@@ -64,6 +64,13 @@ FONT_DIR_RE = re.compile(r"\bPath\s*=\s*(?:\./)?([\w][\w./-]*)")
 # The path lines a deck in decks/ starts with: the root is the parent folder there, the folder itself here.
 PATH_LINE_RE = re.compile(r"^(\s*(?:\\def\\input@path|\\graphicspath)\s*\{\{)(?:\.\./)+(\}\})", re.MULTILINE)
 DEFAULT_BIBLIOGRAPHY_RE = re.compile(r"\\SMUseBibliography(?!\s*\[)")
+# A template picks its layout profile with \newcommand{\SMLayoutProfile}{name} before \input{SlideMage_setup}, which
+# inputs SlideMage_layout_<name>.tex: a file name built from a macro, so the token scan above cannot see it. Setup's own
+# \providecommand is the default and is not matched.
+PROFILE_RE = re.compile(r"\\(?:newcommand|renewcommand)\s*\{\\SMLayoutProfile\}\s*\{(?P<a>[^{}\\]+)\}"
+                        r"|\\def\s*\\SMLayoutProfile\s*\{(?P<b>[^{}\\]+)\}")
+DEFAULT_PROFILE = "fira"                # setup's \providecommand{\SMLayoutProfile}{fira} (a test keeps them equal)
+PROFILE_PREFIX = "SlideMage_layout_"
 
 
 @dataclass
@@ -91,6 +98,7 @@ class _Collector:
         self._texts: list[str] = []         # the project's own texts, for the media references
         self._queue: list[Path] = []
         self._listings: set[Path] = set()   # files shown as code, never read for references
+        self.profiles: set[str] = set()     # layout profiles the templates name
 
     def destination(self, source: Path) -> str:
         """Where a source file goes: decks/ files to the root, project files where they are, framework files to the root."""
@@ -155,6 +163,8 @@ class _Collector:
         for match in THEME_RE.finditer(text):
             for name in (n.strip() for n in match.group("names").split(",")):
                 self.reference(f"beamer{match.group('kind') or ''}theme{name}.sty", ("",), own, False)
+        for match in PROFILE_RE.finditer(text):
+            self.profiles.add((match.group("a") or match.group("b")).strip())
         for token in TOKEN_RE.findall(text):
             if Path(token).suffix.lower() in FILE_SUFFIXES:
                 self.reference(token, ("",), own, "/" in token)
@@ -176,6 +186,11 @@ class _Collector:
     def collect(self) -> None:
         """Walk from the deck through everything it names (slides, preambles, fragments, themes...)."""
         self._queue.append(self.deck.path)
+        while self._queue:
+            self.scan(self._queue.pop())
+        # The layout profile file(s), now that every template has been read: the name is built from a macro.
+        for profile in sorted(self.profiles or {DEFAULT_PROFILE}):
+            self.reference(f"{PROFILE_PREFIX}{profile}.tex", ("",), True, True)
         while self._queue:
             self.scan(self._queue.pop())
         used, missing = unused_content.media_references(self.ctx, self._texts)

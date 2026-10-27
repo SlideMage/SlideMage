@@ -33,12 +33,18 @@ AUDITED_FRAMEWORK = {
     # deck label, stays in the base. Re-audited: no version, footer-hide or deck-label rule left the base or entered
     # the theme (the theme test above still passes), the patches are the same, in the same order, and the setup file
     # only names the new theme version.
-    "SlideMage_setup.tex": "9a5eda4b111e4d91e92f09e713004bf8fac40d432399d7f8a489996f5a2e75b6",
-    "SlideMage_base.tex": "19eac4cc21dd2c96de294b77d55dedade5acc721a50f5f67f05a3a5d8175e2d8",
+    # v9.3.0 (step 4): the font loading, the math-font handling and the font metrics move from the theme and the base into
+    # the layout profile SlideMage_layout_fira.tex (new, pinned); the setup layer inputs it before the theme and gains
+    # the Top Margin setting; the base hands the ascender and the Top Margin to SlideMage_measure.lua. Re-audited: no
+    # version, footer-hide or deck-label rule entered the profile (test_the_pins_are_the_frameworks_files... checks it
+    # for the theme and the profile), and the base lost only font code.
+    "SlideMage_setup.tex": "9d2a0e6a20f87a6c8c7e11aef403d2882a2b593ab80a22518940a56f34956afa",
+    "SlideMage_layout_fira.tex": "9c079598ab82eed16333d24cbf7934b964e0079f68f5b25d1608fe7cd3131ea8",
+    "SlideMage_base.tex": "ce91867d1bfcfb226ea36424c147001f38bc8b9a439944e2fd15e09c6e33d728",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "9be57bf8ad169ee26f66978a891a14b58b0dae8efbf73729aaec726e5c2c8eba",
+    "beamerthemeSlideMage.sty": "9114c6142c0d048e02cdd22ce67f71a442d6fcd12df8b4bd3f4b30ba8a15bbb0",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
-    "SlideMage_measure.lua": "7bbfd6d86d3542fc782a827df4bf38bf544574020d0cb7f81adeb940dbc84174",
+    "SlideMage_measure.lua": "3dc20806363e8b328f1fa902f24b1074fea247e73169296e5caa7a6ce57907c5",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.

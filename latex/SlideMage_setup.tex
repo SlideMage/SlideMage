@@ -1,6 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.2.0).
+% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.3.0).
 %
 % A template \input{}s this file first, sets whatever it wants to change from
 % the catalog below, then \input{}s SlideMage_base:
@@ -14,7 +14,8 @@
 %   ... additions only: dark-mode beamer colors, citation format, project macros
 %
 % Rules for a template:
-%   1. Before this file: only \SMDarkMode (written into the deck by SlideMage).
+%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMDarkMode
+%      (written into the deck by SlideMage). Both decide what this file computes.
 %   2. Between this file and SlideMage_base: \setlength, \renewcommand,
 %      \definecolor and \colorlet on the names in this catalog. Every name
 %      exists already, so a misspelt \renewcommand is an error instead of a
@@ -23,12 +24,50 @@
 %
 % Decks never load the beamer theme themselves; this file does. A length given
 % in ex or em is evaluated where the template sets it, in the normal body font,
-% after the theme has loaded its fonts.
+% after the layout profile has loaded the fonts.
+%
+% Layout profiles
+% ---------------
+% Everything that depends on the font lives in a layout profile,
+% SlideMage_layout_<name>.tex: the font files and how their weights map onto
+% bold and italic, the code fonts, the math handling that goes with them, and
+% the metrics the framework measures against (the ascender, the line spacing).
+% A template picks one before this file, and switching it switches all of them
+% together:
+%
+%   \newcommand{\SMLayoutProfile}{myfont}      % before \input{SlideMage_setup}; fira is the default
+%
+% SlideMage ships "fira" (SlideMage_layout_fira.tex, today's look). A project may
+% keep its own profile next to its templates: the TeX search path finds
+% SlideMage_layout_<name>.tex there. A template does not change a profile's
+% numbers; it picks a profile or ships its own.
+%
+% Recipe for a new profile:
+%   1. Copy SlideMage_layout_fira.tex to SlideMage_layout_<name>.tex and change the
+%      fonts. A profile must define: the text and code fonts (\sfdefault, \ttdefault,
+%      \SMCodeFont, \SMInlineCodeFont, \SMCardHeadingFont), \SMFontAscender (the
+%      ascender in em, used where the font gives none of its own), \SMLinespread
+%      and \SMParskip.
+%   2. Compile the calibration deck with a test template that uses the profile.
+%   3. Run tools/check_layout.py on the result.
+%   4. Adjust the profile's numbers until the report is clean.
+% (A calibration deck and tools/calibrate_font_profile.py, which prints suggested
+% values from the same measurement, come with a later step of the redesign.)
 
 \newcommand{\SMSetupLoaded}{}
 
+% The layout profile: fonts and font metrics (see the header). Loaded before the
+% theme, so that the theme's own lengths in ex and em see its fonts.
+\providecommand{\SMLayoutProfile}{fira}
+\IfFileExists{SlideMage_layout_\SMLayoutProfile.tex}
+	{\input{SlideMage_layout_\SMLayoutProfile}}
+	{\PackageError{SlideMage}{Layout profile '\SMLayoutProfile' not found}{%
+		No file SlideMage_layout_\SMLayoutProfile.tex on the TeX search path. SlideMage ships the profile
+		'fira' (the default); a profile of your own goes next to the template that names it.}}
+
 % The beamer theme (beamerthemeSlideMage.sty, a modified fork of Romain Noel's
-% Gotham theme, LPPL 1.3c), with the body fonts. Only this file loads it.
+% Gotham theme, LPPL 1.3c). Sets font sizes and the look; the font files come from
+% the layout profile. Only this file loads it.
 \usetheme{SlideMage}
 
 % ---------------------------------------------------------------------------
@@ -101,6 +140,16 @@
 \newcommand{\SMInstituteLogoPath}{slidemage-logo.pdf}
 \newlength{\SMLogoHeight}
 \setlength{\SMLogoHeight}{3ex}                         % logo height in the title bar
+
+% ---------------------------------------------------------------------------
+% Top Margin
+% ---------------------------------------------------------------------------
+% The distance from the top of the page to the top of a frame's first line (its
+% line box: the baseline minus the font's ascender), in bp, the unit of the PDF.
+% SlideMage measures every frame at shipout and moves its body until the first line
+% sits there. A dimension with a unit; "bp" is read exactly. SlideMage_base.tex
+% hands it, with the layout profile's ascender, to SlideMage_measure.lua.
+\newcommand{\SMTopMargin}{41.58bp}
 
 % ---------------------------------------------------------------------------
 % Frame title bar

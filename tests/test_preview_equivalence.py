@@ -110,7 +110,8 @@ def test_project_macro_override_and_framework_change_fail_closed(tmp_path, monke
     assert all(not d.certain for d in custom.decisions)
     framework = tmp_path / "framework"
     framework.mkdir()
-    shutil.copy2(REPO / "latex" / "SlideMage_setup.tex", framework)    # audited; the next file is not
+    for audited in ("SlideMage_setup.tex", "SlideMage_layout_fira.tex"):
+        shutil.copy2(REPO / "latex" / audited, framework)    # audited; the next file is not
     (framework / "SlideMage_base.tex").write_text("changed")
     monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
     changed = classify_views(specs(tmp_path / "changed", "Text"))
@@ -229,8 +230,13 @@ def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_r
     assert {path.name for path in latex.glob("*.sty")} <= set(AUDITED_FRAMEWORK)
     for name, digest in AUDITED_FRAMEWORK.items():
         assert _digest((latex / name).read_bytes()) == digest, name
-    theme = (latex / "beamerthemeSlideMage.sty").read_text(encoding="utf-8")
-    assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode", theme)
+    # every layout profile the framework ships is pinned too, and holds no view-dependent rule either
+    profiles = sorted(latex.glob("SlideMage_layout_*.tex"))
+    assert profiles and {path.name for path in profiles} <= set(AUDITED_FRAMEWORK)
+    for path in [latex / "beamerthemeSlideMage.sty", *profiles]:
+        text = path.read_text(encoding="utf-8")
+        assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode",
+                             text), path.name
 
 
 def test_another_package_next_to_the_theme_is_a_custom_package(tmp_path, monkeypatch):
@@ -246,4 +252,19 @@ def test_another_package_next_to_the_theme_is_a_custom_package(tmp_path, monkeyp
     (framework / "beamerthemeSlideMage.sty").write_text("% changed\n", encoding="utf-8")
     changed = classify_views(specs(tmp_path / "changed", "Text"))
     assert all(not d.certain and "unaudited framework file: beamerthemeSlideMage.sty" in d.reasons[0]
+               for d in changed.decisions)
+
+
+def test_a_changed_or_shadowed_layout_profile_is_unaudited(tmp_path, monkeypatch):
+    framework = tmp_path / "framework"
+    shutil.copytree(REPO / "latex", framework)
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
+    shadow = specs(tmp_path / "shadow", "Text")
+    root = shadow[0].target.context.root
+    (root / "SlideMage_layout_fira.tex").write_text("% the project's own fira\n", encoding="utf-8")
+    shadowed = classify_views(shadow)
+    assert all(not d.certain and "project shadows SlideMage_layout_fira.tex" in d.reasons[0] for d in shadowed.decisions)
+    (framework / "SlideMage_layout_fira.tex").write_text("% changed\n", encoding="utf-8")
+    changed = classify_views(specs(tmp_path / "changed", "Text"))
+    assert all(not d.certain and "unaudited framework file: SlideMage_layout_fira.tex" in d.reasons[0]
                for d in changed.decisions)

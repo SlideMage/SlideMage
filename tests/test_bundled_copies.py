@@ -323,4 +323,5 @@ def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, 
 def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
     names = bundled_copies.framework_files(Path(__file__).resolve().parents[1] / "latex")
     assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
+    assert "SlideMage_layout_fira.tex" in names             # v9.3.0: a new framework file reaches projects
     assert not [n for n in names if "gotham" in n.lower()]

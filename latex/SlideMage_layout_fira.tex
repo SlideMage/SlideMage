@@ -1,0 +1,162 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage layout profile "fira": Fira Sans Light for text, Fira Mono for code
+% (SlideMage v9.3.0).
+%
+% A layout profile holds everything that depends on the font: which font files
+% load and how their weights map onto \textbf and \textit, the code fonts, the
+% math handling that goes with them, and the metrics the framework measures
+% against. SlideMage_setup.tex inputs SlideMage_layout_\SMLayoutProfile before it
+% loads the theme, so that every length the theme and the catalog give in ex or
+% em is evaluated after the fonts are set up. A template picks its profile with
+%
+%   \newcommand{\SMLayoutProfile}{fira}     % before \input{SlideMage_setup}
+%
+% and fira is the default. A project may keep its own profile next to its
+% templates (SlideMage_layout_<name>.tex); the TeX search path finds it. The
+% recipe for a new profile is in SlideMage_setup.tex, in the header.
+%
+% What a profile must define:
+%   fonts                   the sans text font (\sfdefault, with the weight
+%                           mapping), the mono font (\ttfamily), \SMCodeFont,
+%                           \SMInlineCodeFont, \SMCardHeadingFont
+%   \SMFontAscender         the ascender of the text font in em (see below)
+%   \SMLinespread           the \linespread of running text
+%   \SMParskip              the \parskip of running text; the theme applies both
+%                           where it is loaded, in the normal font
+% The theme sets only font sizes, never font files.
+
+\RequirePackage{etoolbox}
+
+\ExplSyntaxOn
+\makeatletter
+
+\msg_new:nnn { SlideMage } { font-not-found }
+  { Could~not~find~font~'#1'.\c_space_tl }
+\msg_new:nnn { SlideMage } { fonts-not-available }
+  { No~suitable~fonts~found.~Using~fallback~fonts. }
+\msg_new:nnn { SlideMage } { requires-lualatex }
+  { The~SlideMage~layout~profile~needs~LuaLaTeX~(Fira~fonts~and~Lua~code). }
+
+\int_new:N \g__SM_fonts_not_found_int
+
+\cs_new_protected:Nn \__SM_check_font:n
+  {
+    \fontspec_font_if_exist:nF { #1 }
+      {
+        \fontspec_font_if_exist:nF { #1~Regular }
+          {
+            \int_incr:N \g__SM_fonts_not_found_int
+            \msg_warning:nnn { SlideMage } { font-not-found } { #1 }
+          }
+      }
+  }
+
+\cs_new_protected:Nn \__SM_if_fonts_available:nnn
+  {
+    \int_zero:N \g__SM_fonts_not_found_int
+    \clist_map_function:nN { #1 } \__SM_check_font:n
+    \int_compare:nTF { \g__SM_fonts_not_found_int = 0 } { #2 } { #3 }
+  }
+
+% Text and code fonts. fontspec loads with no-math, so that the sans font is in
+% charge of text only; the math fonts are restored further down.
+\sys_if_engine_luatex:TF
+  {
+    \@ifpackageloaded { fontspec }
+      { \PassOptionsToPackage { no-math } { fontspec } }
+      { \RequirePackage [ no-math ] { fontspec } }
+    \__SM_if_fonts_available:nnn
+      {
+        FiraSans-Light.otf, FiraSans-LightItalic.otf,
+        FiraSans-Regular.otf, FiraSans-Italic.otf
+      }
+      {
+        \setsansfont
+          [
+            ItalicFont = { FiraSans-LightItalic.otf },
+            BoldFont = { FiraSans-Regular.otf },
+            BoldItalicFont = { FiraSans-Italic.otf }
+          ]
+          { FiraSans-Light.otf }
+        \renewcommand { \ttdefault } { lmtt }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    \__SM_if_fonts_available:nnn { FiraMono-Medium.otf, FiraMono-Bold.otf }
+      { \setmonofont [ BoldFont = { FiraMono-Medium.otf } ] { FiraMono-Bold.otf } }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    % Digits in tables line up in columns.
+    \AtBeginEnvironment { tabular } { \addfontfeature { Numbers = { Monospaced } } }
+  }
+  { \msg_warning:nn { SlideMage } { requires-lualatex } }
+
+\makeatother
+\ExplSyntaxOff
+
+% Metrics -----------------------------------------------------------------------
+% The ascender of the text font in em: the height of a text line's line box above
+% its baseline, which is what the automatic Top Margin measures to (a line's top
+% is its baseline minus this much) and what \SMLineTop is as tall as.
+% SlideMage_setup.tex reads the ascender from the loaded font (luaotfload's
+% OpenType metrics: ascender / units per em), rounds it to four digits and keeps
+% this number only where the font gives none.
+\newcommand{\SMFontAscender}{0.935}
+% Running text: \linespread and \parskip. The theme applies them where it is
+% loaded, with the normal font in force, so the em is this font's.
+\newcommand{\SMLinespread}{1.15}
+\newcommand{\SMParskip}{0.5em}
+
+% Code fonts ----------------------------------------------------------------------
+% \SMCodeFile (listings) and the like use Fira Mono Regular; the theme's \ttfamily
+% is the heavier Fira Mono Bold.
+\newfontfamily\SMCodeFont{FiraMono-Regular.otf}[BoldFont=FiraMono-Medium.otf]
+% Code in running text (\SMCode, \SMCmd): Fira Mono Regular at 90%, which reads
+% lighter than \texttt next to Fira Sans Light. Ligatures=TeXOff: code shows -- and
+% `` as typed, not as an en dash and a curly quote (fontspec's default for
+% \newfontfamily).
+\newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9, Ligatures=TeXOff]
+% The heading of a card in a diagram (\SMCard): a template with a medium weight
+% redefines it, e.g. \renewcommand{\SMCardHeadingFont}{\SMCardMediumFont}.
+\newcommand{\SMCardHeadingFont}{\bfseries}
+
+% Math ------------------------------------------------------------------------------
+% Restores genuine Computer Modern math fonts. Found 2026-07-15, direct
+% instruction ("math equations do not have serifs, look at vcv"): despite
+% fontspec being loaded with `no-math`, math still wasn't landing on Computer
+% Modern -- checked directly against a compiled PDF's own per-glyph font names
+% (pymupdf), not just eyeballed: digits/math-italic letters were coming out as
+% FiraSans-Light(Italic) (this deck's own body-text sans font) and
+% operators/parens as CMSS10 (Computer Modern's *sans-serif* shape, not its
+% serif one). Root cause: beamer's own base classes redefine the math alphabets
+% to follow the presentation's sans-serif text font by default, specifically so
+% math matches an all-sans deck -- `no-math` only stops *fontspec* from doing
+% this, it has no say over beamer's own separate override. Beamer ships the
+% standard fix for exactly this case: a font theme named "serif" with an
+% "onlymath" option that restores ordinary (Latin Modern/Computer-Modern-
+% equivalent) math fonts without touching any of the surrounding sans-serif
+% text. Confirmed directly afterward: every glyph in a re-checked formula now
+% reports as LMRoman*/CMR10/CMMI8 (all genuinely serif), not FiraSans/CMSS10.
+\usefonttheme[onlymath]{serif}
+
+% \text{} (amsmath, used throughout for plain-word operands inside math, e.g.
+% \text{E}[\tilde{R}_M]) is a separate mechanism from the math alphabets
+% \usefonttheme[onlymath]{serif} above just fixed: unlike
+% \mathrm/\mathit/etc., \text{} is defined to typeset in whatever the
+% *surrounding running text* font is at that point in the document, not a math
+% alphabet -- so on this deck's all-Fira body text, \text{} inside a formula
+% still comes out in Fira Sans (and picks up italic if the enclosing text
+% happens to be italicized), even though the digits/operators around it are
+% correctly Computer Modern. Found 2026-07-20 on
+% slides/2gd-Analyzing-Reward-to-Risk-Ratio-CAPM-current.tex's own
+% \text{E}/\text{Cov} operands. Fixed generally, project-wide, by wrapping
+% \text{}'s argument in an explicit upright-Computer-Modern font switch --
+% \usefont{OT1}{cmr}{m}{n} rather than \mathrm{} (which would pull in
+% \text{}'s own math-alphabet substitution logic unnecessarily) or \textrm{}
+% (which switches *family* only, so still comes out italic inside an italicized
+% context, which \text{} should never do here) -- deliberately hardcoding "not
+% italic" (shape n) rather than inheriting the ambient shape, since \text{}'s
+% whole purpose in this deck's formulas is plain upright labels (E, Cov, "the"
+% CAPM, ...), regardless of whatever font context happens to surround the
+% formula itself.
+\let\SMOrigText\text
+\renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}
