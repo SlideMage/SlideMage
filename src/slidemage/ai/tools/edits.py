@@ -147,7 +147,7 @@ def edit_file(ctx: ToolContext, args: dict) -> str:
 
 
 @tool("write_file",
-      "Create a new text file in the project (not for slides: use add_slide; never overwrites -- an "
+      "Create a new text file in the project (not for slides: use create_slide or add_slide; never overwrites -- an "
       "existing file is changed with edit_file).",
       {"path": {"type": "string", "description": "Project-relative path of the new file."},
        "content": {"type": "string", "description": "The file's text."}},

@@ -174,7 +174,7 @@ def _read_image(ctx: ToolContext, path: Path, suffix: str) -> ToolOutput:
        "max_lines": {"type": "integer", "description": f"How many lines at most (default and cap {READ_LINES})."},
        "start_page": {"type": "integer", "description": "PDF: first page to read (default 1)."},
        "max_pages": {"type": "integer",
-                     "description": f"PDF: how many pages at most (default {PDF_PAGES} as text, cap {PAGE_IMAGES} as images)."},
+                     "description": f"PDF: pages to read (text: default {PDF_PAGES}, cap 50; images: default and cap {PAGE_IMAGES})."},
        "pages_as_images": {"type": "boolean", "description": "PDF: look at the pages as images instead of reading their text."}},
       ("path",))
 def read_file(ctx: ToolContext, args: dict) -> ToolOutput:

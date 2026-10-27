@@ -29,7 +29,7 @@ def test_orientation_and_prompt_scope_agree_on_focus_and_keep_editor_guards():
         assert "read_buffer" in text and "call get_focus first" not in text
     assert "Batch independent reads in one turn" in orientation
     assert "native Edit/Write for other files" in orientation
-    assert "modify_slide" in orientation and "one call" in orientation
+    assert "modify_slide" in orientation and "create_slide" in orientation
     assert all(guard in orientation for guard in ("frozen", "leading '%%'", "\\setSlideVersion", "\\vbox to 0pt", "hook"))
     assert "do not explore" in scope and "switch_to_deck_mode" in scope
 

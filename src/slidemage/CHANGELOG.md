@@ -2821,3 +2821,7 @@ v8.64.1 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 1): The "Th
 
 NEW: In "This slide" mode, the assistant can no longer change other slides or the deck.
 - Before, the built-in chat and the tools Claude Code uses through SlideMage could still reach other slides; now they ask to switch to Deck mode first.
+
+v8.64.2 (2026-10-27, AI tools review, docs/AI_TOOLS_FIX_PLAN.md step 3): One source of tool guidance. The chat's system prompt (agent_context.SYSTEM_PROMPT) and Claude Code's ORIENTATION re-described the tools' arguments, defaults and results and had drifted from the tool descriptions: both called refresh_deck_previews "legacy Instructor snapshots (only)" while it refreshes all course views by default. The prompts now keep the workflow (read before changing, which tool for which job, what is slow, readability fixes, protected parts, answer style) and leave what a tool does to its description (SYSTEM_PROMPT 5.4k to 4.4k characters, ORIENTATION 3.3k to 2.5k). read_file, check_readability and write_file descriptions are more precise. test_tool_guidance.py fails when a prompt names a tool its assistant does not have.
+
+NEW: The assistant gets shorter, consistent instructions about SlideMage's tools.
