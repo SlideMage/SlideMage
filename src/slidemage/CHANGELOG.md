@@ -2905,3 +2905,8 @@ NEW: SlideMage can install plugins.
 - Slide insertion by a plugin is all-or-nothing, and deck writes are protected against interrupted writes.
 - Plugin side-panel boxes can refresh when their data changes and at the start of a new day.
 - The README and manual explain how to install, use, write and test plugins.
+
+v8.71.1 (2026-10-28, merging the plugins PRs: the plugin self-test failed on Windows): The plugin self-test and the build's list of standard-library hidden imports leave out curses, pty and tty on Windows (plugins/selftest.py POSIX_ONLY): find_spec finds them there, but they import _curses or termios, which Windows lacks, so `slidemage --self-test --plugins` failed in every Windows build. Two tests check what only POSIX can show: a file's mode bits, and a backslash in a zip member's name, which Windows' zipfile turns into "/" when it writes and reads it.
+
+NEW: The plugin self-test passes on Windows.
+- Windows builds no longer fail their plugin self-test.
