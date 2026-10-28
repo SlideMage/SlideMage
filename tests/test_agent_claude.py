@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import base64
 import json
+import socket
+import ssl
 import threading
 import time
 
 import pytest
-from fake_http import api_key_of, message_sse, sse_events, wait_for_first_piece
+from fake_http import ConnectProxy, StallingServer, api_key_of, message_sse, sse_events, wait_for_first_piece
 
 from slidemage.ai.agent_types import (
     AssistantMessage,
@@ -148,6 +150,159 @@ def test_stop_ends_a_stream_that_went_quiet(server):
     thread.join(4)
     assert not thread.is_alive() and texts == ["Hello"]
     assert isinstance(outcome[0], Cancelled)
+
+
+@pytest.mark.parametrize("stage", ["tls", "proxy_tls", "connect_tunnel"])
+def test_abort_ends_stalled_connection_setup(monkeypatch, stage):
+    try:
+        stalled = StallingServer()
+    except PermissionError:
+        pytest.skip("sandbox forbids loopback sockets")
+    proxy = None
+    p = AnthropicProvider(api_key="sk-test")
+    outcome = []
+    # Isolate both uppercase and lowercase environment settings.
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "*")
+    p.base_url = f"https://127.0.0.1:{stalled.address[1]}"
+    worker = None
+    try:
+        if stage != "tls":
+            monkeypatch.setenv("NO_PROXY", "")
+            if stage == "proxy_tls":
+                proxy = ConnectProxy(stalled.address)
+                monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+            else:
+                monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{stalled.address[1]}")
+            p.base_url = "https://api.anthropic.test"
+
+        def run():
+            try:
+                p.stream_turn("", [UserMessage("hi")], [], lambda _: None, timeout=60)
+            except ProviderError as exc:
+                outcome.append(exc)
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        assert stalled.received.wait(3), "no ClientHello / CONNECT received"
+        assert p._sock is not None
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+    finally:
+        p.abort()
+        stalled.close()
+        if proxy:
+            proxy.close()
+        if worker:
+            worker.join(2)
+
+
+def test_abort_ends_a_pending_tcp_connect(monkeypatch):
+    # TEST-NET-1: never a real API. Some networks reject immediately rather than
+    # leaving the SYN pending; only a pending connection can exercise this case.
+    monkeypatch.setenv("NO_PROXY", "*")
+    monkeypatch.setenv("no_proxy", "*")
+    p = AnthropicProvider(api_key="sk-test")
+    p.base_url = "https://192.0.2.1:443"
+    outcome = []
+    try:
+        with socket.socket():
+            pass
+    except PermissionError:
+        pytest.skip("sandbox forbids sockets")
+
+    def run():
+        try:
+            p.chat([{"role": "user", "content": "hi"}], timeout=60)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        deadline = time.monotonic() + 0.5
+        while worker.is_alive() and time.monotonic() < deadline:
+            worker.join(0.01)
+        if not worker.is_alive() or p._sock is None:
+            pytest.skip("network rejects the test address instead of leaving connect pending")
+        # A completed TCP connection would have moved on to TLS; this test must
+        # observe TCP setup itself, not another handshake timeout.
+        if isinstance(p._sock, ssl.SSLSocket):
+            pytest.skip("test address unexpectedly accepted TCP")
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+    finally:
+        p.abort()
+        worker.join(2)
+
+
+def test_abort_reaches_the_tls_socket_before_the_handshake(monkeypatch):
+    p = AnthropicProvider(api_key="sk-test")
+    entered, closed = threading.Event(), threading.Event()
+    outcome = []
+
+    class RawSocket:
+        def setsockopt(self, *_args):
+            pass
+
+        def close(self):
+            pass
+
+    class TLSSocket:
+        def do_handshake(self):
+            assert p._sock is self
+            entered.set()
+            assert closed.wait(2), "abort did not close the TLS socket"
+            raise OSError("handshake aborted")
+
+        def shutdown(self, _how):
+            closed.set()
+
+        def close(self):
+            closed.set()
+
+    raw, tls = RawSocket(), TLSSocket()
+
+    def create_socket(*_args):
+        p._publish_socket(raw)
+        return raw
+
+    def wrap(_context, sock, *, server_hostname, do_handshake_on_connect):
+        assert sock is raw and p._sock is raw
+        assert server_hostname == "api.anthropic.com" and not do_handshake_on_connect
+        return tls
+
+    monkeypatch.setenv("NO_PROXY", "*")
+    monkeypatch.setenv("no_proxy", "*")
+    monkeypatch.setattr(p, "_create_socket", create_socket)
+    monkeypatch.setattr(ssl.SSLContext, "wrap_socket", wrap)
+    monkeypatch.setattr("slidemage.ai.providers._shutdown_socket", lambda sock: sock.close() if sock else None)
+
+    def run():
+        try:
+            p.chat([{"role": "user", "content": "hi"}], timeout=60)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+        assert p._sock is None
+    finally:
+        p.abort()
+        closed.set()
+        worker.join(2)
 
 
 # -- the client's own work: retries, the stream's events, the blocks it keeps -----------------------
