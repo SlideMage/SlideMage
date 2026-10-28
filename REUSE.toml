@@ -1,7 +1,7 @@
 version = 1
 SPDX-PackageName = "SlideMage"
 SPDX-PackageSupplier = "Stefan Palan"
-SPDX-PackageDownloadLocation = "https://github.com/stpalan/SlideMage"
+SPDX-PackageDownloadLocation = "https://github.com/SlideMage/SlideMage"
 
 # Files that cannot carry an SPDX header of their own. Python, Lua and the
 # SlideMage LaTeX files have one; see LICENSE for the overview.

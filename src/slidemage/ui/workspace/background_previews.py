@@ -437,6 +437,7 @@ class BackgroundPreviews(QObject):
         record = compile_records.read_record(ctx.build_dir, job.jobname)
         if record is not None and renderer.ingest_compile(job, pdf, record):
             self.changed.emit()
+        renderer.replan()          # the slides that need their deck can be typeset in this compile now
 
     def stop(self) -> None:
         if self._on_compiled in compiler.COMPILE_LISTENERS:
@@ -462,7 +463,7 @@ class BackgroundPreviews(QObject):
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return None
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
+        if target.macro == "slidestep" and target.steps:
             return None
         try:
             unit = render_key.unit_for(target, view, language, deck_name)
@@ -521,7 +522,7 @@ class BackgroundPreviews(QObject):
             return (f"Preview rendering paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
         if progress.failures:
             return f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered", "warning"
-        return "All previews are up to date.", "ok"
+        return "All previews are up to date.", "ok_text"
 
     def hover_text(self) -> str:
         """What the dial's tooltip and the status window's first lines say."""

@@ -211,7 +211,7 @@ way without deleting them.
 ## Updates
 
 **Settings… → About → Check for updates…** (also in `Ctrl+K`) compares this copy's version with the
-releases of `stpalan/SlideMage` on GitHub. When a newer one
+releases of `SlideMage/SlideMage` on GitHub. When a newer one
 exists, the packaged app offers to download that platform's release zip,
 unpacks it into the folder the running app lives in, and restarts. The
 old binary is kept as `SlideMage.old` (`SlideMage.exe.old` on Windows)
@@ -247,7 +247,7 @@ check reports that no release was found.
    Personal access tokens → Fine-grained tokens → Generate new token
    (https://github.com/settings/personal-access-tokens/new). Set an
    expiry date, Repository access → Only select repositories →
-   `stpalan/SlideMage`, and Repository permissions → Contents →
+   `SlideMage/SlideMage` (Resource owner: SlideMage), and Repository permissions → Contents →
    Read-only; leave everything else at No access. Copy the token
    (`github_pat_…`) -- GitHub shows it only once. When it expires, the
    update check reports that no release was found until a new one is

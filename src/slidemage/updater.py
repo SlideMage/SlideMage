@@ -49,7 +49,7 @@ from typing import Callable, Optional
 
 from .project import config_dir
 
-REPO = "stpalan/SlideMage"
+REPO = "SlideMage/SlideMage"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
 # A private repo's releases are only visible with a token that can read it.

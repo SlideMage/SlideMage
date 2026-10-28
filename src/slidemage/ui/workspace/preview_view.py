@@ -513,6 +513,7 @@ class PreviewPane(Surface):
         self._scans: dict[tuple, reveal_steps.SlideScan] = {}
         self._step_failed: set[tuple] = set()      # page lists that did not render: not asked for again
         self._context_modes: dict[tuple, Optional[str]] = {}   # (target key, view, language) -> deck_context mode
+        self._auto_rendered: set[tuple] = set()    # (target key, view, language, mtime) of slides rendered on show
         # An edit of the open deck, (failed title, summary, change(path, text), cleanup) -> done: the slide list's
         # `edit`, which the window hands over. Without it the ticks of the step bar are not editable.
         self.edit_deck: Optional[Callable[..., bool]] = None
@@ -980,6 +981,8 @@ class PreviewPane(Surface):
             if pixmap is None:
                 pixmap = self._kept(key, QPixmap.fromImage(found[1]), digest, keep)
         self._stored = (ident, pixmap, digest)
+        if pixmap is not None and target.needs_context:
+            self._context_modes[ident[:3]] = deck_context.DECK       # the background render used the deck's compile
         if digest != before:
             self._refresh()
 
@@ -1191,6 +1194,8 @@ class PreviewPane(Surface):
                 self._page.show_message(
                     f"No preview for the {VIEW_LABELS[view]} view yet." if not busy_here else "Rendering…",
                     not busy_here)
+                if not busy_here:
+                    self._render_context_slide(target)
             else:
                 self._page.show_image(found[0])
                 if found[2]:
@@ -1917,6 +1922,33 @@ class PreviewPane(Surface):
         self._batch_status = ''
         job.request = self._renders.request(target, text, view, language, self.app.log, saved=True, force=force)
         self._start(lambda: None, job, debounce=debounce)
+
+    def _render_context_slide(self, target: PreviewTarget) -> None:
+        """A slide that needs its deck has no picture yet (the background previews wait for a deck compile): render it
+        once, as Render now does, instead of leaving "No preview" and a button (v8.67.0). Once per file revision, view
+        and language: a failure leaves its message, and Render now tries again."""
+        view, language = self.state.view, self.language
+        key = (target.key, view, language, _mtime(target.source_path))
+        if not target.needs_context or self._error or self._batch_cancel is not None or key in self._auto_rendered:
+            return
+        if len(self._auto_rendered) > 256:
+            self._auto_rendered.clear()
+        self._auto_rendered.add(key)
+
+        def start() -> None:
+            shown = self._target
+            if self._closed or shown is None or shown.key != target.key or _mtime(shown.source_path) != key[3]:
+                return
+            if (view, language) != (self.state.view, self.language):
+                return
+            if self._pending or self._active:
+                self._auto_rendered.discard(key)        # another render is out: the next refresh asks again
+                return
+            if latex_lint.check_slide_files(self.app.project, [shown.source_path]).errors:
+                return                      # Render now asks about those
+            self._render_saved(precheck=False)
+
+        QTimer.singleShot(0, start)
 
     def render_after_save(self) -> None:
         """The slide was saved: render it again, unless its source has errors (then

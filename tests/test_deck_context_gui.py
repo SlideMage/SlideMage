@@ -4,6 +4,8 @@
 """The Preview's chip for a slide that needs the deck around it."""
 from __future__ import annotations
 
+from PySide6.QtWidgets import QApplication
+
 from slidemage import deck_context
 from test_centre_gui import FRAME, centre, deck, project, renders, wait_idle  # noqa: F401 -- fixtures
 
@@ -48,3 +50,26 @@ def test_an_ordinary_slide_has_no_such_chip(centre, renders):
     centre.preview.render_now()
     wait_idle(centre)
     assert not any("deck" in text.lower() for text in texts(centre))
+
+
+def test_selecting_a_contents_slide_renders_it_without_a_click_on_render_now(centre, renders, project):
+    (project / "aaa-EN-One-current.tex").write_text(FRAME % "Contents" + "\\tableofcontents\n", encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    QApplication.processEvents()           # the render starts on the next turn of the event loop
+    wait_idle(centre)
+    assert centre.preview._page.pixmap is not None
+    assert "Rendered without deck context: may differ from the full deck" in texts(centre)
+
+
+def test_such_a_slide_is_rendered_on_show_once_per_file_revision(centre, renders, project):
+    (project / "aaa-EN-One-current.tex").write_text(FRAME % "Contents" + "\\tableofcontents\n", encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    QApplication.processEvents()           # the render starts on the next turn of the event loop
+    wait_idle(centre)
+    before = len(renders)
+    assert before >= 1
+    centre.preview._invalidate()
+    centre.preview._refresh()
+    QApplication.processEvents()
+    wait_idle(centre)
+    assert len(renders) == before and len(centre.preview._auto_rendered) == 1

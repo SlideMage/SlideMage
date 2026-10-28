@@ -284,6 +284,17 @@ def render_in_deck(ctx: ProjectContext, deck: Deck, view: str, slide_id: str, id
         shutil.rmtree(output.build_dir, ignore_errors=True)
 
 
+def in_deck_ready(ctx: ProjectContext, deck: Deck, view: str, language: Optional[str] = None) -> bool:
+    """Whether render_in_deck can typeset slides of `deck` in `view` now: a whole-deck compile of that version is on
+    record and the deck file has not changed since (what the background previews wait for before they render the
+    slides that need their deck)."""
+    job = CompileJob(deck, view if deck.supports_version else None, None, language=language)
+    try:
+        return partial_compile._full_compile(ctx, job).deck_changed_at is None
+    except partial_compile.PartialError:
+        return False
+
+
 def _write_inputs(ctx: ProjectContext, the_plan, output, pdf: Path) -> None:
     """What the page compile read, beside `pdf` as every preview build records it: without it the preview cache
     keeps no verified render, and the Preview said "Previous render ... render to verify" after every render of a

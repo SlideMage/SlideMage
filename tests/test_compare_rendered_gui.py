@@ -354,7 +354,7 @@ def test_the_task_card_compares_in_review_and_done(asked, renders):  # noqa: F81
     (dialog,) = renders.dialogs(env.window)
     assert dialog.texts == {"Before": BROKEN, "After": card(env).after} and "\\end{itemize}" in dialog.texts["After"]
     assert dialog.target.source_path == env.path and (dialog.view, dialog.language) == ("instructor", "EN")
-    assert len(renders.requests) == 2 and all(entry[6] == {'require_pdf': True} for entry in renders.requests)
+    assert len(renders.requests) == 2 and all(entry[5] == {'require_pdf': True} for entry in renders.requests)
     close(dialog)
     press(env, "Apply")
     wait_until(phase_is(env, model.DONE))

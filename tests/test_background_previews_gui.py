@@ -168,7 +168,7 @@ def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], failures=2, scanned_at=1.0)
     assert controller.summary() == ("2 slides cannot be rendered", "warning")
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], scanned_at=1.0)
-    assert controller.summary() == ("All previews are up to date.", "ok")      # green
+    assert controller.summary() == ("All previews are up to date.", "ok_text")      # green text, no background
     controller.refresh()
     assert controller.chip.isVisible() and controller.dial.isVisible()
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)

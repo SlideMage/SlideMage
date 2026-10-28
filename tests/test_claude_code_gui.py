@@ -159,13 +159,15 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
 
 def test_typing_resize_theme_exit_restart_and_shutdown(env):
     assert env.view.terminal is None and env.view.session is None and not env.log.exists()      # the chat is shown
+    env.window.resize(1280, 960)        # at 1024 x 720 the assistant's column leaves the terminal 5 rows
     start_view(env)
     assert env.view.status.text() == "Running"
     logged = json.loads(env.log.read_text())
     assert logged["cwd"] == str(env.root) and logged["project"] == str(env.root) and logged["term"] == "xterm-256color"
-    assert logged["argv"][0::2] == ["--mcp-config", "--settings", "--append-system-prompt"]    # the model is Claude Code's own
+    assert logged["argv"][0] == "--session-id" and logged["argv"][2::2] == ["--mcp-config", "--settings", "--append-system-prompt"]
+    # (every session has its own id, v8.61.0; the model is Claude Code's own)
     assert logged["token"] == env.view.session._server.token and logged["token"] not in json.dumps(logged["argv"])
-    assert env.view.session.mcp_url in logged["argv"][1]
+    assert env.view.session.mcp_url in logged["argv"][3]
     assert not (env.root / ".claude").exists() and not (env.root / ".mcp.json").exists()
     # what is typed reaches the process, its output the terminal
     env.view.terminal.bridge.send_input("hello there\r")
@@ -474,10 +476,10 @@ def test_attaching_is_off_while_claude_code_is_not_running(env):
 def test_saved_chat_choice_applies_on_start_and_restart(env):
     ai_profile.set_model_choice(env.window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "sonnet:medium")
     start_view(env)
-    assert json.loads(env.log.read_text())["argv"][:4] == ["--model", "sonnet", "--effort", "medium"]
+    assert json.loads(env.log.read_text())["argv"][2:6] == ["--model", "sonnet", "--effort", "medium"]
     ai_profile.set_model_choice(env.window.project, ai_profile.CLAUDE_CODE, ai_profile.CHAT, "opus:high")
     env.view.restart_button.click()
-    wait_until(lambda: json.loads(env.log.read_text())["argv"][:4] == ["--model", "opus", "--effort", "high"])
+    wait_until(lambda: json.loads(env.log.read_text())["argv"][2:6] == ["--model", "opus", "--effort", "high"])
 
 
 def test_mcp_toolbox_reads_scope_and_focus_on_gui_thread(env):

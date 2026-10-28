@@ -66,7 +66,7 @@ def test_release_lists_every_versions_bullets_then_breaking_then_changelog():
         "*This release covers v6.0.1 and v6.1.0.*\n\n"
         "- Feature B.\n- Fix A.\n\n"
         "## Breaking changes\n\n- **v6.1.0:** decks need X.\n\n"
-        "## Full changelog\n\nhttps://github.com/stpalan/SlideMage/compare/v6.0.0...v6.1.0\n"
+        "## Full changelog\n\nhttps://github.com/SlideMage/SlideMage/compare/v6.0.0...v6.1.0\n"
     )
     # the updater sees exactly the breaking change, not the changelog link
     release = updater.Release(tag="v6.1.0", body=out, **{

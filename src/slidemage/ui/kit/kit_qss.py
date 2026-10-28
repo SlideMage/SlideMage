@@ -174,7 +174,7 @@ KIT_ICONS = {
     "chevron_up": ("expand_less", "text_3", 18, 18),
 }
 
-CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok")
+CHIP_TONES = ("neutral", "muted", "info", "warning", "error", "ok", "ok_text")
 
 
 def _chip_colors(t: Tokens, tone: str) -> tuple[str, str]:
@@ -186,6 +186,7 @@ def _chip_colors(t: Tokens, tone: str) -> tuple[str, str]:
         "warning": (t.warning_bg, t.warning_fg),
         "error": (t.error_bg, t.error_fg),
         "ok": (t.ok_bg, t.ok_fg),
+        "ok_text": ("transparent", t.ok),       # green text only: a background says there is something to do
     }[tone]
 
 

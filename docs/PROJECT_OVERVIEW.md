@@ -167,7 +167,7 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/stpalan/SlideMage.git
+   git clone https://github.com/SlideMage/SlideMage.git
    cd SlideMage
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
