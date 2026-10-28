@@ -23,8 +23,8 @@ Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3
 
 | Where | Branch | Base | Commits | Version | Pushed |
 |---|---|---|---|---|---|
-| `stpalan/SlideMage` | `feature/ai-tools-fixes` | `develop` | 14 | v8.64.1 – v8.65.0 | no |
-| `stpalan/SlideMage` | `feature/anthropic-stdlib` | `feature/ai-tools-fixes` | +6 | v8.65.1 – v8.65.2 | no |
+| `stpalan/SlideMage` | `feature/ai-tools-fixes` | `develop` | 14 | v8.64.1 – v8.65.0 | merged as #19 (2026-10-27) |
+| `stpalan/SlideMage` | `feature/anthropic-stdlib` | `develop` | +6 | v8.67.1 – v8.67.2 | no |
 | `stpalan/SlideMage` | `feature/plugin-host` | `develop` | 12 | v8.66.0 | no |
 | `JuergenFleiss/SlideMageS` (private fork) | `plugin-campusonline` (history of its own) | – | 6 ahead of the fork | plugin 1.0.0 (undated) | partly: up to `21665d5` |
 
@@ -34,7 +34,7 @@ Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3
 
 ### 3.1 PR 1: AI tools fixes (`feature/ai-tools-fixes` → `develop`)
 
-Not part of the plugins work, but PR 2 stacks on it, so it goes first.
+Already merged as #19 (2026-10-27). Not part of the plugins work; PR 2 was stacked on it.
 
 > **Title:** AI tools: fixes from the 2026-10-27 review (v8.64.1 – v8.65.0)
 >
@@ -50,9 +50,9 @@ Not part of the plugins work, but PR 2 stacks on it, so it goes first.
 > **Tests.** The AI tool, MCP, hook and chat tests pass. 8 GUI tests fail, the same 8 that fail on `develop`
 > itself (section 8), so none of them comes from this branch.
 
-### 3.2 PR 2: Anthropic API without the SDK (`feature/anthropic-stdlib` → `develop`, after PR 1)
+### 3.2 PR 2: Anthropic API without the SDK (`feature/anthropic-stdlib` → `develop`)
 
-> **Title:** Plugins plan phase 4: the Anthropic API without the anthropic SDK (v8.65.1 – v8.65.2)
+> **Title:** Plugins plan phase 4: the Anthropic API without the anthropic SDK (v8.67.1 – v8.67.2)
 >
 > Phase 4 of `docs/PLUGINS_PLAN.md`, brought forward because nothing depends on it. The Claude plugin must be pure
 > Python, and the SDK needs the compiled `pydantic_core`.

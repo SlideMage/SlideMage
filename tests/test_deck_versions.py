@@ -43,3 +43,20 @@ def test_changed_slides_lists_the_plus_slides_a_deck_calls(ctx, tmp_path):
     assert sv.changed_slides(ctx, deck, "en") == ["abc-EN-Demo"]
     (tmp_path / "slides" / CURRENT).write_text(HEADER + "\\setSlideVersion{1-0-0}\nx\n", encoding="utf-8")
     assert sv.changed_slides(ctx, deck, "en") == []
+
+
+def test_a_deck_compile_takes_the_last_version_of_a_changed_slide_unless_the_setting_says_otherwise(ctx, tmp_path):
+    from slidemage import app_settings, compiler
+    _project(tmp_path, HEADER + "\\setSlideVersion{1-0-0+}\nedited\n", HEADER + "\\setSlideVersion{1-0-0}\noriginal\n")
+    deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "talk")
+    substitution = r"\declare@file@substitution{slides/abc-EN-Demo-current.tex}{slides/abc-EN-Demo-v1-0-0.tex}"
+    assert sv.saved_version_lines(ctx, deck, "EN") == [r"\makeatletter", substitution, r"\makeatother"]
+    job = compiler.CompileJob(deck, None, None)
+    assert substitution in compiler.wrapper_text(ctx, job)              # the default: the last version
+    app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, True)
+    assert substitution not in compiler.wrapper_text(ctx, job)          # the slide as it is now
+    app_settings.set(ctx, sv.RENDER_CHANGES_SETTING_KEY, False)
+    (tmp_path / "slides" / "abc-EN-Demo-v1-0-0.tex").unlink()
+    assert sv.saved_version_lines(ctx, deck, "EN") == []                # no frozen file: the current one
+    (tmp_path / "slides" / CURRENT).write_text(HEADER + "\\setSlideVersion{1-0-0}\nx\n", encoding="utf-8")
+    assert sv.saved_version_lines(ctx, deck, "EN") == []                # no "+": nothing to swap

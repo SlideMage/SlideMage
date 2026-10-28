@@ -135,6 +135,17 @@ def test_enter_after_begin_opens_the_matching_end_with_the_cursor_inside():
     assert le.smart_return("\\begin{center}", True).text == "\n\t\n\\end{center}"
 
 
+def test_enter_after_begin_adds_no_end_when_every_begin_has_one_already():
+    # Enter at the end of a \begin line whose \end is already there put a second \end under it (v8.66.0).
+    line = "\\begin{sectionframe}{Preregistration}"
+    text = f"\\setSlideVersion{{1-0-0}}\n{line}\n\\end{{sectionframe}}\n"
+    assert le.smart_return(line, True, text) == le.Edit("\n\t", 2)
+    nested = "\\begin{itemize}\n\t\\item a\n\t\\begin{itemize}\n\\end{itemize}\n"
+    assert le.smart_return("\t\\begin{itemize}", True, nested).text.endswith("\\end{itemize}")   # one is open
+    assert le.smart_return("\\begin{center}", True, "\\begin{center}\n% \\end{center}\n").text.endswith("\\end{center}")
+    assert le.smart_return("\\begin{itemize}", True, "\\begin{itemize}\n\\end{itemize}") == le.Edit("\n\t\\item ", 8)
+
+
 def test_enter_after_an_item_starts_the_next_one_with_the_same_label():
     assert le.smart_return("\t\\item[\\SMBulletEllipsis] text", True) == le.Edit(
         "\n\t\\item[\\SMBulletEllipsis] ", len("\n\t\\item[\\SMBulletEllipsis] "))

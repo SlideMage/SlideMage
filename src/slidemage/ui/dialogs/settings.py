@@ -121,6 +121,18 @@ class GeneralTab(Page):
             "(changed since its last version), SlideMage asks whether to make the changes a version now. "
             "Off by default: your edits are saved either way."))
 
+        self.render_changes_check = QCheckBox("Compile decks with the changes not yet made a version")
+        self.render_changes_check.setChecked(
+            bool(app_settings.get(app.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, False)))
+        self.render_changes_check.toggled.connect(
+            lambda on: app_settings.set(app.project, slide_versioning.RENDER_CHANGES_SETTING_KEY, bool(on)))
+        layout.addWidget(Field("Changed slides in decks", self.render_changes_check))
+        layout.addWidget(caption(
+            "A slide that shows a \"+\" has changes since its last version. Off by default: a deck's PDF, "
+            "snapshot or PowerPoint export shows that last version, and the changes stay in the slide until you "
+            "use Update version. On, it shows the slide as it is now. The slide's own Preview always shows "
+            "it as it is now."))
+
         self.template_combo = QComboBox()
         current = slide_snapshot.render_template(self.app.project)
         for key in slide_snapshot.available_templates(self.app.project.root):

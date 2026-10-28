@@ -102,6 +102,7 @@ class Unit:
     preamble_text: Optional[str]
     template: str
     source_path: Path
+    context: str = ""           # the deck whose last compile a slide that needs its deck is typeset in ("": it does not)
 
     @property
     def label(self) -> str:
@@ -117,7 +118,8 @@ def unit_for(target: PreviewTarget, view: str, language: str, deck: str = "") ->
     """The unit of a Preview target: its steps are dropped (all steps are rendered)."""
     return Unit(deck, target.macro, target.id_slug, target.version,
                 () if target.macro == "slidestep" else tuple(target.conditions or ()), view, language.upper(),
-                target.frame_number, target.preamble_text, target.template, target.source_path)
+                target.frame_number, target.preamble_text, target.template, target.source_path,
+                deck if target.needs_context and deck else "")
 
 
 def default_engine_fp() -> str:
@@ -173,6 +175,7 @@ class Resolver:
             "view": unit.view, "language": unit.language, "template": unit.template,
             "preamble": hashlib.sha256((unit.preamble_text or "").encode()).hexdigest(),
             "engine": self.engine_fp, "rc": rc,
+            **({"context": unit.context} if unit.context else {}),
         })
 
     # -- manifests ---------------------------------------------------------------
