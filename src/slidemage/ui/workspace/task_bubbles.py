@@ -600,15 +600,13 @@ class TaskRunner(QObject):
         """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),
         or "" when it can."""
         route = route or ai_profile.resolve(self._window.project, KINDS[task.name])
-        reason = resolver.problem(self._window.project, route)
-        if reason:
-            return reason
+        if routes.get(route.route) is None:
+            return resolver.problem(self._window.project, route)
         try:
-            if _runner_of(self._window.project, route) is not None:
-                return ""
+            runner = _runner_of(self._window.project, route)
         except resolver.RouteUnavailable as exc:
             return str(exc)
-        if task not in PROVIDER_TASKS:
+        if runner is None and task not in PROVIDER_TASKS:
             return resolver.not_offered(route, _NAMES[task.name], "It needs a route that runs its own tasks: switch the route to use it.")
         return resolver.problem(self._window.project, route)
 

@@ -6,6 +6,7 @@ fallback to another route."""
 from __future__ import annotations
 
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -153,6 +154,21 @@ def test_the_problems_of_the_three_routes(ctx, monkeypatch):
     assert resolver.problem(ctx, Route(ANTHROPIC_API, CHAT, "m")) == ""
     assert resolver.problem(ctx, Route(CLAUDE_CODE, CHAT)) == CHAT_IN_TERMINAL
     assert resolver.problem(ctx, Route(CLAUDE_CODE, TRANSLATION, "haiku", "low")) == ""
+
+
+def test_task_refusal_reports_unsupported_tasks_before_model_setup(ctx, fake_route, monkeypatch):
+    from slidemage.ai import tasks
+    from slidemage.ui.workspace.task_bubbles import TaskRunner
+
+    runner = SimpleNamespace(_window=SimpleNamespace(project=ctx))
+    refusal = lambda task, route: TaskRunner.refusal(runner, task, route)  # noqa: E731
+    assert "not available on Local · Ollama" in refusal(tasks.FIX_LATEX, Route(OLLAMA, FIXES))
+    assert "Choose an Ollama model for translation" in refusal(tasks.TRANSLATE, Route(OLLAMA, TRANSLATION))
+    assert "not installed" in refusal(tasks.FIX_LATEX, Route("missing", FIXES))
+
+    fake_route.blocked = "Fake route needs setup."
+    monkeypatch.setattr(fake_route, "task_runner", lambda ctx, route: lambda *args: None)
+    assert refusal(tasks.FIX_LATEX, Route(fake_route.id, FIXES)) == fake_route.blocked
 
 
 def test_the_model_choices_of_the_three_routes(ctx, monkeypatch):

@@ -289,7 +289,11 @@ def test_a_frozen_version_cannot_be_fixed_and_a_bib_has_no_check(make_file, monk
 
 
 def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkeypatch):
+    from slidemage.ai import ollama_route
+
     file = make_file()
+    # The picker reads the background listing, never the network on the UI thread.
+    monkeypatch.setattr(ollama_route, "_installed", {file.app.project.root: [ollama_route.InstalledModel("qwen3", 1, "", ())]})
     fake_checker(monkeypatch, result_for())
     file.refresh_model_preference(["ignored"])            # before the first check there is nothing to refresh
     assert file.fix_panel.model_combo.count() == 0
