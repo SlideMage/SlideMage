@@ -151,9 +151,16 @@ class Host(Protocol):
     ) -> None:
         """Add a box to the workspace's right column. key is unique within the plugin (it remembers the box's
         collapsed state). build(deck) is called when the box is shown for a deck, and again when the current deck
-        changes or its file does; when(deck) decides whether the box is shown at all, cheap and without the
-        network. "compact" is a few lines at a glance (an entry of the panel picker); "large" is a working surface
-        in the dock below the slide panels (not supported yet: raises NotImplementedError)."""
+        changes or its file does, when refresh_sidebar_box(key) is called, and when the calendar date changes;
+        when(deck) decides whether the box is shown at all, cheap and without the network. "compact" is a few lines
+        at a glance (an entry of the panel picker); "large" is a working surface in the dock below the slide panels
+        (not supported yet: raises NotImplementedError)."""
+        ...
+
+    def refresh_sidebar_box(self, key: str) -> None:
+        """Say that the box key of this plugin shows data that has changed (a cache it reads was filled, say). The
+        box is built again at once if it is shown, and otherwise the next time it is shown. Call it from the UI
+        thread only: from done of run_in_background, or from a timer. An unknown key raises ValueError."""
         ...
 
     def add_render_priority(self, soon: Callable[[Deck], bool]) -> None:

@@ -17,8 +17,10 @@ from PySide6.QtCore import Signal
 
 from ..plugins import session
 from ..plugins.host import deck_snapshot
+from ..plugins.registry import set_box_refresher
 from .commands import Command, CommandRegistry
 from .kit.widgets import Field, Page, caption
+from .workspace.panels.plugin_box import box_key
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +38,14 @@ class WindowHostUi:
 
     def attach(self, window: Any) -> None:
         self._window = weakref.ref(window)
+        set_box_refresher(self.refresh_sidebar_box)
+
+    def refresh_sidebar_box(self, plugin_id: str, key: str) -> None:
+        """Build the box `key` of the plugin again (Host.refresh_sidebar_box); nothing without a window."""
+        window = self.window
+        panels = getattr(window, "side_panels", None) if window is not None else None
+        if panels is not None:
+            panels.refresh_box(box_key(plugin_id, key))
 
     @property
     def window(self) -> Any:

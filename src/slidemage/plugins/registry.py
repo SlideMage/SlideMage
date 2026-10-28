@@ -18,6 +18,16 @@ from .manifest import Manifest
 
 MENUS = ("deck",)
 
+BoxRefresher = Callable[[str, str], None]
+"""(plugin id, box key) -> None: the window's side panels build that box again (see refresh_sidebar_box)."""
+_box_refresher: BoxRefresher | None = None
+
+
+def set_box_refresher(refresher: BoxRefresher | None) -> None:
+    """Where Registrar.refresh_sidebar_box goes; plugin_ui sets it when the window attaches."""
+    global _box_refresher
+    _box_refresher = refresher
+
 
 @dataclass(frozen=True)
 class CommandEntry:
@@ -126,6 +136,12 @@ class Registrar:
     def add_render_priority(self, soon: Callable[[Any], bool]) -> None:
         self._check_open()
         self.contributions.render_priorities.append(soon)
+
+    def refresh_sidebar_box(self, key: str) -> None:
+        if not any(b.key == key for b in self.contributions.sidebar_boxes):
+            raise ValueError(f"unknown sidebar box {key!r}")
+        if _box_refresher is not None:
+            _box_refresher(self.manifest.id, key)
 
     # The services belong to the real host (step 2).
     def _unavailable(self, *args: Any, **kwargs: Any) -> Any:
