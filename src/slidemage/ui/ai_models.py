@@ -97,7 +97,7 @@ def fill_model_combo(
     combo.clear()
     found = routes.get(route.route)
     if found is not None:
-        choices = found.model_choices(project, task)
+        choices = found.model_choices(routes.context(project, found.id), task)
         for choice in choices:
             combo.addItem(found.choice_label(choice), choice)
     usable = combo.count() > 0

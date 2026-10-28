@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .. import app_settings
-from ..plugin_api import Route
+from ..plugin_api import Route, RouteContext
 from ..project import ProjectContext
 from . import ai_profile
 from .agent_types import AgentMessage, AssistantMessage, ToolCall, ToolResultsMessage, ToolSpec
@@ -289,13 +289,13 @@ class OllamaRoute:
     is_local = True
     tasks = frozenset(ai_profile.TASKS)
 
-    def problem(self, ctx: ProjectContext, route: Route) -> str:
+    def problem(self, ctx: RouteContext, route: Route) -> str:
         if not route.model:
             return (f"Choose an Ollama model for {ai_profile.TASK_LABELS[route.task].lower()} under "
                     "AI setup (the ▾ of the AI switch).")
         return ""
 
-    def model_choices(self, ctx: ProjectContext, task: str) -> list[str]:
+    def model_choices(self, ctx: RouteContext, task: str) -> list[str]:
         wanted = "vision" if task == ai_profile.IMAGE_DESCRIPTION else "tools" if task == ai_profile.CHAT else ""
         return [model.name for model in _installed.get(ctx.root, [])
                 if not wanted or (model.supports_tools if wanted == "tools" else wanted in model.capabilities)]
@@ -309,25 +309,25 @@ class OllamaRoute:
     def split_choice(self, choice: str) -> tuple[str, str | None]:
         return choice, None     # a model name may itself hold a colon ("qwen3:8b")
 
-    def valid_choice(self, ctx: ProjectContext, choice: str) -> bool:
+    def valid_choice(self, ctx: RouteContext, choice: str) -> bool:
         return bool(choice)
 
     def work_label(self, route: Route) -> str:
         return f"{route.model or 'no model chosen'} · Ollama"
 
-    def provider(self, ctx: ProjectContext, route: Route) -> OllamaProvider:
-        return OllamaProvider.for_project(ctx, route.model)
+    def provider(self, ctx: RouteContext, route: Route) -> OllamaProvider:
+        return OllamaProvider(route.model, ctx.legacy_ollama_host())
 
-    def draft_backend(self, ctx: ProjectContext, route: Route, cancel: "threading.Event | None" = None) -> None:
+    def draft_backend(self, ctx: RouteContext, route: Route, cancel: "threading.Event | None" = None) -> None:
         return None     # core wraps provider() in alt_draft.ModelBackend
 
-    def translation_backend(self, ctx: ProjectContext, route: Route, cancel: "threading.Event | None" = None) -> None:
+    def translation_backend(self, ctx: RouteContext, route: Route, cancel: "threading.Event | None" = None) -> None:
         return None     # core wraps provider() in alt_draft.ModelTranslationBackend
 
-    def slide_translator(self, ctx: ProjectContext, route: Route) -> None:
+    def slide_translator(self, ctx: RouteContext, route: Route) -> None:
         return None     # core wraps provider() in slide_add.translate_body
 
-    def task_runner(self, ctx: ProjectContext, route: Route) -> None:
+    def task_runner(self, ctx: RouteContext, route: Route) -> None:
         return None     # core's provider_tasks
 
     def chat_surface(self, *args: Any, **kwargs: Any) -> None:

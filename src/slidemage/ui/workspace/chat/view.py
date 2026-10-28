@@ -615,7 +615,7 @@ class ChatView(Surface):
         if found is None:
             menu.add_item("", resolver.problem(project, route), enabled=False)
         elif found.id != ai_profile.OLLAMA:
-            choices = found.model_choices(project, ai_profile.CHAT)
+            choices = found.model_choices(routes.context(project, found.id), ai_profile.CHAT)
             reason = "" if choices else (resolver.problem(project, route) or "no model available")
             for model in choices or dict.fromkeys(filter(None, [route.model, default])):
                 add(model, reason, bool(choices))

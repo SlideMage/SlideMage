@@ -46,7 +46,6 @@ if TYPE_CHECKING:
     import threading
 
     from .ai.providers import ChatProvider
-    from .project import ProjectContext
 if TYPE_CHECKING:       # for type checkers only: at run time these load on first use (see __getattr__)
     from .ai.agent_types import (  # noqa: F401
         EDIT_ASK, EDIT_AUTO, AgentEvent, AgentMessage, AssistantMessage, Done, EditApplied, EditProposed,
@@ -679,11 +678,36 @@ def set_route_lookup(lookup: Callable[[str], "AiRoute | None"]) -> None:
     _route_lookup = lookup
 
 
+class RouteCredentials(Protocol):
+    """Obtain the registering plugin's credentials, optionally with an environment override."""
+
+    def __call__(self, env_var: str | None = None) -> Credentials: ...
+
+
+@dataclass(frozen=True)
+class RouteContext:
+    """Project and plugin services for one route call. Values describe the current project; settings and
+    credentials belong to the plugin that registered the route. Legacy readers never modify old storage.
+    cache_dir is the plugin's private cache path; create it before writing if needed.
+    """
+
+    root: Path
+    settings: Settings
+    cache_dir: Path
+    legacy_cache_dir: Path | None
+    credentials: RouteCredentials
+    legacy_secret: Callable[[Literal["anthropic_api_key"]], str | None]
+    legacy_ollama_host: Callable[[], str]
+    de_address: str
+    glossary: str
+
+
 class AiRoute(Protocol):
     """Something that answers AI requests: Ollama, Claude Code, the Anthropic API, or a plugin's own. Core
     registers one object per route (ai/routes.py) and asks it everything route-specific; no core module outside
     a route's own names a service. Every call is on the UI thread unless its text says otherwise, and none of
-    them may use the network or take long except where noted."""
+    them may use the network or take long except where noted. add_ai_route and this context are part of the
+    unreleased API 1 additions; no released API 1 route contract is changed."""
 
     id: str
     """Stable and lower-case ("ollama"); stored in settings and in a Route, so it never changes."""
@@ -695,13 +719,13 @@ class AiRoute(Protocol):
     tasks: frozenset[str]
     """Which of ai_profile.TASKS it can answer."""
 
-    def problem(self, ctx: "ProjectContext", route: Route) -> str:
+    def problem(self, ctx: RouteContext, route: Route) -> str:
         """Why `route` (this route's, with its task and model) cannot run now, as a sentence ready to show, or ""
         when it can: no model chosen, no key, not installed. Asked before every request and for the pickers; cheap,
         no network."""
         ...
 
-    def model_choices(self, ctx: "ProjectContext", task: str) -> list[str]:
+    def model_choices(self, ctx: RouteContext, task: str) -> list[str]:
         """The choices a picker offers for `task` without asking anyone: Claude Code's fixed list, the API's
         known models once a key is set. A route whose choices come from a server (Ollama's installed models) returns
         its most recent cached list here and refreshes it in the background. Never the network."""
@@ -720,7 +744,7 @@ class AiRoute(Protocol):
         """A choice as (model, effort), the parts of a Route; effort is None for a route without one."""
         ...
 
-    def valid_choice(self, ctx: "ProjectContext", choice: str) -> bool:
+    def valid_choice(self, ctx: RouteContext, choice: str) -> bool:
         """Whether `choice` is one this route offers; a stored or picked choice that is not is ignored. A route
         with open-ended choices (any model name) accepts every non-empty string."""
         ...
@@ -729,29 +753,29 @@ class AiRoute(Protocol):
         """What to show next to work done on `route`: "qwen3:8b · Ollama", "Claude Code · Haiku · effort medium"."""
         ...
 
-    def provider(self, ctx: "ProjectContext", route: Route) -> "ChatProvider | None":
+    def provider(self, ctx: RouteContext, route: Route) -> "ChatProvider | None":
         """A new chat provider for `route` (one request's: abort() ends only that one), or None when the route
         has no chat provider of its own (Claude Code answers through task_runner and chat_surface). Does not check
         problem(): core does, and never falls back to another route."""
         ...
 
-    def draft_backend(self, ctx: "ProjectContext", route: Route, cancel: "threading.Event | None" = None) -> Any:
+    def draft_backend(self, ctx: RouteContext, route: Route, cancel: "threading.Event | None" = None) -> Any:
         """What describes images on `route` (alt_draft's backend protocol: draft(), label, provider), or None:
         core then wraps provider() in alt_draft.ModelBackend. `cancel` ends a running request of a route that runs a
         process. Raises ProviderError when it cannot be made."""
         ...
 
-    def translation_backend(self, ctx: "ProjectContext", route: Route, cancel: "threading.Event | None" = None) -> Any:
+    def translation_backend(self, ctx: RouteContext, route: Route, cancel: "threading.Event | None" = None) -> Any:
         """What translates image descriptions on `route` (alt_draft's translation protocol: translate()), or None:
         core then wraps provider() in alt_draft.ModelTranslationBackend."""
         ...
 
-    def slide_translator(self, ctx: "ProjectContext", route: Route) -> Any:
+    def slide_translator(self, ctx: RouteContext, route: Route) -> Any:
         """What translates a slide body for the Add slide sheet (translate(body) -> (text, error), abort()), or
         None: core then wraps provider() in slide_add.translate_body."""
         ...
 
-    def task_runner(self, ctx: "ProjectContext", route: Route) -> Callable[..., Any] | None:
+    def task_runner(self, ctx: RouteContext, route: Route) -> Callable[..., Any] | None:
         """For a route that runs the bubble tasks itself (Claude Code's `claude -p`): run(task, captured, request,
         cancel, span) -> Outcome, called on a worker thread. None: core runs them on provider()
         (ai/provider_tasks.py)."""

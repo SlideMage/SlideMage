@@ -119,7 +119,7 @@ def _runner_of(ctx: ProjectContext, route: ai_profile.Route):
     """The task runner of the route when it runs the tasks itself (Claude Code's `claude -p`), else None: core runs
     them on the route's provider (provider_tasks)."""
     found = routes.get(route.route)
-    return found.task_runner(ctx, route) if found is not None else None
+    return found.task_runner(routes.context(ctx, found.id), route) if found is not None else None
 
 
 WORKERS = 2                            # processes at a time in a batch

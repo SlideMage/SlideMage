@@ -194,7 +194,7 @@ class ModelsGrid(QWidget):
         return next((r for r in cloud if profile_key(r) == chosen), cloud[0] if cloud else None)
 
     def _offered(self, route, task: str) -> list[str]:
-        return list(route.model_choices(self.project, task))
+        return list(route.model_choices(routes.context(self.project, route.id), task))
 
     def set_installed(self, installed: list[InstalledModel]) -> None:
         self.installed = installed
