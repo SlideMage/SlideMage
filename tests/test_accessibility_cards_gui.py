@@ -99,7 +99,7 @@ def test_the_headers_tab_order_is_focus_new_conversation_scope_tasks_all_actions
 
 def test_the_headers_icons_have_names(fake):  # noqa: F811
     head = area(fake.env).header
-    assert head.route_icon.accessibleName() == "Cloud"
+    assert head.ai_switch.segments.accessibleName() == "AI for all tasks"      # the route is the switch since v8.61.0
     assert head.focus_button.accessibleName().startswith("Focus assistant")
     assert head.new_button.accessibleName().startswith("New conversation")
     assert head.scope.accessibleName() == "Scope of the assistant"

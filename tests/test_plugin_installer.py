@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import stat
+import sys
 import zipfile
 from pathlib import Path
 
@@ -83,7 +84,8 @@ def test_absolute_path(tmp_path):
 
 def test_drive_letter_and_backslash(tmp_path):
     fails(make_zip(tmp_path, extra=[("C:/x", "bad")]), "unsafe")
-    fails(make_zip(tmp_path, extra=[("a\\b", "bad")], name="q.zip"), "unsafe")
+    if sys.platform != "win32":   # Windows' zipfile turns a backslash into "/" when it writes and reads a name
+        fails(make_zip(tmp_path, extra=[("a\\b", "bad")], name="q.zip"), "unsafe")
 
 
 def test_symlink(tmp_path):
