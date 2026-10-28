@@ -43,7 +43,7 @@ from ...ai import ai_profile, resolver
 from ...ai.providers import ChatProvider
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
 from ...deck_scan import Deck, scan_decks
-from .. import layout_settings
+from .. import layout_settings, plugin_ui
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
@@ -152,6 +152,8 @@ class WorkspaceWindow(QMainWindow):
         self.state = WorkspaceState(self.project, self)
         self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
         self.commands = build_registry()
+        plugin_ui.HOST_UI.attach(self)
+        plugin_ui.add_commands(self.commands)
         self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
         self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
         self.build_options = BuildOptionsDialog(self, self.state)

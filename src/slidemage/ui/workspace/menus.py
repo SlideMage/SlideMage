@@ -191,10 +191,26 @@ def expand(ctx: Context, entries: Iterable) -> list:
     return out
 
 
+def menu_bar(ctx: Context) -> tuple:
+    """MENU_BAR with the loaded plugins' menu entries added: for each plugin a section headed with its name at the end
+    of the menu it asked for. Without plugins this is MENU_BAR itself."""
+    from ...plugins import session
+
+    extra: dict[str, list] = {}
+    for plugin in session.active():
+        for menu in dict.fromkeys(m for m, _cid in plugin.contributions.menu_entries):
+            ids = tuple(cid for m, cid in plugin.contributions.menu_entries if m == menu and cid in ctx.commands)
+            if ids:
+                extra.setdefault(menu, []).append((plugin.manifest.name, ids))
+    if not extra:
+        return MENU_BAR
+    return tuple((title, (*sections, *extra.get(title.replace("&", "").lower(), ()))) for title, sections in MENU_BAR)
+
+
 def menu_bar_ids(ctx: Context) -> list[str]:
     """Every command id the menu bar can show, submenus included (DECKS is not a command)."""
     ids = []
-    for _title, sections in MENU_BAR:
+    for _title, sections in menu_bar(ctx):
         for _header, entries in sections:
             for entry in expand(ctx, entries):
                 if isinstance(entry, Submenu):
@@ -207,7 +223,7 @@ def menu_bar_ids(ctx: Context) -> list[str]:
 def build_menu_bar(window: QWidget, ctx: Context) -> QMenuBar:
     """The window's menu bar; `ctx` runs the commands (the window itself)."""
     bar = QMenuBar(window)
-    for title, sections in MENU_BAR:
+    for title, sections in menu_bar(ctx):
         menu = bar.addMenu(title)
         menu.setObjectName("menu:" + title.replace("&", "").lower())
         menu.aboutToShow.connect(lambda m=menu, s=sections: fill_menu(m, ctx, s))

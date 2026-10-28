@@ -183,11 +183,11 @@ def filled_menu(ctx, title: str):
     """The menu bar's menu `title` ("Deck"), filled for `ctx` as when it opens."""
     from PySide6.QtWidgets import QMenu
 
-    from slidemage.ui.workspace.menus import MENU_BAR, fill_menu
+    from slidemage.ui.workspace.menus import fill_menu, menu_bar
 
     menu = QMenu()
     _FILLED_MENUS.append(menu)
-    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in MENU_BAR}[title])
+    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in menu_bar(ctx)}[title])
     return menu
 
 

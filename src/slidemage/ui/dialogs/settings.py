@@ -29,6 +29,7 @@ that are open from `installed` when the sheet closes with `loaded` set.
 """
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from functools import partial
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLin
 from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
 from ...ai import credentials, translation_style
 from ...ai.providers import InstalledModel, OllamaProvider
+from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ...project import ProjectContext
 from .. import background
@@ -50,6 +52,7 @@ from .settings_ollama import OllamaTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
 
+log = logging.getLogger(__name__)
 GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT = range(8)
 DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
@@ -432,6 +435,10 @@ class SettingsSheet(ModalSheet):
                                   ("Presentation", self.presentation), ("Project", self.project_tab),
                                   ("About", self.about)):
             self.add_tab(label, tab_widget, scroll=True)
+        # The plugins' tabs come last, after About: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
+        for plugin in session.active():
+            for plugin_tab in plugin.contributions.settings_tabs:
+                self.add_tab(plugin_tab.title, self._plugin_page(plugin, plugin_tab), scroll=True)
         self.add_button("Close", kind="primary", role="accept")
         self.cloud.cloud_changed.connect(self.reload_models)
         self.ollama.changed.connect(self.reload_models)
@@ -439,6 +446,18 @@ class SettingsSheet(ModalSheet):
         if focus == DECK_GROUPS:
             self.project_tab.deck_groups.list.setFocus()
         self.reload_models()
+
+    @staticmethod
+    def _plugin_page(plugin, plugin_tab) -> QWidget:
+        """The plugin's tab, or, when its build() raises, a tab that says so (the sheet still opens)."""
+        try:
+            return plugin_tab.build()
+        except Exception as exc:
+            log.exception("settings tab %r of %s failed", plugin_tab.title, plugin.id)
+            page = Page()
+            page.body.addWidget(caption(f"{plugin.manifest.name} could not build this tab: {exc}", "error"))
+            page.body.addStretch(1)
+            return page
 
     def reload_models(self) -> None:
         """Ask Ollama again; while a request is out, the next one waits for its answer."""

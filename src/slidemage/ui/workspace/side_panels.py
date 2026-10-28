@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QScrollArea, QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
 
 from ... import app_settings
+from ...plugins import session
 from ...project import ProjectContext
 from .. import layout_settings
 from ..kit import kit_qss as q
@@ -26,6 +27,7 @@ from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
 from .assistant import AssistantArea
 from .panels import PANELS
 from .panels.base import PanelActions, SidePanel
+from .panels.plugin_box import PluginBoxPanel
 from .state import SETTLE_MS, WorkspaceState
 
 WIDTH = 360   # the prototype's width of the column: the default, and what a double-click on the handle gives back
@@ -81,8 +83,14 @@ class SidePanels(QWidget):
         self._shield = QWidget(self)
         self._shield.hide()
         self.panels: dict[str, SidePanel] = {cls.key: cls(app, state, actions) for cls in PANELS}
+        # The loaded plugins' compact boxes: panels of their own, listed by the picker under "Plugins".
+        for plugin in session.active():
+            for box in plugin.contributions.sidebar_boxes:
+                panel = PluginBoxPanel(app, state, actions, plugin, box)
+                self.panels[panel.key] = panel
         remembered = app_settings.get(state.project, SETTING)
-        self.current = remembered if remembered in self.panels else next(iter(self.panels))
+        self._fallback = next(iter(self.panels))        # where the picker returns to when a plugin's box goes away
+        self.current = remembered if remembered in self.panels else self._fallback
 
         self.card = card = Card()
         card.setMinimumHeight(PANEL_MIN_HEIGHT)
@@ -157,7 +165,12 @@ class SidePanels(QWidget):
         self._apply_share()
 
     def set_panel(self, key: str) -> None:
-        if key in self.panels and key != self.current:
+        if key in self.panels and key == self.current and isinstance(self.panels[key], PluginBoxPanel):
+            self.panels[key].invalidate()       # chosen again: build it again
+            self.refresh()
+        elif key in self.panels and key != self.current:
+            if not isinstance(self.panels[self.current], PluginBoxPanel):
+                self._fallback = self.current
             self.current = key
             app_settings.set(self.project, SETTING, key)
             self.refresh()
@@ -200,6 +213,8 @@ class SidePanels(QWidget):
         self._stale = self.card.isHidden()
         if self._stale:
             return
+        if not self.panels[self.current].offered():     # a plugin's box that this deck does not offer (any more)
+            self.current = self._fallback
         for key, panel in self.panels.items():
             panel.setVisible(key == self.current)
         panel = self.panels[self.current]
@@ -214,8 +229,18 @@ class SidePanels(QWidget):
 
     def _open_menu(self) -> None:
         menu = PopoverMenu(self, min_width=270)
+        plugin_boxes = []
         for key, panel in self.panels.items():
+            if isinstance(panel, PluginBoxPanel):
+                if panel.offered():
+                    plugin_boxes.append((key, panel))
+                continue
             menu.add_item(key, panel.title, meta=panel.meta(), icon="check" if key == self.current else "")
+        if plugin_boxes:
+            menu.add_separator()
+            menu.add_header("Plugins")
+            for key, panel in plugin_boxes:
+                menu.add_item(key, panel.title, icon="check" if key == self.current else "")
         menu.triggered.connect(self.set_panel)
         menu.closed.connect(lambda: self.picker.set_active(False))
         menu.closed.connect(menu.deleteLater)

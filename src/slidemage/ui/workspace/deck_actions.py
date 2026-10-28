@@ -147,7 +147,7 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
         window.log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
 
-def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
+def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
     """⋮ -> "Deck settings…": the deck-wide settings that live in the deck's own file
     (deck_settings.py), all written in one go, and the admin slides of its course page."""
     if window.centre.unsaved(deck.path):
