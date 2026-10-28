@@ -28,7 +28,7 @@ from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QCheckBox, QFileDialog, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout, QWidget
 
-from ...plugins import catalogue, installer, loader, session
+from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import Catalogue, CataloguePlugin, CatalogueError, CatalogueTooNew, Release
 from ...plugins.loader import LoadedPlugin
 from ...plugins.manifest import Manifest, parse_version
@@ -39,10 +39,11 @@ from ..kit.widgets import Button, Card, Chip, ModalSheet, Page, Surface, caption
 log = logging.getLogger(__name__)
 
 PLUGINS_PAGE = "https://slidemage.org/plugins/"
+WITHDRAWN_NOTE = "Withdrawn from the plugin list: update or remove it"
 STATE_TONES = {"loaded": "ok", "disabled": "muted", "failed": "error", "incompatible": "warning"}
 
 
-class _Job(QThread):
+class Job(QThread):
     """`work()` on a thread; `done(result, error)` arrives on the GUI thread."""
 
     done = Signal(object, object)
@@ -72,11 +73,74 @@ class TextSheet(ModalSheet):
         self.add_button("Close", kind="primary", role="accept")
 
 
+def download_release(release: Release) -> Path:
+    """Download `release` into a folder of its own (a worker thread's job). The folder is the result; the caller
+    hands it to install_downloaded, which deletes it."""
+    folder = Path(tempfile.mkdtemp(prefix="slidemage-plugin-"))
+    try:
+        installer.download(release.url, folder / "plugin.smplugin", expected_size=release.size)
+    except BaseException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return folder
+
+
+def install_downloaded(folder: Path, release: Release) -> Manifest:
+    """Install what download_release fetched when its SHA-256 is the one the catalogue promised, then delete the
+    folder. Raises InstallError."""
+    try:
+        return installer.install(folder / "plugin.smplugin", expected_sha256=release.sha256)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def install_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
+    """Install the .smplugin `path` after the user has seen what it is (the plugin is not from the catalogue and
+    runs with their rights). `say(text, error)` receives what to tell the user. Whether it was installed."""
+    expected = None
+    sidecar = Path(str(path) + ".sha256")
+    try:
+        manifest = installer.peek(path)
+        if sidecar.is_file():
+            expected = installer.read_sha256_file(sidecar)
+            if expected is None:
+                raise installer.InstallError(f"{sidecar.name} does not hold a SHA-256 checksum.")
+            if installer.sha256_of(path) != expected:
+                raise installer.InstallError(
+                    f"{path.name} does not match {sidecar.name} (SHA-256); nothing was installed.")
+    except (installer.InstallError, OSError) as exc:
+        say(str(exc), True)
+        return False
+    if not _confirm_file(parent, manifest):
+        say("", False)
+        return False
+    try:
+        installer.install(path, expected_sha256=expected)
+    except installer.InstallError as exc:
+        say(str(exc), True)
+        return False
+    say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.", False)
+    return True
+
+
+def _confirm_file(parent: QWidget, manifest: Manifest) -> bool:
+    net = "\n".join(f"  {line}" for line in manifest.network) if manifest.network else "  nothing"
+    text = (f"This plugin is not from the SlideMage plugin list. It runs with your rights.\n\n"
+            f"{manifest.name} {manifest.version}\n{manifest.summary}\n\nIt contacts on the network:\n{net}\n\n"
+            "Install it only if you trust where it came from.")
+    return QMessageBox.question(parent, "Install plugin from file", text) == QMessageBox.StandardButton.Yes
+
+
+def pick_plugin_file(parent: QWidget) -> Path | None:
+    path, _ = QFileDialog.getOpenFileName(parent, "Install a plugin", "", "SlideMage plugins (*.smplugin)")
+    return Path(path) if path else None
+
+
 def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def _network_line(network: tuple[str, ...]) -> str:
+def network_line(network: tuple[str, ...]) -> str:
     return "Contacts: " + "; ".join(network) if network else "Contacts nothing on the network"
 
 
@@ -91,7 +155,7 @@ class InstalledRow(Card):
     """One plugin of the Installed list. The controls are attributes so the tab (and its tests) can reach them."""
 
     def __init__(self, tab: PluginsTab, plugin: LoadedPlugin | None, found: loader.Found | None,
-                 update: tuple[CataloguePlugin, Release] | None) -> None:
+                 update: tuple[CataloguePlugin, Release] | None, withdrawn: bool = False) -> None:
         super().__init__()
         manifest = plugin.manifest if plugin else found.manifest
         source = plugin.source if plugin else found.source
@@ -117,7 +181,11 @@ class InstalledRow(Card):
             layout.addWidget(caption(manifest.summary))
             if manifest.needs:
                 layout.addWidget(caption("Needs: " + "; ".join(manifest.needs)))
-            layout.addWidget(caption(_network_line(manifest.network)))
+            layout.addWidget(caption(network_line(manifest.network)))
+        self.withdrawn_label: QLabel | None = None
+        if withdrawn:
+            self.withdrawn_label = caption(WITHDRAWN_NOTE, "error")
+            layout.addWidget(self.withdrawn_label)
         if plugin is not None and plugin.note:
             layout.addWidget(caption(_sentence(plugin.note)))
         if details:
@@ -171,7 +239,7 @@ class AvailableRow(Card):
         layout.addWidget(caption(plugin.summary))
         if plugin.needs:
             layout.addWidget(caption("Needs: " + "; ".join(plugin.needs)))
-        layout.addWidget(caption(_network_line(plugin.network)))
+        layout.addWidget(caption(network_line(plugin.network)))
         self.install_button = Button("Install", compact=True)
         self.installable = release is not None
         if release is None:
@@ -248,8 +316,9 @@ class PluginsTab(Page):
         for plugin in session.loaded():
             if plugin.source == "installed" and plugin.id in changed and not plugin.folder.is_dir():
                 continue            # removed since the start: no row until the next start
-            self._add_installed(InstalledRow(self, plugin, None, self._update_for(plugin, entries, changed)),
-                                plugin.id)
+            withdrawn = updates.is_withdrawn(plugin, entries.get(plugin.id))
+            self._add_installed(InstalledRow(self, plugin, None, self._update_for(plugin, entries, changed),
+                                             withdrawn), plugin.id)
         found_now = loader.discover()
         for found in found_now:
             if found.id not in known and found.source == "installed":
@@ -351,72 +420,33 @@ class PluginsTab(Page):
 
     def install_release(self, plugin: CataloguePlugin, release: Release) -> None:
         """Download `release`, then install it when its SHA-256 is the one the catalogue promised."""
-        def work() -> Path:
-            folder = Path(tempfile.mkdtemp(prefix="slidemage-plugin-"))
-            try:
-                installer.download(release.url, folder / "plugin.smplugin", expected_size=release.size)
-            except BaseException:
-                shutil.rmtree(folder, ignore_errors=True)
-                raise
-            return folder
-
         def done(folder: Path | None, error: Exception | None) -> None:
             if error is not None:
                 self._fail(error)
                 return self.refresh()
             try:
-                manifest = installer.install(folder / "plugin.smplugin", expected_sha256=release.sha256)
+                manifest = install_downloaded(folder, release)
             except installer.InstallError as exc:
                 self._say(str(exc), error=True)
             else:
                 self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
-            finally:
-                shutil.rmtree(folder, ignore_errors=True)
             self.refresh()
 
-        self._start(work, done, f"Downloading {plugin.name}…")
+        self._start(partial(download_release, release), done, f"Downloading {plugin.name}…")
 
     # -- a file
 
     def install_from_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Install a plugin", "", "SlideMage plugins (*.smplugin)")
-        if path:
-            self.install_from_file(Path(path))
+        path = pick_plugin_file(self)
+        if path is not None:
+            self.install_from_file(path)
 
     def install_from_file(self, path: Path) -> bool:
         """Install `path` after the user has seen what it is. Whether it was installed."""
-        expected = None
-        sidecar = Path(str(path) + ".sha256")
-        try:
-            manifest = installer.peek(path)
-            if sidecar.is_file():
-                expected = installer.read_sha256_file(sidecar)
-                if expected is None:
-                    raise installer.InstallError(f"{sidecar.name} does not hold a SHA-256 checksum.")
-                if installer.sha256_of(path) != expected:
-                    raise installer.InstallError(
-                        f"{path.name} does not match {sidecar.name} (SHA-256); nothing was installed.")
-        except (installer.InstallError, OSError) as exc:
-            self._say(str(exc), error=True)
-            return False
-        if not self._confirm_file(manifest):
-            self._say("")
-            return False
-        try:
-            installer.install(path, expected_sha256=expected)
-        except installer.InstallError as exc:
-            self._say(str(exc), error=True)
-            return False
-        self._say(f"{manifest.name} {manifest.version} is installed. It starts after a restart.")
-        self.refresh()
-        return True
-
-    def _confirm_file(self, manifest: Manifest) -> bool:
-        net = "\n".join(f"  {line}" for line in manifest.network) if manifest.network else "  nothing"
-        text = (f"This plugin is not from the SlideMage plugin list. It runs with your rights.\n\n"
-                f"{manifest.name} {manifest.version}\n{manifest.summary}\n\nIt contacts on the network:\n{net}\n\n"
-                "Install it only if you trust where it came from.")
-        return QMessageBox.question(self, "Install plugin from file", text) == QMessageBox.StandardButton.Yes
+        installed = install_file(self, path, lambda text, error: self._say(text, error))
+        if installed:
+            self.refresh()
+        return installed
 
     # -- restart
 
@@ -435,7 +465,7 @@ class PluginsTab(Page):
         if self._job is not None:
             return
         self._say(message)
-        job = _Job(work)
+        job = Job(work)
         self._job = job
 
         def finished(result: object, error: Exception | None) -> None:

@@ -115,6 +115,7 @@ class _CurrentPageStack(QStackedWidget):
 
 
 class WorkspaceWindow(QMainWindow):
+    plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
     deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
@@ -220,6 +221,8 @@ class WorkspaceWindow(QMainWindow):
         self.compile_display = CompileDisplay(self, central)
         self.update_check_done.connect(
             lambda result: maintenance.on_startup_update_check_done(self, result))
+        self.plugin_updates_done.connect(lambda result: maintenance.on_plugin_updates_done(self, result))
+        self.toast.action_triggered.connect(lambda key: maintenance.on_plugin_toast_action(self, key))
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
