@@ -69,6 +69,12 @@ class WindowHostUi:
         else:
             window.toast.show_message(text, error=error, timeout_ms=6000 if error else None)
 
+    def after_deck_edit(self, path: Any, summary: str, previous_text: str) -> None:
+        """What a core deck edit runs (window.after_deck_edit: rescan, views, headers, Undo with previous_text)."""
+        window = self.window
+        if window is not None:
+            window.after_deck_edit(path, summary, previous_text=previous_text)
+
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""
         from .workspace import deck_actions

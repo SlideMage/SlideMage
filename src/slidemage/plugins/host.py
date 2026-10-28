@@ -37,6 +37,9 @@ class HostUi(Protocol):
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
     def show_message(self, text: str, error: bool = False) -> None: ...
+    def after_deck_edit(self, path: Path, summary: str, previous_text: str) -> None:
+        """A plugin edit was written to the deck at `path`: do what a core deck edit does (rescan, refresh, history
+        with previous_text for Undo)."""
 
 
 # -- deck snapshot ---------------------------------------------------------------------------------------------
@@ -186,6 +189,7 @@ class PluginHost(Registrar):
             else:
                 atomic_write(csv, csv_before)
             raise
+        self._edited(deck, f"Inserted {len(created)} slide(s) into {deck.name} ({self.manifest.name})")
         return created
 
     def edit_deck_text(self, deck: plugin_api.Deck, change: Callable[[str], str]) -> str:
@@ -193,6 +197,8 @@ class PluginHost(Registrar):
             new = deck_editor.apply(deck.path, deck.text, change)
         except CoreStaleFileError as e:
             raise plugin_api.StaleFileError(str(e)) from e
+        if new != deck.text:
+            self._edited(deck, f"Edited {deck.name} ({self.manifest.name})")
         return new
 
     def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
@@ -233,6 +239,24 @@ class PluginHost(Registrar):
 
     # -- helpers
 
+    def _edited(self, deck: plugin_api.Deck, summary: str) -> None:
+        """The edit is on disk: let the window run what a core deck edit runs. A failure here is the window's
+        problem and is logged; the plugin's edit did succeed."""
+        after = getattr(self.ui, "after_deck_edit", None)
+        if after is None:
+            return
+        try:
+            after(deck.path, summary, deck.text)
+        except Exception:
+            self._logger.exception("the window's refresh after a deck edit raised")
+
+    def _check_fresh(self, deck: plugin_api.Deck) -> None:
+        try:
+            current = read_text_exact(deck.path)
+        except OSError as e:
+            raise plugin_api.StaleFileError(f"{deck.path.name} cannot be read: {e}") from e
+        if current != deck.text:
+            raise plugin_api.StaleFileError(f"{deck.path.name} changed on disk since it was last loaded.")
 
 
 def _slide_source(frame: str) -> str:

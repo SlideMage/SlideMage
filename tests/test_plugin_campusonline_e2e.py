@@ -59,3 +59,36 @@ def test_the_course_tab_and_the_box_build(window):
     box = window.side_panels.panels["plugin:campusonline:course"]
     assert box.offered()
     box.refresh()
+
+
+def test_a_saved_course_link_reaches_the_window_and_the_reopened_sheet_and_can_be_undone(window):
+    """finding 1 of the 2026-10-28 review: the saved link is in the rescanned deck, a reopened sheet shows it, and
+    Undo of the slide list restores the previous text."""
+    new_url = COURSE_URL.replace("1002516", "1002517")
+    before = window.state.deck.path.read_bytes()
+    sheet = DeckSettingsSheet(window, window.state.deck, [], tab="Course")
+    controller = next(iter(sheet.plugin_tabs.values()))[1].controller
+    controller.url_edit.setText(new_url)
+    controller.save_link()
+    assert new_url in window.state.deck.path.read_text(encoding="utf-8")
+    assert new_url in window.state.deck.text
+    sheet.close()
+    reopened = DeckSettingsSheet(window, window.state.deck, [], tab="Course")
+    assert next(iter(reopened.plugin_tabs.values()))[1].controller.url == new_url
+    reopened.close()
+    window.slide_list.undo()
+    assert window.state.deck.path.read_bytes() == before
+
+
+def test_course_slides_inserted_by_the_plugin_show_in_the_slide_list_and_can_be_undone(window):
+    sheet = DeckSettingsSheet(window, window.state.deck, [], tab="Course")
+    controller = next(iter(sheet.plugin_tabs.values()))[1].controller
+    before = window.state.deck.path.read_bytes()
+    count = len(window.slide_list.rows())
+    controller.slide_specs = [("Title", "\\begin{frame}title\\end{frame}")]
+    controller.insert()
+    assert controller._inserted
+    assert len(window.slide_list.rows()) == count + 1
+    sheet.close()
+    window.slide_list.undo()
+    assert window.state.deck.path.read_bytes() == before and len(window.slide_list.rows()) == count
