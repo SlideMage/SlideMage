@@ -93,6 +93,18 @@ def _check_imports() -> list[str]:
     return problems
 
 
+def _check_plugin_api_modules() -> list[str]:
+    from .. import plugin_api
+
+    problems = []
+    for name in plugin_api._RUNTIME_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception as e:
+            problems.append(f"plugin_api's module {name} does not import: {e!r}")
+    return problems
+
+
 def _check_plugin() -> list[str]:
     from .. import project
     from . import loader
@@ -191,7 +203,7 @@ def _check_widget(build) -> list[str]:
 
 
 def run() -> int:
-    problems = _check_imports() + _check_qt_imports() + _check_plugin()
+    problems = _check_imports() + _check_qt_imports() + _check_plugin_api_modules() + _check_plugin()
     if problems:
         print("SlideMage plugin self-test: failed")
         for problem in problems:

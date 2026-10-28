@@ -3,9 +3,12 @@
 """`slidemage --self-test --plugins`: the bundled standard library and a plugin loaded through the loader."""
 from __future__ import annotations
 
+from pathlib import Path
+import re
+
 import pytest
 
-from slidemage import cli
+from slidemage import cli, plugin_api
 from slidemage.plugins import selftest
 
 
@@ -88,3 +91,15 @@ def test_plugin_widget_failure_fails_selftest(qapp, monkeypatch, capsys):
     monkeypatch.setattr(selftest, "_check_imports", lambda: [])
     assert selftest.run() == 1
     assert "the self-test plugin UI failed" in capsys.readouterr().out
+
+def test_every_module_plugin_api_loads_by_name_is_bundled_and_checked():
+    source = (Path(plugin_api.__file__)).read_text(encoding="utf-8")
+    named = set(re.findall(r'import_module\("(slidemage[.\w]*)"\)', source)) | set(plugin_api._LAZY.values())
+    assert named and named <= set(plugin_api._RUNTIME_MODULES)
+
+
+def test_missing_plugin_api_module_fails_selftest(monkeypatch, capsys):
+    monkeypatch.setattr(plugin_api, "_RUNTIME_MODULES", ("slidemage.no_such_module",))
+    assert selftest.run() == 1
+    assert "plugin_api's module slidemage.no_such_module does not import" in capsys.readouterr().out
+
