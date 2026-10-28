@@ -158,7 +158,12 @@ Remove `course_schedule.py`, `admin_slides.py`, `ui/dialogs/admin_slides.py`, th
 for decks with a course link. With a `BREAKING:` paragraph and a `compat.py` entry, this would be **v9.0.0**
 (section 6).
 
-### 3.6 Later
+### 3.6 PR 6: the 8 GUI tests failing on `develop` (`fix/develop-gui-tests` → `develop`, ready for review)
+
+The 8 tests of section 8, each traced to the change that made code and test disagree, and fixed on the side that
+is wrong. In progress at the time of writing; the pull request lists each cause and fix.
+
+### 3.7 Later
 
 Phase 3 (the AI route registry, yours), the Ollama plugin (yours), phase 6 (the Claude plugin, ours), phase 7
 (AI-free core), phase 8 (manual).
@@ -257,8 +262,12 @@ supersedes it where they differ.
   Admin slides…. The cache now keeps the title and sessions. The weekday names are English for now.
 - **Old cache:** `course-schedules.json` is adopted from `legacy_cache_dir()` once, never overwritten, and only
   when it is valid JSON.
-- **§7 questions (Jürgen to confirm):** the owner as proposed; no Settings tab for 1.0; the box as built, with the
-  group of the next session added only if a course has several groups.
+- **§7 questions, Jürgen's answers:**
+  - **Owner:** `JuergenFleiss/slidemage-plugin-campusonline` for now, with a counterproposal for later: a SlideMage
+    organisation (section 5.7).
+  - **Settings tab:** none for 1.0.
+  - **Box:** as built. The weekday follows the deck's language (Mo/Di… for a German deck). There's no "group of
+    the next session", because a course's groups usually have decks of their own.
 
 ### 5.5 Claude handover
 
@@ -273,6 +282,38 @@ supersedes it where they differ.
 ### 5.6 Ollama handover
 
 Not seen on our side; nothing changed.
+
+### 5.7 Counterproposal: a SlideMage organisation on GitHub
+
+Your plan (§2.9) puts each plugin on its maintainer's personal account. That works for now, and CampusOnline
+starts on Jürgen's account. For the longer run we propose **a GitHub organisation for SlideMage**, as aTrain has
+for its transcription app, or as Flathub does for its apps:
+
+- **Each plugin gets a repository in the organisation**, first-party and third-party alike.
+- **The plugin's developer owns their repository** (admin rights on it).
+- **One organisation member has access to every plugin repository**, for review, security fixes, and taking over
+  a plugin whose developer has gone.
+- SlideMage itself, the website and the template can live there too, or stay where they are: your call.
+
+Please look at how Flathub is organised; it is the closest model we know:
+- every app is a repository `github.com/flathub/<app-id>`;
+- a new app comes in as a reviewed pull request to the submission repository;
+- once it is approved, the organisation creates the app's repository and gives its maintainers write access to
+  that repository only;
+- builds and publishing run centrally.
+
+In our terms, the submission pull request is the website registry's approval pull request (handover §4), and the
+build bot is the catalogue builder.
+
+What it gains:
+- **A neutral home** that outlives any one person's account.
+- **Stable repository URLs** for the registry and for each plugin's `homepage`.
+- **One place to look** for "every approved plugin".
+- **A simpler review.** The registry could require plugin repositories to be in the organisation, which makes the
+  review checklist's "maintainer reachable" and "repository follows the conventions" easier to keep true.
+
+Moving the repositories later is cheap, since GitHub redirects the old URLs, but the registry entries and the
+`homepage` fields would change. So deciding before the first real plugin is listed is best.
 
 ## 6. Version numbers: a decision for you
 
@@ -290,6 +331,19 @@ at merge). The handovers assumed 9.0:
   - **v10.0** stays the AI-free core, as the Claude handover says.
 - The alternative: ship the host as v9.0.0 with a `BREAKING:` paragraph and a `compat.py` entry anyway.
 
+**Jürgen's proposal on top: renumber SlideMage for publication**, to something like **0.4**. A public first
+release numbered 8 or 9 suggests a maturity and history the public hasn't seen. The plugins'
+`requires_slidemage` values would then follow the new numbers: the host's release, then the release that removes
+CampusOnline, then the AI-free core.
+
+What a renumbering has to solve: the updater (`updater.py`) installs a release only when its version is higher,
+so installs on 8.x would never take a 0.4. Options:
+- a last 8.x release whose updater knows the new scheme;
+- the public numbering starting in a new repository or release channel;
+- installs of the current testers moved by hand.
+
+Your call, since it's your release process.
+
 ## 7. What we need from you
 
 1. Review PR 3 as the owner of phases 0–1, and confirm or change 5.2's API, before the CampusOnline plugin moves
@@ -299,8 +353,11 @@ at merge). The handovers assumed 9.0:
 4. The template: the relative-import check, the stdlib/PySide6 set in its README, and the real `plugin_api` in
    `example/__init__.py`. Shall we send the pull request?
 5. The Ollama handover.
-6. The 8 GUI tests that fail on `develop` itself (section 8): yours to look at, or ours, as you prefer. None of
-   the three branches adds a failure.
+6. The 8 GUI tests that fail on `develop` itself (section 8): we fix them in their own pull request (3.6).
+7. **Install from file…:** as built, any `.smplugin` that passes the checks installs after a warning ("not from the
+   SlideMage plugin list", plus its network lines). Should it be limited to plugins listed in the catalogue? Your
+   call.
+8. The organisation (5.7) and the renumbering (section 6): what you think.
 
 ## 8. Full test suite, `feature/plugin-host` against `develop`
 
