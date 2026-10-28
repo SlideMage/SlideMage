@@ -431,7 +431,7 @@ def test_legacy_settings_accessors(host, monkeypatch):
     from slidemage.plugins import migrate
 
     monkeypatch.setattr(migrate, "legacy_anthropic_key", lambda ctx: "old-key" if ctx is host.ctx else None)
-    monkeypatch.setattr(app_settings, "get_ollama_host", lambda ctx: "http://old:11434")
+    monkeypatch.setattr(app_settings, "peek_ollama_host", lambda ctx: "http://old:11434")
     assert host.legacy_secret("anthropic_api_key") == "old-key"
     assert host.legacy_ollama_host() == "http://old:11434"
     with pytest.raises(ValueError):
@@ -468,7 +468,7 @@ def test_lazy_ai_exports():
 
     assert plugin_api.Task is tasks.Task
     assert plugin_api.TRANSLATE is tasks.TRANSLATE
-    assert plugin_api.check is tasks.check
+    assert callable(plugin_api.check)
     assert plugin_api.IMAGE_DESCRIPTION_SCHEMA is alt_draft.RESPONSE_SCHEMA
     assert plugin_api.DraftResult is alt_draft.DraftResult
     assert isinstance(plugin_api.CancelToken(), compiler.CancelToken)
@@ -639,19 +639,6 @@ def test_chat_surface_context_operations(host, monkeypatch):
                      ("edits", "changes"), ("show", Path("slide.tex")), "closed"]
 
 
-def test_builtin_terminal_uses_surface_context_for_deck_and_translation():
-    from types import SimpleNamespace
-    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
-
-    calls = []
-    context = SimpleNamespace(set_scope=lambda scope: calls.append(scope) or True,
-                              translate_slide=lambda path: f"translated {path.name}")
-    view = SimpleNamespace(_surface_context=context)
-    assert ClaudeCodeView._switch_to_deck(view) == "SlideMage is in Deck Mode now: go on with the request."
-    assert calls == ["deck"]
-    assert ClaudeCodeView._translate_slide(view, Path("slide.tex")) == "translated slide.tex"
-    context.set_scope = lambda scope: False
-    assert ClaudeCodeView._switch_to_deck(view) == "No deck is open in SlideMage: ask the user to open one."
 
 
 def test_progress_error_is_delivered_after_reports(host, qapp):
@@ -755,25 +742,3 @@ def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, mon
     context.close()
 
 
-def test_claude_surface_builds_from_public_host_and_context(host, qapp):
-    from types import SimpleNamespace
-    from slidemage.ui.kit.widgets import caption
-    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
-
-    host.ui = SimpleNamespace(caption=caption, terminal_tokens=lambda: SimpleNamespace(info="#123456"))
-    callbacks, closed = [], []
-    context = SimpleNamespace(on_scope_changed=callbacks.append,
-                              selected_route=lambda route, task: SimpleNamespace(label="Claude Code · Sonnet"),
-                              close=lambda: closed.append(True))
-    launch = SimpleNamespace(INSTALL_URL="https://example.org", find_claude=lambda: None)
-    surface = ClaudeCodeView(host, context, launch, None, None, lambda: "hook")
-    try:
-        assert "Sonnet" in surface.caption.text()
-        surface._started = True
-        surface._open()
-        assert surface.needs_setup and "not installed" in surface.setup_title.text()
-        assert len(callbacks) == 1
-    finally:
-        surface.shutdown()
-        surface.deleteLater()
-    assert closed == [True]

@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QStyleOptionViewItem
 from conftest import build_window
 from slidemage import ai_review, slide_ids, slide_source
 from slidemage.ai import tasks as ai_tasks
-from slidemage.ai.providers import OllamaProvider
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.widgets import Button, Chip
 from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
@@ -24,8 +23,7 @@ SLIDE = "slides/abc-EN-Hello-current.tex"
 
 
 @pytest.fixture
-def window(root, monkeypatch, qapp):
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda *args, **kwargs: [])
+def window(root, monkeypatch, qapp, fake_routes):
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.open_slide_editor(root / SLIDE)
     window.state.set_mode("source")

@@ -168,8 +168,8 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
     if theme is not None:
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
-    window.state.set_ai_route("cloud")
-    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (900, "tiny"), (2000, "full")):
+    assert not window.assistant.available
+    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (900, "tight"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density

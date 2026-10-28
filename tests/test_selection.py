@@ -11,7 +11,7 @@ from conftest import SLIDE_TEXT
 from slidemage.project import ProjectContext
 
 from slidemage import protected_regions, selection
-from slidemage.ai import claude_runner, tasks as ai_tasks, provider_tasks
+from slidemage.ai import task_result, tasks as ai_tasks, provider_tasks
 from slidemage.ai.tasks import PROOFREAD_SELECTION, REWRITE, check
 
 LF = SLIDE_TEXT.replace("\r\n", "\n")
@@ -168,12 +168,12 @@ def test_the_provider_runner_returns_the_whole_file_with_only_the_range_replaced
     provider = Provider(['{"text": "First {point"}', '{"text": "Opening"}'])
     request = ai_tasks.rewrite_request(LF, *SPAN, "Shorten")
     outcome = provider_tasks.run_task(ctx, provider, REWRITE, LF, request, span=SPAN)
-    assert outcome.status == claude_runner.DONE and outcome.attempts == 2
+    assert outcome.status == task_result.DONE and outcome.attempts == 2
     assert outcome.text == LF.replace("First point", "Opening")
     assert "Your previous answer was refused" in provider.requests[1]
 
 
 def test_the_judge_says_nothing_to_change_for_an_unchanged_range(ctx):
-    outcome = claude_runner.Outcome(claude_runner.FAILED)
-    assert claude_runner.judge(ctx, PROOFREAD_SELECTION, LF, {"edits": []}, outcome, span=SPAN) == []
-    assert outcome.status == claude_runner.NOTHING
+    outcome = task_result.Outcome(task_result.FAILED)
+    assert task_result.judge(ctx, PROOFREAD_SELECTION, LF, {"edits": []}, outcome, span=SPAN) == []
+    assert outcome.status == task_result.NOTHING

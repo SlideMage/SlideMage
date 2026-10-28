@@ -17,6 +17,7 @@ from typing import NamedTuple, Optional
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QLabel, QMenu, QMenuBar, QWidget, QWidgetAction
 
+from ...ai import routes
 from ...deck_groups import DEFAULT_GROUPS, TAG_MANUAL, DeckGroup, headings, switcher_order
 from ...deck_scan import Deck
 from ...transcript import STUDENT_VERSIONS
@@ -226,6 +227,8 @@ def build_menu_bar(window: QWidget, ctx: Context) -> QMenuBar:
     for title, sections in menu_bar(ctx):
         menu = bar.addMenu(title)
         menu.setObjectName("menu:" + title.replace("&", "").lower())
+        if menu.objectName() == "menu:ai":
+            menu.menuAction().setVisible(bool(routes.all()))
         menu.aboutToShow.connect(lambda m=menu, s=sections: fill_menu(m, ctx, s))
         fill_menu(menu, ctx, sections)      # filled once now too, so a Mac finds Settings, Quit and About at once
     return bar

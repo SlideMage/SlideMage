@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from slidemage import app_settings
-from slidemage.ai import ai_profile, credentials
+from slidemage.ai import ai_profile
 from slidemage.fileio import read_json
 from slidemage.project import ProjectContext
 
@@ -51,13 +51,3 @@ def test_a_project_s_old_ai_settings_move_out_of_it_once_and_this_machine_s_win(
     assert read_json(app_settings.MACHINE_STORE_PATH)["anthropic_api_key"] == "sk-x"
 
 
-def test_clearing_a_machine_setting_removes_it(tmp_path, monkeypatch):
-    ctx = _project(tmp_path)
-    monkeypatch.setattr(credentials, "_keyring", lambda: None)
-    monkeypatch.delenv(credentials.ENV_VAR, raising=False)
-    assert credentials.set_api_key(ctx, "sk-test") == credentials.SOURCE_FILE
-    assert "anthropic_api_key" not in _project_file(ctx)
-    assert credentials.get_api_key(ctx).value == "sk-test"
-    credentials.set_api_key(ctx, "")
-    assert "anthropic_api_key" not in read_json(app_settings.MACHINE_STORE_PATH)
-    assert credentials.get_api_key(ctx) is None

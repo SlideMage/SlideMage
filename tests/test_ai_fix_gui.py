@@ -11,7 +11,6 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage.ai import ai_profile
-from slidemage.ai.providers import OllamaProvider
 from slidemage.syntax_check import SyntaxCheckResult, SyntaxIssue
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import ai_fix
@@ -45,9 +44,10 @@ class FakeProvider:
 
 
 @pytest.fixture
-def make_file(qapp, tmp_path, monkeypatch):
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
-    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: ai_profile.Route(ai_profile.OLLAMA, ai_profile.FIXES, "qwen3"))
+def make_file(qapp, tmp_path, monkeypatch, fake_routes):
+    fake_routes.local.choices = ["qwen3"]
+    fake_routes.local.choice_label = lambda choice: choice
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: ai_profile.Route("fake_local", ai_profile.FIXES, "qwen3"))
     monkeypatch.setattr(ai_fix, "built", lambda *a: FakeProvider())
 
     def make(text=BROKEN, name="abc-EN-Demo-current.tex"):
@@ -288,30 +288,27 @@ def test_a_frozen_version_cannot_be_fixed_and_a_bib_has_no_check(make_file, monk
     assert file.ask_ai_button.isEnabled()
 
 
-def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkeypatch):
-    from slidemage.ai import ollama_route
+def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkeypatch, fake_routes):
 
     file = make_file()
-    # The picker reads the background listing, never the network on the UI thread.
-    monkeypatch.setattr(ollama_route, "_installed", {file.app.project.root: [ollama_route.InstalledModel("qwen3", 1, "", ())]})
     fake_checker(monkeypatch, result_for())
     file.refresh_model_preference(["ignored"])            # before the first check there is nothing to refresh
     assert file.fix_panel.model_combo.count() == 0
     file.ask_ai_button.click()
     finish(file.fix_panel)
     assert file.fix_panel.model_combo.currentText() == "qwen3"
-    ollama_route.cache_installed(file.app.project, [ollama_route.InstalledModel(name, 1, "", ())
-                                                    for name in ("qwen3", "other")])
+    fake_routes.local.choices = ["qwen3", "other"]
     file.refresh_model_preference(["qwen3", "other"])
     assert [file.fix_panel.model_combo.itemText(i) for i in range(file.fix_panel.model_combo.count())] == [
         "qwen3", "other"]
 
 
-def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_nothing(make_file, monkeypatch):
+def test_a_route_without_a_provider_refuses_the_check(make_file, monkeypatch, fake_routes):
     from slidemage.ai import ai_profile
     from slidemage.ui import ai_models
 
     file = make_file()
+    fake_routes.cloud.provider = lambda ctx, route: None
     monkeypatch.setattr(ai_fix, "picked_route", ai_models.picked_route)
     monkeypatch.setattr(ai_fix, "built", ai_models.built)
     ai_profile.set_mode(file.app.project, ai_profile.CLOUD)
@@ -321,5 +318,5 @@ def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_noth
     file.ask_ai_button.click()
     panel = file.fix_panel
     assert not panel.running and file.app.started == []
-    assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and "no other route or model" in told[0]
-    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.model_choices(file.app.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES)
+    assert len(told) == 1 and "not available on Cloud · Fake cloud" in told[0] and "no other route or model" in told[0]
+    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.model_choices(file.app.project, "fake_cloud", ai_profile.FIXES)

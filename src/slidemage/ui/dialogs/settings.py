@@ -424,6 +424,11 @@ class SettingsSheet(ModalSheet):
             choices = local.model_choices(routes.context(self.app.project, local.id), ai_profile.TRANSLATION) if local else []
             self.ai.prompts.translation.set_models(choices)
 
+    def close_then(self, action: Callable[[], None]) -> None:
+        """Close the modal sheet before the window runs its follow-up action."""
+        self.after = action
+        self.accept()
+
     def done(self, result: int) -> None:
         """Closing asks first about prompt text that is not saved."""
         if self.prompts is None or self.prompts.confirm_close():

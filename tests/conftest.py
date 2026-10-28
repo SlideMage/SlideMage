@@ -411,3 +411,18 @@ def write_test_file(path: Path, text: str | bytes, *, newline: str | None = "") 
     else:
         path.write_text(text, encoding="utf-8", newline=newline)
     return path
+
+
+@pytest.fixture
+def fake_routes(_fresh_ai_session):
+    """Register isolated local and cloud route doubles; modify them per test as needed."""
+    from types import SimpleNamespace
+
+    from fake_routes import FakeRoute
+    from slidemage.ai import routes
+
+    local = FakeRoute(is_local=True, id="fake_local")
+    cloud = FakeRoute(id="fake_cloud")
+    routes.register(local)
+    routes.register(cloud)
+    return SimpleNamespace(local=local, cloud=cloud)

@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
-from ...ai import ai_profile, resolver
+from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
 from ...project import ProjectContext
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
@@ -438,7 +438,9 @@ class AddSlideSheet(ModalSheet):
         for chip in self.views.values():
             chip.setEnabled(not frozen)
         slide = self.picked()
-        can_translate = slide is not None and self.chosen_target() is not None \
+        has_ai = bool(routes.all())
+        self.machine.setVisible(has_ai)
+        can_translate = has_ai and slide is not None and self.chosen_target() is not None \
             and slide_add.can_machine_translate(slide, self.chosen_target())
         if can_translate != self.machine.isEnabled():
             self.machine.setEnabled(can_translate)

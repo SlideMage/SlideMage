@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSplitter,
     QSplitterHandle,
@@ -39,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
-from ...ai import ai_profile, resolver
+from ...ai import ai_profile, resolver, routes
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
 from ...deck_scan import Deck, scan_decks
 from .. import layout_settings, plugin_ui
@@ -652,6 +653,9 @@ class WorkspaceWindow(QMainWindow):
         self.images_page.refresh_model_preferences(models.models, models.vision)
         self.centre.refresh_model_preferences(models.models)
         self.assistant.refresh_models()
+        for menu in self.menuBar().findChildren(QMenu):
+            if menu.objectName() == "menu:ai":
+                menu.menuAction().setVisible(bool(routes.all()))
 
     def running_ai_work(self) -> list[RunningWork]:
         """Every AI request that is under way, each with the route it captured (the AI switch's busy popover; the
