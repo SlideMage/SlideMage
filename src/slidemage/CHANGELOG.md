@@ -2894,3 +2894,19 @@ NEW: A smaller download and more reliable AI connections.
 - SlideMage is a little smaller to download.
 - AI requests can use the proxy settings often needed on university and company networks.
 - Stop can end an AI connection stuck while connecting.
+
+v8.71.0 (2026-10-28, plugins plan, phases 0 and 1; docs/PLUGIN_HOST_PLAN.md): The plugin host. A plugin is a Python package with a plugin.toml, installed unpacked in config_dir()/plugins/<id>/ (or a checkout named by SLIDEMAGE_PLUGIN_PATH), imported under its own name and activated with slidemage.plugin_api (API 1): commands and Deck menu entries, Deck settings tabs with a footer action, Settings tabs, compact side-panel boxes, a render priority, and host services for deck edits, slide insertion, cache folders, settings and background work. A plugin that fails to load is shown with its error and never stops the start. plugins/installer.py checks the SHA-256, refuses unsafe or compiled archive members and swaps the folder atomically; plugins/catalogue.py reads https://slidemage.org/plugins/index.json (never GitHub's latest release). New Settings tab Plugins and Help → Plugins…; a first-start sheet when the list has something to offer; plugin updates follow the app's update mode. Updates and removals are staged until startup, and host storage names are reserved. Plugin deck edits refresh the window and create an undo step; they are refused while the deck settings sheet has unsaved core changes, and slide insertion rolls back on failure. Core deck writes use atomic replacement with a stale-text check. Plugins can refresh their sidebar boxes, which are also rebuilt at midnight. Feature-to-plugin migrations can be announced once per feature (none are configured in this release). The README and manual document plugins. The frozen build bundles the standard library and PySide6's widget modules for plugins, checked by --self-test --plugins, including a plugin widget. Nothing that is built in moves out yet. Tests in tests/test_plugin_*.py; test_plugin_campusonline_e2e.py runs the real CampusOnline plugin when SLIDEMAGE_E2E_CAMPUSONLINE names its checkout.
+
+NEW: SlideMage can install plugins.
+- Settings → Plugins (also Help → Plugins…) lists installed plugins and the ones on the SlideMage website, and installs, updates, disables or removes them; a plugin file can be installed by hand too.
+- Each plugin says what it needs and what it contacts on the network before you install it.
+- Plugin updates and removals take effect on restart, keeping the running plugin's files available until then.
+- Plugin edits refresh the deck and can be undone. Save or discard changes on the other Deck settings tabs before a plugin edits that deck.
+- Slide insertion by a plugin is all-or-nothing, and deck writes are protected against interrupted writes.
+- Plugin side-panel boxes can refresh when their data changes and at the start of a new day.
+- The README and manual explain how to install, use, write and test plugins.
+
+v8.71.1 (2026-10-28, merging the plugins PRs: the plugin self-test failed on Windows): The plugin self-test and the build's list of standard-library hidden imports leave out curses, pty and tty on Windows (plugins/selftest.py POSIX_ONLY): find_spec finds them there, but they import _curses or termios, which Windows lacks, so `slidemage --self-test --plugins` failed in every Windows build. Two tests check what only POSIX can show: a file's mode bits, and a backslash in a zip member's name, which Windows' zipfile turns into "/" when it writes and reads it.
+
+NEW: The plugin self-test passes on Windows.
+- Windows builds no longer fail their plugin self-test.

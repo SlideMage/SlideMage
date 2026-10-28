@@ -108,6 +108,19 @@ def _fresh_tool_lookups():
 
 
 @pytest.fixture(autouse=True)
+def _isolated_config_dir(monkeypatch, tmp_path):
+    """Machine preferences belong to this test, including modules that imported config_dir directly."""
+    from slidemage import project, updater
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    monkeypatch.setenv("APPDATA", str(config))
+    monkeypatch.setattr(project, "config_dir", lambda: config / "slidemage")
+    # Follow test-specific overrides of project.config_dir as well.
+    monkeypatch.setattr(updater, "config_dir", lambda: project.config_dir())
+
+
+@pytest.fixture(autouse=True)
 def _isolated_cache_dir(monkeypatch, tmp_path_factory):
     """The render store's index lives in the user's cache folder; a test gets one of its own."""
     from slidemage import project
@@ -183,11 +196,11 @@ def filled_menu(ctx, title: str):
     """The menu bar's menu `title` ("Deck"), filled for `ctx` as when it opens."""
     from PySide6.QtWidgets import QMenu
 
-    from slidemage.ui.workspace.menus import MENU_BAR, fill_menu
+    from slidemage.ui.workspace.menus import fill_menu, menu_bar
 
     menu = QMenu()
     _FILLED_MENUS.append(menu)
-    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in MENU_BAR}[title])
+    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in menu_bar(ctx)}[title])
     return menu
 
 

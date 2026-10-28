@@ -43,11 +43,11 @@ from ...ai import ai_profile, resolver
 from ...ai.providers import ChatProvider
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
 from ...deck_scan import Deck, scan_decks
-from .. import layout_settings
+from .. import layout_settings, plugin_ui
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import DECK_GROUPS, GENERAL, PROJECT, SettingsSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGINS, PROJECT, SettingsSheet
 from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
@@ -115,6 +115,8 @@ class _CurrentPageStack(QStackedWidget):
 
 
 class WorkspaceWindow(QMainWindow):
+    plugin_offer_fetched = Signal(object)   # the catalogue for the first-start sheet, or the Exception
+    plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
     deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
@@ -152,6 +154,8 @@ class WorkspaceWindow(QMainWindow):
         self.state = WorkspaceState(self.project, self)
         self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
         self.commands = build_registry()
+        plugin_ui.HOST_UI.attach(self)
+        plugin_ui.add_commands(self.commands)
         self.left_column_hidden = layout_settings.get("left_column_hidden", False) is True
         self.right_column_hidden = layout_settings.get("right_column_hidden", False) is True
         self.build_options = BuildOptionsDialog(self, self.state)
@@ -218,6 +222,9 @@ class WorkspaceWindow(QMainWindow):
         self.compile_display = CompileDisplay(self, central)
         self.update_check_done.connect(
             lambda result: maintenance.on_startup_update_check_done(self, result))
+        self.plugin_offer_fetched.connect(lambda result: maintenance.on_plugin_offer_fetched(self, result))
+        self.plugin_updates_done.connect(lambda result: maintenance.on_plugin_updates_done(self, result))
+        self.toast.action_triggered.connect(lambda key: maintenance.on_plugin_toast_action(self, key))
 
         self.palette = CommandPalette(self)
         self.commands.bind_shortcuts(self)
@@ -620,6 +627,10 @@ class WorkspaceWindow(QMainWindow):
     def open_deck_groups(self) -> None:
         """Settings → Project at the project's deck groups (Deck → Tags… links here)."""
         self.open_settings(PROJECT, focus=DECK_GROUPS)
+
+    def open_plugins(self) -> None:
+        """Help → Plugins…: Settings on its Plugins tab."""
+        self.open_settings(PLUGINS)
 
     def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
         sheet = SettingsSheet(self, tab, focus=focus)

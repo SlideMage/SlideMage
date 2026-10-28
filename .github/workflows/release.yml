@@ -102,6 +102,20 @@ jobs:
           foreach ($helper in 'OpenConsole.exe', 'winpty-agent.exe') {
             if (-not (Get-ChildItem 'dist/SlideMage-folder' -Recurse -Filter $helper)) { throw "$helper is not in the build" }
           }
+      # The plugin host's check: the standard-library modules a plugin may import, and a plugin loaded through the loader.
+      - name: Self-test the folder's plugin host (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage-folder/SlideMage --self-test --plugins
+      - name: Self-test the folder's plugin host (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test --plugins exited with $($run.ExitCode)" }
       # A zip with one top-level folder, which the updater of a folder installation unpacks.
       - name: Package the folder
         run: |
@@ -134,6 +148,19 @@ jobs:
         run: |
           $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru
           if ($run.ExitCode -ne 0) { throw "SlideMage.exe --self-test exited with $($run.ExitCode)" }
+      - name: Self-test the single file's plugin host (Linux)
+        if: runner.os != 'Windows'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/SlideMage --self-test --plugins
+      - name: Self-test the single file's plugin host (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "SlideMage.exe --self-test --plugins exited with $($run.ExitCode)" }
 
       # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
       # the executable bit survives the upload/download round trip, and

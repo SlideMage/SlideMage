@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "generated": "2026-10-27T11:45:44Z",
+  "plugins_page": "https://slidemage.org/plugins/",
+  "plugins": [
+    {
+      "id": "hello",
+      "name": "Hello",
+      "summary": "A sample plugin for testing the SlideMage plugin catalogue. It does nothing.",
+      "homepage": "https://slidemage.org/plugins/hello/",
+      "source": "https://github.com/stpalan/slidemage-plugin-hello",
+      "icon": "https://slidemage.org/plugins/hello/icon.svg",
+      "license": "GPL-3.0-or-later",
+      "maintainer": "Stefan Palan",
+      "recommended": false,
+      "needs": [],
+      "network": [],
+      "releases": [
+        {
+          "version": "0.1.0",
+          "api_version": 1,
+          "requires_slidemage": ">=9.0",
+          "url": "https://github.com/stpalan/slidemage-plugin-hello/releases/download/v0.1.0/hello-0.1.0.smplugin",
+          "sha256": "a72af2022f7b2a5b161964d6e55376815e76be50c8645e2d02ee2dc7358c00f9",
+          "size": 12357,
+          "published": "2026-10-26",
+          "notes_url": "https://github.com/stpalan/slidemage-plugin-hello/releases/tag/v0.1.0"
+        }
+      ]
+    }
+  ]
+}

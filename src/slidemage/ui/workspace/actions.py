@@ -343,6 +343,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
+    add("plugins", "Plugins…", PROJECT, _window("open_plugins"), icon="extension")
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
     add("exit", "Exit SlideMage", PROJECT, lambda w: w.close(), hint="Alt+F4")
     add("open_manual", "SlideMage manual", PROJECT, lambda w: w.state.set_deck(_manual_deck(w)), icon="menu_book",

@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLa
 
 from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_store
 from ...background_renders import BackgroundRenderer
+from ...plugins import session
+from ...plugins.host import plugin_render_priority
 from ..kit.widgets import Chip
 
 NO_BACKGROUND_ENV = "SLIDEMAGE_NO_BACKGROUND_PREVIEWS"     # set by the tests: nothing renders by itself
@@ -350,7 +352,7 @@ class BackgroundPreviews(QObject):
             return
         self.renderer = BackgroundRenderer(
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
-            on_change=self.changed.emit)
+            on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project))
         self.renderer.gate._busy = self._busy_reasons
         if autostart is None and not os.environ.get(NO_BACKGROUND_ENV):
             # The trace file of what background rendering decided (background_renders.Trace), in the cache folder.

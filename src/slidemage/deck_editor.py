@@ -345,7 +345,7 @@ def apply(deck_path: Path, expected_text: str, mutate) -> str:
             "reload the deck and retry."
         )
     new_text = mutate(current)
-    write_text_exact(deck_path, new_text)
+    write_text_exact(deck_path, new_text, expected_text=expected_text)   # re-checked at the commit
     return new_text
 
 

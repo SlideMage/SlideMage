@@ -147,7 +147,7 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
         window.log(f"*** couldn't open {pdf_path.name}: {exc} ***")
 
 
-def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
+def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
     """⋮ -> "Deck settings…": the deck-wide settings that live in the deck's own file
     (deck_settings.py), all written in one go, and the admin slides of its course page."""
     if window.centre.unsaved(deck.path):
@@ -160,6 +160,7 @@ def on_deck_settings(window, deck: Deck, tab: int = GENERAL) -> None:
     sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
     if not sheet.exec():
         return
+    deck = sheet.deck       # the rescanned deck when a plugin edited the file while the sheet was open
     if sheet.action == INSERT:
         insert_admin_slides(window, deck, sheet.admin)
     elif sheet.action.startswith(COMMAND):

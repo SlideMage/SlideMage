@@ -87,7 +87,7 @@ def test_the_file_edit_housekeeping_and_help_menus(qapp):
         "housekeeping", "|", "#Cleanup", "empty_pdf", "remove_temp", "archive_unused", "|", "#Updating",
         "update_previews", "sync_links"]
     assert names(filled_menu(ctx, "Help")) == [
-        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "project_compat"]
+        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "plugins", "project_compat"]
 
 
 def test_view_has_radio_groups_that_follow_the_state(window):

@@ -272,6 +272,109 @@ touched. A project without the manual is offered to add it (only missing
 files are added, nothing is overwritten): the way to get the manual into a
 project of your own.
 
+## Plugins
+
+A plugin adds a feature to SlideMage from outside its core: a command, a Deck
+menu entry, a settings tab or a side-panel box. SlideMage works without any
+plugin, and none is installed by default. The first plugins planned are
+CAMPUSonline, Claude and Ollama; until they exist, those features stay in
+SlideMage, and no dates are set.
+
+### Installing and removing
+
+On the first start, SlideMage offers the plugins of its list in a sheet, shown
+only when the list has something in it and once per computer. Nothing is ticked;
+recommended plugins are marked and come first. **Not now** closes it.
+
+Everything else is in **File → Settings… → Plugins** (also **Help → Plugins…**):
+
+- **Installed**: each plugin with its version and state (*Loaded*, *Disabled*,
+  *Failed to load* with **Details…**, or *Incompatible*). The **Enabled** switch
+  turns it on or off; **Update to …** and **Remove** are on the same row.
+- **Available**: the plugins of the list at https://slidemage.org/plugins/, each
+  with its summary, what it needs and what it contacts on the network. **Install**
+  installs it; **Check for plugins** fetches the list again.
+- **Install from file…**: a `.smplugin` file that is not from the list. A sheet
+  warns that it is not from the SlideMage plugin list and runs with your rights,
+  and shows its name, version and network lines. Nothing is installed until you
+  confirm. A `.sha256` file named after the plugin (`name.smplugin.sha256`) beside
+  it must match.
+
+Changes take effect after a restart: plugins load once, before the window opens.
+
+### Safety
+
+A plugin runs inside SlideMage with your rights. Plugins from the SlideMage list
+are reviewed, and each download is checked against its SHA-256 from the list before
+anything is installed. A plugin installed with **Install from file…** is not
+reviewed by SlideMage, so install only what you trust. Every archive is refused if
+it has paths outside the plugin's folder, symbolic links or compiled files
+(`.pyc`, `.so`, `.dll` and similar).
+
+### Updates
+
+The start-up update check also looks for newer releases of installed plugins from
+the list, at most once a day, in the app's update mode (**File → Settings… →
+General → Updates**, see [Releases and updates](#releases-and-updates)): *don't
+check* means no plugin check; *ask* (the default) names the plugins with a newer
+release, and **Update to …** installs one; *install automatically* installs them;
+they take effect after a restart. A plugin run from a checkout is not updated.
+
+### Where plugins live
+
+Installed plugins are in `plugins/<id>/` inside SlideMage's settings folder:
+`~/.config/slidemage/` on Linux (or `$XDG_CONFIG_HOME`),
+`~/Library/Application Support/SlideMage/` on macOS, `%APPDATA%\SlideMage\` on
+Windows. The same folder holds `plugins/state.json` (the plugins switched off),
+`plugins/catalogue.json` (the last list, for offline use) and
+`plugins/settings/<id>.json` (each plugin's settings). Caches go to the per-user
+cache folder, not the project. Removing a plugin moves its folder to `plugins/.old/`,
+which is deleted at the next start.
+
+### For plugin authors
+
+A plugin is a folder with a `plugin.toml` and a Python package named after its id,
+hyphens replaced by underscores. Start from
+https://github.com/stpalan/slidemage-plugin-template.
+
+`plugin.toml` gives `id` (lower-case letters, digits and hyphens, 2 to 32
+characters), `name`, `version` (x.y.z), `api_version = 1`, `requires_slidemage` (such
+as `>=8.71`), `summary` (at most 120 characters), `author`, `homepage`, `license`,
+and the lists `needs` and `network`, which the user reads before installing.
+`activate(host)` receives the `Host` of `slidemage.plugin_api` (`API_VERSION = 1`)
+and may register:
+
+- `add_command(id, title, run, enabled)`: a palette command; `id` starts with the
+  plugin's id.
+- `add_menu_entry("deck", command_id)`: a Deck menu entry, the only menu open to
+  plugins for now.
+- `add_deck_settings_tab(...)`, `add_settings_tab(title, build)`: tabs in the Deck
+  settings and Settings sheets.
+- `add_sidebar_box(key, title, build, size="compact", when)`: a side-panel box. Only
+  `"compact"` works for now.
+- `add_render_priority(soon)`: renders a deck earlier in the background while
+  `soon(deck)` is true.
+
+The `add_*` calls work only inside `activate()`. The other services are
+`cache_dir()`, `legacy_cache_dir()`, `settings()`, `run_in_background(work, done)`,
+`insert_positions`, `insert_slides`, `edit_deck_text`, `deck_language`, `open_url`,
+`open_deck_settings`, `log`, `show_message`, and the widgets `Page()`, `Field()` and
+`caption()`. The docstrings in `plugin_api.py` say what each does.
+
+The rules: import only `slidemage.plugin_api`, the standard library, PySide6 and
+your own package; pure Python (compiled files are refused). `activate()` runs at
+every start, so keep it quick and off the network: network work goes through
+`run_in_background`. Callbacks run on the UI thread, and a `Deck` is a snapshot.
+
+To run a checkout, set `SLIDEMAGE_PLUGIN_PATH` to the folder holding its
+`plugin.toml` (several folders are separated by `:` on Linux and macOS, `;` on
+Windows) and start SlideMage. It replaces an installed plugin with the same id.
+
+`slidemage --self-test --plugins` checks the standard-library modules a plugin may
+import and loads a minimal test plugin through the loader; the release build runs
+it on every platform. It does not load your plugin: use the checkout method for
+that. To list a plugin, submit it at https://slidemage.org/plugins/submit/.
+
 ## Project compatibility (since v5.29.0)
 
 A newer SlideMage can change something a project depends on: a LaTeX command

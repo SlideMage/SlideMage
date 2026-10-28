@@ -16,6 +16,8 @@ through the command registry, which also says whether its button is enabled.
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -24,6 +26,9 @@ from PySide6.QtWidgets import (
 from ... import deck_editor, deck_settings, open_path, project
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
+from ...plugins import session
+from ...plugins.host import deck_snapshot
+from ..plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, row, set_property
 from .admin_slides import AdminSlidesTab
@@ -37,6 +42,7 @@ MAINTENANCE = (       # (command id, name, what it does, button)
     ("update_deck_versions", "Slide versions", "Raise the version of every slide changed since its last version.",
      "Update changed…"),
 )
+log = logging.getLogger(__name__)
 LANGUAGE_LABELS = {"en": "English", "de": "Deutsch"}
 OUTPUT_LABELS = {
     None: "All outputs",
@@ -49,10 +55,11 @@ OUTPUT_LABELS = {
 
 
 class DeckSettingsSheet(ModalSheet):
-    def __init__(self, parent, deck: Deck, templates: list[tuple[str, str]], *, tab: int = GENERAL) -> None:
+    def __init__(self, parent, deck: Deck, templates: list[tuple[str, str]], *, tab: int | str = GENERAL) -> None:
         """Edits a copy of the deck's settings. `templates` is [(key, label)] of the templates the
         project can find; the deck's current one is added if it is not there. `tab` is the one to
-        open on."""
+        open on: its index, or the title of a tab (a plugin's; an unknown title opens General). The tabs of the
+        loaded plugins follow SlideMage's own."""
         super().__init__(f"Deck settings — {deck.name}", parent, width=700)
         add_route_badge(self, parent)
         self.deck = deck
@@ -64,6 +71,11 @@ class DeckSettingsSheet(ModalSheet):
         self.add_tab("PDF output", self._build_output())
         self.admin = AdminSlidesTab(deck)
         self.add_tab("Admin slides", self.admin)
+        self.plugin_tabs: dict[int, tuple] = {}      # tab index -> (the plugin's DeckSettingsTab, its page)
+        self.tab_titles = ["General", "PDF output", "Admin slides"]
+        for plugin in session.active():
+            for plugin_tab in plugin.contributions.deck_settings_tabs:
+                self._add_plugin_tab(plugin, plugin_tab)
 
         self.note = caption("")
         self.add_footer_note(self.note)
@@ -72,6 +84,8 @@ class DeckSettingsSheet(ModalSheet):
         self.save_button.clicked.connect(self._on_save)
         self.insert_button = self.add_button("Insert slides", kind="primary")
         self.insert_button.clicked.connect(self._on_insert)
+        self.plugin_button = self.add_button("", kind="primary")     # the footer action of the shown plugin tab
+        self.plugin_button.clicked.connect(self._on_plugin_action)
 
         self._initial = self._values()
         self.template_combo.currentIndexChanged.connect(self._sync_dark_mode)
@@ -84,11 +98,53 @@ class DeckSettingsSheet(ModalSheet):
         for check in self.footer_checks.values():
             check.toggled.connect(self._sync_footer)
         self.admin.changed.connect(self._sync_footer)
+        for _tab, page in self.plugin_tabs.values():
+            if hasattr(page, "changed"):
+                page.changed.connect(self._sync_footer)
         self.tab_changed.connect(self._on_tab)
+        HOST_UI.register_sheet(self)
+        if isinstance(tab, str):
+            tab = self.tab_titles.index(tab) if tab in self.tab_titles else GENERAL
         self.set_current_tab(tab)
         self._on_tab(tab)
 
     # -- building --------------------------------------------------------------------------
+
+    def _add_plugin_tab(self, plugin, plugin_tab) -> None:
+        """A plugin's tab; when its build() raises, the tab says so instead (the sheet still opens)."""
+        try:
+            page = plugin_tab.build(deck_snapshot(self.deck))
+        except Exception as exc:
+            log.exception("deck settings tab %r of %s failed", plugin_tab.title, plugin.id)
+            page = Page()
+            page.body.addWidget(caption(f"{plugin.manifest.name} could not build this tab: {exc}", "error"))
+            page.body.addStretch(1)
+            plugin_tab = replace(plugin_tab, footer_action=None)
+        index = self.add_tab(plugin_tab.title, page, scroll=True)
+        self.tab_titles.append(plugin_tab.title)
+        self.plugin_tabs[index] = (plugin_tab, page)
+
+    def refresh_from_deck(self, deck: Deck) -> None:
+        """A plugin edited the deck's file (the sheet had no unsaved changes then): take the rescanned deck and read
+        the form again from its text, so a later Save is checked against, and computed from, the file as it is."""
+        self.deck = deck
+        self.original = self.settings = deck_settings.read_settings(deck.text)
+        settings = self.original
+        self.template_combo.setCurrentIndex(max(self.template_combo.findData(settings.template), 0))
+        self.language_combo.setCurrentIndex(max(self.language_combo.findData(settings.language), 0))
+        self.footer_edit.setText(settings.footer_text)
+        self.url_edit.setText(settings.course_url)
+        self.appendix_check.setChecked(settings.appendix_toc)
+        self.open_pdf_combo.setCurrentIndex(max(0, self.open_pdf_combo.findData(settings.open_pdf)))
+        for key, edit in self.output_edits.items():
+            edit.setText(settings.output_folders.get(key, ""))
+        for key, check in self.footer_checks.items():
+            check.setChecked(key not in settings.footer_hide)
+        self.dark_mode_check.setChecked(settings.dark_mode)
+        self._sync_dark_mode()
+        self.admin.refresh_deck(deck)
+        self._initial = self._values()
+        self._sync_footer()
 
     def _build_general(self, templates: list[tuple[str, str]]) -> Page:
         page = Page()
@@ -257,10 +313,23 @@ class DeckSettingsSheet(ModalSheet):
 
     def _sync_footer(self) -> None:
         admin, dirty = self.current_tab() == ADMIN, self.dirty()
-        self.save_button.setVisible(not admin or dirty)
+        plugin_tab, page = self.plugin_tabs.get(self.current_tab(), (None, None))
+        action = plugin_tab.footer_action if plugin_tab is not None else None
+        self.plugin_button.setVisible(action is not None)
+        if action is not None:
+            self.plugin_button.setText(action.label)
+            try:
+                self.plugin_button.setEnabled(not dirty and bool(action.enabled(page)))
+            except Exception:
+                log.exception("enabled() of the footer action %r raised; counted as False", action.label)
+                self.plugin_button.setEnabled(False)
+        self.save_button.setVisible((not admin or dirty) and action is None)
         self.insert_button.setVisible(admin)
         self.insert_button.setEnabled(bool(self.admin.slide_specs) and not dirty)
-        self._say("Save the deck settings first: Insert slides edits the same file." if admin and dirty else "")
+        if action is not None and dirty:
+            self._say(DIRTY_SHEET_MESSAGE)
+        else:
+            self._say("Save the deck settings first: Insert slides edits the same file." if admin and dirty else "")
 
     def _browse(self, key: str | None) -> None:
         edit = self.output_edits[key]
@@ -295,10 +364,21 @@ class DeckSettingsSheet(ModalSheet):
         self.action = COMMAND + command_id
         self.accept()
 
+    def _on_plugin_action(self) -> None:
+        plugin_tab, page = self.plugin_tabs[self.current_tab()]
+        try:
+            plugin_tab.footer_action.run(page)
+        except Exception as exc:        # a plugin's bug is a line in the sheet, not a crash
+            log.exception("footer action %r failed", plugin_tab.footer_action.label)
+            self._say(f"{plugin_tab.footer_action.label} failed: {exc}", "error")
+        else:
+            self._sync_footer()
+
     def _on_insert(self) -> None:
         self.action = INSERT
         self.accept()
 
     def done(self, result: int) -> None:
         self.admin.cancel()
+        HOST_UI.unregister_sheet(self)
         super().done(result)

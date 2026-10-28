@@ -1,0 +1,498 @@
+{
+  "api_version": 1,
+  "names": [
+    "API_VERSION",
+    "Any",
+    "COURSE_GROUP",
+    "Callable",
+    "Deck",
+    "EditRefusedError",
+    "FooterAction",
+    "Host",
+    "InsertPosition",
+    "Literal",
+    "Path",
+    "Protocol",
+    "SUPPORTED_API_VERSIONS",
+    "Settings",
+    "StaleFileError",
+    "T",
+    "TypeVar",
+    "Widget",
+    "annotations",
+    "dataclass"
+  ],
+  "classes": {
+    "Deck": {
+      "attributes": [
+        "groups",
+        "name",
+        "path",
+        "text"
+      ],
+      "methods": {}
+    },
+    "EditRefusedError": {
+      "attributes": [],
+      "methods": {}
+    },
+    "FooterAction": {
+      "attributes": [
+        "enabled",
+        "label",
+        "run"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "label",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "run",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "enabled",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "enabled": [
+          {
+            "name": "page",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
+    },
+    "Host": {
+      "attributes": [],
+      "methods": {
+        "Field": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "label",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "widget",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "Page": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "add_command": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "id",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "run",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "enabled",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "add_deck_settings_tab": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "build",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "footer_action",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "add_menu_entry": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "menu",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "command_id",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "add_render_priority": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "soon",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "add_settings_tab": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "build",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "add_sidebar_box": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "key",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "build",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "size",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "when",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "cache_dir": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "caption": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "tone",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "deck_language": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "edit_deck_text": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "change",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "insert_positions": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "insert_slides": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "position",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "slides",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "language",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "legacy_cache_dir": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "log": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "message",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "open_deck_settings": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "tab",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "open_url": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "url",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "refresh_sidebar_box": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "key",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "run_in_background": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "work",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "done",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "settings": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "show_message": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "error",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ]
+      }
+    },
+    "InsertPosition": {
+      "attributes": [
+        "indent",
+        "insert_at",
+        "label"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "label",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "insert_at",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "indent",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
+    },
+    "Settings": {
+      "attributes": [],
+      "methods": {
+        "get": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "key",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "default",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "save": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "set": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "key",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "value",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
+    },
+    "StaleFileError": {
+      "attributes": [],
+      "methods": {}
+    }
+  }
+}

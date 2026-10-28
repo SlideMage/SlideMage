@@ -112,6 +112,10 @@ class SidePanel(Surface):
         self.dirty = False
         self._row_now: tuple | None = None      # (row,) while a refresh builds: it resolves the focused row once
 
+    def offered(self) -> bool:
+        """Whether the picker offers this panel now (a plugin's box only where its when() says so)."""
+        return True
+
     def meta(self) -> str:
         """A few words about the focused slide for the picker's menu ("3 frozen")."""
         return ""
