@@ -265,6 +265,38 @@
 % and spacing): needs to go after the template as well.
 \SMApplyLayoutHooks
 
+% Derived from the template's hooks and the font (v9.7.0; they were hand-kept numbers of the catalog
+% and the layout profile before). The setup layer holds a macro under each of these four names that
+% stops with an error when a template or a profile sets one; a name still holding that macro is
+% replaced by the length it stands for, and a name that was redefined is reported.
+\makeatletter
+\def\SM@derivedlength#1{%
+	\expandafter\ifx\csname #1\expandafter\endcsname\csname SM@guard@#1\endcsname\else
+		\PackageError{SlideMage}{\expandafter\string\csname #1\endcsname\space is derived, not set}{%
+			A template or a layout profile redefined it. SlideMage_base derives it from the hooks and
+			the font; remove that line from the template or the profile.}%
+	\fi
+	\expandafter\let\csname #1\endcsname\relax
+	\expandafter\newlength\csname #1\endcsname}
+\SM@derivedlength{SMContentTopAlign}
+\SM@derivedlength{SMTitleBarBottomAlign}
+\SM@derivedlength{SMFootnoteRightShift}
+\SM@derivedlength{SMFooterRightShift}
+\makeatother
+% - \SMContentTopAlign, the Top Margin as an overlay coordinate: the same line the automatic Top Margin
+%   puts the first text line's box on (the Top Margin is in bp, the coordinate in pt: 41.58bp is 41.7359pt).
+\setlength{\SMContentTopAlign}{\SMTopMargin}
+% - \SMTitleBarBottomAlign, the visible bottom of the title bar: where the logo ends. The frame title
+%   template centres the logo on the capital height of the title font (\raisebox{.5\fontcharht\font`E-0.5\height}
+%   at the baseline, which is the top padding plus the height of an X below the bar's top), so the
+%   bottom is the top padding, plus that X, minus half an E, plus half the logo.
+\begingroup\usebeamerfont{frametitle}\settototalheight{\dimen0}{X}\dimen1=\fontcharht\font`E
+\global\SMTitleBarBottomAlign=\dimexpr\SMFrametitleTopPadding+\dimen0-0.5\dimen1+0.5\SMLogoHeight\relax\endgroup
+% - \SMFootnoteRightShift: a footnote ends where the text margin does; the logo ends its right padding
+%   from the page's edge, so the footnotes are pushed on by the difference.
+\setlength{\SMFootnoteRightShift}{\dimexpr\SMTextMarginRight-\SMFrametitleRightPadding\relax}
+% (\SMFooterRightShift is derived with the footer, below.)
+
 % The effective margins, for tools/check_layout.py (SlideMage v9.5.0): custom keys of the PDF's
 % info dictionary, in bp (PDF units, what the tool measures in). SMTopMargin is the Top Margin
 % (\SMTopMargin), SMLeftMargin the frame title text's left edge (\SMFrametitleLeftPadding). A template
@@ -2048,9 +2080,20 @@
 % footnotes get pulled further down, per this section's own comment
 % above).
 
-% (\SMFooterRightShift, which lines the frame number up with the logo's right edge above
-% it, and \SMFooterTextDrop, which centres the footer text in its box, are numbers of the
-% font: the layout profile defines them, since v9.4.0.)
+% (\SMFooterTextDrop, which centres the footer text in its box, is a number of the font: the
+% layout profile defines it, since v9.4.0.)
+%
+% \SMFooterRightShift (v9.7.0: derived; it was a number of the layout profile, 4.6pt for Fira Sans,
+% -0.33pt for Latin Modern Sans) puts the frame number's right edge on the logo's right edge above
+% it, as the footnotes' lines end there. The footer line is typeset in the footline box, which is
+% \hsize wide and ends its lines \rightskip before that; after the number come, in this order,
+% \hspace*{-4em} and the shift (set here), then the box's \SMRightFooterPadding and its
+% \SMFootlineHRightOffset. So the number's right edge is
+%     \hsize - \rightskip - \SMRightFooterPadding - \SMFootlineHRightOffset + 4em + shift
+% and the shift that puts it at \paperwidth - \SMFrametitleRightPadding follows. Every term is the
+% one in force where the footer is typeset (the \rightskip is 3ex of the footline font, the 4em is
+% the footer's), which is why the shift is computed in the frame footer template and not once: the
+% two fonts differ in size, and a profile with another x-height has other paddings in ex.
 
 % The footer no longer shows a compile date/time (removed in v8.25.0: a
 % changing stamp made every wrapper and PDF differ between compiles). The
@@ -2271,6 +2314,7 @@
 		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi)%
 		\else\ifSMFooterShowDeck(\SMDeckVersionText)\fi\fi}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
+	\setlength{\SMFooterRightShift}{\dimexpr\paperwidth-\SMFrametitleRightPadding-\hsize+\rightskip+\SMRightFooterPadding+\SMFootlineHRightOffset-4em\relax}%
 	\hspace*{-\SMFooterRightShift}%
 	\vspace*{0.4ex}%
 }
@@ -2483,7 +2527,7 @@
 % slides/nt4-Exercise-CAPM-5-current.tex) all land their first line's own
 % top edge at y=41.58pt post-change, not 44.0pt. Re-measure and adjust
 % again if \SMContentTopShift ever changes in the future.
-% (v9.4.0: \SMContentTopAlign, 41.58pt, is a hook of SlideMage_setup.tex.)
+% (v9.7.0: \SMContentTopAlign is derived from \SMTopMargin, further up; it was a hook of SlideMage_setup.tex, 41.58pt, in v9.4.0-v9.6.0.)
 
 % For a "side filler image" -- a decorative image stuck flush to the page's
 % own right edge (zero margin) with its top edge flush against the title
@@ -2531,7 +2575,7 @@
 % (titleframe/quoteframe/the hook's fixed-position redraw) derive their
 % vertical inset from: visible-bar-bottom minus \SMLogoHeight is
 % exactly the inline logo's own vertically-centered top margin.
-% (v9.4.0: \SMTitleBarBottomAlign, 25.32pt, is a hook of SlideMage_setup.tex.)
+% (v9.7.0: \SMTitleBarBottomAlign is derived from the paddings, the frame title font and the logo height, further up; it was a hook of SlideMage_setup.tex, 25.32pt, in v9.4.0-v9.6.0.)
 
 % Note on the [t] default below: it top-aligns content within the frame
 % (beamer's own default is vertical centering, "c"), so slides don't have

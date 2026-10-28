@@ -1,6 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.4.0).
+% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.7.0).
 %
 % A template \input{}s this file first, sets whatever it wants to change from
 % the catalog below, then \input{}s SlideMage_base:
@@ -55,7 +55,7 @@
 %   metrics         \SMFontAscender (the ascender in em, used where the font gives none of
 %                   its own), \SMLinespread, \SMParskip
 %   calibrations    lengths measured against the rendered PDF for this font:
-%                     \SMFooterTextDrop \SMFooterRightShift \SMFootnoteRightShift
+%                     \SMFooterTextDrop
 %                     \SMContentTopShift \SMColumnsTopCorrection \SMColumnsTTopCompensation
 %                     \SMEnumerateLabelBox \SMEnumerateNestedLabelSep
 %                     \SMEnumerateNestedLeftMargin \SMEnumerateNestedMinNumber
@@ -79,14 +79,40 @@
 %      tools/check_layout.py on the PDF (the stress-test template of that project does
 %      this for lmsans). It reads the margins from the PDF, so a template with other
 %      margins is checked against its own. Adjust until the report is clean.
-% The last block of the tool's output lists catalog hooks that follow from the font and
-% that the template holds, not the profile: with a profile other than fira a template
-% sets \SMTitleBarBottomAlign (where the title bar ends) and, with it, \SMTopMargin and
-% \SMContentTopAlign. Calibrations that read other catalog hooks (the footer's and the
-% footnotes' right edges against the logo, the pull-up of a frame the automatic Top
-% Margin does not manage) are fitted to the catalog's defaults for those hooks.
+% The last block of the tool's output reports what follows from the font and the template
+% without a number of anyone's: where the title bar ends (derived by SlideMage_base from the
+% paddings, the frame title font and the logo) and the Top Margin. A calibration that reads
+% other catalog hooks (the pull-up of a frame the automatic Top Margin does not manage) is
+% fitted to the catalog's defaults for those hooks.
+%
+% Derived, not set (SlideMage v9.7.0)
+% -----------------------------------
+% Four lengths follow from the hooks and the font, and SlideMage_base computes them after the
+% template: \SMContentTopAlign (the Top Margin as a coordinate for overlays),
+% \SMTitleBarBottomAlign (where the title bar ends), \SMFootnoteRightShift (a footnote's right
+% edge against the text margin) and \SMFooterRightShift (the same for the frame number). Slides
+% may read them. A template or a profile that sets one gets an error, below, instead of a number
+% that the next change to a hook would silently contradict.
 
 \newcommand{\SMSetupLoaded}{}
+
+% The four derived names, as macros that stop with an error when a template or a profile sets
+% or redefines them. SlideMage_base compares them with the copies kept here, replaces them with
+% the lengths it derives, and reports a name that was redefined.
+\makeatletter
+\newcommand{\SM@derivedname}[1]{\PackageError{SlideMage}{#1 is derived, not set}{%
+	SlideMage_base computes #1 from the hooks and the font (see 'Derived, not set' in
+	SlideMage_setup.tex). Remove the line that sets it from the template or the layout profile;
+	to move what it places, change the hook it follows.}}
+\newcommand{\SMContentTopAlign}{\SM@derivedname{\string\SMContentTopAlign}}
+\newcommand{\SMTitleBarBottomAlign}{\SM@derivedname{\string\SMTitleBarBottomAlign}}
+\newcommand{\SMFootnoteRightShift}{\SM@derivedname{\string\SMFootnoteRightShift}}
+\newcommand{\SMFooterRightShift}{\SM@derivedname{\string\SMFooterRightShift}}
+\let\SM@guard@SMContentTopAlign\SMContentTopAlign
+\let\SM@guard@SMTitleBarBottomAlign\SMTitleBarBottomAlign
+\let\SM@guard@SMFootnoteRightShift\SMFootnoteRightShift
+\let\SM@guard@SMFooterRightShift\SMFooterRightShift
+\makeatother
 
 % The layout profile: fonts and font metrics (see the header). Loaded before the
 % theme, so that the theme's own lengths in ex and em see its fonts.
@@ -181,19 +207,14 @@
 % SlideMage measures every frame at shipout and moves its body until the first line
 % sits there. A dimension with a unit; "bp" is read exactly. SlideMage_base.tex
 % hands it, with the layout profile's ascender, to SlideMage_measure.lua.
+%
+% Everything that sits on the Top Margin follows this one setting: the overlay coordinate
+% \SMContentTopAlign (corner figures, \SMFit, floating blocks, frames with a side image) is
+% derived from it by the base, as are the bottom edge of the title bar
+% (\SMTitleBarBottomAlign, from the paddings, the frame title font and the logo height) and
+% the right edges of footer and footnotes (from the text margin and the logo's right padding).
+% A template sets none of those.
 \newcommand{\SMTopMargin}{41.58bp}
-
-% ---------------------------------------------------------------------------
-% Page geometry (overlay coordinates)
-% ---------------------------------------------------------------------------
-% Where overlays (\cornerfigure, \SMFit, floating blocks) and the frames with a
-% side image start, as distances from the page's edge. They are consequences of
-% the title bar and the Top Margin, kept as numbers: a template that changes
-% those must re-measure these from the compiled PDF (tools/check_layout.py).
-\newlength{\SMContentTopAlign}
-\setlength{\SMContentTopAlign}{41.58pt}      % the Top Margin as a coordinate (kept in step with \SMTopMargin by hand)
-\newlength{\SMTitleBarBottomAlign}
-\setlength{\SMTitleBarBottomAlign}{25.32pt}  % the bottom edge of the title bar (where it ends beside the logo)
 
 % ---------------------------------------------------------------------------
 % Text margins

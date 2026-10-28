@@ -3,9 +3,11 @@
 """Suggest the calibration numbers of a SlideMage layout profile from a compiled calibration deck.
 
 A layout profile (latex/SlideMage_layout_<name>.tex) holds, under "Calibrations", lengths that were
-measured against the rendered PDF for one font: where the footer text sits in its box, how far the frame
-number and the footnotes are from the logo's edge, the pull-up of a frame the automatic Top Margin does not
-manage, the label widths of the numbered lists, and so on. This tool compiles the calibration deck
+measured against the rendered PDF for one font: where the footer text sits in its box, the pull-up of a frame
+the automatic Top Margin does not manage, the label widths of the numbered lists, and so on. (Since v9.7.0
+the right edges of the frame number and of the footnotes, and the title bar's bottom edge, are derived by the
+base from the hooks and the font: the tool reads them back from the PDF and reports them, it suggests nothing.)
+This tool compiles the calibration deck
 (tests/fixtures/template_stress/decks/calibration.tex) with the profile under the SlideMage template, whose
 hooks are the catalog's defaults, measures the PDF, and prints each number with its current value and the value
 the measurement suggests. tools/check_layout.py then says whether the profile is clean.
@@ -17,8 +19,9 @@ Recipe for a new profile (the header of latex/SlideMage_setup.tex has it too):
      line should read "ok" (the numbers it prints are within the tolerance of the measurement, 0.3pt);
   4. python tools/check_layout.py on the PDF of the deck compiled with a template that picks the profile
      (the project's stress-test template does); then adjust until the report is clean.
-The last section of the output lists template hooks that follow from the font and that the template, not the
-profile, holds (the title bar's bottom edge and the Top Margin as a coordinate).
+The last section of the output reports what the base derives from the font and the template, read back from
+the PDF: the title bar's bottom edge, the Top Margin, the ascender, and how far the frame number's and the
+footnotes' right edges are from the logo's visible edge.
 
 Not measured, and kept as the Fira profile has them until a slide shows they are wrong:
 \\SMEnumerateLabelBox, \\SMEnumerateTextExtra (the last is a design value: the outer numeral column against a bullet's),
@@ -56,9 +59,6 @@ SECTION_BOX_HEIGHT = "SMSectionframeBoxHeight"
 # A columns[T] environment that starts a manual-top frame lands 2.36pt above a list in the Fira profile, whose
 # \SMColumnsTTopCompensation was measured on plain frames: that offset is not the font's, so it is taken out.
 T_COLUMNS_OFFSET = 2.36
-# The advance box of the frame number and of a footnote line ends 0.22pt before the logo's edge in the Fira profile
-# (the glyph's overhang): the profile was fitted to the ink, so that much is not the font's.
-EDGE_BIAS = 0.22
 NUMERAL_CLEARANCE = 0.43        # pt: the Fira profile's numeral slot (7.85pt) is its widest numeral (7.42pt) plus this
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_[^}]+\}")
 SET_RE = r"\\setlength\{\\%s\}\{([^}]*)\}"
@@ -203,6 +203,7 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
     cur = lambda name: tex_length(text, name)   # noqa: E731
     rows: list[Row] = []
     hooks: list[str] = []
+    edges: list[str] = []
 
     def add(name: str, suggested: float | None, note: str, advisory: bool = False) -> None:
         rows.append(Row(name, cur(name), None if suggested is None else round(suggested, 2), note, advisory))
@@ -217,13 +218,11 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
             # \vspace*{\SMFooterTextDrop} first in the footer: a larger value raises the text (measured: 0.1pt more moves the ink 0.09pt up)
             add("SMFooterTextDrop", (cur("SMFooterTextDrop") or 0.0) + (above - below) / 2 * PT,
                 f"the frame number's ink sits {above:.2f}pt below the box's top edge and {below:.2f}pt above its bottom")
-            delta = (chrome.logo_right - number["bbox"][2]) * PT - EDGE_BIAS
-            add("SMFooterRightShift", (cur("SMFooterRightShift") or 0.0) + delta,
-                f"the frame number ends {delta + EDGE_BIAS:+.2f}pt from the logo's right edge, {EDGE_BIAS}pt of it the Fira profile's own")
+            edges.append(f"the frame number ends {(chrome.logo_right - number['bbox'][2]) * PT:+.2f}pt inside the logo's "
+                         f"visible right edge (\\SMFooterRightShift, derived)")
         if chrome.footnotes:
-            delta = (chrome.logo_right - max(r.x1 for r in chrome.footnotes)) * PT - EDGE_BIAS
-            add("SMFootnoteRightShift", (cur("SMFootnoteRightShift") or 0.0) + delta,
-                f"the footnote lines end {delta + EDGE_BIAS:+.2f}pt from the logo's right edge, {EDGE_BIAS}pt of it the Fira profile's own")
+            edges.append(f"the footnote lines end {(chrome.logo_right - max(r.x1 for r in chrome.footnotes)) * PT:+.2f}pt inside "
+                         f"the logo's visible right edge (\\SMFootnoteRightShift, derived)")
 
     # -- the top of the frames the automatic Top Margin does not manage --------------------------------
     top_margin = deck.info["top_margin"]
@@ -288,13 +287,10 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
     section_info = deck.info
     bars = [deck.chrome(p).bar_bottom for p in (deck.page("ZC3"), deck.page("ZC4")) if p is not None]
     if bars:
-        bottom_pt = bars[0] * PT
-        hooks.append(f"\\SMTitleBarBottomAlign = {bottom_pt:.2f}pt: the title bar ends at {bars[0]:.2f}bp "
-                     f"(the PDF records {section_info['title_bar_bottom']:.2f}); the template sets it, the catalog default "
-                     f"is 25.32pt for Fira")
-        hooks.append(f"\\SMTopMargin = {section_info['top_margin']:.2f}bp and \\SMContentTopAlign (its coordinate in pt) "
-                     f"must keep to the title bar's bottom edge plus the gap the template wants "
-                     f"(Fira: 41.58 - 25.32 = 16.26pt)")
+        hooks.append(f"\\SMTitleBarBottomAlign (derived) = {section_info['title_bar_bottom'] * PT:.2f}pt: the PDF records "
+                     f"{section_info['title_bar_bottom']:.2f}bp, the title bar is drawn to {bars[0]:.2f}bp")
+    hooks.append(f"\\SMTopMargin = {section_info['top_margin']:.2f}bp; \\SMContentTopAlign (derived) is that distance in pt")
+    hooks.extend(edges)
     hooks.append(f"text font ascender read from the font: {section_info['ascender']}em "
                  f"(the profile's \\SMFontAscender is only the fallback)")
     return rows, hooks
@@ -330,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         suggested = "-" if r.suggested is None else f"{r.suggested:.2f}"
         flag = "ok " if r.ok else "SET"
         print(f"  {flag} \\{r.name:<{width}}  {current:>8} -> {suggested:>8}   {r.note}")
-    print("template hooks that follow from the font:")
+    print("derived by the base, read back from the PDF:")
     for line in hooks:
         print(f"  {line}")
     return 0 if all(r.ok for r in rows) else 1

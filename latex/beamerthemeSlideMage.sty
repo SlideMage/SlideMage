@@ -6,7 +6,7 @@
 %% (beamertheme-gotham, version 1.2.5.a, 2026-04-02) by Romain NOËL.
 %% It is NOT the original theme, and Romain NOËL does not maintain, support
 %% or endorse it. Do not report problems with this file to him; report them
-%% to the SlideMage project (https://github.com/stpalan/SlideMage).
+%% to the SlideMage project (https://github.com/SlideMage/SlideMage).
 %%
 %% The original, unmodified theme is available at
 %%     https://gitlab.com/RomainNOEL/beamertheme-gotham
@@ -15,7 +15,7 @@
 %% ===========================================================================
 %%
 %% beamerthemeSlideMage: the beamer theme of the SlideMage framework
-%% (https://github.com/stpalan/SlideMage). SlideMage_setup.tex loads it
+%% (https://github.com/SlideMage/SlideMage). SlideMage_setup.tex loads it
 %% with \usetheme{SlideMage}; a deck never names it.
 %%
 %% Copyright (C) 2023-20** by Romain NOËL <romainoel@free.fr>   (original work)
@@ -100,9 +100,14 @@
 %%    block side margin and title marker width, and the text margins, which the new macro
 %%    \SMApplyLayoutHooks applies after the template. \SMFootnoteRightShift moved to the
 %%    layout profile.
+%% 9. (v9.7.0) \SMContentTopAlign, \SMTitleBarBottomAlign, \SMFootnoteRightShift and
+%%    \SMFooterRightShift are derived by SlideMage_base (from the Top Margin, from the
+%%    paddings, the frame title font and the logo height, and from the text margin and the
+%%    logo's right padding) and are no longer set by a template or a layout profile.
+%%    Comments only; the code of this file did not change.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/27}{9.4.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/28}{9.7.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -1791,10 +1796,10 @@ fg=normal~text.fg
 \renewcommand{\@makefnmark}{\hbox{\@textsuperscript{\normalfont\@thefnmark}}}
 % \raggedleft's own \rightskip (0pt) is flush with the frame's normal body
 % text margin, not the logo's edge above it; this pushes further right by
-% the difference between the two, empirically calibrated (like
-% \SMFooterRightShift above) against the rendered PDF coordinates of
-% both -- re-measure and adjust if the text margins or logo inset change.
-% (\SMFootnoteRightShift is defined by the layout profile.)
+% the difference between the two, which is the text margin less the logo's
+% right padding.
+% (v9.7.0: \SMFootnoteRightShift is derived by the base from those two hooks; it was a number
+% of the layout profile, calibrated against the rendered PDF.)
 
 % Side footnotes: \sidefootnotes (called *before* \begin{standardframe}, like
 % \chapterlogo{}) moves that one frame's footnotes -- including \source{} lines,

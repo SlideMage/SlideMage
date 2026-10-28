@@ -47,7 +47,7 @@ def test_a_profiles_lengths_are_read_in_pt():
 def test_the_shipped_profiles_numbers_are_all_readable():
     for profile in ("fira", "lmsans"):
         text = cal.profile_text(ROOT / "latex", profile)
-        for name in ("SMFooterTextDrop", "SMFooterRightShift", "SMFootnoteRightShift", "SMContentTopShift",
+        for name in ("SMFooterTextDrop", "SMContentTopShift",
                      "SMColumnsTopCorrection", "SMColumnsTTopCompensation", "SMSectionframeHeightCorrection",
                      "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
                      "SMEnumerateNestedLeftMargin"):

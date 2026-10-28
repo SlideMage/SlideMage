@@ -196,3 +196,58 @@ bug fixes are made now, with the affected slides listed and shown before/after.
    with its old meaning and add a new, correctly named hook?
 5. Step 12's bug fixes change existing slides of the real project: fix them now, or record them and leave them for
    later?
+
+## Done 2026-10-28 (v9.7.0), notes for the later steps
+
+Step 8 (section A). `\SMContentTopAlign`, `\SMTitleBarBottomAlign`, `\SMFootnoteRightShift` and `\SMFooterRightShift` are
+derived by `SlideMage_base.tex`; the first two leave the catalog, the last two both profiles.
+
+- **Where.** `\SMContentTopAlign = \SMTopMargin`, `\SMTitleBarBottomAlign` = title top padding + height of an X in the
+  frame title font - half its E + half the logo height, `\SMFootnoteRightShift = \SMTextMarginRight -
+  \SMFrametitleRightPadding`: all right after `\SMApplyLayoutHooks` (before the PDF info keys, which read the title
+  bar's bottom), through `\SM@derivedlength{<Name>}`. `\SMFooterRightShift` is set inside the frame footer template.
+- **The error.** The setup layer defines each of the four names, before the profile loads, as a macro that raises a
+  `PackageError` naming it (`\SM@derivedname`) and keeps a copy `\SM@guard@<Name>`. A template or profile that does
+  `\setlength` on one triggers the macro; one that `\renewcommand`s it is caught by the base, which compares the name with
+  the copy before replacing it with the length. These four are `DERIVED` in `tests/test_template_catalog.py` (not hooks:
+  not in the stress template, not in the unused-hook test); the test file has "no template or profile sets a derived
+  name", "the base derives each and the setup guards it", and with `SLIDEMAGE_TEX_TESTS=1` a compile that checks the
+  message for `\setlength` and for `\renewcommand`.
+- **The overhang finding (the plan's premise did not hold).** The right side bearing of the last glyph is readable:
+  `font.getfont(font.current()).descriptions[<unicode>].boundingbox` (luaotfload, keyed by codepoint, not by glyph index;
+  RSB = `width - boundingbox[3]` in units of 1/1000 em). For Fira Sans Light's digits that is 35-121 units, 0.175pt-0.605pt
+  at the footer's 5pt: 0 0.33, 1 0.605, 2 0.265, 3 0.315, 4 0.175, 5 0.255, 6 0.255, 7 0.18, 8 0.265, 9 0.305. None is
+  0.23691pt, and the number differs per page, so reading it would move the frame number by 0.0-0.4pt from page to page.
+  The 0.23691pt of v9.4.1 was not a glyph property: it was `TextMarginRight - FrametitleRightPadding` (4.837pt) minus
+  the old 4.6pt. The footer line ends at its box's `\hsize - \rightskip - \SMRightFooterPadding - \SMFootlineHRightOffset
+  + 4em + shift`, with `\rightskip` = 3ex *of the footline font at 8pt* (12.552pt for Fira, 10.656pt
+  for lmsans), `\SMRightFooterPadding` = 3.5ex of the body font (20.044pt, 17.016pt) and the footer's 4em (20pt): for Fira
+  these sum to 4.632pt, 0.205pt short of the text margin, and v9.4.1's constant absorbed that and 0.032pt more. For lmsans
+  the sum is different by 5pt, which was the -0.33pt. So the shift is computed from those terms where the footer is
+  typeset (`\hspace*{-4em}` and the shift sit in one template), and the frame number's advance box ends where the
+  footnotes' lines end, the logo's padding edge. No overhang number is kept anywhere. Consequence: the number moves
+  0.032pt right (Fira), 0.036pt (lmsans), the footnotes 0.037pt right, and both fonts end 0.19pt inside the logo's visible
+  edge (the logo's drawn edge is not its padding edge), which the calibration tool now reports. The user looked at the
+  options as renders (`step8-images/6-footer-number-edge-options.png`: before, advance box on the edge, ink on the edge)
+  and decided 2026-10-28 to keep the advance box on the edge. Ink alignment would be a few lines of Lua at the place the
+  footer sets the number, and would move the number by up to 0.5pt between pages.
+- **Things the next steps can use.** (1) `\SMFooterRightShift`'s expression is where the footer's 4em/2em/0.4ex pieces and
+  its two paddings meet: step 11's hook audit can turn them into hooks without moving the number. (2) lmsans under the
+  SlideMage template now ends its title bar at 22.09bp (v9.6.0 kept Fira's 25.23bp there): the calibration decks of step 13
+  need no template help for it. (3) The calibration tool reports the derived edges instead of suggesting numbers.
+- **check_layout.py.** Clean on the calibration deck under the stress template (13 exempted findings, as in v9.6.0) and under
+  the SlideMage template with fira (7) and with lmsans (7).
+- **Visible changes.** In-repo compare: 12 entries, 1084 pages (0 failed compiles): 1054 pages differ in the right edge of the footer or
+  footnotes (0.026-0.039bp), 220 in the title bar's bottom edge (0.003bp, the logo's trim patch, the thumbnails and
+  side-image frames), 24 in overlays (slides 1rb and 1c9: 0.156pt down), 12 on the layout grid slide 1gr (its Top Margin line
+  and labels); no word, drawing or image was added, lost or moved otherwise (a comparison of every word, path and image
+  rectangle of the baseline and the new PDFs). Fonts identical. Private copy (16 decks, 48 entries, 5274 pages, 0 failed compiles, font lists identical): 5086 pages differ in the right
+  edges (the footnote lines of a justified paragraph also stretch by up to 0.037pt), 501 in the title bar's bottom edge, 482 in
+  overlays (0.156pt), 3 on the layout grid; 66 pages on 12 slides (f4y, d76, jae, vpk, ice, zwk, e84, cy9, xv8, jun, nmw, yke:
+  corner figures, side-image frames and floating blocks that the slides size or place from `\SMContentTopAlign`,
+  `\SMContentBottomAlign` or `\SMTitleBarBottomAlign`) move by 0.15-0.45pt, twice 0.156pt where top and bottom both move, and
+  a figure sized between the two coordinates gets 0.31pt shorter and 0.26pt narrower (`step8-images/7-...-f4y.png`): the
+  approved shifts at second order. 16 pages (the GrundlagenFinanzwissen and IA2 decks) lost a trailing glyph in the
+  text extraction only: a line of text that already ran 1.4-2.7pt past the page's right edge now ends 0.0-0.5pt on the other
+  side of it; nothing visible. No word, drawing or image was added or lost, no text reflowed. Before/after images are in
+  `C:/Users/palans/SlideMage/regression/step8-images/`.

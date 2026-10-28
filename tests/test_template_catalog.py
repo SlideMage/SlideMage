@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The hook catalog of latex/SlideMage_setup.tex (v9.6.0): every hook is read by the framework, the shipped
+"""The hook catalog of latex/SlideMage_setup.tex (v9.7.0): every hook is read by the framework, the shipped
 templates and the stress-test template set catalog names only, the stress-test template sets every hook, and
 every layout profile defines what the Fira profile defines."""
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -14,7 +17,10 @@ BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
 SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
-NOT_HOOKS = {"SMSetupLoaded"}
+NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname"}
+# The four names the base derives (v9.7.0): the setup layer holds an error-raising macro under each, so a template or a
+# profile that sets one is told; they are in the catalog's text but are not hooks.
+DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
 PALETTE_FOR_SLIDES = {"c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
@@ -40,7 +46,7 @@ def catalog() -> dict[str, set[str]]:
     setup = read(LATEX / "SlideMage_setup.tex")
     return {
         "lengths": defined(setup, ("newlength",)) - NOT_HOOKS,
-        "macros": defined(setup, ("newcommand",)) - NOT_HOOKS,
+        "macros": defined(setup, ("newcommand",)) - NOT_HOOKS - DERIVED,
         "colors": defined(setup, ("definecolor",)),
     }
 
@@ -140,3 +146,43 @@ def test_the_setup_header_lists_every_calibration_a_profile_defines():
     missing = sorted(name for name in calibrations if BS + name not in header)
     assert not missing, f"the setup header's list of what a profile defines lacks {missing}"
     assert "calibrate_font_profile.py" in header and "lmsans" in header
+
+
+def test_no_template_or_profile_sets_a_derived_name():
+    """SMContentTopAlign, SMTitleBarBottomAlign, SMFootnoteRightShift and SMFooterRightShift are computed by the
+    base from the hooks and the font; setting one would contradict the next change to a hook."""
+    for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
+        touched = defined(settings_before_base(template),
+                          ("setlength", "addtolength", "renewcommand", "newlength", "newcommand", "providecommand"))
+        assert not touched & DERIVED, f"{template.name} sets {sorted(touched & DERIVED)}"
+    for profile in sorted(LATEX.glob("SlideMage_layout_*.tex")):
+        touched = defined(read(profile), ("setlength", "addtolength", "renewcommand", "newlength", "newcommand"))
+        assert not touched & DERIVED, f"{profile.name} sets {sorted(touched & DERIVED)}"
+
+
+def test_the_base_derives_each_derived_name_and_the_setup_layer_guards_it():
+    base, setup = read(LATEX / "SlideMage_base.tex"), read(LATEX / "SlideMage_setup.tex")
+    for name in sorted(DERIVED):
+        assert BS + "SM@derivedlength{" + name + "}" in base, name
+        assert BS + "newcommand{" + BS + name + "}{" + BS + "SM@derivedname{" in setup, name
+        assert BS + "let" + BS + "SM@guard@" + name + BS + name in setup, name
+        assert BS + "newlength{" + BS + name + "}" not in setup, f"{name} is a length in the catalog again"
+    assert "Derived, not set" in setup
+
+
+@pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("lualatex"),
+                    reason="compiles with lualatex: SLIDEMAGE_TEX_TESTS=1")
+@pytest.mark.parametrize("setting", [BS + "setlength{" + BS + "SMContentTopAlign}{50bp}",
+                                     BS + "renewcommand{" + BS + "SMFooterRightShift}{3pt}"])
+def test_a_template_that_sets_a_derived_name_gets_an_error_that_names_it(setting, tmp_path):
+    (tmp_path / "template.tex").write_text(
+        BS + "input{SlideMage_setup}\n" + setting + "\n" + BS + "input{SlideMage_base}\n", encoding="utf-8")
+    (tmp_path / "deck.tex").write_text(
+        BS + "documentclass[aspectratio=169]{beamer}\n" + BS + "input{template}\n" + BS + "begin{document}"
+        + BS + "end{document}\n", encoding="utf-8")
+    env = dict(os.environ, TEXINPUTS=os.pathsep.join([str(LATEX), str(tmp_path), ""]))
+    subprocess.run(["lualatex", "-interaction=nonstopmode", "deck.tex"], cwd=tmp_path, env=env,
+                   capture_output=True, timeout=300)
+    log = (tmp_path / "deck.log").read_text(encoding="utf-8", errors="replace").replace("\n", "")
+    name = re.search(r"(SM[A-Za-z]+)\}", setting).group(1)
+    assert "is derived, not set" in log and BS + name + " is derived" in log
