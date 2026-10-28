@@ -1,15 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""AnthropicProvider.stream_turn through the real SDK against a local server: the request the
+"""AnthropicProvider.stream_turn against a local server: the request the
 agent loop sends (tools, caching, effort), streamed text, tool calls, replaying the history,
 usage, and Stop."""
 from __future__ import annotations
 
 import base64
+import json
 import threading
+import time
 
 import pytest
-from fake_http import api_key_of, message_sse, wait_for_first_piece
+from fake_http import api_key_of, message_sse, sse_events, wait_for_first_piece
 
 from slidemage.ai.agent_types import (
     AssistantMessage,
@@ -19,7 +21,8 @@ from slidemage.ai.agent_types import (
     ToolSpec,
     UserMessage,
 )
-from slidemage.ai.providers import AnthropicProvider, Cancelled, ProviderError
+from slidemage.ai.anthropic_provider import AnthropicProvider
+from slidemage.ai.providers import Cancelled, ProviderError
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 TOOL = ToolSpec("read_file", "Read a file.", {"type": "object", "properties": {"path": {"type": "string"}},
@@ -145,3 +148,173 @@ def test_stop_ends_a_stream_that_went_quiet(server):
     thread.join(4)
     assert not thread.is_alive() and texts == ["Hello"]
     assert isinstance(outcome[0], Cancelled)
+
+
+# -- the client's own work: retries, the stream's events, the blocks it keeps -----------------------
+
+OVERLOADED = {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
+
+
+def start(usage=None):
+    return {"type": "message_start", "message": {"id": "m", "type": "message", "role": "assistant", "content": [],
+                                                 "usage": {"input_tokens": 5, "output_tokens": 1, **(usage or {})}}}
+
+
+def block_start(index, block):
+    return {"type": "content_block_start", "index": index, "content_block": block}
+
+
+def delta(index, **fields):
+    return {"type": "content_block_delta", "index": index, "delta": fields}
+
+
+def stop(index):
+    return {"type": "content_block_stop", "index": index}
+
+
+END = [{"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 9}},
+       {"type": "message_stop"}]
+
+
+@pytest.fixture
+def waits(monkeypatch):
+    """The backoff waits asked for (not waited)."""
+    recorded = []
+    monkeypatch.setattr(AnthropicProvider, "_wait", lambda self, seconds: recorded.append(seconds))
+    return recorded
+
+
+def retrying(server):
+    p = provider(server)
+    p.max_retries = 2
+    return p
+
+
+def test_a_529_is_retried_and_the_second_try_answers(server, waits):
+    server.script = [(529, OVERLOADED), (529, OVERLOADED), message_sse([{"type": "text", "text": "Hello"}])]
+    reply = turn(retrying(server), [UserMessage("hi")])
+    assert reply.text == "Hello" and len(server.requests) == 3
+    assert 0.3 <= waits[0] <= 0.5 and 0.6 <= waits[1] <= 1.0      # 0.5 s, 1 s, each shortened by up to a quarter
+
+
+def test_the_error_comes_after_the_retries_are_used_up(server, waits):
+    server.status, server.content_type = 529, "application/json"
+    server.body = OVERLOADED
+    with pytest.raises(ProviderError, match="overloaded .*HTTP 529.*Overloaded"):
+        turn(retrying(server), [UserMessage("hi")])
+    assert len(server.requests) == 3 and len(waits) == 2
+
+
+def test_a_400_is_not_retried(server, waits):
+    server.status, server.content_type = 400, "application/json"
+    server.body = {"type": "error", "error": {"type": "invalid_request_error", "message": "bad"}}
+    with pytest.raises(ProviderError, match="HTTP 400: bad"):
+        turn(retrying(server), [UserMessage("hi")])
+    assert len(server.requests) == 1 and not waits
+
+
+def test_a_connection_error_is_retried_then_reported(server, waits):
+    p = retrying(server)
+    p.base_url = "http://127.0.0.1:9"
+    with pytest.raises(ProviderError, match="Anthropic unreachable"):
+        turn(p, [UserMessage("hi")])
+    assert len(waits) == 2
+
+
+def test_retry_after_is_honoured_and_capped(server, waits):
+    ok = message_sse([{"type": "text", "text": "x"}])
+    server.script = [(429, OVERLOADED, {"retry-after": "7"}), (429, OVERLOADED, {"retry-after": "900"}), ok]
+    turn(retrying(server), [UserMessage("hi")])
+    assert waits == [7.0, 60.0]
+
+
+def test_nothing_is_retried_once_the_stream_has_started(server, waits):
+    server.script = [sse_events(start(), block_start(0, {"type": "text", "text": ""}),
+                                delta(0, type="text_delta", text="Hel"))]      # ends without message_stop
+    texts = []
+    with pytest.raises(ProviderError, match="ended the answer early"):
+        turn(retrying(server), [UserMessage("hi")], texts)
+    assert texts == ["Hel"] and len(server.requests) == 1 and not waits
+
+
+def test_an_error_event_in_the_stream_is_an_error(server, waits):
+    server.body = sse_events(start(), block_start(0, {"type": "text", "text": ""}),
+                             delta(0, type="text_delta", text="Hi"), OVERLOADED)
+    texts = []
+    with pytest.raises(ProviderError, match="overloaded .*HTTP 529.*Overloaded"):
+        turn(retrying(server), [UserMessage("hi")], texts)
+    assert texts == ["Hi"] and len(server.requests) == 1
+
+
+def test_unknown_events_and_deltas_are_ignored(server):
+    server.body = ": a comment\n\n" + sse_events(
+        start(), {"type": "ping"}, {"type": "something_new", "x": 1},
+        block_start(0, {"type": "text", "text": ""}), delta(0, type="citations_delta", citation={"a": 1}),
+        delta(0, type="text_delta", text="Hi"), delta(7, type="text_delta", text="nobody"), stop(0), *END)
+    reply = turn(provider(server), [UserMessage("hi")])
+    assert reply.text == "Hi" and reply.raw == [{"type": "text", "text": "Hi"}]
+    assert reply.usage["output"] == 9 and reply.usage["input"] == 5
+
+
+def test_a_tool_input_is_put_together_from_its_pieces(server):
+    server.body = sse_events(
+        start(), block_start(0, {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {}}),
+        delta(0, type="input_json_delta", partial_json=""), delta(0, type="input_json_delta", partial_json='{"pa'),
+        delta(0, type="input_json_delta", partial_json='th": "a/b'), delta(0, type="input_json_delta", partial_json='.tex"}'),
+        stop(0),
+        block_start(1, {"type": "tool_use", "id": "toolu_2", "name": "read_file", "input": {}}), stop(1),
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 4}},
+        {"type": "message_stop"})
+    reply = turn(provider(server), [UserMessage("hi")])
+    assert reply.tool_calls == [ToolCall("toolu_1", "read_file", {"path": "a/b.tex"}),
+                                ToolCall("toolu_2", "read_file", {})]
+    assert reply.raw[0] == {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {"path": "a/b.tex"}}
+
+
+def test_thinking_blocks_are_kept_and_replayed_unchanged(server):
+    server.body = sse_events(
+        start(), block_start(0, {"type": "thinking", "thinking": "", "signature": ""}),
+        delta(0, type="thinking_delta", thinking="Let me "), delta(0, type="thinking_delta", thinking="see."),
+        delta(0, type="signature_delta", signature="EuYBsig=="), stop(0),
+        block_start(1, {"type": "redacted_thinking", "data": "opaque=="}), stop(1),
+        block_start(2, {"type": "text", "text": ""}), delta(2, type="text_delta", text="Done."), stop(2),
+        block_start(3, {"type": "future_block", "payload": [1, 2]}), stop(3),
+        block_start(4, {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {}}),
+        delta(4, type="input_json_delta", partial_json='{"path": "a"}'), stop(4),
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 4}},
+        {"type": "message_stop"})
+    p = provider(server)
+    first = turn(p, [UserMessage("hi")])
+    expected = [{"type": "thinking", "thinking": "Let me see.", "signature": "EuYBsig=="},
+                {"type": "redacted_thinking", "data": "opaque=="},
+                {"type": "text", "text": "Done."},
+                {"type": "future_block", "payload": [1, 2]},
+                {"type": "tool_use", "id": "toolu_1", "name": "read_file", "input": {"path": "a"}}]
+    assert first.raw == expected and first.text == "Done."
+    server.body = message_sse([{"type": "text", "text": "next"}])
+    turn(p, [UserMessage("hi"), first, ToolResultsMessage([ToolResult("toolu_1", "ok")])])
+    sent = server.requests[1]["body"]["messages"][1]["content"]
+    assert json.dumps(sent) == json.dumps(expected)
+
+
+def test_abort_ends_the_wait_between_retries(server):
+    server.script = [(529, OVERLOADED, {"retry-after": "30"})] * 3
+    p = retrying(server)
+    outcome = []
+
+    def run():
+        try:
+            turn(p, [UserMessage("hi")])
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    thread = threading.Thread(target=run)
+    started = time.monotonic()
+    thread.start()
+    while not server.requests and time.monotonic() - started < 5:
+        time.sleep(0.01)
+    time.sleep(0.1)         # now in the 30 s wait
+    p.abort()
+    thread.join(4)
+    assert not thread.is_alive() and isinstance(outcome[0], Cancelled)
+    assert len(server.requests) == 1 and time.monotonic() - started < 10

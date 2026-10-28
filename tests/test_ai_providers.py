@@ -12,8 +12,8 @@ import pytest
 
 from slidemage import app_settings
 from slidemage.ai import credentials
+from slidemage.ai.anthropic_provider import AnthropicProvider
 from slidemage.ai.providers import (
-    AnthropicProvider,
     Cancelled,
     OllamaProvider,
     ProviderError,
@@ -35,7 +35,7 @@ def settings(tmp_path, monkeypatch):
 def anthropic(server, **kwargs):
     provider = AnthropicProvider(api_key=kwargs.pop("api_key", "sk-test"), **kwargs)
     provider.base_url = server.url
-    provider.max_retries = 0     # an error answer is the test; the SDK's backoff would only slow it
+    provider.max_retries = 0     # an error answer is the test; the backoff would only slow it
     return provider
 
 
@@ -164,17 +164,12 @@ def test_capabilities_are_asked_once_per_model(server):
 
 # -- Anthropic ---------------------------------------------------------------
 
-def test_abort_closes_the_client_so_a_request_not_yet_streaming_ends_too():
-    class Closable:
-        closed = False
-
-        def close(self):
-            self.closed = True
-
-    provider = AnthropicProvider("claude-sonnet-5-5", api_key="k")
-    provider._client = client = Closable()
+def test_abort_before_the_request_ends_it_without_connecting(server):
+    provider = anthropic(server)
     provider.abort()
-    assert client.closed and provider._cancelled
+    with pytest.raises(Cancelled):
+        provider.chat([{"role": "user", "content": "hi"}])
+    assert not server.requests
 
 
 def test_anthropic_request_shape_with_image_and_json_mode(server):
@@ -186,7 +181,7 @@ def test_anthropic_request_shape_with_image_and_json_mode(server):
     request = server.requests[0]
     assert (request["method"], request["path"]) == ("POST", "/v1/messages")
     assert api_key_of(request) == "sk-test"
-    assert request["headers"]["anthropic-version"]          # the SDK's own API version (2023-06-01 up to SDK 1.x)
+    assert request["headers"]["anthropic-version"] == "2023-06-01"
     assert request["headers"]["content-type"] == "application/json"
     body = request["body"]
     assert set(body) == {"model", "max_tokens", "system", "messages", "stream"}
@@ -245,6 +240,18 @@ def test_anthropic_lists_models(server):
     assert server.requests[0]["path"].startswith("/v1/models")
     server.status = 401
     assert anthropic(server).list_models() == []
+
+
+def test_anthropic_list_models_follows_the_pages(server):
+    server.routes = {
+        "/v1/models?limit=1000": (200, {"data": [{"id": "a"}, {"id": "b"}], "has_more": True, "last_id": "b"}),
+        "/v1/models?limit=1000&after_id=b": (200, {"data": [{"id": "c"}], "has_more": False, "last_id": "c"}),
+    }
+    provider = anthropic(server)
+    assert provider.list_models() == ["a", "b", "c"]
+    assert [r["path"] for r in server.requests] == list(server.routes)
+    assert server.requests[0]["headers"]["x-api-key"] == "sk-test"
+    assert anthropic(server, api_key="").list_models() == []
 
 
 def test_parse_json_object_tolerates_fences_think_blocks_and_prose():

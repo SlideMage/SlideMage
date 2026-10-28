@@ -715,7 +715,7 @@ def test_a_deck_the_agent_changed_goes_through_the_headers_and_the_slide_list(en
 def test_the_cloud_consent_is_the_windows_question(ctx, env, monkeypatch):
     asked = []
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
-    from slidemage.ai.providers import AnthropicProvider
+    from slidemage.ai.anthropic_provider import AnthropicProvider
     ws = env.chat.workspace
     assert on_thread(lambda: ws.confirm_cloud(AnthropicProvider("claude-sonnet-5-5"))) is True
     assert "cloud (claude-sonnet-5-5 · cloud)" in asked[0]

@@ -12,7 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Server:
     """Answers every request with `status`/`body` (or, for a path in `routes`, with that route's
-    (status, body); a `script` of bodies is used up first, one per request) and records what it got."""
+    (status, body); a `script` is used up first, one entry per request: a body, or a (status, body) or
+    (status, body, headers) tuple) and records what it got."""
 
     def __init__(self):
         self.status = 200
@@ -21,7 +22,7 @@ class Server:
         self.delay = threading.Event()  # set to release a held response
         self.hold = False
         self.stall_after: int | None = None   # answer only this many bytes of the body, then wait
-        self.script: list[dict | str] = []   # bodies for the next requests, in turn (else `body`)
+        self.script: list = []   # answers for the next requests, in turn (else `body`)
         self.routes: dict[str, tuple[int, dict | str]] = {}
         self.requests: list[dict] = []
         outer = self
@@ -37,8 +38,14 @@ class Server:
                 if outer.hold:
                     outer.delay.wait(5)
                 status, body = outer.routes.get(self.path, (outer.status, outer.body))
+                extra: dict[str, str] = {}
                 if outer.script:
-                    body = outer.script.pop(0)
+                    entry = outer.script.pop(0)
+                    if isinstance(entry, tuple):
+                        status, body, *rest = entry
+                        extra = rest[0] if rest else {}
+                    else:
+                        body = entry
                 data = (body if isinstance(body, str) else json.dumps(body)).encode()
                 try:
                     if outer.stall_after is not None:      # a stream that goes quiet in the middle
@@ -52,6 +59,8 @@ class Server:
                     self.send_response(status)
                     self.send_header("Content-Type", outer.content_type)
                     self.send_header("Content-Length", str(len(data)))
+                    for name, value in extra.items():
+                        self.send_header(name, value)
                     self.end_headers()
                     self.wfile.write(data)
                 except OSError:
@@ -76,6 +85,12 @@ class Server:
 
 def _event(name: str, data: dict) -> str:
     return f"event: {name}\ndata: {json.dumps(data)}\n\n"
+
+
+def sse_events(*events: dict) -> str:
+    """Server-sent events from raw event dicts (each has its `type`), for streams message_sse cannot
+    make: thinking blocks, a tool input in several pieces, events of a type nobody knows, an error."""
+    return "".join(_event(e["type"], e) for e in events)
 
 
 def message_sse(content: list[dict], stop_reason: str = "end_turn", usage: dict | None = None) -> str:
@@ -121,7 +136,7 @@ def ollama_ndjson(pieces=(), tool_calls=(), done_reason: str = "stop") -> str:
 
 
 def api_key_of(request) -> str:
-    """The key a request carries: the anthropic SDK sends it as x-api-key up to 1.x, as a Bearer token from 2.0."""
+    """The key a request carries: AnthropicProvider sends it as x-api-key (a Bearer token is read too)."""
     headers = request["headers"]
     return headers.get("x-api-key") or headers.get("authorization", "").removeprefix("Bearer ")
 

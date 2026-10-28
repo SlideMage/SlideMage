@@ -2845,3 +2845,8 @@ CLAUDE_CODE_READ_ONLY is CLAUDE_CODE_PRE_APPROVED (refresh_preview writes the pr
 
 NEW: After the assistant edits a slide, the preview shows it in the slide's own language and position.
 - Before, the preview after an edit and a preview the assistant asked for could show different languages, or the wrong copy of a slide used twice in a deck.
+
+v8.65.1 (2026-10-27, plugins plan, phase 4): The Anthropic API is reached without the anthropic SDK. AnthropicProvider moved to ai/anthropic_provider.py and talks to /v1/messages and /v1/models with http.client and server-sent events, as the Ollama provider already did with its own plumbing. It keeps what the SDK gave: streaming for chat() too, so that Stop always has a connection to end; two retries with backoff (or the server's retry-after) on 408/409/429/5xx and dropped connections, only before any answer has arrived, and a Stop that also ends the wait; the same error messages; unknown events and deltas ignored. The assistant's turn is kept as plain JSON blocks (thinking blocks with their signatures included) and replayed unchanged. Tests in test_agent_claude.py and test_ai_providers.py.
+
+NEW: Nothing changes for you; the Claude API route works as before.
+- The anthropic package is no longer used (its removal from the build is a separate step).

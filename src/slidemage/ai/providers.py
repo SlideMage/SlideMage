@@ -43,7 +43,6 @@ from typing import ClassVar, Protocol
 
 from .. import app_settings
 from ..project import ProjectContext
-from . import credentials
 from .agent_types import AgentMessage, AssistantMessage, ToolCall, ToolResultsMessage, ToolSpec
 
 Message = dict[str, str]
@@ -128,6 +127,13 @@ class _HttpProvider:
         self._sock: socket.socket | None = None     # of the running request, for abort()
         self._cancelled = False
 
+    @staticmethod
+    def _connection(parts: urllib.parse.SplitResult, timeout: float) -> http.client.HTTPConnection:
+        """A not yet connected connection to the URL `parts` (http or https)."""
+        connection_class = (http.client.HTTPSConnection if parts.scheme == "https"
+                            else http.client.HTTPConnection)
+        return connection_class(parts.hostname or "localhost", parts.port, timeout=timeout)
+
     @contextmanager
     def _request(self, method: str, base_url: str, endpoint: str, *, headers: dict[str, str],
                  payload: dict | None, timeout: float):
@@ -135,9 +141,7 @@ class _HttpProvider:
         transport failures, while sending or reading, become ProviderError. abort() closes the
         socket under a blocked read."""
         parts = urllib.parse.urlsplit(base_url)
-        connection_class = (http.client.HTTPSConnection if parts.scheme == "https"
-                            else http.client.HTTPConnection)
-        conn = connection_class(parts.hostname or "localhost", parts.port, timeout=timeout)
+        conn = self._connection(parts, timeout)
         connected = False
         try:
             if self._cancelled:
@@ -459,210 +463,3 @@ def _image_media_type(data: bytes) -> str:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
     raise ProviderError("Claude reads PNG, JPEG, GIF and WebP images only.")
-
-
-# Models whose API takes output_config.effort (older ones answer 400 to it).
-_EFFORT_MODELS_RE = re.compile(r"^claude-(?:(?:sonnet|opus)-(?:5|4-[6-9])|fable-|mythos-|haiku-5)")
-AGENT_EFFORT = "medium"     # Anthropic's start for agentic, multi-step tool use
-
-
-def _sdk():
-    """The ``anthropic`` module, imported on first use (about a second to load)."""
-    import anthropic
-    return anthropic
-
-
-class AnthropicProvider:
-    """Claude through the official SDK. Whatever is sent here leaves the
-    machine -- callers get the user's per-project consent first (see
-    ai_profile.cloud_seen)."""
-
-    service = "Anthropic"
-    is_local = False
-    base_url = "https://api.anthropic.com"
-    max_retries = 2     # the SDK's own backoff for 429 / 5xx / dropped connections
-
-    def __init__(self, model: str = DEFAULT_ANTHROPIC_MODEL, api_key: str = "") -> None:
-        self.model = model or DEFAULT_ANTHROPIC_MODEL
-        self._api_key = api_key
-        self._cancelled = False
-        self._stream = None     # the running request, for abort()
-        self._client = None     # its SDK client, for abort() while the request is still being made (or retried)
-
-    @classmethod
-    def for_project(cls, ctx: ProjectContext, model: str = "") -> "AnthropicProvider":
-        """With the key the environment, the keychain or the project's settings holds now."""
-        stored = credentials.get_api_key(ctx)
-        return cls(model or DEFAULT_ANTHROPIC_MODEL, stored.value if stored else "")
-
-    @property
-    def label(self) -> str:
-        return f"{self.model} · cloud"
-
-    def _key(self) -> str:
-        if not self._api_key:
-            raise ProviderError(
-                "No Anthropic API key set. Add one in Settings, or set ANTHROPIC_API_KEY.")
-        return self._api_key
-
-    def _translate(self, exc: Exception) -> ProviderError:
-        """The ProviderError (with a message for the user) an SDK failure stands for."""
-        sdk = _sdk()
-        if self._cancelled:
-            return Cancelled("Aborted.")
-        if isinstance(exc, ProviderError):
-            return exc
-        if isinstance(exc, sdk.APIStatusError):
-            status, detail = exc.status_code, _error_detail(exc.response.content)
-            if status == 401:
-                return ProviderError("Anthropic rejected the API key (HTTP 401). Check it in Settings.")
-            if status == 429:
-                return ProviderError(f"Anthropic rate limit reached (HTTP 429), try again shortly: {detail}")
-            if status == 529:
-                return ProviderError(f"Anthropic is overloaded (HTTP 529), try again shortly: {detail}")
-            return ProviderError(f"Anthropic returned HTTP {status}: {detail}")
-        if isinstance(exc, sdk.APITimeoutError):
-            return ProviderError("Anthropic request timed out.")
-        if isinstance(exc, sdk.APIConnectionError):
-            return ProviderError(f"Anthropic unreachable: {exc.__cause__ or exc}")
-        return ProviderError(f"Anthropic request failed: {exc}")
-
-    @contextmanager
-    def _session(self, timeout: float):
-        """An SDK client for one request; every failure leaves as a ProviderError."""
-        client = _sdk().Anthropic(
-            api_key=self._key(), base_url=self.base_url, timeout=timeout, max_retries=self.max_retries)
-        self._client = client
-        try:
-            yield client
-        except Exception as exc:  # noqa: BLE001 -- whatever the SDK or its HTTP layer raises
-            raise self._translate(exc) from exc
-        finally:
-            self._stream = self._client = None
-            client.close()
-
-    def _stream_message(self, client, on_text: Callable[[str], None] | None, **request):
-        with client.messages.stream(**request) as stream:
-            self._stream = stream
-            if self._cancelled:
-                raise Cancelled("Aborted.")
-            for text in stream.text_stream:
-                if self._cancelled:
-                    raise Cancelled("Aborted.")
-                if on_text is not None:
-                    on_text(text)
-            return stream.get_final_message()
-
-    def chat(
-        self, messages: list[Message], *, system: str = "",
-        images: list[bytes] | None = None, schema: dict | None = None,
-        temperature: float = 0.2, max_tokens: int = 2048, timeout: float = 300.0,
-        think: bool = False, num_ctx: int | None = None,
-    ) -> ChatReply:
-        turns: list[dict] = [dict(m) for m in messages]
-        if images:
-            last = turns[-1]
-            blocks: list[dict] = [_image_block(data) for data in images]
-            turns[-1] = {"role": last["role"],
-                         "content": blocks + [{"type": "text", "text": last["content"]}]}
-        if schema:
-            system = (system + "\n\n" if system else "") + (
-                "Answer with a single JSON object and nothing else -- no prose, no "
-                "code fences. It must conform to this JSON schema:\n" + json.dumps(schema))
-        request: dict = {"model": self.model, "max_tokens": max_tokens, "messages": turns}
-        if system:
-            request["system"] = system
-        with self._session(timeout) as client:
-            message = self._stream_message(client, None, **request)
-        return ChatReply(text=_message_text(message), truncated=message.stop_reason == "max_tokens")
-
-    def stream_turn(
-        self, system: str, messages: list[AgentMessage], tools: list[ToolSpec],
-        on_text: Callable[[str], None], *, max_tokens: int = 16000, timeout: float = 300.0,
-    ) -> AssistantMessage:
-        """One model turn of the agent loop: `on_text` gets the answer as it streams; the result
-        carries the tool calls. The system prompt, tools and history are cached as a prefix (the
-        top-level cache_control follows the end of the history), so a loop of tool calls pays for
-        its context once."""
-        request: dict = {"model": self.model, "max_tokens": max_tokens,
-                         "messages": _wire_messages(messages), "cache_control": {"type": "ephemeral"}}
-        if system:
-            request["system"] = system
-        if tools:
-            request["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.schema}
-                                for t in tools]
-        if _EFFORT_MODELS_RE.match(self.model):
-            request["output_config"] = {"effort": AGENT_EFFORT}
-        with self._session(timeout) as client:
-            message = self._stream_message(client, on_text, **request)
-        calls = [ToolCall(b.id, b.name, b.input if isinstance(b.input, dict) else {})
-                 for b in message.content if b.type == "tool_use"]
-        usage = message.usage
-        return AssistantMessage(
-            text=_message_text(message), tool_calls=calls,
-            stop=message.stop_reason if message.stop_reason in ("tool_use", "max_tokens", "refusal")
-            else "end_turn",
-            raw=message.content,
-            usage={"input": usage.input_tokens, "output": usage.output_tokens,
-                   "cache_read": usage.cache_read_input_tokens or 0,
-                   "cache_write": usage.cache_creation_input_tokens or 0})
-
-    def list_models(self) -> list[str]:
-        try:
-            with self._session(10) as client:
-                return [model.id for model in client.models.list(limit=1000)]
-        except ProviderError:
-            return []
-
-    def abort(self) -> None:
-        """Ends a running chat() / stream_turn() from another thread (it raises Cancelled)."""
-        self._cancelled = True
-        stream, client = self._stream, self._client
-        if stream is not None:
-            # The socket first: closing the response alone does not wake a read blocked in another thread.
-            network = stream.response.extensions.get("network_stream")
-            _shutdown_socket(network.get_extra_info("socket") if network is not None else None)
-        # Closing what is open also ends a request that has not started streaming yet: its connect or
-        # its retry then fails at once instead of going on to answer nobody.
-        for closable in (stream, client):
-            if closable is not None:
-                try:
-                    closable.close()
-                except Exception:  # noqa: BLE001 -- the request is being torn down under the reader
-                    pass
-
-
-def _message_text(message) -> str:
-    return "".join(block.text for block in message.content if block.type == "text")
-
-
-def _image_block(data: bytes) -> dict:
-    return {"type": "image", "source": {
-        "type": "base64", "media_type": _image_media_type(data),
-        "data": base64.b64encode(data).decode("ascii")}}
-
-
-def _wire_messages(messages: list[AgentMessage]) -> list[dict]:
-    """The agent's neutral history as Messages API turns."""
-    wire: list[dict] = []
-    for message in messages:
-        if isinstance(message, AssistantMessage):
-            content = message.raw if message.raw is not None else (
-                ([{"type": "text", "text": message.text}] if message.text else [])
-                + [{"type": "tool_use", "id": c.id, "name": c.name, "input": c.input}
-                   for c in message.tool_calls])
-            wire.append({"role": "assistant", "content": content})
-        elif isinstance(message, ToolResultsMessage):
-            wire.append({"role": "user", "content": [_tool_result_block(r) for r in message.results]})
-        else:
-            wire.append({"role": "user", "content": message.text})
-    return wire
-
-
-def _tool_result_block(result) -> dict:
-    block: dict = {"type": "tool_result", "tool_use_id": result.call_id}
-    block["content"] = ([{"type": "text", "text": result.text}] + [_image_block(i) for i in result.images]
-                        if result.images else result.text)
-    if result.is_error:
-        block["is_error"] = True
-    return block
