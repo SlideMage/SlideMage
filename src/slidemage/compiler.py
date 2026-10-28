@@ -45,7 +45,8 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
+from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
+from . import slide_versioning
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -607,6 +608,8 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
 
     language = deck_language.language_for_job(job)
+    if not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+        lines += slide_versioning.saved_version_lines(ctx, job.deck, language)
     resolved_deck, _dependencies = (deck_language.compile_deck(ctx, job.deck, language)
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text

@@ -114,3 +114,11 @@ def test_the_shared_placement_function(root):
     assert slide_add.translation_spec(first) == slide_add.CallSpec("conditionalslide", None, ["instructor"], None)
     assert slide_add.translation_call(deck, "abe-EN-Missing") is None
     assert slide_add.translation_call(deck, "abc-DE-Hallo").id == "abc"        # by the bare id, whichever language
+
+
+def test_insert_translation_uses_source_placement_and_call(run, root):
+    deck_of(root, "\\conditionalslide[instructor]{abc-EN-Hello}\n\\slide{abd-EN-Second}\n")
+    add(run, add_to_deck=False)
+    run("insert_slide", slide=german(root))
+    assert deck_calls(root) == ["\\conditionalslide[instructor]{abc-EN-Hello}",
+                                f"\\conditionalslide[instructor]{{{german(root)}}}", "\\slide{abd-EN-Second}"]

@@ -700,3 +700,123 @@ def test_a_slide_the_plan_counted_as_fresh_is_not_counted_again_when_its_page_nu
     assert r.progress.deck(deck.name).fresh == 4
     r._count_fresh(second)                                       # a slide really rendered now
     assert r.progress.deck(deck.name).fresh == 5
+
+
+def test_a_slide_is_counted_once_however_often_a_job_finds_it_current(project, store, raster):
+    # A batch the plan still held ran again after the same batch had finished, and counted its 16 slides a second
+    # time: the instructor view showed 268 of 252 renders. So did a batch stopped part-way and run again.
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    first, second = background_renders.deck_units(project, deck, "instructor", "EN")[:2]
+    r.progress = background_renders.Progress([background_renders.DeckProgress(deck.name, total=10, fresh=4)])
+    r._counted = {first.label}                                   # current when the plan was made
+    for _run in range(3):
+        r._count_fresh(first)
+        r._count_fresh(second)
+    counted = r.progress.deck(deck.name)
+    assert counted.fresh == 5 and counted.views["instructor"][1] == 1
+
+
+def test_a_failed_slide_is_tried_once_more_on_its_own_when_everything_else_is_rendered(project, store, raster, monkeypatch):
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    broken, other = background_renders.deck_units(project, deck, "instructor", "EN")[:2]
+    real_units = background_renders.deck_units
+    monkeypatch.setattr(background_renders, "deck_units", lambda *a, **k: [u for u in real_units(*a, **k)
+                                                                            if u.id_slug in (broken.id_slug, other.id_slug)])
+    monkeypatch.setattr(r, "ordered_decks", lambda: [deck])
+    monkeypatch.setattr(r, "versions_for", lambda _deck: ["instructor"])
+    monkeypatch.setattr(r, "languages_for", lambda _deck: ["EN"])
+    tex.fail[broken.id_slug] = "Render failed for x:\n! Undefined control sequence."
+    with pytest.raises(RuntimeError):
+        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    plan = r.scan()                                              # the other slide first; the failed one waits
+    assert [u.label for _, u in plan] == [other.label] and r.progress.deck(deck.name).failed == 1
+    r.render_unit(other, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    plan = r.scan()                                              # nothing else left: one more try, on its own
+    assert [u.label for _, u in plan] == [broken.label] and broken.label in r._single
+    assert r.progress.deck(deck.name).failed == 0 and r.progress.left == 1
+    with pytest.raises(RuntimeError):
+        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert len([c for c in tex.calls if c[0] == broken.id_slug]) == 2
+    assert r.scan() == [] and r.progress.deck(deck.name).failed == 1      # once only
+    assert r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+
+
+def test_a_failed_slide_that_renders_on_its_last_try_is_no_longer_a_failure(project, store, raster, monkeypatch):
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    broken = background_renders.deck_units(project, deck, "instructor", "EN")[0]
+    real_units = background_renders.deck_units
+    monkeypatch.setattr(background_renders, "deck_units", lambda *a, **k: [u for u in real_units(*a, **k) if u.id_slug == broken.id_slug])
+    monkeypatch.setattr(r, "ordered_decks", lambda: [deck])
+    monkeypatch.setattr(r, "versions_for", lambda _deck: ["instructor"])
+    monkeypatch.setattr(r, "languages_for", lambda _deck: ["EN"])
+    tex.fail[broken.id_slug] = "Render failed for x:\n! A passing problem."
+    with pytest.raises(RuntimeError):
+        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert [u.label for _, u in r.scan()] == [broken.label]
+    del tex.fail[broken.id_slug]
+    assert r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken()) is not None
+    assert store.failures() == [] and r.resolver.lookup(broken).state is Freshness.FRESH
+    r.scan()
+    assert r.progress.deck(deck.name).fresh == 1 and r.progress.failures == 0
+
+
+def _context_units(project, deck):
+    plain = {u.label for u in background_renders.deck_units(project, deck, "instructor", "EN")}
+    every = background_renders.deck_units(project, deck, "instructor", "EN", None, lambda: True)
+    return [u for u in every if u.label not in plain], every
+
+
+def test_a_slide_that_needs_its_deck_is_a_unit_only_when_the_deck_has_a_compile_to_typeset_it_in(project, store, raster):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    context, every = _context_units(project, deck)
+    assert context and all(u.context == deck.name for u in context)
+    assert not any(u.context for u in every if u not in context)
+    assert background_renders.deck_units(project, deck, "instructor", "EN", None, lambda: False) == \
+        background_renders.deck_units(project, deck, "instructor", "EN")
+    assert r.resolver.fast_key(context[0]) != r.resolver.fast_key(
+        __import__("dataclasses").replace(context[0], context=""))
+
+
+def test_the_sweep_counts_and_renders_such_slides_on_their_own_once_the_deck_is_compiled(project, store, raster, monkeypatch):
+    from slidemage import deck_context
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    monkeypatch.setattr(r, "ordered_decks", lambda: [deck])
+    monkeypatch.setattr(r, "versions_for", lambda _deck: ["instructor"])
+    monkeypatch.setattr(r, "languages_for", lambda _deck: ["EN"])
+    monkeypatch.setattr(deck_context, "in_deck_ready", lambda *a, **k: False)
+    without = len(r.scan())
+    monkeypatch.setattr(deck_context, "in_deck_ready", lambda *a, **k: True)
+    plan = r.scan()
+    context = {u.label for _, u in plan if u.context}
+    assert len(plan) > without and context and context <= r._single
+
+
+def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(project, store, raster, monkeypatch):
+    from slidemage import deck_context
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    unit = _context_units(project, deck)[0][0]
+    asked = []
+
+    def in_deck(ctx, the_deck, view, slide_id, id_slug, log, cancel, *, all_steps=False, language=None):
+        asked.append((the_deck.name, view, id_slug, all_steps, language))
+        return FakeTeX(project, pages=1)(unit, cancel) if id_slug == unit.id_slug else None
+
+    monkeypatch.setattr(deck_context, "render_in_deck", in_deck)
+    r._render = r._render_pdf
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is not None
+    assert asked == [(deck.name, "instructor", unit.id_slug, True, "EN")] and not tex.calls
+    assert r.resolver.lookup(unit).state is Freshness.FRESH
+    monkeypatch.setattr(deck_context, "render_in_deck", lambda *a, **k: None)
+    other = _context_units(project, deck)[0][-1]
+    if other.label != unit.label:
+        with pytest.raises(RuntimeError, match="no compile"):
+            r.render_unit(other, background_renders.ORIGIN_BACKGROUND, CancelToken())

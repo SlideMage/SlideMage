@@ -6,8 +6,9 @@ small chip, and stops everything when the window closes.
 
 The chip stands over the bottom left of the workspace and is there only while there is something to say: previews
 being prepared (with how many are left), prepared previews waiting for the user to stop working (and why), or
-slides that cannot be rendered; once everything is rendered it says so in green. Clicking it shows the decks in the order they are worked through and the controls:
-pause, render now, skip the open deck, retry the failed slides.
+slides that cannot be rendered; once everything is rendered it says so in green. Clicking it, or the dial beside
+it, opens the status window: the decks in the order they are worked through, which ones are prepared at all, the
+renders running now, the disk space used and the controls: pause, render now, retry the failed slides.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from typing import Optional
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMenu, QMessageBox,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_store
@@ -37,6 +38,7 @@ INPUT_EVENTS = {QEvent.Type.MouseMove, QEvent.Type.MouseButtonPress, QEvent.Type
 
 VIEW_COLUMNS = (("instructor", "Instructor"), ("during-course", "During course"), ("after-course", "After course"))
 DIAL_SIZE = 34
+BIG_DIAL_SIZE = 88      # the status window's, top right
 
 
 def waiting_text(reason: str) -> str:
@@ -45,17 +47,19 @@ def waiting_text(reason: str) -> str:
 
 
 class Dial(QWidget):
-    """A small ring that fills with the share of the renders that are up to date; the number in it is the percentage."""
+    """A ring that fills with the share of the renders that are up to date; the number in it is the percentage.
+    Small and clickable in the main window; large, with a % sign and not clickable, in the status window."""
 
     clicked = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, size: int = DIAL_SIZE, clickable: bool = True) -> None:
         super().__init__(parent)
         self.percent = 0.0
         self.state = "idle"          # idle, working, waiting, done, failed
-        self.setFixedSize(QSize(DIAL_SIZE, DIAL_SIZE))
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.setFixedSize(QSize(size, size))
+        if clickable:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.setAccessibleName("Background previews")
 
     def set_value(self, percent: float, state: str) -> None:
@@ -63,7 +67,7 @@ class Dial(QWidget):
         self.update()
 
     def text(self) -> str:
-        return f"{int(self.percent)}"
+        return f"{int(self.percent)}" + ("%" if self.width() > DIAL_SIZE else "")
 
     def mousePressEvent(self, event) -> None:      # noqa: N802 -- Qt's name
         if event.button() == Qt.MouseButton.LeftButton:
@@ -85,15 +89,17 @@ class Dial(QWidget):
         arc = colours.get(self.state, QColor(text))
         if self.state in ("idle", "waiting"):
             arc.setAlpha(150)
-        rect = QRectF(3, 3, self.width() - 6, self.height() - 6)
-        painter.setPen(QPen(track, 3))
+        scale = self.width() / DIAL_SIZE
+        width = 3 * scale ** 0.5        # the ring grows thinner than the dial, or a large one looks heavy
+        rect = QRectF(width, width, self.width() - 2 * width, self.height() - 2 * width)
+        painter.setPen(QPen(track, width))
         painter.drawEllipse(rect)
-        pen = QPen(arc, 3)
+        pen = QPen(arc, width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawArc(rect, 90 * 16, -int(self.percent * 3.6 * 16))
         font = QFont(self.font())
-        font.setPixelSize(10)
+        font.setPixelSize(round(10 * scale * (0.8 if scale > 1 else 1)))     # room for the % sign
         font.setBold(True)
         painter.setFont(font)
         painter.setPen(text)
@@ -101,7 +107,8 @@ class Dial(QWidget):
 
 
 class StatusDialog(QDialog):
-    """Which decks are up to date and which are outstanding, per version, in the order they are worked through."""
+    """Which decks are up to date and which are outstanding, per version, in the order they are worked through.
+    Opened from the dial and from the chip. A deck's tick says whether it is prepared in the background."""
 
     def __init__(self, controller: "BackgroundPreviews", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -109,9 +116,14 @@ class StatusDialog(QDialog):
         self.setWindowTitle("Background previews")
         self.setMinimumSize(720, 420)
         layout = QVBoxLayout(self)
+        top = QHBoxLayout()
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        layout.addWidget(self.summary)
+        self.summary.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        top.addWidget(self.summary, 1)
+        self.dial = Dial(self, BIG_DIAL_SIZE, clickable=False)
+        top.addWidget(self.dial, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(top)
         self.overall = QProgressBar()
         self.overall.setRange(0, 100)
         layout.addWidget(self.overall)
@@ -120,6 +132,8 @@ class StatusDialog(QDialog):
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tree.setHeaderLabels(["Deck", *[label for _view, label in VIEW_COLUMNS], "Status"])
+        self.tree.headerItem().setToolTip(0, "Ticked decks are prepared in the background.")
+        self.tree.itemChanged.connect(self._deck_ticked)
         header = self.tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, 5):
@@ -176,8 +190,12 @@ class StatusDialog(QDialog):
             self.summary.setText("Background previews are not available.")
             return
         progress = renderer.progress
-        self.summary.setText(controller.hover_text())
+        used = (controller.store.total_bytes() if controller.store else 0) / 1024 ** 3
+        self.summary.setText(f"{controller.hover_text()}\nStored previews: {used:.2f} GB of {renderer.limit_bytes() / 1024 ** 3:.1f} GB.")
+        self.dial.set_value(progress.percent, controller.dial_state())
         self.overall.setValue(int(progress.percent))
+        off = renderer.decks_off()          # the setting, not the plan: a tick holds before the next plan
+        self.tree.blockSignals(True)
         self.tree.clear()
         for deck in progress.decks:
             if deck.off:
@@ -193,15 +211,22 @@ class StatusDialog(QDialog):
                 if progress.working and progress.working.startswith(deck.deck + ":"):
                     status += " · rendering"
             item = QTreeWidgetItem([deck.deck, *[self.cell(deck.views.get(view)) for view, _label in VIEW_COLUMNS], status])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Unchecked if deck.deck in off else Qt.CheckState.Checked)
             for column in range(1, 4):
                 item.setTextAlignment(column, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.tree.addTopLevelItem(item)
+        self.tree.blockSignals(False)
         self._refresh_running(renderer)
         reason = renderer.waiting_because()
         self.note.setText(waiting_text(reason) if reason and progress.left else "")
         self.pause.setText("Resume" if renderer.gate.paused else "Pause")
         self.failures.setVisible(bool(progress.failures))
         self.retry.setVisible(bool(progress.failures))
+
+    def _deck_ticked(self, item: QTreeWidgetItem, column: int) -> None:
+        if column == 0:
+            self.controller.set_deck_enabled(item.text(0), item.checkState(0) == Qt.CheckState.Checked)
 
     def _refresh_running(self, renderer) -> None:
         """One row per render running now (several run at once); the title says how many may and why not more."""
@@ -302,7 +327,7 @@ class BackgroundPreviews(QObject):
         self.renderer: Optional[BackgroundRenderer] = None
         self.chip = Chip("", "info", pressable=True, parent=central)
         self.chip.hide()
-        self.chip.clicked.connect(self.show_menu)
+        self.chip.clicked.connect(self.show_status)
         self.dial = Dial(central)
         self.dial.hide()
         self.dial.clicked.connect(self.show_status)
@@ -414,6 +439,7 @@ class BackgroundPreviews(QObject):
         record = compile_records.read_record(ctx.build_dir, job.jobname)
         if record is not None and renderer.ingest_compile(job, pdf, record):
             self.changed.emit()
+        renderer.replan()          # the slides that need their deck can be typeset in this compile now
 
     def stop(self) -> None:
         if self._on_compiled in compiler.COMPILE_LISTENERS:
@@ -439,7 +465,7 @@ class BackgroundPreviews(QObject):
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return None
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
+        if target.macro == "slidestep" and target.steps:
             return None
         try:
             unit = render_key.unit_for(target, view, language, deck_name)
@@ -495,13 +521,13 @@ class BackgroundPreviews(QObject):
             reason = renderer.waiting_because()
             if reason == idle_gate.IN_USE:
                 return f"Previews wait while you use SlideMage · {left} left", "muted"
-            return (f"Previews paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
+            return (f"Preview rendering paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
         if progress.failures:
             return f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered", "warning"
-        return "All previews are up to date.", "ok"
+        return "All previews are up to date.", "ok_text"
 
     def hover_text(self) -> str:
-        """What the dial's tooltip and the status window's first line say."""
+        """What the dial's tooltip and the status window's first lines say."""
         renderer = self.renderer
         if renderer is None or not renderer.enabled:
             return "Background previews are switched off (Settings → General)."
@@ -520,7 +546,6 @@ class BackgroundPreviews(QObject):
             lines.append(waiting_text(renderer.waiting_because()))
         elif not progress.left:
             lines.append("Everything is ready.")
-        lines.append("Click for the decks.")
         return "\n".join(lines)
 
     def dial_state(self) -> str:
@@ -541,7 +566,7 @@ class BackgroundPreviews(QObject):
             return
         progress = renderer.progress
         self.dial.set_value(progress.percent, self.dial_state())
-        self.dial.setToolTip(self.hover_text())
+        self.dial.setToolTip(self.hover_text() + "\nClick for the decks.")
         self.dial.setAccessibleDescription(self.hover_text())
         text, tone = self.summary()
         if text != self._chip_said:
@@ -576,7 +601,7 @@ class BackgroundPreviews(QObject):
         self.chip.move(x + self.dial.width() + 8, y + max(0, (self.dial.height() - self.chip.height()) // 2))
 
     def show_status(self) -> None:
-        """The window with every deck's state: opened from the dial."""
+        """The window with every deck's state: opened from the dial and from the chip."""
         if self.renderer is None:
             return
         if self._status_dialog is None or not self._status_dialog.isVisible():
@@ -591,43 +616,7 @@ class BackgroundPreviews(QObject):
             self._place()
         return False
 
-    # -- the menu --------------------------------------------------------------------------------
-
-    def menu(self) -> QMenu:
-        menu = QMenu(self.chip)
-        renderer = self.renderer
-        if renderer is None:
-            return menu
-        progress = renderer.progress
-        for deck in progress.decks[:12]:
-            action = menu.addAction(f"{deck.deck}: {deck.fresh} of {deck.total} ready" + (f", {deck.failed} failed" if deck.failed else ""))
-            action.setEnabled(False)
-        if len(progress.decks) > 12:
-            menu.addAction(f"… and {len(progress.decks) - 12} more decks").setEnabled(False)
-        used = (self.store.total_bytes() if self.store else 0) / 1024 ** 3
-        menu.addAction(f"Stored: {used:.2f} GB of {renderer.limit_bytes() / 1024 ** 3:.1f} GB").setEnabled(False)
-        menu.addSeparator()
-        paused = renderer.gate.paused
-        toggle = menu.addAction("Resume" if paused else "Pause")
-        toggle.triggered.connect(self.toggle_pause)
-        now = menu.addAction("Render now")
-        now.triggered.connect(self.render_now)
-        deck = self.window.state.deck
-        if deck is not None:
-            skip = menu.addAction(f"Prepare {deck.name} in the background")
-            skip.setCheckable(True)
-            skip.setChecked(deck.name not in renderer.decks_off())
-            skip.toggled.connect(lambda on: self.set_deck_enabled(deck.name, on))
-        if progress.failures:
-            show = menu.addAction(f"Show the {progress.failures} failed slides…")
-            show.triggered.connect(self.show_failures)
-            retry = menu.addAction("Try the failed slides again")
-            retry.triggered.connect(self.retry_failed)
-        return menu
-
-    def show_menu(self) -> None:
-        menu = self.menu()
-        menu.exec(self.chip.mapToGlobal(QPoint(0, -menu.sizeHint().height())))
+    # -- the status window's controls -------------------------------------------------------------
 
     def toggle_pause(self) -> None:
         gate = self.renderer.gate

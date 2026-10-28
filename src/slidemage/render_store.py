@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS renders_unit ON renders(unit);
 CREATE TABLE IF NOT EXISTS failures (
     fast_key TEXT PRIMARY KEY, kind TEXT NOT NULL, attempts INTEGER NOT NULL, error TEXT NOT NULL,
     first_at REAL NOT NULL, next_try_at REAL NOT NULL, manifest TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS last_tries (fast_key TEXT PRIMARY KEY, tried_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS texsets (digest TEXT PRIMARY KEY, files TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS deck_usage (
     deck TEXT PRIMARY KEY, last_opened REAL NOT NULL, open_count INTEGER NOT NULL,
@@ -368,12 +369,24 @@ class RenderStore:
         return (failure["kind"] == TRANSIENT and failure["attempts"] < MAX_TRANSIENT_ATTEMPTS
                 and self._clock() >= failure["next_try_at"])
 
+    def tried_last(self, key: str) -> bool:
+        """Whether the failed unit of `key` had its try after everything else was rendered (note_last_try)."""
+        with self._lock:
+            return self.db.execute("SELECT 1 FROM last_tries WHERE fast_key=?", (key,)).fetchone() is not None
+
+    def note_last_try(self, key: str) -> None:
+        with self._lock:
+            self.db.execute("INSERT OR REPLACE INTO last_tries VALUES (?,?)", (key, self._clock()))
+            self.db.commit()
+
     def forget_failure(self, key: Optional[str] = None) -> None:
         with self._lock:
             if key is None:
                 self.db.execute("DELETE FROM failures")
+                self.db.execute("DELETE FROM last_tries")
             else:
                 self.db.execute("DELETE FROM failures WHERE fast_key=?", (key,))
+                self.db.execute("DELETE FROM last_tries WHERE fast_key=?", (key,))
             self.db.commit()
 
     def failures(self) -> list[dict]:

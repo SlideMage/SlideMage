@@ -162,13 +162,13 @@ def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
     assert controller.summary() == ("Preparing previews · 11 left", "info")
     rendering(controller.renderer, False)
     progress.paused_because = "you are working"
-    assert controller.summary() == ("Previews paused (you are working) · 11 left", "muted")
+    assert controller.summary() == ("Preview rendering paused (you are working) · 11 left", "muted")
     controller.refresh()
     assert controller.chip.isVisible() and "paused" in controller.chip.text()
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], failures=2, scanned_at=1.0)
     assert controller.summary() == ("2 slides cannot be rendered", "warning")
     controller.renderer.progress = Progress([DeckProgress("a", total=3, fresh=3)], scanned_at=1.0)
-    assert controller.summary() == ("All previews are up to date.", "ok")      # green
+    assert controller.summary() == ("All previews are up to date.", "ok_text")      # green text, no background
     controller.refresh()
     assert controller.chip.isVisible() and controller.dial.isVisible()
     app_settings.set(window.project, background_renders.ENABLED_KEY, False)
@@ -176,27 +176,35 @@ def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
     assert controller.summary()[0] == ""
 
 
-def test_the_menu_lists_the_decks_and_pauses_renders_now_and_skips_the_open_deck(window, monkeypatch):
+def test_the_chip_opens_the_status_window_which_pauses_renders_now_and_leaves_decks_out(window, monkeypatch):
+    # The chip had a menu of its own that said less than the window; both open the window now (v8.66.0).
     controller = window.background
+    name = window.state.deck.name
     # The renderer's planning thread replaces its progress at any time; this one stays for the test.
-    progress = Progress([DeckProgress("slidemage-manual", total=10, fresh=4, failed=1)], failures=1)
+    progress = Progress([DeckProgress(name, total=10, fresh=4, failed=1)], failures=1, scanned_at=1.0)
     monkeypatch.setattr(type(controller.renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
                         raising=False)
-    texts = [a.text() for a in controller.menu().actions()]
-    assert "slidemage-manual: 4 of 10 ready, 1 failed" in texts
-    assert any(t.startswith("Stored:") for t in texts) and "Pause" in texts and "Render now" in texts
-    assert "Show the 1 failed slides…" in texts
-    controller.toggle_pause()
+    controller.chip.clicked.emit()
+    dialog = controller._status_dialog
+    assert dialog is not None and dialog.isVisible()
+    assert "Stored previews:" in dialog.summary.text() and "Click for" not in dialog.summary.text()
+    assert dialog.dial.text() == "40%"                                       # the large dial, top right
+    assert not dialog.failures.isHidden() and not dialog.retry.isHidden()
+    dialog.pause.click()
     assert controller.renderer.gate.paused and controller.renderer.gate.reason() == "paused"
-    assert "Resume" in [a.text() for a in controller.menu().actions()]
-    controller.render_now()
+    assert dialog.pause.text() == "Resume"
+    dialog.render_now.click()
     assert not controller.renderer.gate.paused
-    name = window.state.deck.name
-    controller.set_deck_enabled(name, False)
+    item = dialog.tree.topLevelItem(0)
+    assert item.text(0) == name and item.checkState(0) == Qt.CheckState.Checked
+    item.setCheckState(0, Qt.CheckState.Unchecked)                          # leave the deck out
     assert name in app_settings.get(window.project, background_renders.DECKS_OFF_KEY)
     assert name not in [d.name for d in controller.renderer.ordered_decks()]
-    controller.set_deck_enabled(name, True)
+    dialog.refresh()
+    assert dialog.tree.topLevelItem(0).checkState(0) == Qt.CheckState.Unchecked   # the setting, before the next plan
+    dialog.tree.topLevelItem(0).setCheckState(0, Qt.CheckState.Checked)
     assert name in [d.name for d in controller.renderer.ordered_decks()]
+    dialog.reject()
 
 
 def test_retrying_failed_slides_forgets_the_failures(window):
@@ -431,7 +439,7 @@ def test_the_chip_stays_blue_between_two_jobs_of_one_sweep(window):
     assert controller.summary() == ("Preparing previews · 6 left", "info")
     assert controller.dial_state() == "working"
     renderer.progress.paused_because = "waiting for a compile"             # something holds it back: now it is waiting
-    assert controller.summary() == ("Previews paused (waiting for a compile) · 6 left", "muted")
+    assert controller.summary() == ("Preview rendering paused (waiting for a compile) · 6 left", "muted")
     assert controller.dial_state() == "waiting"
 
 

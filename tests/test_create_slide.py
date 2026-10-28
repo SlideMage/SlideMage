@@ -45,7 +45,7 @@ def env(root, monkeypatch):
 
 
 def create(env, **args):
-    return env.box.execute(call("create_slide", **(dict(title="Draft", slug="Draft", body=BODY, deck="test") | args)))
+    return env.box.execute(call("create_slide", **(dict(title="Draft", slug="Draft", body=BODY) | args)))
 
 
 def new_slides(env):
@@ -77,6 +77,28 @@ def test_one_call_creates_inserts_marks_renders_and_shows(env, deck, after):
     applied = [event for event in env.events if isinstance(event, EditApplied)]
     assert len(applied) == 2
     assert applied[-1].after == path.read_text() and not applied[-1].undoable
+
+
+def test_omitted_deck_creates_in_the_open_deck(env):
+    result = create(env)
+    assert not result.is_error, result.text
+    path, = new_slides(env)
+    assert path.name.removesuffix("-current.tex") in env.deck.path.read_text()
+
+
+def test_omitted_deck_requires_an_open_deck(env):
+    env.workspace._context = replace(env.workspace.context(), deck=None)
+    result = create(env)
+    assert result.is_error and "No deck is open. Decks: test" in result.text
+    assert not new_slides(env) and not env.workspace.changed
+
+
+def test_omitted_deck_is_rechecked_after_confirmation(env):
+    env.box.ctx.mode = EDIT_ASK
+    env.workspace.before_confirm = lambda: setattr(env.workspace, "_context", replace(env.workspace.context(), deck=None))
+    result = create(env)
+    assert result.is_error and "not the open deck" in result.text
+    assert not new_slides(env) and not env.workspace.changed
 
 
 def test_the_new_slide_is_rendered_with_the_header_that_names_its_deck(env):
@@ -140,11 +162,11 @@ def test_failed_rollback_returns_existing_retry_and_never_mints_a_second_slide(e
     result = create(env, after="abc")
     path, = new_slides(env)
     id_slug = path.name.removesuffix("-current.tex")
-    assert result.is_error and f"add_slide(existing='{id_slug}', after='abc')" in result.text
+    assert result.is_error and f"insert_slide(slide='{id_slug}', after='abc')" in result.text
     assert "Rollback failed" in result.text and path.relative_to(env.root).as_posix() in result.text
     monkeypatch.setattr(deck_editor, "insert_slide_call", insert)
     for _ in range(2):
-        retry = env.box.execute(call("add_slide", existing=id_slug, after="abc"))
+        retry = env.box.execute(call("insert_slide", slide=id_slug, after="abc"))
         assert not retry.is_error, retry.text
     assert new_slides(env) == [path]
     assert env.deck.path.read_text().count(f"\\slide{{{id_slug}}}") == 1
@@ -281,7 +303,7 @@ def test_translation_rollback_failure_marks_both_surviving_slides(env, monkeypat
     monkeypatch.setattr(slide_add, "remove_created", lambda *a: (_ for _ in ()).throw(OSError("cleanup failed")))
     result = create(env, language="DE", translation_of="abc", body=slide_ids.slide_body(source))
     path, = new_slides(env)
-    assert result.is_error and "add_slide(existing=" in result.text
+    assert result.is_error and "insert_slide(slide=" in result.text
     assert ai_review.is_unreviewed(env.project, path) and ai_review.is_unreviewed(env.project, source)
 
 
