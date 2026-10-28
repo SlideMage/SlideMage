@@ -504,7 +504,7 @@ is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs
 - **Constraint on steps 4-7:** a template must stay self-contained so it can be packaged: one template file, its
   `schemes/scheme_<key>/` folder, and at most its own layout profile file. Nothing of it may assume it sits in the
   project root, and nothing in `latex/` may name a particular institution.
-- **Proposal, to settle by step 10 at the latest** (user decision):
+- **Proposal, to settle by step 16 at the latest** (user decision):
   - Files: `theme.toml` (id = template key, name, version, `requires_slidemage`, summary, author, homepage,
     license, layout profile used), `SlideMage_template_<key>.tex`, `schemes/scheme_<key>/`, optional
     `SlideMage_layout_<name>.tex`, `preview.png` for the catalogue, LICENSE, README.md, CHANGELOG.md.
@@ -514,7 +514,7 @@ is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs
     compile and preview, so it is offered like a bundled template and a project uses it by choosing its key, as
     today. A project copy of the same key wins (as project templates do now), which also lets a user freeze it.
 - **Then report the definition to the website side**, which adds `"themes"` to the schema, the builder and the
-  pages. The institution templates leaving the repository in step 10 are packaged first (step 11), but they are
+  pages. The institution templates leaving the repository in step 16 are packaged first (step 17), but they are
   private and never listed (below).
 - **What the website side settled on 2026-10-27** (`docs/Handover_2026-10-27-Website-To-App.md`), which a theme
   package inherits:
@@ -548,7 +548,7 @@ is. Context: `docs/Handover_2026-10-26-Website-Session.md` (section 2) and `docs
     read access to the theme repository's releases: for a fine-grained token, Repository permissions → Contents:
     Read-only, with the theme repository among its selected repositories. One token covers SlideMage and all of a
     user's theme repositories; no second token setting.
-  - **Catch, to check against GitHub's documentation at step 11:** as far as known, a fine-grained token can only
+  - **Catch, to check against GitHub's documentation at step 17:** as far as known, a fine-grained token can only
     reach repositories owned by one user or organization that the token's owner selects, and not a personal
     repository of someone else where they are only a collaborator. If that holds, Jürgen could not read
     `stpalan/slidemage-theme-uni-graz` with a fine-grained token; only a classic token with the broad `repo` scope
@@ -639,7 +639,7 @@ mix it in.
        does not exist; the call is gone, nothing changed.
      - `sm_rename.THEME_RENAMES` holds the surviving theme names, `THEME_REMOVED` the rest (reported by the compat
        change, `\gothamset` included). `bundled_copies` reports a dropped Gotham file the project changed as kept.
-     - The manual still says "Gotham theme" on slide 1ym and in `media/alt-text.json`: step 9, since changing it
+     - The manual still says "Gotham theme" on slide 1ym and in `media/alt-text.json`: step 15 (was 9), since changing it
        changes the render.
 3. **Consolidation.**
    - Base's replacements of theme parts move into the theme as their only definition.
@@ -849,11 +849,12 @@ mix it in.
      - **What the stress test shows does not follow the template's hooks.** (1) The pull-up of a frame the automatic Top Margin does not manage (`\SMContentTopShift`, the two column corrections) is fitted to the default title bar: with Top Margin 50bp and another title bar the first line of a manual-top frame lands 2.9pt above the margin ([T] columns: 5.2pt), so those three slides skip `top`. (2) The footer number's and the footnotes' right edges miss the logo's edge by about 2.1pt and 2.3pt when the template changes the right padding or the text margin: `\SMFooterRightShift` and `\SMFootnoteRightShift` are profile numbers that contain the catalog's default paddings (open question (c) of step 5). (3) `\SMTitleframeBottomPad` is not "the space under the last line": at 30pt the second subtitle line stood on the box's edge, the stress template needs 55pt (question (e)). (4) A profile other than fira needs the template to set `\SMTitleBarBottomAlign` (22.17pt for lmsans against 25.32pt), `\SMTopMargin` and `\SMContentTopAlign`; the tool prints them. Also seen in the Fira reference, not caused by this step: a `\footnote` inside a `\pause`d item shows its text from the first step, and a `columns[T]` straight after a `columns[t]` starts about 3pt under the list above it, so the list's last line almost touches a table's top rule.
      - **App.** `preview_equivalence` pins `SlideMage_layout_lmsans.tex` (re-audited: no view-dependent rule; the profile test covers every profile the framework ships) and renews the setup, fira and base pins; the contract document names both profiles. `latex_export` needed no change (the profile name is read from the template; a test covers lmsans). `bundled_copies` takes the file without a change (a test). No new UI: the app lists no profile names anywhere. `REUSE.toml` covers the fixture's copied media.
      - **Regression.** Identical to the step 6 baselines: in-repo 12 entries, 1084 pages, and the private copy 57 entries, 7160 pages, 0 differences (the harness compares the PDF font lists too). Tests: 3383 passed, 2 GUI/process tests failed under load and passed alone; the opt-in compile tests (`SLIDEMAGE_TEX_TESTS=1`) of the tool and the stress deck pass. Renders of the calibration deck (stress template, three versions; SlideMage template with fira and with lmsans) and the stress deck are in `C:/Users/ms/SlideMage/regression/step7-renders/`.
-   - **Next (proposal 2026-10-28, waiting for the user's approval):** `docs/plans/layout-from-metrics.md` makes
+   - **Next (approved by the user 2026-10-28):** `docs/plans/layout-from-metrics.md` makes
      the layout follow the font and the template (the stress test's findings above, and the user's step 5 answers).
-     If approved, it becomes steps 8-13 (v9.7.0-v9.12.0) and the steps below move to 14-17.
-8. **Bibliography file** (section 7). Can go any time after step 1.
-9. **Documentation.**
+     It is steps 8-13 (v9.7.0-v9.12.0); the steps below moved to 14-17 (renumbered 2026-10-28).
+8.-13. **Layout from metrics**: see `docs/plans/layout-from-metrics.md`.
+14. **Bibliography file** (section 7). Can go any time after step 1.
+15. **Documentation.**
    - README's directory layout and institution-layer sections, PROJECT_OVERVIEW.md ("Gotham theme")
    - the manual's slides 1ym (framework box: "the Gotham theme"), 1pf (one look, several institutions: a
      template is now colors, logo, fonts and layout) and 1gr (layout grid)
@@ -866,7 +867,7 @@ mix it in.
      a default. Make it after steps 4-7, so it shows the order as it ends up; next to "Making a template".
    - German translations where they exist (hd5)
    - Regenerate the manual's screenshots or crops only if something visible changed.
-10. **No institution templates in the repository** (needed before the repository goes public).
+16. **No institution templates in the repository** (needed before the repository goes public).
    - Move `example/SlideMage_template_uni-graz.tex` and `example/schemes/scheme_uni_graz/` to the real project
      (`D:\uniCLOUD\Slidemaster`), next to its mci and uni-ibk templates. SlideMage's own template is the only
      one the repository ships.
@@ -880,7 +881,7 @@ mix it in.
      the definition to the website side.
    - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
      history and the course-system code (`online.uni-graz.at`).
-11. **Private institution themes** (user request 2026-10-27; after step 10, and after the plugins plan's Phase 1 has
+17. **Private institution themes** (user request 2026-10-27; after step 16, and after the plugins plan's Phase 1 has
     an installer). Includes the private-repository install and update of section 8 ("Private themes stay out of
     the catalogue"): "Add theme from GitHub…", `source.json`, the update check and offer, and the error messages.
     Tests use a fake GitHub API, as the updater's tests do.
@@ -920,12 +921,12 @@ mix it in.
   **Decided by the user on 2026-10-27: a template only picks a profile or ships its own profile file; it never
   overrides a single profile value.** So profile values are not catalog hooks.
 - **Step 7: whether `lmsans` ships to users** as a selectable fallback, or stays test-only.
-- **Step 10 at the latest: the theme package** (section 8): files, release asset and manifest, install location
+- **Step 16 at the latest: the theme package** (section 8): files, release asset and manifest, install location
   and how a project uses it. Then tell the website side.
-- **Step 11: Uni Innsbruck and MCI.** **Decided by the user on 2026-10-27: they stay local**, as project templates
+- **Step 17: Uni Innsbruck and MCI.** **Decided by the user on 2026-10-27: they stay local**, as project templates
   in the real project. Private theme repositories install and update from GitHub with the user's token (section 8,
   also decided on 2026-10-27).
-- **Step 11, still open:** the Graz repository's home (a GitHub organization or `stpalan/...`, depending on the
+- **Step 17, still open:** the Graz repository's home (a GitHub organization or `stpalan/...`, depending on the
   fine-grained-token catch in section 8) and Jürgen's access level (read or write).
 
 ## Risks

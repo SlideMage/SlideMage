@@ -1,7 +1,7 @@
 # Plan: layout that follows the font and the template (steps 8-13 of the framework redesign)
 
-Written 2026-10-28, after step 7 (v9.6.0). Status: **proposal, waiting for the user's approval. No code changes
-before that.** It extends `docs/plans/template-owned-layout-and-own-theme.md` (the "main plan"); read its section 2
+Written 2026-10-28, after step 7 (v9.6.0). Status: **approved by the user on 2026-10-28, with the proposed
+answers to the five decisions at the end.** It extends `docs/plans/template-owned-layout-and-own-theme.md` (the "main plan"); read its section 2
 (the hook catalog), section 4 (layout profiles) and the "Done" notes under steps 5-7 first.
 
 ## Why
@@ -178,6 +178,12 @@ the repository 10 → 16, private institution themes 11 → 17.
   with step 10.
 
 ## Decisions for the user
+
+**Decided 2026-10-28 (the user approved the plan with the proposed answers):** (1) approved, with the renumbering;
+(2) sub-point shifts from deriving a value are accepted once shown with before/after images; (3)
+`\SMFootlineVOffset` is derived from the font, the gap itself becomes a hook; (4) `\SMTitleframeBottomPad` changes
+its meaning to "space under the last line" with a recomputed default, so existing decks look the same; (5) step 12's
+bug fixes are made now, with the affected slides listed and shown before/after.
 
 1. Approve this plan (and the renumbering of the later steps).
 2. Visible-change rule for steps 8-10: as with v9.4.1, sub-point shifts that come from deriving a value instead of
