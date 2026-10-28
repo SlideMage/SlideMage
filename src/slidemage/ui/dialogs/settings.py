@@ -19,6 +19,8 @@
   project's deck groups (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
   window's `open_deck_groups()`).
 * About: the version, the version history and the check for updates.
+* Plugins: the installed plugins (enable, update, remove), the catalogue's and Install from file…:
+  ui/dialogs/settings_plugins.py. Last of SlideMage's own tabs; the plugins' tabs follow it.
 The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
 it when the sheet has closed).
 
@@ -49,11 +51,12 @@ from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, act
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
 from .settings_ollama import OllamaTab
+from .settings_plugins import PluginsTab
 from ..presentation.settings_page import PresentationTab
 from .settings_prompts import PromptsTab
 
 log = logging.getLogger(__name__)
-GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT = range(8)
+GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT, PLUGINS = range(9)
 DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
@@ -430,12 +433,13 @@ class SettingsSheet(ModalSheet):
         self.after: Callable[[], None] | None = None     # what the window runs once the sheet has closed
         self.project_tab = ProjectTab(app, self.close_then)
         self.about = AboutTab(app, self.close_then)
+        self.plugins = PluginsTab(app, self.close_then)
         for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
                                   ("Ollama", self.ollama), ("Prompts", self.prompts),
                                   ("Presentation", self.presentation), ("Project", self.project_tab),
-                                  ("About", self.about)):
+                                  ("About", self.about), ("Plugins", self.plugins)):
             self.add_tab(label, tab_widget, scroll=True)
-        # The plugins' tabs come last, after About: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
+        # The plugins' tabs come last, after Plugins: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
         for plugin in session.active():
             for plugin_tab in plugin.contributions.settings_tabs:
                 self.add_tab(plugin_tab.title, self._plugin_page(plugin, plugin_tab), scroll=True)

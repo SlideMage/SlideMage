@@ -24,9 +24,13 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 import time
+import urllib.error
+import urllib.request
 import uuid
 import zipfile
+from http.client import HTTPException
 from pathlib import Path, PurePosixPath
 
 from ..plugin_api import SUPPORTED_API_VERSIONS
@@ -40,6 +44,10 @@ FORBIDDEN_SUFFIXES = frozenset({".pyc", ".pyo", ".so", ".pyd", ".dll", ".dylib",
 MAX_MEMBERS = 2000
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
 MAX_MEMBER_BYTES = 20 * 1024 * 1024
+
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+MAX_MANIFEST_BYTES = 64 * 1024
+USER_AGENT = "SlideMage-updater"
 
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _changed: set[str] = set()
@@ -67,6 +75,58 @@ def read_sha256_file(path: Path) -> str | None:
         return None
     word = words[0].lower()
     return word if _SHA_RE.match(word) else None
+
+
+def download(url: str, dest: Path, *, expected_size: int | None = None, timeout: float = 30,
+             max_bytes: int = MAX_DOWNLOAD_BYTES) -> None:
+    """Stream `url` (http or https only: urlopen would also read file: addresses) into `dest`. Stops at `max_bytes`
+    and, with `expected_size`, refuses a download of another size: the catalogue states each release's size. Raises
+    InstallError; `dest` is deleted on any failure. Blocking: call it from a worker thread."""
+    if not re.match(r"^https?://", url):
+        raise InstallError("The download address is not an http(s) address.")
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    done = 0
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response, open(dest, "wb") as out:
+            declared = int(response.headers.get("Content-Length") or 0)
+            if declared > max_bytes:
+                raise InstallError("The download is too large.")
+            while chunk := response.read(256 * 1024):
+                done += len(chunk)
+                if done > max_bytes:
+                    raise InstallError("The download is too large.")
+                out.write(chunk)
+        if expected_size is not None and done != expected_size:
+            raise InstallError("The download is not the size the plugin list promised; nothing was installed.")
+    except InstallError:
+        dest.unlink(missing_ok=True)
+        raise
+    except (urllib.error.URLError, HTTPException, OSError, ValueError) as e:
+        dest.unlink(missing_ok=True)
+        raise InstallError(f"The download failed: {e}") from None
+
+
+def peek(archive: Path) -> Manifest:
+    """The checked manifest of `archive`, read without unpacking anything else (the Plugins tab shows it before
+    it asks whether to install a file that is not from the catalogue). Raises InstallError."""
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            info = next((i for i in zf.infolist() if i.filename == MANIFEST_NAME), None)
+            if info is None:
+                raise InstallError(f"The archive has no {MANIFEST_NAME} at its top level.")
+            if info.file_size > MAX_MANIFEST_BYTES:
+                raise InstallError(f"The {MANIFEST_NAME} is too large.")
+            data = zf.read(info)
+    except zipfile.BadZipFile:
+        raise InstallError("The file is not a valid zip archive.") from None
+    except OSError as e:
+        raise InstallError(f"The archive cannot be read: {e}") from None
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / MANIFEST_NAME).write_bytes(data)
+        try:
+            return read_manifest(Path(tmp))
+        except ManifestError as e:
+            raise InstallError(f"The plugin's {MANIFEST_NAME} is not valid: {e}") from None
 
 
 def mark_changed(plugin_id: str) -> None:

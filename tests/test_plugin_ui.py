@@ -155,7 +155,7 @@ def test_host_ui_opens_deck_settings_on_a_named_tab(window, monkeypatch):
 def test_settings_tab_is_added_after_slidemages_own(window):
     sheet = SettingsSheet(window)
     labels = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
-    assert labels[-2:] == ["About", "Fixture"]
+    assert labels[-2:] == ["Plugins", "Fixture"]
     sheet.set_current_tab(len(labels) - 1)
     assert any(label.text() == "fixture settings" for label in sheet._stack.currentWidget().findChildren(QLabel))
 
