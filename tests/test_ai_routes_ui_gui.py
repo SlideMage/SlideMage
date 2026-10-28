@@ -106,3 +106,38 @@ def test_with_no_route_the_ai_ui_hides(window, qapp):
     assert not ai_menu.menuAction().isVisible()
     ai_menu.aboutToShow.emit()
     assert not [a for a in ai_menu.actions() if not a.isSeparator()]            # the AI menu has nothing to show
+
+
+def test_route_owned_surface_is_shown_and_new_conversation_resets_it(window, fake_routes, qapp):
+    from fake_chat import FakeChatSurface
+
+    fake_routes.cloud.surface_factory = FakeChatSurface
+    window.assistant.refresh_models()
+    surface = window.assistant.surface_for(fake_routes.cloud.id)
+    surface.replies.append("A scripted answer")
+    window.state.set_ai_route(CLOUD)
+    qapp.processEvents()
+    assert window.assistant._stack.currentWidget() is surface
+    surface.composer.setText("Hello")
+    surface.send()
+    assert surface.turns == ["Hello"] and surface.answer.text() == "A scripted answer"
+    window.assistant.new_conversation()
+    assert surface.turns == [] and surface.answer.text() == "" and surface.restarts == [("", False)]
+
+
+def test_scripted_task_runner_receives_and_validates_the_captured_slide(window, fake_routes):
+    import threading
+
+    from fake_chat import FakeTaskRunner
+    from slidemage.ai import tasks
+    from slidemage.ai.task_result import DONE
+
+    captured = "\\begin{standardframe}{Old}\\n\\end{standardframe}"
+    runner = FakeTaskRunner(window.project, {"title": "New"})
+    fake_routes.local.runner = runner
+    route = ai_profile.resolve(window.project, ai_profile.FIXES)
+    from slidemage.ui.workspace.task_bubbles import _runner_of
+
+    outcome = _runner_of(window.project, route)(tasks.TITLE, captured, "Change title", threading.Event(), None)
+    assert outcome.status == DONE and "{New}" in outcome.text
+    assert runner.calls[0][:3] == (tasks.TITLE, captured, "Change title")

@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from conftest import qapp as qapp  # noqa: F401 -- a fixture
-from test_ai_switch_gui import window as window  # noqa: F401 -- a fixture
+from test_ai_routes_ui_gui import window as window  # noqa: F401 -- a fixture
 
 
 def focus_on(window, widget: QWidget) -> QWidget:
@@ -43,6 +43,11 @@ def bar_order(window, *, images: bool = False) -> list[QWidget]:
     xs = [stop.mapTo(bar, stop.rect().topLeft()).x() for stop in stops if stop.isVisible()]
     assert xs == sorted(xs) and len(xs) == len(stops)        # the list is the visual order
     return stops
+
+
+@pytest.fixture(autouse=True)
+def _routes(fake_routes):
+    return fake_routes
 
 
 @pytest.fixture
@@ -99,7 +104,11 @@ def test_bar_continues_into_the_centre_before_the_side_panels(open_window):
     window.state.set_mode("details")
     QApplication.processEvents()
     focus_on(window, window.topbar._right_column)
-    reached = tab(60)
+    reached = []
+    for _ in range(60):
+        reached.extend(tab())
+        if window.side_panels.isAncestorOf(reached[-1]):
+            break
     centre = [i for i, w in enumerate(reached) if window.centre.isAncestorOf(w)]
     side = [i for i, w in enumerate(reached) if window.side_panels.isAncestorOf(w)]
     slides = [i for i, w in enumerate(reached) if window.slide_list.isAncestorOf(w)]
