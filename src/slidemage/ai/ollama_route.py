@@ -272,6 +272,14 @@ def _ollama_messages(system: str, messages: list[AgentMessage], sees_images: boo
     return wire
 
 
+# Filled by background model listings; reading choices never uses the network.
+_installed: dict[object, list[InstalledModel]] = {}
+
+
+def cache_installed(ctx: ProjectContext, installed: list[InstalledModel]) -> None:
+    _installed[ctx.root] = list(installed)
+
+
 class OllamaRoute:
     """Ollama as an AiRoute. Today's behaviour: every task, no default model (the pickers offer what is installed),
     a problem while no model is chosen."""
@@ -288,7 +296,9 @@ class OllamaRoute:
         return ""
 
     def model_choices(self, ctx: ProjectContext, task: str) -> list[str]:
-        return []       # the installed models come from the server: the pickers ask OllamaProvider.list_models
+        wanted = "vision" if task == ai_profile.IMAGE_DESCRIPTION else "tools" if task == ai_profile.CHAT else ""
+        return [model.name for model in _installed.get(ctx.root, [])
+                if not wanted or (model.supports_tools if wanted == "tools" else wanted in model.capabilities)]
 
     def default_choice(self, task: str) -> str:
         return ""
@@ -323,6 +333,7 @@ class OllamaRoute:
     def chat_surface(self, *args: Any, **kwargs: Any) -> None:
         return None     # core's chat view
 
-    def settings_section(self) -> None:
-        return None     # Ollama's tab is still a tab of Settings; 3c makes it a section
+    def settings_section(self):
+        from ..ui.dialogs.settings_ai import build_ollama_section
+        return build_ollama_section
 

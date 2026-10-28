@@ -72,5 +72,6 @@ class AnthropicApiRoute:
     def chat_surface(self, *args: Any, **kwargs: Any) -> None:
         return None     # core's chat view
 
-    def settings_section(self) -> None:
-        return None     # the API key is still on Settings' Cloud tab; 3c makes it a section
+    def settings_section(self):
+        from ..ui.dialogs.settings_ai import build_api_section
+        return build_api_section

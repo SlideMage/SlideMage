@@ -5,14 +5,12 @@
 * General: dark mode, the Source editor's tab width, live rendering after an autosave, whether leaving a changed slide asks
   about Update Version, the template single slides render with, when single-slide renders are deleted, how updates are
   handled and the GitHub token for them.
-* AI: how Claude Code translations address the audience in German (this project's `de_address`;
-  ai/translation_style.py) and the glossary. The model of each AI task on each side, what Cloud means and the
-  project's Local | Cloud setting are not here: they are AI setup, the ▾ of the AI switch at the top of the
-  assistant (workspace/ai_setup.py).
-* Cloud: the Anthropic API key, with where it is stored.
-* Ollama: the server address and the installed models (update, delete): ui/dialogs/settings_ollama.py.
-* Prompts: the system prompts of image descriptions and translation:
-  ui/dialogs/settings_prompts.py.
+* AI (ui/dialogs/settings_ai.py; only when an AI route is registered): the German address and glossary, the
+  project's Local | Cloud setting and which cloud route, the model of each task, the prompts
+  (settings_prompts.py), then one section per AI service: Ollama (address, installed models:
+  settings_ollama.py), Claude (the Anthropic API key, whether Claude Code is found), a plugin route's, and the
+  sections plugins add (`Host.add_settings_section`). CLOUD, OLLAMA and PROMPTS open this tab scrolled to that
+  section.
 * Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
   ui/presentation/settings_page.py.
 * Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check and the
@@ -36,11 +34,11 @@ import os
 from collections.abc import Callable
 from functools import partial
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, QTimer, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
 from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
-from ...ai import credentials, translation_style
+from ...ai import routes
 from ...ai.providers import InstalledModel, OllamaProvider
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
@@ -50,13 +48,15 @@ from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
-from .settings_ollama import OllamaTab
+from .settings_ai import PROMPTS_KEY, AiPage, ApiKeyBlock as CloudTab, LanguageBlock as AiTab  # noqa: F401 -- the old names
 from .settings_plugins import PluginsTab
 from ..presentation.settings_page import PresentationTab
-from .settings_prompts import PromptsTab
 
 log = logging.getLogger(__name__)
-GENERAL, AI, CLOUD, OLLAMA, PROMPTS, PRESENTATION, PROJECT, ABOUT, PLUGINS = range(9)
+GENERAL, AI, PRESENTATION, PROJECT, ABOUT, PLUGINS = range(6)     # the tabs, when the AI tab is there
+# Aliases of old tabs, now sections of the AI tab: the sheet opens on AI scrolled to the section.
+CLOUD, OLLAMA, PROMPTS = 100, 101, 102
+AI_SECTION_ALIASES = {CLOUD: "Anthropic API", OLLAMA: "Ollama", PROMPTS: PROMPTS_KEY}
 DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
@@ -292,91 +292,6 @@ class GeneralTab(Page):
         self.app.log("GitHub token saved" if token else "GitHub token removed")
 
 
-class AiTab(Page):
-    """The AI settings that AI setup does not have."""
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        layout = self.body
-        layout.addWidget(caption(
-            "The model of each AI task, what Cloud means and the project's Local | Cloud setting are in AI setup, "
-            "the ▾ of the Local | Cloud switch at the top of the assistant."))
-        self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
-                                        current=translation_style.de_address(project))
-        self.address.changed.connect(lambda value: translation_style.set_de_address(project, value))
-        layout.addWidget(Field("German address in Claude Code translations (this project)", self.address))
-        layout.addWidget(caption(
-            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
-            "German\" per line; every translation request carries the file as it is."))
-        layout.addStretch(1)
-
-
-class CloudTab(Page):
-    cloud_changed = Signal()         # the API key changed: the models on offer differ now
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        self.project = project
-        layout = self.body
-        layout.addWidget(caption(
-            "A cloud route (Claude Code or the Anthropic API) receives whatever its task sends: slide text, images, "
-            "notes. Which side the project uses is the Local | Cloud switch at the top of the assistant; what Cloud means (Claude Code or the "
-            "Anthropic API) and the project's own setting are in AI setup, its ▾."))
-        self.key_edit = QLineEdit()
-        self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key_edit.setPlaceholderText("sk-ant-…")
-        save_key = Button("Save key", compact=True)
-        save_key.clicked.connect(self._on_key_save)
-        remove_key = Button("Remove key", compact=True)
-        remove_key.clicked.connect(self._on_key_remove)
-        layout.addWidget(Field("Anthropic API key", row(self.key_edit, save_key, remove_key)))
-        self.key_status = caption(self.key_message(credentials.get_api_key(project)))
-        layout.addWidget(self.key_status)
-        layout.addStretch(1)
-
-    @staticmethod
-    def key_message(key: credentials.ApiKey | None) -> str:
-        """Where the key in use lives, or where a key saved now would go."""
-        keychain = credentials.keychain_available()
-        if key is None:
-            return "No API key set. " + (
-                "A key you save is stored in the system keychain." if keychain else
-                "A key you save is stored in SlideMage's settings file on this computer (ai_settings.json, "
-                "outside the project), because no system keychain is available. Install the optional "
-                "'keyring' package to use it.")
-        return {
-            credentials.SOURCE_ENV: f"Using the key from the {credentials.ENV_VAR} environment variable "
-                                    "(it takes precedence over a saved key).",
-            credentials.SOURCE_KEYCHAIN: "Key stored in the system keychain.",
-            credentials.SOURCE_FILE: "Key stored in SlideMage's settings file on this computer (ai_settings.json, "
-                                     "outside the project). " + (
-                                         "Save it again to move it to the system keychain." if keychain else
-                                         "Install the optional 'keyring' package to use the system keychain instead."),
-        }[key.source]
-
-    def _on_cloud_changed(self) -> None:
-        self.key_status.setText(self.key_message(credentials.get_api_key(self.project)))
-        self.cloud_changed.emit()
-
-    def _on_key_save(self) -> None:
-        key = self.key_edit.text().strip()
-        if not key:
-            return
-        self._store_key(key)
-
-    def _on_key_remove(self) -> None:
-        self._store_key("")
-
-    def _store_key(self, key: str) -> None:
-        try:
-            credentials.set_api_key(self.project, key)
-        except OSError as exc:
-            QMessageBox.warning(self, "API key", f"Couldn't save the API key: {exc}")
-            return
-        self.key_edit.clear()
-        self._on_cloud_changed()
-
-
 def _command_row(app, leave, command_id: str, title: str, note: str, text: str, *,
                  enabled: bool = True) -> tuple[QWidget, Button]:
     """A row whose button closes the sheet (`leave`), then runs the window command `command_id`."""
@@ -437,31 +352,73 @@ class SettingsSheet(ModalSheet):
         self._loader: QThread | None = None
         self._reload_pending = False
         self.general = GeneralTab(app)
-        self.ai = AiTab(app.project)
-        self.cloud = CloudTab(app.project)
-        self.ollama = OllamaTab(app)
-        self.prompts = PromptsTab(app)
+        self.has_ai = bool(routes.all())            # the AI tab is only there when some AI route is registered
+        plugin_sections = [(plugin.manifest.name, section) for plugin in session.active()
+                           for section in plugin.contributions.settings_sections if section.page == "ai"]
+        self.ai = AiPage(app, plugin_sections) if self.has_ai else None
+        self.cloud = self.ai.cloud if self.ai else None
+        self.ollama = self.ai.ollama if self.ai else None
+        self.prompts = self.ai.prompts if self.ai else None
         self.presentation = PresentationTab()
         self.after: Callable[[], None] | None = None     # what the window runs once the sheet has closed
         self.project_tab = ProjectTab(app, self.close_then)
         self.about = AboutTab(app, self.close_then)
         self.plugins = PluginsTab(app, self.close_then)
-        for label, tab_widget in (("General", self.general), ("AI", self.ai), ("Cloud", self.cloud),
-                                  ("Ollama", self.ollama), ("Prompts", self.prompts),
+        self._ai_area = None
+        self._scroll_key: str | None = None
+        self.scrolled_to: str | None = None            # the AI section the sheet scrolled to when it opened
+        for label, tab_widget in (("General", self.general), ("AI", self.ai),
                                   ("Presentation", self.presentation), ("Project", self.project_tab),
                                   ("About", self.about), ("Plugins", self.plugins)):
-            self.add_tab(label, tab_widget, scroll=True)
+            if tab_widget is not None:
+                self.add_tab(label, tab_widget, scroll=True)
+                if tab_widget is self.ai:
+                    self._ai_area = self._scrolling[-1]
         # The plugins' tabs come last, after Plugins: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
         for plugin in session.active():
             for plugin_tab in plugin.contributions.settings_tabs:
                 self.add_tab(plugin_tab.title, self._plugin_page(plugin, plugin_tab), scroll=True)
         self.add_button("Close", kind="primary", role="accept")
-        self.cloud.cloud_changed.connect(self.reload_models)
-        self.ollama.changed.connect(self.reload_models)
+        if self.ai:
+            self.ai.changed.connect(self.reload_models)
+        if tab in AI_SECTION_ALIASES:
+            self._scroll_key, tab = AI_SECTION_ALIASES[tab], AI
         self.set_current_tab(PROJECT if focus == DECK_GROUPS else tab)
+        if self._scroll_key is not None:
+            self.scroll_to_section(self._scroll_key)
         if focus == DECK_GROUPS:
             self.project_tab.deck_groups.list.setFocus()
         self.reload_models()
+
+    def set_current_tab(self, index: int) -> None:
+        """`index` counts the tabs as if the AI tab were there (GENERAL, AI, ...); without it the later ones move up."""
+        if not self.has_ai:
+            index = GENERAL if index == AI else index - 1 if index > AI else index     # no AI tab: open General
+        super().set_current_tab(index)
+
+    def current_tab(self) -> int:
+        """The current tab, counted as set_current_tab counts."""
+        index = super().current_tab()
+        return index + 1 if not self.has_ai and index >= AI else index
+
+    def scroll_to_section(self, key: str) -> None:
+        """Show the AI tab's section `key` (a service, "prompts", a plugin section's title) at the top of the tab."""
+        if self.ai is None or key not in self.ai.sections:
+            return
+        self._scroll_key = key
+        self.scrolled_to = key
+        self._scroll_now()
+        QTimer.singleShot(0, self._scroll_now)          # once the layout has its size
+
+    def _scroll_now(self) -> None:
+        if self._ai_area is not None and self._scroll_key in self.ai.sections:
+            bar = self._ai_area.verticalScrollBar()
+            bar.setValue(self.ai.sections[self._scroll_key].y())
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._scroll_key is not None:
+            QTimer.singleShot(0, self._scroll_now)
 
     @staticmethod
     def _plugin_page(plugin, plugin_tab) -> QWidget:
@@ -491,8 +448,8 @@ class SettingsSheet(ModalSheet):
         self.installed = installed
         self._loader = None
         self.loaded = True
-        self.ollama.fill(installed)
-        self.prompts.translation.set_models([model.name for model in installed])
+        if self.ai:
+            self.ai.set_installed(installed)
         if self._reload_pending:
             self._reload_pending = False
             self.reload_models()
@@ -504,7 +461,7 @@ class SettingsSheet(ModalSheet):
 
     def done(self, result: int) -> None:
         """Closing asks first about prompt text that is not saved."""
-        if self.prompts.confirm_close():
+        if self.prompts is None or self.prompts.confirm_close():
             self._loader = None          # a late answer is not for this sheet any more
             self._reload_pending = False
             super().done(result)

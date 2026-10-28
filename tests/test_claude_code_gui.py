@@ -77,7 +77,7 @@ def env(qapp, tmp_path, monkeypatch):
     e.window.state.set_mode("source")           # no Preview render thread to outlive the test
     e.window.state.set_deck(next(d for d in scan_decks(e.window.project) if d.name == "test"))
     e.window.state.set_focused_slide("abc")
-    e.view = e.window.assistant.claude_code
+    e.view = e.window.assistant.surface_for("claude_code")
     e.path = root / SLIDE
     yield e
     e.window.assistant.shutdown()
@@ -205,19 +205,19 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     wait_until(lambda: "Fake Claude Code" in terminal_text(env))
     assert "Claude Code ended" not in terminal_text(env) and sync._timer.isActive()
     # Restart of a running process: the old one is ended, and its end is not reported as the new one's
-    first = env.view.session._process
+    first = env.view.session._pty._process
     session = env.view.session
-    old = session._generation
+    old = session._pty._generation
     env.view.restart_button.click()
-    wait_until(lambda: session._process is not first and session.running and session._generation > old)
+    wait_until(lambda: session._pty._process is not first and session.running and session._pty._generation > old)
     # Regression (1c7e047): queued output and exit from the previous process must not affect the new one.
-    session._ended.emit(old, 7)
-    session._chunk.emit(old, b"stale output\r\n")
+    session._pty._ended.emit(old, 7)
+    session._pty._chunk.emit(old, b"stale output\r\n")
     pump(0.3)
     assert not first.alive and env.view.status.text() == "Running"
     assert session._sync._timer.isActive() and "stale output" not in terminal_text(env)
     # Shutdown: process and MCP server are gone, twice is fine
-    session, process, port = env.view.session, env.view.session._process, env.view.session._server.port
+    session, process, port = env.view.session, env.view.session._pty._process, env.view.session._server.port
     env.window.assistant.shutdown()
     assert not process.alive and not session.running and env.view.session is None and env.view.terminal is None
     with pytest.raises(OSError):

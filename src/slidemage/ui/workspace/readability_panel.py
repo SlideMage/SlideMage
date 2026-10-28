@@ -6,7 +6,7 @@
 conversation: the findings grouped by slide, each with its severity, class, measured value against the threshold, an
 excerpt and the suggestion, a summary line, and Check again. Clicking a finding (or Show slide) focuses that slide in
 the centre. A slide with findings it can fix (those not set by the template, which the panel marks "set by the
-template" and tells where to change) has Make readable, the AI task of terminal/tasks.py. Nothing in the panel knows
+template" and tells where to change) has Make readable, the AI task of task_bubbles.py. Nothing in the panel knows
 where a report comes from.
 
 `ReadabilityCheck` runs the checks on a worker thread, on every route (no AI is used): "this slide" renders a draft of

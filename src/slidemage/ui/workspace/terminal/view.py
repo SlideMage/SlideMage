@@ -23,7 +23,7 @@ from PySide6.QtCore import QCoreApplication, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QPalette, QShowEvent
 from PySide6.QtWidgets import QFileDialog, QFrame, QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout
 
-from ....ai import ai_profile, claude_launch, claude_tasks
+from ....ai import ai_profile, claude_launch, tasks as ai_tasks
 from ....ai.claude_scope import DECK
 from ... import background
 from ...kit import kit_qss as q
@@ -31,7 +31,7 @@ from ...kit.widgets import Button, Chip, IconButton, IconLabel, SegmentedControl
 from ..attachments import place_file, save_image
 from ..state import WorkspaceState
 from .draft import input_box_shown, paste_bytes, prompt_draft
-from .tasks import TaskRunner, bubbles
+from ..task_bubbles import TaskRunner, bubbles
 
 SETUP, TERMINAL = 0, 1
 # switch_session: the pause between the two Esc of Esc Esc, and the time Claude Code gets to save the draft.
@@ -61,6 +61,7 @@ class _SignedIn(QThread):
 
 
 class ClaudeCodeView(Surface):
+    subtitle = "Terminal · permissions are handled in Claude Code"      # the assistant header's note for this surface
     notice = Signal(str, str)       # a line for the assistant's task row: its text and tone
     setup_changed = Signal()        # the amber card came up or went (the task buttons wait for it)
 
@@ -260,7 +261,7 @@ class ClaudeCodeView(Surface):
     def _translate_slide(self, path: Path) -> str:
         """The terminal's translate_slide: the slide into view, then its Translate bubble (GUI thread)."""
         self.session.workspace.show_slide(path)
-        bubble = next((b for b in bubbles(self.app) if b.task is claude_tasks.TRANSLATE), None)
+        bubble = next((b for b in bubbles(self.app) if b.task is ai_tasks.TRANSLATE), None)
         if bubble is None:
             return f"{path.name} has a translation already, or is not EN or DE: there is nothing to translate."
         if self.tasks.occupied:
@@ -317,14 +318,14 @@ class ClaudeCodeView(Surface):
     def _build_terminal(self, claude: Path) -> None:
         # Imported here: the web engine is heavy, and most sessions never open this view.
         from .session import ClaudeCodeSession
-        from .web import TerminalWidget
+        from .service import TerminalService
 
         if self.terminal is not None:
             return
         self.session = ClaudeCodeSession(self.app, claude, self)
         self.setup_changed.emit()
         self.session.scope = self.scope.current()
-        self.terminal = TerminalWidget(self.app.theme.tokens)
+        self.terminal = TerminalService(self.state.project.root, lambda: self.app.theme.tokens).create_widget()
         self._terminal_layout.insertWidget(1, self.terminal, 1)
         self.session.workspace.translate = self._translate_slide
         self.session.workspace.widen = self._switch_to_deck
@@ -347,7 +348,12 @@ class ClaudeCodeView(Surface):
 
     def _spawn(self, resume: bool = False) -> None:
         try:
-            self.session.start(*self._size, resume=resume)
+            choice = getattr(self, "_next_choice", None)
+            self._next_choice = None
+            if choice is None:
+                self.session.start(*self._size, resume=resume)
+            else:
+                self.session.start(*self._size, resume=resume, choice=choice)
         except Exception as exc:  # noqa: BLE001 -- the MCP server could not bind, the program could not start
             self.status.set_text("Could not start")
             self.status.set_tone("error")
@@ -359,8 +365,13 @@ class ClaudeCodeView(Surface):
         self._set_attachable()
         self.terminal.focus_terminal()
 
-    def restart(self, resume: bool = False) -> None:
-        """Start Claude Code again: a new conversation, or with `resume` the same one (switch_session)."""
+    def restart(self, choice: str | None = None, continue_conversation: bool = False, *, resume: bool = False) -> None:
+        """Restart on the saved choice, optionally preserving the conversation and pending input."""
+        if choice is not None:
+            self._next_choice = choice
+        if continue_conversation:
+            self.switch_session()
+            return
         if self.session is not None:
             self.session.stop()
             self.terminal.reset()
@@ -371,6 +382,9 @@ class ClaudeCodeView(Surface):
     def session_live(self) -> bool:
         """Whether the terminal's Claude Code process is running (it cannot be told whether it is idle)."""
         return self.session is not None and self.session.running
+
+    def stop(self) -> None:
+        self.end_session()
 
     def end_session(self) -> None:
         """The AI switch leaves Claude Code: end the process; showing the view again starts a new one."""

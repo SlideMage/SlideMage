@@ -11,7 +11,7 @@ import sys
 import pytest
 from agent_fakes import ScriptedProvider, reply
 from test_claude_code_gui import env as claude_env, pump, use_claude_code, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, LF, slide_file
+from test_tasks_gui import BROKEN, LF, slide_file
 
 from slidemage import app_settings
 from slidemage.ai import ai_profile, claude_launch, credentials, resolver
@@ -64,7 +64,7 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
     pump(0.2)
     assert a._stack.currentWidget() is a.chat and env.view.session is None and not env.log.exists()
     go(env, CLOUD, CLAUDE_CODE)
-    assert a._stack.currentWidget() is a.claude_code
+    assert a._stack.currentWidget() is a.surface_for("claude_code")
     wait_until(lambda: env.view.session is not None and env.view.session.running)
     go(env, CLOUD, ANTHROPIC_API)
     assert a._stack.currentWidget() is a.chat
@@ -76,14 +76,14 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
 def test_leaving_claude_code_ends_the_session_and_coming_back_starts_a_new_one(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     env.window.ai_route.request(LOCAL)
     assert env.window.ai_route.popover_kind == "session"
     env.window.ai_route._popover.spec.actions[-1][2]()           # End session and switch
     assert env.window.state.ai_route == OLLAMA and not env.view.session_live and not first.alive
     assert env.window.assistant._stack.currentWidget() is env.window.assistant.chat
     go(env, CLOUD, CLAUDE_CODE)
-    wait_until(lambda: env.view.session_live and env.view.session._process is not first)
+    wait_until(lambda: env.view.session_live and env.view.session._pty._process is not first)
     assert env.view.status.text() == "Running"
 
 
@@ -145,9 +145,9 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
 def test_new_conversation_on_claude_code_starts_a_new_session(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     header(env).new_button.click()
-    wait_until(lambda: env.view.session._process is not first and env.view.session.running)
+    wait_until(lambda: env.view.session._pty._process is not first and env.view.session.running)
     assert not first.alive
 
 
@@ -262,7 +262,7 @@ def test_a_running_task_shows_its_pill_with_open_and_the_buttons_wait(env, tmp_p
     assert area(env)._stack.currentWidget() is area(env).task_card and not head.pill.isVisibleTo(head)
     assert shown(env) == ["All actions…"]
     area(env).task_card.back.click()                                  # Back to conversation: the card goes, its pill stays
-    assert area(env)._stack.currentWidget() is area(env).claude_code
+    assert area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
     assert head.pill.isVisibleTo(head) and head.pill.label.full_text() == "Better title · generating"
     assert shown(env) == ["All actions…"]
     head.pill.clicked.emit()                                          # Open

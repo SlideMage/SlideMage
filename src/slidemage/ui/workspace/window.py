@@ -240,6 +240,7 @@ class WorkspaceWindow(QMainWindow):
         self.ai_route = AiRoute(self)
         self.ai_switch.requested.connect(self.ai_route.request)
         self.ai_switch.setup_requested.connect(self.ai_route.open_setup)
+        self.ai_switch.install_requested.connect(self.open_plugins)
         self.state.ai_route_changed.connect(self._on_ai_route_changed)
         self.local_models.changed.connect(self.refresh_ai_models)
         self.topbar.command.connect(self._on_command)
@@ -426,8 +427,9 @@ class WorkspaceWindow(QMainWindow):
         """The chat, with the right column in view; None (and the reason shown) on Cloud · Claude Code, where the
         conversation is the terminal."""
         self.stack.setCurrentWidget(self.centre)   # the Images page hides the right column
-        if self.state.ai_route == ai_profile.CLAUDE_CODE:
-            self.toast.show_message(resolver.CHAT_IN_TERMINAL)
+        if self.assistant.surface_for(self.state.ai_route) is not None:
+            self.toast.show_message(resolver.problem(self.project, ai_profile.Route(self.state.ai_route, ai_profile.CHAT))
+                                   or resolver.CHAT_IN_TERMINAL)
             return None
         return self.assistant.chat
 

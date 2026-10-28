@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The tasks of the assistant card (ui/workspace/terminal/tasks.py, assistant.py and assistant_header.py), with the fake
+"""The tasks of the assistant card (ui/workspace/task_bubbles.py, assistant.py and assistant_header.py), with the fake
 `claude -p` of tests/fake_claude.py: which tasks the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the
 route's model and effort and the project's German address, the image bubbles (describe, translate the descriptions), the deck bubbles
@@ -25,7 +25,7 @@ from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, 
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ui.kit.widgets import Button, ModalSheet
 from slidemage.ui.workspace import task_card_model as card_model
-from slidemage.ui.workspace.terminal import tasks as tasks_module
+from slidemage.ui.workspace import task_bubbles as tasks_module
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
@@ -395,7 +395,7 @@ def test_two_clicks_start_one_task(fake):
     env = fake.env
     fake.reply({"answer": GERMAN, "delay": 0.3})
     click(env, "Translate to German")
-    env.window.assistant.tasks.start(tasks_module.claude_tasks.TRANSLATE)
+    env.window.assistant.tasks.start(tasks_module.ai_tasks.TRANSLATE)
     settled(env)
     assert len(fake.calls()) == 1
 

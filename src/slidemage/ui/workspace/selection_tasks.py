@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Rewrite selection and Proofread selection (Claude Code reviews plan, step R1): the menu items the Source editor's
 context menu shows, and the menu and the form that ask what a rewrite should do. The choices are the labels of
-claude_tasks.REWRITE_PRESETS and CUSTOM, which asks for the instruction in a popover (insert_popovers.py). What a choice
+ai_tasks.REWRITE_PRESETS and CUSTOM, which asks for the instruction in a popover (insert_popovers.py). What a choice
 starts is the assistant's (`AssistantArea.rewrite_selection`, `proofread_selection`)."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QWidget
 
-from ...ai.claude_tasks import REWRITE_PRESETS
+from ...ai.tasks import REWRITE_PRESETS
 from ..kit.widgets import PopoverMenu
 
 CUSTOM = "Custom…"

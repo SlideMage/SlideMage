@@ -24,7 +24,7 @@ from pathlib import Path
 
 from ..processes import no_console_kwargs
 from ..project import ProjectContext
-from . import claude_tasks, translation_style
+from . import tasks as ai_tasks, translation_style
 from .claude_launch import clean_environment
 
 # The default of Claude Code tasks: Haiku at medium effort, tested by the user as good enough (2026-10-13;
@@ -68,7 +68,7 @@ class Outcome:
     turns: int = 0
     tokens_in: int = 0               # input tokens, cached ones included
     tokens_out: int = 0
-    note: str = ""                   # the model's remark on its answer (claude_tasks.answer_note)
+    note: str = ""                   # the model's remark on its answer (ai_tasks.answer_note)
     measured: object = None          # Make readable: the readability Report of the new text as a draft, or why not (str)
 
 
@@ -84,7 +84,7 @@ class Run:
     tokens_out: int = 0
 
 
-def _command(claude: Path, task: claude_tasks.Task, model: str, effort: str, images: bool) -> list[str]:
+def _command(claude: Path, task: ai_tasks.Task, model: str, effort: str, images: bool) -> list[str]:
     return [str(claude), "-p", "--model", model, "--effort", effort, "--tools", "", "--no-session-persistence",
             *(("--input-format", "stream-json") if images else ()),
             "--output-format", "stream-json", "--verbose", "--json-schema", json.dumps(task.schema),
@@ -173,7 +173,7 @@ def _run(argv: list[str], request: str, cwd: Path, env: dict[str, str], deadline
     return run
 
 
-def run_json(claude: Path, task: claude_tasks.Task, request: str, model: str, effort: str, deadline: float,
+def run_json(claude: Path, task: ai_tasks.Task, request: str, model: str, effort: str, deadline: float,
              cancel: threading.Event, images: Sequence[Path] = ()) -> Run:
     """One process for `task` with `request` (and `images`): what it answered, unchecked. `deadline` is a
     time.monotonic() value."""
@@ -201,13 +201,13 @@ def _remove_folder(folder: Path, tries: int = 40, delay: float = 0.05) -> None:
                 time.sleep(delay)
 
 
-def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,
+def judge(ctx: ProjectContext, task: ai_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,
           who: str = "Claude", span: tuple[int, int] | None = None) -> list[str]:
-    """Settle `outcome` by the model's `answer` (claude_tasks.check): DONE with the new text, or NOTHING when it
+    """Settle `outcome` by the model's `answer` (ai_tasks.check): DONE with the new text, or NOTHING when it
     changes nothing; the problems, when the answer is refused (then `outcome` says so, and they go into the repair
     request)."""
-    outcome.note = claude_tasks.answer_note(task, answer)
-    text, problems = claude_tasks.check(ctx, task, captured, answer, span)
+    outcome.note = ai_tasks.answer_note(task, answer)
+    text, problems = ai_tasks.check(ctx, task, captured, answer, span)
     if problems:
         outcome.message = f"{who}'s answer was refused: " + "; ".join(problems)
     else:
@@ -215,12 +215,12 @@ def judge(ctx: ProjectContext, task: claude_tasks.Task, captured: str, answer: d
     return problems
 
 
-def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, captured: str, request: str, model: str = MODEL,
+def run_task(ctx: ProjectContext, claude: Path, task: ai_tasks.Task, captured: str, request: str, model: str = MODEL,
              effort: str = EFFORT, deadline_s: float = TEXT_DEADLINE_S,
              cancel: threading.Event | None = None, span: tuple[int, int] | None = None) -> Outcome:
-    """Run `task` on the `captured` text with `request` (claude_tasks.translate_request / fix_request) and
+    """Run `task` on the `captured` text with `request` (ai_tasks.translate_request / fix_request) and
     check the answer; an answer that fails the check gets one repair attempt. The deadline covers both
-    attempts. `span`: the task is on that range of `captured` only (claude_tasks.check)."""
+    attempts. `span`: the task is on that range of `captured` only (ai_tasks.check)."""
     cancel = cancel or threading.Event()
     started = time.monotonic()
     outcome = Outcome(FAILED)
@@ -240,7 +240,7 @@ def run_task(ctx: ProjectContext, claude: Path, task: claude_tasks.Task, capture
             break
         if not (problems := judge(ctx, task, captured, run.answer, outcome, span=span)):
             break
-        request = claude_tasks.repair_request(request, run.answer, problems)
+        request = ai_tasks.repair_request(request, run.answer, problems)
     outcome.elapsed_s = time.monotonic() - started
     return outcome
 
@@ -266,9 +266,9 @@ class SlideTranslator:
 
     def translate(self, body: str) -> tuple[str, str | None]:
         """(translation, error) of an English slide body into German, with the line ends of `body`."""
-        request = claude_tasks.translate_request(body, "EN", "DE", translation_style.de_address(self.ctx),
+        request = ai_tasks.translate_request(body, "EN", "DE", translation_style.de_address(self.ctx),
                                                  translation_style.glossary(self.ctx))
-        outcome = run_task(self.ctx, self.claude, claude_tasks.TRANSLATE, body, request, self.model, self.effort,
+        outcome = run_task(self.ctx, self.claude, ai_tasks.TRANSLATE, body, request, self.model, self.effort,
                            cancel=self.cancel)
         if outcome.status == DONE:
             return (outcome.text.replace("\n", "\r\n") if "\r\n" in body else outcome.text), None

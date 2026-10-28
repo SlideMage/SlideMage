@@ -16,7 +16,7 @@ comes from the active AI route (AI setup, task "Fixes, notes,
 transcripts"; the first cloud request in a project asks for consent,
 ui/ai_models.provider_from_combo), and the answering model is named in the
 panel. Only Local and the API run it: Claude Code's equivalent is its "Fix
-LaTeX errors" task, which edits the slide (ui/workspace/terminal/tasks.py), so
+LaTeX errors" task, which edits the slide (ui/workspace/task_bubbles.py), so
 on that route Check says so and nothing is sent.
 """
 from __future__ import annotations

@@ -11,7 +11,7 @@ import threading
 import pytest
 from conftest import SLIDE_TEXT
 
-from slidemage.ai import claude_runner, claude_tasks, provider_tasks
+from slidemage.ai import claude_runner, tasks as ai_tasks, provider_tasks
 from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
 from slidemage.project import ProjectContext
 
@@ -45,7 +45,7 @@ def ctx(root):
 
 
 def run(ctx, provider, cancel=None):
-    return provider_tasks.run_task(ctx, provider, claude_tasks.READABLE, LF, REQUEST, cancel)
+    return provider_tasks.run_task(ctx, provider, ai_tasks.READABLE, LF, REQUEST, cancel)
 
 
 def test_the_rules_the_schema_and_the_request_go_to_the_provider_and_a_good_answer_is_the_result(ctx):
@@ -54,7 +54,7 @@ def test_the_rules_the_schema_and_the_request_go_to_the_provider_and_a_good_answ
     assert (outcome.status, outcome.text, outcome.attempts, outcome.note) == (claude_runner.DONE, BIGGER, 1, "Split after the list.")
     (messages, kwargs), = provider.calls
     assert messages == [{"role": "user", "content": REQUEST}]
-    assert kwargs["system"] == claude_tasks.READABLE.rules and kwargs["schema"] == claude_tasks.READABLE.schema
+    assert kwargs["system"] == ai_tasks.READABLE.rules and kwargs["schema"] == ai_tasks.READABLE.schema
     assert kwargs["max_tokens"] == provider_tasks.MAX_TOKENS and kwargs["num_ctx"] == provider_tasks.NUM_CTX
 
 

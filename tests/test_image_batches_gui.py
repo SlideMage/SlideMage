@@ -411,7 +411,7 @@ def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_p
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 from test_claude_code_gui import env as claude_env  # noqa: E402,F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE  # noqa: E402
-from test_claude_tasks_gui import buttons, click, fake, pump, settled, wait_until, with_pictures  # noqa: E402,F401
+from test_tasks_gui import buttons, click, fake, pump, settled, wait_until, with_pictures  # noqa: E402,F401
 
 windows_only = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 

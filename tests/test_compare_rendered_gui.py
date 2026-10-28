@@ -16,7 +16,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 from test_chat_gui import EDIT, ask, env as chat_env, pump, script, wait_for_card, wait_until, widgets  # noqa: F401 -- a fixture
 from test_claude_code_gui import env as claude_env  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
+from test_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
 from test_task_card_gui import area, asked, card, phase_is, press, shown_buttons  # noqa: F401 -- a fixture
 from agent_fakes import call, reply
 

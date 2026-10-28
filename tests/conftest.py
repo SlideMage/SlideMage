@@ -137,6 +137,9 @@ def _fresh_ai_session():
     from slidemage.ai import ai_profile
 
     ai_profile._modes.clear()
+    from slidemage.ai import ollama_route
+
+    ollama_route._installed.clear()
 
 
 @pytest.fixture(autouse=True)

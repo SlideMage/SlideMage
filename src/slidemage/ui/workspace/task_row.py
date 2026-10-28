@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The task row of the assistant card: the status line of what has no task card (workspace v6 handoff, step 4) --
-a deck batch, the image tasks and the summary. What the TaskRunner (terminal/tasks.py) says while one runs and when
+a deck batch, the image tasks and the summary. What the TaskRunner (task_bubbles.py) says while one runs and when
 it has ended, with Stop while it runs and "Show result" for a batch's report, the result a conflict in it did not
 apply, or the summary of a deck. A task on one slide is shown by the task card (task_card.py), not here, and what
 became of each image of an image task by the results panel (pages/image_results.py), shown by the assistant.
@@ -12,7 +12,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit
 
 from ..kit.widgets import Button, ModalSheet, Surface, caption, set_property
-from .terminal.tasks import TaskRunner
+from .task_bubbles import TaskRunner
 
 
 class TaskRow(Surface):

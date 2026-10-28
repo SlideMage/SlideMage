@@ -16,7 +16,7 @@ import pytest
 from conftest import SLIDE_TEXT
 from fake_claude import make_fake_claude
 
-from slidemage.ai import claude_runner, claude_tasks
+from slidemage.ai import claude_runner, tasks as ai_tasks
 from slidemage.ai.claude_runner import CANCELLED, DONE, FAILED, NOTHING
 from slidemage.ai.tools.base import ToolError
 from slidemage.ai.tools.edits import write_text
@@ -42,7 +42,7 @@ def claude(tmp_path, monkeypatch):
         calls=lambda: [json.loads(line) for line in log.read_text().splitlines()])
 
 
-def run(claude, task=claude_tasks.TRANSLATE, **options):
+def run(claude, task=ai_tasks.TRANSLATE, **options):
     return claude_runner.run_task(claude.ctx, claude.path, task, LF, "THE REQUEST", **options)
 
 
@@ -59,27 +59,27 @@ def test_a_task_runs_in_isolation_and_returns_the_new_text(claude):
     assert flags[flags.index("--tools") + 1] == "" and flags[flags.index("--setting-sources") + 1] == ""
     assert {"--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--verbose"} <= set(flags)
     assert flags[flags.index("--output-format") + 1] == "stream-json"
-    assert json.loads(flags[flags.index("--json-schema") + 1]) == claude_tasks.TRANSLATE.schema
-    assert flags[flags.index("--system-prompt") + 1] == claude_tasks.TRANSLATE.rules
+    assert json.loads(flags[flags.index("--json-schema") + 1]) == ai_tasks.TRANSLATE.schema
+    assert flags[flags.index("--system-prompt") + 1] == ai_tasks.TRANSLATE.rules
     assert "ANTHROPIC_API_KEY" not in call["env"] and "CLAUDE_CODE_USE_BEDROCK" not in call["env"]
     assert not Path(call["cwd"]).exists()                      # an empty folder of its own, gone afterwards
 
 
 def test_model_and_effort_come_from_the_caller(claude):
     claude.script({"answer": FIX})
-    run(claude, claude_tasks.FIX_LATEX, model="haiku", effort="low")
+    run(claude, ai_tasks.FIX_LATEX, model="haiku", effort="low")
     assert claude.calls()[0]["argv"][:5] == ["-p", "--model", "haiku", "--effort", "low"]
 
 
 def test_nothing_to_change(claude):
     claude.script({"answer": {"edits": []}})
-    outcome = run(claude, claude_tasks.FIX_LATEX)
+    outcome = run(claude, ai_tasks.FIX_LATEX)
     assert (outcome.status, outcome.text) == (NOTHING, "")
 
 
 def test_an_answer_that_fails_the_check_is_repaired_once(claude):
     claude.script({"answer": {"edits": [{"before": "nowhere", "after": "x"}]}}, {"answer": FIX})
-    outcome = run(claude, claude_tasks.FIX_LATEX)
+    outcome = run(claude, ai_tasks.FIX_LATEX)
     assert (outcome.status, outcome.attempts, outcome.text) == (DONE, 2, LF.replace("First point", "1st point"))
     first, second = claude.calls()
     assert first["request"] == "THE REQUEST"
@@ -157,7 +157,7 @@ def test_images_go_inline_as_one_stream_json_message(claude, tmp_path):
     claude.script({"answer": {"ok": 1}})
     picture = tmp_path / "chart.png"
     picture.write_bytes(b"\x89PNG fake")
-    task = claude_tasks.Task("t", "RULES", {"type": "object", "properties": {"ok": {"type": "integer"}}})
+    task = ai_tasks.Task("t", "RULES", {"type": "object", "properties": {"ok": {"type": "integer"}}})
     cancel = threading.Event()
     result = claude_runner.run_json(claude.path, task, "THE REQUEST", "haiku", "low", time.monotonic() + 20, cancel,
                                     (picture,))
@@ -172,7 +172,7 @@ def test_images_go_inline_as_one_stream_json_message(claude, tmp_path):
 
 def test_a_request_without_images_stays_plain_text(claude):
     claude.script({"answer": {}})
-    claude_runner.run_json(claude.path, claude_tasks.TRANSLATE, "THE REQUEST", "sonnet", "medium", time.monotonic() + 20,
+    claude_runner.run_json(claude.path, ai_tasks.TRANSLATE, "THE REQUEST", "sonnet", "medium", time.monotonic() + 20,
                            threading.Event())
     (call,) = claude.calls()
     assert "--input-format" not in call["argv"] and call["request"] == "THE REQUEST" and call["images"] == []

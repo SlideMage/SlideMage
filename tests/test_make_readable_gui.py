@@ -12,17 +12,17 @@ import sys
 import pytest
 from PySide6.QtWidgets import QLabel
 from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import LF, buttons, click, ctx, fake, on_route, settled, slide_file  # noqa: F401
+from test_tasks_gui import LF, buttons, click, ctx, fake, on_route, settled, slide_file  # noqa: F401
 from test_task_card_gui import card, phase_is, shown_buttons, state
 
 from slidemage import readability
-from slidemage.ai import ai_profile, claude_launch, claude_tasks, credentials, resolver
+from slidemage.ai import ai_profile, claude_launch, tasks as ai_tasks, credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK
 from slidemage.ai.providers import ChatReply
 from slidemage.ui.kit.widgets import Button
 from slidemage.ui.workspace import task_card_model as model
 from slidemage.ui.workspace.readability_panel import TEMPLATE_HINT, ReadabilityPanel
-from slidemage.ui.workspace.terminal import tasks as tasks_module
+from slidemage.ui.workspace import task_bubbles as tasks_module
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
@@ -128,7 +128,7 @@ def test_review_says_what_the_change_does_to_the_findings_and_done_what_is_left(
     request, = requests(fake)                                                        # what the model was sent
     assert request.startswith("Make this slide readable.\nThe typeset page is 272 pt high.") and request.endswith(f"<slide>\n{LF}\n</slide>")
     assert [(f["cls"], f["severity"]) for f in findings_of(request)] == [("body", "error"), ("figure text", "error"), ("image", "warning")]
-    assert fake.calls()[0]["argv"][fake.calls()[0]["argv"].index("--json-schema") + 1] == json.dumps(claude_tasks.READABLE.schema)
+    assert fake.calls()[0]["argv"][fake.calls()[0]["argv"].index("--json-schema") + 1] == json.dumps(ai_tasks.READABLE.schema)
     assert measure.texts == [BIGGER] and slide_file(env).editor.text() == LF         # measured as a draft, nothing written
     assert card(env).readable.before == tuple(BEFORE)
     area = env.window.assistant
@@ -285,7 +285,7 @@ def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_
     wait_until(phase_is(env, model.REVIEW))
     assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
     (messages, kwargs), = provider.calls
-    assert messages[0]["content"].startswith("Make this slide readable.") and kwargs["system"] == claude_tasks.READABLE.rules
+    assert messages[0]["content"].startswith("Make this slide readable.") and kwargs["system"] == ai_tasks.READABLE.rules
     assert "After the change: 0 errors, 0 warnings (was 2 errors, 1 warning)." in state(env) and "Note: Split it." in state(env)
     assert measure.texts == [BIGGER]
     assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []    # the run is over
@@ -322,16 +322,16 @@ def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx,
     tasks.close_card()
     on_route(fake, ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
     monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    assert tasks.refusal(claude_tasks.READABLE) == resolver.NO_CLAUDE
+    assert tasks.refusal(ai_tasks.READABLE) == resolver.NO_CLAUDE
     click(env, "Make readable")
     assert card(env).phase == model.SETUP and card(env).note == resolver.NO_CLAUDE
     assert fake.calls() == [] and measure.texts == [] and not tasks.busy
 
 
 def test_make_readable_is_a_task_every_route_can_run_and_one_of_the_fixes():
-    assert tasks_module.KINDS[claude_tasks.READABLE.name] == ai_profile.FIXES
-    assert claude_tasks.READABLE in tasks_module.PROVIDER_TASKS and claude_tasks.READABLE in tasks_module.CARD_TASKS
-    assert claude_tasks.READABLE not in tasks_module.DECK_TASKS
+    assert tasks_module.KINDS[ai_tasks.READABLE.name] == ai_profile.FIXES
+    assert ai_tasks.READABLE in tasks_module.PROVIDER_TASKS and ai_tasks.READABLE in tasks_module.CARD_TASKS
+    assert ai_tasks.READABLE not in tasks_module.DECK_TASKS
 
 
 # -- the findings panel, the palette ----------------------------------------------------------------------------------------
@@ -366,7 +366,7 @@ def test_the_panels_button_runs_the_task_on_that_slide_and_a_changed_slide_is_ch
     slide_file(env).editor.replace_all_text(LF)
     fake.reply({"answer": {"body": BIGGER}})
     area.readability_panel.make_readable_clicked.emit(slide)
-    assert card(env).task is claude_tasks.READABLE and card(env).title == "Make readable"
+    assert card(env).task is ai_tasks.READABLE and card(env).title == "Make readable"
     settled(env)
     assert slide_file(env).editor.text() == BIGGER
 
@@ -382,7 +382,7 @@ def test_the_palette_command_checks_first_when_nothing_is_known_and_runs_the_tas
     know(env, *BEFORE)
     fake.reply({"answer": {"body": BIGGER}})
     command.run(env.window)
-    assert card(env).task is claude_tasks.READABLE
+    assert card(env).task is ai_tasks.READABLE
     settled(env)
     assert slide_file(env).editor.text() == BIGGER
 

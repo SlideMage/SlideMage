@@ -23,6 +23,7 @@ from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
 from ..fileio import read_text_exact
 from ..project import ProjectContext
+from .credentials import PluginCredentials
 from .manifest import Manifest
 from .registry import Registrar
 
@@ -37,6 +38,10 @@ class HostUi(Protocol):
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
     def show_message(self, text: str, error: bool = False) -> None: ...
+
+    # Optional (the host asks with getattr): the terminal's colours, and what the user is looking at.
+    # def terminal_tokens(self) -> Tokens
+    # def focus(self) -> plugin_api.Focus
 
 
 # -- deck snapshot ---------------------------------------------------------------------------------------------
@@ -208,6 +213,40 @@ class PluginHost(Registrar):
             self.ui.show_message(text, error)
         else:
             self._logger.log(logging.ERROR if error else logging.INFO, "%s", text)
+
+    # -- services of the AI host API
+
+    def terminal(self) -> plugin_api.TerminalService:
+        from ..ui.workspace.terminal.service import TerminalService
+
+        ui = self._window()
+        tokens = getattr(ui, "terminal_tokens", None)
+        return TerminalService(self.ctx.root, tokens)       # type: ignore[return-value]
+
+    def watch_external_edits(self, on_change: Callable[[plugin_api.ExternalEdits], None]) -> plugin_api.EditWatch:
+        from ..ui.workspace.terminal.sync import ExternalEditWatch
+
+        return ExternalEditWatch(self.ctx.root, on_change)      # type: ignore[return-value]
+
+    def credentials(self, env_var: str | None = None) -> PluginCredentials:
+        return PluginCredentials(self.manifest.id, env_var)
+
+    def ai_tools(
+        self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
+        mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: Any = None,
+    ) -> Any:
+        if scope not in ("slide", "deck"):
+            raise ValueError(f"scope must be 'slide' or 'deck', not {scope!r}")
+        if mode not in ("ask", "auto"):
+            raise ValueError(f"mode must be 'ask' or 'auto', not {mode!r}")
+        from ..ai.agent_toolbox import agent_toolbox
+        from ..ai.workspace import Workspace
+
+        return agent_toolbox(workspace or Workspace(self.ctx), scope, focus_slide, cancel, mode)
+
+    def focus(self) -> plugin_api.Focus:
+        read = getattr(self.ui, "focus", None)
+        return read() if read is not None else plugin_api.Focus(None, None, "slide")
 
     # -- the window
 

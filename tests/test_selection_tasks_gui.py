@@ -13,19 +13,19 @@ from PySide6.QtCore import QPoint
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication
 from test_claude_code_gui import env as claude_env, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import LF, buttons, ctx, fake, on_route, settled, slide_file  # noqa: F401
+from test_tasks_gui import LF, buttons, ctx, fake, on_route, settled, slide_file  # noqa: F401
 from test_make_readable_gui import JsonProvider
 from test_task_card_gui import card, phase_is, shown_buttons, state
 
 from slidemage import selection
 from slidemage.latex_edit import utf16_len
-from slidemage.ai import ai_profile, claude_launch, claude_tasks, credentials, resolver
+from slidemage.ai import ai_profile, claude_launch, tasks as ai_tasks, credentials, resolver
 from slidemage.ai.agent_types import EDIT_ASK
 from slidemage.ai.tools import ToolContext, ToolError, focus
 from slidemage.ui.kit.widgets import Button, PopoverMenu
 from slidemage.ui.workspace import task_card_model as model
 from slidemage.ui.workspace.insert_popovers import InstructionPopover
-from slidemage.ui.workspace.terminal import tasks as tasks_module
+from slidemage.ui.workspace import task_bubbles as tasks_module
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
@@ -151,7 +151,7 @@ def test_the_header_button_asks_how_to_rewrite_and_the_other_starts_the_proofrea
     fake.reply({"answer": {"text": "Opening remark"}})
     menu.triggered.emit("Shorten")
     wait_until(phase_is(env, model.REVIEW))
-    assert card(env).title == "Rewrite selection · Shorten" and card(env).instruction == claude_tasks.REWRITE_PRESETS["Shorten"]
+    assert card(env).title == "Rewrite selection · Shorten" and card(env).instruction == ai_tasks.REWRITE_PRESETS["Shorten"]
     assert [b.label for b in area.header.shown] == []                              # nothing else starts while one waits
 
 
@@ -187,7 +187,7 @@ def test_the_context_menu_offers_the_edit_commands_and_the_two_tasks_when_the_se
     fake.reply({"answer": {"edits": [{"before": "First point", "after": "First points"}]}})
     menu.triggered.emit("proofread")
     wait_until(phase_is(env, model.REVIEW))
-    assert card(env).task is claude_tasks.PROOFREAD_SELECTION and card(env).title == "Proofread selection"
+    assert card(env).task is ai_tasks.PROOFREAD_SELECTION and card(env).title == "Proofread selection"
     # Starting the task can already close and delete the context menu.
     from shiboken6 import isValid
     if isValid(menu):
@@ -204,10 +204,10 @@ def test_a_rewrite_is_reviewed_applied_into_the_buffer_and_taken_back_by_the_edi
     assert card(env).route.route == ai_profile.CLAUDE_CODE
     wait_until(phase_is(env, model.REVIEW))
     request, = requests(fake)
-    assert request.startswith("Rewrite the selection of this slide. Instruction: " + claude_tasks.REWRITE_PRESETS["Simplify"])
+    assert request.startswith("Rewrite the selection of this slide. Instruction: " + ai_tasks.REWRITE_PRESETS["Simplify"])
     assert "<selection>\nFirst point\n</selection>" in request
     argv = fake.calls()[0]["argv"]
-    assert argv[argv.index("--json-schema") + 1] == json.dumps(claude_tasks.REWRITE.schema)
+    assert argv[argv.index("--json-schema") + 1] == json.dumps(ai_tasks.REWRITE.schema)
     assert state(env).startswith("Proposed change to abc-EN-Hello-current.tex. Nothing is written yet.")
     assert shown_buttons(env) == ["Apply", "Reject", "View full diff", "Compare rendered"]
     assert (card(env).before, card(env).after, card(env).changed) == (LF, OPENING, 1)
@@ -323,7 +323,7 @@ def test_nothing_starts_without_a_selection_to_work_on(fake):  # noqa: F811
     select(env, "First point")
     tasks = env.window.assistant.tasks
     slide_file(env).editor.moveCursor(QTextCursor.MoveOperation.Start)
-    tasks.start(claude_tasks.PROOFREAD_SELECTION)                                      # the selection went before the click
+    tasks.start(ai_tasks.PROOFREAD_SELECTION)                                      # the selection went before the click
     assert card(env) is None and env.window.assistant.task_row.status.text() == selection.NO_SELECTION
 
 
@@ -343,7 +343,7 @@ def test_on_local_and_the_api_a_rewrite_runs_on_the_provider_with_the_fixes_mode
     wait_until(phase_is(env, model.REVIEW))
     assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
     (messages, kwargs), = provider.calls
-    assert messages[0]["content"].startswith("Rewrite the selection") and kwargs["system"] == claude_tasks.REWRITE.rules
+    assert messages[0]["content"].startswith("Rewrite the selection") and kwargs["system"] == ai_tasks.REWRITE.rules
     assert card(env).after == OPENING and env.window._ollama_task_label is None
     env.window.assistant.tasks.apply()
     wait_until(phase_is(env, model.DONE))
@@ -377,7 +377,7 @@ def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx,
     tasks.close_card()
     on_route(fake, ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
     monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    assert tasks.refusal(claude_tasks.REWRITE) == resolver.NO_CLAUDE
+    assert tasks.refusal(ai_tasks.REWRITE) == resolver.NO_CLAUDE
     env.window.assistant.rewrite_selection("Custom…")
     popups(InstructionPopover)[0].entry.setText("x")
     next(b for b in popups(InstructionPopover)[0].findChildren(Button) if b.text() == "Rewrite").click()
@@ -386,8 +386,8 @@ def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx,
 
 
 def test_the_selection_tasks_are_card_tasks_of_the_fixes_kind_that_every_route_can_run():
-    for task in (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION):
+    for task in (ai_tasks.REWRITE, ai_tasks.PROOFREAD_SELECTION):
         assert tasks_module.KINDS[task.name] == ai_profile.FIXES
         assert task in tasks_module.CARD_TASKS and task in tasks_module.PROVIDER_TASKS and task in tasks_module.PRIORITY
         assert task not in tasks_module.DECK_TASKS and task not in tasks_module.SLIDE_TASKS
-    assert tasks_module.PRIORITY[:2] == (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION)
+    assert tasks_module.PRIORITY[:2] == (ai_tasks.REWRITE, ai_tasks.PROOFREAD_SELECTION)

@@ -187,6 +187,14 @@ def _load_one(found: Found, make_host: Callable[[Manifest], Registrar], app_vers
         host = make_host(manifest)
         with host.activation():
             module.activate(host)
+        from ..ai import routes
+        registered = {route.id for route in routes.all()}
+        for route in host.contributions.ai_routes:
+            if route.id in registered:
+                raise ValueError(f"AI route {route.id!r} is already registered")
+            registered.add(route.id)
+        for route in host.contributions.ai_routes:
+            routes.register(route)
     except BaseException:       # a plugin's SystemExit must not end the app either
         _discard_module(name)
         plugin.reason = traceback.format_exc()

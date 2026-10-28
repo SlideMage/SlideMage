@@ -95,6 +95,7 @@ def test_a_restart_resumes_the_conversation_only_when_claude_code_saved_it(qapp,
 
     from slidemage.project import ProjectContext
     from slidemage.ui.workspace.terminal import session as session_mod
+    from slidemage.ui.workspace.terminal import service as service_mod
 
     started = []
 
@@ -120,7 +121,7 @@ def test_a_restart_resumes_the_conversation_only_when_claude_code_saved_it(qapp,
             pass
 
     monkeypatch.setattr(session_mod, "McpServer", FakeServer)
-    monkeypatch.setattr(session_mod, "PtyProcess", FakePty)
+    monkeypatch.setattr(service_mod, "PtyProcess", FakePty)      # the terminal service starts the process
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))
     window = SimpleNamespace(
         project=ProjectContext.at(tmp_path),

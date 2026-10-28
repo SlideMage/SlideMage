@@ -10,7 +10,7 @@ slide takes the body's place with its task card (task_card.py) until Back to con
 back) or until it is closed; an image task, when it ends, takes it with the results panel (pages/image_results.py:
 what became of each image, Retry failed) until Back to conversation. The readability check (readability_panel.py: the
 header's "Check readability", the palette) takes it with its findings, on every route. The scope and the TaskRunner
-(terminal/tasks.py) are the card's, so both bodies and the header share them; "New conversation" clears the route on show and no other.
+(task_bubbles.py) are the card's, so both bodies and the header share them; "New conversation" clears the route on show and no other.
 Focus hides the side panels (side_panels.py listens); it is not remembered.
 
 The keyboard follows the body: a task card that opens takes the focus on its first action, and a card or a results panel
@@ -24,10 +24,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget, QWidget
 
-from ...ai import ai_profile
+from ...ai import ai_profile, routes
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ...ai.agent_types import EDIT_AUTO
-from ...ai.claude_tasks import PROOFREAD_SELECTION, READABLE, REWRITE, REWRITE_PRESETS, TRANSLATE
+from ...ai.tasks import PROOFREAD_SELECTION, READABLE, REWRITE, REWRITE_PRESETS, TRANSLATE
 from ...selection import SelectionError
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, SegmentedControl
@@ -41,8 +41,7 @@ from .readability_panel import ReadabilityCheck, ReadabilityPanel
 from .state import WorkspaceState
 from .task_card import TaskCardView
 from .task_row import TaskRow
-from .terminal.tasks import Bubble, TaskRunner
-from .terminal.view import ClaudeCodeView
+from .task_bubbles import Bubble, TaskRunner
 
 MIN_HEIGHT = 380   # the prototype's: the side panels give way first
 SCOPES = ((SCOPE_SLIDE, "This slide"), (SCOPE_DECK, "Whole deck"))
@@ -60,7 +59,10 @@ class AssistantArea(Card):
         self.workspace = GuiWorkspace(app)                  # where the tasks write: its own, apart from both bodies'
         self.tasks = TaskRunner(app, self.workspace, self, edit_auto=lambda: self.chat.session.mode == EDIT_AUTO)
         self.chat = ChatView(app, state, self.scope)
-        self.claude_code = ClaudeCodeView(app, state, self.scope, self.tasks)
+        self.surfaces: dict[str, QWidget] = {}              # a route with its own conversation (chat_surface), by id
+        for route in routes.all():
+            if (surface := route.chat_surface(app, state, self.scope, self.tasks)) is not None:
+                self.surfaces[route.id] = surface
         self.header = AssistantHeader(app, state, self.scope, self.tasks, self._tasks_blocked)
         self.task_row = TaskRow(app, self.tasks)
         self.task_card = TaskCardView(app, self.tasks)
@@ -71,7 +73,7 @@ class AssistantArea(Card):
         self._stack.setObjectName(q.SURFACE)
         self._results_page = self._scrolled(self.image_results)
         self._readability_page = self._scrolled(self.readability_panel)
-        for body in (self.chat, self.claude_code, self.task_card, self._results_page, self._readability_page):
+        for body in (self.chat, *self.surfaces.values(), self.task_card, self._results_page, self._readability_page):
             self._stack.addWidget(body)
         for widget, stretch in ((self.header, 0), (self.task_row, 0), (self._stack, 1)):
             self.layout().addWidget(widget, stretch)
@@ -91,14 +93,27 @@ class AssistantArea(Card):
         self.image_results.retry_clicked.connect(self.tasks.retry_failed)
         self.image_results.closed.connect(self.tasks.close_result)
         self.chat.route_changed.connect(self._refresh_route)
-        self.claude_code.setup_changed.connect(self.header.schedule)
+        for surface in self.surfaces.values():
+            if hasattr(surface, "setup_changed"):
+                surface.setup_changed.connect(self.header.schedule)
         state.ai_route_changed.connect(self._show_body)
         self._show_body()
         self._refresh_route()
+        self.setVisible(self.available)
+
+    @property
+    def available(self) -> bool:
+        """Whether there is any AI route; without one the assistant is not shown."""
+        return bool(routes.all())
+
+    def surface_for(self, route_id: str):
+        """The conversation surface of the route (Claude Code's terminal), or None for a route on the core chat."""
+        return self.surfaces.get(route_id)
 
     def _tasks_blocked(self) -> bool:
         """The task buttons wait while the amber card asks for Claude Code to be installed or signed in."""
-        return self.state.ai_route == ai_profile.CLAUDE_CODE and self.claude_code.needs_setup
+        surface = self.surface_for(self.state.ai_route)
+        return surface is not None and getattr(surface, "needs_setup", False)
 
     @staticmethod
     def _scrolled(body: QWidget) -> QScrollArea:
@@ -127,7 +142,7 @@ class AssistantArea(Card):
                 self.image_results.show_result(result)
             self._stack.setCurrentWidget(self._results_page)
         else:
-            self._stack.setCurrentWidget(self.claude_code if self.state.ai_route == ai_profile.CLAUDE_CODE else self.chat)
+            self._stack.setCurrentWidget(self.surface_for(self.state.ai_route) or self.chat)
         now = self._stack.currentWidget()
         if now is self.task_card and before is not now:
             self.task_card.focus_first()
@@ -143,25 +158,36 @@ class AssistantArea(Card):
 
     def _sign_in(self) -> None:
         self.tasks.close_card()
-        self.claude_code.sign_in()
+        self.surface_for(self.state.ai_route).sign_in()
 
     def _refresh_route(self) -> None:
         """The header names the route on show and, for the chat, the model that answers."""
-        route = ai_profile.Route(ai_profile.CLAUDE_CODE, ai_profile.CHAT) if self.state.ai_route == ai_profile.CLAUDE_CODE \
-            else self.chat.route()
-        self.header.show_route(route)
+        surface = self.surface_for(self.state.ai_route)
+        route = ai_profile.Route(self.state.ai_route, ai_profile.CHAT) if surface is not None else self.chat.route()
+        self.header.show_route(route, getattr(surface, "subtitle", ""))
 
     def refresh_models(self) -> None:
         """A route, a default model or a list of models changed (AI setup, Settings, Ollama answering)."""
         self.chat.refresh_route()
-        self.claude_code.refresh_caption()
+        for route in routes.all():
+            if route.id not in self.surfaces:
+                surface = route.chat_surface(self.app, self.state, self.scope, self.tasks)
+                if surface is not None:
+                    self.surfaces[route.id] = surface
+                    self._stack.addWidget(surface)
+                    if hasattr(surface, "setup_changed"):
+                        surface.setup_changed.connect(self.header.schedule)
+        for surface in self.surfaces.values():
+            if refresh := getattr(surface, "refresh_caption", None):
+                refresh()
         self.header.schedule()
+        self.setVisible(self.available)
 
     def new_conversation(self) -> None:
         """Forget the conversation of the route on show: the chat's, or the terminal's (a new Claude Code session;
         /resume goes back). The other route's is kept."""
-        if self.state.ai_route == ai_profile.CLAUDE_CODE:
-            self.claude_code.restart()
+        if (surface := self.surface_for(self.state.ai_route)) is not None:
+            surface.restart("", False)
         else:
             self.chat.new_chat()
 
@@ -245,12 +271,18 @@ class AssistantArea(Card):
             self.run_task(bubble)
 
     def refresh_colors(self) -> None:
-        self.claude_code.refresh_colors()
+        for surface in self.surfaces.values():
+            if refresh := getattr(surface, "refresh_colors", None):
+                refresh()
 
     def shutdown(self) -> None:
         """The window closes: end a running chat request, the tasks and the Claude Code process."""
         self.chat.shutdown()
-        self.claude_code.shutdown()
+        for surface in self.surfaces.values():
+            if shutdown := getattr(surface, "shutdown", None):
+                shutdown()
+            else:
+                surface.stop()
         self.tasks.shutdown()
         self.readability.close()
         self.workspace.close()

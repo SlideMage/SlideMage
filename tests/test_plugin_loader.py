@@ -141,3 +141,31 @@ def test_unloaded_name_may_load_twice(monkeypatch):
     assert load()["hello"].state == "loaded"
     # a second load in the same process finds the name in sys.modules and refuses, as for any clash
     assert load()["hello"].state == "failed"
+
+
+def test_ai_routes_are_registered_after_activation_and_duplicates_fail_atomically(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from slidemage.ai import routes
+
+    monkeypatch.setattr(routes, '_routes', dict(routes._routes))
+    folder = tmp_path / 'plugin'
+    shutil.copytree(FIXTURES / 'hello', folder)
+    source = folder / 'hello' / '__init__.py'
+    monkeypatch.setenv(loader.PATH_ENV, str(folder))
+    source.write_text('from types import SimpleNamespace\n'
+                      'def activate(host):\n'
+                      '    host.add_ai_route(SimpleNamespace(id="plugin_route"))\n')
+    plugin = load()['hello']
+    assert plugin.state == 'loaded'
+    assert routes.get('plugin_route') is plugin.contributions.ai_routes[0]
+    del sys.modules['hello']
+    source.write_text('from types import SimpleNamespace\n'
+                      'def activate(host):\n'
+                      '    host.add_ai_route(SimpleNamespace(id="another_route"))\n'
+                      '    host.add_ai_route(SimpleNamespace(id="ollama"))\n')
+    plugin = load()['hello']
+    assert plugin.state == 'failed' and 'ollama' in plugin.reason
+    assert routes.get('another_route') is None
+    registrar = Registrar(SimpleNamespace(id='hello'))
+    with pytest.raises(RuntimeError):
+        registrar.add_ai_route(SimpleNamespace(id='late'))

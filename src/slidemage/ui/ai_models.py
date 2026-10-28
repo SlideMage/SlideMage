@@ -14,10 +14,9 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
-from ..ai import ai_profile, resolver
-from ..ai.ai_profile import OLLAMA, Route
-from ..ai.ollama_route import InstalledModel, OllamaProvider
-from ..ai.providers import ChatProvider, ProviderError
+from ..ai import ai_profile, resolver, routes
+from ..ai.ai_profile import Route
+from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError  # OllamaProvider: LocalModelList
 from ..project import ProjectContext
 from . import background
 from .kit.widgets import ModalSheet, ModeBadge
@@ -81,6 +80,8 @@ class LocalModelList(QObject):
     def fill(self, installed: list[InstalledModel]) -> None:
         """Take a list somebody else has just asked for (the Settings sheet)."""
         self.installed = installed
+        from ..ai.ollama_route import cache_installed
+        cache_installed(self.project, installed)
         self.changed.emit()
 
 
@@ -94,14 +95,13 @@ def fill_model_combo(
     shows `empty_text` disabled and returns False."""
     route = ai_profile.resolve(project, task)
     combo.clear()
-    if route.route == OLLAMA:
-        if local_models is None:
-            local_models = OllamaProvider.for_project(project).list_models(vision_only=vision_only)
-        for model in local_models:
-            combo.addItem(model, model)
-    else:
-        for choice in ai_profile.model_choices(project, route.route, task):
-            combo.addItem(ai_profile.choice_label(route.route, choice), choice)
+    found = routes.get(route.route)
+    if found is not None:
+        # `local_models` (and `vision_only`) are what a caller already asked of the local routes; every other
+        # route, and a local one asked with nothing, tells its own choices
+        choices = local_models if local_models is not None and found.id == ai_profile.OLLAMA else found.model_choices(project, task)
+        for choice in choices:
+            combo.addItem(found.choice_label(choice), choice)
     usable = combo.count() > 0
     combo.setEnabled(usable)
     if not usable:

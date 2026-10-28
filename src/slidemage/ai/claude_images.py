@@ -17,11 +17,11 @@ from pathlib import Path
 
 from .. import alt_draft, alt_images, translation_prompts
 from ..project import ProjectContext
-from . import claude_runner, claude_tasks
+from . import claude_runner, tasks as ai_tasks
 
 # The tasks of the bubbles. Their rules are the user's own prompts, which the backends put in at each call.
-DESCRIBE = claude_tasks.Task("describe_images", "", alt_draft.RESPONSE_SCHEMA)
-TRANSLATE = claude_tasks.Task("translate_images", "", {
+DESCRIBE = ai_tasks.Task("describe_images", "", alt_draft.RESPONSE_SCHEMA)
+TRANSLATE = ai_tasks.Task("translate_images", "", {
     "type": "object", "properties": {key: {"type": "string"} for key in ("short_de", "long_de", "takeaway_de")},
     "required": ["short_de", "long_de", "takeaway_de"], "additionalProperties": False})
 
@@ -48,7 +48,7 @@ class _ClaudeBackend:
     def abort(self) -> None:
         self.cancel.set()
 
-    def _ask(self, task: claude_tasks.Task, request: str, deadline_s: float,
+    def _ask(self, task: ai_tasks.Task, request: str, deadline_s: float,
              images: tuple[Path, ...] = ()) -> tuple[dict, str]:
         """(the answer, "") or ({}, why there is none)."""
         run = claude_runner.run_json(self.claude, task, request, self.model, self.effort,

@@ -29,8 +29,12 @@ class LocalModels(QThread):
 
     loaded = Signal(object)         # [model name]
 
+    def __init__(self, project):
+        super().__init__()
+        self.project = project
+
     def run(self) -> None:
-        self.loaded.emit(OllamaProvider().tool_models())
+        self.loaded.emit(OllamaProvider.for_project(self.project).tool_models())
 
 
 class _AgentThread(QThread):

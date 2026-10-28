@@ -19,6 +19,7 @@ Conventions of all calls:
 """
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,15 @@ if TYPE_CHECKING:
 
     from .ai.providers import ChatProvider
     from .project import ProjectContext
+if TYPE_CHECKING:       # for type checkers only: at run time these load on first use (see __getattr__)
+    from .ai.agent_types import (  # noqa: F401
+        EDIT_ASK, EDIT_AUTO, AgentEvent, AgentMessage, AssistantMessage, Done, EditApplied, EditProposed,
+        EditRejected, TextDelta, ToolCall, ToolFinished, ToolResult, ToolResultsMessage, ToolSpec, ToolStarted,
+        UserMessage,
+    )
+    from .ai.providers import Cancelled, ChatProvider, ChatReply, ProviderError, parse_json_object  # noqa: F401
+    from .ai.tools import ToolBox  # noqa: F401
+    from .protected_regions import protected_spans  # noqa: F401
 
 API_VERSION = 1
 SUPPORTED_API_VERSIONS = frozenset({1})
@@ -98,6 +108,105 @@ class Settings(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class Focus:
+    """What the user is looking at, as Host.focus() reads it."""
+
+    deck: Path | None
+    """The open deck's file, or None."""
+    slide: Path | None
+    """The slide file the editor shows, or None (a deck, a .bib or nothing is shown)."""
+    scope: Literal["slide", "deck"]
+    """How far an AI request may reach: this slide, or the whole deck."""
+
+
+class Credentials(Protocol):
+    """A plugin's secrets (an API key), kept apart from its settings and from other plugins. A secret has a name
+    ("key" by default; a plugin with two secrets names them). Where one lives, in order of lookup: the environment
+    variable the plugin named in Host.credentials(env_var=...) (for the default name only; read-only), the system
+    keychain (when the optional keyring package is installed and has a backend), a 0600 file in SlideMage's folder
+    on this computer. A secret is kept in one place only. Never in the project folder."""
+
+    def get(self, name: str = "key") -> str | None:
+        """The secret, or None."""
+        ...
+
+    def set(self, value: str, name: str = "key") -> str:
+        """Store the secret (an empty value clears it) and return where it went: "keychain" or "file", "" when
+        cleared. Raises OSError when it cannot be stored or an old copy cannot be removed."""
+        ...
+
+    def clear(self, name: str = "key") -> None:
+        """Remove the secret from the keychain and the file (the environment variable is not the plugin's to
+        change)."""
+        ...
+
+    def where(self, name: str = "key") -> str:
+        """Where the secret is read from: "environment", "keychain" or "file", or "" when there is none."""
+        ...
+
+
+class ExternalEdits(Protocol):
+    """What changed in the project's text files since the last look (an external program, a terminal program,
+    edited them). Paths are absolute."""
+
+    added: tuple[Path, ...]
+    removed: tuple[Path, ...]
+    modified: tuple[Path, ...]
+
+
+class EditWatch(Protocol):
+    """A watch over the project's text files, from Host.watch_external_edits(). A cheap poll once a second, on the
+    UI thread; hidden files, dot-folders, pdf/ and generated wrappers are not seen. Also a context manager:
+    `with host.watch_external_edits(cb):` starts it and stops it at the end."""
+
+    def start(self) -> None:
+        """Take a first look and begin polling. Calling it again does nothing."""
+        ...
+
+    def stop(self, *, last_look: bool = True) -> None:
+        """Stop polling. With last_look, one last poll first, because a program may have written a file in its
+        final moment. Safe to call twice."""
+        ...
+
+
+class TerminalSession(Protocol):
+    """One program on a terminal, from Host.terminal().start(). Callbacks run on the UI thread."""
+
+    widget: Widget | None
+    """The terminal view to put into a layout (None if started without one)."""
+    running: bool
+
+    def write(self, data: bytes) -> None:
+        """Send keystrokes (or pasted text) to the program."""
+        ...
+
+    def resize(self, cols: int, rows: int) -> None: ...
+
+    def stop(self) -> None:
+        """End the program politely, then by force; its late output and exit are not reported. Safe to call twice."""
+        ...
+
+    def close(self) -> None:
+        """stop(), and free the view."""
+        ...
+
+
+class TerminalService(Protocol):
+    """SlideMage's embedded terminal (a pseudo-terminal and an xterm view in SlideMage's colours)."""
+
+    def start(
+        self, argv: list[str], env: dict[str, str] | None = None, cwd: Path | None = None, *,
+        on_output: Callable[[bytes], None] | None = None, on_exit: Callable[[int], None] | None = None,
+        with_widget: bool = True, cols: int = 80, rows: int = 24,
+    ) -> TerminalSession:
+        """Run argv (env defaults to SlideMage's own, cwd to the project folder). With a widget the program
+        starts when the view has its size (once the widget is shown), and its output goes to the view as well as
+        to on_output; without one it starts at once at cols x rows. on_exit(code) is called when it ends by itself.
+        Raises OSError if the program cannot be started (when it starts at once)."""
+        ...
+
+
 class Host(Protocol):
     """The calls SlideMage offers a plugin. activate(host) gets one object of this type."""
 
@@ -151,6 +260,16 @@ class Host(Protocol):
         widget (a Page), is called when the sheet opens and must not block."""
         ...
 
+    def add_ai_route(self, route: AiRoute) -> None:
+        """Register an AI route during activate(); duplicate route ids fail the plugin."""
+        ...
+
+    def add_settings_section(self, page: Literal["ai"], title: str, build: Callable[[], Widget]) -> None:
+        """Add a titled section to a page of the Settings sheet; only page "ai" (the AI tab) exists. The section
+        follows SlideMage's own, in registration order. build() returns the section's widget, is called when the
+        sheet opens and must not block. A build that raises shows an error line in its section."""
+        ...
+
     def add_sidebar_box(
         self, key: str, title: str, build: Callable[[Deck], Widget], size: Literal["compact", "large"] = "compact",
         when: Callable[[Deck], bool] = lambda deck: True,
@@ -169,7 +288,52 @@ class Host(Protocol):
         exception counts as False."""
         ...
 
+    def add_entry_point(self, name: str, fn: Callable[[list[str]], int]) -> None:
+        """Register a program entry: `SlideMage --plugin <plugin id>:<name> args...` loads only this plugin, with no
+        window, and exits with fn(args)'s return code (a hook that another program runs as a command, say). name is
+        lower case letters, digits, "-" and "_"; a duplicate raises ValueError. fn runs in a fresh process without
+        a window, so it must not use widgets; run_in_background and the window calls raise there."""
+        ...
+
     # -- what it calls ------------------------------------------------------------------------------------------
+
+    def entry_point_command(self, name: str) -> list[str]:
+        """The argv that runs the entry point `name` of this plugin: [SlideMage's executable, "--plugin",
+        "<id>:<name>"] in an installed app; [python, "-m", "slidemage", "--plugin", "<id>:<name>"] from source.
+        Hand it to another program as a command (shlex.join / subprocess.list2cmdline). May be called any time."""
+        ...
+
+    def terminal(self) -> TerminalService:
+        """The embedded terminal service (the window must exist: raises RuntimeError("no window") otherwise)."""
+        ...
+
+    def watch_external_edits(self, on_change: Callable[[ExternalEdits], None]) -> EditWatch:
+        """A watch over the project's text files; on_change(changes) is called on the UI thread when a poll sees
+        files added, removed or modified. If on_change raises, the changes are offered again at the next poll.
+        Not started: call start() (or use it in a with)."""
+        ...
+
+    def credentials(self, env_var: str | None = None) -> Credentials:
+        """The plugin's secrets; env_var names the environment variable that wins over a stored secret of the
+        default name ("ANTHROPIC_API_KEY")."""
+        ...
+
+    def ai_tools(
+        self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
+        mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: Any = None,
+    ) -> "ToolBox":
+        """The agent's tools as SlideMage's embedded Claude Code is offered them (read files, lint, render a preview,
+        create/modify/add/insert slides, QR codes, guides...), for an MCP server or an agent loop of the plugin's
+        own. scope limits where edits may reach ("slide": only focus_slide; "deck": the deck). mode "auto" applies
+        edits at once, "ask" proposes them. cancel is a compiler.CancelToken (None: a fresh one). workspace is the
+        slidemage.ai.workspace.Workspace the tools see (None: the project's files, with no editor buffers). Use
+        box.specs and box.execute(ToolCall(...)). Heavy to import: call it when needed, not in activate()."""
+        ...
+
+    def focus(self) -> Focus:
+        """What the user is looking at now (the deck, the slide, the scope of an AI request). Focus(None, None,
+        "slide") when no window shows one."""
+        ...
 
     def run_in_background(self, work: Callable[[], T], done: Callable[[T | None, BaseException | None], None]) -> None:
         """Run work() on a worker thread (a network fetch, say) and then call done(result, None), or
@@ -374,5 +538,35 @@ class AiRoute(Protocol):
         ...
 
     def settings_section(self) -> Callable[[], Widget] | None:
-        """A builder for the route's own section of Settings' AI tab, or None for no section. Not used yet."""
+        """A builder for the route's own section of Settings' AI tab, or None for no section. Built when Settings opens."""
         ...
+# -- the neutral AI types -----------------------------------------------------------------------------------------
+# Re-exported from SlideMage's modules, which are not standard library, so they load on first use: importing this
+# module stays cheap, and `from slidemage.plugin_api import ChatProvider` works. They are:
+#   ai.providers   ChatProvider (Protocol of a model backend), ChatReply, ProviderError, Cancelled,
+#                  parse_json_object(text) -> dict | None (the first JSON object in a model's answer)
+#   ai.agent_types the agent chat's messages (UserMessage, AssistantMessage, ToolResultsMessage, AgentMessage),
+#                  tool calls and results (ToolSpec, ToolCall, ToolResult), events (TextDelta, ToolStarted,
+#                  ToolFinished, EditProposed, EditApplied, EditRejected, Done, AgentEvent), EDIT_ASK, EDIT_AUTO
+#   ai.tools       ToolBox
+#   protected_regions  protected_spans(text) -> [[start, end], ...]: the parts of a slide that tools and hooks
+#                  refuse to change (header comment, \setSlideVersion, \vbox to 0pt blocks); read-only use.
+_LAZY = {
+    **{name: "slidemage.ai.providers" for name in
+       ("ChatProvider", "ChatReply", "ProviderError", "Cancelled", "parse_json_object")},
+    **{name: "slidemage.ai.agent_types" for name in
+       ("ToolSpec", "ToolCall", "ToolResult", "UserMessage", "AssistantMessage", "ToolResultsMessage", "AgentMessage",
+        "TextDelta", "ToolStarted", "ToolFinished", "EditProposed", "EditApplied", "EditRejected", "Done",
+        "AgentEvent", "EDIT_ASK", "EDIT_AUTO")},
+    "ToolBox": "slidemage.ai.tools",
+    "protected_spans": "slidemage.protected_regions",
+}
+
+
+def __getattr__(name: str) -> Any:
+    module = _LAZY.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(module), name)
+    globals()[name] = value
+    return value

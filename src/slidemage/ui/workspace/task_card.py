@@ -24,7 +24,7 @@ from ..kit.widgets import Button, IconLabel, Surface, announce, clear_layout, se
 from . import compare_rendered, task_card_model as model
 from .chat.cards import DiffCard
 from .task_card_model import TaskCard
-from .terminal.tasks import TaskRunner
+from .task_bubbles import TaskRunner
 
 MOVED_ON = " (still this slide, though you moved on)"
 

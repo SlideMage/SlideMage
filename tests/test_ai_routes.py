@@ -278,3 +278,17 @@ def test_the_cloud_connection_is_written_with_the_new_id(ctx):
         ai_profile.set_cloud_conn(ctx, "local")                                        # Ollama is not a cloud route
     with pytest.raises(ValueError):
         ai_profile.set_cloud_conn(ctx, "nonsense")
+
+
+def test_ollama_choices_use_only_the_background_cache(ctx, monkeypatch):
+    from slidemage.ai import ollama_route
+
+    ollama_route._installed.clear()
+    monkeypatch.setattr(OllamaProvider, 'installed', lambda *args, **kwargs: pytest.fail('network listing'))
+    ollama_route.cache_installed(ctx, [
+        ollama_route.InstalledModel('chat', 1, '', ('tools',)),
+        ollama_route.InstalledModel('vision', 1, '', ('vision',)),
+    ])
+    assert ai_profile.model_choices(ctx, OLLAMA, CHAT) == ['chat']
+    assert ai_profile.model_choices(ctx, OLLAMA, IMAGE_DESCRIPTION) == ['vision']
+    assert ai_profile.model_choices(ctx, OLLAMA, TRANSLATION) == ['chat', 'vision']

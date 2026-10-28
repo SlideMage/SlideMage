@@ -11,7 +11,7 @@ import threading
 import pytest
 from PySide6.QtWidgets import QLabel
 from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, FIX, GERMAN, LF, break_slide, buttons, click, ctx, fake, outdated, settled, slide_file  # noqa: F401
+from test_tasks_gui import BROKEN, FIX, GERMAN, LF, break_slide, buttons, click, ctx, fake, outdated, settled, slide_file  # noqa: F401
 
 from slidemage.ai import claude_runner
 from slidemage.ai.agent_types import EDIT_ASK
@@ -104,7 +104,7 @@ def test_generate_names_the_task_the_slide_and_the_route_counts_seconds_and_stop
     assert step_rows(env)[0] == ("Generate", "stopped") and env.window.running_ai_work() == []
     assert slide_file(env).editor.text() == LF
     press(env, "Close")
-    assert card(env) is None and area(env)._stack.currentWidget() is area(env).claude_code
+    assert card(env) is None and area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
 
 
 # -- Review, Apply, Check preview, Done -------------------------------------------------------------------------
@@ -301,9 +301,9 @@ def test_a_login_failure_asks_for_setup_and_signs_in(fake, monkeypatch):  # noqa
     area(env).task_card.steps_toggle.click()
     assert step_rows(env)[0] == ("Generate", "setup needed")
     signed = []
-    monkeypatch.setattr(area(env).claude_code, "sign_in", lambda: signed.append(True))
+    monkeypatch.setattr(area(env).surface_for("claude_code"), "sign_in", lambda: signed.append(True))
     press(env, "Sign in…")
-    assert signed == [True] and card(env) is None and area(env)._stack.currentWidget() is area(env).claude_code
+    assert signed == [True] and card(env) is None and area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
 
 
 def test_run_again_on_a_setup_card_asks_the_route_again(fake, monkeypatch):  # noqa: F811
@@ -355,7 +355,7 @@ def test_back_to_conversation_leaves_a_pill_while_the_proposal_waits(asked):
     head = area(env).header
     assert not head.pill.isVisibleTo(head)
     area(env).task_card.back.click()
-    assert area(env)._stack.currentWidget() is area(env).claude_code
+    assert area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
     assert head.pill.isVisibleTo(head) and head.pill.label.full_text() == "Fix LaTeX errors · waiting for review"
     head.pill.clicked.emit()                                                    # Open
     assert area(env)._stack.currentWidget() is area(env).task_card and not head.pill.isVisibleTo(head)
@@ -374,7 +374,7 @@ def test_a_card_left_while_it_generates_keeps_running_and_shows_where_it_got_to(
     assert head.pill.label.full_text() == "Better title · generating"
     wait_until(phase_is(env, model.REVIEW))
     assert head.pill.label.full_text() == "Better title · waiting for review"
-    assert area(env)._stack.currentWidget() is area(env).claude_code             # it does not jump back by itself
+    assert area(env)._stack.currentWidget() is area(env).surface_for("claude_code")             # it does not jump back by itself
 
 
 def test_the_target_note_says_so_after_moving_to_another_slide(fake):  # noqa: F811
@@ -398,7 +398,7 @@ def test_the_language_panels_translate_opens_the_card(asked):
     panel = env.window.side_panels
     asked.reply({"answer": GERMAN})
     next(b for b in panel.findChildren(Button) if b.text() == "Translate to DE · cloud").click()
-    assert card(env).task is model.claude_tasks.TRANSLATE and area(env)._stack.currentWidget() is area(env).task_card
+    assert card(env).task is model.ai_tasks.TRANSLATE and area(env)._stack.currentWidget() is area(env).task_card
     wait_until(phase_is(env, model.REVIEW))
     assert state(env) == "Proposed translation of abc into German, as a new slide. Nothing is written yet."
     (diff,) = area(env).task_card.findChildren(DiffCard)

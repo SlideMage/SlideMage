@@ -94,5 +94,6 @@ class ClaudeCodeRoute:
         from ..ui.workspace.terminal.view import ClaudeCodeView
         return ClaudeCodeView(*args, **kwargs)
 
-    def settings_section(self) -> None:
-        return None     # the Claude Code status is still on Settings' Cloud tab; 3c makes it a section
+    def settings_section(self):
+        from ..ui.dialogs.settings_ai import build_claude_code_section
+        return build_claude_code_section
