@@ -103,10 +103,38 @@ def test_a_course_link_in_the_body_or_empty_does_not_count():
     assert not upgrade.has_course_link("%% SlideMage course URL:   \n\\begin{document}\n")
 
 
-def test_only_campusonline_is_preselected_while_claude_and_ollama_are_built_in(ctx, monkeypatch):
-    assert upgrade.PRESELECT_ON_UPGRADE == {"campusonline"}
-    monkeypatch.setattr(upgrade, "used_features", lambda c: {"claude": "a", "ollama": "b", "campusonline": "c"})
-    assert upgrade.preselected_reasons(ctx) == {"campusonline": "c"}
+def test_campusonline_is_the_only_migration_in_this_release():
+    assert upgrade.MIGRATIONS == [upgrade.Migration("campusonline", "v9.0.0")]
+
+
+def test_linked_deck_is_due_even_after_onboarding_was_dismissed(ctx, monkeypatch):
+    monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(
+        text="%% SlideMage course URL: https://campus.example/c/1\n\\begin{document}\n")])
+    upgrade.mark_offer_seen()
+    assert upgrade.migrations_due(ctx) == {"campusonline": "A deck of this project has a CAMPUSonline course link"}
+    upgrade.mark_migrations_seen(["campusonline"])
+    assert upgrade.migrations_due(ctx) == {}
+
+
+def test_migrations_due(ctx, monkeypatch):
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.70.0"),
+                                                upgrade.Migration("claude", "v9.0.0")])
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why", "claude": "why2"})
+    assert upgrade.migrations_due(ctx, "v8.70.0") == {"campusonline": "why"}       # claude: release is newer
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {"campusonline": "why", "claude": "why2"}
+    upgrade.mark_migrations_seen(["campusonline"])
+    assert upgrade.migrations_seen() == {"campusonline"}
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {"claude": "why2"}
+    assert not upgrade.offer_seen()                      # onboarding is a separate flag
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {})
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {}
+
+
+def test_a_migrated_plugin_that_is_installed_is_not_due(ctx, monkeypatch):
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.0.0")])
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why"})
+    monkeypatch.setattr(upgrade, "discover", lambda: [SimpleNamespace(id="campusonline")])
+    assert upgrade.migrations_due(ctx) == {}
 
 
 def test_the_offer_flag():
@@ -139,3 +167,13 @@ def test_the_course_link_hint_shows_once_per_project_until_dismissed(ctx, monkey
     monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(text="\\begin{document}\n")])
     maintenance.show_course_hint(window)
     assert len(shown) == 1                                       # no course links
+
+
+def test_installed_but_inactive_plugin_can_schedule_the_hint(monkeypatch):
+    from slidemage.ui.workspace import maintenance
+
+    scheduled = []
+    monkeypatch.setattr(upgrade, "discover", lambda: [SimpleNamespace(id="campusonline")])
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda delay, callback: scheduled.append(callback))
+    maintenance.schedule_course_hint(SimpleNamespace())
+    assert len(scheduled) == 1

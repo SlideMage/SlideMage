@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -284,3 +285,141 @@ def test_renderer_uses_the_plugin_rule(pctx):
     assert r._soon(deck) is True
     r.plugin_soon = lambda d: False
     assert r._soon(deck) is False
+
+
+def tex_files(pctx):
+    return {p.name: p.read_bytes() for p in pctx.slides_dir.iterdir()}
+
+
+# -- insertion is all or nothing -------------------------------------------------------------------------------
+
+def assert_untouched(pctx, deck_bytes, slides, csv):
+    assert (pctx.decks_dir / "test.tex").read_bytes() == deck_bytes
+    assert tex_files(pctx) == slides
+    assert (pctx.slide_ids_csv.read_bytes() if pctx.slide_ids_csv.exists() else None) == csv
+    assert not [p for p in pctx.slides_dir.iterdir() if p.name.endswith(".tmp")]
+    assert not [p for p in pctx.decks_dir.iterdir() if p.name.endswith(".tmp")]
+
+
+@pytest.fixture
+def state(host, pctx):
+    csv = pctx.slide_ids_csv.read_bytes() if pctx.slide_ids_csv.exists() else None
+    return snapshot(pctx), (pctx.decks_dir / "test.tex").read_bytes(), tex_files(pctx), csv
+
+
+@pytest.mark.parametrize("where", ["fsync", "replace"])
+def test_a_failure_while_writing_a_slide_leaves_nothing_behind(host, pctx, state, monkeypatch, where):
+    deck, deck_bytes, slides, csv = state
+    from slidemage import fileio
+    real_fsync, real_replace = os.fsync, os.replace
+    calls = []
+
+    def boom_fsync(fd):
+        calls.append(fd)
+        if len(calls) == 2:                      # the second slide, after its text is written
+            raise OSError("injected: disk full")
+        return real_fsync(fd)
+
+    def boom_replace(src, dst, *a):
+        if str(dst).endswith("-current.tex"):
+            calls.append(dst)
+            if len(calls) == 2:
+                raise OSError("injected: rename failed")
+        return real_replace(src, dst, *a)
+
+    monkeypatch.setattr(fileio.os, "fsync", boom_fsync)
+    monkeypatch.setattr(fileio.os, "replace", boom_replace)
+    with pytest.raises(OSError, match="injected"):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a"), ("B", "b")], "en")
+    assert_untouched(pctx, deck_bytes, slides, csv)
+
+
+def test_a_slide_file_that_is_created_and_then_fails_is_removed(host, pctx, state, monkeypatch):
+    """The new file is tracked before its content is written: a failure that leaves a partial file is cleaned."""
+    deck, deck_bytes, slides, csv = state
+
+    real = host_module.atomic_write
+
+    def partial(path, data, **kw):
+        if not path.name.endswith("-current.tex"):
+            return real(path, data, **kw)           # the restore of slide_ids.csv
+        path.write_bytes(data.encode()[:7])
+        raise OSError("injected partial write")
+
+    monkeypatch.setattr(host_module, "atomic_write", partial)
+    with pytest.raises(OSError, match="injected"):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
+    assert_untouched(pctx, deck_bytes, slides, csv)
+
+
+def test_a_failure_during_the_deck_commit_after_a_partial_write_keeps_the_deck(host, pctx, state, monkeypatch):
+    deck, deck_bytes, slides, csv = state
+    from slidemage import fileio
+    real_fdopen = os.fdopen
+
+    class Partial:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def write(self, data):
+            fdopen.deck_phase[0] = False             # one fault only: the rollback writes normally
+            self.handle.write(data[:9])
+            self.handle.flush()
+            raise OSError("injected: disk full after 9 bytes")
+
+        def __getattr__(self, name):
+            return getattr(self.handle, name)
+
+        def __exit__(self, *args):
+            self.handle.close()
+
+    def fdopen(fd, mode="r", *a, **kw):
+        handle = real_fdopen(fd, mode, *a, **kw)
+        return Partial(handle) if "wb" in mode and fdopen.deck_phase[0] else handle
+
+    fdopen.deck_phase = [False]
+    real_slide_calls = host_module.deck_editor.insert_slide_calls
+
+    def calls(*args, **kw):
+        fdopen.deck_phase[0] = True              # the slides are written; now the deck
+        return real_slide_calls(*args, **kw)
+
+    monkeypatch.setattr(fileio.os, "fdopen", fdopen)
+    monkeypatch.setattr(host_module.deck_editor, "insert_slide_calls", calls)
+    with pytest.raises(OSError, match="injected"):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a"), ("B", "b")], "en")
+    assert_untouched(pctx, deck_bytes, slides, csv)
+
+
+def test_a_failed_rename_of_the_deck_keeps_the_deck(host, pctx, state, monkeypatch):
+    deck, deck_bytes, slides, csv = state
+    from slidemage import fileio
+    real = os.replace
+
+    def replace(src, dst, *a):
+        if str(dst).endswith("test.tex"):
+            raise OSError("injected: rename failed")
+        return real(src, dst, *a)
+
+    monkeypatch.setattr(fileio.os, "replace", replace)
+    with pytest.raises(OSError, match="injected"):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
+    assert_untouched(pctx, deck_bytes, slides, csv)
+
+
+def test_a_deck_changed_at_the_commit_is_not_overwritten(host, pctx, state, monkeypatch):
+    """The expected-text check is made at the moment of the replacement, not only before the slides are written."""
+    deck, deck_bytes, slides, csv = state
+    real = host_module.deck_editor.apply
+    other = deck_bytes + b"%% edited elsewhere\r\n"
+
+    def apply(path, expected, mutate):
+        return real(path, expected, lambda t: (path.write_bytes(other), mutate(t))[1])
+
+    monkeypatch.setattr(host_module.deck_editor, "apply", apply)
+    with pytest.raises(plugin_api.StaleFileError):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
+    assert_untouched(pctx, other, slides, csv)

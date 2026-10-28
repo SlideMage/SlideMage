@@ -26,8 +26,9 @@ from typing import Literal
 from .. import project
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
-from .manifest import MANIFEST_NAME, Manifest, ManifestError, matches, package_name, read_manifest
+from .manifest import MANIFEST_NAME, RESERVED_IDS, Manifest, ManifestError, matches, package_name, read_manifest
 from .registry import Contributions, Registrar
+from .storage import private_file
 
 PATH_ENV = "SLIDEMAGE_PLUGIN_PATH"
 
@@ -66,7 +67,7 @@ def plugins_dir() -> Path:
 
 
 def _state_file() -> Path:
-    return plugins_dir() / "state.json"
+    return private_file(plugins_dir(), "state.json")
 
 
 def _disabled_ids() -> set[str]:
@@ -94,6 +95,8 @@ def set_enabled(plugin_id: str, enabled: bool) -> None:
 
 def _inspect(folder: Path, source: Literal["installed", "dev"]) -> Found:
     try:
+        if source == "installed" and folder.name in RESERVED_IDS:
+            raise ManifestError(f"folder {folder.name!r} is reserved for SlideMage's own storage")
         return Found(folder, source, read_manifest(folder))
     except ManifestError as e:
         return Found(folder, source, None, error=str(e))

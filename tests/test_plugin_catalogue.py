@@ -72,7 +72,7 @@ def server():
 
 
 def _cache_path() -> Path:
-    return loader.plugins_dir() / "catalogue.json"
+    return loader.plugins_dir() / catalogue.CACHE_NAME
 
 
 # --- parsing -----------------------------------------------------------------------------------------------
@@ -292,3 +292,19 @@ def test_too_new_keeps_older_cache(server, monkeypatch):
     with pytest.raises(CatalogueTooNew):
         catalogue.fetch(timeout=5)
     assert _cache_path().read_bytes() == before
+
+
+@pytest.mark.parametrize("plugin_id", ["settings", "secrets", "pending", "staging", "old", "state", "catalogue"])
+def test_host_storage_ids_are_left_out(plugin_id):
+    data = _json("index-test.json")
+    data["plugins"][0]["id"] = plugin_id
+    assert parse(data).plugins == []
+
+
+def test_legacy_cache_is_migrated_once():
+    base = loader.plugins_dir()
+    base.mkdir(parents=True)
+    (base / "catalogue.json").write_bytes(_raw("index-test.json"))
+    assert catalogue.cached().plugins[0].id == "hello"
+    assert (base / catalogue.CACHE_NAME).is_file()
+    assert not (base / "catalogue.json").exists()

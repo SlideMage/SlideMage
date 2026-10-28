@@ -8,7 +8,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QCheckBox, QLabel
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel
 
 from conftest import qapp as qapp
 from conftest import wait_until
@@ -50,6 +51,19 @@ def no_real_browser(monkeypatch):
 @pytest.fixture(autouse=True)
 def nothing_in_use(monkeypatch):
     monkeypatch.setattr(upgrade, "used_features", lambda ctx: {})       # the fake windows have no project to read
+@pytest.fixture(autouse=True)
+def cleanup_offer_sheets():
+    """A shown modal sheet must not block windows in subsequent tests."""
+    app = QApplication.instance()
+    existing = set(app.topLevelWidgets()) if app is not None else set()
+    yield
+    app = QApplication.instance()
+    if app is not None:
+        for sheet in set(app.topLevelWidgets()) - existing:
+            if isinstance(sheet, PluginOfferSheet):
+                sheet.hide()  # close/reject would write the offer-seen flag
+                sheet.deleteLater()
+                QCoreApplication.sendPostedEvents(sheet, QEvent.Type.DeferredDelete)
 
 
 CAT = catalogue.parse(catalogue_json(entry("alpha", "Alpha")))
@@ -96,7 +110,7 @@ def test_offerable_opens_the_sheet_with_the_prefetched_catalogue(monkeypatch, qa
 def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
     monkeypatch.setattr(catalogue, "fetch", lambda timeout=10: CAT)
     got = []
-    window = SimpleNamespace(plugin_offer_fetched=SimpleNamespace(emit=got.append))
+    window = SimpleNamespace(project=None, plugin_offer_fetched=SimpleNamespace(emit=got.append))
     maintenance.show_plugin_offer(window)
     wait_until(lambda: got)
     assert got == [CAT]
@@ -107,14 +121,17 @@ def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
     assert got == [CAT]
 
 
-def test_scheduled_only_while_the_flag_is_missing(monkeypatch):
+def test_scheduled_for_onboarding_or_configured_migrations(monkeypatch):
     scheduled = []
     monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda *a: scheduled.append(a))
     maintenance.schedule_plugin_offer(SimpleNamespace())
     assert len(scheduled) == 1 and scheduled[0][0] == maintenance.PLUGIN_OFFER_DELAY_MS
     upgrade.mark_offer_seen()
     maintenance.schedule_plugin_offer(SimpleNamespace())
-    assert len(scheduled) == 1
+    assert len(scheduled) == 2  # migrations may still be due
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [])
+    maintenance.schedule_plugin_offer(SimpleNamespace())
+    assert len(scheduled) == 2
 
 
 def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
@@ -123,7 +140,7 @@ def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
     class FakeSheet:
         restart_requested = False
 
-        def __init__(self, parent, *, preselected, catalogue_data):
+        def __init__(self, parent, *, preselected, catalogue_data, onboarding=True):
             shown.append(preselected)
 
         def exec(self):
@@ -140,7 +157,7 @@ def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
     class FakeSheet:
         restart_requested = True
 
-        def __init__(self, parent, *, preselected, catalogue_data):
+        def __init__(self, parent, *, preselected, catalogue_data, onboarding=True):
             pass
 
         def exec(self):
@@ -154,7 +171,7 @@ def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
 
 
 def test_a_failing_sheet_leaves_the_flag_alone(monkeypatch, qapp):
-    def broken(parent, *, preselected, catalogue_data):
+    def broken(parent, *, preselected, catalogue_data, onboarding=True):
         raise RuntimeError("no sheet")
 
     monkeypatch.setattr(maintenance, "PluginOfferSheet", broken)
@@ -163,25 +180,80 @@ def test_a_failing_sheet_leaves_the_flag_alone(monkeypatch, qapp):
     assert not upgrade.offer_seen()
 
 
-def test_the_upgrade_preselection_is_passed_on_only_when_switched_on(monkeypatch, qapp):
-    seen = []
+def migration_env(monkeypatch, used=None, release="v8.0.0"):
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("alpha", release)])
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"alpha": "Your decks use Alpha"} if used is None else used)
+    opened = []
 
     class FakeSheet:
         restart_requested = False
 
-        def __init__(self, parent, *, preselected, catalogue_data):
-            seen.append(preselected)
+        def __init__(self, parent, *, preselected, catalogue_data, onboarding=True):
+            self.args = (dict(preselected), onboarding)
+            opened.append(self.args)
+            self.ids = dict(preselected)
+            self.onboarding = onboarding
 
-        def exec(self):
-            pass
+        def exec(self):                         # what closing the real sheet does
+            if self.onboarding:
+                upgrade.mark_offer_seen()
+            upgrade.mark_migrations_seen(self.ids)
 
     monkeypatch.setattr(maintenance, "PluginOfferSheet", FakeSheet)
-    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"claude": "a", "campusonline": "why"})
-    window = SimpleNamespace(project=SimpleNamespace(root="/p"))
+    return opened
+
+
+def test_a_due_migration_shows_the_sheet_after_onboarding_and_is_marked_seen(monkeypatch, qapp):
+    opened = migration_env(monkeypatch)
+    upgrade.mark_offer_seen()
+    window = window_with_log()
     maintenance.on_plugin_offer_fetched(window, CAT)
-    monkeypatch.setattr(upgrade, "PRESELECT_ON_UPGRADE", frozenset({"claude", "campusonline"}))
     maintenance.on_plugin_offer_fetched(window, CAT)
-    assert seen == [{"campusonline": "why"}, {"claude": "a", "campusonline": "why"}]
+    assert opened == [({"alpha": "Your decks use Alpha"}, False)]
+    assert upgrade.migrations_seen() == {"alpha"}
+
+
+def test_both_due_on_the_first_start_make_one_sheet(monkeypatch, qapp):
+    opened = migration_env(monkeypatch)
+    window = window_with_log()
+    maintenance.on_plugin_offer_fetched(window, CAT)
+    maintenance.on_plugin_offer_fetched(window, CAT)
+    assert opened == [({"alpha": "Your decks use Alpha"}, True)]
+    assert upgrade.offer_seen() and upgrade.migrations_seen() == {"alpha"}
+
+
+def test_no_migration_sheet_when_not_used_installed_or_too_new(monkeypatch, qapp):
+    upgrade.mark_offer_seen()
+    opened = migration_env(monkeypatch, used={})
+    maintenance.on_plugin_offer_fetched(window_with_log(), CAT)
+    opened = migration_env(monkeypatch, release="v99.0.0")
+    maintenance.on_plugin_offer_fetched(window_with_log(), CAT)
+    assert opened == [] and upgrade.migrations_seen() == set()
+    opened = migration_env(monkeypatch)
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("hello", "v8.0.0")])
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"hello": "why"})
+    load_dev(monkeypatch, "hello")                      # installed: not due
+    maintenance.on_plugin_offer_fetched(window_with_log(), catalogue.parse(catalogue_json(entry("hello"), entry("alpha"))))
+    assert opened == [] and upgrade.migrations_seen() == set()
+
+
+def test_offline_marks_no_migration(monkeypatch, qapp):
+    upgrade.mark_offer_seen()
+    opened = migration_env(monkeypatch)
+    maintenance.on_plugin_offer_fetched(window_with_log(), catalogue.CatalogueError("offline"))
+    assert opened == [] and upgrade.migrations_seen() == set()
+
+
+def test_the_migration_sheet_lists_only_the_migrated_plugins_and_marks_them_seen(qapp, monkeypatch):
+    serve(monkeypatch, entry("alpha", "Alpha"), entry("beta", "Beta"))
+    upgrade.mark_offer_seen()
+    sheet = open_sheet(qapp, preselected={"alpha": "Your decks use Alpha"}, onboarding=False)
+    assert sheet.windowTitle() == plugin_offer.MIGRATION_TITLE or plugin_offer.MIGRATION_TITLE in texts(sheet)
+    assert list(sheet.rows) == ["alpha"] and sheet.rows["alpha"].check.isChecked()
+    assert "Your decks use Alpha" in texts(sheet)
+    assert upgrade.migrations_seen() == set()           # opening alone writes nothing
+    sheet.close_button.click()
+    assert upgrade.migrations_seen() == {"alpha"}
 
 
 # -- the list
@@ -373,3 +445,45 @@ def test_the_sheet_does_not_close_while_installing(qapp, monkeypatch, tmp_path):
 def test_help_plugins_still_opens_settings_not_the_sheet():
     from slidemage.ui.workspace.window import WorkspaceWindow
     assert "PluginOfferSheet" not in WorkspaceWindow.open_plugins.__code__.co_names
+
+
+def test_campusonline_migration_suppresses_the_project_hint_until_next_start(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"campusonline": "A deck has a course link"})
+    scheduled, opened = [], []
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda delay, callback: scheduled.append(callback))
+    upgrade.mark_offer_seen()
+    window = window_with_log()
+    maintenance.schedule_course_hint(window)
+    assert scheduled == []
+
+    class Sheet:
+        restart_requested = False
+
+        def __init__(self, parent, *, preselected, catalogue_data, onboarding):
+            opened.append((preselected, onboarding))
+
+        def exec(self):
+            upgrade.mark_migrations_seen(["campusonline"])
+
+    monkeypatch.setattr(maintenance, "PluginOfferSheet", Sheet)
+    cat = catalogue.parse(catalogue_json(entry("campusonline")))
+    maintenance.on_plugin_offer_fetched(window, cat)
+    assert opened == [({"campusonline": "A deck has a course link"}, False)]
+    maintenance.schedule_course_hint(window)
+    assert len(scheduled) == 1
+    maintenance.schedule_course_hint(window)
+    assert len(scheduled) == 1
+    maintenance.show_course_hint(window)  # suppressed even if a callback is queued after the sheet
+    next_window = window_with_log()
+    maintenance.schedule_course_hint(next_window)
+    assert len(scheduled) == 2
+
+
+@pytest.mark.parametrize("result", [catalogue.CatalogueError("offline"), CAT])
+def test_unavailable_campusonline_migration_schedules_the_hint(monkeypatch, qapp, result):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"campusonline": "course link"})
+    upgrade.mark_offer_seen()
+    scheduled = []
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda delay, callback: scheduled.append(callback))
+    maintenance.on_plugin_offer_fetched(window_with_log(), result)
+    assert len(scheduled) == 1 and upgrade.migrations_seen() == set()

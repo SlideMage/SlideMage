@@ -10,7 +10,7 @@ tests only.
 The format is schema 1 of the website (PLUGINS_PLAN 2.9 and website section 5). Fields the app does not know are
 ignored, so the website can add fields without an update; a newer schema number raises CatalogueTooNew, because
 an older app cannot tell what the new fields mean. A plugin entry that breaks one of the checks is left out of the
-list, the rest of the catalogue still works. The last good copy is kept in plugins_dir()/catalogue.json, so the
+list, the rest of the catalogue still works. The last good copy is kept in plugins_dir()/.catalogue.json, so the
 Plugins tab can show something offline.
 
 No Qt here: plain functions, so the Plugins tab can run fetch() on a worker thread.
@@ -29,11 +29,12 @@ from ..fileio import atomic_write
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .loader import plugins_dir
-from .manifest import ID_RE, REQUIRES_RE, VERSION_RE, matches
+from .manifest import REQUIRES_RE, VERSION_RE, matches, valid_id
+from .storage import private_file
 
 CATALOGUE_URL = "https://slidemage.org/plugins/index.json"
 CATALOGUE_ENV = "SLIDEMAGE_PLUGIN_CATALOGUE"
-CACHE_NAME = "catalogue.json"
+CACHE_NAME = ".catalogue.json"
 SCHEMA = 1
 MAX_BYTES = 2 * 1024 * 1024
 USER_AGENT = "SlideMage-updater"
@@ -153,7 +154,7 @@ def _release(data: dict) -> Release:
 
 def _plugin(data: dict) -> CataloguePlugin:
     plugin_id = data.get("id")
-    if not isinstance(plugin_id, str) or not ID_RE.match(plugin_id):
+    if not isinstance(plugin_id, str) or not valid_id(plugin_id):
         raise _Bad("id")
     recommended = data.get("recommended")
     if not isinstance(recommended, bool):
@@ -210,7 +211,7 @@ def parse(data: dict) -> Catalogue:
 
 
 def _cache_file():
-    return plugins_dir() / CACHE_NAME
+    return private_file(plugins_dir(), CACHE_NAME.removeprefix("."))
 
 
 def fetch(timeout: float = 10) -> Catalogue:

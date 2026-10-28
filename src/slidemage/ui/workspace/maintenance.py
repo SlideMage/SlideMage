@@ -57,7 +57,7 @@ OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Sett
 COURSE_HINT_DELAY_MS = 6000
 COURSE_HINT_DISMISSED_KEY = "campusonline_hint_dismissed"
 COURSE_HINT_DISMISS = "dismiss-campusonline-hint"
-COURSE_HINT_TEXT = ("This project uses CampusOnline course links. Install the plugin to open them, "
+COURSE_HINT_TEXT = ("This project uses CampusOnline course links. Install or enable the plugin to open them, "
                     "insert admin slides and render ahead of a session.")
 # The project compatibility check (compat.py): static scans of the project, a
 # local comparison -- shown before the framework/manual update offer.
@@ -582,15 +582,16 @@ def on_sync_translation_links(window) -> int:
 # -- plugins: the first-start sheet and the plugin updates ------------------------------------------
 
 def schedule_plugin_offer(window) -> None:
-    """The first-start sheet, once per machine, after the window is up; it never delays the start."""
-    if not plugin_upgrade.offer_seen():
+    """The first-start sheet once per machine, and the notice of a feature that became a plugin, once per feature;
+    after the window is up, never delaying the start."""
+    if not plugin_upgrade.offer_seen() or plugin_upgrade.MIGRATIONS:
         QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(show_plugin_offer, window))
 
 
 def show_plugin_offer(window) -> None:
     """Fetch the catalogue on a thread first; `window.plugin_offer_fetched` carries it to on_plugin_offer_fetched.
     The sheet is for a list with something in it: the public catalogue may still be empty."""
-    if plugin_upgrade.offer_seen():
+    if plugin_upgrade.offer_seen() and not plugin_upgrade.migrations_due(window.project):
         return
 
     def work() -> None:
@@ -604,31 +605,48 @@ def show_plugin_offer(window) -> None:
 
 
 def on_plugin_offer_fetched(window, result) -> None:
-    """Open the sheet, with the fetched catalogue, only when at least one plugin is offerable. Offline, too new,
-    or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins… is always there)."""
+    """Open the sheet, with the fetched catalogue, only when something is offerable: the onboarding (not seen yet)
+    and/or the plugins of due migrations (preselected, with their reason). Both due: one onboarding sheet.
+    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins…
+    is always there)."""
+    pending = plugin_upgrade.migrations_due(window.project)
     if isinstance(result, Exception):
         window.log(f"Plugin list not loaded: {result}")
+        if plugin_upgrade.CAMPUSONLINE in pending:
+            schedule_course_hint(window, unavailable=True)
         return
-    if plugin_upgrade.offer_seen() or not plugin_upgrade.offerable(result):
+    onboarding = not plugin_upgrade.offer_seen()
+    offerable = {c.id for c in plugin_upgrade.offerable(result)}
+    if plugin_upgrade.CAMPUSONLINE in pending and plugin_upgrade.CAMPUSONLINE not in offerable:
+        schedule_course_hint(window, unavailable=True)
+    if not offerable:
+        return
+    due = {i: why for i, why in pending.items() if i in offerable}
+    if not onboarding and not due:
         return
     if QApplication.activeModalWidget() is not None:       # another question is open: try again later
         QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(on_plugin_offer_fetched, window, result))
         return
-    used = plugin_upgrade.preselected_reasons(window.project)
-    sheet = PluginOfferSheet(window, preselected=used, catalogue_data=result)
+    sheet = PluginOfferSheet(window, preselected=due, catalogue_data=result, onboarding=onboarding)
+    if plugin_upgrade.CAMPUSONLINE in due:
+        window._course_migration_shown = True
     sheet.exec()
     if sheet.restart_requested:
         window.relaunch_with_project(window.project.root)
 
 
-def schedule_course_hint(window) -> None:
-    """After the first-start sheet's turn (that sheet already ticks CampusOnline for such a project), a one-line
-    toast when this project has course links and the plugin is not loaded."""
-    if plugin_upgrade.offer_seen():
+def schedule_course_hint(window, *, unavailable: bool = False) -> None:
+    """Show the project hint after a migration notice, or when the plugin cannot be offered."""
+    installed = any(p.id == plugin_upgrade.CAMPUSONLINE for p in plugin_upgrade.discover())
+    if (unavailable or installed or plugin_upgrade.CAMPUSONLINE in plugin_upgrade.migrations_seen()) and not getattr(
+            window, "_course_hint_scheduled", False):
+        window._course_hint_scheduled = True
         QTimer.singleShot(COURSE_HINT_DELAY_MS, partial(show_course_hint, window))
 
 
 def show_course_hint(window) -> None:
+    if getattr(window, "_course_migration_shown", False):
+        return
     if app_settings.get(window.project, COURSE_HINT_DISMISSED_KEY):
         return
     if plugin_upgrade.CAMPUSONLINE in {p.id for p in plugin_session.loaded()}:

@@ -15,6 +15,12 @@ from pathlib import Path
 MANIFEST_NAME = "plugin.toml"
 
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
+# Host storage names, including legacy names and the ID-shaped forms of metadata files.
+RESERVED_IDS = frozenset({
+    "settings", "secrets", "pending", "staging", "old", "state", "catalogue",
+    "last-update-check", "offer-seen", "migrations-seen", "last_update_check", "offer_seen",
+    "migrations_seen.json", "state.json", "catalogue.json",
+})
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _COMPARISON = r"(>=|<=|==|<|>)\s*\d+(\.\d+){0,2}"
 REQUIRES_RE = re.compile(rf"^{_COMPARISON}(\s*,\s*{_COMPARISON})*$")
@@ -43,6 +49,11 @@ class Manifest:
 def package_name(plugin_id: str) -> str:
     """The top-level Python package of a plugin: its id with "-" as "_" (a hyphen can't be imported)."""
     return plugin_id.replace("-", "_")
+
+
+def valid_id(plugin_id: str) -> bool:
+    """An ID must fit both the public syntax and the host's on-disk namespace."""
+    return ID_RE.fullmatch(plugin_id) is not None and plugin_id not in RESERVED_IDS
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -100,6 +111,8 @@ def read_manifest(folder: Path) -> Manifest:
     plugin_id = _text(data, "id", 1)
     if not ID_RE.match(plugin_id):
         raise ManifestError("id must be 2 to 32 characters: a lowercase letter, then lowercase letters, digits, -")
+    if plugin_id in RESERVED_IDS:
+        raise ManifestError(f"id {plugin_id!r} is reserved for SlideMage's own storage")
     version = _text(data, "version", 1)
     if not VERSION_RE.match(version):
         raise ManifestError("version must look like 1.2.3")

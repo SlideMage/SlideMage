@@ -25,6 +25,7 @@ from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ...plugins import session
 from ...plugins.host import deck_snapshot
+from ..plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, set_property
 
@@ -92,6 +93,7 @@ class DeckSettingsSheet(ModalSheet):
             if hasattr(page, "changed"):
                 page.changed.connect(self._sync_footer)
         self.tab_changed.connect(lambda _index: self._sync_footer())
+        HOST_UI.register_sheet(self)
         if isinstance(tab, str):
             tab = self.tab_titles.index(tab) if tab in self.tab_titles else GENERAL
         self.set_current_tab(tab)
@@ -112,6 +114,26 @@ class DeckSettingsSheet(ModalSheet):
         index = self.add_tab(plugin_tab.title, page, scroll=True)
         self.tab_titles.append(plugin_tab.title)
         self.plugin_tabs[index] = (plugin_tab, page)
+
+    def refresh_from_deck(self, deck: Deck) -> None:
+        """A plugin edited the deck's file (the sheet had no unsaved changes then): take the rescanned deck and read
+        the form again from its text, so a later Save is checked against, and computed from, the file as it is."""
+        self.deck = deck
+        self.original = self.settings = deck_settings.read_settings(deck.text)
+        settings = self.original
+        self.template_combo.setCurrentIndex(max(self.template_combo.findData(settings.template), 0))
+        self.language_combo.setCurrentIndex(max(self.language_combo.findData(settings.language), 0))
+        self.footer_edit.setText(settings.footer_text)
+        self.appendix_check.setChecked(settings.appendix_toc)
+        self.open_pdf_combo.setCurrentIndex(max(0, self.open_pdf_combo.findData(settings.open_pdf)))
+        for key, edit in self.output_edits.items():
+            edit.setText(settings.output_folders.get(key, ""))
+        for key, check in self.footer_checks.items():
+            check.setChecked(key not in settings.footer_hide)
+        self.dark_mode_check.setChecked(settings.dark_mode)
+        self._sync_dark_mode()
+        self._initial = self._values()
+        self._sync_footer()
 
     def _build_general(self, templates: list[tuple[str, str]]) -> Page:
         page = Page()
@@ -264,17 +286,19 @@ class DeckSettingsSheet(ModalSheet):
         set_property(self.note, "tone", tone)
 
     def _sync_footer(self) -> None:
+        dirty = self.dirty()
         plugin_tab, page = self.plugin_tabs.get(self.current_tab(), (None, None))
         action = plugin_tab.footer_action if plugin_tab is not None else None
         self.plugin_button.setVisible(action is not None)
         if action is not None:
             self.plugin_button.setText(action.label)
             try:
-                self.plugin_button.setEnabled(bool(action.enabled(page)))
+                self.plugin_button.setEnabled(not dirty and bool(action.enabled(page)))
             except Exception:
                 log.exception("enabled() of the footer action %r raised; counted as False", action.label)
                 self.plugin_button.setEnabled(False)
         self.save_button.setVisible(action is None)
+        self._say(DIRTY_SHEET_MESSAGE if action is not None and dirty else "")
 
     def _browse(self, key: str | None) -> None:
         edit = self.output_edits[key]
@@ -314,4 +338,5 @@ class DeckSettingsSheet(ModalSheet):
             self._sync_footer()
 
     def done(self, result: int) -> None:
+        HOST_UI.unregister_sheet(self)
         super().done(result)

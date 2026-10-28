@@ -154,6 +154,7 @@ def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
     sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
     if not sheet.exec():
         return
+    deck = sheet.deck       # the rescanned deck when a plugin edited the file while the sheet was open
     if sheet.action.startswith(COMMAND):
         window.commands.run(sheet.action.removeprefix(COMMAND), window)
     else:

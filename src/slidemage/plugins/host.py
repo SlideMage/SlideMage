@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 from .. import deck_editor, deck_scan, open_path, plugin_api, project, slide_ids, slide_language, transcript
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
-from ..fileio import read_text_exact
+from ..fileio import atomic_write, read_text_exact
 from ..project import ProjectContext
 from .manifest import Manifest
 from .registry import Registrar
@@ -37,6 +37,12 @@ class HostUi(Protocol):
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
     def show_message(self, text: str, error: bool = False) -> None: ...
+    def deck_edit_blocker(self, path: Path) -> str | None:
+        """Why a plugin may not edit the deck at `path` now (a Deck settings sheet of it has unsaved changes), or
+        None."""
+    def after_deck_edit(self, path: Path, summary: str, previous_text: str) -> None:
+        """A plugin edit was written to the deck at `path`: do what a core deck edit does (rescan, refresh, history
+        with previous_text for Undo)."""
 
 
 # -- deck snapshot ---------------------------------------------------------------------------------------------
@@ -156,6 +162,7 @@ class PluginHost(Registrar):
         language: Literal["de", "en"],
     ) -> list[Path]:
         ctx = self.ctx
+        self._check_editable(deck)
         self._check_fresh(deck)
         csv = ctx.slide_ids_csv
         csv_before = csv.read_bytes() if csv.is_file() else None
@@ -167,12 +174,14 @@ class PluginHost(Registrar):
                 id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-{id_suffix}"
                 path = ctx.slides_dir / slide_language.current_name(id_slug)
                 path.parent.mkdir(parents=True, exist_ok=True)
+                if path.exists():
+                    raise FileExistsError(f"{path.name} exists already")
                 slide_ids.append_slide_id(ctx, slide_id)        # reserved before the deck is edited
-                with path.open("x", encoding="utf-8", newline="") as out:
-                    out.write(_slide_source(frame))
-                created.append(path)
+                created.append(path)        # tracked before it is written: a failure midway removes it too
+                atomic_write(path, _slide_source(frame))         # staged beside, then renamed: never half a slide
                 id_slugs.append(id_slug)
             try:
+                # one atomic replacement of the deck, checked against deck.text at the moment of the commit
                 deck_editor.insert_slide_calls(deck.path, deck.text, position.insert_at, position.indent, id_slugs)
             except CoreStaleFileError as e:
                 raise plugin_api.StaleFileError(str(e)) from e
@@ -182,15 +191,20 @@ class PluginHost(Registrar):
             if csv_before is None:
                 csv.unlink(missing_ok=True)
             else:
-                csv.write_bytes(csv_before)
+                atomic_write(csv, csv_before)
             raise
+        self._edited(deck, f"Inserted {len(created)} slide(s) into {deck.name} ({self.manifest.name})")
         return created
 
     def edit_deck_text(self, deck: plugin_api.Deck, change: Callable[[str], str]) -> str:
+        self._check_editable(deck)
         try:
-            return deck_editor.apply(deck.path, deck.text, change)
+            new = deck_editor.apply(deck.path, deck.text, change)
         except CoreStaleFileError as e:
             raise plugin_api.StaleFileError(str(e)) from e
+        if new != deck.text:
+            self._edited(deck, f"Edited {deck.name} ({self.manifest.name})")
+        return new
 
     def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
         return "en" if transcript.deck_language_of(deck.text) == "en" else "de"
@@ -229,6 +243,24 @@ class PluginHost(Registrar):
         return self._window().caption(text, tone)
 
     # -- helpers
+
+    def _check_editable(self, deck: plugin_api.Deck) -> None:
+        """Refuse a plugin edit while the Deck settings sheet of this deck holds unsaved changes."""
+        blocker = getattr(self.ui, "deck_edit_blocker", None)
+        reason = blocker(deck.path) if blocker is not None else None
+        if reason:
+            raise plugin_api.EditRefusedError(reason)
+
+    def _edited(self, deck: plugin_api.Deck, summary: str) -> None:
+        """The edit is on disk: let the window run what a core deck edit runs. A failure here is the window's
+        problem and is logged; the plugin's edit did succeed."""
+        after = getattr(self.ui, "after_deck_edit", None)
+        if after is None:
+            return
+        try:
+            after(deck.path, summary, deck.text)
+        except Exception:
+            self._logger.exception("the window's refresh after a deck edit raised")
 
     def _check_fresh(self, deck: plugin_api.Deck) -> None:
         try:
