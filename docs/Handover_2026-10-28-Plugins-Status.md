@@ -2,7 +2,7 @@
 
 From Jürgen's side of the plugins work. It says what has been built since your handovers of 2026-10-26, the pull
 requests we will open (with their drafts), and every change or addition to your plan and handovers. Status:
-everything below is committed locally; nothing is pushed, and no pull request is open yet.
+PRs 2 and 3 are open as drafts (#20, #21); PR 1 was merged as #19 on 2026-10-27.
 
 Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3 with a section 6),
 `Handover_2026-10-26-Plugins-For-Website.md`, `-CampusOnline-Plugin.md`, `-Claude-Plugin.md`,
@@ -16,7 +16,7 @@ Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3
 - **CampusOnline plugin**: steps 0–4 of its own plan done. It runs against the real host in an end-to-end test.
 - **Where we went another way than your plan, or added to it**: section 5. Most important: `plugin_api` follows
   the CampusOnline plugin's drafted host (`edit_deck_text` instead of `add_deck_marker`, and more), and the host
-  is **v8.66.0, not v9.0** (section 6).
+  is **v8.68.0, not v9.0** (section 6).
 - **What we need from you**: section 7.
 
 ## 2. Branches and repositories
@@ -24,8 +24,8 @@ Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3
 | Where | Branch | Base | Commits | Version | Pushed |
 |---|---|---|---|---|---|
 | `stpalan/SlideMage` | `feature/ai-tools-fixes` | `develop` | 14 | v8.64.1 – v8.65.0 | merged as #19 (2026-10-27) |
-| `stpalan/SlideMage` | `feature/anthropic-stdlib` | `develop` | +6 | v8.67.1 – v8.67.2 | no |
-| `stpalan/SlideMage` | `feature/plugin-host` | `develop` | 12 | v8.66.0 | no |
+| `stpalan/SlideMage` | `feature/anthropic-stdlib` | `develop` | +6 | v8.67.1 – v8.67.2 | yes, draft PR #20 |
+| `stpalan/SlideMage` | `feature/plugin-host` | `develop` | 12 | v8.68.0 | yes, draft PR #21 |
 | `JuergenFleiss/SlideMageS` (private fork) | `plugin-campusonline` (history of its own) | – | 6 ahead of the fork | plugin 1.0.0 (undated) | partly: up to `21665d5` |
 
 `feature/plugin-host` is independent of the other two; the merge conflicts this causes are listed in 3.3.
@@ -50,7 +50,7 @@ Already merged as #19 (2026-10-27). Not part of the plugins work; PR 2 was stack
 > **Tests.** The AI tool, MCP, hook and chat tests pass. 8 GUI tests fail, the same 8 that fail on `develop`
 > itself (section 8), so none of them comes from this branch.
 
-### 3.2 PR 2: Anthropic API without the SDK (`feature/anthropic-stdlib` → `develop`)
+### 3.2 PR 2 (#20, draft): Anthropic API without the SDK (`feature/anthropic-stdlib` → `develop`)
 
 > **Title:** Plugins plan phase 4: the Anthropic API without the anthropic SDK (v8.67.1 – v8.67.2)
 >
@@ -81,9 +81,9 @@ Already merged as #19 (2026-10-27). Not part of the plugins work; PR 2 was stack
 > **Before merging:** regenerate `uv.lock` (`uv lock`); CI installs with pip, so CI doesn't need it. Check one real
 > API call from a Windows release build (certificates come from the system store now, not from `certifi`).
 
-### 3.3 PR 3: the plugin host (`feature/plugin-host` → `develop`)
+### 3.3 PR 3 (#21, draft): the plugin host (`feature/plugin-host` → `develop`)
 
-> **Title:** Plugins plan phases 0 and 1: the plugin host (v8.66.0)
+> **Title:** Plugins plan phases 0 and 1: the plugin host (v8.68.0)
 >
 > Implements `docs/PLUGIN_HOST_PLAN.md` (the step plan for phases 0 and 1 of `docs/PLUGINS_PLAN.md`). Nothing
 > built in moves out: CampusOnline and the AI stay in core until phase 2 and later.
@@ -318,8 +318,7 @@ Moving the repositories later is cheap, since GitHub redirects the old URLs, but
 ## 6. Version numbers: a decision for you
 
 The release tooling (`packaging/release_notes.py`) refuses a major version without a `BREAKING:` paragraph, and
-a `BREAKING:` paragraph needs a `compat.py` entry. The plugin host breaks nothing, so it is **v8.66.0** (renumbered
-at merge). The handovers assumed 9.0:
+a `BREAKING:` paragraph needs a `compat.py` entry. The plugin host breaks nothing, so it is **v8.68.0**. The handovers assumed 9.0:
 
 - `hello` 0.1.0 and CampusOnline ask for `requires_slidemage = ">=9.0"`, so neither installs on the 8.x host. The
   end-to-end test loads CampusOnline as if the app were v9.0.0.
