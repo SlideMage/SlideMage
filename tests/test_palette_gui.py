@@ -51,7 +51,10 @@ def test_every_word_must_match_the_label_or_the_group():
     assert matches([], "anything")
 
 
-def test_it_opens_on_every_visible_command_grouped_and_closes_on_escape(window):
+@pytest.mark.parametrize("with_route", [False, True])
+def test_it_opens_on_every_visible_command_grouped_and_closes_on_escape(window, request, with_route):
+    if with_route:
+        request.getfixturevalue("fake_routes")
     palette = window.palette
     window.slide_list.tree.setCurrentItem(window.slide_list.tree.slide_items()[0])
     window.commands.run("palette", window)
@@ -61,7 +64,8 @@ def test_it_opens_on_every_visible_command_grouped_and_closes_on_escape(window):
     window.commands.run("palette", window)
     assert palette.isVisible()
     focused = window.state.focused_slide
-    assert groups(palette) == ["View & build", f"Slide {focused}", "Deck", "Project", "AI"]
+    expected = ["View & build", f"Slide {focused}", "Deck", "Project"]
+    assert groups(palette) == expected + (["AI"] if with_route else [])
     assert "View as Instructor" in labels(palette) and "Find anything…" in labels(palette)
     assert not [e for e in palette._entries if e.group in (GO_TO_SLIDE, CHAT)]    # only for a text
     press(palette, Qt.Key.Key_Escape)

@@ -529,20 +529,26 @@ def keys_of(menu):
     return [e[1] for e in menu._entries if e[0] == "item"]
 
 
-def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch, tmp_path):
+@pytest.mark.parametrize("with_route", [False, True])
+def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch, tmp_path, request, with_route):
+    if with_route:
+        request.getfixturevalue("fake_routes")
     slides = tmp_path / "slides"
     slides.mkdir()
     (slides / "aaa-First-v1-0-0.tex").write_text("x", encoding="utf-8")
     slide_list, _window, path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n")
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
-    assert keys_of(menu) == [
+    expected = [
         "slide:open", "slide:preview", "slide:images", "slide:reviewed",
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",
-        "slide:before", "slide:after", "slide:duplicate", "slide:translate", "slide:section_before", "move:0",
+        "slide:before", "slide:after", "slide:duplicate", "slide:section_before", "move:0",
             "slide:remove"]
+    if with_route:
+        expected.insert(expected.index("slide:section_before"), "slide:translate")
+    assert keys_of(menu) == expected
     assert _entry(menu, "variant:slide")[4] == "check"             # the current call is ticked
     for macro, expected in (
             ("slidefinal", "\\slidefinal{aaa-First}"), ("omitslide", "\\omitslide{aaa-First}"),
