@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
-from ...ai import ai_profile, claude_runner, resolver
+from ...ai import ai_profile, resolver
 from ...deck_scan import Deck
 from ...project import ProjectContext
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
@@ -64,7 +64,7 @@ MARGINS = 48     # of the sheet
 
 class _TranslateWorker(QThread):
     """One translation of a slide body off the GUI thread, so that Cancel can end it. `translator` is a
-    ChatProvider (slide_add.translate_body) or a claude_runner.SlideTranslator; either has is_local and abort()."""
+    ChatProvider (slide_add.translate_body) or a route-provided translator; either has is_local and abort()."""
 
     translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
 
@@ -75,8 +75,9 @@ class _TranslateWorker(QThread):
         self.body = body
 
     def run(self) -> None:
-        translate = (self.translator.translate if isinstance(self.translator, claude_runner.SlideTranslator)
-                     else lambda body: slide_add.translate_body(self.ctx, self.translator, body))
+        translate = getattr(self.translator, "translate", None)
+        if translate is None:
+            translate = lambda body: slide_add.translate_body(self.ctx, self.translator, body)
         text, error = translate(self.body)
         self.translated.emit(self, text, error)
 

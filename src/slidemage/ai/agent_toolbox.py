@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import compiler
-from . import claude_scope
+from . import focus_scope
 from .agent_types import EDIT_AUTO
 from .tools import CLAUDE_CODE_TOOLS, ToolBox, build_toolbox
 from .workspace import Workspace
@@ -21,5 +21,5 @@ def agent_toolbox(
     is the file the editor shows; it counts as the focus only if it is a slide."""
     box = build_toolbox(workspace, lambda _event: None, cancel or compiler.CancelToken(), mode, tools=CLAUDE_CODE_TOOLS)
     box.ctx.scope = scope
-    box.ctx.focus_slide = claude_scope.slide_focus(box.ctx.root, focus_path)
+    box.ctx.focus_slide = focus_scope.slide_focus(box.ctx.root, focus_path)
     return box

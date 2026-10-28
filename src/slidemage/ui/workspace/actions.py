@@ -30,7 +30,7 @@ from . import compare_rendered, compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile, routes
-from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
+from ...ai.focus_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
 from .source_file import REPLACE_KEY, autosave_on
 from .task_bubbles import DECK_TASKS, SLIDE_TASKS, selection_of

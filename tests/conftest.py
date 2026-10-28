@@ -69,6 +69,9 @@ def _no_cloud_credentials(monkeypatch):
 
     monkeypatch.delenv(credentials.ENV_VAR, raising=False)
     monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    from slidemage.plugins import migrate
+
+    monkeypatch.setattr(migrate, "_keyring", lambda: None)
 
 
 @pytest.fixture(autouse=True)

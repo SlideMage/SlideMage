@@ -26,7 +26,8 @@ from ..processes import no_console_kwargs
 from ..project import ProjectContext
 from . import tasks as ai_tasks, translation_style
 from .claude_launch import clean_environment
-from .task_result import CANCELLED, DONE, FAILED, NOTHING, Outcome
+from .task_result import CANCELLED, DONE, FAILED, NOTHING, Outcome, judge
+from .task_result import NOT_LOGGED_IN, RATE_LIMIT, USAGE_LIMIT, limit_kind  # noqa: F401 -- legacy exports
 
 # The default of Claude Code tasks: Haiku at medium effort, tested by the user as good enough (2026-10-13;
 # docs/CLAUDE_CODE_TASKS_BENCHMARK.md measured Sonnet). A text task takes 2-10 s there (the slowest run 13 s),
@@ -43,18 +44,7 @@ MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 # with --system-prompt (replacing Claude Code's own) and the empty working folder (no CLAUDE.md, no memory).
 ISOLATION = ("--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands")
 
-NOT_LOGGED_IN = "Claude Code is not logged in: run claude in a terminal and sign in with /login."
-RATE_LIMIT, USAGE_LIMIT = "rate limit", "usage limit"
 
-
-def limit_kind(message: str) -> str:
-    """RATE_LIMIT (try again with fewer processes at once), USAGE_LIMIT (the subscription's window is used up:
-    nothing more will run for now) or "" for the error text `message` of a failed task. Matched on the words
-    the service uses in its error result."""
-    text = message.lower()
-    if "usage limit" in text:
-        return USAGE_LIMIT
-    return RATE_LIMIT if any(word in text for word in ("rate limit", "429", "overloaded", "concurren")) else ""
 
 
 @dataclass
@@ -184,20 +174,6 @@ def _remove_folder(folder: Path, tries: int = 40, delay: float = 0.05) -> None:
         except OSError:
             if attempt + 1 < tries:
                 time.sleep(delay)
-
-
-def judge(ctx: ProjectContext, task: ai_tasks.Task, captured: str, answer: dict | None, outcome: Outcome,
-          who: str = "Claude", span: tuple[int, int] | None = None) -> list[str]:
-    """Settle `outcome` by the model's `answer` (ai_tasks.check): DONE with the new text, or NOTHING when it
-    changes nothing; the problems, when the answer is refused (then `outcome` says so, and they go into the repair
-    request)."""
-    outcome.note = ai_tasks.answer_note(task, answer)
-    text, problems = ai_tasks.check(ctx, task, captured, answer, span)
-    if problems:
-        outcome.message = f"{who}'s answer was refused: " + "; ".join(problems)
-    else:
-        outcome.status, outcome.text, outcome.message = (NOTHING, "", "") if text == captured else (DONE, text, "")
-    return problems
 
 
 def run_task(ctx: ProjectContext, claude: Path, task: ai_tasks.Task, captured: str, request: str, model: str = MODEL,

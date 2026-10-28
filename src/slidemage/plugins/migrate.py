@@ -1,21 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Finding what a user had before a feature became a plugin, so that the plugin keeps it.
-
-The Claude plugin comes with the key the user entered in SlideMage's AI setup. It lived in three places
-(ai/credentials.py reads them; this calls it and does not change it): the ANTHROPIC_API_KEY environment variable,
-the system keychain entry ("SlideMage", "anthropic-api-key"), and the ``anthropic_api_key`` entry of SlideMage's
-machine settings file (ai_settings.json in SlideMage's folder).
-"""
+"""Read legacy settings without changing the originals, so plugins can adopt them."""
 from __future__ import annotations
 
+import os
+
+from .. import app_settings
 from ..project import ProjectContext
+from .credentials import _keyring
 
 
 def legacy_anthropic_key(ctx: ProjectContext) -> str | None:
-    """The Anthropic API key from its old places, first hit wins in the old order; None if there is none. Reads
-    only: the old copy stays where it is, so that downgrading loses nothing."""
-    from ..ai import credentials
-
-    found = credentials.get_api_key(ctx)
-    return found.value if found is not None else None
+    """Read the old environment, keychain and settings file in their original order."""
+    value = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if value:
+        return value
+    module = _keyring()
+    if module is not None:
+        try:
+            value = (module.get_password("SlideMage", "anthropic-api-key") or "").strip()
+        except Exception:  # noqa: BLE001 -- a keychain failure must not stop startup
+            value = ""
+        if value:
+            return value
+    return str(app_settings.get(ctx, "anthropic_api_key") or "").strip() or None

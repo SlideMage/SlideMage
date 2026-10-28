@@ -29,7 +29,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ... import app_settings, deck_outline, slide_language
 from ...ai import ai_profile
-from ...ai.claude_scope import DECK, SLIDE
+from ...ai.focus_scope import DECK, SLIDE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface

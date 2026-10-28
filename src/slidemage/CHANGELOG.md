@@ -2881,3 +2881,9 @@ v8.68.0 (2026-10-28, plugins plan, phases 0 and 1; docs/PLUGIN_HOST_PLAN.md): Th
 NEW: SlideMage can install plugins.
 - Settings → Plugins (also Help → Plugins…) lists installed plugins and the ones on the SlideMage website, and installs, updates, disables or removes them; a plugin file can be installed by hand too.
 - Each plugin says what it needs and what it contacts on the network before you install it.
+
+
+v8.68.1 (2026-10-28, AI plugin extraction preparation): The neutral AI task validator, image task definitions and scope checks are separated from the built-in Claude modules. The legacy Anthropic key lookup reads its existing locations directly, without changing them, and the Add slide translation worker accepts a route-provided translator. The built-in routes remain available.
+
+NEW: AI plugin integration preparation.
+- Slide translation can use a translator supplied by an AI plugin.

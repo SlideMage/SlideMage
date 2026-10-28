@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ... import compiler, timing
 from ...project import ProjectContext
-from ..claude_scope import deck_problem, scope_problem
+from ..focus_scope import deck_problem, scope_problem
 from ..agent_types import EDIT_ASK, AgentEvent, ToolCall, ToolResult, ToolSpec
 from ..workspace import Workspace
 

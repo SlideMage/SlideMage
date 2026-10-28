@@ -20,9 +20,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .. import app_settings, deck_scan
-from ..ai import ai_profile, credentials
+from ..ai import ai_profile
 from ..project import ProjectContext
 from . import session
+from .migrate import legacy_anthropic_key
 from .catalogue import Catalogue, CataloguePlugin, best_release
 from .loader import discover, plugins_dir
 from .manifest import parse_version
@@ -59,7 +60,7 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
     """Plugin id -> why it is suggested, for each built-in feature this machine or project uses."""
     used: dict[str, str] = {}
     routes = _routes_with_models(ctx)
-    if credentials.get_api_key(ctx) is not None:
+    if legacy_anthropic_key(ctx) is not None:
         used[CLAUDE] = "You have an Anthropic API key"
     elif ai_profile.route_id(app_settings.get(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
         used[CLAUDE] = "You chose Claude Code or the API for cloud AI"
