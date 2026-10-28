@@ -21,7 +21,8 @@ accessible transcripts.
 > like `CONVERSION_NOTES.md`) -- the mechanism being explained still
 > applies regardless.
 
-`stpalan/SlideMage` is the authoritative repository (it was a flat copy of
+`SlideMage/SlideMage` is the authoritative repository (`stpalan/SlideMage` until
+2026-10-28, when it moved to the SlideMage organization; it was a flat copy of
 the app folder before v4.0.0, when it took over the `latex/`/`example/`/
 `src/` structure from Jürgen Fleiß's fork, `JuergenFleiss/slidemage`,
 merged with that fork's history).
@@ -185,7 +186,7 @@ screenshots.
 
 ## Releases and updates
 
-Pushing a tag `vX.Y.Z` to `stpalan/SlideMage` makes GitHub build the
+Pushing a tag `vX.Y.Z` to `SlideMage/SlideMage` makes GitHub build the
 Windows and Linux executables (`.github/workflows/release.yml`) and attach
 them, zipped, to that tag's release page. The workflow refuses a tag that
 doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
