@@ -8,6 +8,54 @@ Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3
 `Handover_2026-10-26-Plugins-For-Website.md`, `-CampusOnline-Plugin.md`, `-Claude-Plugin.md`,
 `-Ollama-Plugin.md` (the last one we haven't seen).
 
+## 0. Update, end of 2026-10-28: the whole plan is built
+
+Everything in the plan is now implemented and in pull requests on `SlideMage/SlideMage` (the repository moved to
+the organisation during the day; the old `stpalan/SlideMage` URLs redirect). Sections 1–8 below are the state of
+the morning; where they differ, this section wins.
+
+| PR | What | Base | State |
+|---|---|---|---|
+| #20 | Phase 4: Anthropic API without the SDK; HTTPS proxy support (`HTTPS_PROXY`/`NO_PROXY`, CONNECT, proxy auth) and Stop ending a stuck connect/TLS handshake (review findings 6, 7) | `develop` | draft |
+| #21 | Phases 0–1: plugin host; all review findings on it fixed (1–5, 8, 11, and the release points: separate migration offers, self-test of the PySide6 set); `plugin_api` contract test; manual chapter and README | `develop` | draft |
+| #22 | `develop`'s 8 failing GUI tests | `develop` | ready for review |
+| #23 | Phase 2: CampusOnline out of core (v9.0.0, `Migration('campusonline', 'v9.0.0')`) | #21 | draft |
+| #24 | Phases 3 and 6 (core): AI routes in a registry, the AI UI and one AI tab over them, the host for AI plugins (`add_ai_route`, `add_settings_section`, entry points, terminal service, credentials, `ai_tools`, `RouteContext`, route task leases, chat surface context, …) | #21 (+#20 merged in) | draft |
+| #26 | Phase 7: the AI-free core (v10.0.0, migrations for Claude and Ollama, `--claude-hook` dispatches to the plugin); tests on shared fake routes; full suite clean apart from the font test #22 fixes | #24 | draft |
+
+Merge order: #22, #20, #21, then #23 and #24 (both on #21), then #26. Version numbers get renumbered at merge (and
+see section 6 on renumbering for publication).
+
+**Plugins** (all on the real `plugin_api`, packaged code importing nothing else from SlideMage; `build.py --check`
+passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixes ported into both AI plugins):
+
+| Plugin | Where now | Next |
+|---|---|---|
+| CampusOnline | `JuergenFleiss/SlideMageS`, branch `plugin-campusonline` | public repository, 1.0.0 with SlideMage 9.0, registry entry |
+| Claude | local repository `slidemage-plugin-claude` (history filtered) | public repository, 1.0.0 with SlideMage 10.0, registry entry |
+| Ollama | local repository `slidemage-plugin-ollama` (history filtered; yours to maintain) | same |
+| Template | local branch `plugin-api-1` of your template: the real API in the example, frozen-app import contract, relative-import check, a changelog checker (`release_notes.py`) | pull request to you, if you want it |
+
+**Needed from you now:**
+1. **Organisation access.** Jürgen is not a member of the `SlideMage` organisation (only a collaborator with write
+   access on `SlideMage/SlideMage`), so he cannot create the plugin repositories there. Following the organisation
+   proposal (5.7): please create `slidemage-plugin-campusonline`, `slidemage-plugin-claude` and
+   `slidemage-plugin-ollama` in the organisation with Jürgen as admin (Ollama: you), or invite him as a member with
+   repository creation allowed.
+2. Review #21 and #24 as the owner of the API; the decisions taken along the way are below.
+3. The version question (section 6) before #23 and #26 are released.
+
+**Decisions taken on the way** (Jürgen said to go ahead with the recommended option):
+- `edit_deck_text` instead of `add_deck_marker`; the extra host calls of 5.2; `add_*` only inside `activate()`;
+  render priority on a worker thread.
+- Plugin updates and removals are staged and applied at the next start; reserved plugin ids for the host's own
+  folders.
+- First-start onboarding and migration offers are separate (`upgrade.MIGRATIONS`); the CampusOnline project hint
+  doesn't nag on the same start as its migration sheet.
+- Routes: only the first local route is used (a chooser needs a design); a chat surface has no "session is live"
+  property, so the switch asks before leaving any surface; route methods get a typed `RouteContext`.
+- The plugin API grew by additions only (`API_VERSION` stays 1), guarded by the contract test's snapshot.
+
 ## 1. In short
 
 - **Phase 4** (stdlib Anthropic client) is done, ahead of the order, because nothing depends on it.
