@@ -44,12 +44,10 @@ class FakeWindow(QWidget):
     def open_slide_editor(self, path, **_kwargs):
         self.opened.append(path)
 
-    def try_start_ollama_task(self, label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.slots.append(("start", label))
-        return True
-
-    def end_ollama_task(self, provider=None):
-        self.slots.append(("end",))
+        return _RouteTaskLease(lambda: self.slots.append(("end",)))
 
 
 class Translator:

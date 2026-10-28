@@ -824,14 +824,14 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
     file = window.centre.source.current
     file.ask_ai_button.click()
     worker = file.fix_panel._worker
-    assert worker is not None and worker.isRunning() and window._ollama_task_label == "checking syntax"
+    assert worker is not None and worker.isRunning() and (window._route_tasks.get("ollama") or (None,))[0] == "checking syntax"
     window.state.set_mode("preview")           # the file is kept only because its check runs
     window.centre.source.show_path(None)
     assert file.keep_open
 
     assert window.close() is True
     assert aborted.is_set() and worker.isFinished()
-    assert window._ollama_task_label is None and not file.fix_panel.running
+    assert (window._route_tasks.get("ollama") or (None,))[0] is None and not file.fix_panel.running
 
 
 def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(window, monkeypatch):

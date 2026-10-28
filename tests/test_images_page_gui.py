@@ -35,6 +35,7 @@ class FakeApp:
         self.theme = ThemeManager()
         self.logged: list[str] = []
         self.slots: list[str] = []          # "took"/"gave" per Ollama slot call
+        self.routes = []
         self.unsaved: set[Path] = set()     # slide files with unsaved edits in the Source view
         self.synced: list[Path] = []
         self.opened: list[Path] = []
@@ -44,12 +45,11 @@ class FakeApp:
     def log(self, line):
         self.logged.append(line)
 
-    def try_start_ollama_task(self, _label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.slots.append("took")
-        return True
-
-    def end_ollama_task(self, provider=None):
-        self.slots.append("gave")
+        self.routes.append(route_id)
+        return _RouteTaskLease(lambda: self.slots.append("gave"))
 
     def open_slide_editor(self, path):
         self.opened.append(path)
@@ -102,7 +102,6 @@ def choose_provider(monkeypatch, provider=None):
     """The picked route is Local, and the provider its backends are built on the given one."""
     provider = provider or OllamaProvider("offline-test")
     monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(OLLAMA, IMAGE_DESCRIPTION, "offline-test"))
-    monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider)
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
 
@@ -426,16 +425,16 @@ def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_
     provider = OllamaProvider("offline-test")
     provider.is_local = local
     choose_provider(monkeypatch, provider)
-    given = []
-    release = page.app.end_ollama_task
-    page.app.end_ollama_task = lambda provider=None: (given.append(provider), release(provider))
+    route_id = OLLAMA if local else "anthropic_api"
+    monkeypatch.setattr(page, "_draft_backend",
+                        lambda: (Route(route_id, IMAGE_DESCRIPTION, "offline-test"), FakeBackend(None, provider)))
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
     monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
     monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
         alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
     page._draft_slide()
     assert page.app.slots == ["took", "gave"] and page._job is None and page.job_card.isHidden()
-    assert given == [provider]
+    assert page.app.routes == [route_id]
     drafted = page.store[CHART]
     assert (drafted.short, drafted.long, drafted.drafted_by) == ("drafted short", "drafted long", "offline-test")
     assert page._forms[0].fields["short"].toPlainText() == "drafted short"      # the untouched form shows it
@@ -528,9 +527,9 @@ def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_pag
         release.wait(5)                                              # a request that only abort ends
         return alt_draft.BatchSummary()
 
-    page.app.try_start_ollama_task("test", provider)
+    lease = page.app.acquire_route_task(OLLAMA, "test")
     job = Job("Drafting", provider, work, Route(OLLAMA, IMAGE_DESCRIPTION, "offline-test"))
-    page._start(job, "one image", 5, lambda outcome: None)
+    page._start(job, "one image", 5, lambda outcome: None, lease)
     assert job.isRunning()
     job.position = (3, 5)
     [work] = page.running_work()                       # what the AI switch's busy popover lists

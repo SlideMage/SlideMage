@@ -40,7 +40,6 @@ from PySide6.QtWidgets import (
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
 from ...ai import ai_profile, resolver
-from ...ai.providers import ChatProvider
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
 from ...deck_scan import Deck, scan_decks
 from .. import layout_settings, plugin_ui
@@ -142,17 +141,8 @@ class WorkspaceWindow(QMainWindow):
         # must not ask a second time.
         self._dirty_edits_resolved_for_close = False
         self.decks: list[Deck] = []
-        # Global mutual-exclusion for anything that calls Ollama (image
-        # drafting, image translation, and the "Duplicate slide" dialog's
-        # auto-translate option) -- None when idle, else a short label of
-        # whatever currently holds it. Direct report, 2026-08-25: running a
-        # drafting batch and a translation at the same time crashed, most
-        # likely two different models loaded into VRAM simultaneously (a
-        # local Ollama server's own resource limit, not a bug this app can
-        # fix). See try_start_ollama_task()/end_ollama_task() below.
-        self._ollama_task_label: Optional[str] = None
-        self._route_tasks: dict[str, tuple[str, object | None]] = {}
-        self._legacy_ollama_owner = object()
+        # One reservation per route, shared by core work and plugins.
+        self._route_tasks: dict[str, tuple[str, object]] = {}
 
         self.state = WorkspaceState(self.project, self)
         self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
@@ -669,8 +659,8 @@ class WorkspaceWindow(QMainWindow):
         work = [*self.assistant.chat.running_work(), *self.assistant.tasks.running_work(),
                 *self.images_page.running_work(),
                 *(w for panel in self.centre.findChildren(AiFixPanel) for w in panel.running_work())]
-        if self._ollama_task_label is not None and not any(w.local for w in work):   # a sheet's own request
-            work.append(RunningWork(self._ollama_task_label.capitalize(), "Local · Ollama", True, None))
+        if (entry := self._route_tasks.get(ai_profile.OLLAMA)) is not None and not any(w.local for w in work):
+            work.append(RunningWork(entry[0].capitalize(), "Local · Ollama", True, None))
         return work
 
     def set_dark_mode(self, checked: bool) -> None:
@@ -731,33 +721,10 @@ class WorkspaceWindow(QMainWindow):
         always does, as its own last step)."""
         self.reload_decks()
 
-    def try_start_ollama_task(self, label: str, provider: Optional[ChatProvider] = None) -> bool:
-        """Reserves the single app-wide Ollama slot for `label` (a short
-        present-participle phrase, e.g. "drafting descriptions" --
-        appears in the busy message below). Returns False, and shows why,
-        if another Ollama-dependent task already holds it -- every call
-        site (the Images page's drafting, translating and prompt tuning; the
-        Add slide sheet's and the Ask AI to fix panel's requests) must call this before issuing its own first
-        Ollama request and end_ollama_task() when that request (or batch of
-        them) is fully done, whether it ran on a background thread or
-        blocked the GUI thread synchronously. This is deliberately a single
-        global slot, not a smarter per-model or per-resource scheduler --
-        running two Ollama-dependent tasks at once has been observed to
-        crash (2026-08-25, direct report), almost certainly from two
-        different models being loaded into VRAM simultaneously, which is a
-        limit of the local Ollama server itself, not something this app can
-        negotiate around.
-
-        A task on a cloud `provider` needs no slot (and takes none, so it
-        neither waits for a local task nor makes one wait); every call
-        passes the provider to both calls. No provider means Ollama."""
-        if provider is not None and not provider.is_local:
-            return True
-        return self.try_start_route_task(ai_profile.OLLAMA, label, self._legacy_ollama_owner)
-
-    def end_ollama_task(self, provider: Optional[ChatProvider] = None) -> None:
-        if provider is None or provider.is_local:
-            self.end_route_task(ai_profile.OLLAMA, self._legacy_ollama_owner)
+    def acquire_route_task(self, route_id: str, label: str):
+        """Reserve a route using the same lease as the plugin host."""
+        from ...plugins.host import acquire_route_task
+        return acquire_route_task(self, route_id, label)
 
     def try_start_route_task(self, route_id: str, label: str, owner: object | None) -> bool:
         """Reserve a route for a job; another owner cannot release this reservation."""
@@ -771,16 +738,12 @@ class WorkspaceWindow(QMainWindow):
                                 f"or stop it, before starting {label}.")
             return False
         self._route_tasks[route_id] = (label, owner)
-        if route_id == ai_profile.OLLAMA:
-            self._ollama_task_label = label
         return True
 
     def end_route_task(self, route_id: str, owner: object | None) -> None:
         current = self._route_tasks.get(route_id)
         if current is not None and current[1] is owner:
             del self._route_tasks[route_id]
-            if route_id == ai_profile.OLLAMA:
-                self._ollama_task_label = None
 
     def _regenerate_headers_bg(self) -> None:
         changed, n_decks = deck_headers.regenerate_headers(self.project)

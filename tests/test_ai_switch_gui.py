@@ -513,8 +513,9 @@ def test_images_is_not_a_top_bar_button_any_more_but_a_close_button_while_it_is_
 
 def test_the_busy_query_lists_ask_ai_to_fix_and_the_ollama_slot(window):
     assert window.running_ai_work() == []
-    assert window.try_start_ollama_task("translating a slide")
+    lease = window.acquire_route_task("ollama", "translating a slide")
+    assert lease is not None
     work = window.running_ai_work()
     assert [(w.text, w.route, w.local, w.stop) for w in work] == [("Translating a slide", "Local · Ollama", True, None)]
-    window.end_ollama_task()
+    lease.release()
     assert window.running_ai_work() == []

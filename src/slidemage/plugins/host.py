@@ -118,6 +118,14 @@ class _RouteTaskLease:
         self.release()
 
 
+def acquire_route_task(ui: HostUi, route_id: str, label: str) -> plugin_api.RouteTaskLease | None:
+    """Use the same ownership and lease semantics for core and plugin work."""
+    owner = object()
+    if not ui.try_start_route_task(route_id, label, owner):
+        return None
+    return _RouteTaskLease(lambda: ui.end_route_task(route_id, owner))
+
+
 class PluginHost(Registrar):
     def __init__(self, manifest: Manifest, ctx: ProjectContext, ui: HostUi | None = None) -> None:
         super().__init__(manifest)
@@ -263,11 +271,7 @@ class PluginHost(Registrar):
         return PluginCredentials(self.manifest.id, env_var)
 
     def acquire_route_task(self, route_id: str, label: str) -> plugin_api.RouteTaskLease | None:
-        ui = self._window()
-        owner = object()
-        if not ui.try_start_route_task(route_id, label, owner):
-            return None
-        return _RouteTaskLease(lambda: ui.end_route_task(route_id, owner))
+        return acquire_route_task(self._window(), route_id, label)
 
     def model_choices_changed(self, route_id: str) -> None:
         notify = getattr(self.ui, "model_choices_changed", None)

@@ -288,7 +288,7 @@ def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_
     assert messages[0]["content"].startswith("Make this slide readable.") and kwargs["system"] == ai_tasks.READABLE.rules
     assert "After the change: 0 errors, 0 warnings (was 2 errors, 1 warning)." in state(env) and "Note: Split it." in state(env)
     assert measure.texts == [BIGGER]
-    assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []    # the run is over
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None and env.window.assistant.tasks._providers == []    # the run is over
     env.window.assistant.tasks.apply()
     wait_until(phase_is(env, model.DONE))
     assert slide_file(env).editor.text() == BIGGER
@@ -304,7 +304,7 @@ def test_a_provider_answer_that_breaks_the_slide_is_refused_after_one_repair(ctx
     click(env, "Make readable")
     wait_until(phase_is(env, model.FAILED))
     assert "The model's answer was refused" in state(env) and len(provider.calls) == 2
-    assert slide_file(env).editor.text() == LF and env.window._ollama_task_label is None
+    assert slide_file(env).editor.text() == LF and (env.window._route_tasks.get("ollama") or (None,))[0] is None
 
 
 def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx, fake, measure, monkeypatch):  # noqa: F811

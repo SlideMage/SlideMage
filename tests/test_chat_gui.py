@@ -231,7 +231,7 @@ def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
         assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
             "AssistantText", "ToolCard", "AssistantText"]
         assert widgets(env, AssistantText)[-1].raw == "Fine as is." and not widgets(env, Notice)
-        assert env.window._ollama_task_label is None
+        assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
     finally:
         server.close()
 
@@ -557,7 +557,7 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
 # -- the Ollama slot -------------------------------------------------------------------------------------
 
 def slot(env):
-    return env.window._ollama_task_label
+    return (env.window._route_tasks.get("ollama") or (None,))[0]
 
 
 @pytest.mark.parametrize("entry, text", [
@@ -568,12 +568,13 @@ def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch, entry
     ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
-    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
+    lease = env.window.acquire_route_task("ollama", "drafting descriptions")
+    assert lease is not None
     script(env, reply("never"))
     getattr(env.chat, entry)(text)
     assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == text
     assert "Drafting descriptions is already running" in warned[0]
-    env.window.end_ollama_task()
+    lease.release()
 
 
 def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, monkeypatch):

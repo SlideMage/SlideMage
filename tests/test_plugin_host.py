@@ -521,26 +521,24 @@ def test_route_task_lease_shares_core_slot_and_has_ownership(host, monkeypatch):
     class Window:
         try_start_route_task = WorkspaceWindow.try_start_route_task
         end_route_task = WorkspaceWindow.end_route_task
-        try_start_ollama_task = WorkspaceWindow.try_start_ollama_task
-        end_ollama_task = WorkspaceWindow.end_ollama_task
+        acquire_route_task = WorkspaceWindow.acquire_route_task
 
         def __init__(self):
             self._route_tasks = {}
-            self._legacy_ollama_owner = object()
-            self._ollama_task_label = None
 
     window = Window()
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
     host.ui = window
-    assert window.try_start_ollama_task("drafting")
+    core = window.acquire_route_task("ollama", "drafting")
+    assert core is not None
     assert host.acquire_route_task("ollama", "pulling") is None
     other = host.acquire_route_task("another", "working")
     assert other is not None
-    window.end_ollama_task()
+    core.release()
     lease = host.acquire_route_task("ollama", "pulling")
     assert lease is not None
-    assert not window.try_start_ollama_task("drafting")
-    window.end_ollama_task()  # cannot release another owner's lease
+    assert window.acquire_route_task("ollama", "drafting") is None
+    core.release()  # cannot release another owner's lease
     assert host.acquire_route_task("ollama", "pulling") is None
     lease.release()
     lease.release()
@@ -548,6 +546,42 @@ def test_route_task_lease_shares_core_slot_and_has_ownership(host, monkeypatch):
         assert host.acquire_route_task("another", "working") is None
     assert host.acquire_route_task("another", "working") is not None
 
+
+
+def test_route_lease_survives_a_detached_worker_stop_until_it_exits(host, monkeypatch, qapp):
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QMessageBox
+    from slidemage.ui import background
+    from slidemage.ui.workspace.window import WorkspaceWindow
+
+    class Window:
+        try_start_route_task = WorkspaceWindow.try_start_route_task
+        end_route_task = WorkspaceWindow.end_route_task
+
+        def __init__(self):
+            self._route_tasks = {}
+
+    class Worker(QThread):
+        def run(self):
+            gate.wait(5)
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    host.ui = Window()
+    lease = host.acquire_route_task("ollama", "drafting")
+    gate = threading.Event()
+    worker = Worker()
+    background.start_detached(worker)
+    try:
+        assert not background.stop_worker(worker, wait_ms=10, on_done=lease.release)
+        assert host.acquire_route_task("ollama", "updating") is None
+        other = host.acquire_route_task("plugin-local", "working")
+        assert other is not None
+        other.release()
+    finally:
+        gate.set()
+        worker.wait()
+    wait_until(lambda: "ollama" not in host.ui._route_tasks)
+    assert host.acquire_route_task("ollama", "updating") is not None
 
 def test_chat_surface_context_operations(host, monkeypatch):
     from types import SimpleNamespace
@@ -655,6 +689,8 @@ def test_chat_reserves_the_captured_route(host, monkeypatch, qapp):
     from slidemage.ui.workspace.chat import session as chat_session
 
     class Window:
+        def acquire_route_task(self, route, label):
+            return host_module.acquire_route_task(self, route, label)
         def __init__(self):
             self.taken = {}
         def try_start_route_task(self, route, label, owner):
@@ -677,6 +713,6 @@ def test_chat_reserves_the_captured_route(host, monkeypatch, qapp):
     session = chat_session.ChatSession(workspace, window)
     route = SimpleNamespace(route="plugin-local", is_local=True)
     assert session.start(object(), "hello", "slide", route)
-    assert window.taken == {"plugin-local": session}
-    session._release(route)()
+    assert set(window.taken) == {"plugin-local"}
+    session._take_release()()
     assert window.taken == {}

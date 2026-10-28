@@ -7,7 +7,7 @@ ai_profile.resolve's: the view asks it for each request).
 arrives as the `event` signal on the GUI thread, `Done` last. The history list is extended by the agent
 in place and stays valid after Stop or an error, so the conversation goes on with the next request.
 
-The session owns the app-wide Ollama slot of a local model for the life of the run: taken in `start()`,
+The session owns the captured route lease for the life of the run: taken in `start()`,
 given back once the agent thread has really ended (after Done, or after the window closed), never
 earlier.
 """
@@ -50,7 +50,7 @@ class ChatSession(QObject):
     event = Signal(object)      # an AgentEvent, on the GUI thread
 
     def __init__(self, workspace: GuiWorkspace, app, parent: QObject | None = None) -> None:
-        """`app` is the window: it hands out the Ollama slot (try_start_ollama_task / end_ollama_task)."""
+        """`app` is the window that hands out route leases."""
         super().__init__(parent)
         self.workspace = workspace
         self._app = app
@@ -60,6 +60,7 @@ class ChatSession(QObject):
         self._thread: _AgentThread | None = None
         self._provider: ChatProvider | None = None
         self.route: Route | None = None     # of the request under way
+        self._lease = None
         self._closed = False
         self.event.connect(self._watch)     # first in line: the thread is released before the chat hears Done
 
@@ -69,9 +70,11 @@ class ChatSession(QObject):
 
     def start(self, provider: ChatProvider, request: str, scope: str, route: Route) -> bool:
         """Answer `request` with `provider`, which is `route` resolved, on a thread of its own. False (the window
-        says why) when a local model's Ollama slot is taken by another task."""
-        if route.is_local and not self._app.try_start_route_task(route.route, "answering in the chat", self):
+        says why) when the route is already leased by another task."""
+        lease = self._app.acquire_route_task(route.route, "answering in the chat")
+        if lease is None:
             return False
+        self._lease = lease
         try:
             self.workspace.begin_request()
             self._agent = Agent(provider, self.workspace, on_event=self._emit, mode=self.mode)
@@ -80,8 +83,8 @@ class ChatSession(QObject):
             self._thread.start()
         except BaseException:
             self._agent = self._thread = self._provider = None
-            if route.is_local:
-                self._app.end_route_task(route.route, self)
+            self._lease = None
+            lease.release()
             raise
         return True
 
@@ -108,15 +111,12 @@ class ChatSession(QObject):
         self.workspace.close()
         thread, agent = self._thread, self._agent
         if thread is not None:
-            background.stop_worker(thread, agent.stop, wait_ms=500, on_done=self._release(self.route))
+            background.stop_worker(thread, agent.stop, wait_ms=500, on_done=self._take_release())
         self._thread = self._agent = self._provider = None
 
-    def _release(self, route: Route | None):
-        """Give the captured route's slot back once its thread has ended."""
-        def release() -> None:
-            if route is not None and route.is_local:
-                self._app.end_route_task(route.route, self)
-        return release
+    def _take_release(self):
+        lease, self._lease = self._lease, None
+        return lease.release if lease is not None else None
 
     def _emit(self, event: AgentEvent) -> None:
         """The agent's callback, on its thread."""
@@ -128,6 +128,6 @@ class ChatSession(QObject):
 
     def _watch(self, event: AgentEvent) -> None:
         if isinstance(event, Done) and self._thread is not None:
-            thread, route = self._thread, self.route
+            thread = self._thread
             self._thread = self._agent = self._provider = None
-            background.stop_worker(thread, wait_ms=500, on_done=self._release(route))
+            background.stop_worker(thread, wait_ms=500, on_done=self._take_release())

@@ -321,27 +321,20 @@ def test_the_log_drawer_is_closed_until_asked_and_takes_every_writer(env):
 
 # -- carried over ----------------------------------------------------------------------
 
-class Provider:
-    def __init__(self, local):
-        self.is_local = local
-
-
-def test_only_local_ollama_tasks_take_the_ollama_slot(window, monkeypatch):  # noqa: F811
+def test_route_leases_are_independent_and_exclusive(window, monkeypatch):  # noqa: F811
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a: warned.append(a[2]))
-    local, cloud = Provider(True), Provider(False)
-    assert window.try_start_ollama_task("drafting", cloud) and window.try_start_ollama_task("translating", cloud)
-    assert window._ollama_task_label is None                         # clouds take no slot
-    assert window.try_start_ollama_task("checking", local)
-    assert window.try_start_ollama_task("describing", cloud)         # and do not wait for it
-    assert not window.try_start_ollama_task("checking again", local) and warned
-    window.end_ollama_task(cloud)                                    # a cloud task ending frees nothing
-    assert window._ollama_task_label == "checking"
-    window.end_ollama_task(local)
-    assert window._ollama_task_label is None
-    assert window.try_start_ollama_task("model admin") and window._ollama_task_label == "model admin"
-    window.end_ollama_task()
-    assert window._ollama_task_label is None
+    local = window.acquire_route_task("ollama", "checking")
+    cloud = window.acquire_route_task("anthropic_api", "drafting")
+    assert local is not None and cloud is not None
+    assert window.acquire_route_task("ollama", "checking again") is None and warned
+    cloud.release()
+    assert window._route_tasks["ollama"][0] == "checking"
+    local.release()
+    admin = window.acquire_route_task("ollama", "model admin")
+    assert admin is not None
+    admin.release()
+    assert not window._route_tasks
 
 
 def test_refresh_decks_forgets_the_cached_lint_results(window, monkeypatch):  # noqa: F811

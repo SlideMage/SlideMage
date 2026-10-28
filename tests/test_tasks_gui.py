@@ -907,7 +907,7 @@ def test_on_local_a_task_with_no_ollama_path_says_so_and_nothing_runs(ctx, fake)
         assert "no other route or model is used" in card_model.state_text(card)
         assert not env.window.assistant.tasks.busy
     assert fake.calls() == [] and slide_file(env).editor.text() == BROKEN
-    assert env.window._ollama_task_label is None                                 # the slot was never taken
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None                                 # the slot was never taken
 
 
 def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_ollama_slot(ctx, fake, monkeypatch):
@@ -921,7 +921,7 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
         return provider
 
     def translate_body(_ctx, given, body):
-        held.append(env.window._ollama_task_label)
+        held.append((env.window._route_tasks.get("ollama") or (None,))[0])
         assert given is provider
         return GERMAN["body"], None
 
@@ -931,7 +931,7 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
     assert settled(env).startswith("Applied automatically")
     assert len(german_files(env)) == 1 and fake.calls() == []                    # no claude process
     assert [(r.route, r.model) for r in seen] == [(ai_profile.OLLAMA, "translator")] and held == ["translating a slide"]
-    assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None and env.window.assistant.tasks._providers == []
 
 
 def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ctx, fake, monkeypatch):
@@ -943,7 +943,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: ("", "Ollama is not reachable."))
     click(env, "Translate to German")
     assert settled(env) == "Ollama is not reachable. Nothing was changed." and german_files(env) == []
-    assert env.window._ollama_task_label is None
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
 
     release = threading.Event()
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: (release.wait(5), ("", "Aborted."))[1])
@@ -988,7 +988,7 @@ def test_on_local_describing_images_uses_the_vision_model_backend(ctx, fake, mon
     assert settled(env).endswith(": 2 described")
     assert [(r.route, r.model) for r in made] == [(ai_profile.OLLAMA, "vision")] and fake.calls() == []
     assert [e.drafted_by for e in alt_images.load_store(ctx).values()] == ["offline"] * 2
-    assert env.window._ollama_task_label is None
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
 
 
 def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx, fake, monkeypatch):

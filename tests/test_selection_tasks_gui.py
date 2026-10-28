@@ -344,7 +344,7 @@ def test_on_local_and_the_api_a_rewrite_runs_on_the_provider_with_the_fixes_mode
     assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
     (messages, kwargs), = provider.calls
     assert messages[0]["content"].startswith("Rewrite the selection") and kwargs["system"] == ai_tasks.REWRITE.rules
-    assert card(env).after == OPENING and env.window._ollama_task_label is None
+    assert card(env).after == OPENING and (env.window._route_tasks.get("ollama") or (None,))[0] is None
     env.window.assistant.tasks.apply()
     wait_until(phase_is(env, model.DONE))
     assert slide_file(env).editor.text() == OPENING

@@ -84,12 +84,10 @@ class FakeWindow:
             add_slide=lambda *a, **k: self.slide_list.add_slide(*a, **k), translate=lambda: self.translated.append(True),
             add_reference=self.centre.source.add_reference)
 
-    def try_start_ollama_task(self, label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.busy = label
-        return True
-
-    def end_ollama_task(self, provider=None):
-        self.busy = None
+        return _RouteTaskLease(lambda: setattr(self, "busy", None))
 
     def refresh_open_deck_editors(self):
         self.refreshed = getattr(self, "refreshed", 0) + 1
@@ -633,15 +631,8 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
             drafted.append((resolved, context.image))
             return alt_draft.DraftResult(short="Drafted short", long="Drafted long", model="qwen3 · local")
 
-    class Now:
-        def __init__(self, target, args, daemon):
-            self.run = lambda: target(*args)
-
-        def start(self):
-            self.run()
-
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(images.threading, "Thread", Now)
+    monkeypatch.setattr(images.background, "start_detached", lambda worker, on_done: (worker.run(), on_done()))
     form = panel._forms[0]
     form.redraft_button.click()
     assert drafted[0] == (paths.path, "media/pic.png")
@@ -666,14 +657,8 @@ def test_redraft_is_ignored_after_switching_to_a_slide_with_the_same_image(ctx, 
         draft=lambda *args: alt_draft.DraftResult(short="Slide A short", long="Slide A long", model=given.label)))
     pending = []
 
-    class Later:
-        def __init__(self, target, args, daemon):
-            pending.append(lambda: target(*args))
-
-        def start(self):
-            pass
-
-    monkeypatch.setattr(images.threading, "Thread", Later)
+    monkeypatch.setattr(images.background, "start_detached",
+                        lambda worker, on_done: pending.append(lambda: (worker.run(), on_done())))
     panel._forms[0].redraft_button.click()
     assert window.busy == "drafting a description"
     state.set_focused_slide("abc")
@@ -718,19 +703,11 @@ def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(co
         def draft(self, resolved, context):
             raise ValueError("boom")
 
-    class Now:
-        def __init__(self, target, args, daemon):
-            self.run = lambda: target(*args)
-
-        def start(self):
-            self.run()
-
-    ended = []
-    monkeypatch.setattr(window, "end_ollama_task", ended.append)
     monkeypatch.setattr(alt_draft, "ModelBackend", Failing)
-    monkeypatch.setattr(images.threading, "Thread", Now)
     panel._forms[0].redraft_button.click()
-    assert ended == [provider] and "The draft failed: boom" in panel._forms[0].note.text()
+    wait_until(lambda: window.busy is None)
+    assert "The draft failed: boom" in panel._forms[0].note.text()
+
 
 
 def test_transcript_entry_renders_student_versions_only(content):

@@ -39,8 +39,8 @@ two tasks, in place of the slide tasks, while the Source view has a selection to
 
 Which backend runs a task is the active route's (ai_profile.resolve, captured when the task starts; the kind of
 each task is KINDS). On Cloud · Claude Code every task is a `claude -p` process, as above. On Local and
-Cloud · API only the tasks with an equivalent on a provider run, one at a time on that provider (the Ollama slot
-is held for the run): the image tasks (alt_draft's batch with a ModelBackend / ModelTranslationBackend),
+Cloud · API only the tasks with an equivalent on a provider run. Each run holds its captured route lease:
+ the image tasks (alt_draft's batch with a ModelBackend / ModelTranslationBackend),
 Translate (slide_add.translate_body, its answer checked like Claude's) and Make readable (ai/provider_tasks.py: the
 task's rules and schema as JSON on the provider, the same check and one repair round). Every other task is refused
 with "not available on <route>", nothing sent and no other route or model used.
@@ -551,7 +551,7 @@ class TaskRunner(QObject):
         self._running: dict[_Worker | _ImageWorker, _Item | None] = {}    # with the batch item it works on
         self._batch: _Batch | None = None
         self._route: ai_profile.Route | None = None        # of the task or batch under way, captured at its start
-        self._holds_slot = False                           # the app-wide Ollama slot, for a Local run
+        self._lease = None
         self._providers: list = []                         # what Stop aborts: the providers or backends of the run
         self._cancel = threading.Event()
         self._started = 0.0
@@ -594,7 +594,7 @@ class TaskRunner(QObject):
                 note = "Pending images are cancelled, not moved to the other route"
             else:
                 text, note = f"{_NAMES[worker.capture.task.name]} · {slide_language.bare_id(worker.capture.id_slug)}", ""
-        return [RunningWork(text, self._route.label, self._holds_slot, self.stop, note)]
+        return [RunningWork(text, self._route.label, self._route.is_local, self.stop, note)]
 
     def refusal(self, task: ai_tasks.Task, route: ai_profile.Route | None = None) -> str:
         """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),
@@ -641,36 +641,41 @@ class TaskRunner(QObject):
         if not confirm_if_new(self._window, project, route, "the slide text and images this task works on"):
             self._refused(capture, route, title, "Nothing was sent: using the cloud was not confirmed.", card_model.STOPPED)
             return
-        if route.is_local and not self._window.try_start_route_task(route.route, _NAMES[task.name].lower(), self):
+        lease = self._window.acquire_route_task(route.route, _NAMES[task.name].lower())
+        if lease is None:
             return
-        self._route, self._holds_slot = route, route.is_local
-        self._cancel = threading.Event()
-        self._started = time.monotonic()
-        self.unapplied = self.report = ""
-        self._set_result(None)
-        self._set_card(self._new_card(capture, route, title) if on_card else None)
-        if on_card:
-            self.status.emit("", "muted")
-        elif paths and task in BATCH_TASKS:
-            self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths),
-                                 limit=WORKERS if _runner_of(project, route) is not None else 1)
+        self._route, self._lease = route, lease
+        try:
+            self._cancel = threading.Event()
+            self._started = time.monotonic()
+            self.unapplied = self.report = ""
+            self._set_result(None)
+            self._set_card(self._new_card(capture, route, title) if on_card else None)
+            if on_card:
+                self.status.emit("", "muted")
+            elif paths and task in BATCH_TASKS:
+                self._batch = _Batch(task, deque(_Item(task, path) for path in paths), len(paths),
+                                     limit=WORKERS if _runner_of(project, route) is not None else 1)
+                self._notify_busy()
+                self._ticker.start()
+                self._tick()
+                self._pump()
+                return
+            elif task is ai_tasks.SUMMARISE:
+                capture = _capture_summary(self._window, paths)
+            else:
+                capture = images or _capture_images(self._window, task, paths)
+            if capture is None:
+                self._release()
+                self.status.emit("That no longer fits this slide.", "warning")
+                return
+            self._launch(capture)
             self._notify_busy()
-            self._ticker.start()
             self._tick()
-            self._pump()
-            return
-        elif task is ai_tasks.SUMMARISE:
-            capture = _capture_summary(self._window, paths)
-        else:
-            capture = images or _capture_images(self._window, task, paths)
-        if capture is None:
-            self._release()
-            self.status.emit("That no longer fits this slide.", "warning")
-            return
-        self._launch(capture)
-        self._notify_busy()
-        self._tick()
-        self._ticker.start()
+            self._ticker.start()
+        except BaseException:
+            self.shutdown()
+            raise
 
     def _refused(self, capture: _Capture | None, route: ai_profile.Route, title: str, reason: str, phase: str) -> None:
         """The task will not start: a task on a slide says so on its card, the others in the task row."""
@@ -693,11 +698,11 @@ class TaskRunner(QObject):
         return card
 
     def _release(self) -> None:
-        """The run is over: give the Ollama slot back and forget its providers."""
+        """The run is over: release its route and forget its providers."""
         self._providers = []
-        if self._holds_slot:
-            self._holds_slot = False
-            self._window.end_route_task(self._route.route, self)
+        lease, self._lease = self._lease, None
+        if lease is not None:
+            lease.release()
 
     def _launch(self, capture: _Capture | _ImageCapture, item: _Item | None = None) -> None:
         if isinstance(capture, _ImageCapture):
@@ -769,9 +774,19 @@ class TaskRunner(QObject):
         self.stop()
         running, self._running, self._batch, self.card = self._running, {}, None, None
         preview, self._preview = self._preview, None
-        for worker in (*running, *([preview] if preview is not None else [])):
-            background.stop_worker(worker)
-        self._release()
+        lease, self._lease = self._lease, None
+        pending = set(running)
+        def ended(worker):
+            pending.discard(worker)
+            if not pending and lease is not None:
+                lease.release()
+        for worker in running:
+            background.stop_worker(worker, on_done=lambda w=worker: ended(w))
+        if not running and lease is not None:
+            lease.release()
+        if preview is not None:
+            background.stop_worker(preview)
+        self._providers = []
 
     def describe(self) -> str:
         """What is running, by verb and slide: "Updating 1y8", "Translating the deck"."""
