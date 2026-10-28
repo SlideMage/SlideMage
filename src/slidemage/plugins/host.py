@@ -33,6 +33,8 @@ T = TypeVar("T")
 class HostUi(Protocol):
     """What the main window offers a plugin host (step 6)."""
 
+    def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool: ...
+    def end_route_task(self, route_id: str, owner: object) -> None: ...
     def open_deck_settings(self, deck: plugin_api.Deck, tab: str | None = None) -> None: ...
     def Page(self) -> Any: ...
     def Field(self, label: str, widget: Any) -> Any: ...
@@ -100,6 +102,21 @@ class PluginSettings:
 
 
 # -- the host --------------------------------------------------------------------------------------------------
+
+class _RouteTaskLease:
+    def __init__(self, release: Callable[[], None]) -> None:
+        self._release = release
+
+    def release(self) -> None:
+        release, self._release = self._release, lambda: None
+        release()
+
+    def __enter__(self) -> _RouteTaskLease:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self.release()
+
 
 class PluginHost(Registrar):
     def __init__(self, manifest: Manifest, ctx: ProjectContext, ui: HostUi | None = None) -> None:
@@ -245,6 +262,69 @@ class PluginHost(Registrar):
     def credentials(self, env_var: str | None = None) -> PluginCredentials:
         return PluginCredentials(self.manifest.id, env_var)
 
+    def acquire_route_task(self, route_id: str, label: str) -> plugin_api.RouteTaskLease | None:
+        ui = self._window()
+        owner = object()
+        if not ui.try_start_route_task(route_id, label, owner):
+            return None
+        return _RouteTaskLease(lambda: ui.end_route_task(route_id, owner))
+
+    def model_choices_changed(self, route_id: str) -> None:
+        notify = getattr(self.ui, "model_choices_changed", None)
+        if notify is not None:
+            notify(route_id)
+
+    def legacy_secret(self, name: Literal["anthropic_api_key"]) -> str | None:
+        if name != "anthropic_api_key":
+            raise ValueError(f"unknown legacy secret: {name}")
+        from .migrate import legacy_anthropic_key
+
+        return legacy_anthropic_key(self.ctx)
+
+    def legacy_ollama_host(self) -> str:
+        from ..app_settings import get_ollama_host
+
+        return get_ollama_host(self.ctx)
+
+    def run_in_background_with_progress(self, work, progress, done) -> None:
+        from PySide6.QtCore import QObject, QThread, Signal
+
+        from ..ui.background import start_detached
+
+        class Worker(QThread):
+            reported = Signal(object)
+            result = None
+            error = None
+
+            def run(self) -> None:
+                try:
+                    self.result = work(self.reported.emit)
+                except BaseException as exc:
+                    self.error = exc
+
+        class Receiver(QObject):
+            def report(self, value) -> None:
+                try:
+                    progress(value)
+                except Exception:
+                    self_logger.exception("progress callback raised")
+
+        self_logger = self._logger
+        thread = Worker()
+        receiver = Receiver()
+        thread.reported.connect(receiver.report)
+
+        def finished() -> None:
+            try:
+                done(thread.result, thread.error)
+            except Exception:
+                self._logger.exception("done callback raised")
+            finally:
+                receiver.deleteLater()
+                thread.deleteLater()
+
+        start_detached(thread, finished)
+
     def ai_tools(
         self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
         mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: Any = None,
@@ -256,6 +336,10 @@ class PluginHost(Registrar):
         from ..ai.agent_toolbox import agent_toolbox
         from ..ai.workspace import Workspace
 
+        if workspace is not None:
+            from ..ui.workspace.chat.plugin_surface import ToolWorkspace
+            if isinstance(workspace, ToolWorkspace):
+                workspace = workspace._workspace
         return agent_toolbox(workspace or Workspace(self.ctx), scope, focus_slide, cancel, mode)
 
     def focus(self) -> plugin_api.Focus:

@@ -641,7 +641,7 @@ class TaskRunner(QObject):
         if not confirm_if_new(self._window, project, route, "the slide text and images this task works on"):
             self._refused(capture, route, title, "Nothing was sent: using the cloud was not confirmed.", card_model.STOPPED)
             return
-        if route.is_local and not self._window.try_start_ollama_task(_NAMES[task.name].lower()):
+        if route.is_local and not self._window.try_start_route_task(route.route, _NAMES[task.name].lower(), self):
             return
         self._route, self._holds_slot = route, route.is_local
         self._cancel = threading.Event()
@@ -697,7 +697,7 @@ class TaskRunner(QObject):
         self._providers = []
         if self._holds_slot:
             self._holds_slot = False
-            self._window.end_ollama_task()
+            self._window.end_route_task(self._route.route, self)
 
     def _launch(self, capture: _Capture | _ImageCapture, item: _Item | None = None) -> None:
         if isinstance(capture, _ImageCapture):

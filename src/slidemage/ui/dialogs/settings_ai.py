@@ -23,7 +23,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QGridLayout, QLabel, QMessageBox, QLineEdit, QVBoxLayout, QWidget
 
 from ...ai import ai_profile, credentials, routes, translation_style
-from ...ai.ai_profile import CHAT, CLAUDE_CODE, CLOUD, IMAGE_DESCRIPTION, LOCAL, TASKS, TASK_LABELS
+from ...ai.ai_profile import CHAT, CLAUDE_CODE, CLOUD, LOCAL, TASKS, TASK_LABELS
 from ...ai.claude_launch import find_claude
 from ...ai.providers import InstalledModel
 from ...project import ProjectContext
@@ -194,9 +194,6 @@ class ModelsGrid(QWidget):
         return next((r for r in cloud if profile_key(r) == chosen), cloud[0] if cloud else None)
 
     def _offered(self, route, task: str) -> list[str]:
-        if route.id == ai_profile.OLLAMA:
-            wanted = "vision" if task == IMAGE_DESCRIPTION else "tools" if task == CHAT else ""
-            return [m.name for m in self.installed if not wanted or wanted in m.capabilities]
         return list(route.model_choices(self.project, task))
 
     def set_installed(self, installed: list[InstalledModel]) -> None:
@@ -278,6 +275,8 @@ class AiPage(Page):
         self.cloud_route_field.setVisible(len(routes.on_side(False)) > 1)
         layout.addWidget(self.cloud_route_field)
         self.models = ModelsGrid(app)
+        if hasattr(app, "model_choices_changed"):
+            app.model_choices_changed.connect(self.models.refresh)
         layout.addWidget(Field("Model of each task", self.models))
 
         self.prompts = PromptsTab(app)
@@ -335,4 +334,6 @@ class AiPage(Page):
         if self.ollama is not None:
             self.ollama.fill(installed)
         self.prompts.translation.set_models([model.name for model in installed])
-        self.models.set_installed(installed)
+        self.models.refresh()
+        if hasattr(self.app, "model_choices_changed"):
+            self.app.model_choices_changed.emit(ai_profile.OLLAMA)

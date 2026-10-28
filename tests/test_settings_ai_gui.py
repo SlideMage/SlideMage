@@ -131,3 +131,49 @@ def test_a_settings_section_is_only_allowed_for_the_ai_page_and_while_activating
             registrar.add_settings_section("general", "x", lambda: None)
         registrar.add_settings_section("ai", "x", lambda: None)
     assert [s.title for s in registrar.contributions.settings_sections] == ["x"]
+
+
+def test_model_grid_uses_registered_route_choices(qapp):
+    routes.clear()
+    route = FakeRoute(is_local=True, id="ollama")
+    choices = ["plugin-model"]
+    route.model_choices = lambda ctx, task: list(choices)
+    routes.register(route)
+    sheet = open_sheet(qapp, tab=AI)
+    combo = sheet.ai.models.cells[("local", "chat")]
+    assert combo.findData("plugin-model") >= 0
+    choices[:] = ["new-model"]
+    sheet.ai.models.refresh()
+    assert combo.findData("plugin-model") == -1
+    assert combo.findData("new-model") >= 0
+    sheet.close()
+
+
+def test_route_notification_refreshes_grid_and_picker(qapp, monkeypatch):
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtWidgets import QComboBox
+    from slidemage.ai import ai_profile
+    from slidemage.ui.ai_models import fill_model_combo
+    from slidemage.ui.dialogs.settings_ai import AiPage
+    from test_settings_gui import FakeApp
+
+    class Notifier(QObject):
+        model_choices_changed = Signal(str)
+    routes.clear()
+    route = FakeRoute(is_local=True, id="ollama")
+    choices = ["first"]
+    route.model_choices = lambda ctx, task: list(choices)
+    routes.register(route)
+    app = FakeApp()
+    notifier = Notifier()
+    app.model_choices_changed = notifier.model_choices_changed
+    page = AiPage(app)
+    combo = QComboBox()
+    app.model_choices_changed.connect(lambda _: fill_model_combo(app.project, combo, ai_profile.CHAT, "none"))
+    fill_model_combo(app.project, combo, ai_profile.CHAT, "none")
+    assert combo.findData("first") >= 0
+    choices[:] = ["second"]
+    app.model_choices_changed.emit("ollama")
+    assert combo.findData("second") >= 0 and combo.findData("first") == -1
+    assert page.models.cells[("local", "chat")].findData("second") >= 0
+    page.close()

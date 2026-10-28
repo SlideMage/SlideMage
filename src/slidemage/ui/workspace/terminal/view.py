@@ -65,9 +65,10 @@ class ClaudeCodeView(Surface):
     notice = Signal(str, str)       # a line for the assistant's task row: its text and tone
     setup_changed = Signal()        # the amber card came up or went (the task buttons wait for it)
 
-    def __init__(self, app, state: WorkspaceState, scope: SegmentedControl, tasks: TaskRunner) -> None:
+    def __init__(self, app, state: WorkspaceState, scope: SegmentedControl, tasks: TaskRunner, *, context=None) -> None:
         """`scope` is the assistant header's; `tasks` its runner, which the terminal's translate tool asks."""
         super().__init__()
+        self._surface_context = context
         self.app = app
         self.state = state
         self.scope = scope
@@ -166,7 +167,8 @@ class ClaudeCodeView(Surface):
 
     def refresh_caption(self) -> None:
         """What the header's task buttons run on: the model of the Claude Code route for fixes (AI setup)."""
-        route = ai_profile.route_for(self.state.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES)
+        route = (self._surface_context.selected_route(ai_profile.CLAUDE_CODE, ai_profile.FIXES)
+                 if self._surface_context else ai_profile.route_for(self.state.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES))
         self.caption.setText("Permissions are handled in Claude Code. Conversation model: set in Claude Code. "
                              f"Task buttons: {route.label.removeprefix('Claude Code · ')} "
                              '(<a href="setup">AI setup</a>).')
@@ -193,7 +195,8 @@ class ClaudeCodeView(Surface):
         """Place the files in the project (see attachments.py) and type their @paths at the prompt."""
         for name in names:
             try:
-                rel = place_file(self.state.project, name, dash_spaces=True)
+                rel = (self._surface_context.attach_file(Path(name)) if self._surface_context
+                       else place_file(self.state.project, name, dash_spaces=True))
             except OSError as exc:
                 self.notice.emit(f"{Path(name).name} could not be attached: {exc.strerror or exc}", "error")
                 continue
@@ -201,7 +204,8 @@ class ClaudeCodeView(Surface):
                 self._mention(rel)
 
     def attach_image(self, image) -> None:
-        rel = save_image(self.state.project, image)
+        rel = (self._surface_context.attach_image(image) if self._surface_context
+               else save_image(self.state.project, image))
         if rel:
             self._mention(rel)
         else:
@@ -416,6 +420,9 @@ class ClaudeCodeView(Surface):
     def shutdown(self) -> None:
         """End the process, the MCP server and the terminal page (window close, project switch, app quit)."""
         self._closed = True
+        if self._surface_context is not None:
+            self._surface_context.close()
+            self._surface_context = None
         if self.session is not None:
             self.session.shutdown()
         if self.terminal is not None:

@@ -23,6 +23,16 @@ Conventions of all calls:
   first. An edit made while the sheet is clean is taken over by the sheet: its own settings are read again from the
   new text, so a later Save of the sheet does not conflict with it.
 - Widgets. Widgets are PySide6 widgets, typed Any here so that this module needs no PySide6.
+- Lazy AI definitions. Task and the named task constants (TRANSLATE, FIX_LATEX, UPDATE_TRANSLATION, PROOFREAD,
+  CONCISE, TITLE, NOTE, SUMMARISE, READABLE, REWRITE, PROOFREAD_SELECTION and REWRITE_PRESETS) define tasks.
+  translate_request, update_request, proofread_request, concise_request, title_request, rewrite_request,
+  proofread_selection_request, note_request, summarise_request, fix_request, readable_request, answer_note,
+  repair_request and check build requests and validate answers. SlideContext, DraftResult, TranslationResult, build_prompt, draft_from_fields,
+  effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash, PromptConfig and get_effective_prompt provide
+  image drafting and translation data and prompts. de_address and glossary read translation style.
+  IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED describe image rules and Claude Code's allowed tools.
+  Outcome is the neutral task result. CancelToken supports process-aware cancellation for ai_tools. These names
+  load their implementation on first access; importing plugin_api itself uses only the standard library.
 """
 from __future__ import annotations
 
@@ -46,6 +56,23 @@ if TYPE_CHECKING:       # for type checkers only: at run time these load on firs
     from .ai.providers import Cancelled, ChatProvider, ChatReply, ProviderError, parse_json_object  # noqa: F401
     from .ai.tools import ToolBox  # noqa: F401
     from .protected_regions import protected_spans  # noqa: F401
+    from .ai.tasks import (  # noqa: F401
+        Task, TRANSLATE, FIX_LATEX, UPDATE_TRANSLATION, PROOFREAD, CONCISE, TITLE, NOTE, SUMMARISE, READABLE,
+        REWRITE, REWRITE_PRESETS, PROOFREAD_SELECTION, answer_note, repair_request, translate_request,
+        update_request, proofread_request, concise_request, title_request, rewrite_request,
+        proofread_selection_request, note_request, summarise_request, fix_request, readable_request, check,
+    )
+    from .ai.task_result import Outcome  # noqa: F401
+    from .alt_draft import (  # noqa: F401
+        SlideContext, DraftResult, TranslationResult, build_prompt, draft_from_fields, effective_system_prompt,
+        RESPONSE_SCHEMA as IMAGE_DESCRIPTION_SCHEMA,
+    )
+    from .alt_images import ImageEntry, en_text_hash  # noqa: F401
+    from .translation_prompts import PromptConfig, get_effective_prompt  # noqa: F401
+    from .ai.translation_style import de_address, glossary  # noqa: F401
+    from .ai.image_instructions import IMAGE_DESCRIPTION_RULES  # noqa: F401
+    from .ai.tools import CLAUDE_CODE_PRE_APPROVED  # noqa: F401
+    from .compiler import CancelToken  # noqa: F401
 
 API_VERSION = 1
 SUPPORTED_API_VERSIONS = frozenset({1})
@@ -204,19 +231,169 @@ class TerminalSession(Protocol):
         ...
 
 
+class HookContext(Protocol):
+    """Window-independent project operations for an external hook. Paths are absolute; file writes and review
+    records follow the same rules as SlideMage. A context comes from hook_context_from_environment()."""
+
+    @property
+    def root(self) -> Path:
+        """The project root selected by the hook environment."""
+        ...
+
+    def slide_kind(self, path: Path) -> Literal["current", "frozen"] | None:
+        """Classify a slide path as current or frozen, or return None for other files."""
+        ...
+
+    def read_text(self, path: Path) -> str:
+        """Read UTF-8 text preserving line endings; raises on unreadable files."""
+        ...
+
+    def read_snapshot(self, identity: str) -> dict:
+        """Read a hook's JSON snapshot by opaque identity; missing or invalid snapshots return {}."""
+        ...
+
+    def write_snapshot(self, identity: str, data: dict) -> None:
+        """Atomically store a JSON snapshot by opaque identity."""
+        ...
+
+    def delete_snapshot(self, identity: str) -> None:
+        """Delete a snapshot; an absent snapshot is harmless."""
+        ...
+
+    def is_image_store(self, path: Path) -> bool:
+        """Whether path is the project image-description store."""
+        ...
+
+    def flag_edited_sources(self, path: Path, before: str) -> bool:
+        """Mark image citations changed since before for review; return whether any changed."""
+        ...
+
+    def is_deck(self, path: Path) -> bool:
+        """Whether path is a TeX file in the project's deck directory."""
+        ...
+
+    def mark_review(self, path: Path, kind: str, source: str, *, before: str | None = None) -> None:
+        """Record a slide draft, translation, or edit for review, optionally preserving the old text."""
+        ...
+
+    def record_inserted_slides(self, path: Path, before: str, after: str, source: str) -> None:
+        """Record the slide calls inserted in a deck edit for review."""
+        ...
+
+    def timing_event(self, name: str) -> None:
+        """Record an optional timing event; a no-op unless timing is enabled."""
+        ...
+
+
+def hook_context_from_environment() -> HookContext:
+    """Find the project named by the hook environment and return its window-independent operations."""
+    return importlib.import_module("slidemage.plugins.hook").from_environment()
+
+
+class TerminalWidget(Protocol):
+    """A terminal view. write displays bytes even before a process is started; shutdown frees it."""
+
+    def write(self, data: bytes) -> None: ...
+    def shutdown(self) -> None: ...
+
+
 class TerminalService(Protocol):
     """SlideMage's embedded terminal (a pseudo-terminal and an xterm view in SlideMage's colours)."""
+
+    def create_widget(self, parent: Widget | None = None) -> TerminalWidget:
+        """Create a view without a process. It can display startup errors; pass it to start to attach a process."""
+        ...
 
     def start(
         self, argv: list[str], env: dict[str, str] | None = None, cwd: Path | None = None, *,
         on_output: Callable[[bytes], None] | None = None, on_exit: Callable[[int], None] | None = None,
-        with_widget: bool = True, cols: int = 80, rows: int = 24,
+        with_widget: bool = True, cols: int = 80, rows: int = 24, widget: TerminalWidget | None = None,
     ) -> TerminalSession:
         """Run argv (env defaults to SlideMage's own, cwd to the project folder). With a widget the program
         starts when the view has its size (once the widget is shown), and its output goes to the view as well as
         to on_output; without one it starts at once at cols x rows. on_exit(code) is called when it ends by itself.
+        A supplied widget is attached instead of creating one; it must not already belong to a session.
         Raises OSError if the program cannot be started (when it starts at once)."""
         ...
+
+
+class ToolWorkspace(Protocol):
+    """Opaque GUI workspace for Host.ai_tools; close it when the surface shuts down."""
+
+    def close(self) -> None: ...
+
+
+class ChatSurfaceContext(Protocol):
+    """UI-thread operations supplied to chat_surface_v2. It holds no publicly exposed core window or state."""
+
+    @property
+    def project_root(self) -> Path:
+        """Project directory for file dialogs and processes."""
+        ...
+
+    def selected_route(self, route_id: str, task: str) -> Route:
+        """The saved model and effort for a route and task."""
+        ...
+
+    def scope(self) -> Literal["slide", "deck"]:
+        """The current assistant scope."""
+        ...
+
+    def set_scope(self, value: Literal["slide", "deck"]) -> bool:
+        """Set and broadcast scope; return False if deck scope is unavailable."""
+        ...
+
+    def on_scope_changed(self, callback: Callable[[str], None]) -> None:
+        """Call callback on the UI thread when scope changes."""
+        ...
+
+    def open_ai_setup(self) -> None:
+        """Open AI setup."""
+        ...
+
+    def attach_file(self, path: Path) -> str | None:
+        """Place a file in the project and return its relative path, or None."""
+        ...
+
+    def attach_image(self, image: Widget) -> str | None:
+        """Save a Qt image in the project and return its relative path, or None."""
+        ...
+
+    def apply_external_edits(self, changes: ExternalEdits) -> None:
+        """Update open buffers, conflicts, decks and views after an external edit watch reports changes."""
+        ...
+
+    def tool_workspace(self) -> ToolWorkspace:
+        """Return the GUI-aware workspace handle accepted by Host.ai_tools."""
+        ...
+
+    def translate_slide(self, path: Path) -> str:
+        """Show a slide and start its translation task; return a message describing the result."""
+        ...
+
+    def close(self) -> None:
+        """Release waits held by the tool workspace when the surface is closed."""
+        ...
+
+
+class ChatSurfaceRoute(Protocol):
+    """Optional addition to AiRoute: a route may implement this instead of the legacy chat_surface call."""
+
+    def chat_surface_v2(self, context: ChatSurfaceContext) -> Widget | None:
+        """Build a conversation surface using the typed context; return None to use the normal chat. The
+        surface closes context when it shuts down. Core prefers this method when present."""
+        ...
+
+
+class RouteTaskLease(Protocol):
+    """A reservation of one route's long-running work, usable as a context manager."""
+
+    def release(self) -> None:
+        """Release this reservation once. Further calls do nothing."""
+        ...
+
+    def __enter__(self) -> RouteTaskLease: ...
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None: ...
 
 
 class Host(Protocol):
@@ -337,15 +514,42 @@ class Host(Protocol):
         default name ("ANTHROPIC_API_KEY")."""
         ...
 
+    def acquire_route_task(self, route_id: str, label: str) -> RouteTaskLease | None:
+        """Reserve a route for a long job on the UI thread. Return None and show the busy reason if another job
+        holds it. Release after the worker has stopped, including on failure; leases are route-specific.
+        Raises RuntimeError when no window exists."""
+        ...
+
+    def model_choices_changed(self, route_id: str) -> None:
+        """Notify the UI after this route's cached model choices change. Pickers and open settings refresh on
+        the UI thread; the call is harmless before a window exists. It does not perform network I/O."""
+        ...
+
+    def legacy_secret(self, name: Literal["anthropic_api_key"]) -> str | None:
+        """Read the old built-in secret, without removing it. Unknown names raise ValueError."""
+        ...
+
+    def legacy_ollama_host(self) -> str:
+        """Read the former built-in Ollama address, including its environment and default fallback."""
+        ...
+
+    def run_in_background_with_progress(
+        self, work: Callable[[Callable[[T], None]], Any], progress: Callable[[T], None],
+        done: Callable[[Any, BaseException | None], None],
+    ) -> None:
+        """Run work(report) on a worker. report(value) is worker-safe and queues progress(value) on the UI
+        thread, before done(result, error). Report only while work is running. Callbacks may outlive the requesting
+        widget."""
+        ...
+
     def ai_tools(
         self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
-        mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: Any = None,
+        mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: ToolWorkspace | None = None,
     ) -> "ToolBox":
         """The agent's tools as SlideMage's embedded Claude Code is offered them (read files, lint, render a preview,
         create/modify/add/insert slides, QR codes, guides...), for an MCP server or an agent loop of the plugin's
         own. scope limits where edits may reach ("slide": only focus_slide; "deck": the deck). mode "auto" applies
-        edits at once, "ask" proposes them. cancel is a compiler.CancelToken (None: a fresh one). workspace is the
-        slidemage.ai.workspace.Workspace the tools see (None: the project's files, with no editor buffers). Use
+        edits at once, "ask" proposes them. cancel is a compiler.CancelToken (None: a fresh one). workspace is a handle from ChatSurfaceContext.tool_workspace() (None: the project's files, with no editor buffers). Use
         box.specs and box.execute(ToolCall(...)). Heavy to import: call it when needed, not in activate()."""
         ...
 
@@ -500,7 +704,7 @@ class AiRoute(Protocol):
     def model_choices(self, ctx: "ProjectContext", task: str) -> list[str]:
         """The choices a picker offers for `task` without asking anyone: Claude Code's fixed list, the API's
         known models once a key is set. A route whose choices come from a server (Ollama's installed models) returns
-        [] here and lists them itself in the background. Never the network."""
+        its most recent cached list here and refreshes it in the background. Never the network."""
         ...
 
     def default_choice(self, task: str) -> str:
@@ -553,6 +757,9 @@ class AiRoute(Protocol):
         (ai/provider_tasks.py)."""
         ...
 
+    # Optional addition: implementations may provide chat_surface_v2(context: ChatSurfaceContext) -> Widget | None.
+    # Core prefers it when present; API 1's original chat_surface remains supported. The returned surface follows
+    # the same lifecycle as chat_surface and closes its context on shutdown.
     def chat_surface(self, *args: Any, **kwargs: Any) -> Widget | None:
         """The widget that is the assistant's conversation on this route, built by the assistant with the
         arguments it has; None: core's chat view over provider(). Claude Code returns its terminal, which also
@@ -563,6 +770,12 @@ class AiRoute(Protocol):
         """A builder for the route's own section of Settings' AI tab, or None for no section. Built when Settings opens."""
         ...
 # -- the neutral AI types -----------------------------------------------------------------------------------------
+# Lazy additions: Task, TRANSLATE, answer_note, repair_request, translate_request, check are the task
+# definition, prompts and validation; SlideContext, DraftResult, TranslationResult, build_prompt,
+# draft_from_fields, effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash and
+# get_effective_prompt define image drafting and translation. de_address and glossary read project translation
+# style. IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED supply Claude launch instructions. CancelToken
+# is the process-aware cancellation token accepted by ai_tools. Outcome is the task runner result.
 # Re-exported from SlideMage's modules, which are not standard library, so they load on first use: importing this
 # module stays cheap, and `from slidemage.plugin_api import ChatProvider` works. They are:
 #   ai.providers   ChatProvider (Protocol of a model backend), ChatReply, ProviderError, Cancelled,
@@ -582,6 +795,26 @@ _LAZY = {
         "AgentEvent", "EDIT_ASK", "EDIT_AUTO")},
     "ToolBox": "slidemage.ai.tools",
     "protected_spans": "slidemage.protected_regions",
+    **{name: "slidemage.ai.tasks" for name in (
+        "Task", "TRANSLATE", "FIX_LATEX", "UPDATE_TRANSLATION", "PROOFREAD", "CONCISE", "TITLE", "NOTE",
+        "SUMMARISE", "READABLE", "REWRITE", "REWRITE_PRESETS", "PROOFREAD_SELECTION", "answer_note",
+        "repair_request", "translate_request", "update_request", "proofread_request", "concise_request",
+        "title_request", "rewrite_request", "proofread_selection_request", "note_request", "summarise_request",
+        "fix_request", "readable_request", "check")},
+    **{name: "slidemage.alt_draft" for name in (
+        "SlideContext", "DraftResult", "TranslationResult", "build_prompt", "draft_from_fields",
+        "effective_system_prompt")},
+    "IMAGE_DESCRIPTION_SCHEMA": "slidemage.alt_draft",
+    "ImageEntry": "slidemage.alt_images",
+    "en_text_hash": "slidemage.alt_images",
+    "PromptConfig": "slidemage.translation_prompts",
+    "get_effective_prompt": "slidemage.translation_prompts",
+    "de_address": "slidemage.ai.translation_style",
+    "glossary": "slidemage.ai.translation_style",
+    "IMAGE_DESCRIPTION_RULES": "slidemage.ai.image_instructions",
+    "CLAUDE_CODE_PRE_APPROVED": "slidemage.ai.tools",
+    "CancelToken": "slidemage.compiler",
+    "Outcome": "slidemage.ai.task_result",
 }
 
 
@@ -589,6 +822,6 @@ def __getattr__(name: str) -> Any:
     module = _LAZY.get(name)
     if module is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(importlib.import_module(module), name)
+    value = getattr(importlib.import_module(module), "RESPONSE_SCHEMA" if name == "IMAGE_DESCRIPTION_SCHEMA" else name)
     globals()[name] = value
     return value

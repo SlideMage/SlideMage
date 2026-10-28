@@ -115,6 +115,7 @@ class _CurrentPageStack(QStackedWidget):
 
 
 class WorkspaceWindow(QMainWindow):
+    model_choices_changed = Signal(str)
     plugin_offer_fetched = Signal(object)   # the catalogue for the first-start sheet, or the Exception
     plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
@@ -150,6 +151,8 @@ class WorkspaceWindow(QMainWindow):
         # local Ollama server's own resource limit, not a bug this app can
         # fix). See try_start_ollama_task()/end_ollama_task() below.
         self._ollama_task_label: Optional[str] = None
+        self._route_tasks: dict[str, tuple[str, object | None]] = {}
+        self._legacy_ollama_owner = object()
 
         self.state = WorkspaceState(self.project, self)
         self.local_models = LocalModelList(self.project, self)     # the installed Ollama models, for the pickers
@@ -242,7 +245,8 @@ class WorkspaceWindow(QMainWindow):
         self.ai_switch.setup_requested.connect(self.ai_route.open_setup)
         self.ai_switch.install_requested.connect(self.open_plugins)
         self.state.ai_route_changed.connect(self._on_ai_route_changed)
-        self.local_models.changed.connect(self.refresh_ai_models)
+        self.local_models.changed.connect(lambda: self.model_choices_changed.emit(ai_profile.OLLAMA))
+        self.model_choices_changed.connect(lambda _route: self.refresh_ai_models())
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         self.state.deck_changed.connect(self._remember_deck)
@@ -749,21 +753,34 @@ class WorkspaceWindow(QMainWindow):
         passes the provider to both calls. No provider means Ollama."""
         if provider is not None and not provider.is_local:
             return True
-        if self._ollama_task_label is not None:
-            QMessageBox.warning(
-                self, "Ollama busy",
-                f"{self._ollama_task_label.capitalize()} is already running -- "
-                f"only one Ollama-dependent task can run at a time in this "
-                f"app (running two at once has crashed before). Wait for it "
-                f"to finish, or stop it, before starting {label}.",
-            )
-            return False
-        self._ollama_task_label = label
-        return True
+        return self.try_start_route_task(ai_profile.OLLAMA, label, self._legacy_ollama_owner)
 
     def end_ollama_task(self, provider: Optional[ChatProvider] = None) -> None:
         if provider is None or provider.is_local:
-            self._ollama_task_label = None
+            self.end_route_task(ai_profile.OLLAMA, self._legacy_ollama_owner)
+
+    def try_start_route_task(self, route_id: str, label: str, owner: object | None) -> bool:
+        """Reserve a route for a job; another owner cannot release this reservation."""
+        if route_id in self._route_tasks:
+            previous, _ = self._route_tasks[route_id]
+            from ...ai import routes
+            found = routes.get(route_id)
+            service = found.service if found else route_id
+            QMessageBox.warning(self, f"{service} busy",
+                                f"{previous.capitalize()} is already running. Wait for it to finish, "
+                                f"or stop it, before starting {label}.")
+            return False
+        self._route_tasks[route_id] = (label, owner)
+        if route_id == ai_profile.OLLAMA:
+            self._ollama_task_label = label
+        return True
+
+    def end_route_task(self, route_id: str, owner: object | None) -> None:
+        current = self._route_tasks.get(route_id)
+        if current is not None and current[1] is owner:
+            del self._route_tasks[route_id]
+            if route_id == ai_profile.OLLAMA:
+                self._ollama_task_label = None
 
     def _regenerate_headers_bg(self) -> None:
         changed, n_decks = deck_headers.regenerate_headers(self.project)

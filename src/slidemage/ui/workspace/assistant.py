@@ -61,7 +61,7 @@ class AssistantArea(Card):
         self.chat = ChatView(app, state, self.scope)
         self.surfaces: dict[str, QWidget] = {}              # a route with its own conversation (chat_surface), by id
         for route in routes.all():
-            if (surface := route.chat_surface(app, state, self.scope, self.tasks)) is not None:
+            if (surface := self._route_surface(route)) is not None:
                 self.surfaces[route.id] = surface
         self.header = AssistantHeader(app, state, self.scope, self.tasks, self._tasks_blocked)
         self.task_row = TaskRow(app, self.tasks)
@@ -166,12 +166,27 @@ class AssistantArea(Card):
         route = ai_profile.Route(self.state.ai_route, ai_profile.CHAT) if surface is not None else self.chat.route()
         self.header.show_route(route, getattr(surface, "subtitle", ""))
 
+    def _route_surface(self, route):
+        build = getattr(route, "chat_surface_v2", None)
+        if build is None:
+            return route.chat_surface(self.app, self.state, self.scope, self.tasks)
+        from .chat.plugin_surface import ChatSurfaceContext
+        context = ChatSurfaceContext(self.app, self.state, self.scope, self.tasks)
+        try:
+            surface = build(context)
+        except BaseException:
+            context.close()
+            raise
+        if surface is None:
+            context.close()
+        return surface
+
     def refresh_models(self) -> None:
         """A route, a default model or a list of models changed (AI setup, Settings, Ollama answering)."""
         self.chat.refresh_route()
         for route in routes.all():
             if route.id not in self.surfaces:
-                surface = route.chat_surface(self.app, self.state, self.scope, self.tasks)
+                surface = self._route_surface(route)
                 if surface is not None:
                     self.surfaces[route.id] = surface
                     self._stack.addWidget(surface)

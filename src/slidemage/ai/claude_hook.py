@@ -18,12 +18,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from hashlib import sha256
 
-from .. import ai_review, alt_images, fileio, project, timing
+from .. import project, timing
+from ..plugins.hook import HookContext
 from ..project import ProjectContext
 from . import claude_scope
-from ..slide_protection import protected_problem, slide_kind
+from ..slide_protection import protected_problem
 
 BLOCK = 2
 FROZEN_MESSAGE = ("{name} is a frozen version of a slide: a historical record, read-only. "
@@ -83,7 +83,7 @@ def blocked_reason(ctx: ProjectContext, event: dict) -> str | None:
     outside = claude_scope.edit_problem(claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV)), ctx.root, path)
     if outside:
         return outside
-    kind = slide_kind(ctx, path)
+    kind = HookContext(ctx).slide_kind(path)
     if kind == "frozen":
         return FROZEN_MESSAGE.format(name=path.name)
     if kind != "current":
@@ -112,28 +112,28 @@ def record_write(ctx: ProjectContext, event: dict) -> None:
     path = (Path(raw) if Path(raw).is_absolute() else base / raw).resolve()
     if not path.is_relative_to(ctx.root.resolve()):
         return
-    slide = slide_kind(ctx, path) == "current"
-    deck = path.suffix == ".tex" and path.is_relative_to(ctx.decks_dir.resolve())
-    store = alt_images.is_store(ctx, path)
+    hook = HookContext(ctx)
+    slide = hook.slide_kind(path) == "current"
+    deck = hook.is_deck(path)
+    store = hook.is_image_store(path)
     if not slide and not deck and not store:
         return
     identity = str(event.get("tool_use_id") or f"{event.get('session_id', '')}:{path}")
-    snapshot = ctx.claude_hook_dir / (sha256(identity.encode()).hexdigest() + ".json")
     if event.get("hook_event_name") == "PreToolUse":
-        fileio.write_json(snapshot, {"new": not path.exists(), "before": _read(path)})
+        hook.write_snapshot(identity, {"new": not path.exists(), "before": _read(path)})
         return
-    saved = fileio.read_json(snapshot)
-    snapshot.unlink(missing_ok=True)
+    saved = hook.read_snapshot(identity)
+    hook.delete_snapshot(identity)
     response = event.get("tool_response")
     if isinstance(response, dict) and (response.get("isError") or response.get("is_error")):
         return
     source = f"Claude Code terminal: {event['tool_name']}"
     if store:
-        alt_images.flag_edited_sources(ctx, path, saved.get("before") or "")   # a changed citation is to review
+        hook.flag_edited_sources(path, saved.get("before") or "")   # a changed citation is to review
     elif slide and ("before" not in saved or saved["before"] != _read(path)):
-        ai_review.mark(ctx, path, "draft" if saved.get("new") else "edit", source, before=saved.get("before"))
+        hook.mark_review(path, "draft" if saved.get("new") else "edit", source, before=saved.get("before"))
     elif deck and path.is_file() and "before" in saved:
-        ai_review.inserted_slides(ctx, path, saved["before"] or "", fileio.read_text_exact(path), source)
+        hook.record_inserted_slides(path, saved["before"] or "", hook.read_text(path), source)
 
 
 def main() -> int:
@@ -141,7 +141,7 @@ def main() -> int:
         event = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
         if isinstance(event, dict) and event.get("hook_event_name") == "UserPromptSubmit":
             if timing.enabled():
-                timing.event(project.from_environment().root, "prompt")
+                HookContext(project.from_environment()).timing_event("prompt")
             data = claude_scope.load(os.environ.get(claude_scope.FOCUS_ENV))
             if data:
                 print(claude_scope.prompt_context(data))   # stdout becomes context for this prompt

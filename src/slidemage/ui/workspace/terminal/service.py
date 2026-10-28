@@ -131,9 +131,11 @@ class TerminalService:
     def start(
         self, argv: list[str], env: dict[str, str] | None = None, cwd: Path | None = None, *,
         on_output: Callable[[bytes], None] | None = None, on_exit: Callable[[int], None] | None = None,
-        with_widget: bool = True, cols: int = 80, rows: int = 24,
+        with_widget: bool = True, cols: int = 80, rows: int = 24, widget: QWidget | None = None,
     ) -> TerminalSession:
-        widget = self.create_widget() if with_widget else None
+        if widget is not None and not with_widget:
+            raise ValueError("widget cannot be supplied with with_widget=False")
+        widget = (widget or self.create_widget()) if with_widget else None
         session = TerminalSession(argv, os.environ.copy() if env is None else env,
                                   self.root if cwd is None else cwd, widget)
         if on_output is not None:
@@ -142,4 +144,6 @@ class TerminalService:
             session.exited.connect(on_exit)
         if widget is None:
             session.start(*session._launch, cols, rows)
+        elif getattr(widget, "terminal_size", None) is not None:
+            session._on_ready(*widget.terminal_size)
         return session

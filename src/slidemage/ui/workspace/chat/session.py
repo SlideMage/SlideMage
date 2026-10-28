@@ -70,7 +70,7 @@ class ChatSession(QObject):
     def start(self, provider: ChatProvider, request: str, scope: str, route: Route) -> bool:
         """Answer `request` with `provider`, which is `route` resolved, on a thread of its own. False (the window
         says why) when a local model's Ollama slot is taken by another task."""
-        if not self._app.try_start_ollama_task("answering in the chat", provider):
+        if route.is_local and not self._app.try_start_route_task(route.route, "answering in the chat", self):
             return False
         try:
             self.workspace.begin_request()
@@ -80,7 +80,8 @@ class ChatSession(QObject):
             self._thread.start()
         except BaseException:
             self._agent = self._thread = self._provider = None
-            self._app.end_ollama_task(provider)
+            if route.is_local:
+                self._app.end_route_task(route.route, self)
             raise
         return True
 
@@ -107,12 +108,15 @@ class ChatSession(QObject):
         self.workspace.close()
         thread, agent = self._thread, self._agent
         if thread is not None:
-            background.stop_worker(thread, agent.stop, wait_ms=500, on_done=self._release(self._provider))
+            background.stop_worker(thread, agent.stop, wait_ms=500, on_done=self._release(self.route))
         self._thread = self._agent = self._provider = None
 
-    def _release(self, provider: ChatProvider | None):
-        """What gives the Ollama slot of `provider` back, to run once its thread has ended."""
-        return lambda: self._app.end_ollama_task(provider)
+    def _release(self, route: Route | None):
+        """Give the captured route's slot back once its thread has ended."""
+        def release() -> None:
+            if route is not None and route.is_local:
+                self._app.end_route_task(route.route, self)
+        return release
 
     def _emit(self, event: AgentEvent) -> None:
         """The agent's callback, on its thread."""
@@ -124,6 +128,6 @@ class ChatSession(QObject):
 
     def _watch(self, event: AgentEvent) -> None:
         if isinstance(event, Done) and self._thread is not None:
-            thread, provider = self._thread, self._provider
+            thread, route = self._thread, self.route
             self._thread = self._agent = self._provider = None
-            background.stop_worker(thread, wait_ms=500, on_done=self._release(provider))
+            background.stop_worker(thread, wait_ms=500, on_done=self._release(route))

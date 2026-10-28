@@ -26,6 +26,7 @@ from ..processes import no_console_kwargs
 from ..project import ProjectContext
 from . import tasks as ai_tasks, translation_style
 from .claude_launch import clean_environment
+from .task_result import CANCELLED, DONE, FAILED, NOTHING, Outcome
 
 # The default of Claude Code tasks: Haiku at medium effort, tested by the user as good enough (2026-10-13;
 # docs/CLAUDE_CODE_TASKS_BENCHMARK.md measured Sonnet). A text task takes 2-10 s there (the slowest run 13 s),
@@ -42,7 +43,6 @@ MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 # with --system-prompt (replacing Claude Code's own) and the empty working folder (no CLAUDE.md, no memory).
 ISOLATION = ("--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands")
 
-DONE, NOTHING, FAILED, CANCELLED = "done", "nothing to change", "failed", "cancelled"
 NOT_LOGGED_IN = "Claude Code is not logged in: run claude in a terminal and sign in with /login."
 RATE_LIMIT, USAGE_LIMIT = "rate limit", "usage limit"
 
@@ -55,21 +55,6 @@ def limit_kind(message: str) -> str:
     if "usage limit" in text:
         return USAGE_LIMIT
     return RATE_LIMIT if any(word in text for word in ("rate limit", "429", "overloaded", "concurren")) else ""
-
-
-@dataclass
-class Outcome:
-    status: str                      # DONE, NOTHING, FAILED or CANCELLED
-    text: str = ""                   # the new text, for DONE
-    message: str = ""                # why, for FAILED
-    attempts: int = 0                # processes started: 2 when the first answer needed a repair
-    first_s: float | None = None     # until the first answer event of the first process
-    elapsed_s: float = 0.0           # until the outcome is known
-    turns: int = 0
-    tokens_in: int = 0               # input tokens, cached ones included
-    tokens_out: int = 0
-    note: str = ""                   # the model's remark on its answer (ai_tasks.answer_note)
-    measured: object = None          # Make readable: the readability Report of the new text as a draft, or why not (str)
 
 
 @dataclass

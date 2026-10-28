@@ -90,16 +90,14 @@ def fill_model_combo(
     vision_only: bool = False, fallback_local: str = "",
 ) -> bool:
     """(Re)fill `combo` with the models of the active route for `task` and preselect its saved default, else
-    `fallback_local` when installed. Local lists `local_models` (the installed ones, asked of Ollama when None);
-    API the Claude models once a key is set; Claude Code its models with their efforts. With nothing to offer it
+    `fallback_local` when installed. Choices come from the registered route; `local_models` and `vision_only`
+    remain accepted for API compatibility. With nothing to offer it
     shows `empty_text` disabled and returns False."""
     route = ai_profile.resolve(project, task)
     combo.clear()
     found = routes.get(route.route)
     if found is not None:
-        # `local_models` (and `vision_only`) are what a caller already asked of the local routes; every other
-        # route, and a local one asked with nothing, tells its own choices
-        choices = local_models if local_models is not None and found.id == ai_profile.OLLAMA else found.model_choices(project, task)
+        choices = found.model_choices(project, task)
         for choice in choices:
             combo.addItem(found.choice_label(choice), choice)
     usable = combo.count() > 0

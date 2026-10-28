@@ -149,3 +149,34 @@ def test_a_failing_callback_is_offered_the_changes_again(host, qapp):
     watch.stop(last_look=False)
     assert len(calls) == 2 and calls[0] == calls[1]
 
+
+
+def test_created_view_can_be_attached_after_it_is_ready(service):
+    from PySide6.QtCore import QObject, Signal
+
+    class View(QObject):
+        input_data = Signal(bytes)
+        resized = Signal(int, int)
+        ready = Signal(int, int)
+
+        def __init__(self):
+            super().__init__()
+            self.terminal_size = (90, 25)
+            self.output = []
+
+        def write(self, data):
+            self.output.append(data)
+
+        def shutdown(self):
+            pass
+
+    view = View()
+    view.write(b"startup error")
+    codes = []
+    session = service.start(["sh", "-c", "echo hello"], widget=view, on_exit=codes.append)
+    wait_until(lambda: codes)
+    assert session.widget is view
+    assert b"startup error" in view.output and b"hello" in b"".join(view.output)
+    session.close()
+    with pytest.raises(ValueError):
+        service.start(["cat"], with_widget=False, widget=view)

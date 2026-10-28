@@ -94,6 +94,9 @@ class ClaudeCodeRoute:
         from ..ui.workspace.terminal.view import ClaudeCodeView
         return ClaudeCodeView(*args, **kwargs)
 
+    def chat_surface_v2(self, context):
+        return context._builtin_surface()
+
     def settings_section(self):
         from ..ui.dialogs.settings_ai import build_claude_code_section
         return build_claude_code_section

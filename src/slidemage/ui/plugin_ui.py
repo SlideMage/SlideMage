@@ -74,6 +74,22 @@ class WindowHostUi:
         else:
             window.toast.show_message(text, error=error, timeout_ms=6000 if error else None)
 
+    def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool:
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        return window.try_start_route_task(route_id, label, owner)
+
+    def end_route_task(self, route_id: str, owner: object) -> None:
+        window = self.window
+        if window is not None:
+            window.end_route_task(route_id, owner)
+
+    def model_choices_changed(self, route_id: str) -> None:
+        window = self.window
+        if window is not None:
+            window.model_choices_changed.emit(route_id)
+
     def terminal_tokens(self) -> Any:
         """The design tokens the embedded terminal is coloured with."""
         window = self.window
