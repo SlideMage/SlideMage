@@ -12,9 +12,9 @@ A plugin runs in-process with the user's rights, so nothing here is trusted. Wha
 - The unpacked plugin.toml (manifest rules), the package folder named after the id, the api_version this
   SlideMage supports and requires_slidemage against the running version.
 
-The archive is unpacked into plugins/.staging/ and swapped into plugins/<id>/ only when everything passed; the
-old copy moves to plugins/.old/ (the running process may have its modules loaded) and cleanup() deletes it at
-the next start. On any failure staging is removed and the previous copy is put back.
+The archive is unpacked into plugins/.staging/ and checked before publication. Updates and removals are staged
+in plugins/.pending/<id>/ until cleanup() at the next start, before loading any plugin. The running plugin
+keeps its original import and resource paths. Failed publication restores the previous pending operation.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .loader import plugins_dir
-from .manifest import MANIFEST_NAME, Manifest, ManifestError, matches, package_name, read_manifest
+from .manifest import MANIFEST_NAME, Manifest, ManifestError, matches, package_name, read_manifest, valid_id
 
 log = logging.getLogger(__name__)
 
@@ -217,7 +217,7 @@ def _old_target(plugin_id: str) -> Path:
 
 
 def install(archive: Path, *, expected_sha256: str | None = None, app_version: str = VERSION_NUMBER) -> Manifest:
-    """Check `archive` and install it as plugins/<id>/. Returns the manifest; raises InstallError."""
+    """Check and install a new plugin, or stage an update for the next start. Raises InstallError."""
     archive = Path(archive)
     if expected_sha256 is not None:
         try:
@@ -239,8 +239,10 @@ def install(archive: Path, *, expected_sha256: str | None = None, app_version: s
         except OSError as e:
             raise InstallError(f"The archive could not be unpacked: {e}") from None
         manifest = _check_plugin(staging, app_version)
-        final = plugins_dir() / manifest.id
+        installed = plugins_dir() / manifest.id
+        final = plugins_dir() / ".pending" / manifest.id if installed.exists() else installed
         try:
+            final.parent.mkdir(parents=True, exist_ok=True)
             if final.exists():
                 old = _old_target(manifest.id)
                 old.parent.mkdir(parents=True, exist_ok=True)
@@ -263,23 +265,91 @@ def install(archive: Path, *, expected_sha256: str | None = None, app_version: s
             pass
 
 
+def _pending(plugin_id: str) -> Path:
+    return plugins_dir() / ".pending" / plugin_id
+
+
+def row_state(plugin_id: str, current: tuple[str, str, str]) -> tuple[str, str, str]:
+    """The Plugins tab reflects a queued operation while the live folder stays intact."""
+    pending = _pending(plugin_id)
+    if (pending / ".remove").is_file():
+        return "Removed after a restart", "info", ""
+    if (pending / MANIFEST_NAME).is_file():
+        return "Installed; it starts after a restart", "info", ""
+    return current
+
+
 def remove(plugin_id: str) -> None:
-    """Move plugins/<id>/ to .old/ (deleted at the next start). InstallError if it is not installed."""
+    """Stage removal for the next start, preserving every live import and resource path."""
     folder = plugins_dir() / plugin_id
-    if not re.match(r"^[a-z][a-z0-9-]*$", plugin_id) or not folder.is_dir():
+    if not valid_id(plugin_id) or not folder.is_dir():
         raise InstallError(f"The plugin {plugin_id!r} is not installed.")
-    target = _old_target(plugin_id)
+    staging = plugins_dir() / ".staging" / uuid.uuid4().hex
+    target = _pending(plugin_id)
+    old = None
     try:
+        staging.mkdir(parents=True)
+        (staging / ".remove").touch()
         target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(folder, target)
+        if target.exists():
+            old = _old_target(plugin_id)
+            old.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(target, old)
+        os.replace(staging, target)
     except OSError as e:
+        if old is not None and old.exists() and not target.exists():
+            os.replace(old, target)
         raise InstallError(f"The plugin could not be removed: {e}") from None
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     mark_changed(plugin_id)
+
+
+def apply_pending() -> bool:
+    """Apply queued changes before loading plugins at startup. Keep failed changes for another start."""
+    pending = plugins_dir() / ".pending"
+    if not pending.is_dir():
+        return True
+    ok = True
+    for staged in sorted(pending.iterdir()):
+        old = None
+        final = plugins_dir() / staged.name
+        try:
+            if not valid_id(staged.name):
+                raise InstallError("The pending plugin has an invalid or reserved id.")
+            removing = (staged / ".remove").is_file()
+            if not removing:
+                manifest = _check_plugin(staged, VERSION_NUMBER)
+                if manifest.id != staged.name:
+                    raise InstallError("The pending plugin id does not match its folder.")
+            if final.exists():
+                old = _old_target(staged.name)
+                old.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(final, old)
+            if removing:
+                shutil.rmtree(staged)
+            else:
+                os.replace(staged, final)
+        except Exception:
+            ok = False
+            log.exception("Could not apply pending plugin change %s", staged.name)
+            if old is not None and old.exists() and not final.exists():
+                try:
+                    os.replace(old, final)
+                except OSError:
+                    log.exception("Could not restore %s", final)
+    try:
+        pending.rmdir()
+    except OSError:
+        pass
+    return ok
 
 
 def cleanup() -> None:
     """Delete leftovers of earlier installs (.staging/, .old/). Never raises."""
     try:
+        if not apply_pending():
+            return   # retain backups if restoring a failed change also failed
         base = plugins_dir()
         for name in (".staging", ".old"):
             path = base / name

@@ -237,3 +237,12 @@ def test_the_tab_flags_a_withdrawn_version(app, tmp_path, monkeypatch):    # noq
     assert PluginsTab(app).rows["hello"].withdrawn_label is None
     (loader.plugins_dir() / catalogue.CACHE_NAME).unlink()
     assert PluginsTab(app).rows["hello"].withdrawn_label is None            # no list: nothing known
+
+
+def test_legacy_update_check_is_migrated_once():
+    base = loader.plugins_dir()
+    base.mkdir(parents=True)
+    (base / "last_update_check").write_text("1000")
+    assert not updates.check_due(now=1001)
+    assert (base / updates.CHECK_FILE).is_file()
+    assert not (base / "last_update_check").exists()

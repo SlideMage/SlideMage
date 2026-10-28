@@ -161,6 +161,7 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
 
     class AcceptedSheet:
         def __init__(self, _parent, deck, _templates, tab):
+            self.deck = deck
             self.original = deck_settings.read_settings(deck.text)
             self.action = SAVE
 
@@ -199,6 +200,7 @@ def test_unchanged_settings_write_nothing(tmp_path, monkeypatch, qapp):
         action = SAVE
 
         def __init__(self, _parent, deck, _templates, tab):
+            self.deck = deck
             self.original = deck_settings.read_settings(deck.text)
 
         def exec(self):
@@ -222,7 +224,8 @@ def test_insert_action_creates_the_slides_and_opens_the_first(tmp_path, monkeypa
     class InsertSheet:
         action = INSERT
 
-        def __init__(self, _parent, _deck, _templates, tab):
+        def __init__(self, _parent, deck, _templates, tab):
+            self.deck = deck
             self.admin = admin
             self.tab = tab
             tabs.append(tab)

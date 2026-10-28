@@ -8,10 +8,13 @@
 % \beamer@sectionintoc in Slidemaster_preamble_base.tex); the \ifnum lines
 % keep each enumerate legal on the very first pass, before the .toc exists.
 % The two intro texts sit in boxes of three lines each, so that the first entry
-% of both lists ("1." and "7.") starts at the same height.
+% of both lists starts at the same height. The deck sets the Part A count;
+% older decks (including slidemage-manual-copy) keep six chapters.
 % (\prevdepth=0pt after each box: without it the first entry sits at a height
 % that depends on its own letters -- 0.7pt apart in the two columns.)
-\setSlideVersion{1-0-3}
+\setSlideVersion{1-0-4}
+\providecommand{\SMManualPartASections}{6}
+\edef\SMManualPartBStart{\number\numexpr\SMManualPartASections+1\relax}
 \setbeamertemplate{section in toc}[gotham plain enumerate]
 \begin{standardframe}{Contents}
 	\small
@@ -23,7 +26,7 @@
 			\parbox[t][3\baselineskip][t]{\linewidth}{Explains how SlideMage works and how to set it up.\strut}\par\smallskip\prevdepth=0pt
 			\begin{enumerate}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
-				\tableofcontents[sections={1-6},hideallsubsections]
+				\tableofcontents[sections={1-\SMManualPartASections},hideallsubsections]
 				\ifnum\value{enumi}=0 \item[] \fi
 			\end{enumerate}
 		\end{column}
@@ -31,10 +34,10 @@
 			\textcolor{c_primary_highlight}{\textbf{Part B: Showcase}}\par\smallskip
 			\parbox[t][3\baselineskip][t]{\linewidth}{Shows what a slide can contain: almost every slide is its own example, with its source code beside it.\strut}\par\smallskip\prevdepth=0pt
 			\begin{enumerate}
-				\setcounter{enumi}{6}
+				\setcounter{enumi}{\SMManualPartASections}
 				\SMTocLabelFlushLeft{\dimexpr3.6pt+\SMTocLabelExtraGap\relax}
-				\tableofcontents[sections={7-12},hideallsubsections]
-				\ifnum\value{enumi}=6 \item[] \fi
+				\tableofcontents[sections={\SMManualPartBStart-12},hideallsubsections]
+				\ifnum\value{enumi}=\SMManualPartASections\relax \item[] \fi
 			\end{enumerate}
 		\end{column}
 	\end{columns}

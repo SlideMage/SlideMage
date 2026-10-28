@@ -18,10 +18,15 @@ from PySide6.QtCore import Signal
 from ..plugin_api import Focus
 from ..plugins import session
 from ..plugins.host import deck_snapshot
+from ..plugins.registry import set_box_refresher
 from .commands import Command, CommandRegistry
 from .kit.widgets import Field, Page, caption
+from .workspace.panels.plugin_box import box_key
 
 log = logging.getLogger(__name__)
+
+
+DIRTY_SHEET_MESSAGE = "Save or discard the changes on the other tabs first."
 
 
 class PluginPage(Page):
@@ -34,9 +39,18 @@ class PluginPage(Page):
 class WindowHostUi:
     def __init__(self) -> None:
         self._window: weakref.ref | None = None
+        self._sheets: list[weakref.ref] = []        # the open Deck settings sheets
 
     def attach(self, window: Any) -> None:
         self._window = weakref.ref(window)
+        set_box_refresher(self.refresh_sidebar_box)
+
+    def refresh_sidebar_box(self, plugin_id: str, key: str) -> None:
+        """Build the box `key` of the plugin again (Host.refresh_sidebar_box); nothing without a window."""
+        window = self.window
+        panels = getattr(window, "side_panels", None) if window is not None else None
+        if panels is not None:
+            panels.refresh_box(box_key(plugin_id, key))
 
     @property
     def window(self) -> Any:
@@ -77,6 +91,33 @@ class WindowHostUi:
         scope = "deck" if window.assistant.scope.current() == "deck" else "slide"
         return Focus(deck.path if deck is not None and not deck.is_test_deck else None,
                      slide if slide is not None and slide.parent.name == "slides" else None, scope)
+
+    # -- plugin deck edits and the Deck settings sheet: while the sheet has unsaved core changes a plugin may not
+    # write the deck (plugin_api.EditRefusedError); an edit made while it is clean is taken over by the sheet.
+
+    def register_sheet(self, sheet: Any) -> None:
+        self._sheets = [r for r in self._sheets if r() is not None] + [weakref.ref(sheet)]
+
+    def unregister_sheet(self, sheet: Any) -> None:
+        self._sheets = [r for r in self._sheets if r() not in (None, sheet)]
+
+    def _sheets_of(self, path: Any) -> list[Any]:
+        return [s for s in (r() for r in self._sheets) if s is not None and s.deck.path == path]
+
+    def deck_edit_blocker(self, path: Any) -> str | None:
+        return DIRTY_SHEET_MESSAGE if any(s.dirty() for s in self._sheets_of(path)) else None
+
+    def after_deck_edit(self, path: Any, summary: str, previous_text: str) -> None:
+        """What a core deck edit runs (window.after_deck_edit: rescan, views, headers, Undo with previous_text), then
+        the open sheets of the deck read the rescanned deck."""
+        window = self.window
+        if window is None:
+            return
+        window.after_deck_edit(path, summary, previous_text=previous_text)
+        core = next((d for d in window.decks if d.path == path), None)
+        if core is not None:
+            for sheet in self._sheets_of(path):
+                sheet.refresh_from_deck(core)
 
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""

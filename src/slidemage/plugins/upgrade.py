@@ -6,13 +6,18 @@ Upgrading from a release with built-in AI and CAMPUSonline features matters most
 removes a feature would silently take it from people who use it. used_features() finds the features this machine
 and this project use, as plugin id -> the reason the sheet shows; preselect() turns that into the sheet's ticks.
 
-Not wired into the sheet yet: PRESELECT_ON_UPGRADE stays False until the release that removes a feature from core.
+Onboarding and migration are separate: offer_seen() is the first-start sheet's flag and nothing else. A feature
+that a release removes from core is a Migration (feature id + that release) with its own seen flag in
+plugins/migrations_seen.json, so a user who dismissed the first-start sheet long ago is still told, once, about
+the plugin that now replaces a feature they use (migrations_due()). No feature is removed yet: MIGRATIONS is empty.
 No Qt: reads files and settings only.
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from .. import app_settings, deck_scan
 from ..ai import ai_profile, credentials
@@ -20,15 +25,26 @@ from ..project import ProjectContext
 from . import session
 from .catalogue import Catalogue, CataloguePlugin, best_release
 from .loader import discover, plugins_dir
+from .manifest import parse_version
+from ..version import VERSION_NUMBER
 
 log = logging.getLogger(__name__)
 
-# The release that removes a feature from core turns this on, so the first start preselects the plugins of the
-# features in use (with the reason). Until then the sheet preselects nothing.
-PRESELECT_ON_UPGRADE = False
-
 CLAUDE, OLLAMA, CAMPUSONLINE = "claude", "ollama", "campusonline"
 OFFER_SEEN_NAME = "offer_seen"
+MIGRATIONS_SEEN_NAME = "migrations_seen.json"
+
+
+@dataclass(frozen=True)
+class Migration:
+    """A feature that `release` removed from core: `feature` is the id of the plugin that now provides it."""
+    feature: str
+    release: str
+
+
+# The release that removes a feature from core adds its Migration here, e.g. Migration(CAMPUSONLINE, "v8.70.0").
+# Empty until then: nothing changes for the users of a release that still has every feature built in.
+MIGRATIONS: list[Migration] = []
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:
@@ -88,3 +104,47 @@ def offerable(catalogue: Catalogue) -> list[CataloguePlugin]:
     """The catalogue's plugins the first-start sheet can offer: not installed, with a release this SlideMage runs."""
     present = {p.id for p in session.loaded()} | {f.id for f in discover()}
     return [c for c in catalogue.plugins if c.id not in present and best_release(c) is not None]
+
+
+# -- migrations: a removed feature is announced once, whatever happened to the first-start sheet ----
+
+def migrations_seen() -> set[str]:
+    try:
+        data = json.loads((plugins_dir() / MIGRATIONS_SEEN_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {i for i in data if isinstance(i, str)} if isinstance(data, list) else set()
+
+
+def mark_migrations_seen(ids: Iterable[str]) -> None:
+    """Remember that the notice for these feature ids was shown. Unwritable: only logged, so it comes again."""
+    ids = set(ids)
+    if not ids:
+        return
+    try:
+        folder = plugins_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / MIGRATIONS_SEEN_NAME).write_text(json.dumps(sorted(migrations_seen() | ids)) + "\n",
+                                                   encoding="utf-8")
+    except OSError:
+        log.exception("could not write %s", MIGRATIONS_SEEN_NAME)
+
+
+def migrations_due(ctx: ProjectContext, app_version: str = VERSION_NUMBER) -> dict[str, str]:
+    """Feature id -> reason, for each migration to announce now: the release is not newer than this app, the
+    feature was used here, its plugin is not installed, and the notice was not shown yet."""
+    if not MIGRATIONS:
+        return {}
+    seen = migrations_seen()
+    pending = []
+    for migration in MIGRATIONS:
+        try:
+            if migration.feature not in seen and parse_version(migration.release) <= parse_version(app_version):
+                pending.append(migration.feature)
+        except ValueError:
+            log.error("bad migration release %r", migration.release)
+    if not pending:
+        return {}
+    present = {p.id for p in session.loaded()} | {f.id for f in discover()}
+    used = used_features(ctx)
+    return {feature: used[feature] for feature in pending if feature in used and feature not in present}

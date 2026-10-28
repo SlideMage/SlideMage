@@ -3,8 +3,10 @@
 """A plugin's compact sidebar box as a side panel: an entry of the picker under "Plugins", offered only while the
 plugin's `when(deck)` says so for the open deck, showing the widget its `build(deck)` returns.
 
-The box is rebuilt when the open deck, or its text, differs from what it was built for, and when it is chosen
-again; a failing when() or build() is logged and counts as "not offered" / shows an error line, never a crash.
+The box is rebuilt when the open deck, or its text, differs from what it was built for, when it is chosen again,
+when the plugin says its data changed (refresh_sidebar_box), and when the calendar date changes (the side panels
+call invalidate()); a failing when() or build() is logged and counts as "not offered" / shows an error line, never
+a crash.
 """
 from __future__ import annotations
 
@@ -18,11 +20,16 @@ from .base import SidePanel, text
 log = logging.getLogger(__name__)
 
 
+def box_key(plugin_id: str, key: str) -> str:
+    """The side panels' key of a plugin's box."""
+    return f"plugin:{plugin_id}:{key}"
+
+
 class PluginBoxPanel(SidePanel):
     plugin = True
 
     def __init__(self, app, state, actions, plugin, box) -> None:
-        self.key = f"plugin:{plugin.id}:{box.key}"
+        self.key = box_key(plugin.id, box.key)
         self.title = box.title
         self.plugin_id, self.plugin_name, self.box = plugin.id, plugin.manifest.name, box
         super().__init__(app, state, actions)
@@ -43,7 +50,7 @@ class PluginBoxPanel(SidePanel):
             return False
 
     def invalidate(self) -> None:
-        """Build again at the next refresh (the box was chosen again)."""
+        """Build again at the next refresh (the box was chosen again, its data changed, or the date did)."""
         self._built_for = None
 
     def refresh(self) -> None:

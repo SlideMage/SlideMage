@@ -14,6 +14,9 @@ a rescan of the open deck is no state change. A panel's pending edit (`SidePanel
 before anything it belongs to changes, and counts as an unsaved edit of the workspace."""
 from __future__ import annotations
 
+import math
+from datetime import datetime, time, timedelta
+
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QScrollArea, QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
@@ -41,6 +44,16 @@ GAP = 12   # between the two cards
 DEFAULT_PANELS_SHARE = 0.38   # the panels' part of the column's height; the assistant gets the rest
 SHARE_SETTING = "panels_share"
 PANEL_MIN_HEIGHT = 128   # 24 px padding, 32 px picker, 8 px gap and a 64 px content row
+
+
+def _now() -> datetime:
+    return datetime.now()
+
+
+def ms_until_midnight(now: datetime) -> int:
+    """Milliseconds from now to the next local midnight (at least a second, so the timer never spins)."""
+    midnight = datetime.combine(now.date() + timedelta(days=1), time())
+    return max(1000, math.ceil((midnight - now).total_seconds() * 1000))
 
 
 def remembered_width(project: ProjectContext) -> int:
@@ -147,6 +160,11 @@ class SidePanels(QWidget):
         for signal in (state.focused_slide_changed, state.view_changed, state.language_changed):
             signal.connect(lambda _value: self._defer())
         state.ai_route_changed.connect(lambda _route: [panel.refresh_route() for panel in self.panels.values()])
+        # A plugin's box may show the date ("next session"): the boxes are built again when the date changes.
+        self._midnight = QTimer(self)
+        self._midnight.setSingleShot(True)
+        self._midnight.timeout.connect(self._on_midnight)
+        self._arm_midnight()
         self.refresh()
 
     def _apply_share(self) -> None:
@@ -173,6 +191,26 @@ class SidePanels(QWidget):
                 self._fallback = self.current
             self.current = key
             app_settings.set(self.project, SETTING, key)
+            self.refresh()
+
+    def refresh_box(self, key: str) -> None:
+        """A plugin's box shows data that changed (Host.refresh_sidebar_box): it is built again when it is shown,
+        which is now if it is the shown panel (and then, if the card is hidden, when the card is shown again)."""
+        panel = self.panels.get(key)
+        if isinstance(panel, PluginBoxPanel):
+            panel.invalidate()
+            if key == self.current:
+                self.refresh()
+
+    def _arm_midnight(self) -> None:
+        self._midnight.start(ms_until_midnight(_now()))
+
+    def _on_midnight(self) -> None:
+        for panel in self.panels.values():
+            if isinstance(panel, PluginBoxPanel):
+                panel.invalidate()
+        self._arm_midnight()
+        if isinstance(self.panels[self.current], PluginBoxPanel):
             self.refresh()
 
     def dirty_panels(self) -> list[SidePanel]:

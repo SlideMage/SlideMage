@@ -66,7 +66,7 @@ def test_disabled(monkeypatch):
     assert loader.is_enabled("hello")
     loader.set_enabled("hello", False)
     assert not loader.is_enabled("hello")
-    assert json.loads((loader.plugins_dir() / "state.json").read_text()) == {"disabled": ["hello"]}
+    assert json.loads((loader.plugins_dir() / ".state.json").read_text()) == {"disabled": ["hello"]}
     assert load()["hello"].state == "disabled"
     loader.set_enabled("hello", True)
     assert load()["hello"].state == "loaded"
@@ -169,3 +169,33 @@ def test_ai_routes_are_registered_after_activation_and_duplicates_fail_atomicall
     registrar = Registrar(SimpleNamespace(id='hello'))
     with pytest.raises(RuntimeError):
         registrar.add_ai_route(SimpleNamespace(id='late'))
+
+def test_legacy_state_is_migrated_once():
+    base = loader.plugins_dir()
+    base.mkdir(parents=True)
+    (base / "state.json").write_text('{"disabled": ["hello"]}')
+    assert not loader.is_enabled("hello")
+    assert (base / ".state.json").is_file()
+    assert not (base / "state.json").exists()
+    loader.set_enabled("hello", True)
+    assert loader.is_enabled("hello")
+
+
+def test_reserved_installed_folder_is_refused_even_with_another_manifest_id():
+    folder = loader.plugins_dir() / "settings"
+    shutil.copytree(FIXTURES / "hello", folder)
+    found, = loader.discover()
+    assert found.manifest is None and "reserved" in found.error
+    assert load()["settings"].state == "failed"
+
+
+@pytest.mark.parametrize("source", ["installed", "dev"])
+def test_reserved_manifest_id_is_refused(tmp_path, monkeypatch, source):
+    folder = loader.plugins_dir() / "settings" if source == "installed" else tmp_path / "checkout"
+    shutil.copytree(FIXTURES / "hello", folder)
+    path = folder / "plugin.toml"
+    path.write_text(path.read_text().replace('id = "hello"', 'id = "settings"'))
+    if source == "dev":
+        monkeypatch.setenv(loader.PATH_ENV, str(folder))
+    found, = loader.discover()
+    assert found.manifest is None and "reserved" in found.error
