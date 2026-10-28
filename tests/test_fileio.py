@@ -68,3 +68,64 @@ def test_a_locked_file_is_retried_then_written_and_a_permanent_lock_leaves_the_o
     with pytest.raises(PermissionError):
         atomic_write(target, "newer")
     assert target.read_text() == "new" and [p.name for p in tmp_path.iterdir()] == ["file.txt"]
+
+
+def test_write_text_exact_replaces_the_file_whole_and_keeps_its_mode(tmp_path, monkeypatch):
+    path = tmp_path / "deck.tex"
+    path.write_bytes(b"old\r\ntext\r\n")
+    path.chmod(0o640)
+    write_text_exact(path, "new\r\nä\n")
+    assert path.read_bytes() == "new\r\nä\n".encode() and path.stat().st_mode & 0o777 == 0o640
+    assert [p.name for p in tmp_path.iterdir()] == ["deck.tex"]
+
+
+def test_write_text_exact_failing_midway_leaves_the_old_deck(tmp_path, monkeypatch):
+    path = tmp_path / "deck.tex"
+    path.write_bytes(b"old text\r\n")
+    real = os.fdopen
+
+    class Partial:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def write(self, data):
+            self.handle.write(data[:3])
+            self.handle.flush()
+            raise OSError("disk full")
+
+        def __getattr__(self, name):
+            return getattr(self.handle, name)
+
+        def __exit__(self, *args):
+            self.handle.close()
+
+    monkeypatch.setattr(os, "fdopen", lambda fd, mode="r", *a, **kw: Partial(real(fd, mode, *a, **kw)))
+    with pytest.raises(OSError):
+        write_text_exact(path, "new text that is longer\r\n")
+    assert path.read_bytes() == b"old text\r\n" and [p.name for p in tmp_path.iterdir()] == ["deck.tex"]
+
+
+def test_write_text_exact_checks_the_expected_text_at_the_commit(tmp_path):
+    from slidemage.fileio import StaleFileError
+    path = tmp_path / "deck.tex"
+    path.write_bytes(b"changed\r\n")
+    with pytest.raises(StaleFileError):
+        write_text_exact(path, "new", expected_text="was\r\n")
+    assert path.read_bytes() == b"changed\r\n" and [p.name for p in tmp_path.iterdir()] == ["deck.tex"]
+    write_text_exact(path, "new", expected_text="changed\r\n")
+    assert path.read_bytes() == b"new"
+
+
+def test_write_text_exact_writes_through_a_symlink(tmp_path):
+    target = tmp_path / "real.tex"
+    target.write_bytes(b"a")
+    link = tmp_path / "link.tex"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("no symlinks here")
+    write_text_exact(link, "b")
+    assert link.is_symlink() and target.read_bytes() == b"b"
