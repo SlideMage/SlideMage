@@ -913,7 +913,7 @@ def test_on_local_a_task_with_no_ollama_path_says_so_and_nothing_runs(ctx, fake)
 def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_ollama_slot(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     provider, seen, held = OfflineProvider(), [], []
 
     def provider_for(_ctx, route):
@@ -930,14 +930,14 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
     click(env, "Translate to German")
     assert settled(env).startswith("Applied automatically")
     assert len(german_files(env)) == 1 and fake.calls() == []                    # no claude process
-    assert [(r.route, r.model) for r in seen] == [("local", "translator")] and held == ["translating a slide"]
+    assert [(r.route, r.model) for r in seen] == [(ai_profile.OLLAMA, "translator")] and held == ["translating a slide"]
     assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []
 
 
 def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     provider = OfflineProvider()
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: ("", "Ollama is not reachable."))
@@ -957,7 +957,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
 def test_a_provider_translation_that_breaks_the_slide_is_refused_like_a_claude_answer(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: OfflineProvider())
     broken = GERMAN["body"].replace("\\end{itemize}", "")
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: (broken, None))
@@ -968,7 +968,7 @@ def test_a_provider_translation_that_breaks_the_slide_is_refused_like_a_claude_a
 def test_on_local_describing_images_uses_the_vision_model_backend(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.IMAGE_DESCRIPTION, "vision")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.IMAGE_DESCRIPTION, "vision")
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
     provider = OfflineProvider()
@@ -986,7 +986,7 @@ def test_on_local_describing_images_uses_the_vision_model_backend(ctx, fake, mon
     monkeypatch.setattr(tasks_module.resolver, "draft_backend", lambda _ctx, route: made.append(route) or Backend())
     click(env, "Describe images (2)")
     assert settled(env).endswith(": 2 described")
-    assert [(r.route, r.model) for r in made] == [("local", "vision")] and fake.calls() == []
+    assert [(r.route, r.model) for r in made] == [(ai_profile.OLLAMA, "vision")] and fake.calls() == []
     assert [e.drafted_by for e in alt_images.load_store(ctx).values()] == ["offline"] * 2
     assert env.window._ollama_task_label is None
 
@@ -997,7 +997,7 @@ def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx
     click(env, "Translate to German")                                            # no Ollama model is chosen
     assert "Choose an Ollama model for translation" in env.window.assistant.tasks.card.note and fake.calls() == []
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)                             # no API key: Claude Code does not stand in
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)                             # no API key: Claude Code does not stand in
     click(env, "Translate to German")
     assert "No Anthropic API key" in env.window.assistant.tasks.card.note and fake.calls() == []
     assert german_files(env) == [] and not env.window.assistant.tasks.busy
@@ -1025,7 +1025,7 @@ def test_the_terminal_is_told_why_translate_slide_cannot_run_on_the_route(ctx, f
 
     env = fake.env
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
     client = Client(env.view.session._server)
     answer = on_thread(lambda: client.text("translate_slide", path=SLIDE))
     assert "No Anthropic API key" in answer and fake.calls() == [] and not env.window.assistant.tasks.busy

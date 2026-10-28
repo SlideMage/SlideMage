@@ -315,4 +315,4 @@ def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_noth
     panel = file.fix_panel
     assert not panel.running and file.app.started == []
     assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and "no other route or model" in told[0]
-    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.claude_code_choices()
+    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.model_choices(file.app.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES)

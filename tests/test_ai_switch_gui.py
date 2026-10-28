@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 
 from slidemage.ai import ai_profile
-from slidemage.ai.ai_profile import API, CLAUDE_CODE, CLOUD, LOCAL
+from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, LOCAL, OLLAMA
 from slidemage.ai.providers import InstalledModel, OllamaProvider
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.workspace.ai_work import RunningWork
@@ -69,11 +69,11 @@ def settle(qapp, window):
 def test_the_state_follows_ai_profile_and_tells_only_about_a_changed_route(window):
     seen = []
     window.state.ai_route_changed.connect(seen.append)
-    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, LOCAL)
+    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, OLLAMA)
     assert window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
     assert not window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
-    assert window.state.set_ai_route(CLOUD, API) and seen == [CLAUDE_CODE, API]
-    assert window.state.set_ai_route(LOCAL) and seen[-1] == LOCAL
+    assert window.state.set_ai_route(CLOUD, ANTHROPIC_API) and seen == [CLAUDE_CODE, ANTHROPIC_API]
+    assert window.state.set_ai_route(LOCAL) and seen[-1] == OLLAMA
     assert not window.state.set_ai_route(LOCAL, CLAUDE_CODE)           # the connection matters only on Cloud
     assert ai_profile.cloud_conn(window.project) == CLAUDE_CODE
 
@@ -182,7 +182,7 @@ def test_the_session_popover_asks_before_the_claude_code_terminal_is_ended(windo
     route(window).request(LOCAL)
     choose_primary(window)
     assert ended == [True] and window.state.ai_mode == LOCAL
-    window.state.set_ai_route(CLOUD, API)
+    window.state.set_ai_route(CLOUD, ANTHROPIC_API)
     ended.clear()
     route(window).request(CLOUD, CLAUDE_CODE)                           # another connection is no session to end
     assert kind(window) == "" and window.state.ai_route == CLAUDE_CODE
@@ -252,7 +252,7 @@ def test_each_route_keeps_its_own_draft_and_conversation(window, monkeypatch):
     assert chat.composer.toPlainText() == "" and chat.session.history == [] and chat._messages.count() == 3
     assert not chat._empty.isHidden()
     chat.composer.setPlainText("a Cloud draft")
-    route(window).request(CLOUD, API)
+    route(window).request(CLOUD, ANTHROPIC_API)
     assert chat.composer.toPlainText() == ""
     route(window).request(CLOUD, CLAUDE_CODE)
     assert chat.composer.toPlainText() == "a Cloud draft"
@@ -312,15 +312,15 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
-    assert ai_profile.model_choice(window.project, LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
-    assert window.toast.findChildren(type(setup.heads[LOCAL]))[0].text() == \
+    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
+    assert window.toast.findChildren(type(setup.heads[OLLAMA]))[0].text() == \
         "Default for Local · Image descriptions: vision-model"
     assert window.images_page.draft_model.currentData() == "vision-model"      # the pickers start on it
     cloud = setup.cells[(CLOUD, ai_profile.TRANSLATION)]
     cloud.setCurrentIndex(cloud.findData("opus:high"))
     cloud.activated.emit(cloud.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.TRANSLATION) == "opus:high"
-    assert ai_profile.model_choice(window.project, LOCAL, ai_profile.TRANSLATION) == ""      # each side its own
+    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.TRANSLATION) == ""      # each side its own
 
 
 class _Session:
@@ -428,11 +428,11 @@ def test_the_side_not_in_use_is_greyed_but_editable(window):
 
 def test_the_cloud_connection_of_ai_setup_changes_the_route_like_the_switch_when_on_cloud(window, monkeypatch):
     setup = open_setup(window)
-    setup.conn.changed.emit(API)                                         # on Local it only saves the connection
-    assert ai_profile.cloud_conn(window.project) == API and window.state.ai_route == LOCAL
+    setup.conn.changed.emit(ANTHROPIC_API)                                         # on Local it only saves the connection
+    assert ai_profile.cloud_conn(window.project) == ANTHROPIC_API and window.state.ai_route == OLLAMA
     assert setup.heads[CLAUDE_CODE].text() == "Cloud · API"
     commit_to_cloud(window)
-    assert window.state.ai_route == API
+    assert window.state.ai_route == ANTHROPIC_API
     setup = open_setup(window) if not window.ai_route.setup.isVisible() else window.ai_route.setup
     chat = window.assistant.chat
     chat.composer.setPlainText("api draft")
@@ -440,7 +440,7 @@ def test_the_cloud_connection_of_ai_setup_changes_the_route_like_the_switch_when
     assert window.state.ai_route == CLAUDE_CODE and chat.composer.toPlainText() == ""
     Work(window, monkeypatch)
     setup = window.ai_route.setup
-    setup.conn.changed.emit(API)
+    setup.conn.changed.emit(ANTHROPIC_API)
     assert kind(window) == "busy" and window.state.ai_route == CLAUDE_CODE    # a route change asks like a switch
     assert setup.conn.current() == CLAUDE_CODE
 

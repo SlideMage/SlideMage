@@ -21,7 +21,8 @@ from slidemage.ui.workspace.terminal import view as view_module
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 
-LOCAL, CLAUDE_CODE, API, CLOUD = ai_profile.LOCAL, ai_profile.CLAUDE_CODE, ai_profile.API, ai_profile.CLOUD
+LOCAL, OLLAMA, CLAUDE_CODE, ANTHROPIC_API, CLOUD = (ai_profile.LOCAL, ai_profile.OLLAMA, ai_profile.CLAUDE_CODE,
+                                                    ai_profile.ANTHROPIC_API, ai_profile.CLOUD)
 PROSE = LF.replace("First point", "This first point explains the main idea of the slide with enough ordinary words")
 
 
@@ -65,7 +66,7 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
     go(env, CLOUD, CLAUDE_CODE)
     assert a._stack.currentWidget() is a.claude_code
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert a._stack.currentWidget() is a.chat
     go(env, LOCAL)
     assert a._stack.currentWidget() is a.chat
@@ -79,7 +80,7 @@ def test_leaving_claude_code_ends_the_session_and_coming_back_starts_a_new_one(e
     env.window.ai_route.request(LOCAL)
     assert env.window.ai_route.popover_kind == "session"
     env.window.ai_route._popover.spec.actions[-1][2]()           # End session and switch
-    assert env.window.state.ai_route == LOCAL and not env.view.session_live and not first.alive
+    assert env.window.state.ai_route == OLLAMA and not env.view.session_live and not first.alive
     assert env.window.assistant._stack.currentWidget() is env.window.assistant.chat
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session_live and env.view.session._process is not first)
@@ -97,8 +98,8 @@ def test_the_chat_has_no_scope_or_new_button_of_its_own(env):
 def test_the_header_names_each_route_and_what_its_conversation_runs_on(env, monkeypatch):
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
     head = header(env)
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.CHAT, "qwen3:8b")
-    ai_profile.set_model_choice(env.window.project, API, ai_profile.CHAT, "claude-sonnet-5-5")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, ANTHROPIC_API, ai_profile.CHAT, "claude-sonnet-5-5")
     env.window.refresh_ai_models()
     assert head.ai_switch.toolTip().startswith("Local · Ollama")
     assert head.route_note == "Chat with qwen3:8b · localhost:11434" and head.route_note in head.ai_switch.toolTip()
@@ -107,7 +108,7 @@ def test_the_header_names_each_route_and_what_its_conversation_runs_on(env, monk
     assert head.ai_switch.toolTip().startswith("Cloud · Claude Code")
     assert head.route_note == "Terminal · permissions are handled in Claude Code"
     assert head.ai_switch.segments.current() == CLOUD and head.ai_switch.property("cloud") is True
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert head.ai_switch.toolTip().startswith("Cloud · Anthropic API") and head.route_note == "Chat with claude-sonnet-5-5"
     go(env, LOCAL)
     assert head.route_note.startswith("Chat with qwen3:8b")
@@ -123,9 +124,9 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
     providers = [ScriptedProvider(reply("From the API.")), ScriptedProvider(reply("From Ollama."))]
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: providers.pop(0))
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.CHAT, "qwen3:8b")
     chat = area(env).chat
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     chat.send("one")
     wait_until(lambda: not chat.session.running)
     go(env, LOCAL)
@@ -135,7 +136,7 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
     assert len(chat.session.history) == 2
     header(env).new_button.click()                               # Local only
     assert chat.session.history == [] and not chat._empty.isHidden()
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert len(chat.session.history) == 2 and chat._empty.isHidden()
     header(env).new_button.click()
     assert chat.session.history == []
@@ -200,10 +201,10 @@ def test_at_most_the_two_most_relevant_tasks_show_with_all_actions_last(env):
 
 
 def test_only_the_tasks_the_route_can_run_are_offered(env):
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.TRANSLATION, "translategemma:12b")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.TRANSLATION, "translategemma:12b")
     break_slide(env)
     wait_until(lambda: shown(env) == ["Translate to German", "All actions…"])         # Local cannot fix LaTeX
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.TRANSLATION, "")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.TRANSLATION, "")
     env.window.refresh_ai_models()
     wait_until(lambda: shown(env) == ["Check readability", "All actions…"])             # no translation model chosen: only the check
     go(env, CLOUD, CLAUDE_CODE)

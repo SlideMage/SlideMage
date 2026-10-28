@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 
 from slidemage import alt_draft, alt_images
 from slidemage.ai import ai_profile, resolver
-from slidemage.ai.ai_profile import CLAUDE_CODE, IMAGE_DESCRIPTION, LOCAL, TRANSLATION, Route
+from slidemage.ai.ai_profile import CLAUDE_CODE, IMAGE_DESCRIPTION, OLLAMA, Route, TRANSLATION
 from slidemage.ai.providers import OllamaProvider
 from slidemage.batch_result import (
     CANCELLED, DONE, DRAFT, FAILED, KEPT, TRANSLATE, BatchResult, ItemOutcome, display_name)
@@ -25,7 +25,7 @@ from slidemage.ui.pages import image_results, image_runs
 from test_images_page_gui import CHART, make_page, run_jobs_inline, wait_for  # noqa: F401 -- make_page is a fixture
 
 HAIKU = Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "medium")
-QWEN = Route(LOCAL, IMAGE_DESCRIPTION, "qwen3-vl:32b")
+QWEN = Route(OLLAMA, IMAGE_DESCRIPTION, "qwen3-vl:32b")
 CLOUD_NOTE = "Claude Code · Haiku · effort medium · sends this image to the cloud"
 FIRST, SECOND, THIRD, FOURTH = (f"media/{name}.png" for name in ("first", "second", "third", "fourth"))
 
@@ -73,7 +73,7 @@ def test_the_question_names_the_model_and_what_is_sent():
     assert image_results.question(TRANSLATE, 3, "manual", Route(CLAUDE_CODE, TRANSLATION, "haiku", "medium")) == (
         "Translate 3 descriptions in manual to German?",
         "Claude Code · Haiku · effort medium · sends each description to the cloud · a few seconds per image.")
-    assert image_results.question(TRANSLATE, 3, "manual", Route(LOCAL, TRANSLATION, "hy-mt")) == (
+    assert image_results.question(TRANSLATE, 3, "manual", Route(OLLAMA, TRANSLATION, "hy-mt")) == (
         "Translate 3 descriptions in manual to German?", "hy-mt · Ollama.")
 
 

@@ -645,7 +645,7 @@ class WorkspaceWindow(QMainWindow):
     # -- the AI route ------------------------------------------------------------------------
 
     def _on_ai_route_changed(self, route: str) -> None:
-        if route == "local":
+        if route == ai_profile.OLLAMA:
             self.local_models.refresh()      # the pickers fill again when Ollama has answered
         self.refresh_ai_models()
 

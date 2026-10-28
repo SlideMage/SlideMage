@@ -608,9 +608,9 @@ def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(ctx, co
 def redraft_on(monkeypatch, images, provider):
     """The active route is Local with `provider` as its provider (the backends made on it are the test's fakes)."""
     from slidemage.ai import resolver
-    from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
+    from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, OLLAMA, Route
 
-    monkeypatch.setattr(images, "task_route", lambda *args: Route(LOCAL, IMAGE_DESCRIPTION, "qwen3"))
+    monkeypatch.setattr(images, "task_route", lambda *args: Route(OLLAMA, IMAGE_DESCRIPTION, "qwen3"))
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
 

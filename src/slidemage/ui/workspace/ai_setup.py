@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ...ai import ai_profile, resolver
-from ...ai.ai_profile import API, CHAT, CLAUDE_CODE, CLOUD, IMAGE_DESCRIPTION, LOCAL, TASKS, TASK_LABELS
+from ...ai import ai_profile
+from ...ai.ai_profile import (
+    ANTHROPIC_API, CHAT, CLAUDE_CODE, CLOUD, IMAGE_DESCRIPTION, LOCAL, OLLAMA, TASKS, TASK_LABELS,
+)
 from ..dialogs.settings import AI
 from ..kit import kit_qss as q
 from ..kit.widgets import Popover, SegmentedControl, announce, apply_shadow, caption, set_property
@@ -24,9 +26,9 @@ from .ai_popups import link
 
 WIDTH = 480
 TASK_COLUMN = 130
-HEADS = {LOCAL: "Local · Ollama", CLAUDE_CODE: "Cloud · Claude Code", API: "Cloud · API"}
-TOAST_ROUTES = {LOCAL: "Local", CLAUDE_CODE: "Cloud · Claude Code", API: "Cloud · Anthropic API"}
-CONNECTIONS = ((CLAUDE_CODE, "Claude Code"), (API, "Anthropic API"))
+HEADS = {OLLAMA: "Local · Ollama", CLAUDE_CODE: "Cloud · Claude Code", ANTHROPIC_API: "Cloud · API"}
+TOAST_ROUTES = {OLLAMA: "Local", CLAUDE_CODE: "Cloud · Claude Code", ANTHROPIC_API: "Cloud · Anthropic API"}
+CONNECTIONS = ((CLAUDE_CODE, "Claude Code"), (ANTHROPIC_API, "Anthropic API"))
 POLICIES = ((LOCAL, "Local"), (CLOUD, "Cloud"))
 NOTE = ("Saved as your defaults. Each side keeps its own models; switching back to Local restores these Ollama "
         "models and the Ollama address of Settings. Pickers elsewhere (Images page, chat) start on these.")
@@ -88,11 +90,11 @@ class AiSetup(Popover):
         task_head = QLabel("Task")
         task_head.setObjectName(q.AI_SETUP_HEAD)
         grid.addWidget(task_head, 0, 0)
-        for column, route_key in ((1, LOCAL), (2, CLAUDE_CODE)):
+        for column, route_key in ((1, OLLAMA), (2, CLAUDE_CODE)):
             self.heads[route_key] = QLabel(HEADS[route_key])
             self.heads[route_key].setObjectName(q.AI_SETUP_HEAD)
             grid.addWidget(self.heads[route_key], 0, column)
-        self.cells: dict[tuple[str, str], QComboBox] = {}       # (column: LOCAL or "cloud", task)
+        self.cells: dict[tuple[str, str], QComboBox] = {}       # (side: LOCAL or CLOUD, task)
         for row, task in enumerate(TASKS, start=1):
             grid.addWidget(QLabel(TASK_LABELS[task]), row, 0)
             for column, side in ((1, LOCAL), (2, CLOUD)):
@@ -145,26 +147,24 @@ class AiSetup(Popover):
 
     def _offered(self, route: str, task: str) -> list[str]:
         models = self._window.local_models
-        if route == LOCAL:
+        if route == OLLAMA:
             return models.vision if task == IMAGE_DESCRIPTION else models.tools if task == CHAT else models.models
-        if route == CLAUDE_CODE:
-            return ai_profile.claude_code_choices()
-        return resolver.api_models(self._project)
+        return ai_profile.model_choices(self._project, route, task)
 
     def refresh(self) -> None:
         """Show the saved defaults and the lists, and which side is in use."""
         project = self._project
         cloud = ai_profile.cloud_conn(project)
-        in_use = ai_profile.active_route(project)
+        local_in_use = ai_profile.mode(project) == LOCAL
         self.heads[CLAUDE_CODE].setText(HEADS[cloud])
-        for route_key in (LOCAL, CLAUDE_CODE):
-            set_property(self.heads[route_key], "active", (in_use == LOCAL) == (route_key == LOCAL))
+        for route_key in (OLLAMA, CLAUDE_CODE):
+            set_property(self.heads[route_key], "active", local_in_use == (route_key == OLLAMA))
         self.conn.set_current(cloud)
         self.policy.set_current(ai_profile.policy(project))
         for task in TASKS:
-            for side, route_key in ((LOCAL, LOCAL), (CLOUD, cloud)):
+            for side, route_key in ((LOCAL, OLLAMA), (CLOUD, cloud)):
                 combo = self.cells[(side, task)]
-                set_property(combo, "active", (in_use == LOCAL) == (side == LOCAL))
+                set_property(combo, "active", local_in_use == (side == LOCAL))
                 self._fill(combo, route_key, task)
 
     def _fill(self, combo: QComboBox, route: str, task: str) -> None:
@@ -173,7 +173,7 @@ class AiSetup(Popover):
         saved = ai_profile.model_choice(self._project, route, task)
         combo.blockSignals(True)
         combo.clear()
-        if route == LOCAL:
+        if route == OLLAMA:
             combo.addItem(NO_MODEL, "")
         elif route == CLAUDE_CODE and task == CHAT:
             combo.addItem("Claude Code default", "")
@@ -194,7 +194,7 @@ class AiSetup(Popover):
         combo.setToolTip(text)
 
     def _on_cell(self, side: str, task: str, index: int) -> None:
-        route = LOCAL if side == LOCAL else ai_profile.cloud_conn(self._project)
+        route = OLLAMA if side == LOCAL else ai_profile.cloud_conn(self._project)
         combo = self.cells[(side, task)]
         choice = combo.itemData(index) or ""
         self._cell_tooltip(combo, route, task)

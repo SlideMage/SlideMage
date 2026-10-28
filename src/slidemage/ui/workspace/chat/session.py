@@ -18,7 +18,8 @@ from PySide6.QtCore import QObject, QThread, Signal
 from ....ai.agent import Agent
 from ....ai.ai_profile import Route
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
-from ....ai.providers import ChatProvider, OllamaProvider
+from ....ai.ollama_route import OllamaProvider
+from ....ai.providers import ChatProvider
 from ... import background
 from .gui_workspace import GuiWorkspace
 

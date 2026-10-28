@@ -22,7 +22,7 @@ from ..kit.widgets import Button, IconLabel, Popover, apply_shadow, clear_layout
 from .ai_work import RunningWork
 
 WIDTH = 360
-CONNECTION_TEXT = {"claude_code": "Claude Code", "api": "the Anthropic API"}
+CONNECTION_TEXT = {"claude_code": "Claude Code", "anthropic_api": "the Anthropic API"}
 
 BUSY_TEXT = ("Switching changes the route for every AI task. Running work would have to stop first. "
              "A file write that has started finishes before the switch.")

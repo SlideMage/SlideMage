@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 from slidemage.project import ProjectContext
 from slidemage import ai_review, deck_editor, deck_scan, slide_add
 from slidemage.ai import ai_profile, claude_launch, resolver
-from slidemage.ai.ai_profile import API, LOCAL, TRANSLATION, Route
+from slidemage.ai.ai_profile import ANTHROPIC_API, OLLAMA, Route, TRANSLATION
 from slidemage.ai.providers import Cancelled, ChatReply, OllamaProvider
 from slidemage.ui.dialogs import add_slide
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
@@ -131,7 +131,7 @@ def use_provider(monkeypatch, provider):
 
     def picked(parent, project, combo, task, what):
         asked.append(what)
-        return None if provider is None else Route(LOCAL if provider.is_local else API, TRANSLATION, "fake")
+        return None if provider is None else Route(OLLAMA if provider.is_local else ANTHROPIC_API, TRANSLATION, "fake")
 
     monkeypatch.setattr(add_slide, "picked_route", picked)
     monkeypatch.setattr(resolver, "slide_translator", lambda _ctx, _route: provider)

@@ -611,7 +611,7 @@ class ChatView(Surface):
             meta = " · ".join(filter(None, ["default" if model == default else "this chat only", note]))
             menu.add_item(model, model, icon="check" if model == route.model else "", meta=meta, enabled=enabled)
 
-        if route.route == ai_profile.API:
+        if route.route == ai_profile.ANTHROPIC_API:
             has_key = bool(resolver.api_models(project))
             for model in ANTHROPIC_FALLBACK_MODELS:
                 add(model, "" if has_key else "needs an API key", has_key)

@@ -329,7 +329,7 @@ def test_nothing_starts_without_a_selection_to_work_on(fake):  # noqa: F811
 
 # -- the routes ------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, "local"), (ai_profile.CLOUD, ai_profile.API, "api")])
+@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, ai_profile.OLLAMA), (ai_profile.CLOUD, ai_profile.ANTHROPIC_API, ai_profile.ANTHROPIC_API)])
 def test_on_local_and_the_api_a_rewrite_runs_on_the_provider_with_the_fixes_model(ctx, fake, monkeypatch, mode, conn, kind):  # noqa: F811
     env = asked(fake)
     ai_profile.mark_cloud_seen(ctx)
@@ -353,7 +353,7 @@ def test_on_local_and_the_api_a_rewrite_runs_on_the_provider_with_the_fixes_mode
 def test_on_local_a_proofread_edit_list_is_checked_against_the_selection(ctx, fake, monkeypatch):  # noqa: F811
     env = asked(fake)
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.FIXES, "chosen-model")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.FIXES, "chosen-model")
     select(env, "First point")
     provider = JsonProvider(json.dumps({"edits": [{"before": "Second", "after": "2nd"}]}))
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
@@ -371,7 +371,7 @@ def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx,
     assert card(env).phase == model.SETUP and "Choose an Ollama model" in card(env).note
     tasks.close_card()
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
     env.window.assistant.proofread_selection()
     assert card(env).phase == model.SETUP and "No Anthropic API key" in card(env).note
     tasks.close_card()

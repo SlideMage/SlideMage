@@ -21,7 +21,7 @@ from .state import WorkspaceState
 
 LOCAL, CLOUD = ai_profile.LOCAL, ai_profile.CLOUD
 SEGMENTS = ((LOCAL, "Local"), (CLOUD, "Cloud"))
-CONNECTION_NAMES = {ai_profile.CLAUDE_CODE: "Claude Code", ai_profile.API: "API"}
+CONNECTION_NAMES = {ai_profile.CLAUDE_CODE: "Claude Code", ai_profile.ANTHROPIC_API: "API"}
 SETUP_TIP = "AI setup: models per task, cloud connection, project setting"
 ANNOUNCEMENTS = {LOCAL: "All AI tasks now use Local", CLOUD: "All AI tasks now use Cloud"}
 STOPPING = "Stopping AI work before switching"

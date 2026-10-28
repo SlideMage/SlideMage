@@ -271,7 +271,7 @@ class JsonProvider:
         pass
 
 
-@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, "local"), (ai_profile.CLOUD, ai_profile.API, "api")])
+@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, ai_profile.OLLAMA), (ai_profile.CLOUD, ai_profile.ANTHROPIC_API, ai_profile.ANTHROPIC_API)])
 def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_answer(ctx, fake, measure, monkeypatch, mode, conn, kind):  # noqa: F811
     env = asked_fake(fake).env
     ai_profile.mark_cloud_seen(ctx)
@@ -297,7 +297,7 @@ def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_
 def test_a_provider_answer_that_breaks_the_slide_is_refused_after_one_repair(ctx, fake, measure, monkeypatch):  # noqa: F811
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.FIXES, "chosen-model")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.FIXES, "chosen-model")
     know(env, *BEFORE)
     provider = JsonProvider(json.dumps({"body": LF.replace("{Hello}", "{Hello")}))
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
@@ -316,7 +316,7 @@ def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx,
     assert card(env).phase == model.SETUP and "Choose an Ollama model" in card(env).note
     tasks.close_card()
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
     click(env, "Make readable")
     assert card(env).phase == model.SETUP and "No Anthropic API key" in card(env).note
     tasks.close_card()

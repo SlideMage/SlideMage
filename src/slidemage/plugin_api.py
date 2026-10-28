@@ -22,7 +22,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
+
+if TYPE_CHECKING:
+    import threading
+
+    from .ai.providers import ChatProvider
+    from .project import ProjectContext
 
 API_VERSION = 1
 SUPPORTED_API_VERSIONS = frozenset({1})
@@ -228,4 +234,145 @@ class Host(Protocol):
 
     def caption(self, text: str, tone: Literal["", "error"] = "") -> Widget:
         """A small grey line of text; tone="error" makes it an error line. Its setText changes it later."""
+        ...
+
+
+# -- AI routes ---------------------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Route:
+    """What one AI request runs on: a route (an AiRoute's id), the task, and the model chosen for it. Frozen: a
+    request keeps the Route it was started with, whatever the AI switch does meanwhile."""
+
+    route: str
+    """The id of the AiRoute that answers ("ollama", "claude_code", "anthropic_api", a plugin's own)."""
+    task: str
+    """One of ai_profile.TASKS ("chat", "image_description", "translation", "fixes_notes_transcripts")."""
+    model: str = ""
+    """What the route's model choice names; "" when none is chosen (Claude Code's chat then inherits its default)."""
+    effort: str | None = None
+    """The effort part of a route's choice, for the routes that have one (Claude Code's "haiku:medium")."""
+
+    @property
+    def is_local(self) -> bool:
+        """Whether the route keeps everything on this computer (AiRoute.is_local); False for an unknown route."""
+        found = _route_lookup(self.route)
+        return bool(found and found.is_local)
+
+    @property
+    def name(self) -> str:
+        """The route as the assistant's header names it: "Local · Ollama", "Cloud · Claude Code"."""
+        found = _route_lookup(self.route)
+        if found is None:
+            return self.route
+        return f"{'Local' if found.is_local else 'Cloud'} · {found.service}"
+
+    @property
+    def label(self) -> str:
+        """What to show next to the work, as the route words it (AiRoute.work_label): "translategemma:12b ·
+        Ollama", "Claude Code · Haiku · effort medium"."""
+        found = _route_lookup(self.route)
+        return found.work_label(self) if found else f"{self.model or 'no model chosen'} · {self.route}"
+
+
+def _no_lookup(route_id: str) -> "AiRoute | None":
+    return None
+
+
+_route_lookup: Callable[[str], "AiRoute | None"] = _no_lookup
+
+
+def set_route_lookup(lookup: Callable[[str], "AiRoute | None"]) -> None:
+    """Core only: tell Route where the registry is (ai/routes.py does this when it is imported), so that this
+    module needs no import of it. A plugin never calls it."""
+    global _route_lookup
+    _route_lookup = lookup
+
+
+class AiRoute(Protocol):
+    """Something that answers AI requests: Ollama, Claude Code, the Anthropic API, or a plugin's own. Core
+    registers one object per route (ai/routes.py) and asks it everything route-specific; no core module outside
+    a route's own names a service. Every call is on the UI thread unless its text says otherwise, and none of
+    them may use the network or take long except where noted."""
+
+    id: str
+    """Stable and lower-case ("ollama"); stored in settings and in a Route, so it never changes."""
+    service: str
+    """What the user calls it ("Ollama", "Claude Code", "Anthropic API"): the header reads "Local · <service>" or
+    "Cloud · <service>"."""
+    is_local: bool
+    """Nothing leaves this computer: the route belongs to the Local side of the AI switch, else to Cloud."""
+    tasks: frozenset[str]
+    """Which of ai_profile.TASKS it can answer."""
+
+    def problem(self, ctx: "ProjectContext", route: Route) -> str:
+        """Why `route` (this route's, with its task and model) cannot run now, as a sentence ready to show, or ""
+        when it can: no model chosen, no key, not installed. Asked before every request and for the pickers; cheap,
+        no network."""
+        ...
+
+    def model_choices(self, ctx: "ProjectContext", task: str) -> list[str]:
+        """The choices a picker offers for `task` without asking anyone: Claude Code's fixed list, the API's
+        known models once a key is set. A route whose choices come from a server (Ollama's installed models) returns
+        [] here and lists them itself in the background. Never the network."""
+        ...
+
+    def default_choice(self, task: str) -> str:
+        """The choice used for `task` while the user has chosen none; "" for none (a picker then offers
+        what is available)."""
+        ...
+
+    def choice_label(self, choice: str) -> str:
+        """A choice as a picker shows it ("Sonnet · medium" for "sonnet:medium")."""
+        ...
+
+    def split_choice(self, choice: str) -> tuple[str, str | None]:
+        """A choice as (model, effort), the parts of a Route; effort is None for a route without one."""
+        ...
+
+    def valid_choice(self, ctx: "ProjectContext", choice: str) -> bool:
+        """Whether `choice` is one this route offers; a stored or picked choice that is not is ignored. A route
+        with open-ended choices (any model name) accepts every non-empty string."""
+        ...
+
+    def work_label(self, route: Route) -> str:
+        """What to show next to work done on `route`: "qwen3:8b · Ollama", "Claude Code · Haiku · effort medium"."""
+        ...
+
+    def provider(self, ctx: "ProjectContext", route: Route) -> "ChatProvider | None":
+        """A new chat provider for `route` (one request's: abort() ends only that one), or None when the route
+        has no chat provider of its own (Claude Code answers through task_runner and chat_surface). Does not check
+        problem(): core does, and never falls back to another route."""
+        ...
+
+    def draft_backend(self, ctx: "ProjectContext", route: Route, cancel: "threading.Event | None" = None) -> Any:
+        """What describes images on `route` (alt_draft's backend protocol: draft(), label, provider), or None:
+        core then wraps provider() in alt_draft.ModelBackend. `cancel` ends a running request of a route that runs a
+        process. Raises ProviderError when it cannot be made."""
+        ...
+
+    def translation_backend(self, ctx: "ProjectContext", route: Route, cancel: "threading.Event | None" = None) -> Any:
+        """What translates image descriptions on `route` (alt_draft's translation protocol: translate()), or None:
+        core then wraps provider() in alt_draft.ModelTranslationBackend."""
+        ...
+
+    def slide_translator(self, ctx: "ProjectContext", route: Route) -> Any:
+        """What translates a slide body for the Add slide sheet (translate(body) -> (text, error), abort()), or
+        None: core then wraps provider() in slide_add.translate_body."""
+        ...
+
+    def task_runner(self, ctx: "ProjectContext", route: Route) -> Callable[..., Any] | None:
+        """For a route that runs the bubble tasks itself (Claude Code's `claude -p`): run(task, captured, request,
+        cancel, span) -> Outcome, called on a worker thread. None: core runs them on provider()
+        (ai/provider_tasks.py)."""
+        ...
+
+    def chat_surface(self, *args: Any, **kwargs: Any) -> Widget | None:
+        """The widget that is the assistant's conversation on this route, built by the assistant with the
+        arguments it has; None: core's chat view over provider(). Claude Code returns its terminal, which also
+        has stop() and restart(choice, continue_conversation) for the AI setup's Switch now."""
+        ...
+
+    def settings_section(self) -> Callable[[], Widget] | None:
+        """A builder for the route's own section of Settings' AI tab, or None for no section. Not used yet."""
         ...

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from slidemage import alt_blocks, alt_draft, alt_images, image_review
 from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
-from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
+from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, OLLAMA, Route
 from slidemage.ai.providers import OllamaProvider
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
@@ -101,7 +101,7 @@ def run_jobs_inline(monkeypatch):
 def choose_provider(monkeypatch, provider=None):
     """The picked route is Local, and the provider its backends are built on the given one."""
     provider = provider or OllamaProvider("offline-test")
-    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
+    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(OLLAMA, IMAGE_DESCRIPTION, "offline-test"))
     monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider)
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
@@ -529,7 +529,7 @@ def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_pag
         return alt_draft.BatchSummary()
 
     page.app.try_start_ollama_task("test", provider)
-    job = Job("Drafting", provider, work, Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
+    job = Job("Drafting", provider, work, Route(OLLAMA, IMAGE_DESCRIPTION, "offline-test"))
     page._start(job, "one image", 5, lambda outcome: None)
     assert job.isRunning()
     job.position = (3, 5)
