@@ -6,10 +6,14 @@ API-key sources. (The route resolver and its settings are in test_ai_profile.py.
 from __future__ import annotations
 
 import base64
+import ctypes
+import errno
+import socket
 import ssl
 import threading
 import time
 import urllib.parse
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +24,7 @@ from slidemage.ai.providers import (
     Cancelled,
     OllamaProvider,
     ProviderError,
+    _shutdown_socket,
     parse_json_object,
 )
 
@@ -163,6 +168,144 @@ def test_capabilities_are_asked_once_per_model(server):
     server.status, server.body = 404, {"error": "model 'm' not found"}
     assert OllamaProvider("m", host=server.url).capabilities() == ()
     assert OllamaProvider("m", host="http://127.0.0.1:9").capabilities() == ()
+
+
+@pytest.mark.parametrize("service", ["anthropic", "ollama"])
+def test_abort_interrupts_tcp_connect_polling(monkeypatch, service):
+    p = AnthropicProvider(api_key="sk-test") if service == "anthropic" else OllamaProvider("m")
+    p.base_url = p.host = "http://192.0.2.1"
+    entered, closed = threading.Event(), threading.Event()
+    outcome = []
+
+    class Socket:
+        def setblocking(self, _blocking):
+            pass
+
+        def connect_ex(self, _address):
+            assert p._sock is self  # abort can reach even the first connect attempt
+            entered.set()
+            return errno.EINPROGRESS
+
+        def shutdown(self, _how):
+            closed.set()
+
+        def close(self):
+            closed.set()
+
+    def select_pending(_read, _write, _exception, timeout):
+        assert timeout <= 0.05
+        closed.wait(timeout)
+        return [], [], []
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("192.0.2.1", 80))])
+    monkeypatch.setattr(socket, "socket", lambda *_args: Socket())
+    monkeypatch.setattr("slidemage.ai.providers.select.select", select_pending)
+    # These are Python socket doubles; the real Winsock path is checked separately.
+    monkeypatch.setattr("slidemage.ai.providers._shutdown_socket", lambda sock: sock.close() if sock else None)
+
+    def run():
+        try:
+            p.chat([{"role": "user", "content": "hi"}], timeout=60)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+        assert closed.is_set() and p._sock is None
+    finally:
+        p.abort()
+        closed.set()
+        worker.join(2)
+
+
+def test_connect_falls_back_from_unavailable_ipv6_and_restores_the_timeout(monkeypatch):
+    p = OllamaProvider()
+    calls = []
+
+    class Socket:
+        def setblocking(self, value):
+            calls.append(("blocking", value))
+
+        def connect_ex(self, target):
+            assert p._sock is self
+            calls.append(("connect", target))
+            return errno.EINPROGRESS
+
+        def getsockopt(self, *_args):
+            return 0
+
+        def settimeout(self, value):
+            calls.append(("timeout", value))
+
+        def close(self):
+            calls.append("close")
+
+    sock = Socket()
+
+    def create(family, *_args):
+        if family == socket.AF_INET6:
+            raise OSError(errno.EAFNOSUPPORT, "IPv6 disabled")
+        return sock
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", 80, 0, 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 80))])
+    monkeypatch.setattr(socket, "socket", create)
+    monkeypatch.setattr("slidemage.ai.providers.select.select", lambda _r, w, _e, _t: ([], w, []))
+    assert p._create_socket(("localhost", 80), 60) is sock
+    assert calls == [("blocking", False), ("connect", ("127.0.0.1", 80)), ("timeout", 60)]
+
+
+def test_tcp_connect_timeout_closes_the_published_socket(monkeypatch):
+    p = OllamaProvider()
+    closed = []
+
+    class Socket:
+        def setblocking(self, _value):
+            pass
+
+        def connect_ex(self, _target):
+            return errno.EINPROGRESS
+
+        def close(self):
+            closed.append(True)
+
+    clock = iter([0, 2])
+    monkeypatch.setattr("slidemage.ai.providers.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("192.0.2.1", 80))])
+    monkeypatch.setattr(socket, "socket", lambda *_args: Socket())
+    with pytest.raises(TimeoutError):
+        p._create_socket(("192.0.2.1", 80), 1)
+    assert closed == [True] and p._sock is None
+
+
+def test_windows_abort_closes_the_detached_socket_handle(monkeypatch):
+    calls = []
+
+    class Socket:
+        def detach(self):
+            calls.append("detach")
+            return 12345
+
+        def close(self):
+            calls.append("close")
+
+    def closesocket(handle):
+        calls.append(("closesocket", handle.value))
+
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(ws2_32=SimpleNamespace(closesocket=closesocket)), raising=False)
+    monkeypatch.setattr("slidemage.ai.providers.sys.platform", "win32")
+    _shutdown_socket(Socket())
+    assert calls == ["detach", ("closesocket", 12345), "close"]
 
 
 # -- HTTPS proxies -----------------------------------------------------------

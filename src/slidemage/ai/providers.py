@@ -28,12 +28,17 @@ streamed model turn over provider-neutral messages and tools
 from __future__ import annotations
 
 import base64
+import errno
 import http.client
 import ipaddress
 import json
+import os
 import re
+import select
 import socket
 import sys
+import threading
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -127,6 +132,7 @@ class _HttpProvider:
     def __init__(self) -> None:
         self._sock: socket.socket | None = None     # of the running request, for abort()
         self._cancelled = False
+        self._sock_lock = threading.Lock()  # abort must not race TLS taking ownership of the fd
 
     def _connection(self, parts: urllib.parse.SplitResult, timeout: float) -> http.client.HTTPConnection:
         """An unconnected HTTP transport; HTTPS honours environment/system HTTP proxies."""
@@ -159,6 +165,87 @@ class _HttpProvider:
         conn.set_tunnel(host, parts.port or 443, headers=headers)
         return conn
 
+    def _check_cancelled(self) -> None:
+        if self._cancelled:
+            raise Cancelled("Aborted.")
+
+    def _publish_socket(self, sock: socket.socket) -> None:
+        with self._sock_lock:
+            self._check_cancelled()
+            self._sock = sock
+
+    def _create_socket(self, address: tuple[str, int], timeout: float,
+                       source_address=None) -> socket.socket:
+        """Connect with short polls; publish each candidate before starting TCP setup.
+
+        Closing a socket does not interrupt connect() on every OS. Nonblocking
+        connect and bounded select waits also cover that case, including Windows.
+        """
+        last_error = None
+        for family, kind, proto, _, target in socket.getaddrinfo(*address, type=socket.SOCK_STREAM):
+            self._check_cancelled()
+            sock = None
+            connected = False
+            try:
+                sock = socket.socket(family, kind, proto)
+                self._publish_socket(sock)
+                sock.setblocking(False)
+                if source_address:
+                    sock.bind(source_address)
+                deadline = time.monotonic() + timeout
+                error = sock.connect_ex(target)
+                if error not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY, errno.EINTR):
+                    raise OSError(error, os.strerror(error))
+                while error:
+                    self._check_cancelled()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("timed out")
+                    _, writable, exceptional = select.select([], [sock], [sock], min(0.05, remaining))
+                    if writable or exceptional:
+                        error = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                        if error:
+                            raise OSError(error, os.strerror(error))
+                self._check_cancelled()
+                sock.settimeout(timeout)
+                connected = True
+                return sock
+            except OSError as exc:
+                self._check_cancelled()
+                last_error = exc
+            except ValueError:
+                # abort() can detach the Windows handle just before select().
+                self._check_cancelled()
+                raise
+            finally:
+                if sock is not None and not connected:
+                    with self._sock_lock:
+                        if self._sock is sock:
+                            self._sock = None
+                        sock.close()
+        self._check_cancelled()
+        raise last_error or OSError("getaddrinfo returned no addresses")
+
+    def _connect(self, conn: http.client.HTTPConnection) -> None:
+        """Open TCP, optional CONNECT, then TLS, keeping abort's socket current."""
+        self._check_cancelled()
+        conn._create_connection = self._create_socket
+        if isinstance(conn, http.client.HTTPSConnection):
+            # HTTPConnection.connect performs CONNECT on the published raw socket.
+            http.client.HTTPConnection.connect(conn)
+            with self._sock_lock:
+                self._check_cancelled()
+                # wrap_socket transfers the fd: publish the SSLSocket before the
+                # blocking handshake, and keep abort from closing the old owner.
+                conn.sock = conn._context.wrap_socket(
+                    conn.sock, server_hostname=conn._tunnel_host or conn.host,
+                    do_handshake_on_connect=False)
+                self._sock = conn.sock
+            conn.sock.do_handshake()
+        else:
+            conn.connect()
+        self._publish_socket(conn.sock)
+
     @contextmanager
     def _request(self, method: str, base_url: str, endpoint: str, *, headers: dict[str, str],
                  payload: dict | None, timeout: float):
@@ -171,11 +258,8 @@ class _HttpProvider:
         try:
             if self._cancelled:
                 raise Cancelled("Aborted.")
-            conn.connect()
+            self._connect(conn)
             connected = True
-            self._sock = conn.sock      # published before anything is sent, so that abort() reaches an upload too;
-            if self._cancelled:         # kept here: a response that ends with the connection takes it from conn
-                raise Cancelled("Aborted.")
             body = None if payload is None else json.dumps(payload).encode("utf-8")
             conn.request(method, parts.path.rstrip("/") + endpoint, body=body, headers=headers)
             yield conn.getresponse()
@@ -208,12 +292,13 @@ class _HttpProvider:
         return body if isinstance(body, dict) else {}
 
     def abort(self) -> None:
-        self._cancelled = True
-        _shutdown_socket(self._sock)
+        with self._sock_lock:
+            self._cancelled = True
+            _shutdown_socket(self._sock)
 
 
 def _shutdown_socket(sock: socket.socket | None) -> None:
-    """Wake a read blocked on `sock` in another thread."""
+    """Wake connection setup or a read blocked on `sock` in another thread."""
     if sock is None:
         return
     try:
@@ -231,6 +316,8 @@ def _shutdown_socket(sock: socket.socket | None) -> None:
             sock.shutdown(socket.SHUT_RDWR)
     except OSError:
         pass
+    finally:
+        sock.close()
 
 
 def _error_detail(raw: bytes) -> str:

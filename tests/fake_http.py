@@ -12,10 +12,39 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import BaseRequestHandler, ThreadingTCPServer
 
 
 # A public, test-only self-signed certificate and key. Never used outside loopback tests.
 TEST_TLS_CERT = Path(__file__).with_name("fixtures") / "localhost.pem"
+
+
+class StallingServer:
+    """Accept TCP and read a ClientHello (or CONNECT), but never answer it."""
+
+    def __init__(self):
+        self.received = threading.Event()
+        self.release = threading.Event()
+        outer = self
+
+        class Handler(BaseRequestHandler):
+            def handle(self):
+                self.request.settimeout(5)
+                try:
+                    if self.request.recv(65536):
+                        outer.received.set()
+                        outer.release.wait(5)
+                except OSError:
+                    pass
+
+        self.server = ThreadingTCPServer(("127.0.0.1", 0), Handler)
+        self.address = self.server.server_address
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+
+    def close(self):
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
 
 
 class ConnectProxy:

@@ -222,16 +222,13 @@ class AnthropicProvider(_HttpProvider):
 
     def _open(self, parts: urllib.parse.SplitResult, method: str, path: str, body: bytes | None,
               headers: dict[str, str], timeout: float):
-        """(connection, response) of one attempt; the socket is published for abort() before anything
-        is sent, so that it reaches an upload too."""
+        """(connection, response) of one attempt; abort() reaches TCP/CONNECT/TLS setup,
+        uploads and reads through the shared transport."""
         conn = self._connection(parts, timeout)
         try:
             if self._cancelled:
                 raise Cancelled("Aborted.")
-            conn.connect()
-            self._sock = conn.sock
-            if self._cancelled:
-                raise Cancelled("Aborted.")
+            self._connect(conn)
             conn.request(method, path, body=body, headers=headers)
             return conn, conn.getresponse()
         except BaseException:
