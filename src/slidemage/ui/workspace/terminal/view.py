@@ -317,14 +317,14 @@ class ClaudeCodeView(Surface):
     def _build_terminal(self, claude: Path) -> None:
         # Imported here: the web engine is heavy, and most sessions never open this view.
         from .session import ClaudeCodeSession
-        from .web import TerminalWidget
+        from .service import TerminalService
 
         if self.terminal is not None:
             return
         self.session = ClaudeCodeSession(self.app, claude, self)
         self.setup_changed.emit()
         self.session.scope = self.scope.current()
-        self.terminal = TerminalWidget(self.app.theme.tokens)
+        self.terminal = TerminalService(self.state.project.root, lambda: self.app.theme.tokens).create_widget()
         self._terminal_layout.insertWidget(1, self.terminal, 1)
         self.session.workspace.translate = self._translate_slide
         self.session.workspace.widen = self._switch_to_deck

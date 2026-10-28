@@ -9,6 +9,8 @@ The calls that are not add_* raise NotImplementedError here, so a half-built hos
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +19,8 @@ from ..plugin_api import FooterAction
 from .manifest import Manifest
 
 MENUS = ("deck",)
+ENTRY_NAME = re.compile(r"[a-z][a-z0-9_-]*\Z")
+PLUGIN_FLAG = "--plugin"       # cli.py: SlideMage --plugin <id>:<name> [args...]
 
 
 @dataclass(frozen=True)
@@ -59,6 +63,7 @@ class Contributions:
     settings_tabs: list[SettingsTab] = field(default_factory=list)
     sidebar_boxes: list[SidebarBox] = field(default_factory=list)
     render_priorities: list[Callable[[Any], bool]] = field(default_factory=list)
+    entry_points: dict[str, Callable[[list[str]], int]] = field(default_factory=dict)
 
 
 class Registrar:
@@ -127,6 +132,21 @@ class Registrar:
         self._check_open()
         self.contributions.render_priorities.append(soon)
 
+    def add_entry_point(self, name: str, fn: Callable[[list[str]], int]) -> None:
+        self._check_open()
+        if not ENTRY_NAME.match(name):
+            raise ValueError(f"entry point name {name!r} must be lower case letters, digits, '-' and '_'")
+        if name in self.contributions.entry_points:
+            raise ValueError(f"entry point {name!r} is already registered")
+        self.contributions.entry_points[name] = fn
+
+    def entry_point_command(self, name: str) -> list[str]:
+        """The argv that runs an entry point: a frozen build has no `python -m`, its executable takes the flag."""
+        spec = f"{self.manifest.id}:{name}"
+        if getattr(sys, "frozen", False):
+            return [sys.executable, PLUGIN_FLAG, spec]
+        return [sys.executable, "-m", "slidemage", PLUGIN_FLAG, spec]
+
     # The services belong to the real host (step 2).
     def _unavailable(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("this host does not offer that call")
@@ -134,3 +154,4 @@ class Registrar:
     cache_dir = legacy_cache_dir = settings = run_in_background = insert_positions = _unavailable
     insert_slides = edit_deck_text = deck_language = open_url = open_deck_settings = _unavailable
     log = show_message = Page = Field = caption = _unavailable
+    terminal = watch_external_edits = credentials = ai_tools = focus = _unavailable

@@ -15,6 +15,7 @@ from typing import Any
 
 from PySide6.QtCore import Signal
 
+from ..plugin_api import Focus
 from ..plugins import session
 from ..plugins.host import deck_snapshot
 from .commands import Command, CommandRegistry
@@ -58,6 +59,24 @@ class WindowHostUi:
             log.log(logging.ERROR if error else logging.INFO, "%s", text)
         else:
             window.toast.show_message(text, error=error, timeout_ms=6000 if error else None)
+
+    def terminal_tokens(self) -> Any:
+        """The design tokens the embedded terminal is coloured with."""
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        return window.theme.tokens
+
+    def focus(self) -> Focus:
+        """What the user is looking at: the deck, the slide the editor shows, and the assistant's scope."""
+        window = self.window
+        if window is None:
+            return Focus(None, None, "slide")
+        deck = window.state.deck
+        slide = window.centre.path
+        scope = "deck" if window.assistant.scope.current() == "deck" else "slide"
+        return Focus(deck.path if deck is not None and not deck.is_test_deck else None,
+                     slide if slide is not None and slide.parent.name == "slides" else None, scope)
 
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""

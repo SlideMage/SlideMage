@@ -3,8 +3,12 @@
 """One embedded Claude Code: the MCP server it talks to, the process on its pty, and the watch over the
 files it changes (UI redesign step 10c).
 
-Threading. The process's reader thread (pty_process.py) calls `_on_output` / `_on_exit`, which turn into
-the `output` / `exited` signals for the GUI thread. The MCP server answers on its own threads; the tools they
+The process is the terminal service's (service.PtySession, the same one plugins start programs with) and the watch
+is the external-edit watch's (sync.DiskSync over sync.ExternalEditWatch); what is Claude Code's own is the command,
+the environment, the MCP server and the focus.
+
+Threading. The process's reader thread (pty_process.py) is turned into the `output` / `exited` signals for the GUI
+thread by the PtySession. The MCP server answers on its own threads; the tools they
 run reach editor buffers and the focus through `GuiWorkspace.on_gui`, which hands the work to the GUI thread
 and waits (a closing window releases every wait). `stop()` ends the process politely (pty_process.PtyProcess)
 and is safe to call twice; `shutdown()` also stops the server.
@@ -23,9 +27,10 @@ from .... import compiler
 from ....ai import ai_profile, claude_launch, claude_scope
 from ....ai.agent_types import EDIT_AUTO
 from ....ai.mcp_server import McpServer
-from ....ai.tools import CLAUDE_CODE_TOOLS, ToolBox, build_toolbox
-from ....pty_process import PtyProcess
+from ....ai.agent_toolbox import agent_toolbox
+from ....ai.tools import ToolBox
 from ..chat.gui_workspace import GuiWorkspace
+from .service import PtySession
 from .sync import DiskSync
 
 
@@ -33,8 +38,6 @@ class ClaudeCodeSession(QObject):
     output = Signal(bytes)         # on the GUI thread
     exited = Signal(int)           # the exit code, on the GUI thread
     focus_changed = Signal()       # what publish_focus found different: the focus, the scope, the buffer's state
-    _chunk = Signal(int, bytes)    # generation, output: from the reader thread
-    _ended = Signal(int, int)      # generation, exit code: from the reader thread
 
     def __init__(self, window, claude: Path, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -50,17 +53,16 @@ class ClaudeCodeSession(QObject):
         self._timer.timeout.connect(self.publish_focus)
         self.workspace = GuiWorkspace(window)      # its own focus, apart from the chat's
         self._server: McpServer | None = None
-        self._process: PtyProcess | None = None
-        self._generation = 0                        # which process the callbacks belong to
+        self._pty = PtySession(self)                # the process; its generations drop a replaced one's late output
         self._lock = threading.Lock()
         self._cancel = compiler.CancelToken()
         self._sync = DiskSync(window, window.project.root, self)
-        self._chunk.connect(self._on_chunk)
-        self._ended.connect(self._on_ended)
+        self._pty.output.connect(self.output)
+        self._pty.exited.connect(self._on_ended)
 
     @property
     def running(self) -> bool:
-        return self._process is not None and self._process.alive
+        return self._pty.running
 
     @property
     def mcp_url(self) -> str:
@@ -91,12 +93,7 @@ class ClaudeCodeSession(QObject):
         command = claude_launch.build_command(self.claude, self._server.url, model=route.model, effort=route.effort,
                                               session_id=self.session_id, resume=resume)
         env = claude_launch.environment(self._server.token, self._window.project.root, self.claude, focus_file=self._focus_file)
-        with self._lock:
-            self._generation += 1
-            generation = self._generation
-        self._process = PtyProcess(
-            command, self._window.project.root, env, lambda data: self._on_output(generation, data),
-            lambda code: self._on_exit(generation, code), cols, rows)
+        self._pty.start(command, env, self._window.project.root, cols, rows)
         self._sync.start()
 
     def set_scope(self, scope: str) -> None:
@@ -122,24 +119,19 @@ class ClaudeCodeSession(QObject):
         self.focus_changed.emit()
 
     def write(self, data: bytes) -> None:
-        if self._process is not None:
-            self._process.write(data)
+        self._pty.write(data)
 
     def resize(self, cols: int, rows: int) -> None:
-        if self._process is not None:
-            self._process.resize(cols, rows)
+        self._pty.resize(cols, rows)
 
     def stop(self, *, last_look: bool = True) -> None:
         """End the process, if there is one; its late output and exit are not reported."""
         with self._lock:
-            self._generation += 1
             cancel = self._cancel
         cancel.request_stop()
         self._timer.stop()
         self._sync.stop(last_look=last_look)
-        process, self._process = self._process, None
-        if process is not None:
-            process.stop()
+        self._pty.stop()
 
     def shutdown(self) -> None:
         """The window closes: end everything, and release the MCP calls that wait for the GUI."""
@@ -162,33 +154,9 @@ class ClaudeCodeSession(QObject):
             return self.scope, self.workspace.context().path
 
         scope, path = self.workspace.on_gui(focus, (claude_scope.SLIDE, None))
-        box = build_toolbox(self.workspace, lambda _event: None, cancel, EDIT_AUTO, tools=CLAUDE_CODE_TOOLS)
-        box.ctx.scope = scope
-        box.ctx.focus_slide = claude_scope.slide_focus(box.ctx.root, path)
-        return box
+        return agent_toolbox(self.workspace, scope, path, cancel, EDIT_AUTO)
 
-    # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread
-    # (queued, so possibly after a Restart or the shutdown) is checked against the generation again.
-
-    def _on_output(self, generation: int, data: bytes) -> None:
-        self._emit(self._chunk, generation, data)
-
-    def _on_exit(self, generation: int, code: int) -> None:
-        self._emit(self._ended, generation, code)
-
-    def _on_chunk(self, generation: int, data: bytes) -> None:
-        if generation == self._generation:
-            self.output.emit(data)
-
-    def _on_ended(self, generation: int, code: int) -> None:
+    def _on_ended(self, code: int) -> None:
         """The process ended by itself: one last look at the files it left changed."""
-        if generation == self._generation:
-            self._sync.stop()
-            self.exited.emit(code)
-
-    @staticmethod
-    def _emit(signal, *values) -> None:
-        try:
-            signal.emit(*values)
-        except RuntimeError:       # this object is gone with the window
-            pass
+        self._sync.stop()
+        self.exited.emit(code)

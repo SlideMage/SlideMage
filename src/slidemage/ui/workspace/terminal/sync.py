@@ -14,6 +14,7 @@ A file SlideMage saved itself shows as unchanged against its buffer, so the poll
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
@@ -33,18 +34,24 @@ def _text(path: Path) -> str | None:
         return None
 
 
-class DiskSync(QObject):
-    def __init__(self, window, root: Path, parent: QObject | None = None) -> None:
+class ExternalEditWatch(QObject):
+    """The generic watch: polls the project's text files (ai/project_watch.py) and hands each change to
+    `on_change(changes)`. This is the host service (Host.watch_external_edits, plugin_api.EditWatch); DiskSync below
+    is what the window does with the changes of the Claude Code session."""
+
+    def __init__(self, root: Path, on_change: Callable[[project_watch.Changes], None],
+                 parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self.window, self.root = window, root
+        self.root, self._on_change = root, on_change
         self._known: project_watch.Scan = {}
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self.poll)
 
     def start(self) -> None:
-        self._known = project_watch.scan(self.root)
-        self._timer.start()
+        if not self._timer.isActive():
+            self._known = project_watch.scan(self.root)
+            self._timer.start()
 
     def stop(self, *, last_look: bool = True) -> None:
         """Stop watching. While it ran, one last look at what changed since the last poll (the process may
@@ -58,8 +65,21 @@ class DiskSync(QObject):
         now = project_watch.scan(self.root)
         changes = project_watch.diff(self._known, now)
         if changes:
-            self._apply(changes)
-        self._known = now           # only once the window took the changes in: a failure is tried again
+            self._on_change(changes)
+        self._known = now           # only once the caller took the changes in: a failure is tried again
+
+    def __enter__(self) -> ExternalEditWatch:
+        self.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+
+class DiskSync(ExternalEditWatch):
+    def __init__(self, window, root: Path, parent: QObject | None = None) -> None:
+        super().__init__(root, lambda changes: self._apply(changes), parent)
+        self.window = window
 
     def _apply(self, changes: project_watch.Changes) -> None:
         window = self.window

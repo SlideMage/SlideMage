@@ -75,14 +75,14 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
 def test_leaving_claude_code_ends_the_session_and_coming_back_starts_a_new_one(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     env.window.ai_route.request(LOCAL)
     assert env.window.ai_route.popover_kind == "session"
     env.window.ai_route._popover.spec.actions[-1][2]()           # End session and switch
     assert env.window.state.ai_route == LOCAL and not env.view.session_live and not first.alive
     assert env.window.assistant._stack.currentWidget() is env.window.assistant.chat
     go(env, CLOUD, CLAUDE_CODE)
-    wait_until(lambda: env.view.session_live and env.view.session._process is not first)
+    wait_until(lambda: env.view.session_live and env.view.session._pty._process is not first)
     assert env.view.status.text() == "Running"
 
 
@@ -144,9 +144,9 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
 def test_new_conversation_on_claude_code_starts_a_new_session(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     header(env).new_button.click()
-    wait_until(lambda: env.view.session._process is not first and env.view.session.running)
+    wait_until(lambda: env.view.session._pty._process is not first and env.view.session.running)
     assert not first.alive
 
 
