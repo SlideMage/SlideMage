@@ -38,6 +38,23 @@ see section 6 on renumbering for publication).
 - **Local checkouts:** a clone made before the move still has `origin` on `stpalan/SlideMage`, and its `git fetch`
   fails over SSH; `git remote set-url origin git@github.com:SlideMage/SlideMage.git` fixes it.
 
+**Still open or not verified** (from 3.2, 3.3, the review and the plugins' own `docs/PLAN.md`):
+- **Never built or run frozen:** no PyInstaller build of any of the PRs. The `--self-test --plugins` step in the
+  release workflow is the first real check, so the size the bundled stdlib adds is unknown too. No real Anthropic
+  call from a Windows release build yet (certificates now come from the system store, not `certifi`).
+- **The plugins' CI doesn't test against SlideMage.** Their Check workflows don't install SlideMage, and
+  `requires_slidemage` (`>=9.0` for CampusOnline, `>=10.0` for Claude and Ollama) names releases that don't exist
+  yet. Pin CI to a SlideMage release and set the ranges once the version question (section 6) is decided.
+- **No acceptance test from an installed `.smplugin`.** The CampusOnline end-to-end test loads the checkout and
+  pretends the app is v9.0.0. It doesn't install a release archive or drive a real course fetch and insertion.
+- **Ollama plugin:** its `docs/PLAN.md` gap list predates #26. Gaps 1–3 (built-in route, built-in UI paths,
+  the settings reader that migrates on read) are gone in #26, which has no built-in routes and reads with
+  `peek_ollama_host`. Still open: its network tests need a runner that allows TCP on loopback.
+- **Claude plugin:** its integration tests and the benchmark still import SlideMage internals (the package
+  itself imports only `slidemage.plugin_api`). We suggest keeping that until core offers public test fixtures.
+- **Only on Jürgen's machine:** the Claude and Ollama plugin repositories and the template branch `plugin-api-1`
+  have no remote yet. They wait for the organisation repositories (item 1 below) and your answer on the template.
+
 **Plugins** (all on the real `plugin_api`, packaged code importing nothing else from SlideMage; `build.py --check`
 passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixes ported into both AI plugins):
 
