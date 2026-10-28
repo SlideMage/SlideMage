@@ -17,7 +17,9 @@ Free of Qt; the TeX run itself is in background_renders.py.
 """
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import os
 import platform
@@ -38,6 +40,7 @@ RENDER_SCHEMA = 3     # 2: every reveal step (all_steps) whatever the slide rest
 
 KIND_PROJECT = "project"        # under the project folder: rel path from the root
 KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it
+KIND_ALT_TEXT = "alt-text"      # a project alt-text file: the hash of its rows for the render's pictures (v8.69.0)
 
 _SKIPPED_PARTS = ("luatex-cache", ".build", ".previews", "slidemage_preview_", "_slidemage_")
 EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
@@ -154,6 +157,7 @@ class Resolver:
         self._clock = clock
         self._engine_cache: Optional[str] = None
         self._tex_memo: dict[str, tuple[float, bool]] = {}
+        self._alt_memo: dict[str, tuple[Optional[str], tuple[dict, dict]]] = {}
 
     @property
     def engine_fp(self) -> str:
@@ -213,6 +217,7 @@ class Resolver:
                 manifest.stable = False
                 continue
             manifest.entries.append([where[0], where[1], digest])
+        manifest.entries = self.narrow_alt_text(manifest.entries)
         manifest.entries.sort()
         tex.sort()
         manifest.tex_files = tex
@@ -220,7 +225,7 @@ class Resolver:
         return manifest
 
     def _resolve(self, kind: str, rel: str) -> Optional[Path]:
-        if kind == KIND_PROJECT:
+        if kind in (KIND_PROJECT, KIND_ALT_TEXT):
             return self.ctx.root / rel
         for folder in slide_snapshot.framework_dirs(self.ctx.root):
             if (folder / rel).is_file():
@@ -230,9 +235,73 @@ class Resolver:
     def manifest_current(self, entries: list) -> bool:
         for kind, rel, sha in entries:
             path = self._resolve(kind, rel)
-            if path is None or self.hashes.is_racy(path) or self.hashes.hash(path) != sha:
+            if path is None or self.hashes.is_racy(path):
+                return False
+            if kind == KIND_ALT_TEXT:
+                if self._alt_digest(path, entries) != sha:
+                    return False
+            elif self.hashes.hash(path) != sha:
                 return False
         return True
+
+    # -- the alt-text files ----------------------------------------------------------
+
+    def narrow_alt_text(self, entries: list, recorded: Optional[dict] = None) -> list:
+        """`entries` with each project alt-text file (EVERY_RENDER_READS) turned into a KIND_ALT_TEXT entry: the hash
+        of its rows for the files the render read, not of the whole file, so a new alt text for another slide's
+        picture leaves this render current (every preview went out of date with each new alt text up to v8.68.0, v8.69.0).
+        `recorded`, the file hashes of a compile record: an alt-text file changed since then keeps its whole-file
+        entry, which the check then finds out of date."""
+        out = []
+        for entry in entries:
+            kind, rel, sha = entry
+            if kind == KIND_PROJECT and Path(rel).name in EVERY_RENDER_READS:
+                path = self.ctx.root / rel
+                if recorded is None or self.hashes.hash(path) == sha:
+                    entry = [KIND_ALT_TEXT, rel, self._alt_digest(path, entries)]
+            out.append(entry)
+        return out
+
+    def _alt_digest(self, path: Path, entries: list) -> str:
+        """The hash of the rows of the alt-text file `path` for the files in `entries`, matched as Slidemaster_alt.lua
+        matches a picture: by its lower-case file name, or by the name without its extension."""
+        names, stems = set(), set()
+        for _kind, rel, _sha in entries:
+            name = Path(rel).name.lower()
+            if name not in EVERY_RENDER_READS:
+                names.add(name)
+                stems.add(Path(name).stem)
+        by_name, by_stem = self._alt_rows(path)
+        rows = {row for name in names for row in by_name.get(name, ())}
+        rows |= {row for stem in stems for row in by_stem.get(stem, ())}
+        return hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest()
+
+    def _alt_rows(self, path: Path) -> tuple[dict, dict]:
+        """The rows of an alt-text file by lower-case file name and by stem, each a JSON string; read once per
+        content (the scan asks for every unit of every deck)."""
+        sha = self.hashes.hash(path)
+        memo = self._alt_memo.get(str(path))
+        if memo is not None and memo[0] == sha:
+            return memo[1]
+        rows: list[tuple[str, str]] = []
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+            if path.suffix.lower() == ".json":
+                images = json.loads(text).get("images", {})
+                rows = [(image, json.dumps([image, data], sort_keys=True)) for image, data in images.items()]
+            else:
+                lines = list(csv.reader(io.StringIO(text)))
+                rows = [(fields[0], json.dumps(fields)) for fields in lines[1:] if fields and fields[0]]
+        except (OSError, ValueError, AttributeError):
+            rows = [("", sha or "")]          # unreadable: every render that reads it is out of date when it changes
+        by_name: dict[str, list[str]] = {}
+        by_stem: dict[str, list[str]] = {}
+        for image, row in rows:
+            name = image.replace("\\", "/").rsplit("/", 1)[-1].lower()
+            by_name.setdefault(name, []).append(row)
+            by_stem.setdefault(Path(name).stem, []).append(row)
+        self._alt_memo[str(path)] = (sha, (by_name, by_stem))
+        return by_name, by_stem
 
     def tex_current(self, record: dict) -> bool:
         """The TeX files a render made on this machine read are as they were (stat only; remembered 60 s)."""
