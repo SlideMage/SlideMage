@@ -1146,6 +1146,23 @@ def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centr
     assert state.mode == "preview" and centre.path.name == "aaa-EN-One-current.tex"
 
 
+def test_a_deck_source_has_a_save_button_while_autosave_is_off(centre, project, deck):
+    deck.path.write_text(DECK, encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    centre.open_file(deck.path)
+    save = centre.source._save_button
+    assert save.isHidden()                                              # AutoSave on: it saves by itself
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.source.autosave_changed()
+    assert not save.isHidden() and not save.isEnabled()                 # nothing to save yet
+    centre.source.current.editor.insertPlainText("% mine\n")
+    assert save.isEnabled()
+    save.click()
+    assert "% mine" in deck.path.read_text(encoding="utf-8") and not save.isEnabled()
+    centre.open_file(project / "aaa-EN-One-current.tex")
+    assert save.isHidden()                                              # a slide: its own toolbar, Ctrl+S
+
+
 def test_preview_closes_the_bib_and_asks_about_changes_autosave_would_not_save(centre, project, monkeypatch):
     bib = centre.state.project.bibliography_path
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
