@@ -8,7 +8,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QCheckBox, QLabel
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel
 
 from conftest import qapp as qapp
 from conftest import wait_until
@@ -45,6 +46,21 @@ def no_real_browser(monkeypatch):
     opened = []
     monkeypatch.setattr(PluginOfferSheet, "open_url", lambda self, url: opened.append(url))
     return opened
+
+
+@pytest.fixture(autouse=True)
+def cleanup_offer_sheets():
+    """A shown modal sheet must not block windows in subsequent tests."""
+    app = QApplication.instance()
+    existing = set(app.topLevelWidgets()) if app is not None else set()
+    yield
+    app = QApplication.instance()
+    if app is not None:
+        for sheet in set(app.topLevelWidgets()) - existing:
+            if isinstance(sheet, PluginOfferSheet):
+                sheet.hide()  # close/reject would write the offer-seen flag
+                sheet.deleteLater()
+                QCoreApplication.sendPostedEvents(sheet, QEvent.Type.DeferredDelete)
 
 
 CAT = catalogue.parse(catalogue_json(entry("alpha", "Alpha")))
