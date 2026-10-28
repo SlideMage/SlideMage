@@ -79,6 +79,32 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     return findings
 
 
+# v9.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
+# template or profile that sets them with an error.
+DERIVED_LAYOUT_NAMES = ("SMContentTopAlign", "SMTitleBarBottomAlign", "SMFooterRightShift", "SMFootnoteRightShift")
+_DERIVED = r"\\(" + "|".join(DERIVED_LAYOUT_NAMES) + r")(?![A-Za-z@])"
+# A setting command in front of the name, or a direct assignment after it; reading the name is fine.
+_SETS_DERIVED_NAME = re.compile(
+    r"(?:\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _DERIVED
+    + r"|" + _DERIVED.replace("(", "(?P<assigned>", 1) + r"\s*=")
+
+
+def _detect_derived_layout_names(root: Path) -> list[Finding]:
+    """Project-root templates, layout profiles and project macros that still set a derived name."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_layout_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_DERIVED_NAME.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        f"\\{match.group(1) or match.group('assigned')} is derived now; "
+                                        "remove this line."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -124,7 +150,22 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Use \\slide or \\slideversion for slides students should receive; keep omission "
         "calls for instructor-only content."),
     detect=_detect_omitslide,
-), compat_names.CHANGE, compat_own_theme.CHANGE]
+), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
+    id="derived-layout-names",
+    since="v9.7.0",
+    severity=BREAKS,
+    title="Four layout positions follow the template's settings and can no longer be set",
+    description=(
+        "\\SMContentTopAlign follows \\SMTopMargin, \\SMTitleBarBottomAlign follows the frame title's "
+        "padding, font and the logo height, and \\SMFooterRightShift and \\SMFootnoteRightShift follow the "
+        "text margin and the logo's right padding. Slides may still read them; a template, layout profile "
+        "or project macros file that sets one stops the compile with an error that names it."),
+    fix=(
+        "Delete the line that sets the name, e.g. \\setlength{\\SMTitleBarBottomAlign}{25.32pt}. To move "
+        "the position, change the setting it follows (\\SMTopMargin, the \\SMFrametitle...Padding lengths, "
+        "\\SMLogoHeight, \\SMTextMarginRight)."),
+    detect=_detect_derived_layout_names,
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).

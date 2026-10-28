@@ -169,6 +169,25 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
 
 
+def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v9.6.0")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMTitleBarBottomAlign}{25.32pt}\n"
+        "% \\setlength{\\SMContentTopAlign}{41pt}\n"
+        "\\SMFooterRightShift=4pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{\\SMContentTopAlign}}\n", encoding="utf-8")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\renewcommand{\\SMFootnoteRightShift}{3pt}\n", encoding="utf-8")
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMContentTopAlign}{1pt}\n", encoding="utf-8")       # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_derived_layout_names(root)]
+    assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleBarBottomAlign"),
+                     ("SlideMage_template_inst.tex", 4, "\\SMFooterRightShift"),
+                     ("SlideMage_layout_own.tex", 1, "\\SMFootnoteRightShift")]
+    assert any(c.id == "derived-layout-names" and c.since == "v9.7.0" for c in compat.CHANGES)
+
+
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
     root = make_project(tmp_path, "v7.0.2")
     (root / "decks" / "course.tex").write_text(
