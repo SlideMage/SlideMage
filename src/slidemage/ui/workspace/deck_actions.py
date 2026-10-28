@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QInputDialog, QMessageBox
 
 from ... import (
-    admin_slides, deck_duplicate, deck_editor, deck_new, deck_settings, deck_snapshot, open_path, slide_snapshot,
+    deck_duplicate, deck_editor, deck_new, deck_settings, deck_snapshot, open_path, slide_snapshot,
     transcript)
 from ... import archive as archive_mod
 from ...compiler import deck_pdfs, pdf_to_open
@@ -22,16 +22,10 @@ from ...deck_groups import DEFAULT_GROUPS, DeckGroup, group_tags, switcher_order
 from ...deck_scan import TAG_MANUAL, Deck
 from ...deck_settings import DeckSettings
 from ...fileio import read_text_exact
-from ..dialogs.admin_slides import AdminSlidesTab
 from ..dialogs.deck_group import DeckGroupSheet
-from ..dialogs.deck_settings import ADMIN, COMMAND, GENERAL, INSERT, DeckSettingsSheet
+from ..dialogs.deck_settings import COMMAND, GENERAL, DeckSettingsSheet
 from ..dialogs.snapshot import SnapshotSheet
 from . import compile_actions
-
-
-def on_admin_slides(window, deck: Deck) -> None:
-    """⋮ -> "Admin slides…": Deck settings on its Admin slides tab."""
-    on_deck_settings(window, deck, tab=ADMIN)
 
 
 def archive_deck(window, deck: Deck) -> None:
@@ -149,7 +143,7 @@ def on_open_latest_pdf(window, deck: Deck) -> None:
 
 def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
     """⋮ -> "Deck settings…": the deck-wide settings that live in the deck's own file
-    (deck_settings.py), all written in one go, and the admin slides of its course page."""
+    (deck_settings.py), all written in one go."""
     if window.centre.unsaved(deck.path):
         QMessageBox.information(
             window, "Deck settings",
@@ -160,9 +154,7 @@ def on_deck_settings(window, deck: Deck, tab: int | str = GENERAL) -> None:
     sheet = DeckSettingsSheet(window, deck, deck_settings.template_choices(window.project.root), tab=tab)
     if not sheet.exec():
         return
-    if sheet.action == INSERT:
-        insert_admin_slides(window, deck, sheet.admin)
-    elif sheet.action.startswith(COMMAND):
+    if sheet.action.startswith(COMMAND):
         window.commands.run(sheet.action.removeprefix(COMMAND), window)
     else:
         save_deck_settings(window, deck, sheet.original, sheet.result_settings())
@@ -176,7 +168,7 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
     except (deck_editor.StaleFileError, ValueError, OSError) as exc:
         QMessageBox.critical(window, "Deck settings failed", str(exc))
         return
-    changed = [name for name in ("template", "language", "footer_text", "course_url",
+    changed = [name for name in ("template", "language", "footer_text",
                                  "output_folders", "appendix_toc", "open_pdf", "footer_hide", "dark_mode")
                if getattr(new, name) != getattr(old, name)]
     window.log(f"Updated settings of {deck.name}: " + ", ".join(
@@ -189,18 +181,6 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
             and window.state.mode in ("preview", "split")):
         # reload_decks refreshes the target with the saved preamble first.
         window.centre.preview.render_after_save()
-
-
-def insert_admin_slides(window, deck: Deck, admin: AdminSlidesTab) -> None:
-    try:
-        slide_paths = admin_slides.insert_admin_slides(
-            window.project, deck, admin.position, admin.slide_specs, admin.language)
-    except (OSError, ValueError, deck_editor.StaleFileError) as exc:
-        QMessageBox.critical(window, "Admin slides failed", str(exc))
-        return
-    window.after_deck_edit(
-        deck.path, f"Inserted admin slides into {deck.name}", previous_text=deck.text)
-    window.open_slide_editor(slide_paths[0])
 
 
 def on_edit_deck_tags(window, deck: Deck) -> None:

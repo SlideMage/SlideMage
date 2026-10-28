@@ -115,12 +115,12 @@ def sheet_for(window, tab="Fixture"):
 
 def test_deck_settings_tab_replaces_save_with_the_footer_action(window):
     sheet = sheet_for(window)
-    assert sheet.tab_titles[3:] == ["Fixture", "Broken"]
-    assert sheet.current_tab() == 3
+    assert sheet.tab_titles[2:] == ["Fixture", "Broken"]
+    assert sheet.current_tab() == 2
     assert sheet.plugin_button.text() == "Do it"
     assert not sheet.plugin_button.isHidden() and sheet.save_button.isHidden()
     assert not sheet.plugin_button.isEnabled()           # enabled(page): the field is empty
-    page = sheet.plugin_tabs[3][1]
+    page = sheet.plugin_tabs[2][1]
     page.edit.setText("x")                               # the page's changed signal asks again
     assert sheet.plugin_button.isEnabled()
     sheet.plugin_button.click()
@@ -131,8 +131,8 @@ def test_deck_settings_tab_replaces_save_with_the_footer_action(window):
 
 def test_a_failing_tab_build_shows_an_error_caption(window):
     sheet = sheet_for(window, "Broken")
-    assert sheet.current_tab() == 4
-    page = sheet.plugin_tabs[4][1]
+    assert sheet.current_tab() == 3
+    page = sheet.plugin_tabs[3][1]
     assert "no tab" in page.findChild(QLabel).text()
     assert sheet.plugin_button.isHidden() and not sheet.save_button.isHidden()      # its footer action is dropped
 

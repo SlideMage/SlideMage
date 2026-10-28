@@ -40,7 +40,6 @@ def test_read_settings_ignores_commented_lines_and_the_override_branch():
     assert s.footer_text == "PS Financial Management 2 | 2027s"
     assert s.output_folders == {
         None: "D:/Teaching/FM2/current", "presenter": "D:/Teaching/FM2/current/presenter.pdf"}
-    assert s.course_url == ""
     assert not s.appendix_toc
 
 
@@ -123,16 +122,28 @@ def test_apply_settings_writes_only_what_changed_and_keeps_crlf():
     old = read(text)
     new = read(text)
     new.template = "slidemage"
-    new.course_url = "https://example.org/course"
     new.output_folders[None] = ""
     out = deck_settings.apply_settings(text, old, new, "t.tex")
     assert "\n" not in out.replace("\r\n", "")
     result = read(out)
     assert result.template == "slidemage"
-    assert result.course_url == "https://example.org/course"
     assert None not in result.output_folders
     assert result.language == old.language and result.footer_text == old.footer_text
     # nothing changed -> text identical
+    assert deck_settings.apply_settings(text, old, read(text)) == text
+
+
+def test_saving_settings_leaves_a_course_url_comment_alone(tmp_path):
+    text = DECK.replace("\\begin{document}", "%% SlideMage course URL: https://example.org/course/1\n\\begin{document}")
+    assert "%% SlideMage course URL: https://example.org/course/1" in text
+    path = tmp_path / "d.tex"
+    path.write_text(text, encoding="utf-8", newline="")
+    old = read(text)
+    new = read(text)
+    new.template, new.language, new.footer_text, new.appendix_toc = "mci", "de", "Other", True
+    new.open_pdf = "presenter"
+    saved = deck_settings.save_settings(path, text, old, new)
+    assert saved.count("%% SlideMage course URL: https://example.org/course/1\n") == 1
     assert deck_settings.apply_settings(text, old, read(text)) == text
 
 
@@ -152,18 +163,12 @@ def test_save_settings_refuses_a_deck_changed_on_disk(tmp_path):
 
 def form(original=None, **fields) -> DeckSettings:
     original = original or DeckSettings(template="uni-graz")
-    values = dict(template="uni-graz", language="en", footer_text="", course_url="", output_folders={},
+    values = dict(template="uni-graz", language="en", footer_text="", output_folders={},
                   appendix_toc=False, open_pdf="instructor") | fields
     return deck_settings.from_form(original, **values)
 
 
-def test_from_form_checks_the_course_link_and_drops_empty_paths():
-    assert form(course_url="  https://example.org/course  ").course_url == "https://example.org/course"
-    assert form(course_url="   ").course_url == ""
-    with pytest.raises(ValueError, match="http"):
-        form(course_url="ftp://example.org/course")
-    with pytest.raises(ValueError, match="spaces"):
-        form(course_url="not a url")
+def test_from_form_drops_empty_paths():
     assert form(output_folders={None: " ", "presenter": "E:\\Talks "}).output_folders == {"presenter": "E:/Talks"}
 
 

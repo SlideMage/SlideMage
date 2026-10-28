@@ -6,12 +6,14 @@ Upgrading from a release with built-in AI and CAMPUSonline features matters most
 removes a feature would silently take it from people who use it. used_features() finds the features this machine
 and this project use, as plugin id -> the reason the sheet shows; preselect() turns that into the sheet's ticks.
 
-Not wired into the sheet yet: PRESELECT_ON_UPGRADE stays False until the release that removes a feature from core.
+Only CampusOnline is preselected (PRESELECT_ON_UPGRADE): v9.0.0 removed its features from core. Claude and Ollama
+are still built in, so their ticks stay off until a release removes them.
 No Qt: reads files and settings only.
 """
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 
 from .. import app_settings, deck_scan
@@ -23,11 +25,13 @@ from .loader import discover, plugins_dir
 
 log = logging.getLogger(__name__)
 
-# The release that removes a feature from core turns this on, so the first start preselects the plugins of the
-# features in use (with the reason). Until then the sheet preselects nothing.
-PRESELECT_ON_UPGRADE = False
-
 CLAUDE, OLLAMA, CAMPUSONLINE = "claude", "ollama", "campusonline"
+# The plugins whose feature a release removed from core: the first start preselects them (with the reason) when
+# the feature is in use. A release that removes another feature adds its plugin id here.
+PRESELECT_ON_UPGRADE: frozenset[str] = frozenset({CAMPUSONLINE})
+# The comment CampusOnline decks carry in their preamble. Core no longer parses or writes it (the CampusOnline plugin
+# does); this is only the host recognising a plugin's data, to offer the plugin.
+COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*\S", re.MULTILINE)
 OFFER_SEEN_NAME = "offer_seen"
 
 
@@ -37,6 +41,21 @@ def _routes_with_models(ctx: ProjectContext) -> set[str]:
     if not isinstance(stored, dict):
         return set()
     return {route for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
+
+
+def has_course_link(text: str) -> bool:
+    """Whether a deck's preamble has a "%% SlideMage course URL: ..." comment."""
+    begin = deck_scan.DOCUMENT_BEGIN_LINE_RE.search(text)
+    return COURSE_URL_RE.search(text[:begin.start()] if begin else text) is not None
+
+
+def course_linked_decks(ctx: ProjectContext) -> list:
+    """The project's decks with a course link."""
+    try:
+        return [deck for deck in deck_scan.scan_decks(ctx) if has_course_link(deck.text)]
+    except OSError:
+        log.exception("could not scan the decks for course links")
+        return []
 
 
 def used_features(ctx: ProjectContext) -> dict[str, str]:
@@ -51,11 +70,7 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
         used[CLAUDE] = "You chose Claude models in the AI settings"
     if ai_profile.LOCAL in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
         used[OLLAMA] = "You chose Ollama models"
-    try:
-        linked = [deck for deck in deck_scan.scan_decks(ctx) if deck.course_url]
-    except OSError:
-        log.exception("could not scan the decks for course links")
-        linked = []
+    linked = course_linked_decks(ctx)
     if linked:
         used[CAMPUSONLINE] = ("A deck of this project has a CAMPUSonline course link" if len(linked) == 1
                               else f"{len(linked)} decks of this project have CAMPUSonline course links")
@@ -65,6 +80,11 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
 def preselect(catalogue_plugins: Iterable[CataloguePlugin], used: dict[str, str]) -> set[str]:
     """The ids to tick: the catalogue's plugins whose feature is in use."""
     return {plugin.id for plugin in catalogue_plugins if plugin.id in used}
+
+
+def preselected_reasons(ctx: ProjectContext) -> dict[str, str]:
+    """What the first-start sheet ticks: plugin id -> reason, only for the plugins in PRESELECT_ON_UPGRADE."""
+    return {plugin_id: why for plugin_id, why in used_features(ctx).items() if plugin_id in PRESELECT_ON_UPGRADE}
 
 
 # -- the flag: the sheet is offered once per machine ---------------------------------------------

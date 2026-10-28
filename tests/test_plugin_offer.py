@@ -47,6 +47,11 @@ def no_real_browser(monkeypatch):
     return opened
 
 
+@pytest.fixture(autouse=True)
+def nothing_in_use(monkeypatch):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {})       # the fake windows have no project to read
+
+
 CAT = catalogue.parse(catalogue_json(entry("alpha", "Alpha")))
 
 
@@ -171,12 +176,12 @@ def test_the_upgrade_preselection_is_passed_on_only_when_switched_on(monkeypatch
             pass
 
     monkeypatch.setattr(maintenance, "PluginOfferSheet", FakeSheet)
-    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"claude": "why"})
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"claude": "a", "campusonline": "why"})
     window = SimpleNamespace(project=SimpleNamespace(root="/p"))
     maintenance.on_plugin_offer_fetched(window, CAT)
-    monkeypatch.setattr(upgrade, "PRESELECT_ON_UPGRADE", True)
+    monkeypatch.setattr(upgrade, "PRESELECT_ON_UPGRADE", frozenset({"claude", "campusonline"}))
     maintenance.on_plugin_offer_fetched(window, CAT)
-    assert seen == [{}, {"claude": "why"}]
+    assert seen == [{"campusonline": "why"}, {"claude": "a", "campusonline": "why"}]
 
 
 # -- the list

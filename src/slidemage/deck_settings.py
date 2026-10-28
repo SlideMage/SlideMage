@@ -23,7 +23,6 @@ from .deck_scan import (
     OUTPUT_FOLDER_RE,
     DECKAPPENDIXTOC_RE,
     OPEN_PDF_RE,
-    parse_course_url,
     parse_open_pdf,
 )
 from .tex_source import braced_argument, is_commented
@@ -55,7 +54,6 @@ class DeckSettings:
     template: str = ""
     language: str = "en"
     footer_text: str = ""
-    course_url: str = ""
     output_folders: dict[str | None, str] = field(default_factory=dict)
     appendix_toc: bool = False
     # which PDF the deck table's "Open pdf" opens by default (deck_scan.OPEN_PDF_RE)
@@ -131,14 +129,12 @@ def _clean_path(path: str) -> str:
 
 
 def from_form(
-    original: DeckSettings, *, template: str, language: str, footer_text: str, course_url: str,
+    original: DeckSettings, *, template: str, language: str, footer_text: str,
     output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
     footer_hide: tuple[str, ...] = (), dark_mode: bool = False,
 ) -> DeckSettings:
-    """The settings a form of the sheet holds, checked: a course link must be a web address
-    (ValueError otherwise), an output path may not hold LaTeX specials. A path left as it was in
+    """The settings a form of the sheet holds, checked: an output path may not hold LaTeX specials. A path left as it was in
     `original` stays byte for byte, whatever its slashes; an empty one is no entry."""
-    url = course_url.strip()
     folders = {}
     for key, typed in output_folders.items():
         typed = typed.strip()
@@ -147,7 +143,6 @@ def from_form(
             folders[key] = path
     return DeckSettings(
         template=template, language=language, footer_text=footer_text,
-        course_url=deck_editor.normalize_course_url(url) if url else "",
         output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
         footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide),
         dark_mode=dark_mode)
@@ -196,7 +191,6 @@ def read_settings(text: str) -> DeckSettings:
         settings.footer_hide = tuple(e for e in FOOTER_ELEMENTS if e in listed)
     begin = DOCUMENT_BEGIN_LINE_RE.search(text)
     preamble = text[:begin.start()] if begin else text
-    settings.course_url = parse_course_url(text) or ""
     settings.open_pdf = parse_open_pdf(text) or "instructor"
     for match in _live(text, OUTPUT_FOLDER_RE):
         key = (match.group(1) or "").strip() or None
@@ -318,8 +312,6 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
         text = set_language(text, new.language)
     if new.footer_text != old.footer_text:
         text = set_footer_text(text, new.footer_text)
-    if new.course_url != old.course_url:
-        text = deck_editor.course_url_text(text, new.course_url, deck_name)
     for key in OUTPUT_KEYS:
         before, after = old.output_folders.get(key, ""), new.output_folders.get(key, "")
         if after != before:

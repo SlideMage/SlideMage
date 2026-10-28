@@ -308,24 +308,13 @@ def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(proje
     assert r.resolver.lookup(unit).state is Freshness.FAILED
 
 
-def test_a_deck_whose_course_meets_soon_comes_after_the_open_deck_and_before_the_rest(project, store, raster):
-    r = make(project, store, raster, soon=lambda deck: deck.name == "slidemage-manual-copy")
+def test_a_deck_a_plugin_wants_soon_comes_after_the_open_deck_and_before_the_rest(project, store, raster):
+    r = make(project, store, raster, plugin_soon=lambda deck: deck.name == "slidemage-manual-copy")
     store.touch_deck("slidemage-manual", opened=True)
     assert [d.name for d in r.ordered_decks()][:2] == ["slidemage-manual-copy", "slidemage-manual"]
 
 
-def test_the_course_schedule_is_only_read_from_the_copy_kept_when_it_was_fetched():
-    from datetime import date
 
-    from slidemage import course_schedule
-    url = "https://online.uni-graz.at/kfu_online/ee/ui/ca2/app/desktop/#/slc.tm.cp/student/courses/12345?pStpSpNr=12345"
-    url = "https://online.uni-graz.at/kfu_online/pl/ui/$ctx/wbLv.wbShowLVDetail?pStpSpNr=12345"
-    assert course_schedule.session_soon(url) is False                             # nothing fetched yet: no boost, no network
-    sessions = tuple(course_schedule.CourseSession(d, "10:00", "11:30", "", "", "") for d in ("20.10.2026", "01.12.2026"))
-    course_schedule.remember_schedule(url, course_schedule.CourseSchedule((course_schedule.CourseGroup("G", sessions),)))
-    assert course_schedule.session_soon(url, today=date(2026, 10, 18)) is True        # in two days
-    assert course_schedule.session_soon(url, today=date(2026, 10, 22)) is False       # the next is six weeks away
-    assert course_schedule.session_soon(None) is False and course_schedule.session_soon("not a url") is False
 
 
 def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster):

@@ -21,7 +21,7 @@ import sys
 from dataclasses import replace
 
 from ... import ai_review
-from ...deck_scan import TAG_COURSE, TAG_MANUAL
+from ...deck_scan import TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..presentation import launch
@@ -71,10 +71,6 @@ def _keeps_group(w) -> bool:
 def _versioned(w) -> bool:
     deck = w.state.deck
     return deck is not None and deck.supports_version
-
-
-def _admin_slides_possible(w) -> bool:
-    return _active_deck(w) and TAG_COURSE in w.state.deck.groups and bool(w.state.deck.course_url)
 
 
 def _offered(w, scope: str, task):
@@ -299,8 +295,6 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
-    add("admin_slides", "Admin slides…", DECK, lambda w: deck_actions.on_admin_slides(w, w.state.deck), meta="course page",
-        enabled=_admin_slides_possible)
     add("deck_source", "Edit deck source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
     add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))

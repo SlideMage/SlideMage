@@ -14,7 +14,6 @@ from slidemage import alt_blocks, alt_draft, deck_editor, deck_scan
 from slidemage.ai import ai_profile
 from slidemage.ai.ai_profile import API, CLAUDE_CODE, CLOUD, LOCAL
 from slidemage.ai.providers import OllamaProvider
-from slidemage.ui.dialogs import deck_settings as deck_settings_module
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
 from slidemage.ui.dialogs.deck_settings import DeckSettingsSheet
 from slidemage.ui.dialogs.settings import SettingsSheet
@@ -52,7 +51,6 @@ def settings_sheet(window, tmp_path, monkeypatch):
 
 
 def deck_sheet(window, tmp_path, monkeypatch):
-    monkeypatch.setattr(deck_settings_module.AdminSlidesTab, "start", lambda self: None)     # no network
     return DeckSettingsSheet(window, make_deck(tmp_path), TEMPLATES)
 
 
@@ -116,7 +114,6 @@ def test_the_badge_names_its_route_for_a_screen_reader(qapp):
 
 
 def test_a_sheet_without_a_window_has_no_badge(tmp_path, monkeypatch, qapp):
-    monkeypatch.setattr(deck_settings_module.AdminSlidesTab, "start", lambda self: None)
     sheet = DeckSettingsSheet(None, make_deck(tmp_path), TEMPLATES)
     assert not sheet.findChildren(ModeBadge)
 

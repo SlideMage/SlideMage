@@ -147,7 +147,7 @@ MENU_BAR = (
                      "selection:proofread")),
                ("", ("slide:clear",)))),
     ("&Deck", (("", (DECKS, "archived_decks", "refresh_decks")), ("", ("present", "open_pdf")),
-               ("", ("deck_settings", "deck_tags", "admin_slides", "deck_source")),
+               ("", ("deck_settings", "deck_tags", "deck_source")),
                ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
                      "create_snapshot")),
                ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability")),

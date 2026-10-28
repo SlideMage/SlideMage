@@ -68,13 +68,17 @@ def test_both_ai_features_are_found_together(ctx):
 
 
 def test_a_deck_with_a_course_link_means_campusonline(ctx, monkeypatch):
-    decks = [SimpleNamespace(course_url=None), SimpleNamespace(course_url="https://campus.example/course/1")]
+    def deck(link):
+        return SimpleNamespace(text="\\documentclass{beamer}\n" + (f"%% SlideMage course URL: {link}\n" if link else "")
+                               + "\\begin{document}\n")
+
+    decks = [deck(None), deck("https://campus.example/course/1")]
     monkeypatch.setattr(deck_scan, "scan_decks", lambda c: decks)
     used = upgrade.used_features(ctx)
     assert list(used) == ["campusonline"] and "course link" in used["campusonline"]
-    decks.append(SimpleNamespace(course_url="https://campus.example/course/2"))
+    decks.append(deck("https://campus.example/course/2"))
     assert "2 decks" in upgrade.used_features(ctx)["campusonline"]
-    monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(course_url=None)])
+    monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [deck(None)])
     assert upgrade.used_features(ctx) == {}
 
 
@@ -93,11 +97,45 @@ def test_preselect_picks_the_catalogue_plugins_in_use():
     assert upgrade.preselect(plugins, {}) == set()
 
 
-def test_preselection_is_off_until_a_release_removes_a_feature():
-    assert upgrade.PRESELECT_ON_UPGRADE is False
+def test_a_course_link_in_the_body_or_empty_does_not_count():
+    assert upgrade.has_course_link("%% SlideMage course URL: https://x.org/c\n\\begin{document}\n")
+    assert not upgrade.has_course_link("\\begin{document}\n%% SlideMage course URL: https://x.org/c\n")
+    assert not upgrade.has_course_link("%% SlideMage course URL:   \n\\begin{document}\n")
+
+
+def test_only_campusonline_is_preselected_while_claude_and_ollama_are_built_in(ctx, monkeypatch):
+    assert upgrade.PRESELECT_ON_UPGRADE == {"campusonline"}
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {"claude": "a", "ollama": "b", "campusonline": "c"})
+    assert upgrade.preselected_reasons(ctx) == {"campusonline": "c"}
 
 
 def test_the_offer_flag():
     assert not upgrade.offer_seen()
     upgrade.mark_offer_seen()
     assert upgrade.offer_seen() and (loader.plugins_dir() / "offer_seen").is_file()
+
+
+def test_the_course_link_hint_shows_once_per_project_until_dismissed(ctx, monkeypatch):
+    from slidemage.ui.workspace import maintenance
+
+    monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(
+        text="%% SlideMage course URL: https://campus.example/c/1\n\\begin{document}\n")])
+    shown = []
+    window = SimpleNamespace(project=ctx, toast=SimpleNamespace(
+        show_message=lambda text, actions=(), **kw: shown.append((text, [key for key, _ in actions]))))
+    monkeypatch.setattr(maintenance.plugin_session, "loaded", lambda: [])
+    maintenance.show_course_hint(window)
+    assert len(shown) == 1 and "CampusOnline course links" in shown[0][0]
+    assert shown[0][1] == [maintenance.OPEN_PLUGINS, maintenance.COURSE_HINT_DISMISS]
+    maintenance.on_plugin_toast_action(window, maintenance.COURSE_HINT_DISMISS)
+    maintenance.show_course_hint(window)
+    assert len(shown) == 1                                       # dismissed for this project
+    app_settings.set(ctx, maintenance.COURSE_HINT_DISMISSED_KEY, False)
+    monkeypatch.setattr(maintenance.plugin_session, "loaded",
+                        lambda: [SimpleNamespace(id="campusonline")])
+    maintenance.show_course_hint(window)
+    assert len(shown) == 1                                       # the plugin is loaded
+    monkeypatch.setattr(maintenance.plugin_session, "loaded", lambda: [])
+    monkeypatch.setattr(deck_scan, "scan_decks", lambda c: [SimpleNamespace(text="\\begin{document}\n")])
+    maintenance.show_course_hint(window)
+    assert len(shown) == 1                                       # no course links
