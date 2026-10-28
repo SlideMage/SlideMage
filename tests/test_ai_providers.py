@@ -6,7 +6,10 @@ API-key sources. (The route resolver and its settings are in test_ai_profile.py.
 from __future__ import annotations
 
 import base64
+import ssl
 import threading
+import time
+import urllib.parse
 
 import pytest
 
@@ -20,7 +23,7 @@ from slidemage.ai.providers import (
     parse_json_object,
 )
 
-from fake_http import api_key_of, message_sse
+from fake_http import TEST_TLS_CERT, ConnectProxy, Server, api_key_of, message_sse, wait_for_first_piece
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -160,6 +163,135 @@ def test_capabilities_are_asked_once_per_model(server):
     server.status, server.body = 404, {"error": "model 'm' not found"}
     assert OllamaProvider("m", host=server.url).capabilities() == ()
     assert OllamaProvider("m", host="http://127.0.0.1:9").capabilities() == ()
+
+
+# -- HTTPS proxies -----------------------------------------------------------
+
+@pytest.fixture
+def proxy_environment(monkeypatch):
+    # Exercise the real environment resolver, with no developer proxy settings.
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "")
+    context = ssl.create_default_context(cafile=str(TEST_TLS_CERT))
+    monkeypatch.setattr(ssl, "_create_default_https_context", lambda: context)
+
+
+@pytest.fixture
+def https_server(proxy_environment):
+    srv = Server(tls=True)
+    yield srv
+    srv.close()
+
+
+@pytest.fixture
+def proxy(https_server):
+    relay = ConnectProxy(https_server.httpd.server_address)
+    yield relay
+    relay.close()
+
+
+@pytest.mark.parametrize("variable", ["HTTPS_PROXY", "https_proxy", "ALL_PROXY"])
+def test_anthropic_https_uses_connect_proxy(https_server, proxy, monkeypatch, variable):
+    monkeypatch.setenv(variable, proxy.url)
+    answer_with(https_server, [{"type": "text", "text": "via proxy"}])
+    p = anthropic(https_server)
+    # This name cannot resolve directly: only the local proxy routes it to the API.
+    p.base_url = "https://api.anthropic.test"
+    assert p.chat([{"role": "user", "content": "hi"}]).text == "via proxy"
+    assert len(proxy.requests) == 1 and proxy.requests[0]["path"] == "api.anthropic.test:443"
+    assert "proxy-authorization" not in proxy.requests[0]["headers"]
+    assert https_server.requests[0]["headers"]["host"] == "api.anthropic.test"
+    assert api_key_of(https_server.requests[0]) == "sk-test"
+
+
+@pytest.mark.parametrize("variable", ["NO_PROXY", "no_proxy"])
+def test_anthropic_no_proxy_bypasses_connect(https_server, proxy, monkeypatch, variable):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+    monkeypatch.setenv(variable, "127.0.0.1")
+    answer_with(https_server, [{"type": "text", "text": "direct"}])
+    assert anthropic(https_server).chat([{"role": "user", "content": "hi"}]).text == "direct"
+    assert not proxy.requests
+
+
+@pytest.mark.parametrize("bypass", ["", "localhost,127.0.0.1,::1"])
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "127.0.0.2", "::1"])
+def test_local_ollama_is_never_proxied(proxy_environment, monkeypatch, bypass, host):
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:8080")
+    monkeypatch.setenv("NO_PROXY", bypass)
+    authority = f"[{host}]" if ":" in host else host
+    conn = OllamaProvider()._connection(urllib.parse.urlsplit(f"https://{authority}:11434"), 1)
+    try:
+        assert conn.host == host and conn._tunnel_host is None
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("variable", ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"])
+def test_https_proxy_connection_configuration(proxy_environment, monkeypatch, variable):
+    monkeypatch.setenv(variable, "http://user%40name:p%3Ass@proxy.test:8080")
+    parts = urllib.parse.urlsplit("https://api.anthropic.test:8443")
+    for provider in (AnthropicProvider(), OllamaProvider()):
+        conn = provider._connection(parts, 10)
+        try:
+            assert (conn.host, conn.port) == ("proxy.test", 8080)
+            assert (conn._tunnel_host, conn._tunnel_port) == ("api.anthropic.test", 8443)
+            assert conn._tunnel_headers["Proxy-Authorization"] == "Basic dXNlckBuYW1lOnA6c3M="
+        finally:
+            conn.close()
+
+
+@pytest.mark.parametrize("variable", ["NO_PROXY", "no_proxy"])
+def test_proxy_bypass_connection_configuration(proxy_environment, monkeypatch, variable):
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:8080")
+    monkeypatch.setenv(variable, ".anthropic.test")
+    conn = AnthropicProvider()._connection(urllib.parse.urlsplit("https://api.anthropic.test"), 10)
+    try:
+        assert conn.host == "api.anthropic.test" and conn._tunnel_host is None
+    finally:
+        conn.close()
+
+
+def test_proxy_basic_auth_is_only_sent_to_the_proxy(https_server, proxy, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url.replace("http://", "http://user%40name:p%3Ass@"))
+    answer_with(https_server, [{"type": "text", "text": "ok"}])
+    p = anthropic(https_server)
+    p.base_url = "https://api.anthropic.test:8443"
+    assert p.chat([{"role": "user", "content": "hi"}]).text == "ok"
+    assert proxy.requests[0]["path"] == "api.anthropic.test:8443"
+    assert proxy.requests[0]["headers"]["proxy-authorization"] == "Basic " + base64.b64encode(b"user@name:p:ss").decode()
+    assert "proxy-authorization" not in https_server.requests[0]["headers"]
+
+
+def test_abort_ends_a_stream_through_the_connect_proxy(https_server, proxy, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+    answer_with(https_server, [{"type": "text", "text": "Hello there"}])
+    body = https_server.body
+    https_server.stall_after = body.index("event: content_block_delta", body.index("content_block_delta") + 1)
+    p = anthropic(https_server)
+    p.base_url = "https://api.anthropic.test"
+    texts, outcome = [], []
+
+    def run():
+        try:
+            p.stream_turn("", [], [], texts.append)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        wait_for_first_piece(worker, texts)
+        assert p._sock is not None and len(proxy.requests) == 1
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+    finally:
+        p.abort()
+        https_server.delay.set()
+        worker.join(2)
 
 
 # -- Anthropic ---------------------------------------------------------------

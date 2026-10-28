@@ -6,9 +6,8 @@ syntax_check and the Settings dialog each carried their own Ollama calls).
 
 Ollama is stdlib (``http.client`` -- not ``urllib.request`` -- because a
 running request must be abortable from another thread by closing its
-socket, which urlopen() gives no handle for; see abort()). Claude goes
-through the official ``anthropic`` SDK (imported on first use: it takes a
-second to load), streaming even for a one-shot chat() so that abort() has a
+socket, which urlopen() gives no handle for; see abort()). Claude uses the
+same transport, streaming even for a one-shot chat() so that abort() has a
 connection to end. A provider is bound to one model; callers hold prompts
 and result checks, never HTTP.
 
@@ -30,11 +29,13 @@ from __future__ import annotations
 
 import base64
 import http.client
+import ipaddress
 import json
 import re
 import socket
 import sys
 import urllib.parse
+import urllib.request
 import uuid
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -127,12 +128,36 @@ class _HttpProvider:
         self._sock: socket.socket | None = None     # of the running request, for abort()
         self._cancelled = False
 
-    @staticmethod
-    def _connection(parts: urllib.parse.SplitResult, timeout: float) -> http.client.HTTPConnection:
-        """A not yet connected connection to the URL `parts` (http or https)."""
+    def _connection(self, parts: urllib.parse.SplitResult, timeout: float) -> http.client.HTTPConnection:
+        """An unconnected HTTP transport; HTTPS honours environment/system HTTP proxies."""
+        host = parts.hostname or "localhost"
         connection_class = (http.client.HTTPSConnection if parts.scheme == "https"
                             else http.client.HTTPConnection)
-        return connection_class(parts.hostname or "localhost", parts.port, timeout=timeout)
+        # Ollama normally runs locally. Even without NO_PROXY, never send a local
+        # Ollama request to a proxy (including loopback literals other than 127.0.0.1).
+        local = host.rstrip(".").lower() == "localhost"
+        try:
+            local = local or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            pass
+        proxy_url = None
+        if parts.scheme == "https" and not (self.is_local and local):
+            if not urllib.request.proxy_bypass(parts.netloc):
+                proxies = urllib.request.getproxies()
+                proxy_url = proxies.get("https") or proxies.get("all")
+        if not proxy_url:
+            return connection_class(host, parts.port, timeout=timeout)
+        proxy = urllib.parse.urlsplit(proxy_url if "://" in proxy_url else "http://" + proxy_url)
+        if proxy.scheme != "http" or not proxy.hostname:
+            raise ProviderError("HTTPS requests require an http:// proxy.")
+        headers = {}
+        if proxy.username is not None:
+            credentials = (urllib.parse.unquote(proxy.username) + ":" +
+                           urllib.parse.unquote(proxy.password or ""))
+            headers["Proxy-Authorization"] = "Basic " + base64.b64encode(credentials.encode()).decode("ascii")
+        conn = connection_class(proxy.hostname, proxy.port or 80, timeout=timeout)
+        conn.set_tunnel(host, parts.port or 443, headers=headers)
+        return conn
 
     @contextmanager
     def _request(self, method: str, base_url: str, endpoint: str, *, headers: dict[str, str],
