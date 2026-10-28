@@ -2880,3 +2880,17 @@ v8.69.0 (2026-10-28, direct request: "Yes, fix it", the proposal: each preview d
 
 NEW: A new alt text no longer makes every preview out of date.
 - Adding or editing the alt text of one picture now only re-renders the previews of the slides that show it.
+
+v8.69.1 (2026-10-28, plugins plan, phase 4): The Anthropic API is reached without the anthropic SDK. AnthropicProvider moved to ai/anthropic_provider.py and talks to /v1/messages and /v1/models with http.client and server-sent events, as the Ollama provider already did with its own plumbing. It keeps what the SDK gave: streaming for chat() too, so that Stop always has a connection to end; two retries with backoff (or the server's retry-after) on 408/409/429/5xx and dropped connections, only before any answer has arrived, and a Stop that also ends the wait; the same error messages; unknown events and deltas ignored. The assistant's turn is kept as plain JSON blocks (thinking blocks with their signatures included) and replayed unchanged. Tests in test_agent_claude.py and test_ai_providers.py.
+
+NEW: Nothing changes for you; the Claude API route works as before.
+- The anthropic package is no longer used (its removal from the build is a separate step).
+
+v8.70.0 (2026-10-28, plugins plan, phase 4): The anthropic package and what came only with it (pydantic, pydantic_core, httpx2, httpcore2, anyio, jiter and others) leave pyproject.toml, the build spec and THIRD_PARTY_NOTICES.md; tools/third_party_notices.py no longer lists it. The download gets smaller and the first request to the API no longer waits for the SDK to load.
+
+AI HTTPS requests now follow system and environment proxy settings and bypass rules, using CONNECT through HTTP proxies with credentials sent only to the proxy; local Ollama stays direct. The shared transport makes TCP connection, proxy tunnelling and TLS handshake abortable by publishing the active socket during setup, with nonblocking TCP polling and synchronized socket ownership. Tests in test_ai_providers.py and test_agent_claude.py.
+
+NEW: A smaller download and more reliable AI connections.
+- SlideMage is a little smaller to download.
+- AI requests can use the proxy settings often needed on university and company networks.
+- Stop can end an AI connection stuck while connecting.
