@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""tools/calibrate_font_profile.py (v9.6.0): reads a profile's numbers, compares them with a measurement of the
-calibration deck's PDF. The pure parts are tested here; the compile-and-measure run is opt-in (needs LuaLaTeX:
-SLIDEMAGE_TEX_TESTS=1), like the other tests that compile."""
+"""tools/calibrate_font_profile.py (v9.8.0): reads a profile's three numbers, compares them with a measurement of the
+calibration deck's PDF, and checks the values the base derives against the geometry their hooks ask for. The pure
+parts are tested here; the compile-and-measure run is opt-in (needs LuaLaTeX: SLIDEMAGE_TEX_TESTS=1), like the other
+tests that compile."""
 import importlib.util
 import os
 import shutil
@@ -47,11 +48,12 @@ def test_a_profiles_lengths_are_read_in_pt():
 def test_the_shipped_profiles_numbers_are_all_readable():
     for profile in ("fira", "lmsans"):
         text = cal.profile_text(ROOT / "latex", profile)
-        for name in ("SMFooterTextDrop", "SMContentTopShift",
-                     "SMColumnsTopCorrection", "SMColumnsTTopCompensation", "SMSectionframeHeightCorrection",
-                     "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
-                     "SMEnumerateNestedLeftMargin"):
+        for name in ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"):
             assert cal.tex_length(text, name) is not None, (profile, name)
+        # the numbers the base derives since v9.8.0 are not in the profile
+        for name in ("SMFooterTextDrop", "SMSectionframeHeightCorrection", "SMLabelItemWidth", "SMLabelItemSep",
+                     "SMEnumerateNestedMinNumber", "SMEnumerateNestedLeftMargin"):
+            assert cal.tex_length(text, name) is None, (profile, name)
 
 
 def test_a_row_is_ok_within_the_tolerance_and_an_advisory_one_never_fails():
@@ -59,6 +61,22 @@ def test_a_row_is_ok_within_the_tolerance_and_an_advisory_one_never_fails():
     assert not cal.Row("SMA", 4.6, 5.0, "").ok
     assert cal.Row("SMA", 4.6, None, "").ok and cal.Row("SMA", None, 5.0, "").ok
     assert cal.Row("SMA", 4.6, 9.0, "", advisory=True).ok
+
+
+def test_a_check_is_ok_within_its_tolerance_and_when_nothing_was_measured():
+    assert cal.Check("x", 1.0, 1.2, "").ok and not cal.Check("x", 1.0, 1.5, "").ok
+    assert cal.Check("x", None, 1.5, "").ok and cal.Check("x", 1.0, None, "").ok
+    assert cal.Check("x", 0.1, 0.0, "", tolerance=0.05).ok is False
+
+
+def test_a_catalog_default_in_em_is_read_from_the_setup_file():
+    setup = (BS + "newcommand{" + BS + "SMLabelItemGap}{0.475em}  % gap" + chr(10)
+             + BS + "newcommand{" + BS + "SMOther}{3pt}" + chr(10))
+    assert cal.em_default(setup, "SMLabelItemGap") == 0.475
+    assert cal.em_default(setup, "SMOther") is None and cal.em_default(setup, "SMMissing") is None
+    shipped = (ROOT / "latex" / "SlideMage_setup.tex").read_text(encoding="utf-8")
+    for name in ("SMLabelItemGap", "SMEnumerateNestedSlotExtra", "SMEnumerateNestedLabelGap"):
+        assert cal.em_default(shipped, name) is not None, name
 
 
 def test_the_template_input_of_a_deck_is_swapped_for_a_template_under_a_profile():
@@ -72,7 +90,7 @@ def test_the_calibration_deck_has_a_slide_for_each_measurement():
     slides = {p.name.split("-")[0] for p in (STRESS / "slides").glob("*-current.tex")}
     deck = (STRESS / "decks" / "calibration.tex").read_text(encoding="utf-8")
     ids = (STRESS / "slide_ids.csv").read_text(encoding="utf-8")
-    for slide_id in ("ZC2", "ZC3", "ZC4", "ZC5", "ZCI", "ZCJ", "ZCK", "ZCL"):
+    for slide_id in ("ZC2", "ZC3", "ZC4", "ZC5", "ZC8", "ZCI", "ZCJ", "ZCK", "ZCL"):
         assert slide_id in slides and f"slide{{{slide_id}-" in deck and f'"{slide_id}"' in ids
     # every frame type the framework has is on a slide of the deck
     text = "".join((STRESS / "slides" / name).read_text(encoding="utf-8")
@@ -89,12 +107,13 @@ def test_the_calibration_deck_has_a_slide_for_each_measurement():
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
                     reason="compiles the calibration deck: SLIDEMAGE_TEX_TESTS=1 and latexmk")
 @pytest.mark.parametrize("profile", ["fira", "lmsans"])
-def test_a_shipped_profile_reads_back_its_own_calibrations(profile, tmp_path):
+def test_a_shipped_profile_reads_back_its_own_calibrations_and_meets_its_hooks(profile, tmp_path):
     out = tmp_path / "cal.pdf"
     proc = subprocess.run([sys.executable, str(ROOT / "tools" / "calibrate_font_profile.py"), "--profile", profile,
                            "--keep-pdf", str(out)], capture_output=True, text=True, errors="replace")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "SET" not in proc.stdout and "SMFooterTextDrop" in proc.stdout and out.is_file()
+    assert "SET" not in proc.stdout and "FAIL" not in proc.stdout and out.is_file()
+    assert "footer number centred" in proc.stdout and "footnote descenders" in proc.stdout and "section bar height" in proc.stdout
 
 
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),

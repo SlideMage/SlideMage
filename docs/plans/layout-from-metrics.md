@@ -251,3 +251,25 @@ derived by `SlideMage_base.tex`; the first two leave the catalog, the last two b
   text extraction only: a line of text that already ran 1.4-2.7pt past the page's right edge now ends 0.0-0.5pt on the other
   side of it; nothing visible. No word, drawing or image was added or lost, no text reflowed. Before/after images are in
   `C:/Users/palans/SlideMage/regression/step8-images/`.
+
+## Done 2026-10-28 (v9.8.0), notes for the later steps
+
+Step 9 (section B). Both profiles hold fonts, metrics and the three pull-ups (`SMContentTopShift`, `SMColumnsTopCorrection`, `SMColumnsTTopCompensation`, for step 10) and nothing else. Twelve names are derived and guarded by the setup layer like step 8's (`SM@guardname`); the design parts are hooks. Per row, Fira / lmsans, old -> new:
+
+| Row | Fira | lmsans | Derivation |
+|---|---|---|---|
+| `SMFooterTextDrop` | -0.49pt -> -0.451pt (+0.039pt, the centring the calibration measured: ink 1.94 above / 1.86 below) | -0.37pt -> -0.384pt | The number's baseline lies `SMFootlineDepth` + the id strut's depth + 0.4ex + drop above the page bottom (the drop is a `\vadjust`); the digits' ink is luaotfload's glyph box, i.e. the `\ht`/`\dp` of `0123456789`, so no Lua was needed. |
+| `SMLabelItemWidth` | 9.1pt -> 9.08pt | 9.16pt -> 9.16pt | widest of a)-c), 1)-9) with `)` or `.` in the list's font, + 0.1pt. Measured where the list begins, so it follows the size: the manual's list is at 10.95pt and gets 9.98pt. |
+| `SMLabelItemSep` | 4.75pt -> 4.75pt (at 10pt) | 5.20pt -> 4.75pt | hook `SMLabelItemGap` = 0.475em (the C rule is 2pt + half a C = 0.475em for Fira only). |
+| `SMEnumerateNestedMinNumber` | 7.85pt -> 7.85pt | 8.18pt -> 8.18pt | widest numeral 1.-9. (7.45pt Fira, 7.78pt lmsans) + hook `SMEnumerateNestedSlotExtra` 0.04em. |
+| `SMEnumerateNestedLabelSep` / `LeftMargin` | 5.25 / 13.1pt -> same | 5.25 / 13.43pt -> same | hook `SMEnumerateNestedLabelGap` 0.525em; left margin is slot + gap. At depth 3 (9pt) the column is 1.3pt narrower, a consequence of following the font. |
+| `SMEnumerateLabelBox` | 20.33pt -> 19.4pt | 20.33pt -> 20.4pt | width of a three-digit numeral; invisible (the numeral is right-aligned in a box that is wider than it). |
+| `SMEnumerateTextExtra` | 6.3pt -> hook | same | catalog length. |
+| `SMFootlineVOffset` | -3.6335pt -> -3.6335pt | -3.2009pt -> -2.2463pt (0.95pt higher footnotes) | beamer sets the last footnote baseline at footline height + depth + offset + 4pt (`\beamer@calculateheadfoot`); the offset puts the descenders (depth of gjpqy) `SMFootnoteFooterGap` = 1.6136pt above the footer box. |
+| `SMSectionframe{RefDepth,BottomGap,BottomPadCorrection,HeightCorrection}` | bar 85.02bp -> 85.02bp, title unchanged for 1-3 line titles with and without descenders | bar -0.024pt | the bar's content is typeset once in a box by the frame title's own beamercolorbox with top padding = bar height; padding = 2 x bar height - box. Last baseline = strut depth + hook `SMSectionframeTitleGap` 0.5436em above the bottom. `SMSectionframeBoxHeight` default 85.34pt (the bar as drawn); `SMSectionframeBarBottom` = that + 0.12bp. |
+
+- **New hooks:** `SMLabelItemGap`, `SMEnumerateNestedSlotExtra`, `SMEnumerateNestedLabelGap`, `SMEnumerateTextExtra`, `SMFootnoteFooterGap`, `SMSectionframeTitleGap`. The stress template sets all of them (and no longer `SMFootlineVOffset`).
+- **Things the next steps can use.** `\SM@sectionbarmetrics` (typeset the bar's material in a box, solve the padding from its height) is the pattern step 10's body-origin measurement can follow; the base writes `SMFootnoteFooterGap`, `SMFootnoteDescender` and `SMFooterBoxHeight` into the PDF info dictionary, which `tools/calibrate_font_profile.py` now checks (it suggests only the three pull-ups). The compat registry gets `font-measurements-derived`.
+- **Check.** `check_layout.py` is clean under the stress template (13 exempted findings) and the SlideMage template with fira (7) and lmsans (7), as in v9.7.0.
+- **Regression.** In-repo: 12 entries, 1084 pages, 0 failed compiles, fonts identical; 1054 pages differ by 0.04pt (footer number), 12 pages (slide 1w4) by the list text 0.55-1.28pt to the right. Private copy: 48 entries, 5274 pages, 0 failures, fonts identical; 5102 pages differ, almost all by the 0.04pt; 98 pages on 18 slides (1w4, bdh, bzd, cmv, ctu, gfx, ix7, jt8, kfh, kmf, nt4, p5r, raf, rre, seg, u5j, vjy, y3a) by list text shifts of -1.4 to +2.6pt (lists not at 10pt, third-level enumerate at 9pt). No word, drawing or image added, lost or reflowed. Images: `C:/Users/palans/SlideMage/regression/step9-images/`.
+- **Open for the user.** The v9.7.0 and v9.8.0 CHANGELOG entries carry BREAKING with the same major version (release_notes warns); the compat project migration for gothamFootlineVOffset (v9.1.0) now yields a template that sets a derived name.

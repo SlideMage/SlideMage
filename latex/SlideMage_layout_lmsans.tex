@@ -1,7 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
 % SlideMage layout profile "lmsans": Latin Modern Sans for text, Latin Modern Mono for
-% code (SlideMage v9.7.0).
+% code (SlideMage v9.8.0).
 %
 % Latin Modern comes with every TeX distribution, so this profile works on a machine
 % that has no Fira fonts, and it is the proof that a profile for another font is only a
@@ -10,8 +10,8 @@
 %   \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
 %
 % See SlideMage_layout_fira.tex for what a profile is and what it has to define; the
-% header of SlideMage_setup.tex has the recipe for a new one. The numbers under
-% "Calibrations" were set with tools/calibrate_font_profile.py and the calibration deck
+% header of SlideMage_setup.tex has the recipe for a new one. The three numbers
+% under "Calibrations" were set with tools/calibrate_font_profile.py and the calibration deck
 % of tests/fixtures/template_stress/ (see the note above that section).
 
 \RequirePackage{etoolbox}
@@ -102,35 +102,12 @@
 \newcommand{\SMParskip}{0.5em}
 
 % Calibrations -------------------------------------------------------------------------
-% The lengths SlideMage_layout_fira.tex measured at Fira Sans Light, here for Latin Modern
-% Sans. They are numbers of this font: a template does not change them, and the order is
-% the Fira profile's. Each one is set from a measurement of the calibration deck
-% (tools/calibrate_font_profile.py prints the suggestion); the ones that no measurement
-% reproduces are marked "as Fira". Re-measure after changing the font or the sizes.
-\newlength{\SMFooterTextDrop}
-\setlength{\SMFooterTextDrop}{-0.37pt}
-\newlength{\SMEnumerateLabelBox}
-\setlength{\SMEnumerateLabelBox}{20.33pt}
-\newlength{\SMEnumerateNestedLabelSep}
-\setlength{\SMEnumerateNestedLabelSep}{5.25pt}
-\newlength{\SMEnumerateNestedLeftMargin}
-\setlength{\SMEnumerateNestedLeftMargin}{13.43pt}
-\newlength{\SMEnumerateNestedMinNumber}
-\setlength{\SMEnumerateNestedMinNumber}{8.18pt}
-\newlength{\SMEnumerateTextExtra}
-\setlength{\SMEnumerateTextExtra}{6.3pt}
-\newlength{\SMLabelItemWidth}
-\setlength{\SMLabelItemWidth}{9.16pt}
-\newlength{\SMLabelItemSep}
-\setlength{\SMLabelItemSep}{5.20pt}
-\newlength{\SMSectionframeRefDepth}
-\setlength{\SMSectionframeRefDepth}{4.42pt}
-\newlength{\SMSectionframeBottomGap}
-\setlength{\SMSectionframeBottomGap}{14.32pt}
-\newlength{\SMSectionframeBottomPadCorrection}
-\setlength{\SMSectionframeBottomPadCorrection}{5.58pt}
-\newlength{\SMSectionframeHeightCorrection}
-\setlength{\SMSectionframeHeightCorrection}{15.95pt}
+% The pull-ups of the frames the automatic Top Margin does not manage, as in the Fira profile
+% (SlideMage_layout_fira.tex has the reasons); they are the only lengths of this profile that
+% were measured against the rendered PDF. Since v9.8.0 the footer text's drop, the list label and
+% numeral boxes, the footnotes' offset and the section frame's corrections are read from the font
+% where it is used or are hooks of the catalog (SlideMage_setup.tex, 'Derived, not set').
+% tools/calibrate_font_profile.py suggests these three for a new font.
 \newlength{\SMContentTopShift}
 \setlength{\SMContentTopShift}{11.17pt}
 \newlength{\SMColumnsTopCorrection}

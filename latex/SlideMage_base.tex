@@ -282,6 +282,21 @@
 \SM@derivedlength{SMTitleBarBottomAlign}
 \SM@derivedlength{SMFootnoteRightShift}
 \SM@derivedlength{SMFooterRightShift}
+% v9.8.0: the lengths below were numbers of the layout profile (measured once at Fira) or of the
+% catalog; each is evaluated in the font where it is used. The footer's, the lists' and the section
+% frame's follow with the code that uses them.
+\SM@derivedlength{SMFooterTextDrop}
+\SM@derivedlength{SMFootlineVOffset}
+\SM@derivedlength{SMLabelItemWidth}
+\SM@derivedlength{SMLabelItemSep}
+\SM@derivedlength{SMEnumerateNestedMinNumber}
+\SM@derivedlength{SMEnumerateNestedLabelSep}
+\SM@derivedlength{SMEnumerateNestedLeftMargin}
+\SM@derivedlength{SMEnumerateLabelBox}
+\SM@derivedlength{SMSectionframeRefDepth}
+\SM@derivedlength{SMSectionframeBottomGap}
+\SM@derivedlength{SMSectionframeBottomPadCorrection}
+\SM@derivedlength{SMSectionframeHeightCorrection}
 \makeatother
 % - \SMContentTopAlign, the Top Margin as an overlay coordinate: the same line the automatic Top Margin
 %   puts the first text line's box on (the Top Margin is in bp, the coordinate in pt: 41.58bp is 41.7359pt).
@@ -296,6 +311,19 @@
 %   from the page's edge, so the footnotes are pushed on by the difference.
 \setlength{\SMFootnoteRightShift}{\dimexpr\SMTextMarginRight-\SMFrametitleRightPadding\relax}
 % (\SMFooterRightShift is derived with the footer, below.)
+% - \SMFootlineVOffset (v9.8.0; the catalog's -0.5ex-0.77pt until then), the space the footline
+%   template puts before the footline box. Beamer sets the frame text area to end where the footline
+%   box begins (its height plus depth, and the offset, are its \footheight) plus a fixed 4pt
+%   (beamerbaseframecomponents.sty, \beamer@calculateheadfoot), and the last footnote line's baseline
+%   is the bottom of that area. So the baseline lies
+%       \SMFootlineHeight + \SMFootlineDepth + offset + 4pt
+%   above the page's bottom edge, and the offset that puts the descenders of that line (the depth of
+%   "gjpqy" in the footnote font) \SMFootnoteFooterGap above the footer box follows.
+\makeatletter
+\begingroup\usebeamerfont{footnote}\settodepth{\dimen0}{gjpqy}
+\global\SMFootlineVOffset=\dimexpr\SMFooterBoxHeight+\SMFootnoteFooterGap+\dimen0-4pt-\SMFootlineHeight-\SMFootlineDepth\relax
+\xdef\SMPDFInfoFootnoteDescender{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\makeatother
 
 % The effective margins, for tools/check_layout.py (SlideMage v9.5.0): custom keys of the PDF's
 % info dictionary, in bp (PDF units, what the tool measures in). SMTopMargin is the Top Margin
@@ -303,13 +331,19 @@
 % has set its hooks by now; a slide cannot change them. SMTitleBarBottom (v9.6.0) is the bottom edge of
 % the title bar (\SMTitleBarBottomAlign): the tool tells a frame with the ordinary title bar by it.
 % SMFontAscender, the text font's ascender, follows once it is known (below, with the Lua file).
+% v9.8.0: SMFootnoteFooterGap, SMFootnoteDescender (the depth of "gjpqy" in the footnote font) and
+% SMFooterBoxHeight, which tools/calibrate_font_profile.py checks the footnotes' position against.
 \ExplSyntaxOn
 \edef\SMPDFInfoTopMargin{\dim_to_decimal_in_bp:n{\SMTopMargin}}
 \edef\SMPDFInfoLeftMargin{\dim_to_decimal_in_bp:n{\SMFrametitleLeftPadding}}
 \edef\SMPDFInfoTitleBarBottom{\dim_to_decimal_in_bp:n{\SMTitleBarBottomAlign}}
+\edef\SMPDFInfoFootnoteGap{\dim_to_decimal_in_bp:n{\SMFootnoteFooterGap}}
+\edef\SMPDFInfoFooterBoxHeight{\dim_to_decimal_in_bp:n{\SMFooterBoxHeight}}
 \ExplSyntaxOff
 \hypersetup{pdfinfo={SMTopMargin={\SMPDFInfoTopMargin}, SMLeftMargin={\SMPDFInfoLeftMargin},
-	SMTitleBarBottom={\SMPDFInfoTitleBarBottom}}}
+	SMTitleBarBottom={\SMPDFInfoTitleBarBottom},
+	SMFootnoteFooterGap={\SMPDFInfoFootnoteGap}, SMFootnoteDescender={\SMPDFInfoFootnoteDescender},
+	SMFooterBoxHeight={\SMPDFInfoFooterBoxHeight}}}
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -2080,8 +2114,23 @@
 % footnotes get pulled further down, per this section's own comment
 % above).
 
-% (\SMFooterTextDrop, which centres the footer text in its box, is a number of the font: the
-% layout profile defines it, since v9.4.0.)
+% \SMFooterTextDrop (v9.8.0: derived; it was a number of the layout profile since v9.4.0, -0.49pt for
+% Fira Sans, -0.37pt for Latin Modern Sans) centres the ink of the frame number in the footer box. The
+% template below starts the footer line with \vspace*{drop}, which in the footline box's horizontal
+% mode is a \vadjust below the line, as is the \vspace*{0.4ex} that ends it; the box has the declared
+% depth \SMFootlineDepth, so the number's baseline lies
+%     \SMFootlineDepth + (the depth of the line) + 0.4ex + drop
+% above the page's bottom edge. The depth of the line is that of the slide id's strut
+% (\SMFooterIDStrut makes it the same on every slide). The ink of the digits is what luaotfload
+% keeps as the height and depth of a digit's box (the glyph's bounding box: 676 and 19 units in Fira
+% Sans Light), so centring it in the footer box of height \SMFooterBoxHeight gives the drop.
+\makeatletter
+\newlength{\SM@footerlinedepth}
+\newcommand{\SM@footertextdrop}{%
+	\setbox\z@\hbox{\SMFooterIDSize\SMFooterIDStrut}\setlength{\SM@footerlinedepth}{\dp\z@}%
+	\setbox\z@\hbox{0123456789}%
+	\setlength{\SMFooterTextDrop}{\dimexpr(\SMFooterBoxHeight-\ht\z@+\dp\z@)/2-\SMFootlineDepth-\SM@footerlinedepth-0.4ex\relax}}
+\makeatother
 %
 % \SMFooterRightShift (v9.7.0: derived; it was a number of the layout profile, 4.6pt for Fira Sans,
 % -0.33pt for Latin Modern Sans) puts the frame number's right edge on the logo's right edge above
@@ -2301,6 +2350,7 @@
 
 \newif\ifSMNavigationBar % \SMNavigationBar, see "Navigation for readers" at the end
 \setbeamertemplate{frame footer}{%
+	\csname SM@footertextdrop\endcsname%
 	\vspace*{\SMFooterTextDrop}%
 	\ifSMHideFooterText
 		\global\SMHideFooterTextfalse
@@ -3119,6 +3169,22 @@
 % way (render, measure with exact text-position extraction, adjust) if
 % this is ever used at a different font size than this deck's normal
 % itemize `\small`.
+% The two lengths of every list with "a)" / "1." / "1." / "a." labels (v9.8.0: derived; they were
+% 9.1pt and 4.75pt in the Fira profile and 9.16pt and 5.20pt in the lmsans one). \SMLabelItemWidth
+% is the box that holds the widest label of the first items, a)-c) and 1)-9) with a bracket or a
+% period, in the font in force where the list begins, plus 0.1pt of clearance; \SMLabelItemSep is the
+% hook \SMLabelItemGap (in em of that font). Called first in each list's setup, so that
+% the lists follow \small, \footnotesize and \shrinklists, and once at \begin{document}
+% (in \small) for a slide that reads the two lengths itself.
+\makeatletter
+\newcommand{\SM@labelitemmetrics}{%
+	\setlength{\SMLabelItemWidth}{0pt}%
+	\@for\SM@labelprobe:=a),b),c),a.,b.,c.,1),2),3),4),5),6),7),8),9),1.,2.,3.,4.,5.,6.,7.,8.,9.\do{%
+		\settowidth{\dimen@}{\SM@labelprobe}%
+		\ifdim\dimen@>\SMLabelItemWidth\SMLabelItemWidth=\dimen@\fi}%
+	\addtolength{\SMLabelItemWidth}{0.1pt}%
+	\setlength{\SMLabelItemSep}{\SMLabelItemGap}}
+\makeatother
 \newcounter{SMAlphaItemCounter}
 \newcommand{\SMAlphaItem}{\stepcounter{SMAlphaItemCounter}\alph{SMAlphaItemCounter})}
 \newenvironment{SMAlphaItemize}{%
@@ -3133,7 +3199,7 @@
 		% \leftmargin=\labelwidth+\labelsep always cancels \labelsep back
 		% out of the label box's own position), so this widens the gap
 		% without reopening the Left-Margin question already solved above.
-		\setlength{\labelsep}{\SMLabelItemSep}%
+		\csname SM@labelitemmetrics\endcsname\setlength{\labelsep}{\SMLabelItemSep}%
 		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
@@ -3190,7 +3256,7 @@
 \newenvironment{SMNumItemize}{%
 	\setcounter{SMNumItemCounter}{0}%
 	\list{\SMNumItem}{%
-		\setlength{\labelsep}{\SMLabelItemSep}%
+		\csname SM@labelitemmetrics\endcsname\setlength{\labelsep}{\SMLabelItemSep}%
 		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
@@ -3207,7 +3273,7 @@
 \newenvironment{SMAlphaPeriodItemize}{%
 	\setcounter{SMAlphaPeriodItemCounter}{0}%
 	\list{\SMAlphaPeriodItem}{%
-		\setlength{\labelsep}{\SMLabelItemSep}%
+		\csname SM@labelitemmetrics\endcsname\setlength{\labelsep}{\SMLabelItemSep}%
 		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
@@ -3224,7 +3290,7 @@
 \newenvironment{SMNumPeriodItemize}{%
 	\setcounter{SMNumPeriodItemCounter}{0}%
 	\list{\SMNumPeriodItem}{%
-		\setlength{\labelsep}{\SMLabelItemSep}%
+		\csname SM@labelitemmetrics\endcsname\setlength{\labelsep}{\SMLabelItemSep}%
 		\setlength{\labelwidth}{\SMLabelItemWidth}%
 		\setlength{\leftmargin}{\labelwidth}%
 		\addtolength{\leftmargin}{\labelsep}%
@@ -3486,7 +3552,28 @@
 % itself is kept defined, both for this override to reuse and as a manual
 % escape hatch (e.g. a differently-calibrated width some future slide might
 % need).
-% (v9.4.0: \SMEnumerateTextExtra, 6.3pt, is defined by the layout profile.)
+% (v9.8.0: \SMEnumerateTextExtra, 6.3pt, is a hook of the catalog; the four lengths below were numbers of the
+% layout profile: 7.85pt, 13.1pt, 5.25pt and 20.33pt for Fira Sans, 8.18pt, 13.43pt, 5.25pt and 20.33pt for
+% Latin Modern Sans.)
+% The numeral column of a nested enumerate, from the widest numeral of the list's own font (the digits
+% 1-9 with the dot, which is what the item template sets). The slot a numeral sits in is that width plus
+% \SMEnumerateNestedSlotExtra, the text starts \SMEnumerateNestedLabelGap after it
+% (\SMEnumerateNestedLeftMargin is both), and the box the numeral is right-aligned in only has to hold a
+% numeral of three digits ("999."), so it takes the width of that. Called first in the list's setup of
+% every enumerate, and once at \begin{document} (in \small) for a slide that reads the lengths itself.
+\makeatletter
+\newcommand{\SM@enumeratemetrics}{%
+	\setlength{\SMEnumerateNestedMinNumber}{0pt}%
+	\setlength{\SMEnumerateLabelBox}{0pt}%
+	\@for\SM@numprobe:=1,2,3,4,5,6,7,8,9\do{%
+		\settowidth{\dimen@}{\SM@numprobe.}%
+		\ifdim\dimen@>\SMEnumerateNestedMinNumber\SMEnumerateNestedMinNumber=\dimen@\fi
+		\settowidth{\dimen@}{\SM@numprobe\SM@numprobe\SM@numprobe.}%
+		\ifdim\dimen@>\SMEnumerateLabelBox\SMEnumerateLabelBox=\dimen@\fi}%
+	\addtolength{\SMEnumerateNestedMinNumber}{\SMEnumerateNestedSlotExtra}%
+	\setlength{\SMEnumerateNestedLabelSep}{\SMEnumerateNestedLabelGap}%
+	\setlength{\SMEnumerateNestedLeftMargin}{\dimexpr\SMEnumerateNestedMinNumber+\SMEnumerateNestedLabelSep\relax}}
+\makeatother
 \makeatletter
 \renewcommand{\beamer@enum@}{%
 	\beamer@computepref\@itemdepth% sets \beameritemnestingprefix
@@ -3506,6 +3593,7 @@
 		\list
 			{\usebeamertemplate{\beamer@enumtempl}}
 			{\usecounter\@enumctr%
+				\SM@enumeratemetrics% the numeral column from this list's font (v9.8.0)
 				\ifnum\@itemdepth>1
 					% Nested numerals: same rule as level 1 -- left edge at the left
 					% edge of this level's bullet dot (2026-09-20). The box below is
@@ -3556,6 +3644,17 @@
 	\raggedright%
 	\beamer@firstlineitemizeunskip%
 }
+% The lists' lengths as a slide that reads them outside a list sees them: those of the \small font.
+\AtBeginDocument{%
+	\begingroup\small\SM@labelitemmetrics\SM@enumeratemetrics
+	\xdef\SM@listmetrics{%
+		\global\SMLabelItemWidth=\the\SMLabelItemWidth\relax
+		\global\SMLabelItemSep=\the\SMLabelItemSep\relax
+		\global\SMEnumerateNestedMinNumber=\the\SMEnumerateNestedMinNumber\relax
+		\global\SMEnumerateNestedLabelSep=\the\SMEnumerateNestedLabelSep\relax
+		\global\SMEnumerateNestedLeftMargin=\the\SMEnumerateNestedLeftMargin\relax
+		\global\SMEnumerateLabelBox=\the\SMEnumerateLabelBox\relax}%
+	\expandafter\endgroup\SM@listmetrics}
 \makeatother
 
 % Extra breathing room when a nested itemize closes and control returns to
@@ -4901,6 +5000,11 @@
 % every title; the old 89.19pt value only fitted titles without descenders.
 \newlength{\SMSectionframeTrueBoxBottom}
 \setlength{\SMSectionframeTrueBoxBottom}{\SMSectionframeBoxHeight}
+% (v9.8.0: \SM@sectionbarmetrics below places the title now, from the bar's own material; the
+% four profile numbers named in this and the paragraphs above and below, \SMSectionframeRefDepth,
+% \SMSectionframeBottomGap, \SMSectionframeBottomPadCorrection and \SMSectionframeHeightCorrection,
+% are gone, and so is the formula these paragraphs explain. They stay as the record of why it was
+% done this way for ten versions.)
 % \SMSectionframeRefDepth (v5.28.0): the depth the toppading formula assumes for
 % the title. It used to subtract the title's own measured depth, which nothing
 % adds back, so a title without descenders ("Slides", "Decks and deck
@@ -4929,6 +5033,27 @@
 \setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\SMFrametitleLeftPadding-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 \newbox\SMSectionframeTitleBox
 \newlength{\SMSectionframeBarBottom}
+% The title's place in the bar (v9.8.0: from the title's own material, no longer from four numbers
+% measured at Fira): its last baseline lies the depth of a \strut of the title font plus
+% \SMSectionframeTitleGap above the bar's bottom edge, and the top padding is what makes the bar
+% \SMSectionframeBoxHeight high. The bar's content is typeset once into a box, by the same
+% beamercolorbox the frame title template uses and with a top padding as large as the bar; the box's
+% height is that padding plus a constant from there on (any title, any number of lines), so the
+% padding that gives the bar its height follows. #1 is the title.
+\makeatletter
+\newbox\SM@sectionprobe
+\newcommand{\SM@sectionbarmetrics}[1]{%
+	\begingroup\usebeamerfont{frametitle}\setbox\z@\hbox{\strut}\setlength{\dimen0}{\dimexpr\dp\z@+\SMSectionframeTitleGap\relax}%
+	\xdef\SM@sectionbottom{\the\dimen0}\endgroup
+	\setlength{\SMFrametitleBottomPadding}{\SM@sectionbottom}%
+	\setlength{\SMFrametitleTopPadding}{\SMSectionframeBoxHeight}%
+	\setbox\SM@sectionprobe=\vbox{\usebeamerfont{frametitle}%
+		\begin{beamercolorbox}[wd=\paperwidth, sep=0pt, leftskip=\SMFrametitleLeftPadding,
+			rightskip=\dimexpr\SMLogoWidth+2\SMFrametitleRightPadding\relax plus 1fil]{frametitle}%
+			\SM@frametitlestrut@start #1\SM@frametitlestrut@end
+		\end{beamercolorbox}}%
+	\setlength{\SMFrametitleTopPadding}{\dimexpr2\SMSectionframeBoxHeight-\ht\SM@sectionprobe-\dp\SM@sectionprobe\relax}}
+\makeatother
 \newenvironment{sectionframe}[2][t]{%
 	\begingroup
 	\SMManualTopMargin% own title-bar geometry: no automatic Top Margin
@@ -4946,17 +5071,11 @@
 	\lefthyphenmin=100
 	\righthyphenmin=100
 	\setbeamerfont{frametitle}{size=\huge}
-	\setbox\SMSectionframeTitleBox=\vbox{%
-		\hsize=\SMSectionframeTitleWidth
-		\usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
-		\noindent\strut #2\par% \strut: the same line height for every title (v5.28.0)
-	}%
-	\setlength{\SMFrametitleBottomPadding}{\dimexpr\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection\relax}
-	\setlength{\SMFrametitleTopPadding}{\dimexpr\SMSectionframeBoxHeight-\SMFrametitleBottomPadding-\ht\SMSectionframeTitleBox-\SMSectionframeRefDepth+\SMSectionframeHeightCorrection\relax}
+	\csname SM@sectionbarmetrics\endcsname{#2}%
 	\global\def\SMFrametitleFullHeightYellow{1}%
 	\global\def\SMFrametitleLogoFixed{1}%
 	\setbeamertemplate{frametitle}[SMNoInlineLogo]%
-	\setlength{\SMSectionframeBarBottom}{85.14bp}% constant since v5.28.0, see \SMSectionframeRefDepth
+	\setlength{\SMSectionframeBarBottom}{\dimexpr\SMSectionframeBoxHeight+0.12bp\relax}% 85.14bp for the default bar: the figure starts 0.12bp under it
 	% \sectionfigure sets the side-footnote lengths \global (see there); the
 	% values from before this frame come back at \end{sectionframe}.
 	\edef\SMSectionframeRestoreSideFootnotes{%

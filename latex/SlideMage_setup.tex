@@ -54,49 +54,57 @@
 %                   and the math handling that goes with them
 %   metrics         \SMFontAscender (the ascender in em, used where the font gives none of
 %                   its own), \SMLinespread, \SMParskip
-%   calibrations    lengths measured against the rendered PDF for this font:
-%                     \SMFooterTextDrop
+%   calibrations    lengths measured against the rendered PDF for this font, until the top
+%                   placement of step 10 derives them as well:
 %                     \SMContentTopShift \SMColumnsTopCorrection \SMColumnsTTopCompensation
-%                     \SMEnumerateLabelBox \SMEnumerateNestedLabelSep
-%                     \SMEnumerateNestedLeftMargin \SMEnumerateNestedMinNumber
-%                     \SMEnumerateTextExtra \SMLabelItemWidth \SMLabelItemSep
-%                     \SMSectionframeRefDepth \SMSectionframeBottomGap
-%                     \SMSectionframeBottomPadCorrection \SMSectionframeHeightCorrection
+% Nothing else: since v9.8.0 every other length is read from the font where it is used or is
+% a hook of the catalog below (see 'Derived, not set').
 %
 % Recipe for a new profile:
 %   1. Copy SlideMage_layout_fira.tex to SlideMage_layout_<name>.tex and change the
 %      fonts (and \SMFontAscender, \SMLinespread, \SMParskip).
 %   2. python tools/calibrate_font_profile.py --profile <name>
 %      It compiles the calibration deck of tests/fixtures/template_stress/ with the
-%      profile under the SlideMage template (the catalog's defaults) and prints, for each
-%      calibration it can measure, the current value and the one the PDF suggests.
-%   3. Put the suggestions into the profile's "Calibrations" section and run the tool
-%      again until every line reads ok. The ones it does not measure
-%      (\SMEnumerateLabelBox, \SMEnumerateTextExtra and the three section-frame
-%      corrections other than the height one) stay as in the Fira profile until a slide
-%      shows them wrong.
+%      profile under the SlideMage template (the catalog's defaults) and reports, for each
+%      length of the three above, the current value and the one the PDF suggests, and for
+%      everything the base derives from the font, what the PDF shows against what the hooks
+%      ask for.
+%   3. Put the three suggestions into the profile's "Calibrations" section and run the tool
+%      again until every line reads ok.
 %   4. Compile the calibration deck with a template that picks the profile and run
 %      tools/check_layout.py on the PDF (the stress-test template of that project does
 %      this for lmsans). It reads the margins from the PDF, so a template with other
 %      margins is checked against its own. Adjust until the report is clean.
 % The last block of the tool's output reports what follows from the font and the template
-% without a number of anyone's: where the title bar ends (derived by SlideMage_base from the
-% paddings, the frame title font and the logo) and the Top Margin. A calibration that reads
-% other catalog hooks (the pull-up of a frame the automatic Top Margin does not manage) is
-% fitted to the catalog's defaults for those hooks.
+% without a number of anyone's: where the title bar ends, the Top Margin, the footer number's
+% and the footnotes' right edges, the footer number's ink in its box, the footnotes' gap to
+% the footer and the section bar's height. A calibration that reads other catalog hooks (the
+% pull-up of a frame the automatic Top Margin does not manage) is fitted to the catalog's
+% defaults for those hooks.
 %
-% Derived, not set (SlideMage v9.7.0)
-% -----------------------------------
-% Four lengths follow from the hooks and the font, and SlideMage_base computes them after the
-% template: \SMContentTopAlign (the Top Margin as a coordinate for overlays),
-% \SMTitleBarBottomAlign (where the title bar ends), \SMFootnoteRightShift (a footnote's right
-% edge against the text margin) and \SMFooterRightShift (the same for the frame number). Slides
-% may read them. A template or a profile that sets one gets an error, below, instead of a number
-% that the next change to a hook would silently contradict.
+% Derived, not set (SlideMage v9.7.0, v9.8.0)
+% -------------------------------------------
+% These lengths follow from the hooks and the font, and SlideMage_base computes them after the
+% template (the first four) or where the font they depend on is in force (the rest). Slides may
+% read them. A template or a profile that sets one gets an error, below, instead of a number
+% that the next change to a hook or a font would silently contradict.
+%   v9.7.0   \SMContentTopAlign (the Top Margin as a coordinate for overlays),
+%            \SMTitleBarBottomAlign (where the title bar ends), \SMFootnoteRightShift (a
+%            footnote's right edge against the text margin), \SMFooterRightShift (the same for
+%            the frame number)
+%   v9.8.0   \SMFooterTextDrop (the frame number's ink centred in the footer box),
+%            \SMFootlineVOffset (the footnotes' descender \SMFootnoteFooterGap above the
+%            footer box), \SMLabelItemWidth, \SMLabelItemSep (the widest label of the lists
+%            with "a)" / "1." labels and the gap to the text), \SMEnumerateNestedMinNumber,
+%            \SMEnumerateNestedLabelSep, \SMEnumerateNestedLeftMargin, \SMEnumerateLabelBox
+%            (the numeral column of a nested enumerate), and the section frame's four
+%            corrections \SMSectionframeRefDepth, \SMSectionframeBottomGap,
+%            \SMSectionframeBottomPadCorrection, \SMSectionframeHeightCorrection (the frame
+%            places its title by the title's own box, with \SMSectionframeTitleGap)
 
 \newcommand{\SMSetupLoaded}{}
 
-% The four derived names, as macros that stop with an error when a template or a profile sets
+% The derived names, as macros that stop with an error when a template or a profile sets
 % or redefines them. SlideMage_base compares them with the copies kept here, replaces them with
 % the lengths it derives, and reports a name that was redefined.
 \makeatletter
@@ -104,14 +112,25 @@
 	SlideMage_base computes #1 from the hooks and the font (see 'Derived, not set' in
 	SlideMage_setup.tex). Remove the line that sets it from the template or the layout profile;
 	to move what it places, change the hook it follows.}}
-\newcommand{\SMContentTopAlign}{\SM@derivedname{\string\SMContentTopAlign}}
-\newcommand{\SMTitleBarBottomAlign}{\SM@derivedname{\string\SMTitleBarBottomAlign}}
-\newcommand{\SMFootnoteRightShift}{\SM@derivedname{\string\SMFootnoteRightShift}}
-\newcommand{\SMFooterRightShift}{\SM@derivedname{\string\SMFooterRightShift}}
-\let\SM@guard@SMContentTopAlign\SMContentTopAlign
-\let\SM@guard@SMTitleBarBottomAlign\SMTitleBarBottomAlign
-\let\SM@guard@SMFootnoteRightShift\SMFootnoteRightShift
-\let\SM@guard@SMFooterRightShift\SMFooterRightShift
+\newcommand{\SM@guardname}[1]{%
+	\newcommand{#1}{\SM@derivedname{\string#1}}%
+	\expandafter\let\csname SM@guard@\expandafter\@gobble\string#1\endcsname#1}
+\SM@guardname\SMContentTopAlign
+\SM@guardname\SMTitleBarBottomAlign
+\SM@guardname\SMFootnoteRightShift
+\SM@guardname\SMFooterRightShift
+\SM@guardname\SMFooterTextDrop
+\SM@guardname\SMFootlineVOffset
+\SM@guardname\SMLabelItemWidth
+\SM@guardname\SMLabelItemSep
+\SM@guardname\SMEnumerateNestedMinNumber
+\SM@guardname\SMEnumerateNestedLabelSep
+\SM@guardname\SMEnumerateNestedLeftMargin
+\SM@guardname\SMEnumerateLabelBox
+\SM@guardname\SMSectionframeRefDepth
+\SM@guardname\SMSectionframeBottomGap
+\SM@guardname\SMSectionframeBottomPadCorrection
+\SM@guardname\SMSectionframeHeightCorrection
 \makeatother
 
 % The layout profile: fonts and font metrics (see the header). Loaded before the
@@ -256,12 +275,14 @@
 \newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left and right end of the footline (a macro: its ex is the footline font's)
 \newlength{\SMRightFooterPadding}
 \setlength{\SMRightFooterPadding}{3.5ex}        % the gap before the frame number
-\newlength{\SMFootlineVOffset}
-% The footnotes' distance from the footer box (more negative = closer). The last
-% part was measured at Fira: an underlined link in a footnote sits 1.74pt above the
-% box, and the offset moves the footnotes down by half of that, -0.87pt, after two
-% earlier nudges; -0.5ex-0.77pt is their sum.
-\setlength{\SMFootlineVOffset}{-0.5ex-0.77pt}
+\newlength{\SMFootnoteFooterGap}
+% The clear space between the descenders of the last footnote line and the top edge of the
+% footer box. (Until v9.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
+% body font's ex: -0.5ex-0.77pt; the base derives that offset now, from this gap, the footnote
+% font's descender and the footline's size. 1.6136pt is what the Fira default looked like:
+% an underlined link in a footnote clears the box by 1.74pt, and the offset had moved the
+% footnotes down by half of that after two earlier nudges.)
+\setlength{\SMFootnoteFooterGap}{1.6136pt}
 \newcommand{\SMFootnoteSize}{\fontsize{3.2}{1.9}\selectfont}  % footnote text, as the footer's
 \newlength{\SMFootnoteSep}
 \setlength{\SMFootnoteSep}{3pt}                 % the space between two footnotes
@@ -300,7 +321,8 @@
 \newlength{\SMTitleframeBottomPad}
 \setlength{\SMTitleframeBottomPad}{41pt}        % the space under the last line, about 1.5 subtitle lines
 \newlength{\SMSectionframeBoxHeight}
-\setlength{\SMSectionframeBoxHeight}{85.04pt}   % \sectionframe: height of the bar
+\setlength{\SMSectionframeBoxHeight}{85.34pt}   % \sectionframe: height of the bar (85.02bp, as drawn since v5.28.0)
+\newcommand{\SMSectionframeTitleGap}{0.5436em}  % the space from under the title's last line (its strut's depth) to the bar's bottom edge, in em of the title font
 \newlength{\SMSectionframeContentDrop}
 \setlength{\SMSectionframeContentDrop}{11.5pt}  % the text's drop under the bar
 \newlength{\SMQuoteBoxHeight}
@@ -329,6 +351,12 @@
 \newcommand{\SMTallItemBaseRatio}{0.3}          % the extra space \tallitem adds above an item
 \newlength{\SMLabelItemItemsep}
 \setlength{\SMLabelItemItemsep}{2.5pt}          % between two items of the lists with "a)" / "1." labels
+\newcommand{\SMLabelItemGap}{0.475em}           % the gap between such a label's box and the item's text (in em of the list's font)
+% The numerals of an enumerate inside another list (the box of the widest numeral is measured in the list's font):
+\newcommand{\SMEnumerateNestedSlotExtra}{0.04em}  % the clearance added to the widest numeral to make the slot a numeral sits in
+\newcommand{\SMEnumerateNestedLabelGap}{0.525em}  % the gap between that slot and the item's text
+\newlength{\SMEnumerateTextExtra}
+\setlength{\SMEnumerateTextExtra}{6.3pt}        % how far the text of a first-level enumerate sits right of a bullet's (27.9pt against 21.6pt from the page's edge)
 \newlength{\SMTightDisplaySkip}
 \setlength{\SMTightDisplaySkip}{3pt}            % above and below a display in \SMTightDisplaySkips
 \newcommand{\SMBesideFigureTopGap}{0.2em}       % how far besidefigure lowers its figure

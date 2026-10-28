@@ -1,36 +1,37 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Suggest the calibration numbers of a SlideMage layout profile from a compiled calibration deck.
+"""Check a SlideMage layout profile against a compiled calibration deck, and suggest the three numbers it still holds.
 
-A layout profile (latex/SlideMage_layout_<name>.tex) holds, under "Calibrations", lengths that were
-measured against the rendered PDF for one font: where the footer text sits in its box, the pull-up of a frame
-the automatic Top Margin does not manage, the label widths of the numbered lists, and so on. (Since v9.7.0
-the right edges of the frame number and of the footnotes, and the title bar's bottom edge, are derived by the
-base from the hooks and the font: the tool reads them back from the PDF and reports them, it suggests nothing.)
-This tool compiles the calibration deck
+A layout profile (latex/SlideMage_layout_<name>.tex) holds the font files, the font's metrics and three
+lengths that were measured against the rendered PDF for one font: the pull-up of a frame the automatic Top
+Margin does not manage (\\SMContentTopShift, \\SMColumnsTopCorrection, \\SMColumnsTTopCompensation; step 10 of
+docs/plans/layout-from-metrics.md derives them as well). Everything else follows from the font where it is used or
+is a hook of the catalog (v9.7.0, v9.8.0): where the title bar ends, the right edges of the frame number and the
+footnotes, where the footer number sits in its box, the label and numeral boxes of the lists, the footnotes'
+offset and the section frame's corrections. This tool compiles the calibration deck
 (tests/fixtures/template_stress/decks/calibration.tex) with the profile under the SlideMage template, whose
-hooks are the catalog's defaults, measures the PDF, and prints each number with its current value and the value
-the measurement suggests. tools/check_layout.py then says whether the profile is clean.
+hooks are the catalog's defaults, measures the PDF, prints the three numbers with their current value and the
+value the measurement suggests, and checks each derived value against the geometry its hooks ask for (the footer
+number's ink centred in the box, the label gap, the numeral slot and gap, the footnotes' clearance above the
+footer, the section bar's height). tools/check_layout.py then says whether the profile is clean.
 
 Recipe for a new profile (the header of latex/SlideMage_setup.tex has it too):
   1. copy latex/SlideMage_layout_fira.tex to latex/SlideMage_layout_<name>.tex and change the fonts;
   2. python tools/calibrate_font_profile.py --profile <name>
   3. put the suggested values into the profile's "Calibrations" section and run the tool again: every
-     line should read "ok" (the numbers it prints are within the tolerance of the measurement, 0.3pt);
+     line should read "ok" (the numbers it prints are within the tolerance of the measurement, 0.3pt), and
+     every check "ok";
   4. python tools/check_layout.py on the PDF of the deck compiled with a template that picks the profile
      (the project's stress-test template does); then adjust until the report is clean.
 The last section of the output reports what the base derives from the font and the template, read back from
 the PDF: the title bar's bottom edge, the Top Margin, the ascender, and how far the frame number's and the
 footnotes' right edges are from the logo's visible edge.
 
-Not measured, and kept as the Fira profile has them until a slide shows they are wrong:
-\\SMEnumerateLabelBox, \\SMEnumerateTextExtra (the last is a design value: the outer numeral column against a bullet's),
-\\SMSectionframeRefDepth, \\SMSectionframeBottomGap, \\SMSectionframeBottomPadCorrection.
-
 usage: python tools/calibrate_font_profile.py --profile NAME [--template slidemage] [--project DIR]
            [--deck decks/calibration.tex] [--framework DIR] [--pdf FILE] [--keep-pdf FILE]
 With --pdf the compile is skipped and FILE is measured (the profile's current values are still read from
---framework). Exit code 0 when every measured number is ok, 1 when a suggestion differs from the current value.
+--framework). Exit code 0 when every number and every check is ok, 1 when a suggestion differs from the
+current value or a check fails.
 """
 from __future__ import annotations
 
@@ -54,12 +55,10 @@ DEFAULT_PROJECT = REPO / "tests" / "fixtures" / "template_stress"
 DEFAULT_DECK = "decks/calibration.tex"
 PT = 72.27 / 72                  # TeX points per PDF point (bp)
 TOLERANCE = 0.3                  # pt: below this a measurement says "ok"
-SMALL_SIZE = 10.0                # \small of an 11pt beamer class: the size the label calibrations were made at
 SECTION_BOX_HEIGHT = "SMSectionframeBoxHeight"
 # A columns[T] environment that starts a manual-top frame lands 2.36pt above a list in the Fira profile, whose
 # \SMColumnsTTopCompensation was measured on plain frames: that offset is not the font's, so it is taken out.
 T_COLUMNS_OFFSET = 2.36
-NUMERAL_CLEARANCE = 0.43        # pt: the Fira profile's numeral slot (7.85pt) is its widest numeral (7.42pt) plus this
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_[^}]+\}")
 SET_RE = r"\\setlength\{\\%s\}\{([^}]*)\}"
 COMPILE_TIMEOUT_SECONDS = 600
@@ -77,6 +76,20 @@ class Row:
     def ok(self) -> bool:
         return (self.advisory or self.suggested is None or self.current is None
                 or abs(self.suggested - self.current) <= TOLERANCE)
+
+
+@dataclass
+class Check:
+    """A derived value against the geometry its hooks ask for: `measured` and `expected` in pt."""
+    name: str            # what is checked, e.g. "footnote clearance above the footer"
+    measured: float | None
+    expected: float | None
+    note: str
+    tolerance: float = TOLERANCE
+
+    @property
+    def ok(self) -> bool:
+        return self.measured is None or self.expected is None or abs(self.measured - self.expected) <= self.tolerance
 
 
 # ---------------------------------------------------------------- reading values out of the TeX files
@@ -198,10 +211,43 @@ def footer_text_gaps(page: fitz.Page, chrome: cl.Page, number: dict) -> tuple[fl
     return top - chrome.footer_top, chrome.h - bottom
 
 
-def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[list[Row], list[str]]:
+def info_bp(doc: fitz.Document, key: str) -> float | None:
+    """A number the base wrote into the PDF's info dictionary (in bp), None if the PDF lacks it."""
+    try:
+        kind, ref = doc.xref_get_key(-1, "Info")
+        if kind != "xref":
+            return None
+        kind, value = doc.xref_get_key(int(ref.split()[0]), key)
+        return float(value) if kind in ("string", "real", "int") else None
+    except (ValueError, RuntimeError):
+        return None
+
+
+def em_default(setup: str, name: str) -> float | None:
+    """The catalog's default of `\\newcommand{\\name}{<number>em}`, in em."""
+    found = re.findall(r"\\newcommand\{\\%s\}\{(-?[\d.]+)em\}" % re.escape(name), setup)
+    return float(found[-1]) if found else None
+
+
+def label_gap(page: fitz.Page) -> list[tuple[str, float, float]]:
+    """(label, gap in pt, label size in pt) for each list label that has the item's text in a span of its own after it."""
+    out = []
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            sp = [s for s in line["spans"] if s["text"].strip()]
+            for first, second in zip(sp, sp[1:]):
+                if re.fullmatch(r"[a-z0-9][).]", first["text"].strip()):
+                    out.append((first["text"].strip(), (second["bbox"][0] - first["bbox"][2]) * PT, first["size"] * PT))
+                    break
+    return out
+
+
+def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[list[Row], list[Check], list[str]]:
     text = profile_text(framework, profile)
     cur = lambda name: tex_length(text, name)   # noqa: E731
+    setup = (framework / "SlideMage_setup.tex").read_text(encoding="utf-8")
     rows: list[Row] = []
+    checks: list[Check] = []
     hooks: list[str] = []
     edges: list[str] = []
 
@@ -215,14 +261,31 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
         number = frame_number_span(probe, chrome)
         if number is not None:
             above, below = footer_text_gaps(probe, chrome, number)
-            # \vspace*{\SMFooterTextDrop} first in the footer: a larger value raises the text (measured: 0.1pt more moves the ink 0.09pt up)
-            add("SMFooterTextDrop", (cur("SMFooterTextDrop") or 0.0) + (above - below) / 2 * PT,
-                f"the frame number's ink sits {above:.2f}pt below the box's top edge and {below:.2f}pt above its bottom")
+            # \SMFooterTextDrop is derived from the digits' ink: the ink sits as far from the box's top edge as from its bottom
+            checks.append(Check("footer number centred in its box (gap above less gap below)", (above - below) * PT, 0.0,
+                                f"the ink sits {above:.2f}pt below the box's top edge and {below:.2f}pt above its bottom",
+                                tolerance=2 * 0.15))
             edges.append(f"the frame number ends {(chrome.logo_right - number['bbox'][2]) * PT:+.2f}pt inside the logo's "
                          f"visible right edge (\\SMFooterRightShift, derived)")
         if chrome.footnotes:
             edges.append(f"the footnote lines end {(chrome.logo_right - max(r.x1 for r in chrome.footnotes)) * PT:+.2f}pt inside "
                          f"the logo's visible right edge (\\SMFootnoteRightShift, derived)")
+
+    # -- the footnotes' clearance above the footer box (\SMFootlineVOffset, derived) ---------------------------
+    notes = deck.page("ZC8")
+    gap_key = info_bp(deck.doc, "SMFootnoteFooterGap")
+    descender = info_bp(deck.doc, "SMFootnoteDescender")
+    box_height = info_bp(deck.doc, "SMFooterBoxHeight")
+    if notes is not None and None not in (gap_key, descender, box_height):
+        chrome = deck.chrome(notes)
+        baselines = [s["origin"][1] for s in spans(notes)
+                     if s["size"] < 4.6 and s["origin"][1] > chrome.footer_top - 40 and s["origin"][1] < chrome.footer_top]
+        if baselines:
+            above = chrome.h - max(baselines)         # the last footnote line's baseline above the page's bottom edge
+            checks.append(Check("footnote descenders above the footer box (\\SMFootnoteFooterGap)",
+                                (above - descender - box_height) * PT, gap_key * PT,
+                                f"the last baseline is {above:.2f}bp above the page's bottom, the descender {descender:.2f}bp, "
+                                f"the footer box {box_height:.2f}bp high"))
 
     # -- the top of the frames the automatic Top Margin does not manage --------------------------------
     top_margin = deck.info["top_margin"]
@@ -237,51 +300,44 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
         add("SMColumnsTTopCompensation", (cur("SMColumnsTTopCompensation") or 0.0) + (y_list - y_T) * PT - T_COLUMNS_OFFSET,
             f"columns[T] first start {y_T - y_list:+.2f}pt below a list, {T_COLUMNS_OFFSET}pt above is the Fira profile's own")
 
-    # -- the section frame ------------------------------------------------------------------------------------
+    # -- the section frame: the bar is as high as the hook says ------------------------------------------------
     section = deck.page("ZC2")
-    setup = (framework / "SlideMage_setup.tex").read_text(encoding="utf-8")
     target = tex_length(setup, SECTION_BOX_HEIGHT)
     if section is not None and target is not None:
-        # The bar is drawn in bp: the Fira profile's 85.04 reads 85.02 here, so the numbers are compared as they stand.
         bar = deck.chrome(section).bar_bottom
-        add("SMSectionframeHeightCorrection", (cur("SMSectionframeHeightCorrection") or 0.0) + (target - bar),
-            f"the section frame's bar ends at {bar:.2f}bp, \\{SECTION_BOX_HEIGHT} is {target:.2f}")
+        checks.append(Check(f"section bar height (\\{SECTION_BOX_HEIGHT})", bar * PT, target,
+                            f"the bar ends at {bar:.2f}bp = {bar * PT:.2f}pt, \\{SECTION_BOX_HEIGHT} is {target:.2f}pt",
+                            tolerance=0.1))
 
-    # -- lists with labels ------------------------------------------------------------------------------------------
+    # -- lists with labels: the gap between a label and the item's text (\SMLabelItemGap) --------------------------
     labelled = deck.page("ZC5")
-    if labelled is not None:
-        sp = spans(labelled)
-        label_em = [(s["bbox"][2] - s["bbox"][0]) / s["size"] for s in sp
-                    if re.fullmatch(r"[a-z0-9][).]", s["text"].strip())]
-        if label_em:
-            add("SMLabelItemWidth", max(label_em) * SMALL_SIZE + 0.1,
-                f"the widest label ({max(label_em):.3f}em) at {SMALL_SIZE:g}pt, plus 0.1pt of clearance")
-        c_em = None
-        for block in labelled.get_text("rawdict")["blocks"]:
-            for line in block.get("lines", []):
-                for s in line["spans"]:
-                    if "".join(c["c"] for c in s["chars"]).startswith("Calculate"):
-                        char = s["chars"][0]
-                        c_em = (char["bbox"][2] - char["bbox"][0]) / s["size"]
-        if c_em:
-            add("SMLabelItemSep", 2.0 + c_em * SMALL_SIZE / 2,
-                f"2pt and half a C ({c_em:.3f}em) at {SMALL_SIZE:g}pt")
+    gap_em = em_default(setup, "SMLabelItemGap")
+    if labelled is not None and gap_em is not None:
+        found = label_gap(labelled)
+        if found:
+            worst = max(found, key=lambda f: abs(f[1] - gap_em * f[2]))
+            checks.append(Check("label to item text (\\SMLabelItemGap)", worst[1], gap_em * worst[2],
+                                f"{len(found)} labels, the worst {worst[0]!r}: {worst[1]:.2f}pt against {gap_em:g}em of {worst[2]:.2f}pt"))
 
-    # -- numerals of a nested enumerate -------------------------------------------------------------------------
+    # -- numerals of a nested enumerate: slot and gap (\SMEnumerateNestedSlotExtra, \SMEnumerateNestedLabelGap) ----
     nested = deck.page("ZCL")
-    if nested is not None:
+    extra_em, label_em = em_default(setup, "SMEnumerateNestedSlotExtra"), em_default(setup, "SMEnumerateNestedLabelGap")
+    if nested is not None and extra_em is not None and label_em is not None:
         ws = words(nested)
         numerals = [w for w in ws if re.fullmatch(r"\d\.", w[4]) and w[0] > 20]
-        if numerals:
+        sizes = [s["size"] for s in spans(nested) if re.fullmatch(r"\d\.", s["text"].strip())]
+        if numerals and sizes:
             widest = max(numerals, key=lambda w: w[2] - w[0])
-            width = widest[2] - widest[0]
-            slot = width + NUMERAL_CLEARANCE
-            add("SMEnumerateNestedMinNumber", slot,
-                f"the widest numeral, {widest[4]!r}, is {width:.2f}pt wide, plus {NUMERAL_CLEARANCE}pt")
-            sep = cur("SMEnumerateNestedLabelSep")
-            if sep is not None:
-                add("SMEnumerateNestedLeftMargin", slot + sep,
-                    f"the numeral slot and \\SMEnumerateNestedLabelSep ({sep:.2f}pt, a gap kept as it is)")
+            following = [w for w in ws if abs(w[1] - widest[1]) < 2 and w[0] > widest[2] and not re.fullmatch(r"\d\.", w[4])]
+            checks.append(Check("nested numerals share a left edge", (max(w[0] for w in numerals) - min(w[0] for w in numerals)) * PT, 0.0,
+                                f"{len(numerals)} numerals"))
+            if following:
+                width = (widest[2] - widest[0]) * PT
+                size = sizes[0] * PT
+                offset = (min(following, key=lambda w: w[0])[0] - widest[0]) * PT
+                checks.append(Check("numeral to item text (widest numeral, slot extra, gap)", offset,
+                                    width + (extra_em + label_em) * size,
+                                    f"the widest numeral {widest[4]!r} is {width:.2f}pt, the text starts {offset:.2f}pt after its left edge"))
 
     # -- hooks of the catalog that follow from the font -------------------------------------------------
     section_info = deck.info
@@ -293,7 +349,7 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
     hooks.extend(edges)
     hooks.append(f"text font ascender read from the font: {section_info['ascender']}em "
                  f"(the profile's \\SMFontAscender is only the fallback)")
-    return rows, hooks
+    return rows, checks, hooks
 
 
 # ---------------------------------------------------------------- main
@@ -317,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
         compile_deck(project, args.deck, args.template, args.profile, framework, pdf)
         if args.keep_pdf:
             shutil.copy2(pdf, args.keep_pdf)
-    rows, hooks = measure(Deck(pdf), args.profile, framework, args.template)
+    rows, checks, hooks = measure(Deck(pdf), args.profile, framework, args.template)
 
     print(f"profile {args.profile}, template {args.template}: current value, suggestion (pt)")
     width = max((len(r.name) for r in rows), default=10)
@@ -326,10 +382,15 @@ def main(argv: list[str] | None = None) -> int:
         suggested = "-" if r.suggested is None else f"{r.suggested:.2f}"
         flag = "ok " if r.ok else "SET"
         print(f"  {flag} \\{r.name:<{width}}  {current:>8} -> {suggested:>8}   {r.note}")
+    print("derived from the font and the hooks, measured in the PDF against what they ask for (pt):")
+    for c in checks:
+        measured = "-" if c.measured is None else f"{c.measured:.2f}"
+        expected = "-" if c.expected is None else f"{c.expected:.2f}"
+        print(f"  {'ok  ' if c.ok else 'FAIL'} {c.name}: measured {measured}, expected {expected}   {c.note}")
     print("derived by the base, read back from the PDF:")
     for line in hooks:
         print(f"  {line}")
-    return 0 if all(r.ok for r in rows) else 1
+    return 0 if all(r.ok for r in rows) and all(c.ok for c in checks) else 1
 
 
 if __name__ == "__main__":

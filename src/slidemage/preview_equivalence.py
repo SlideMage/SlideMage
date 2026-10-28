@@ -51,10 +51,15 @@ AUDITED_FRAMEWORK = {
     # edges are derived in the base (the setup layer guards the four names with an error, both profiles lose the two right
     # shifts, the theme changes in comments and its version only). Re-audited: no version, footer-hide or deck-label rule
     # entered or moved; the frame footer gained one \setlength before its \hspace*, the deck-version text is untouched.
-    "SlideMage_setup.tex": "aeb6a9733773b2d4c4338a9a65694856d7f666e32133f06cf6f32770763e0b39",
-    "SlideMage_layout_fira.tex": "09ac68c88987a714f778a3fbe109fe367a29c46ae852f56e3943346a37632d0d",
-    "SlideMage_layout_lmsans.tex": "9d813805f6ae27d9e85bef62071560791443b02972cbc6ddee30423351e8dc63",
-    "SlideMage_base.tex": "dcfdb75bd4af9c3d77bfa18d02a5b7ed518710219861f6222aa007a7bb85860a",
+    # v9.8.0 (step 9): the font measurements the profiles held (footer text drop, list label and numeral boxes, footnote
+    # offset, section frame corrections) are evaluated in the font where they are used, in the base, with design hooks in the
+    # setup layer; both profiles keep fonts, metrics and the three top pull-ups; the setup layer guards twelve more names. Re-audited: no
+    # version, footer-hide or deck-label rule entered the base, the setup layer or the profiles; the frame footer gained one call
+    # (the text drop) before its first \vspace*, the deck-version text is untouched, and the theme is unchanged.
+    "SlideMage_setup.tex": "88eebb1795b7959f363a80f0e077d2682eeaa26cd86f77817980c779148c04ae",
+    "SlideMage_layout_fira.tex": "787079b0eb1af8f53a9ee6bd3b6adc6fa44cabd5d021ce15156358172adabb8c",
+    "SlideMage_layout_lmsans.tex": "cbda6da0c26208a37b6e256dc927d866f2bba7f07581d7495aaccd4ba80953f0",
+    "SlideMage_base.tex": "23fab915dfb11a348db14232def61c17d9a45088218ee3285821778a38b6d681",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "0afea7c0abf1f38c52aec6666c67e8b21692c2051e96f3bb7b969b8a945b7e11",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
