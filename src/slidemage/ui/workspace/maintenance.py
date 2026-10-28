@@ -581,13 +581,34 @@ def schedule_plugin_offer(window) -> None:
 
 
 def show_plugin_offer(window) -> None:
+    """Fetch the catalogue on a thread first; `window.plugin_offer_fetched` carries it to on_plugin_offer_fetched.
+    The sheet is for a list with something in it: the public catalogue may still be empty."""
     if plugin_upgrade.offer_seen():
         return
+
+    def work() -> None:
+        try:
+            result = plugin_catalogue.fetch()
+        except Exception as exc:        # offline, too new, broken: only logged
+            result = exc
+        window.plugin_offer_fetched.emit(result)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def on_plugin_offer_fetched(window, result) -> None:
+    """Open the sheet, with the fetched catalogue, only when at least one plugin is offerable. Offline, too new,
+    or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins… is always there)."""
+    if isinstance(result, Exception):
+        window.log(f"Plugin list not loaded: {result}")
+        return
+    if plugin_upgrade.offer_seen() or not plugin_upgrade.offerable(result):
+        return
     if QApplication.activeModalWidget() is not None:       # another question is open: try again later
-        QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(show_plugin_offer, window))
+        QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(on_plugin_offer_fetched, window, result))
         return
     used = plugin_upgrade.used_features(window.project) if plugin_upgrade.PRESELECT_ON_UPGRADE else {}
-    sheet = PluginOfferSheet(window, preselected=used)
+    sheet = PluginOfferSheet(window, preselected=used, catalogue_data=result)
     sheet.exec()
     if sheet.restart_requested:
         window.relaunch_with_project(window.project.root)

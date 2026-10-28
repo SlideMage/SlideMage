@@ -11,6 +11,11 @@ and still offers "Install from file…". Installing reuses the Plugins tab's dow
 `preselected` maps a plugin id to the reason it is ticked ("You have an Anthropic API key"): the upgrade check
 (plugins/upgrade.py) fills it in the release that removes a feature from core. The flag is written when the sheet
 closes, by any button; a sheet that never opened leaves it unwritten, so the next start tries again.
+
+The start-up caller (workspace/maintenance.py) fetches the catalogue first and opens the sheet, with that
+catalogue in `catalogue_data`, only when something is offerable; so offline and too-new never reach the sheet
+there. Opened without `catalogue_data` the sheet fetches the list itself and keeps its own loading, offline
+and too-new texts (a future caller, the tests).
 """
 from __future__ import annotations
 
@@ -68,7 +73,8 @@ class PluginRow(Card):
 
 
 class PluginOfferSheet(ModalSheet):
-    def __init__(self, parent: QWidget | None = None, *, preselected: dict[str, str] | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, preselected: dict[str, str] | None = None,
+                 catalogue_data: Catalogue | None = None) -> None:
         super().__init__("Plugins for SlideMage", parent, width=620)
         self.preselected = dict(preselected or {})
         self.catalogue: Catalogue | None = None
@@ -109,7 +115,10 @@ class PluginOfferSheet(ModalSheet):
         self.install_button.hide()
         self.close_button = self.add_button("Not now", role="reject")
 
-        self._start(catalogue.fetch, self._on_catalogue)
+        if catalogue_data is not None:
+            self._on_catalogue(catalogue_data, None)
+        else:
+            self._start(catalogue.fetch, self._on_catalogue)
 
     # -- the flag and closing
 

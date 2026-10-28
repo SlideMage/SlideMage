@@ -47,7 +47,60 @@ def no_real_browser(monkeypatch):
     return opened
 
 
+CAT = catalogue.parse(catalogue_json(entry("alpha", "Alpha")))
+
+
 # -- when it is shown
+
+def window_with_log():
+    return SimpleNamespace(project=SimpleNamespace(root="/p"), logged=[], log=lambda text: None)
+
+
+def test_nothing_offerable_shows_no_sheet_and_writes_no_flag(monkeypatch, qapp):
+    shown = []
+    monkeypatch.setattr(maintenance, "PluginOfferSheet", lambda *a, **k: shown.append(1))
+    for plugins in ((), (entry("future", requires=">=99"),)):
+        maintenance.on_plugin_offer_fetched(window_with_log(), catalogue.parse(catalogue_json(*plugins)))
+    load_dev(monkeypatch, "hello")
+    maintenance.on_plugin_offer_fetched(window_with_log(), catalogue.parse(catalogue_json(entry("hello"))))
+    assert shown == [] and not upgrade.offer_seen()
+
+
+@pytest.mark.parametrize("error", [catalogue.CatalogueError("offline"), catalogue.CatalogueTooNew()])
+def test_offline_or_too_new_shows_no_sheet_and_writes_no_flag(monkeypatch, qapp, error):
+    monkeypatch.setattr(maintenance, "PluginOfferSheet", lambda *a, **k: pytest.fail("shown"))
+    logged = []
+    window = SimpleNamespace(project=None, log=logged.append)
+    maintenance.on_plugin_offer_fetched(window, error)
+    assert logged and not upgrade.offer_seen()
+
+
+def test_offerable_opens_the_sheet_with_the_prefetched_catalogue(monkeypatch, qapp):
+    def no_fetch(timeout=10):
+        raise AssertionError("fetched again")
+
+    monkeypatch.setattr(catalogue, "fetch", no_fetch)
+    opened = []
+    monkeypatch.setattr(PluginOfferSheet, "exec", lambda self: (opened.append(self), self.close_button.click()))
+    real = PluginOfferSheet
+    monkeypatch.setattr(maintenance, "PluginOfferSheet", lambda parent, **kw: real(None, **kw))
+    maintenance.on_plugin_offer_fetched(window_with_log(), CAT)
+    assert len(opened) == 1 and list(opened[0].rows) == ["alpha"] and upgrade.offer_seen()
+
+
+def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
+    monkeypatch.setattr(catalogue, "fetch", lambda timeout=10: CAT)
+    got = []
+    window = SimpleNamespace(plugin_offer_fetched=SimpleNamespace(emit=got.append))
+    maintenance.show_plugin_offer(window)
+    wait_until(lambda: got)
+    assert got == [CAT]
+    upgrade.mark_offer_seen()
+    maintenance.show_plugin_offer(window)
+    import time
+    time.sleep(0.1)
+    assert got == [CAT]
+
 
 def test_scheduled_only_while_the_flag_is_missing(monkeypatch):
     scheduled = []
@@ -65,7 +118,7 @@ def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
     class FakeSheet:
         restart_requested = False
 
-        def __init__(self, parent, *, preselected):
+        def __init__(self, parent, *, preselected, catalogue_data):
             shown.append(preselected)
 
         def exec(self):
@@ -73,8 +126,8 @@ def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
 
     monkeypatch.setattr(maintenance, "PluginOfferSheet", FakeSheet)
     window = SimpleNamespace(project=SimpleNamespace(root="/p"))
-    maintenance.show_plugin_offer(window)
-    maintenance.show_plugin_offer(window)
+    maintenance.on_plugin_offer_fetched(window, CAT)
+    maintenance.on_plugin_offer_fetched(window, CAT)
     assert shown == [{}]
 
 
@@ -82,7 +135,7 @@ def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
     class FakeSheet:
         restart_requested = True
 
-        def __init__(self, parent, *, preselected):
+        def __init__(self, parent, *, preselected, catalogue_data):
             pass
 
         def exec(self):
@@ -91,17 +144,17 @@ def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
     monkeypatch.setattr(maintenance, "PluginOfferSheet", FakeSheet)
     relaunched = []
     window = SimpleNamespace(project=SimpleNamespace(root="/p"), relaunch_with_project=relaunched.append)
-    maintenance.show_plugin_offer(window)
+    maintenance.on_plugin_offer_fetched(window, CAT)
     assert relaunched == ["/p"]
 
 
 def test_a_failing_sheet_leaves_the_flag_alone(monkeypatch, qapp):
-    def broken(parent, *, preselected):
+    def broken(parent, *, preselected, catalogue_data):
         raise RuntimeError("no sheet")
 
     monkeypatch.setattr(maintenance, "PluginOfferSheet", broken)
     with pytest.raises(RuntimeError):
-        maintenance.show_plugin_offer(SimpleNamespace(project=SimpleNamespace(root="/p")))
+        maintenance.on_plugin_offer_fetched(SimpleNamespace(project=SimpleNamespace(root="/p")), CAT)
     assert not upgrade.offer_seen()
 
 
@@ -111,7 +164,7 @@ def test_the_upgrade_preselection_is_passed_on_only_when_switched_on(monkeypatch
     class FakeSheet:
         restart_requested = False
 
-        def __init__(self, parent, *, preselected):
+        def __init__(self, parent, *, preselected, catalogue_data):
             seen.append(preselected)
 
         def exec(self):
@@ -120,9 +173,9 @@ def test_the_upgrade_preselection_is_passed_on_only_when_switched_on(monkeypatch
     monkeypatch.setattr(maintenance, "PluginOfferSheet", FakeSheet)
     monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"claude": "why"})
     window = SimpleNamespace(project=SimpleNamespace(root="/p"))
-    maintenance.show_plugin_offer(window)
+    maintenance.on_plugin_offer_fetched(window, CAT)
     monkeypatch.setattr(upgrade, "PRESELECT_ON_UPGRADE", True)
-    maintenance.show_plugin_offer(window)
+    maintenance.on_plugin_offer_fetched(window, CAT)
     assert seen == [{}, {"claude": "why"}]
 
 

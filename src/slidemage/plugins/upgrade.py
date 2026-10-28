@@ -17,8 +17,9 @@ from collections.abc import Iterable
 from .. import app_settings, deck_scan
 from ..ai import ai_profile, credentials
 from ..project import ProjectContext
-from .catalogue import CataloguePlugin
-from .loader import plugins_dir
+from . import session
+from .catalogue import Catalogue, CataloguePlugin, best_release
+from .loader import discover, plugins_dir
 
 log = logging.getLogger(__name__)
 
@@ -81,3 +82,9 @@ def mark_offer_seen() -> None:
         (folder / OFFER_SEEN_NAME).write_text("1\n", encoding="utf-8")
     except OSError:
         log.exception("could not write %s", OFFER_SEEN_NAME)
+
+
+def offerable(catalogue: Catalogue) -> list[CataloguePlugin]:
+    """The catalogue's plugins the first-start sheet can offer: not installed, with a release this SlideMage runs."""
+    present = {p.id for p in session.loaded()} | {f.id for f in discover()}
+    return [c for c in catalogue.plugins if c.id not in present and best_release(c) is not None]
