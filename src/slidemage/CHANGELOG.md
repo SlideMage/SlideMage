@@ -2873,5 +2873,9 @@ NEW: Nothing changes for you; the Claude API route works as before.
 
 v8.67.2 (2026-10-28, plugins plan, phase 4): The anthropic package and what came only with it (pydantic, pydantic_core, httpx2, httpcore2, anyio, jiter and others) leave pyproject.toml, the build spec and THIRD_PARTY_NOTICES.md; tools/third_party_notices.py no longer lists it. The download gets smaller and the first request to the API no longer waits for the SDK to load.
 
-NEW: Nothing changes for you; the Claude API route works as before.
+AI HTTPS requests now follow system and environment proxy settings and bypass rules, using CONNECT through HTTP proxies with credentials sent only to the proxy; local Ollama stays direct. The shared transport makes TCP connection, proxy tunnelling and TLS handshake abortable by publishing the active socket during setup, with nonblocking TCP polling and synchronized socket ownership. Tests in test_ai_providers.py and test_agent_claude.py.
+
+NEW: A smaller download and more reliable AI connections.
 - SlideMage is a little smaller to download.
+- AI requests can use the proxy settings often needed on university and company networks.
+- Stop can end an AI connection stuck while connecting.
