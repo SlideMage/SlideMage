@@ -1,8 +1,8 @@
 # Plugins: handover to Stefan, 2026-10-28
 
 From Jürgen's side of the plugins work. It says what has been built since your handovers of 2026-10-26, the pull
-requests we will open (with their drafts), and every change or addition to your plan and handovers. Status:
-PRs 2 and 3 are open as drafts (#20, #21); PR 1 was merged as #19 on 2026-10-27.
+requests we will open (with their drafts), and every change or addition to your plan and handovers. Status: see
+section 0; PR 1 was merged as #19 on 2026-10-27, and #22 (the GUI tests) is merged too.
 
 Your documents this refers to: `docs/PLUGINS_PLAN.md` (your draft 2, now draft 3 with a section 6),
 `Handover_2026-10-26-Plugins-For-Website.md`, `-CampusOnline-Plugin.md`, `-Claude-Plugin.md`,
@@ -25,6 +25,18 @@ the morning; where they differ, this section wins.
 
 Merge order: #22 (merged), #20, #21, then #23 and #24 (both on #21), then #26. Version numbers get renumbered at merge (and
 see section 6 on renumbering for publication).
+
+**Since then (evening of 2026-10-28):**
+- **`uv.lock` regenerated on every open PR branch**, so each matches its own `pyproject.toml` (`uv lock --check`
+  passes). On #20 the `anthropic` SDK and the 14 packages that came only with it are out. #20's "regenerate
+  `uv.lock`" item (3.2) is done.
+- **The stack is merged upward again:** #21 into #23 and #24, #20 into #24, #24 into #26. The only conflict was
+  `uv.lock`, fixed by locking again. No code changed, so the test results above still hold.
+- **The review of 2026-10-28** that findings 1–11 refer to is now in the repository:
+  `docs/Code_Review_2026-10-28-Plugins.md`.
+- **CampusOnline:** its fixes for findings 8–10 are pushed to `plugin-campusonline` on `JuergenFleiss/SlideMageS`.
+- **Local checkouts:** a clone made before the move still has `origin` on `stpalan/SlideMage`, and its `git fetch`
+  fails over SSH; `git remote set-url origin git@github.com:SlideMage/SlideMage.git` fixes it.
 
 **Plugins** (all on the real `plugin_api`, packaged code importing nothing else from SlideMage; `build.py --check`
 passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixes ported into both AI plugins):
