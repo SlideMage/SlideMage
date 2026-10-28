@@ -41,7 +41,6 @@ from ....ai.agent_types import (
     ToolStarted,
 )
 from ....ai.providers import ChatProvider, ProviderError
-from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
 from .. import compare_rendered
@@ -51,7 +50,7 @@ from ..state import WorkspaceState
 from .cards import AssistantText, DiffCard, Notice, Status, ToolCard, UserBubble, suggestion_button, text_label
 from .gui_workspace import EditAsk, GuiWorkspace
 from .route_chat import route_chats
-from .session import ChatSession, LocalModels
+from .session import ChatSession
 
 MODE_SETTING = "chat_edit_mode"
 MODES = ((EDIT_ASK, "Ask before edits", "each change is shown first"),
@@ -140,8 +139,6 @@ class ChatView(Surface):
         self._diffs: dict[str, DiffCard] = {}
         self._asking: dict[DiffCard, EditAsk] = {}      # the cards whose Apply / Reject the agent waits for
         self._stick = True                             # the list follows the newest content
-        self._local_models: Optional[list[str]] = None  # the tool-capable Ollama models; None until Ollama has answered
-        self._local_loader: Optional[LocalModels] = None  # the question to Ollama that is out, if any
         self._attached: list[str] = []                 # project-relative paths the next request names
         self._chats = route_chats()                    # what the other routes' conversations left behind
         self._route_key = state.ai_route               # whose conversation is on show
@@ -219,7 +216,6 @@ class ChatView(Surface):
         self._fill_empty()
         self._show_mode()
         self.refresh_route()
-        self._load_local_models()
         self._scroll.viewport().installEventFilter(self)
 
     # -- the message list ---------------------------------------------------------------
@@ -587,17 +583,6 @@ class ChatView(Surface):
     def _show_mode(self) -> None:
         self.mode_picker.set_text(next(text for key, text, _meta in MODES if key == self.session.mode))
 
-    def _load_local_models(self) -> None:
-        """Ask Ollama which installed models can call tools (one question at a time)."""
-        if self._local_loader is not None:
-            return
-        self._local_loader = loader = LocalModels(self.state.project)
-        loader.loaded.connect(self._on_local_models)
-        background.start_detached(loader)
-
-    def _on_local_models(self, names: list[str]) -> None:
-        self._local_models, self._local_loader = names, None
-
     def _open_route_menu(self) -> None:
         """The models of the active route, the default marked "default" and the others "this chat only": the local
         ones that can call tools (as of the last time Ollama was asked: when the menu opens, for the next time), or
@@ -614,25 +599,13 @@ class ChatView(Surface):
         found = routes.get(route.route)
         if found is None:
             menu.add_item("", resolver.problem(project, route), enabled=False)
-        elif found.id != ai_profile.OLLAMA:
+        else:
             choices = found.model_choices(routes.context(project, found.id), ai_profile.CHAT)
             reason = "" if choices else (resolver.problem(project, route) or "no model available")
             for model in choices or dict.fromkeys(filter(None, [route.model, default])):
                 add(model, reason, bool(choices))
             if not choices and not route.model and not default:
                 menu.add_item("", reason, enabled=False)
-        else:
-            self._load_local_models()
-            known = self._local_models
-            local = list(known or [])
-            for model in dict.fromkeys(filter(None, [route.model, default])):
-                if model not in local:
-                    local.insert(0, model)      # the chosen and the default one stay visible
-            for model in local:
-                add(model, "not installed, or cannot call tools" if known is not None and model not in known else "")
-            if not local:
-                menu.add_item("", "Looking for local models…" if known is None else "No installed model can call tools",
-                              enabled=False)
         menu.add_separator()
         menu.add_item("setup", "Set the default in AI setup…")
         menu.triggered.connect(self._set_route)

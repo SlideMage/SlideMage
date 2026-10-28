@@ -43,17 +43,20 @@ class Migration:
     release: str
 
 
-# The release that removes a feature from core adds its Migration here, e.g. Migration(CAMPUSONLINE, "v8.70.0").
-# Empty until then: nothing changes for the users of a release that still has every feature built in.
-MIGRATIONS: list[Migration] = []
+# Each removed feature gets a one-time offer in the release that removes it.
+MIGRATIONS: list[Migration] = [Migration(CLAUDE, "v10.0.0"), Migration(OLLAMA, "v10.0.0")]
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:
     """The AI routes (ollama, claude_code, anthropic_api) that have a model chosen in the settings."""
-    stored = app_settings.get(ctx, ai_profile.MODELS_KEY)
-    if not isinstance(stored, dict):
-        return set()
-    return {ai_profile.route_id(route) for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
+    stored = app_settings.peek(ctx, ai_profile.MODELS_KEY)
+    found = ({ai_profile.route_id(route) for route, tasks in stored.items()
+              if isinstance(tasks, dict) and any(tasks.values())} if isinstance(stored, dict) else set())
+    for key in ("chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model"):
+        value = app_settings.peek(ctx, key)
+        if isinstance(value, str) and value.strip():
+            found.add(ai_profile.ANTHROPIC_API if value.startswith("anthropic:") else ai_profile.OLLAMA)
+    return found
 
 
 def used_features(ctx: ProjectContext) -> dict[str, str]:
@@ -62,11 +65,11 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
     routes = _routes_with_models(ctx)
     if legacy_anthropic_key(ctx) is not None:
         used[CLAUDE] = "You have an Anthropic API key"
-    elif ai_profile.route_id(app_settings.get(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
+    elif ai_profile.route_id(app_settings.peek(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
         used[CLAUDE] = "You chose Claude Code or the API for cloud AI"
     elif routes & {ai_profile.CLAUDE_CODE, ai_profile.ANTHROPIC_API}:
         used[CLAUDE] = "You chose Claude models in the AI settings"
-    if ai_profile.OLLAMA in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
+    if ai_profile.OLLAMA in routes or str(app_settings.peek(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
         used[OLLAMA] = "You chose Ollama models"
     try:
         linked = [deck for deck in deck_scan.scan_decks(ctx) if deck.course_url]

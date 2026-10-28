@@ -53,7 +53,7 @@ MAC_KEYS = {
 # -- when a command is available -------------------------------------------------------
 
 AI_COMMANDS = ("ai:", "task:", "selection:")        # the commands that need an AI route, by id prefix
-AI_COMMAND_IDS = ("slide:readable", "slide:translate", "images")
+AI_COMMAND_IDS = ("slide:readable", "slide:translate")
 
 
 def _with_ai(visible):

@@ -18,23 +18,9 @@ from PySide6.QtCore import QObject, QThread, Signal
 from ....ai.agent import Agent
 from ....ai.ai_profile import Route
 from ....ai.agent_types import EDIT_ASK, AgentEvent, AgentMessage, Done
-from ....ai.ollama_route import OllamaProvider
 from ....ai.providers import ChatProvider
 from ... import background
 from .gui_workspace import GuiWorkspace
-
-
-class LocalModels(QThread):
-    """The installed Ollama models the chat can use (the ones that call tools), asked for off the GUI thread."""
-
-    loaded = Signal(object)         # [model name]
-
-    def __init__(self, project):
-        super().__init__()
-        self.project = project
-
-    def run(self) -> None:
-        self.loaded.emit(OllamaProvider.for_project(self.project).tool_models())
 
 
 class _AgentThread(QThread):

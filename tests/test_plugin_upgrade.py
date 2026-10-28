@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from slidemage import app_settings, deck_scan
-from slidemage.ai import ai_profile, credentials
+from slidemage.ai import ai_profile
 from slidemage.plugins import catalogue, loader, upgrade
 from slidemage.project import ProjectContext
 
@@ -30,7 +30,7 @@ def test_nothing_used_by_default(ctx):
 
 
 def test_an_api_key_means_claude(ctx, monkeypatch):
-    monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     used = upgrade.used_features(ctx)
     assert list(used) == ["claude"] and "API key" in used["claude"]
 
@@ -93,9 +93,8 @@ def test_preselect_picks_the_catalogue_plugins_in_use():
     assert upgrade.preselect(plugins, {}) == set()
 
 
-def test_no_feature_is_migrated_in_this_release():
-    assert upgrade.MIGRATIONS == []
-    assert upgrade.migrations_due(None) == {}
+def test_ai_features_are_migrated_in_this_release():
+    assert upgrade.MIGRATIONS == [upgrade.Migration("claude", "v10.0.0"), upgrade.Migration("ollama", "v10.0.0")]
 
 
 def test_migrations_due(ctx, monkeypatch):

@@ -65,21 +65,10 @@ def _no_cloud_credentials(monkeypatch):
     """No test may find a real Anthropic key (environment or keychain), so
     none can reach the network by accident; tests that need a key set one
     explicitly."""
-    from slidemage.ai import credentials
-
-    monkeypatch.delenv(credentials.ENV_VAR, raising=False)
-    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     from slidemage.plugins import migrate
 
     monkeypatch.setattr(migrate, "_keyring", lambda: None)
-
-
-@pytest.fixture(autouse=True)
-def _claude_signed_in(monkeypatch):
-    """No test may run the real `claude auth status`: Claude Code counts as signed in unless a test says not."""
-    from slidemage.ai import claude_launch
-
-    monkeypatch.setattr(claude_launch, "signed_in", lambda claude: True)
 
 
 @pytest.fixture(autouse=True)
@@ -153,9 +142,11 @@ def _fresh_ai_session():
     from slidemage.ai import ai_profile
 
     ai_profile._modes.clear()
-    from slidemage.ai import ollama_route
+    from slidemage.ai import routes
 
-    ollama_route._installed.clear()
+    routes.clear()
+    yield
+    routes.clear()
 
 
 @pytest.fixture(autouse=True)

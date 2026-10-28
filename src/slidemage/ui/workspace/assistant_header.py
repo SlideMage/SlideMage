@@ -27,7 +27,7 @@ from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
-from ... import app_settings, deck_outline, slide_language
+from ... import deck_outline, slide_language
 from ...ai import ai_profile
 from ...ai.focus_scope import DECK, SLIDE
 from ..kit import kit_qss as q
@@ -166,9 +166,6 @@ class AssistantHeader(Surface):
             subtitle = surface_subtitle
         else:
             subtitle = f"Chat with {route.model or 'no model chosen'}"
-            if route.route == ai_profile.OLLAMA:
-                host = app_settings.get_ollama_host(self.state.project)
-                subtitle += f" · {host.split('://', 1)[-1].rstrip('/')}"
         self.route_note = subtitle
         self.ai_switch.set_note(subtitle)
 

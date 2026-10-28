@@ -902,6 +902,26 @@ _LAZY = {
 }
 
 
+def _helper_project(ctx: RouteContext):
+    return importlib.import_module("slidemage.project").ProjectContext.at(ctx.root)
+
+
+def check(ctx: RouteContext, *args: Any, **kwargs: Any):
+    """Validate a task answer using this route's project and bibliography."""
+    return importlib.import_module("slidemage.ai.tasks").check(_helper_project(ctx), *args, **kwargs)
+
+
+def effective_system_prompt(ctx: RouteContext) -> str:
+    """The effective image description prompt for this route's project."""
+    return importlib.import_module("slidemage.alt_draft").effective_system_prompt(_helper_project(ctx))
+
+
+def get_effective_prompt(ctx: RouteContext, model: str, source_lang: str, target_lang: str):
+    """The effective image translation prompt for this route's project."""
+    return importlib.import_module("slidemage.translation_prompts").get_effective_prompt(
+        _helper_project(ctx), model, source_lang, target_lang)
+
+
 def __getattr__(name: str) -> Any:
     module = _LAZY.get(name)
     if module is None:

@@ -2883,7 +2883,11 @@ NEW: SlideMage can install plugins.
 - Each plugin says what it needs and what it contacts on the network before you install it.
 
 
-v8.68.1 (2026-10-28, AI plugin extraction preparation): The neutral AI task validator, image task definitions and scope checks are separated from the built-in Claude modules. The legacy Anthropic key lookup reads its existing locations directly, without changing them, and the Add slide translation worker accepts a route-provided translator. The built-in routes remain available.
+v10.0.0 (2026-10-28, AI-free core): AI routes are supplied by plugins through the public route, terminal, credentials, task and image APIs. Legacy settings are read without migration by plugin compatibility readers.
 
-NEW: AI plugin integration preparation.
-- Slide translation can use a translator supplied by an AI plugin.
+BREAKING: AI is now two plugins, Claude and Ollama; SlideMage offers them at the next start to everyone who used them; your keys, models and settings carry over
+
+NEW: SlideMage works as a complete editor without an AI plugin.
+- Manual image descriptions and translation remain available.
+- Plugins provide AI routes and retain existing settings.
+

@@ -76,6 +76,21 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     return findings
 
 
+def _detect_ai_settings(root: Path) -> list[Finding]:
+    from . import app_settings
+    from .ai import ai_profile
+    from .project import ProjectContext
+
+    ctx = ProjectContext.at(root)
+    policy = project.read_project_json(root).get("ai")
+    keys = (ai_profile.MODELS_KEY, ai_profile.CONNECTION_KEY, "ollama_host", "anthropic_api_key",
+            "chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model")
+    if policy or any(app_settings.peek(ctx, key) for key in keys):
+        return [Finding(".slidemage/project.json" if policy else ".slidemage/app_settings.json", 0,
+                        "AI settings are in use; install the corresponding AI plugin.")]
+    return []
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -121,6 +136,11 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Use \\slide or \\slideversion for slides students should receive; keep omission "
         "calls for instructor-only content."),
     detect=_detect_omitslide,
+), Change(
+    id="ai-plugins", since="v10.0.0", severity=LAYOUT,
+    title="AI routes are provided by plugins",
+    description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
+    fix="Install the Claude or Ollama plugin from Settings → Plugins.", detect=_detect_ai_settings,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

@@ -11,77 +11,44 @@ API model name, for Claude Code "<model>:<effort>". The caller turns the Route i
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
 from ..ai import ai_profile, resolver, routes
 from ..ai.ai_profile import Route
-from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError  # OllamaProvider: LocalModelList
+from ..ai.providers import ChatProvider, ProviderError
 from ..project import ProjectContext
-from . import background
 from .kit.widgets import ModalSheet, ModeBadge
 
 
-class _Lister(QThread):
-    loaded = Signal(object, object)         # this thread, [InstalledModel]
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        self.project = project
-
-    def run(self) -> None:
-        self.loaded.emit(self, OllamaProvider.for_project(self.project).installed(detailed=True))
-
-
 class LocalModelList(QObject):
-    """The installed Ollama models, as the last answer of Ollama (asked on a thread, so that no picker waits
-    on the network). `refresh()` asks again; `changed` follows each answer, and the pickers are filled from
-    `models`, `vision` and `tools` then. Empty until the first answer."""
-
+    """Compatibility facade for model pickers; routes own discovery and caching."""
     changed = Signal()
 
     def __init__(self, project: ProjectContext, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.project = project
-        self.installed: list[InstalledModel] = []
-        self._lister: _Lister | None = None
-        self._again = False
+
+    def _choices(self, task: str) -> list[str]:
+        route = next(iter(routes.on_side(True)), None)
+        return list(route.model_choices(routes.context(self.project, route.id), task)) if route else []
 
     @property
     def models(self) -> list[str]:
-        return [model.name for model in self.installed]
+        return self._choices(ai_profile.CHAT)
 
     @property
     def vision(self) -> list[str]:
-        return [model.name for model in self.installed if "vision" in model.capabilities]
+        return self._choices(ai_profile.IMAGE_DESCRIPTION)
 
     @property
     def tools(self) -> list[str]:
-        return [model.name for model in self.installed if model.supports_tools]
+        return self._choices(ai_profile.CHAT)
 
     def refresh(self) -> None:
-        """Ask Ollama; while an answer is out, one more question follows it."""
-        if self._lister is not None:
-            self._again = True
-            return
-        self._lister = lister = _Lister(self.project)
-        lister.loaded.connect(self._on_loaded)
-        background.start_detached(lister)
+        self.changed.emit()
 
-    def _on_loaded(self, lister: QThread, installed: list[InstalledModel]) -> None:
-        if lister is not self._lister:
-            return
-        self._lister = None
-        self.fill(installed)
-        if self._again:
-            self._again = False
-            self.refresh()
-
-    def fill(self, installed: list[InstalledModel]) -> None:
-        """Take a list somebody else has just asked for (the Settings sheet)."""
-        self.installed = installed
-        from ..ai.ollama_route import cache_installed
-        cache_installed(self.project, installed)
+    def fill(self, installed) -> None:
         self.changed.emit()
 
 
@@ -126,7 +93,7 @@ def confirm_cloud_request(parent: QWidget, project: ProjectContext, label: str, 
     is remembered (ai_profile.mark_cloud_seen), so this is asked once per project."""
     answer = QMessageBox.question(
         parent, "Send to the cloud?",
-        f"This request goes to the cloud ({label}) and sends {what} to Anthropic. Nothing is sent unless you "
+        f"This request goes to the cloud ({label}) and sends {what} to the selected service. Nothing is sent unless you "
         "agree.\n\nYou are asked this once per project; the Local setting for this project in Settings "
         "keeps everything on this computer.",
     )

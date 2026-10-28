@@ -23,4 +23,4 @@ def legacy_anthropic_key(ctx: ProjectContext) -> str | None:
             value = ""
         if value:
             return value
-    return str(app_settings.get(ctx, "anthropic_api_key") or "").strip() or None
+    return str(app_settings.peek(ctx, "anthropic_api_key") or "").strip() or None

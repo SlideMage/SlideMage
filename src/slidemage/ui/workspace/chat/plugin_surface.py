@@ -103,13 +103,3 @@ class ChatSurfaceContext:
     def close(self) -> None:
         self._workspace.close()
 
-    def _builtin_surface(self):
-        from ....ai import claude_launch, claude_scope
-        from ....ai.mcp_server import McpServer
-        from ..terminal.view import ClaudeCodeView
-        from ....plugins.host import PluginHost
-        from ....plugins.manifest import Manifest
-        from ...plugin_ui import HOST_UI
-        manifest = Manifest("claude", "Claude", "0.0.0", 1, ">=0", "", "", "", "")
-        return ClaudeCodeView(PluginHost(manifest, self._state.project, HOST_UI), self, claude_launch, claude_scope, McpServer,
-                              claude_launch.hook_command)
