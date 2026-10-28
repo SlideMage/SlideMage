@@ -146,13 +146,14 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
     def busy(self):
         raise OSError("port busy")
 
-    original = session_module.McpServer.start
-    monkeypatch.setattr(session_module.McpServer, "start", busy)
+    from slidemage.ai.mcp_server import McpServer
+    original = McpServer.start
+    monkeypatch.setattr(McpServer, "start", busy)
     use_claude_code(env)
     wait_until(lambda: env.view.status.text() == "Could not start")
     wait_until(lambda: "could not be started" in terminal_text(env).replace("\n", " "))     # the terminal is narrow
     assert not env.view.session.running
-    monkeypatch.setattr(session_module.McpServer, "start", original)      # the port is free again: Restart works
+    monkeypatch.setattr(McpServer, "start", original)      # the port is free again: Restart works
     env.view.restart_button.click()
     wait_until(lambda: env.view.session.running and env.view.status.text() == "Running")
 
@@ -207,12 +208,13 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     # Restart of a running process: the old one is ended, and its end is not reported as the new one's
     first = env.view.session._pty._process
     session = env.view.session
-    old = session._pty._generation
+    old_pty = session._pty
+    old = old_pty._generation
     env.view.restart_button.click()
-    wait_until(lambda: session._pty._process is not first and session.running and session._pty._generation > old)
+    wait_until(lambda: session._pty._process is not first and session.running)
     # Regression (1c7e047): queued output and exit from the previous process must not affect the new one.
-    session._pty._ended.emit(old, 7)
-    session._pty._chunk.emit(old, b"stale output\r\n")
+    old_pty._ended.emit(old, 7)
+    old_pty._chunk.emit(old, b"stale output\r\n")
     pump(0.3)
     assert not first.alive and env.view.status.text() == "Running"
     assert session._sync._timer.isActive() and "stale output" not in terminal_text(env)
@@ -483,7 +485,10 @@ def test_saved_chat_choice_applies_on_start_and_restart(env):
 def test_mcp_toolbox_reads_scope_and_focus_on_gui_thread(env):
     from slidemage.ai import claude_scope
 
-    session = session_module.ClaudeCodeSession(env.window, env.fake)
+    from slidemage.ai import claude_launch
+    from slidemage.ai.mcp_server import McpServer
+    session = session_module.ClaudeCodeSession(env.view.host, env.view._surface_context, env.fake,
+                                                claude_launch, claude_scope, McpServer, claude_launch.hook_command)
     try:
         env.window.open_slide_editor(env.path)
         box = on_thread(session._toolbox)

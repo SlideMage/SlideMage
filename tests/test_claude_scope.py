@@ -60,12 +60,15 @@ def test_failed_focus_publish_is_retried_without_a_focus_change(qapp, tmp_path, 
 
     from slidemage.project import ProjectContext
     from slidemage.ui.workspace.terminal.session import ClaudeCodeSession
+    from slidemage.ai import claude_launch
+    from slidemage.ai.mcp_server import McpServer
 
     window = SimpleNamespace(
         project=ProjectContext.at(tmp_path),
         state=SimpleNamespace(deck=None, focused_slide="abc", view="instructor", language="EN"),
         centre=SimpleNamespace(path=tmp_path / "slides/abc-EN-Hello-current.tex", is_dirty=lambda path: False))
-    session = ClaudeCodeSession(window, tmp_path / "fake-claude")
+    host, context = session_services(window)
+    session = ClaudeCodeSession(host, context, tmp_path / "fake-claude", claude_launch, claude_scope, McpServer, claude_launch.hook_command)
     session._focus_file = tmp_path / "focus.json"
     changed, attempts = [], []
     session.focus_changed.connect(lambda: changed.append(True))
@@ -120,14 +123,15 @@ def test_a_restart_resumes_the_conversation_only_when_claude_code_saved_it(qapp,
         def stop(self):
             pass
 
-    monkeypatch.setattr(session_mod, "McpServer", FakeServer)
     monkeypatch.setattr(service_mod, "PtyProcess", FakePty)      # the terminal service starts the process
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))
     window = SimpleNamespace(
         project=ProjectContext.at(tmp_path),
         state=SimpleNamespace(deck=None, focused_slide=None, view="instructor", language="EN"),
         centre=SimpleNamespace(path=None, is_dirty=lambda path: False))
-    session = session_mod.ClaudeCodeSession(window, tmp_path / "fake-claude")
+    from slidemage.ai import claude_launch
+    host, context = session_services(window)
+    session = session_mod.ClaudeCodeSession(host, context, tmp_path / "fake-claude", claude_launch, claude_scope, FakeServer, claude_launch.hook_command)
     session._sync = SimpleNamespace(start=lambda: None, stop=lambda last_look=True: None)
     try:
         session.start(80, 24)
@@ -143,5 +147,85 @@ def test_a_restart_resumes_the_conversation_only_when_claude_code_saved_it(qapp,
         assert session.session_id == kept and started[-1][1:3] == ["--resume", kept]
         session.start(80, 24)                                  # Restart: a new conversation
         assert session.session_id != kept and started[-1][1] == "--session-id"
+    finally:
+        session.shutdown()
+
+
+def session_services(window):
+    from types import SimpleNamespace
+    from slidemage.ai import ai_profile
+    from slidemage.plugin_api import ChatFocus
+    from slidemage.ui.workspace.terminal.service import TerminalService
+    from slidemage.ui.workspace.terminal.sync import ExternalEditWatch
+
+    host = SimpleNamespace(terminal=lambda: TerminalService(window.project.root),
+                           watch_external_edits=lambda callback: ExternalEditWatch(window.project.root, callback))
+    def focus():
+        state, centre = window.state, window.centre
+        return ChatFocus(state.focused_slide, centre.path, None, state.view, state.language,
+                         centre.path is not None and centre.is_dirty(centre.path))
+    context = SimpleNamespace(project_root=window.project.root, focus_details=focus,
+                              apply_external_edits=lambda changes: None,
+                              selected_route=lambda route, task, choice: ai_profile.route_for(window.project, route, task, choice))
+    return host, context
+
+
+def test_session_uses_host_services_and_stops_writer_before_final_watch(qapp, tmp_path):
+    from types import SimpleNamespace
+    from slidemage.ai import claude_launch
+    from slidemage.plugin_api import ChatFocus
+    from slidemage.ui.workspace.terminal.session import ClaudeCodeSession
+
+    calls = []
+    class Server:
+        url, token = "http://example/mcp", "token"
+        def __init__(self, toolbox):
+            self.toolbox = toolbox
+        def start(self):
+            calls.append("server start")
+        def stop(self):
+            calls.append("server stop")
+    class Watch:
+        def start(self):
+            calls.append("watch start")
+        def stop(self, *, last_look=True):
+            calls.append(("watch stop", last_look))
+    class Process:
+        running = True
+        def write(self, data):
+            calls.append(("write", data))
+        def resize(self, cols, rows):
+            calls.append(("resize", cols, rows))
+        def stop(self):
+            calls.append("process stop")
+            self.running = False
+    def start(command, env, cwd, **kwargs):
+        calls.append(("process start", command, env, cwd, kwargs))
+        return Process()
+    host = SimpleNamespace(watch_external_edits=lambda callback: Watch(),
+                           terminal=lambda: SimpleNamespace(start=start))
+    context = SimpleNamespace(project_root=tmp_path, apply_external_edits=lambda changes: None,
+                              focus_details=lambda: ChatFocus("abc", tmp_path / "slides/abc.tex", None,
+                                                               "instructor", "EN", True),
+                              selected_route=lambda route, task, choice: SimpleNamespace(model="sonnet", effort="high"),
+                              build_tools=lambda host, scope, cancel: (scope, cancel))
+    session = ClaudeCodeSession(host, context, tmp_path / "claude", claude_launch, claude_scope, Server,
+                                lambda: "hook command")
+    try:
+        session.start(90, 30)
+        process_start = next(call for call in calls if isinstance(call, tuple) and call[0] == "process start")
+        assert process_start[3] == tmp_path and process_start[4]["with_widget"] is False
+        assert process_start[4]["cols"] == 90 and process_start[4]["rows"] == 30
+        assert "hook command" in " ".join(process_start[1])
+        assert claude_scope.load(session._focus_file)["dirty"] is True
+        assert session._toolbox()[0] == "slide"
+        session.set_scope("deck")
+        assert session._toolbox()[0] == "deck"
+        session.write(b"hello")
+        session.resize(100, 40)
+        session.stop()
+        assert calls.index("process stop") < len(calls) - 1
+        assert calls[-1] == ("watch stop", True)
+        assert not session.running
     finally:
         session.shutdown()

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .... import plugin_api
 from ....ai import ai_profile, tasks
 from .. import attachments
 from ..task_bubbles import bubbles
@@ -27,13 +28,30 @@ class ChatSurfaceContext:
         self._app, self._state, self._scope, self._tasks = app, state, scope, tasks_runner
         self._sync = DiskSync(app, state.project.root)
         self._workspace = ToolWorkspace(app)
+        self._workspace._workspace.translate = self.translate_slide
+        self._workspace._workspace.widen = self._switch_to_deck
 
     @property
     def project_root(self) -> Path:
         return self._state.project.root
 
-    def selected_route(self, route_id: str, task: str):
-        return ai_profile.route_for(self._state.project, route_id, task)
+    def selected_route(self, route_id: str, task: str, choice: str = ""):
+        return ai_profile.route_for(self._state.project, route_id, task, choice)
+
+    def focus_details(self):
+        state, centre = self._state, self._app.centre
+        slide = centre.path
+        deck = state.deck.path if state.deck is not None and not state.deck.is_test_deck else None
+        return plugin_api.ChatFocus(state.focused_slide, slide, deck, state.view, state.language,
+                                    slide is not None and centre.is_dirty(slide))
+
+    def build_tools(self, host, scope, cancel):
+        workspace = self._workspace._workspace
+        def build():
+            workspace.begin_request()
+            return host.ai_tools(scope, focus_slide=workspace.context().path, mode="auto", cancel=cancel,
+                                 workspace=self._workspace)
+        return workspace.on_gui(build, None)
 
     def scope(self) -> str:
         return self._scope.current()
@@ -77,9 +95,21 @@ class ChatSurfaceContext:
         self._tasks.start(bubble.task, bubble.paths, bubble.label)
         return f"SlideMage is translating it ({bubble.label}); the task card in the assistant shows the proposed slide."
 
+    def _switch_to_deck(self) -> str:
+        if not self.set_scope("deck"):
+            return "No deck is open in SlideMage: ask the user to open one."
+        return "SlideMage is in Deck Mode now: go on with the request."
+
     def close(self) -> None:
         self._workspace.close()
 
     def _builtin_surface(self):
+        from ....ai import claude_launch, claude_scope
+        from ....ai.mcp_server import McpServer
         from ..terminal.view import ClaudeCodeView
-        return ClaudeCodeView(self._app, self._state, self._scope, self._tasks, context=self)
+        from ....plugins.host import PluginHost
+        from ....plugins.manifest import Manifest
+        from ...plugin_ui import HOST_UI
+        manifest = Manifest("claude", "Claude", "0.0.0", 1, ">=0", "", "", "", "")
+        return ClaudeCodeView(PluginHost(manifest, self._state.project, HOST_UI), self, claude_launch, claude_scope, McpServer,
+                              claude_launch.hook_command)

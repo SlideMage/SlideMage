@@ -716,3 +716,64 @@ def test_chat_reserves_the_captured_route(host, monkeypatch, qapp):
     assert set(window.taken) == {"plugin-local"}
     session._take_release()()
     assert window.taken == {}
+
+
+def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, monkeypatch):
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.chat import plugin_surface
+
+    calls = []
+    path = host.ctx.root / "slides" / "abc.tex"
+    class Workspace:
+        def __init__(self, window):
+            pass
+        def on_gui(self, work, default):
+            calls.append("gui")
+            return work()
+        def begin_request(self):
+            calls.append("begin")
+        def context(self):
+            return SimpleNamespace(path=path)
+        def close(self):
+            calls.append("close")
+    monkeypatch.setattr(plugin_surface, "GuiWorkspace", Workspace)
+    app = SimpleNamespace(centre=SimpleNamespace(path=path, is_dirty=lambda path: True))
+    state = SimpleNamespace(project=host.ctx, focused_slide="abc", view="instructor", language="EN",
+                            deck=SimpleNamespace(path=host.ctx.root / "decks/test.tex", is_test_deck=False))
+    context = plugin_surface.ChatSurfaceContext(app, state, SimpleNamespace(), SimpleNamespace())
+    monkeypatch.setattr(host, "ai_tools", lambda scope, **kwargs: (scope, kwargs))
+    details = context.focus_details()
+    assert (details.slide_id, details.slide, details.deck, details.view, details.language, details.dirty) == (
+        "abc", path, state.deck.path, "instructor", "EN", True)
+    cancel = object()
+    scope, kwargs = context.build_tools(host, "deck", cancel)
+    assert scope == "deck" and kwargs["focus_slide"] == path and kwargs["cancel"] is cancel
+    assert kwargs["workspace"] is context.tool_workspace()
+    assert calls == ["gui", "begin"]
+    state.deck.is_test_deck = True
+    assert context.focus_details().deck is None
+    context.close()
+
+
+def test_claude_surface_builds_from_public_host_and_context(host, qapp):
+    from types import SimpleNamespace
+    from slidemage.ui.kit.widgets import caption
+    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
+
+    host.ui = SimpleNamespace(caption=caption, terminal_tokens=lambda: SimpleNamespace(info="#123456"))
+    callbacks, closed = [], []
+    context = SimpleNamespace(on_scope_changed=callbacks.append,
+                              selected_route=lambda route, task: SimpleNamespace(label="Claude Code · Sonnet"),
+                              close=lambda: closed.append(True))
+    launch = SimpleNamespace(INSTALL_URL="https://example.org", find_claude=lambda: None)
+    surface = ClaudeCodeView(host, context, launch, None, None, lambda: "hook")
+    try:
+        assert "Sonnet" in surface.caption.text()
+        surface._started = True
+        surface._open()
+        assert surface.needs_setup and "not installed" in surface.setup_title.text()
+        assert len(callbacks) == 1
+    finally:
+        surface.shutdown()
+        surface.deleteLater()
+    assert closed == [True]
