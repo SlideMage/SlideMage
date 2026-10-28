@@ -34,6 +34,7 @@ import os
 from collections.abc import Callable
 from functools import partial
 
+import shiboken6
 from PySide6.QtCore import QThread, QTimer, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
@@ -411,7 +412,8 @@ class SettingsSheet(ModalSheet):
         QTimer.singleShot(0, self._scroll_now)          # once the layout has its size
 
     def _scroll_now(self) -> None:
-        if self._ai_area is not None and self._scroll_key in self.ai.sections:
+        # also run from a timer, which can fire after the sheet was closed and its widgets deleted
+        if self._ai_area is not None and shiboken6.isValid(self._ai_area) and self._scroll_key in self.ai.sections:
             bar = self._ai_area.verticalScrollBar()
             bar.setValue(self.ai.sections[self._scroll_key].y())
 
