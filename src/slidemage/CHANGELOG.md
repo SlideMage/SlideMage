@@ -2870,3 +2870,8 @@ v8.67.1 (2026-10-28, direct requests: "Let's set up an organization. Would we th
 
 NEW: SlideMage now lives in the SlideMage organization on GitHub.
 - Updates come from github.com/SlideMage/SlideMage; older copies are forwarded there automatically.
+
+v8.68.0 (2026-10-28, direct request: "I want a \"Save\" button when I edit a deck's source."): The Source view's toolbar has a Save button for a deck's source and the other files that are no slide (Slidemaster.bib, test-slides.tex) while AutoSave is off, beside the "x". It does what Ctrl+S does (SourcePane.save: the file is written, a deck's source goes through after_deck_edit as before) and is enabled while the file has edits not written yet. With AutoSave on these files are saved as you type, and a slide keeps its own toolbar with "Not saved · Ctrl+S", so the button is not shown there. Tests in test_centre_gui.py.
+
+NEW: A Save button for a deck's source.
+- When AutoSave is off, editing a deck's source (or Slidemaster.bib) shows a Save button next to the "x"; it does the same as Ctrl+S.
