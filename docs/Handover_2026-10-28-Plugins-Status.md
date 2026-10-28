@@ -34,7 +34,7 @@ see section 6 on renumbering for publication).
   `uv.lock`, fixed by locking again. No code changed, so the test results above still hold.
 - **The review of 2026-10-28** that findings 1–11 refer to is now in the repository:
   `docs/Code_Review_2026-10-28-Plugins.md`.
-- **CampusOnline:** its fixes for findings 8–10 are pushed to `plugin-campusonline` on `JuergenFleiss/SlideMageS`.
+- **CampusOnline:** its fixes for findings 8–10 are pushed (now in its own repository, see below).
 - **Local checkouts:** a clone made before the move still has `origin` on `stpalan/SlideMage`, and its `git fetch`
   fails over SSH; `git remote set-url origin git@github.com:SlideMage/SlideMage.git` fixes it.
 
@@ -52,25 +52,30 @@ see section 6 on renumbering for publication).
   `peek_ollama_host`. Still open: its network tests need a runner that allows TCP on loopback.
 - **Claude plugin:** its integration tests and the benchmark still import SlideMage internals (the package
   itself imports only `slidemage.plugin_api`). We suggest keeping that until core offers public test fixtures.
-- **Only on Jürgen's machine:** the Claude and Ollama plugin repositories and the template branch `plugin-api-1`
-  have no remote yet. They wait for the organisation repositories (item 1 below) and your answer on the template.
+- **Only on Jürgen's machine:** the template branch `plugin-api-1`. It waits for your answer on the template.
+
+**Plugin repositories (2026-10-28, evening):** `SlideMage/slidemage-plugin-campusonline`, `-claude` and `-ollama`
+are created, public, with issues on. Each plugin's branch is pushed as both `main` and `develop`, and each `plugin.toml`
+`homepage` points there. Before publishing, CampusOnline's history was rewritten with `git filter-repo` to replace a
+colleague's real name in old test fixtures (the one #18 replaced in SlideMage), so its commit hashes changed; the
+hashes in this handover are the new ones. The Claude and Ollama branches never contained the name and are unchanged.
+SlideMage's old version tags, which came along with the filtered histories, were not pushed. GitHub didn't run the
+Check workflows for the first pushes; they run from the next push on. The old `plugin-campusonline` branch on
+`JuergenFleiss/SlideMageS` now holds the rewritten history too.
 
 **Plugins** (all on the real `plugin_api`, packaged code importing nothing else from SlideMage; `build.py --check`
 passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixes ported into both AI plugins):
 
 | Plugin | Where now | Next |
 |---|---|---|
-| CampusOnline | `JuergenFleiss/SlideMageS`, branch `plugin-campusonline` | public repository, 1.0.0 with SlideMage 9.0, registry entry |
-| Claude | local repository `slidemage-plugin-claude` (history filtered) | public repository, 1.0.0 with SlideMage 10.0, registry entry |
-| Ollama | local repository `slidemage-plugin-ollama` (history filtered; yours to maintain) | same |
+| CampusOnline | `SlideMage/slidemage-plugin-campusonline` (public; `main` and `develop`) | 1.0.0 with SlideMage 9.0, registry entry |
+| Claude | `SlideMage/slidemage-plugin-claude` (public; `main` and `develop`) | 1.0.0 with SlideMage 10.0, registry entry |
+| Ollama | `SlideMage/slidemage-plugin-ollama` (public; `main` and `develop`; yours to maintain) | same |
 | Template | local branch `plugin-api-1` of your template: the real API in the example, frozen-app import contract, relative-import check, a changelog checker (`release_notes.py`) | pull request to you, if you want it |
 
 **Needed from you now:**
-1. **Organisation access.** Jürgen is not a member of the `SlideMage` organisation (only a collaborator with write
-   access on `SlideMage/SlideMage`), so he cannot create the plugin repositories there. Following the organisation
-   proposal (5.7): please create `slidemage-plugin-campusonline`, `slidemage-plugin-claude` and
-   `slidemage-plugin-ollama` in the organisation with Jürgen as admin (Ollama: you), or invite him as a member with
-   repository creation allowed.
+1. ~~Organisation access~~: done. Jürgen is a member now and created the three plugin repositories on 2026-10-28
+   (see the next paragraph). Ollama is yours to maintain: give yourself or others the rights you want on it.
 2. Review #21 and #24 as the owner of the API; the decisions taken along the way are below.
 3. The version question (section 6) before #23 and #26 are released.
 
@@ -103,7 +108,7 @@ passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixe
 | `stpalan/SlideMage` | `feature/ai-tools-fixes` | `develop` | 14 | v8.64.1 – v8.65.0 | merged as #19 (2026-10-27) |
 | `stpalan/SlideMage` | `feature/anthropic-stdlib` | `develop` | +6 | v8.67.1 – v8.67.2 | yes, draft PR #20 |
 | `stpalan/SlideMage` | `feature/plugin-host` | `develop` | 12 | v8.68.0 | yes, draft PR #21 |
-| `JuergenFleiss/SlideMageS` (private fork) | `plugin-campusonline` (history of its own) | – | 6 ahead of the fork | plugin 1.0.0 (undated) | partly: up to `21665d5` |
+| `JuergenFleiss/SlideMageS` (private fork) | `plugin-campusonline` (history of its own) | – | 6 ahead of the fork | plugin 1.0.0 (undated) | partly: up to `48b7a26` |
 
 `feature/plugin-host` is independent of the other two; the merge conflicts this causes are listed in 3.3.
 
@@ -271,12 +276,12 @@ As in 3.3. Built as nine steps (`docs/PLUGIN_HOST_PLAN.md`), each reviewed and c
 
 | Step | What | Commit |
 |---|---|---|
-| 0–1 | history filtered from `stpalan/SlideMage` `develop`; template adopted; the package stdlib-only, SlideMage internals in `bridge/` | up to `b7c891e` |
-| 2 | the host drafted as a `typing.Protocol` (`campusonline/host.py`), a `FakeHost`, `activate()` registering everything | `9d5a6b9` |
-| 3 | "Course" Deck settings tab (link with Save link and Open, admin slides, Insert slides as the footer action) and the compact box (title, next session with date, time and room, Open course page, Admin slides…) | `df91066` |
-| 4 | SlideMage's old `course-schedules.json` adopted once at activation | `3d22a40` |
-| – | the cache keeps the course title and full sessions, read through a public `cached_entry()` | `6922913` |
-| – | box sizes `compact` / `large` as in your plan | `d18b8a0` |
+| 0–1 | history filtered from `stpalan/SlideMage` `develop`; template adopted; the package stdlib-only, SlideMage internals in `bridge/` | up to `896f041` |
+| 2 | the host drafted as a `typing.Protocol` (`campusonline/host.py`), a `FakeHost`, `activate()` registering everything | `100cabc` |
+| 3 | "Course" Deck settings tab (link with Save link and Open, admin slides, Insert slides as the footer action) and the compact box (title, next session with date, time and room, Open course page, Admin slides…) | `1f2c2ed` |
+| 4 | SlideMage's old `course-schedules.json` adopted once at activation | `063bd61` |
+| – | the cache keeps the course title and full sessions, read through a public `cached_entry()` | `0fc20d5` |
+| – | box sizes `compact` / `large` as in your plan | `2d6faa4` |
 
 120 tests; `build.py --check` passes.
 
