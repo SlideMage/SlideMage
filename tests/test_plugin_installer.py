@@ -303,3 +303,32 @@ def test_install_after_removal_replaces_pending_removal(tmp_path):
     installer.install(versioned_zip(tmp_path, "2.0.0"))
     assert installer.apply_pending()
     assert loader.read_manifest(loader.plugins_dir() / "hello").version == "2.0.0"
+
+
+@pytest.mark.parametrize("plugin_id", ["settings", "secrets", "pending", "staging", "old", "state", "catalogue"])
+def test_reserved_ids_cannot_replace_host_storage(tmp_path, plugin_id):
+    settings = loader.plugins_dir() / "settings" / "other.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"preference": 42}')
+    archive = make_zip(tmp_path, toml=HELLO_TOML.replace('id = "hello"', f'id = "{plugin_id}"'),
+                       files={f"{plugin_id}/__init__.py": "def activate(host): pass"})
+    with pytest.raises(installer.InstallError, match="reserved"):
+        installer.peek(archive)
+    with pytest.raises(installer.InstallError, match="reserved"):
+        installer.install(archive)
+    with pytest.raises(installer.InstallError):
+        installer.remove(plugin_id)
+    installer.cleanup()
+    assert settings.read_text() == '{"preference": 42}'
+
+
+def test_pending_reserved_removal_cannot_delete_settings():
+    base = loader.plugins_dir()
+    settings = base / "settings" / "other.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"preference": 42}')
+    pending = base / ".pending" / "settings"
+    pending.mkdir(parents=True)
+    (pending / ".remove").touch()
+    installer.cleanup()
+    assert settings.read_text() == '{"preference": 42}'

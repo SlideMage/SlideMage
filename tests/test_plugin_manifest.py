@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage.plugins.manifest import ManifestError, matches, package_name, parse_version, read_manifest
+from slidemage.plugins.manifest import RESERVED_IDS, ManifestError, matches, package_name, parse_version, read_manifest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"
 
@@ -95,3 +95,9 @@ def test_matches(requirement, version, expected):
 def test_matches_rejects_malformed():
     with pytest.raises(ValueError):
         matches("newer", "9.0")
+
+
+@pytest.mark.parametrize("plugin_id", sorted(RESERVED_IDS))
+def test_host_storage_ids_are_refused(tmp_path, plugin_id):
+    with pytest.raises(ManifestError, match="id"):
+        read_manifest(write(tmp_path, id=f'"{plugin_id}"'))

@@ -3,7 +3,7 @@
 """Which installed plugins have a newer release, and when the app last asked. No Qt.
 
 The check runs with the app's own startup update check and follows its mode (off / ask / auto); this module is the
-pure part: the comparison, the withdrawn test and the once-a-day timestamp in plugins/last_update_check.
+pure part: the comparison, the withdrawn test and the once-a-day timestamp in plugins/.last_update_check.
 """
 from __future__ import annotations
 
@@ -15,10 +15,11 @@ from ..version import VERSION_NUMBER
 from .catalogue import Catalogue, CataloguePlugin, Release, best_release
 from .loader import LoadedPlugin, plugins_dir
 from .manifest import parse_version
+from .storage import private_file
 
 log = logging.getLogger(__name__)
 
-CHECK_FILE = "last_update_check"
+CHECK_FILE = ".last_update_check"
 CHECK_INTERVAL_S = 24 * 3600
 
 
@@ -64,7 +65,7 @@ def check_due(now: float | None = None) -> bool:
     or lies in the future)."""
     now = time.time() if now is None else now
     try:
-        stamp = float((plugins_dir() / CHECK_FILE).read_text(encoding="utf-8").strip())
+        stamp = float(private_file(plugins_dir(), CHECK_FILE.removeprefix(".")).read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return True
     return stamp > now or now - stamp >= CHECK_INTERVAL_S
@@ -74,6 +75,7 @@ def mark_checked(now: float | None = None) -> None:
     try:
         folder = plugins_dir()
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / CHECK_FILE).write_text(f"{int(time.time() if now is None else now)}\n", encoding="utf-8")
+        private_file(folder, CHECK_FILE.removeprefix(".")).write_text(
+            f"{int(time.time() if now is None else now)}\n", encoding="utf-8")
     except OSError:
         log.exception("could not write %s", CHECK_FILE)

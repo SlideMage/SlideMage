@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .loader import plugins_dir
-from .manifest import MANIFEST_NAME, Manifest, ManifestError, matches, package_name, read_manifest
+from .manifest import MANIFEST_NAME, Manifest, ManifestError, matches, package_name, read_manifest, valid_id
 
 log = logging.getLogger(__name__)
 
@@ -282,7 +282,7 @@ def row_state(plugin_id: str, current: tuple[str, str, str]) -> tuple[str, str, 
 def remove(plugin_id: str) -> None:
     """Stage removal for the next start, preserving every live import and resource path."""
     folder = plugins_dir() / plugin_id
-    if not re.match(r"^[a-z][a-z0-9-]*$", plugin_id) or not folder.is_dir():
+    if not valid_id(plugin_id) or not folder.is_dir():
         raise InstallError(f"The plugin {plugin_id!r} is not installed.")
     staging = plugins_dir() / ".staging" / uuid.uuid4().hex
     target = _pending(plugin_id)
@@ -315,13 +315,13 @@ def apply_pending() -> bool:
         old = None
         final = plugins_dir() / staged.name
         try:
+            if not valid_id(staged.name):
+                raise InstallError("The pending plugin has an invalid or reserved id.")
             removing = (staged / ".remove").is_file()
             if not removing:
                 manifest = _check_plugin(staged, VERSION_NUMBER)
                 if manifest.id != staged.name:
                     raise InstallError("The pending plugin id does not match its folder.")
-            elif not re.fullmatch(r"[a-z][a-z0-9-]*", staged.name):
-                raise InstallError("The pending removal has an invalid id.")
             if final.exists():
                 old = _old_target(staged.name)
                 old.parent.mkdir(parents=True, exist_ok=True)
