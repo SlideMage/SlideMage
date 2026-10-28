@@ -126,6 +126,12 @@ class SourcePane(Surface):
         self._version_button.clicked.connect(self.update_version)
         self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
+        # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S, beside the "x".
+        save_key = QKeySequence("Ctrl+S").toString(QKeySequence.SequenceFormat.NativeText)
+        self._save_button = Button("Save", "primary", compact=True)
+        self._save_button.setToolTip(f"Save this file ({save_key})")
+        self._save_button.clicked.connect(self.save)
+        top.addWidget(self._save_button)
         self._close_button = IconButton("close", "Close and go back to the slide")
         self._close_button.clicked.connect(self.close_requested.emit)
         top.addWidget(self._close_button)
@@ -389,6 +395,8 @@ class SourcePane(Surface):
         self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
         self._close_button.setVisible(has and not file.is_slide)
+        self._save_button.setVisible(has and not file.is_slide and not autosave_on())
+        self._save_button.setEnabled(has and file.dirty and not read_only)
         self._tools_button.setEnabled(has)
         frozen = has and file.is_slide and not file.is_current_slide
         self._frozen_bar.setVisible(frozen)
