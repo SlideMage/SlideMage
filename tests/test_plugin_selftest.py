@@ -36,3 +36,55 @@ def test_cli_dispatches_plugins_flag_to_the_selftest(monkeypatch):
         cli.main(["--self-test", "--plugins"])
     assert calls == [True]
     assert exit_info.value.code == 7
+
+
+def test_imports_all_five_promised_qt_modules(monkeypatch):
+    imported = []
+    real = selftest.importlib.import_module
+
+    def record(name):
+        imported.append(name)
+        return real(name)
+
+    monkeypatch.setattr(selftest.importlib, "import_module", record)
+    assert selftest._check_qt_imports() == []
+    assert imported == [f"PySide6.{name}" for name in ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtSvg")]
+
+
+@pytest.mark.parametrize("module", selftest.PYSIDE_MODULES)
+def test_missing_promised_qt_module_fails_selftest(monkeypatch, module, capsys):
+    real = selftest.importlib.import_module
+
+    def missing(name):
+        if name == f"PySide6.{module}":
+            raise ImportError("not bundled")
+        return real(name)
+
+    monkeypatch.setattr(selftest.importlib, "import_module", missing)
+    monkeypatch.setattr(selftest, "_check_imports", lambda: [])
+    assert selftest.run() == 1
+    assert f"PySide6 module {module} does not import" in capsys.readouterr().out
+
+
+def test_loaded_plugin_builds_its_widget(qapp, monkeypatch):
+    built = []
+    real = selftest._check_widget
+
+    def check(build):
+        def record():
+            widget = build()
+            built.append(widget.text())
+            return widget
+        return real(record)
+
+    monkeypatch.setattr(selftest, "_check_widget", check)
+    assert selftest._check_plugin() == []
+    assert built == ["Self-test widget"]
+
+
+def test_plugin_widget_failure_fails_selftest(qapp, monkeypatch, capsys):
+    monkeypatch.setattr(selftest, "PLUGIN_INIT", selftest.PLUGIN_INIT.replace(
+        'return QLabel("Self-test widget")', 'raise RuntimeError("widget failed")'))
+    monkeypatch.setattr(selftest, "_check_imports", lambda: [])
+    assert selftest.run() == 1
+    assert "the self-test plugin UI failed" in capsys.readouterr().out

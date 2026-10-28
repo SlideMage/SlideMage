@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The plugin host's part of `slidemage --self-test --plugins`, run on every build before it is published.
 
-Two checks. First, every standard-library module a plugin may import is importable: PyInstaller bundles only what
+First, every standard-library module a plugin may import is importable: PyInstaller bundles only what
 SlideMage itself imports, so a plugin using csv or smtplib would fail only in the installed app. Second, a
 minimal plugin is written to a temporary folder and loaded through the real loader, which must end "loaded"
-with its one command.
+with its one command. The five promised PySide6 modules must also import, and the plugin's UI factory builds
+a trivial offscreen widget when a QApplication can be created.
 
 This file imports only the standard library at module level: packaging/slidemage.spec loads it by path, to get
 bundled_stdlib_modules() at build time, so the spec and this check use the same list.
@@ -27,6 +28,7 @@ EXCLUDED = frozenset({
 # The list the spec writes beside the build (slidemage/plugins/), for the frozen self-test: find_spec in a frozen
 # app finds only what was bundled, so a module PyInstaller missed would silently drop out of the check.
 STDLIB_LIST_NAME = "stdlib_modules.txt"
+PYSIDE_MODULES = ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtSvg")
 
 PLUGIN_ID = "selftest"
 PLUGIN_TOML = """\
@@ -43,6 +45,11 @@ license = "GPL-3.0-or-later"
 PLUGIN_INIT = '''\
 def activate(host):
     host.add_command("selftest.ok", "Self-test", lambda deck: None)
+    host.add_settings_tab("Self-test", build_widget)
+
+def build_widget():
+    from PySide6.QtWidgets import QLabel
+    return QLabel("Self-test widget")
 '''
 
 
@@ -104,6 +111,7 @@ def _check_plugin() -> list[str]:
         os.environ[loader.PATH_ENV] = str(folder)
         try:
             loaded = loader.load_all(lambda manifest: Registrar(manifest))
+            problems = _check_loaded_plugin(loaded)
         finally:
             project.config_dir = old_config_dir
             if old_path is None:
@@ -111,6 +119,11 @@ def _check_plugin() -> list[str]:
             else:
                 os.environ[loader.PATH_ENV] = old_path
             loader._discard_module(PLUGIN_ID)   # the test plugin's package must not stay importable
+    return problems
+
+
+def _check_loaded_plugin(loaded) -> list[str]:
+    problems = []
     mine = [p for p in loaded if p.id == PLUGIN_ID]
     if len(mine) != 1:
         return [f"the self-test plugin was not found (plugins found: {[p.id for p in loaded]})"]
@@ -120,11 +133,65 @@ def _check_plugin() -> list[str]:
     commands = [c.id for c in plugin.contributions.commands]
     if commands != ["selftest.ok"]:
         problems.append(f"the self-test plugin registered commands {commands}, expected ['selftest.ok']")
+    tabs = plugin.contributions.settings_tabs
+    if len(tabs) != 1:
+        problems.append(f"the self-test plugin registered {len(tabs)} UI factories, expected 1")
+    else:
+        problems.extend(_check_widget(tabs[0].build))
     return problems
 
 
+def _check_qt_imports() -> list[str]:
+    problems = []
+    for name in PYSIDE_MODULES:
+        try:
+            importlib.import_module(f"PySide6.{name}")
+        except Exception as e:
+            problems.append(f"PySide6 module {name} does not import: {e!r}")
+    return problems
+
+
+def _check_widget(build) -> list[str]:
+    try:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        from PySide6.QtWidgets import QApplication, QLabel, QWidget
+    except ImportError as e:
+        return [f"the self-test plugin UI cannot import Qt: {e!r}"]
+    app = QApplication.instance()
+    if app is None:
+        old_platform = os.environ.get("QT_QPA_PLATFORM")
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        try:
+            app = QApplication([])
+        except Exception as e:
+            print(f"SlideMage plugin self-test: widget check skipped (QApplication unavailable: {e!r})")
+            return []
+        finally:
+            if old_platform is None:
+                os.environ.pop("QT_QPA_PLATFORM", None)
+            else:
+                os.environ["QT_QPA_PLATFORM"] = old_platform
+    if not isinstance(app, QApplication):
+        print("SlideMage plugin self-test: widget check skipped (a non-GUI QCoreApplication exists)")
+        return []
+    widget = None
+    try:
+        widget = build()
+        if not isinstance(widget, QLabel) or widget.text() != "Self-test widget":
+            return ["the self-test plugin UI did not build its expected label"]
+        widget.ensurePolished()
+        app.processEvents()
+    except Exception as e:
+        return [f"the self-test plugin UI failed: {e!r}"]
+    finally:
+        if isinstance(widget, QWidget):
+            widget.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    return []
+
+
 def run() -> int:
-    problems = _check_imports() + _check_plugin()
+    problems = _check_imports() + _check_qt_imports() + _check_plugin()
     if problems:
         print("SlideMage plugin self-test: failed")
         for problem in problems:
