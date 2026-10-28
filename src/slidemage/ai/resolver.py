@@ -55,7 +55,7 @@ def api_models(ctx: ProjectContext) -> list[str]:
     """The Anthropic API models to list in the pickers: none without a key. The static list, so opening a dialog
     never waits on the network; Settings shows the live list."""
     found = routes.get(ai_profile.ANTHROPIC_API)
-    return found.model_choices(ctx, ai_profile.CHAT) if found else []
+    return found.model_choices(routes.context(ctx, found.id), ai_profile.CHAT) if found else []
 
 
 def problem(ctx: ProjectContext, route: Route) -> str:
@@ -64,16 +64,16 @@ def problem(ctx: ProjectContext, route: Route) -> str:
     found = routes.get(route.route)
     if found is None:
         return f"The AI route {route.route or 'for this side'!r} is not installed."
-    return found.problem(ctx, route)
+    return found.problem(routes.context(ctx, found.id), route)
 
 
 def provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
     """The provider of a route that has one. A new one on each call: abort() ends one request only."""
     found = _route(route)
-    provider = found.provider(ctx, route)
+    provider = found.provider(routes.context(ctx, found.id), route)
     if provider is None:
         raise RouteUnavailable(not_offered(route, "This feature", "It needs an Ollama or an API model: switch the route."))
-    if reason := found.problem(ctx, route):
+    if reason := found.problem(routes.context(ctx, found.id), route):
         raise RouteUnavailable(reason)
     return provider
 
@@ -81,7 +81,7 @@ def provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
 def _checked(ctx: ProjectContext, route: Route) -> AiRoute:
     """The route, once it says it can run `route`."""
     found = _route(route)
-    if reason := found.problem(ctx, route):
+    if reason := found.problem(routes.context(ctx, found.id), route):
         raise RouteUnavailable(reason)
     return found
 
@@ -90,15 +90,15 @@ def slide_translator(ctx: ProjectContext, route: Route) -> Any:
     """What translates the body of a slide on `route`: slide_add.translate_body takes a provider, a route that
     runs its own Translate task (Claude Code) hands its own translator."""
     found = _checked(ctx, route)
-    return found.slide_translator(ctx, route) or provider_for(ctx, route)
+    return found.slide_translator(routes.context(ctx, found.id), route) or provider_for(ctx, route)
 
 
 def draft_backend(ctx: ProjectContext, route: Route) -> Any:
     """What describes images on `route`."""
-    return _checked(ctx, route).draft_backend(ctx, route) or alt_draft.ModelBackend(ctx, provider_for(ctx, route))
+    return _checked(ctx, route).draft_backend(routes.context(ctx, route.route), route) or alt_draft.ModelBackend(ctx, provider_for(ctx, route))
 
 
 def translation_backend(ctx: ProjectContext, route: Route) -> Any:
     """What translates the descriptions of images on `route`."""
-    return (_checked(ctx, route).translation_backend(ctx, route)
+    return (_checked(ctx, route).translation_backend(routes.context(ctx, route.route), route)
             or alt_draft.ModelTranslationBackend(ctx, provider_for(ctx, route)))

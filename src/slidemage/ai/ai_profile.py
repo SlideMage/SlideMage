@@ -192,7 +192,7 @@ def _stored_models(settings: dict) -> dict[str, dict[str, str]]:
 def model_choices(ctx: ProjectContext, route: str, task: str) -> list[str]:
     """What the route offers for `task` without asking anyone (AiRoute.model_choices): [] for an unknown route."""
     impl = routes.get(route_id(route))
-    return impl.model_choices(ctx, task) if impl else []
+    return impl.model_choices(routes.context(ctx, impl.id), task) if impl else []
 
 
 def default_choice(route: str, task: str) -> str:
@@ -214,7 +214,7 @@ def model_choice(ctx: ProjectContext, route: str, task: str) -> str:
     stored = _stored_models(app_settings.load(ctx)).get(route)
     choice = stored.get(task) if isinstance(stored, dict) else None
     impl = routes.get(route)
-    if impl is not None and isinstance(choice, str) and choice and not impl.valid_choice(ctx, choice):
+    if impl is not None and isinstance(choice, str) and choice and not impl.valid_choice(routes.context(ctx, impl.id), choice):
         choice = None
     return choice if isinstance(choice, str) and choice else default_choice(route, task)
 
@@ -238,7 +238,7 @@ def route_for(ctx: ProjectContext, route: str, task: str, choice: str = "") -> R
     the route does not offer (a picker still filled for another route) is no pick."""
     route = route_id(route)
     impl = routes.get(route)
-    if impl is not None and choice and not impl.valid_choice(ctx, choice):
+    if impl is not None and choice and not impl.valid_choice(routes.context(ctx, impl.id), choice):
         choice = ""
     choice = choice or model_choice(ctx, route, task)
     model, effort = impl.split_choice(choice) if impl is not None else (choice, None)

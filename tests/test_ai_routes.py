@@ -6,6 +6,7 @@ fallback to another route."""
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -197,17 +198,18 @@ def test_the_routes_make_the_providers_and_backends_they_always_made(ctx, monkey
     claude = tmp_path / "claude"
     monkeypatch.setattr(claude_launch, "find_claude", lambda: claude)
     ollama, api, code = routes.get(OLLAMA), routes.get(ANTHROPIC_API), routes.get(CLAUDE_CODE)
-    assert isinstance(ollama.provider(ctx, Route(OLLAMA, CHAT, "m")), OllamaProvider)
-    assert api.provider(ctx, Route(ANTHROPIC_API, CHAT, "m")).model == "m"
-    assert code.provider(ctx, Route(CLAUDE_CODE, CHAT)) is None
-    assert ollama.slide_translator(ctx, Route(OLLAMA, TRANSLATION, "m")) is None and ollama.task_runner(ctx, Route(OLLAMA, FIXES, "m")) is None
-    assert ollama.draft_backend(ctx, Route(OLLAMA, IMAGE_DESCRIPTION, "m")) is None and api.translation_backend(ctx, Route(ANTHROPIC_API, TRANSLATION, "m")) is None
+    oc, ac, cc = (routes.context(ctx, r.id) for r in (ollama, api, code))
+    assert isinstance(ollama.provider(oc, Route(OLLAMA, CHAT, "m")), OllamaProvider)
+    assert api.provider(ac, Route(ANTHROPIC_API, CHAT, "m")).model == "m"
+    assert code.provider(cc, Route(CLAUDE_CODE, CHAT)) is None
+    assert ollama.slide_translator(oc, Route(OLLAMA, TRANSLATION, "m")) is None and ollama.task_runner(oc, Route(OLLAMA, FIXES, "m")) is None
+    assert ollama.draft_backend(oc, Route(OLLAMA, IMAGE_DESCRIPTION, "m")) is None and api.translation_backend(ac, Route(ANTHROPIC_API, TRANSLATION, "m")) is None
     assert ollama.chat_surface() is None and api.chat_surface() is None
     stop = threading.Event()
-    backend = code.draft_backend(ctx, Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "low"), stop)
+    backend = code.draft_backend(cc, Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "low"), stop)
     assert backend.cancel is stop and backend.claude == claude
-    assert callable(code.task_runner(ctx, Route(CLAUDE_CODE, FIXES, "haiku", "low")))
-    assert code.slide_translator(ctx, Route(CLAUDE_CODE, TRANSLATION, "haiku", "low")).effort == "low"
+    assert callable(code.task_runner(cc, Route(CLAUDE_CODE, FIXES, "haiku", "low")))
+    assert code.slide_translator(cc, Route(CLAUDE_CODE, TRANSLATION, "haiku", "low")).effort == "low"
 
 
 def test_the_old_import_path_of_the_ollama_provider_still_works():
@@ -308,3 +310,51 @@ def test_ollama_choices_use_only_the_background_cache(ctx, monkeypatch):
     assert ai_profile.model_choices(ctx, OLLAMA, CHAT) == ['chat']
     assert ai_profile.model_choices(ctx, OLLAMA, IMAGE_DESCRIPTION) == ['vision']
     assert ai_profile.model_choices(ctx, OLLAMA, TRANSLATION) == ['chat', 'vision']
+
+
+def test_route_calls_receive_a_public_project_context(ctx, fake_route, monkeypatch):
+    seen = []
+
+    def capture(context, *args):
+        seen.append(context)
+        return ["tiny"] if args and args[0] == CHAT else ""
+
+    monkeypatch.setattr(fake_route, "model_choices", capture)
+    monkeypatch.setattr(fake_route, "valid_choice", lambda context, choice: seen.append(context) or True)
+    monkeypatch.setattr(fake_route, "problem", capture)
+    ai_profile.model_choices(ctx, fake_route.id, CHAT)
+    ai_profile.route_for(ctx, fake_route.id, CHAT, "tiny")
+    resolver.problem(ctx, Route(fake_route.id, FIXES, "tiny"))
+    assert len(seen) >= 3
+    assert all(isinstance(context, plugin_api.RouteContext) and context.root == ctx.root for context in seen)
+    assert all(not hasattr(context, "slides_dir") for context in seen)
+
+
+def test_route_context_uses_plugin_namespace_and_current_project(ctx, tmp_path, monkeypatch):
+    from slidemage import project
+    from slidemage.ai import translation_style
+    from slidemage.plugins.host import PluginHost
+    from slidemage.plugins.manifest import read_manifest
+    from slidemage.project import ProjectContext
+
+    monkeypatch.setattr(routes, "_routes", dict(routes._routes))
+    monkeypatch.setattr(routes, "_owners", dict(routes._owners))
+    monkeypatch.setattr(project, "config_dir", lambda: tmp_path / "config")
+    monkeypatch.setattr(project, "cache_dir", lambda: tmp_path / "cache")
+    manifest = read_manifest(Path(__file__).parent / "fixtures" / "plugins" / "hello")
+    host = PluginHost(manifest, ctx)
+    route = FakeRoute()
+    routes.register(route, host)
+    other = ProjectContext.at(tmp_path / "other")
+    other.root.mkdir()
+    translation_style.set_de_address(other, "du")
+    (other.root / ".slidemage" / "glossary.md").write_text("hello = hallo", encoding="utf-8")
+    context = routes.context(other, route.id)
+    assert context.root == other.root and context.de_address == "du" and context.glossary == "hello = hallo"
+    assert context.settings is host.settings()
+    context.settings.set("value", 3)
+    assert host.settings().get("value") == 3
+    assert context.cache_dir == tmp_path / "cache" / "plugins" / "hello"
+    assert context.credentials(None).plugin_id == "hello"
+    with pytest.raises(ValueError):
+        context.legacy_secret("unknown")

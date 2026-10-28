@@ -146,7 +146,7 @@ class AiSetup(Popover):
 
     def _offered(self, route: str, task: str) -> list[str]:
         found = routes.get(route)
-        return found.model_choices(self._project, task) if found is not None else []
+        return found.model_choices(routes.context(self._project, found.id), task) if found is not None else []
 
     def _build_conn(self, cloud: str) -> None:
         """The chooser of the cloud route, rebuilt when the routes on the cloud side are not the ones it shows; it

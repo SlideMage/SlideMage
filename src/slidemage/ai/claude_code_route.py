@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..plugin_api import Route
+from ..plugin_api import Route, RouteContext
 from ..project import ProjectContext
 from . import ai_profile, claude_launch, claude_runner
 from .claude_images import ClaudeDraftBackend, ClaudeTranslationBackend
@@ -43,10 +43,10 @@ class ClaudeCodeRoute:
     is_local = False
     tasks = frozenset(ai_profile.TASKS)
 
-    def problem(self, ctx: ProjectContext, route: Route) -> str:
+    def problem(self, ctx: RouteContext, route: Route) -> str:
         return CHAT_IN_TERMINAL if route.task == ai_profile.CHAT else ""
 
-    def model_choices(self, ctx: ProjectContext, task: str) -> list[str]:
+    def model_choices(self, ctx: RouteContext, task: str) -> list[str]:
         return [f"{model}:{effort}" for model in claude_runner.MODELS for effort in claude_runner.EFFORTS]
 
     def default_choice(self, task: str) -> str:
@@ -61,31 +61,31 @@ class ClaudeCodeRoute:
         model, _, effort = choice.partition(":")
         return model, effort or None
 
-    def valid_choice(self, ctx: ProjectContext, choice: str) -> bool:
+    def valid_choice(self, ctx: RouteContext, choice: str) -> bool:
         return choice in self.model_choices(ctx, ai_profile.CHAT)
 
     def work_label(self, route: Route) -> str:
         return " · ".join(["Claude Code", *([route.model.capitalize(), f"effort {route.effort}"] if route.model
                                              else ["terminal"])])
 
-    def provider(self, ctx: ProjectContext, route: Route) -> None:
+    def provider(self, ctx: RouteContext, route: Route) -> None:
         return None     # no ChatProvider: the chat is the terminal, the tasks run through task_runner
 
-    def draft_backend(self, ctx: ProjectContext, route: Route, cancel: threading.Event | None = None) -> Any:
-        return ClaudeDraftBackend(ctx, claude_path(), route.model, route.effort, cancel or threading.Event())
+    def draft_backend(self, ctx: RouteContext, route: Route, cancel: threading.Event | None = None) -> Any:
+        return ClaudeDraftBackend(ProjectContext.at(ctx.root), claude_path(), route.model, route.effort, cancel or threading.Event())
 
-    def translation_backend(self, ctx: ProjectContext, route: Route, cancel: threading.Event | None = None) -> Any:
-        return ClaudeTranslationBackend(ctx, claude_path(), route.model, route.effort, cancel or threading.Event())
+    def translation_backend(self, ctx: RouteContext, route: Route, cancel: threading.Event | None = None) -> Any:
+        return ClaudeTranslationBackend(ProjectContext.at(ctx.root), claude_path(), route.model, route.effort, cancel or threading.Event())
 
-    def slide_translator(self, ctx: ProjectContext, route: Route) -> SlideTranslator:
-        return SlideTranslator(ctx, claude_path(), route.model, route.effort)
+    def slide_translator(self, ctx: RouteContext, route: Route) -> SlideTranslator:
+        return SlideTranslator(ProjectContext.at(ctx.root), claude_path(), route.model, route.effort)
 
-    def task_runner(self, ctx: ProjectContext, route: Route) -> Callable[..., Outcome]:
+    def task_runner(self, ctx: RouteContext, route: Route) -> Callable[..., Outcome]:
         claude = claude_path()
 
         def run(task, captured: str, request: str, cancel: threading.Event | None = None,
                 span: tuple[int, int] | None = None) -> Outcome:
-            return claude_runner.run_task(ctx, claude, task, captured, request, route.model, route.effort,
+            return claude_runner.run_task(ProjectContext.at(ctx.root), claude, task, captured, request, route.model, route.effort,
                                           cancel=cancel, span=span)
         return run
 

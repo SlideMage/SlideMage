@@ -12,17 +12,24 @@ Pure: no Qt, no network. The order of registration is the order the UI lists rou
 from __future__ import annotations
 
 from .. import plugin_api
-from ..plugin_api import AiRoute
+from ..plugin_api import AiRoute, RouteContext
+from ..project import ProjectContext
 
 _routes: dict[str, AiRoute] = {}
 _builtins_done = False
+_owners: dict[str, object] = {}
+_settings: dict[object, object] = {}
 
 
-def register(route: AiRoute) -> None:
+def register(route: AiRoute, owner: object | None = None) -> None:
     """Add `route`. A second route with the same id raises ValueError: ids are stored in settings and in every
     Route, so two routes must never share one."""
     _ensure_builtins()
     _add(route)
+    if owner is not None:
+        _owners[route.id] = owner
+    else:
+        _owners.pop(route.id, None)
 
 
 def _add(route: AiRoute) -> None:
@@ -53,6 +60,7 @@ def clear() -> None:
     that need a registry of their own."""
     global _builtins_done
     _routes.clear()
+    _owners.clear()
     _builtins_done = True
 
 
@@ -76,3 +84,35 @@ def _ensure_builtins() -> None:
 
 
 plugin_api.set_route_lookup(get)
+
+
+def context(ctx: ProjectContext, route_id: str) -> RouteContext:
+    """Build the public context for a route, using its registering plugin's namespace."""
+    from .. import app_settings, project
+    from ..plugins.credentials import PluginCredentials
+    from ..plugins.host import PluginSettings
+    from ..plugins.migrate import legacy_anthropic_key
+    from . import translation_style
+
+    owner = _owners.get(route_id)
+    plugin_id = owner.manifest.id if owner is not None else route_id
+    if owner is not None and hasattr(owner, "ctx"):
+        settings = owner.settings()
+    else:
+        path = project.config_dir() / "plugins" / "settings" / f"{plugin_id}.json"
+        if path not in _settings:
+            _settings[path] = PluginSettings(path)
+        settings = _settings[path]
+
+    def legacy_secret(name):
+        if name != "anthropic_api_key":
+            raise ValueError(f"unknown legacy secret: {name}")
+        return legacy_anthropic_key(ctx)
+
+    return RouteContext(
+        root=ctx.root, settings=settings, cache_dir=project.cache_dir() / "plugins" / plugin_id,
+        legacy_cache_dir=project.cache_dir() if project.cache_dir().is_dir() else None,
+        credentials=lambda env_var=None: PluginCredentials(plugin_id, env_var),
+        legacy_secret=legacy_secret, legacy_ollama_host=lambda: app_settings.get_ollama_host(ctx),
+        de_address=translation_style.de_address(ctx), glossary=translation_style.glossary(ctx),
+    )
