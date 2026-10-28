@@ -37,6 +37,9 @@ class HostUi(Protocol):
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
     def show_message(self, text: str, error: bool = False) -> None: ...
+    def deck_edit_blocker(self, path: Path) -> str | None:
+        """Why a plugin may not edit the deck at `path` now (a Deck settings sheet of it has unsaved changes), or
+        None."""
     def after_deck_edit(self, path: Path, summary: str, previous_text: str) -> None:
         """A plugin edit was written to the deck at `path`: do what a core deck edit does (rescan, refresh, history
         with previous_text for Undo)."""
@@ -159,6 +162,7 @@ class PluginHost(Registrar):
         language: Literal["de", "en"],
     ) -> list[Path]:
         ctx = self.ctx
+        self._check_editable(deck)
         self._check_fresh(deck)
         csv = ctx.slide_ids_csv
         csv_before = csv.read_bytes() if csv.is_file() else None
@@ -193,6 +197,7 @@ class PluginHost(Registrar):
         return created
 
     def edit_deck_text(self, deck: plugin_api.Deck, change: Callable[[str], str]) -> str:
+        self._check_editable(deck)
         try:
             new = deck_editor.apply(deck.path, deck.text, change)
         except CoreStaleFileError as e:
@@ -238,6 +243,13 @@ class PluginHost(Registrar):
         return self._window().caption(text, tone)
 
     # -- helpers
+
+    def _check_editable(self, deck: plugin_api.Deck) -> None:
+        """Refuse a plugin edit while the Deck settings sheet of this deck holds unsaved changes."""
+        blocker = getattr(self.ui, "deck_edit_blocker", None)
+        reason = blocker(deck.path) if blocker is not None else None
+        if reason:
+            raise plugin_api.EditRefusedError(reason)
 
     def _edited(self, deck: plugin_api.Deck, summary: str) -> None:
         """The edit is on disk: let the window run what a core deck edit runs. A failure here is the window's

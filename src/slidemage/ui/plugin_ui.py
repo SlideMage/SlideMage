@@ -25,6 +25,9 @@ from .workspace.panels.plugin_box import box_key
 log = logging.getLogger(__name__)
 
 
+DIRTY_SHEET_MESSAGE = "Save or discard the changes on the other tabs first."
+
+
 class PluginPage(Page):
     """A kit Page for a plugin's tab or box: `body` to fill, and `changed` for the plugin to emit when its state
     changed (a deck settings tab's footer button asks `enabled` again then)."""
@@ -35,6 +38,7 @@ class PluginPage(Page):
 class WindowHostUi:
     def __init__(self) -> None:
         self._window: weakref.ref | None = None
+        self._sheets: list[weakref.ref] = []        # the open Deck settings sheets
 
     def attach(self, window: Any) -> None:
         self._window = weakref.ref(window)
@@ -69,11 +73,32 @@ class WindowHostUi:
         else:
             window.toast.show_message(text, error=error, timeout_ms=6000 if error else None)
 
+    # -- plugin deck edits and the Deck settings sheet: while the sheet has unsaved core changes a plugin may not
+    # write the deck (plugin_api.EditRefusedError); an edit made while it is clean is taken over by the sheet.
+
+    def register_sheet(self, sheet: Any) -> None:
+        self._sheets = [r for r in self._sheets if r() is not None] + [weakref.ref(sheet)]
+
+    def unregister_sheet(self, sheet: Any) -> None:
+        self._sheets = [r for r in self._sheets if r() not in (None, sheet)]
+
+    def _sheets_of(self, path: Any) -> list[Any]:
+        return [s for s in (r() for r in self._sheets) if s is not None and s.deck.path == path]
+
+    def deck_edit_blocker(self, path: Any) -> str | None:
+        return DIRTY_SHEET_MESSAGE if any(s.dirty() for s in self._sheets_of(path)) else None
+
     def after_deck_edit(self, path: Any, summary: str, previous_text: str) -> None:
-        """What a core deck edit runs (window.after_deck_edit: rescan, views, headers, Undo with previous_text)."""
+        """What a core deck edit runs (window.after_deck_edit: rescan, views, headers, Undo with previous_text), then
+        the open sheets of the deck read the rescanned deck."""
         window = self.window
-        if window is not None:
-            window.after_deck_edit(path, summary, previous_text=previous_text)
+        if window is None:
+            return
+        window.after_deck_edit(path, summary, previous_text=previous_text)
+        core = next((d for d in window.decks if d.path == path), None)
+        if core is not None:
+            for sheet in self._sheets_of(path):
+                sheet.refresh_from_deck(core)
 
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""

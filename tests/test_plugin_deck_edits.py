@@ -19,7 +19,7 @@ from slidemage.plugins.manifest import read_manifest
 from slidemage.project import ProjectContext
 from slidemage.ui import app as app_module
 from slidemage.ui.dialogs.deck_settings import DeckSettingsSheet
-from slidemage.ui.plugin_ui import HOST_UI
+from slidemage.ui.plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from slidemage.ui.workspace import deck_actions
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"
@@ -57,8 +57,11 @@ def tex_files(pctx):
 
 
 class RecordingUi:
-    def __init__(self):
-        self.edits = []
+    def __init__(self, blocked=None):
+        self.blocked, self.edits = blocked, []
+
+    def deck_edit_blocker(self, path):
+        return self.blocked
 
     def after_deck_edit(self, path, summary, previous_text):
         self.edits.append((path, summary, previous_text))
@@ -97,6 +100,15 @@ def test_a_window_failure_after_the_edit_does_not_fail_the_plugin(pctx):
     assert host.edit_deck_text(deck, lambda t: t + "x") == deck.text + "x"
 
 
+def test_a_blocked_deck_refuses_both_edits_and_writes_nothing(pctx):
+    host = PluginHost(read_manifest(FIXTURES / "hello"), pctx, RecordingUi(blocked="no way"))
+    deck = snap(pctx)
+    before, slides = deck.path.read_bytes(), tex_files(pctx)
+    with pytest.raises(plugin_api.EditRefusedError, match="no way"):
+        host.edit_deck_text(deck, lambda t: t + "x")
+    with pytest.raises(plugin_api.EditRefusedError, match="no way"):
+        host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
+    assert deck.path.read_bytes() == before and tex_files(pctx) == slides
 
 
 # -- the window ------------------------------------------------------------------------------------------------
@@ -156,4 +168,41 @@ def test_a_plugin_insert_shows_the_calls_in_the_slide_list_and_is_undoable(windo
     assert new_slug not in [row.call.id_slug for row in window.slide_list.rows()]
 
 
+def test_unsaved_core_changes_disable_the_footer_action_and_refuse_plugin_edits(window):
+    sheet, page = sheet_of(window)
+    sheet.show()
+    assert sheet.plugin_button.isEnabled()
+    sheet.footer_edit.setText("Unsaved footer")
+    assert sheet.dirty() and not sheet.plugin_button.isEnabled()
+    assert DIRTY_SHEET_MESSAGE in sheet.note.text()
+    page.save_button.click()                                       # the plugin's own edit button
+    assert "EditRefusedError" in page.error and "Save or discard the changes on the other tabs first" in page.error
+    page.insert()
+    assert "EditRefusedError" in page.error
+    assert disk(window) == DECK
+    assert sheet.footer_edit.text() == "Unsaved footer"
+    sheet.footer_edit.setText(sheet.original.footer_text)          # discarded by hand: clean again
+    assert not sheet.dirty() and sheet.plugin_button.isEnabled()
+    page.save_button.click()
+    assert page.error == "" and MARKER in disk(window)
+    sheet.close()
 
+
+def test_a_plugin_edit_then_a_core_save_keeps_both_changes(window, monkeypatch):
+    def interact(sheet):
+        page = sheet.plugin_tabs[sheet.current_tab()][1]
+        page.save_button.click()
+        assert page.error == "", page.error
+        assert not sheet.dirty()                                    # the sheet read the new text
+        sheet.url_edit.setText(COURSE_URL)
+        sheet._on_save()
+        return True
+
+    monkeypatch.setattr(DeckSettingsSheet, "exec", interact)
+    shown = []
+    monkeypatch.setattr(deck_actions.QMessageBox, "critical", lambda *a: shown.append(a))
+    deck_actions.on_deck_settings(window, window.state.deck, "Edit")
+    assert shown == []
+    text = disk(window)
+    assert MARKER in text and COURSE_URL in text
+    assert window.state.deck.text == text

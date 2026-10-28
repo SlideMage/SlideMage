@@ -95,6 +95,17 @@ class AdminSlidesTab(Page):
         layout.addStretch(1)
         self._show_waiting()
 
+    def refresh_deck(self, deck: Deck) -> None:
+        """The deck's file changed under the sheet (a plugin edit): the insert places and the language are those of
+        the new text."""
+        self.deck = deck
+        self.language = deck_language_of(deck.text)
+        self._positions = deck_editor.slide_insert_positions(deck)
+        self.position_combo.clear()
+        for position in self._positions:
+            self.position_combo.addItem(position.label)
+        self.position_combo.setCurrentIndex(len(self._positions) - 1)
+
     @property
     def position(self) -> deck_editor.InsertPosition:
         return self._positions[self.position_combo.currentIndex()]
