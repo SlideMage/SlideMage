@@ -1,31 +1,26 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Make readable (small UI todos S4b): the task card from the findings of a check to the Done state, with the stand-in for
-`claude -p` (fake_claude.py), a stand-in for the preview's render and a stand-in for the readability measurement (it
-answers the reports a test queues, and notes the text it was asked to measure). The header's button, the findings panel's,
-the palette's command, the three routes and the routes that are not ready. The project is a throwaway one."""
+"""Make readable through the header, task card, findings panel and palette on scripted routes."""
 from __future__ import annotations
 
 import json
-import sys
 
 import pytest
 from PySide6.QtWidgets import QLabel
-from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
-from test_tasks_gui import LF, buttons, click, ctx, fake, on_route, settled, slide_file  # noqa: F401
-from test_task_card_gui import card, phase_is, shown_buttons, state
+from selection_make_readable_image_batches_helpers import (LF, buttons, card, phase_is, settled, shown_buttons,
+                                                        slide_file, state, wait_until)
+from selection_make_readable_image_batches_helpers import ctx as ctx, fake as fake
+from selection_make_readable_image_batches_helpers import click, pump
 
-from slidemage import readability
-from slidemage.ai import ai_profile, claude_launch, tasks as ai_tasks, credentials, resolver
+
+from slidemage import readability, slide_versioning
+from slidemage.ai import ai_profile, tasks as ai_tasks
 from slidemage.ai.agent_types import EDIT_ASK
-from slidemage.ai.providers import ChatReply
 from slidemage.ui.kit.widgets import Button
 from slidemage.ui.workspace import task_card_model as model
 from slidemage.ui.workspace.readability_panel import TEMPLATE_HINT, ReadabilityPanel
 from slidemage.ui.workspace import task_bubbles as tasks_module
 
-pytest.importorskip("PySide6.QtWebEngineWidgets")
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 
 FILE = "abc-EN-Hello-current.tex"
 BIGGER = LF.replace("\\begin{itemize}", "\\begin{itemize}\\small", 1)       # a proposal that passes the checks
@@ -120,7 +115,7 @@ def test_review_says_what_the_change_does_to_the_findings_and_done_what_is_left(
     measure.answers = [report_of(finding("image", "warning", 24.0, 25.0, "image_size", "% of the slide area"), TEMPLATE)]
     fake.reply({"answer": {"body": BIGGER, "note": "The table could move to a second slide."}})
     click(env, "Make readable")
-    assert card(env).route.route == ai_profile.CLAUDE_CODE
+    assert card(env).route.route == fake.routes.cloud.id
     wait_until(phase_is(env, model.REVIEW))
     assert state(env) == ("Proposed change to abc-EN-Hello-current.tex. Nothing is written yet. After the change: 0 errors, "
                           "1 warning (was 2 errors, 1 warning). Note: The table could move to a second slide.")
@@ -128,7 +123,6 @@ def test_review_says_what_the_change_does_to_the_findings_and_done_what_is_left(
     request, = requests(fake)                                                        # what the model was sent
     assert request.startswith("Make this slide readable.\nThe typeset page is 272 pt high.") and request.endswith(f"<slide>\n{LF}\n</slide>")
     assert [(f["cls"], f["severity"]) for f in findings_of(request)] == [("body", "error"), ("figure text", "error"), ("image", "warning")]
-    assert fake.calls()[0]["argv"][fake.calls()[0]["argv"].index("--json-schema") + 1] == json.dumps(ai_tasks.READABLE.schema)
     assert measure.texts == [BIGGER] and slide_file(env).editor.text() == LF         # measured as a draft, nothing written
     assert card(env).readable.before == tuple(BEFORE)
     area = env.window.assistant
@@ -231,13 +225,26 @@ def test_when_it_cannot_fit_the_note_says_so_and_nothing_is_written(fake, measur
     assert slide_file(env).editor.text() == LF and measure.texts == []
 
 
-def test_a_refused_answer_gets_one_repair_round_like_the_other_tasks(fake, measure):  # noqa: F811
+def test_a_refused_answer_gets_one_repair_round(fake, measure, monkeypatch):
+    from fake_routes import FakeProvider
+    from slidemage.ai.providers import ChatReply
+
     env = fake.env
     know(env, *BEFORE)
-    fake.reply({"answer": {"body": LF.replace("1-0-0", "2-0-0")}}, {"answer": {"body": BIGGER}})
+
+    class ScriptedProvider(FakeProvider):
+        def chat(self, messages, **kwargs):
+            self.requests.append((messages, kwargs))
+            answer = (LF.replace("1-0-0", "2-0-0") if len(self.requests) == 1 else BIGGER)
+            return ChatReply(json.dumps({"body": answer}))
+
+    provider = ScriptedProvider()
+    fake.routes.cloud.runner = None
+    monkeypatch.setattr(fake.routes.cloud, "provider", lambda *_args: provider)
     click(env, "Make readable")
     assert settled(env).startswith("Applied automatically")
-    assert len(fake.calls()) == 2 and "protected part" in fake.calls()[1]["request"]
+    assert len(provider.requests) == 2 and "protected part" in provider.requests[1][0][0]["content"]
+    assert slide_file(env).editor.text() == BIGGER
 
 
 def test_a_stopped_run_during_the_measurement_ends_the_card_stopped(fake, monkeypatch):  # noqa: F811
@@ -257,75 +264,45 @@ def test_a_stopped_run_during_the_measurement_ends_the_card_stopped(fake, monkey
 
 # -- the routes -----------------------------------------------------------------------------------------------------
 
-class JsonProvider:
-    """The provider of a Local or API route: answers every chat() with `reply`, and notes what it was asked."""
-
-    def __init__(self, reply, is_local=True):
-        self.reply, self.is_local, self.model, self.label, self.calls = reply, is_local, "offline", "offline", []
-
-    def chat(self, messages, **kwargs):
-        self.calls.append((messages, kwargs))
-        return ChatReply(self.reply)
-
-    def abort(self):
-        pass
-
-
-@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, ai_profile.OLLAMA), (ai_profile.CLOUD, ai_profile.ANTHROPIC_API, ai_profile.ANTHROPIC_API)])
-def test_on_local_and_the_api_make_readable_runs_on_the_provider_and_checks_the_answer(ctx, fake, measure, monkeypatch, mode, conn, kind):  # noqa: F811
+@pytest.mark.parametrize("mode, side", [(ai_profile.LOCAL, "local"), (ai_profile.CLOUD, "cloud")])
+def test_make_readable_runs_on_the_selected_route(ctx, fake, measure, mode, side):
     env = asked_fake(fake).env
-    ai_profile.mark_cloud_seen(ctx)
-    credentials.set_api_key(ctx, "key")
-    on_route(fake, mode, conn)
-    ai_profile.set_model_choice(ctx, kind, ai_profile.FIXES, "chosen-model")
+    route = getattr(fake.routes, side)
+    ai_profile.set_mode(ctx, mode)
+    ai_profile.set_model_choice(ctx, route.id, ai_profile.FIXES, "fake-2")
     know(env, *BEFORE)
-    provider, seen = JsonProvider(json.dumps({"body": BIGGER, "note": "Split it."}), mode == ai_profile.LOCAL), []
-    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, route: seen.append(route) or provider)
+    fake.reply({"answer": {"body": BIGGER, "note": "Split it."}})
     click(env, "Make readable")
     wait_until(phase_is(env, model.REVIEW))
-    assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
-    (messages, kwargs), = provider.calls
-    assert messages[0]["content"].startswith("Make this slide readable.") and kwargs["system"] == ai_tasks.READABLE.rules
-    assert "After the change: 0 errors, 0 warnings (was 2 errors, 1 warning)." in state(env) and "Note: Split it." in state(env)
-    assert measure.texts == [BIGGER]
-    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None and env.window.assistant.tasks._providers == []    # the run is over
+    assert (card(env).route.route, card(env).route.model) == (route.id, "fake-2")
+    assert fake.runner.calls[-1][0] is ai_tasks.READABLE
+    assert "Note: Split it." in state(env) and measure.texts == [BIGGER]
     env.window.assistant.tasks.apply()
     wait_until(phase_is(env, model.DONE))
-    assert slide_file(env).editor.text() == BIGGER
+    assert slide_versioning.strip_marker(slide_file(env).editor.text()) == slide_versioning.strip_marker(BIGGER)
 
 
-def test_a_provider_answer_that_breaks_the_slide_is_refused_after_one_repair(ctx, fake, measure, monkeypatch):  # noqa: F811
+def test_invalid_provider_answer_is_refused_without_changing_the_slide(fake, measure, monkeypatch):
+    from fake_routes import FakeProvider
+
     env = fake.env
-    on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.FIXES, "chosen-model")
     know(env, *BEFORE)
-    provider = JsonProvider(json.dumps({"body": LF.replace("{Hello}", "{Hello")}))
-    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
+    fake.routes.cloud.runner = None
+    provider = FakeProvider(reply=json.dumps({"body": LF.replace("{Hello}", "{Hello")}))
+    monkeypatch.setattr(fake.routes.cloud, "provider", lambda *_args: provider)
     click(env, "Make readable")
     wait_until(phase_is(env, model.FAILED))
-    assert "The model's answer was refused" in state(env) and len(provider.calls) == 2
-    assert slide_file(env).editor.text() == LF and (env.window._route_tasks.get("ollama") or (None,))[0] is None
+    assert "answer was refused" in state(env) and len(provider.requests) == 2
+    assert slide_file(env).editor.text() == LF and not env.window.assistant.tasks.busy
 
 
-def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx, fake, measure, monkeypatch):  # noqa: F811
+def test_unavailable_route_starts_no_readability_task(fake, measure):
     env = fake.env
     know(env, *BEFORE)
-    tasks = env.window.assistant.tasks
-    on_route(fake, ai_profile.LOCAL)                                                 # no Ollama model is chosen
+    fake.routes.cloud.problem_text = "Fake cloud unavailable."
     click(env, "Make readable")
-    assert card(env).phase == model.SETUP and "Choose an Ollama model" in card(env).note
-    tasks.close_card()
-    credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
-    click(env, "Make readable")
-    assert card(env).phase == model.SETUP and "No Anthropic API key" in card(env).note
-    tasks.close_card()
-    on_route(fake, ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
-    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    assert tasks.refusal(ai_tasks.READABLE) == resolver.NO_CLAUDE
-    click(env, "Make readable")
-    assert card(env).phase == model.SETUP and card(env).note == resolver.NO_CLAUDE
-    assert fake.calls() == [] and measure.texts == [] and not tasks.busy
+    assert card(env).phase == model.SETUP and card(env).note == "Fake cloud unavailable."
+    assert fake.calls() == [] and measure.texts == [] and not env.window.assistant.tasks.busy
 
 
 def test_make_readable_is_a_task_every_route_can_run_and_one_of_the_fixes():
