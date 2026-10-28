@@ -2850,3 +2850,8 @@ v8.65.1 (2026-10-27, plugins plan, phase 4): The Anthropic API is reached withou
 
 NEW: Nothing changes for you; the Claude API route works as before.
 - The anthropic package is no longer used (its removal from the build is a separate step).
+
+v8.65.2 (2026-10-28, plugins plan, phase 4): The anthropic package and what came only with it (pydantic, pydantic_core, httpx2, httpcore2, anyio, jiter and others) leave pyproject.toml, the build spec and THIRD_PARTY_NOTICES.md; tools/third_party_notices.py no longer lists it. The download gets smaller and the first request to the API no longer waits for the SDK to load.
+
+NEW: Nothing changes for you; the Claude API route works as before.
+- SlideMage is a little smaller to download.

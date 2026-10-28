@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
@@ -17,11 +17,11 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 # The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
 # (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
 # The release history is also data, stored beside version.py.
-# Everything else the app needs is code: PyInstaller follows the imports. Not the Anthropic SDK, which
-# loads its resource modules lazily, and not QtWebEngine's helper process and resources, which the PySide6
-# hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
+# Everything else the app needs is code: PyInstaller follows the imports. Not QtWebEngine's helper process and
+# resources, which the PySide6 hooks of PyInstaller add as soon as QtWebEngineWidgets is imported
+# (ui/workspace/terminal/web.py).
 # ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
-HIDDEN_IMPORTS = collect_submodules("anthropic")
+HIDDEN_IMPORTS = []
 # pywinpty's helpers, which conpty.dll and winpty.dll start at run time, so PyInstaller does not see them: without
 # OpenConsole.exe a program in the Claude Code terminal got a console closed at once and ended before printing
 # anything, exit code -1073741510 (0xC000013A), up to v8.58.0.
