@@ -214,7 +214,7 @@ As in 3.3. Built as nine steps (`docs/PLUGIN_HOST_PLAN.md`), each reviewed and c
 | §2.8 upgrade preselection | written and tested, `PRESELECT_ON_UPGRADE = False` until the release that removes a feature | nothing is removed yet |
 | §2.8 updates "in the same pass as its own" | their own check, following the same mode, at most once a day, also in source checkouts | the app's own check is skipped in a source checkout; plugins can still update there |
 | §2.6 Plugins tab | as specified, plus Details… for a load error, "Withdrawn from the plugin list", and a real restart through the existing relaunch | |
-| §3 version numbers (implicit in the handovers: host ≥9.0) | host v8.66.0; v9.0 for the release that removes CampusOnline | section 6 |
+| §3 version numbers (implicit in the handovers: host ≥9.0) | host v8.68.0; v9.0 for the release that removes CampusOnline | section 6 |
 
 Section 6 of `PLUGINS_PLAN.md` (draft 3) records the website's answers and the first half of this; this handover
 supersedes it where they differ.
