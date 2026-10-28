@@ -1,7 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
 % SlideMage layout profile "fira": Fira Sans Light for text, Fira Mono for code
-% (SlideMage v9.4.0).
+% (SlideMage v9.7.0).
 %
 % A layout profile holds everything that depends on the font: which font files
 % load and how their weights map onto \textbf and \textit, the code fonts, the
@@ -117,12 +117,8 @@
 % of the box than to the bottom (0.14pt above against 1.12pt below).
 \newlength{\SMFooterTextDrop}
 \setlength{\SMFooterTextDrop}{-0.49pt}
-% The right end of the footer line (the frame number) against the logo's right edge above
-% it, and the right end of a footnote against the same edge.
-\newlength{\SMFooterRightShift}
-\setlength{\SMFooterRightShift}{4.6pt}
-\newlength{\SMFootnoteRightShift}
-\setlength{\SMFootnoteRightShift}{4.8pt}
+% (The right ends of the footer line and of the footnotes against the logo's right edge are
+% derived by SlideMage_base since v9.7.0: they were two numbers here.)
 % Numbered lists. A nested enumerate sets its numeral in a right-aligned box whose width puts
 % a single-digit numeral flush with the text of the item above (20.33pt; 19.23pt left the
 % widest digit, "6.", up to 1.05pt left of it); the numeral may be wider than the dot

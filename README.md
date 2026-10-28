@@ -422,11 +422,11 @@ copied package files in `texmf/` record the exact originals.
   in it compile on a machine without the Fira fonts. A template uses it with
   `\newcommand{\SMLayoutProfile}{lmsans}` before `\input{SlideMage_setup}`. It defines
   everything the Fira profile defines, with numbers measured for Latin Modern Sans. Its
-  ascender is read from the font (0.806 em). Because a profile cannot change the
-  template's hooks, a template that picks it also sets `\SMTitleBarBottomAlign` (the
-  title bar ends higher with this font: 22.17pt against Fira's 25.32pt) and, with it,
-  `\SMTopMargin` and `\SMContentTopAlign`; `tools/calibrate_font_profile.py` prints
-  them.
+  ascender is read from the font (0.806 em). Where the title bar ends
+  (`\SMTitleBarBottomAlign`, 22.17pt with this font against Fira's 25.32pt), the
+  overlay coordinate `\SMContentTopAlign` and the right edges of the footer and the
+  footnotes are derived by `SlideMage_base.tex` from the template's hooks and the font
+  (since v9.7.0); a template or a profile that sets one of those four names gets an error.
   *Recipe for a new profile:* (1) copy `SlideMage_layout_fira.tex` and change the
   fonts, (2) run `python tools/calibrate_font_profile.py --profile <name>`: it compiles
   the calibration deck of `tests/fixtures/template_stress/` with the profile under the
