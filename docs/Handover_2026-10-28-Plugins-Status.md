@@ -158,10 +158,15 @@ Remove `course_schedule.py`, `admin_slides.py`, `ui/dialogs/admin_slides.py`, th
 for decks with a course link. With a `BREAKING:` paragraph and a `compat.py` entry, this would be **v9.0.0**
 (section 6).
 
-### 3.6 PR 6: the 8 GUI tests failing on `develop` (`fix/develop-gui-tests` → `develop`, ready for review)
+### 3.6 PR 6 (#22, ready for review): the 8 GUI tests failing on `develop` (`fix/develop-gui-tests` → `develop`)
 
-The 8 tests of section 8, each traced to the change that made code and test disagree, and fixed on the side that
-is wrong. In progress at the time of writing; the pull request lists each cause and fix.
+All 8 were tests that had fallen behind the app; no app code changes:
+- the AI switch moved out of the top bar, and Claude Code got session ids (both v8.61.0);
+- a tuple index typo;
+- Qt listing a font family under two foundries.
+
+One trade-off for you to look at: the SemiBold font check now runs only off Linux, because Qt on Linux doesn't list
+a variable font's named instances. CI runs on Linux, so it no longer runs in CI.
 
 ### 3.7 Later
 
@@ -352,7 +357,7 @@ Your call, since it's your release process.
 4. The template: the relative-import check, the stdlib/PySide6 set in its README, and the real `plugin_api` in
    `example/__init__.py`. Shall we send the pull request?
 5. The Ollama handover.
-6. The 8 GUI tests that fail on `develop` itself (section 8): we fix them in their own pull request (3.6).
+6. The 8 GUI tests that fail on `develop` itself (section 8): fixed in #22 (3.6), please review.
 7. **Install from file…:** as built, any `.smplugin` that passes the checks installs after a warning ("not from the
    SlideMage plugin list", plus its network lines). Should it be limited to plugins listed in the catalogue? Your
    call.
