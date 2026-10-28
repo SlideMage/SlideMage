@@ -4,6 +4,7 @@
 Citations, Language, Image descriptions, Transcript entry, Speaker notes)."""
 from __future__ import annotations
 
+import weakref
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from conftest import build_window, make_project, wait_until
 from slidemage import app_settings, deck_scan, slide_snapshot
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
+from slidemage.ui import plugin_ui
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
@@ -129,10 +131,11 @@ def project(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def column(project, qapp, ctx):
+def column(project, qapp, ctx, monkeypatch):
     """The right column over the "course" deck, with the slide list that applies its edits."""
     state = WorkspaceState(ctx)
     window = FakeWindow(state)
+    monkeypatch.setattr(plugin_ui.HOST_UI, "_window", weakref.ref(window))     # the assistant's terminal asks it for the theme
     holder = QWidget()
     window.slide_list = SlideList(window, state, ThemeManager(), Toast(holder))
     window.panels = SidePanels(window, state, window.actions)

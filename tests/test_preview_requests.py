@@ -118,6 +118,7 @@ def test_cancel_before_process_registration_kills_new_process(tmp_path):
 
 
 def test_terminal_stop_cancels_current_toolbox(qapp, tmp_path):
+    from slidemage.ai.agent_toolbox import agent_toolbox
     from slidemage.ai.workspace import Workspace
     from slidemage.ui.workspace.terminal.session import ClaudeCodeSession
 
@@ -125,10 +126,11 @@ def test_terminal_stop_cancels_current_toolbox(qapp, tmp_path):
     # No terminal, WebEngine view, listening server, or paid model is started.
     session._lock = threading.Lock()
     session._cancel = compiler.CancelToken()
-    session.workspace = Workspace(ProjectContext.at(tmp_path))
-    session.workspace.on_gui = lambda fn, default=None: fn()
+    workspace = Workspace(ProjectContext.at(tmp_path))
+    session.host = SimpleNamespace(
+        ai_tools=lambda scope, *, cancel, **_: agent_toolbox(workspace, scope, None, cancel, "auto"))
+    session.context = SimpleNamespace(build_tools=lambda host, scope, cancel: host.ai_tools(scope, cancel=cancel))
     session.scope = "deck"
-    session.workspace.begin_request = lambda: None
     session._timer = SimpleNamespace(stop=lambda: None)
     session._sync = SimpleNamespace(stop=lambda **k: None)
     session._pty = SimpleNamespace(stop=lambda: None)

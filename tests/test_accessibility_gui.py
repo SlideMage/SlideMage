@@ -103,7 +103,8 @@ def test_every_dialog_that_runs_ai_shows_the_route_badge_under_its_title(sheet, 
 
 
 def test_a_dialog_has_no_route_picker_of_its_own(sheet):
-    pickers = [control for control in sheet.findChildren(SegmentedControl) if {LOCAL, CLOUD} & set(control._buttons)]
+    pickers = [control for control in sheet.findChildren(SegmentedControl)       # Settings holds the project setting, a default
+               if {LOCAL, CLOUD} & set(control._buttons) and control.accessibleName() != "Project setting"]
     assert pickers == []
     assert not any(isinstance(w, QWidget) and w.accessibleName().startswith("AI route") for w in sheet.findChildren(QWidget)
                    if w is not badge_of(sheet))

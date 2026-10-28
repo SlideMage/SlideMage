@@ -35,7 +35,8 @@ def _parameters(callable_):
 
 
 def _contract():
-    names = sorted(name for name in vars(plugin_api) if not name.startswith("_"))
+    # The lazy re-exports are public whether or not something has loaded them yet (a load caches them in the module).
+    names = sorted(name for name in {*vars(plugin_api), *plugin_api._LAZY} if not name.startswith("_"))
     classes = {}
     for name in names:
         cls = getattr(plugin_api, name)

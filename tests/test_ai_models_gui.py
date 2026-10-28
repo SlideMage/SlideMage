@@ -6,9 +6,14 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
-from slidemage.ai import ai_profile
+from slidemage.ai import ai_profile, ollama_route
 from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, OLLAMA, TRANSLATION
 from slidemage.ui import ai_models
+
+
+def installed(ctx, *names):
+    """The Ollama models the route offers: the cache the window fills from Ollama's answer."""
+    ollama_route.cache_installed(ctx, [ollama_route.InstalledModel(name, 1, "", ()) for name in names])
 
 
 def items(combo):
@@ -20,24 +25,27 @@ def test_a_picker_lists_only_the_models_of_the_active_route_and_preselects_the_d
     ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "qwen3")
     ai_profile.set_model_choice(ctx, ANTHROPIC_API, TRANSLATION, "claude-opus-5-5")
     ai_profile.set_model_choice(ctx, CLAUDE_CODE, TRANSLATION, "haiku:high")
-    assert ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", local_models=["llama", "qwen3"])
+    installed(ctx, "llama", "qwen3")
+    assert ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)")
     assert items(combo) == ["llama", "qwen3"] and combo.currentData() == "qwen3"          # no cloud models in Local
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     ai_profile.set_mode(ctx, CLOUD)
     ai_profile.set_cloud_conn(ctx, ANTHROPIC_API)
-    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", local_models=["llama"])
+    installed(ctx, "llama")
+    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)")
     assert combo.itemText(0) == "claude-sonnet-5-5" and combo.currentData() == "claude-opus-5-5"   # no local ones
 
     ai_profile.set_cloud_conn(ctx, CLAUDE_CODE)
-    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", local_models=["llama"])
+    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)")
     assert items(combo) == ai_profile.model_choices(ctx, CLAUDE_CODE, TRANSLATION) and combo.currentData() == "haiku:high"
     assert combo.currentText() == "Haiku · high"
 
 
 def test_a_picker_has_nothing_to_offer_without_installed_models_or_a_key(ctx, qapp):
     combo = QComboBox()
-    assert not ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", local_models=[])
+    installed(ctx)
+    assert not ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)")
     assert not combo.isEnabled() and combo.currentText() == "(none)" and not combo.currentData()
     ai_profile.set_mode(ctx, CLOUD)
     ai_profile.set_cloud_conn(ctx, ANTHROPIC_API)
@@ -47,7 +55,8 @@ def test_a_picker_has_nothing_to_offer_without_installed_models_or_a_key(ctx, qa
 
 def test_the_fallback_model_is_preselected_only_on_local(ctx, qapp):
     combo = QComboBox()
-    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", local_models=["a", "fallback"], fallback_local="fallback")
+    installed(ctx, "a", "fallback")
+    ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", fallback_local="fallback")
     assert combo.currentData() == "fallback"
     ai_profile.set_mode(ctx, CLOUD)
     ai_models.fill_model_combo(ctx, combo, TRANSLATION, "(none)", fallback_local="fallback")
