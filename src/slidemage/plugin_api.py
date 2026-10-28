@@ -10,7 +10,7 @@ Conventions of all calls:
 
 - Threads. Every call is made on the UI thread, and every callback the plugin hands over (run, enabled, when,
   build, done) is called on the UI thread, except soon (see add_render_priority) and the work of
-  run_in_background.
+  run_in_background, and ChatSurfaceContext.build_tools (which may be called by an MCP worker).
 - When. The add_* calls are for activate() only; after it returns, they raise RuntimeError. activate() runs at
   start, so nothing in it may use the network or take long.
 - Decks. A Deck is a snapshot of one deck as SlideMage last read it. Changing the file does not change the
@@ -293,8 +293,17 @@ def hook_context_from_environment() -> HookContext:
 class TerminalWidget(Protocol):
     """A terminal view. write displays bytes even before a process is started; shutdown frees it."""
 
+    ready: Any          # Qt signal: cols, rows, when the terminal can start
+    resized: Any        # Qt signal: cols, rows
+    input_data: Any     # Qt signal: bytes to send to the program
+    files_dropped: Any  # Qt signal: list[str]
+    image_pasted: Any   # Qt signal: QImage
+
     def write(self, data: bytes) -> None: ...
     def shutdown(self) -> None: ...
+    def reset(self) -> None: ...
+    def read_screen(self, callback: Callable[[list], None]) -> None: ...
+    def focus_terminal(self) -> None: ...
 
 
 class TerminalService(Protocol):
@@ -302,6 +311,10 @@ class TerminalService(Protocol):
 
     def create_widget(self, parent: Widget | None = None) -> TerminalWidget:
         """Create a view without a process. It can display startup errors; pass it to start to attach a process."""
+        ...
+
+    def refresh_widget(self, widget: TerminalWidget) -> None:
+        """Apply the current theme to an existing terminal view."""
         ...
 
     def start(
@@ -323,6 +336,17 @@ class ToolWorkspace(Protocol):
     def close(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class ChatFocus:
+    """Editor state for an external agent; paths are absolute, and deck excludes test decks."""
+    slide_id: str | None
+    slide: Path | None
+    deck: Path | None
+    view: str
+    language: str
+    dirty: bool
+
+
 class ChatSurfaceContext(Protocol):
     """UI-thread operations supplied to chat_surface_v2. It holds no publicly exposed core window or state."""
 
@@ -331,8 +355,16 @@ class ChatSurfaceContext(Protocol):
         """Project directory for file dialogs and processes."""
         ...
 
-    def selected_route(self, route_id: str, task: str) -> Route:
-        """The saved model and effort for a route and task."""
+    def selected_route(self, route_id: str, task: str, choice: str = "") -> Route:
+        """The saved model and effort for a route and task, or a valid explicit choice when supplied."""
+        ...
+
+    def focus_details(self) -> ChatFocus:
+        """Snapshot of the editor and deck for an external agent's focus file."""
+        ...
+
+    def build_tools(self, host: Host, scope: Literal["slide", "deck"], cancel: Any) -> ToolBox | None:
+        """Build a fresh GUI-aware toolbox from any thread; return None after close releases a wait."""
         ...
 
     def scope(self) -> Literal["slide", "deck"]:
@@ -624,6 +656,34 @@ class Host(Protocol):
 
     def caption(self, text: str, tone: Literal["", "error"] = "") -> Widget:
         """A small grey line of text; tone="error" makes it an error line. Its setText changes it later."""
+        ...
+
+    def Surface(self) -> Widget:
+        """A plain themed surface."""
+        ...
+
+    def Button(self, text: str, kind: str = "secondary", *, compact: bool = False) -> Widget:
+        """A themed button."""
+        ...
+
+    def Chip(self, text: str, tone: str = "neutral") -> Widget:
+        """A status chip with set_text and set_tone."""
+        ...
+
+    def IconButton(self, icon: str, tooltip: str) -> Widget:
+        """A themed icon button."""
+        ...
+
+    def IconLabel(self, icon: str, size: int) -> Widget:
+        """A themed icon label."""
+        ...
+
+    def style_chat_widget(self, widget: Widget, role: Literal["surface", "cloud_card", "title"]) -> None:
+        """Apply the named conversation surface style to a Qt widget."""
+        ...
+
+    def theme_color(self, role: Literal["info"]) -> str:
+        """The current theme color for widgets that cannot use QSS."""
         ...
 
 

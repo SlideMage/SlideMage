@@ -91,8 +91,8 @@ class ClaudeCodeRoute:
 
     def chat_surface(self, *args: Any, **kwargs: Any) -> Any:
         """The terminal view (3b/3d reshape its construction; imported here so core's AI layer never imports the UI)."""
-        from ..ui.workspace.terminal.view import ClaudeCodeView
-        return ClaudeCodeView(*args, **kwargs)
+        from ..ui.workspace.chat.plugin_surface import ChatSurfaceContext
+        return ChatSurfaceContext(*args, **kwargs)._builtin_surface()
 
     def chat_surface_v2(self, context):
         return context._builtin_surface()

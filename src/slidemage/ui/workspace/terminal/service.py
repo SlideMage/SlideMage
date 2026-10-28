@@ -128,6 +128,9 @@ class TerminalService:
 
         return TerminalWidget(self._tokens(), parent)
 
+    def refresh_widget(self, widget) -> None:
+        widget.set_tokens(self._tokens())
+
     def start(
         self, argv: list[str], env: dict[str, str] | None = None, cwd: Path | None = None, *,
         on_output: Callable[[bytes], None] | None = None, on_exit: Callable[[int], None] | None = None,

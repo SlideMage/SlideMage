@@ -365,6 +365,35 @@ class PluginHost(Registrar):
     def caption(self, text: str, tone: Literal["", "error"] = "") -> Any:
         return self._window().caption(text, tone)
 
+    def Surface(self):
+        from ..ui.kit.widgets import Surface
+        return Surface()
+
+    def Button(self, text, kind="secondary", *, compact=False):
+        from ..ui.kit.widgets import Button
+        return Button(text, kind, compact=compact)
+
+    def Chip(self, text, tone="neutral"):
+        from ..ui.kit.widgets import Chip
+        return Chip(text, tone)
+
+    def IconButton(self, icon, tooltip):
+        from ..ui.kit.widgets import IconButton
+        return IconButton(icon, tooltip)
+
+    def IconLabel(self, icon, size):
+        from ..ui.kit.widgets import IconLabel
+        return IconLabel(icon, size)
+
+    def style_chat_widget(self, widget, role):
+        from ..ui.kit import kit_qss as q
+        widget.setObjectName({"surface": q.SURFACE, "cloud_card": q.CLOUD_CARD, "title": q.ASSISTANT_TITLE}[role])
+
+    def theme_color(self, role):
+        if role != "info":
+            raise ValueError(role)
+        return self._window().terminal_tokens().info
+
     # -- helpers
 
     def _check_editable(self, deck: plugin_api.Deck) -> None:
