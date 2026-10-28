@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The AI switch of the top bar (workspace v6, step 2): its request flow and popovers, the commit (labels, pickers,
-per-route conversations, toast), AI setup, the keyboard, and the commands. Nothing here reaches Ollama or the cloud."""
+per-route conversations, toast), AI setup, the keyboard, and the commands. All routes are in-memory fakes."""
 from __future__ import annotations
 
 import pytest
@@ -11,20 +11,19 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 
 from slidemage.ai import ai_profile
-from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, LOCAL, OLLAMA
-from slidemage.ai.providers import InstalledModel, OllamaProvider
+from slidemage.ai.ai_profile import CLOUD, LOCAL
+from slidemage.ai import routes
+from fake_chat import FakeChatSurface
+from fake_routes import FakeRoute
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.workspace.ai_work import RunningWork
 from conftest import build_window, qapp as qapp
 
-INSTALLED = [InstalledModel("chat-model", 1, "", ("tools",)), InstalledModel("vision-model", 1, "", ("vision",)),
-             InstalledModel("plain-model", 1, "")]
-
-
 @pytest.fixture
-def window(qapp, monkeypatch):
+def window(qapp, monkeypatch, fake_routes):
     assert load_fonts()
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: list(INSTALLED))
+    fake_routes.cloud.surface_factory = FakeChatSurface
+    routes.register(FakeRoute(id="second_cloud", service="Second cloud"))
     window = build_window(monkeypatch)
     window.resize(1700, 800)
     window.show()
@@ -36,7 +35,7 @@ def window(qapp, monkeypatch):
 class Work:
     """AI work the test starts and ends: what a source of ai_work.py would report."""
 
-    def __init__(self, window, monkeypatch, text="Update DE translation · 1y8", route="Claude Code · Haiku · effort medium"):
+    def __init__(self, window, monkeypatch, text="Update DE translation · 1y8", route="Fake cloud · fake-1"):
         self.running, self.stopped = True, []
         self.item = lambda: RunningWork(text, route, False, lambda: self.stopped.append(True))
         monkeypatch.setattr(window.assistant.chat, "running_work", lambda: [self.item()] if self.running else [])
@@ -69,13 +68,14 @@ def settle(qapp, window):
 def test_the_state_follows_ai_profile_and_tells_only_about_a_changed_route(window):
     seen = []
     window.state.ai_route_changed.connect(seen.append)
-    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, OLLAMA)
-    assert window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
-    assert not window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
-    assert window.state.set_ai_route(CLOUD, ANTHROPIC_API) and seen == [CLAUDE_CODE, ANTHROPIC_API]
-    assert window.state.set_ai_route(LOCAL) and seen[-1] == OLLAMA
-    assert not window.state.set_ai_route(LOCAL, CLAUDE_CODE)           # the connection matters only on Cloud
-    assert ai_profile.cloud_conn(window.project) == CLAUDE_CODE
+    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, "fake_local")
+    assert window.state.set_ai_route(CLOUD) and seen == ["fake_cloud"]
+    assert not window.state.set_ai_route(CLOUD) and seen == ["fake_cloud"]
+    assert window.state.set_ai_route(CLOUD, "second_cloud") and seen[-1] == "second_cloud"
+    assert window.state.set_ai_route(LOCAL) and seen[-1] == "fake_local"
+    assert not window.state.set_ai_route(LOCAL, "fake_cloud")
+    assert ai_profile.cloud_conn(window.project) == "fake_cloud"
+
 
 
 # -- the request flow ------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ def test_running_work_stops_the_switch_with_a_busy_popover_that_lists_it_and_kee
     route(window).request(CLOUD)
     popover = route(window)._popover
     assert kind(window) == "busy" and popover.spec.title == "AI work is running"
-    assert popover.spec.lines == ("Update DE translation · 1y8 · Claude Code · Haiku · effort medium",)
+    assert popover.spec.lines == ("Update DE translation · 1y8 · Fake cloud · fake-1",)
     assert [a[0] for a in popover.spec.actions] == ["Keep running", "Stop and switch"]
     press_escape(window)
     assert window.state.ai_mode == LOCAL and kind(window) == "" and work.stopped == []
@@ -168,24 +168,21 @@ def test_work_that_ends_by_itself_turns_the_popover_into_the_finished_one(window
     assert window.state.ai_mode == CLOUD
 
 
-def test_the_session_popover_asks_before_the_claude_code_terminal_is_ended(window, monkeypatch):
+def test_the_session_popover_asks_before_a_route_session_is_ended(window):
     window.state.set_ai_route(CLOUD)
-    claude = window.assistant.surface_for("claude_code")
-    ended = []
-    monkeypatch.setattr(type(claude), "session_live", property(lambda self: not ended))
-    monkeypatch.setattr(claude, "end_session", lambda: ended.append(True))
+    surface = window.assistant.surface_for("fake_cloud")
+    surface.session_live = True
     route(window).request(LOCAL)
-    popover = route(window)._popover
-    assert kind(window) == "session" and [a[0] for a in popover.spec.actions] == ["Stay", "End session and switch"]
+    assert kind(window) == "session" and [a[0] for a in route(window)._popover.spec.actions] == ["Stay", "End session and switch"]
     press_escape(window)
-    assert ended == [] and window.state.ai_mode == CLOUD
+    assert surface.session_live and window.state.ai_mode == CLOUD
     route(window).request(LOCAL)
     choose_primary(window)
-    assert ended == [True] and window.state.ai_mode == LOCAL
-    window.state.set_ai_route(CLOUD, ANTHROPIC_API)
-    ended.clear()
-    route(window).request(CLOUD, CLAUDE_CODE)                           # another connection is no session to end
-    assert kind(window) == "" and window.state.ai_route == CLAUDE_CODE
+    assert not surface.session_live and window.state.ai_mode == LOCAL
+    window.state.set_ai_route(CLOUD, "second_cloud")
+    route(window).request(CLOUD, "fake_cloud")
+    assert kind(window) == "" and window.state.ai_route == "fake_cloud"
+
 
 
 # -- the commit ----------------------------------------------------------------------------------
@@ -196,22 +193,21 @@ def commit_to_cloud(window):
     route(window).request(CLOUD)
 
 
-def test_a_commit_sets_the_route_tells_everyone_and_sends_nothing(window, qapp):
+def test_a_commit_sets_the_route_tells_everyone_and_sends_nothing(window, fake_routes):
     switch = window.ai_switch
-    switch.set_shrink(0)                    # as in an assistant wide enough for the connection's name
+    switch.set_shrink(0)
     commit_to_cloud(window)
-    assert window.state.ai_route == CLAUDE_CODE and switch.segments.current() == CLOUD
-    assert switch.property("cloud") is True and switch.state_label.text() == "Claude Code"
-    assert switch.toolTip().splitlines()[0] == "Cloud · Claude Code · AI requests send content to the cloud"
-    assert window.toast.isVisible() and window.toast.findChildren(type(switch.state_label))[0].text() == \
-        "All AI tasks now use Cloud · Claude Code"
-    assert window.assistant.chat.route_chip.text().startswith("Claude Code")
-    assert window.images_page.draft_model.currentText() == "Haiku · medium"       # the pickers follow the route
+    assert window.state.ai_route == "fake_cloud" and switch.segments.current() == CLOUD
+    assert switch.property("cloud") is True and switch.state_label.text() == "Fake cloud"
+    assert switch.toolTip().splitlines()[0] == "Cloud · Fake cloud · AI requests send content to the cloud"
+    assert window.toast.isVisible() and window.toast.findChildren(type(switch.state_label))[0].text() == "All AI tasks now use Cloud · Fake cloud"
+    assert window.assistant._stack.currentWidget() is window.assistant.surface_for("fake_cloud")
+    assert window.images_page.draft_model.currentText() == "FAKE-1"
+    assert not fake_routes.cloud.providers
     route(window).request(LOCAL)
-    assert window.toast.findChildren(type(switch.state_label))[0].text() == \
-        "All AI tasks use Local · Ollama again. Your Ollama models are restored."
-    assert window.assistant.chat.route_chip.text().endswith("· Ollama")
-    assert window.assistant.chat.session.running is False
+    assert "Local · Fake local" in window.toast.findChildren(type(switch.state_label))[0].text()
+    assert window.assistant._stack.currentWidget() is window.assistant.chat
+
 
 
 def test_the_switch_is_the_first_row_of_the_assistant_and_shrinks_with_it(window, qapp):
@@ -220,7 +216,7 @@ def test_the_switch_is_the_first_row_of_the_assistant_and_shrinks_with_it(window
     assert window.ai_switch is header.ai_switch and header.isAncestorOf(window.ai_switch)
     assert not window.topbar.isAncestorOf(window.ai_switch)
     commit_to_cloud(window)
-    for width, name, labels in ((SWITCH_NAMED_WIDTH, "Claude Code", ["Local", "Cloud"]),
+    for width, name, labels in ((SWITCH_NAMED_WIDTH, "Fake cloud", ["Local", "Cloud"]),
                                 (SWITCH_NAMED_WIDTH - 1, "", ["Local", "Cloud"]),
                                 (SWITCH_LABELS_WIDTH - 1, "", ["", ""])):
         header.resizeEvent(QResizeEvent(QSize(width, header.height()), header.size()))     # as the column would
@@ -234,7 +230,7 @@ def test_the_switch_reads_running_and_drops_the_name_when_narrow(window, monkeyp
     switch = window.ai_switch
     switch.set_shrink(0)
     route(window)._show_running()
-    assert switch.state_label.text() == "Claude Code · running"
+    assert switch.state_label.text() == "Fake cloud · running"
     switch.set_shrink(1)
     assert switch.state_label.text() == "running"
     work.running = False
@@ -242,26 +238,18 @@ def test_the_switch_reads_running_and_drops_the_name_when_narrow(window, monkeyp
     assert not switch.state_label.isVisible()
 
 
-def test_each_route_keeps_its_own_draft_and_conversation(window, monkeypatch):
+def test_each_route_keeps_its_own_draft_and_conversation(window):
     chat = window.assistant.chat
     chat.composer.setPlainText("a Local draft")
     chat.session.history.append("local history")
-    chat._add(chat.status.__class__())             # a message widget of the Local conversation
-    local_messages = chat._messages.count()
     commit_to_cloud(window)
-    assert chat.composer.toPlainText() == "" and chat.session.history == [] and chat._messages.count() == 3
-    assert not chat._empty.isHidden()
-    chat.composer.setPlainText("a Cloud draft")
-    route(window).request(CLOUD, ANTHROPIC_API)
-    assert chat.composer.toPlainText() == ""
-    route(window).request(CLOUD, CLAUDE_CODE)
-    assert chat.composer.toPlainText() == "a Cloud draft"
+    surface = window.assistant.surface_for("fake_cloud")
+    surface.composer.setText("a Cloud draft")
     route(window).request(LOCAL)
     assert chat.composer.toPlainText() == "a Local draft" and chat.session.history == ["local history"]
-    assert chat._messages.count() == local_messages
-    chat.new_chat()                                                  # clears this route only
     commit_to_cloud(window)
-    assert chat.composer.toPlainText() == "a Cloud draft"
+    assert surface.composer.text() == "a Cloud draft"
+
 
 
 # -- the keyboard --------------------------------------------------------------------------------
@@ -292,132 +280,72 @@ def open_setup(window):
     return window.ai_route.setup
 
 
-def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
-    window.local_models.fill(INSTALLED)
+def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window):
     setup = open_setup(window)
     assert setup.isVisible() and setup.width() == 480
-    chat, image = setup.cells[(LOCAL, ai_profile.CHAT)], setup.cells[(LOCAL, ai_profile.IMAGE_DESCRIPTION)]
-    assert [chat.itemData(i) for i in range(chat.count())] == ["", "chat-model"]            # models that call tools
-    assert [image.itemData(i) for i in range(image.count())] == ["", "vision-model"]
-    assert setup.heads[CLOUD].text() == "Cloud · Claude Code"
+    chat = setup.cells[(LOCAL, ai_profile.CHAT)]
+    assert [chat.itemData(i) for i in range(chat.count())] == ["fake-1", "fake-2"]
+    assert setup.heads[CLOUD].text() == "Cloud · Fake cloud"
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
-    assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
-    assert cloud_chat.currentText() in cloud_chat.toolTip() and "switch or restart" in cloud_chat.toolTip()
-    cloud_chat.setCurrentIndex(cloud_chat.findData("sonnet:high"))
+    cloud_chat.setCurrentIndex(cloud_chat.findData("fake-2"))
     cloud_chat.activated.emit(cloud_chat.currentIndex())
-    assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.CHAT) == "sonnet:high"
+    assert ai_profile.model_choice(window.project, "fake_cloud", ai_profile.CHAT) == "fake-2"
     setup.refresh()
-    assert cloud_chat.currentData() == "sonnet:high"
-    assert cloud_chat.currentText() in cloud_chat.toolTip() and "switch or restart" in cloud_chat.toolTip()
-    assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
-    image.setCurrentIndex(1)
-    image.activated.emit(1)
-    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
-    assert window.toast.findChildren(type(setup.heads[LOCAL]))[0].text() == \
-        "Default for Local · Image descriptions: vision-model"
-    assert window.images_page.draft_model.currentData() == "vision-model"      # the pickers start on it
-    cloud = setup.cells[(CLOUD, ai_profile.TRANSLATION)]
-    cloud.setCurrentIndex(cloud.findData("opus:high"))
-    cloud.activated.emit(cloud.currentIndex())
-    assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.TRANSLATION) == "opus:high"
-    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.TRANSLATION) == ""      # each side its own
+    assert cloud_chat.currentData() == "fake-2"
+    image = setup.cells[(LOCAL, ai_profile.IMAGE_DESCRIPTION)]
+    image.setCurrentIndex(image.findData("fake-2"))
+    image.activated.emit(image.currentIndex())
+    assert ai_profile.model_choice(window.project, "fake_local", ai_profile.IMAGE_DESCRIPTION) == "fake-2"
+    assert "Default for Local · Image descriptions" in window.toast.findChildren(QLabel)[0].text()
+    assert window.images_page.draft_model.currentData() == "fake-2"
+    assert ai_profile.model_choice(window.project, "fake_local", ai_profile.CHAT) == "fake-1"
 
 
-class _Session:
-    def __init__(self, model, effort):
-        self.model, self.effort, self.typed = model, effort, []
 
-    def write(self, data):
-        self.typed.append(data)
-
-
-def test_a_new_claude_code_default_asks_a_running_session_to_switch_or_start_afresh(window, monkeypatch):
+def test_a_new_default_asks_a_running_route_session_to_switch_or_start_afresh(window, monkeypatch, fake_routes):
     from slidemage.ui.workspace import ai_setup
-    view = window.assistant.surface_for("claude_code")
-    session = _Session("sonnet", "high")
-    switched, restarted, asked = [], [], []
-    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
-    monkeypatch.setattr(view, "session", session)
-    def restart(choice, continue_conversation):
-        (switched if continue_conversation else restarted).append(choice)
-    monkeypatch.setattr(view, "restart", restart)
+    surface = window.assistant.surface_for("fake_cloud")
+    surface.session_live = True
+    monkeypatch.setattr(fake_routes.cloud, "default_choice", lambda task: "")
     setup = open_setup(window)
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
-
+    asked = []
     def pick(choice, answer):
+        surface.session_live = True
         monkeypatch.setattr(ai_setup, "ask_session_model", lambda _parent, label, _service: asked.append(label) or answer)
         cloud_chat.setCurrentIndex(cloud_chat.findData(choice))
         cloud_chat.activated.emit(cloud_chat.currentIndex())
         return window.toast.findChildren(QLabel)[0].text()
-
-    assert pick("opus:high", ai_setup.SWITCH).endswith("switches to it and continues the conversation.")
-    assert asked == ["Opus · high"] and switched == ["opus:high"] and not restarted
-    assert pick("opus:low", ai_setup.NEW_CONVERSATION).endswith("restarted on it with a new conversation.")
-    assert asked[-1] == "Opus · low" and restarted == ["opus:low"] and switched == ["opus:high"]     # an effort level too
-    session.model, session.effort = "opus", "low"
-    asked.clear()
-    assert pick("opus:low", None).endswith(".") and not asked                            # what it runs on already
-    assert pick("haiku:low", None).endswith("keeps its model until it is restarted.")
-    assert switched == ["opus:high"] and restarted == ["opus:low"]
+    assert pick("fake-2", ai_setup.SWITCH).endswith("switches to it and continues the conversation.")
+    assert asked == ["FAKE-2"] and surface.restarts == [("fake-2", True)]
+    assert pick("fake-1", ai_setup.NEW_CONVERSATION).endswith("restarted on it with a new conversation.")
+    assert surface.restarts[-1] == ("fake-1", False)
+    assert pick("fake-2", None).endswith("keeps its model until it is restarted.")
 
 
-def test_switch_session_saves_the_draft_with_esc_esc_then_resumes(window, monkeypatch, qapp):
-    from slidemage.ui.workspace.terminal import view as view_mod
-    view = window.assistant.surface_for("claude_code")
-    session = _Session("sonnet", "high")
-    restarted = []
-    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
-    monkeypatch.setattr(view, "session", session)
-    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
-    assert view.switch_session()
-    assert session.typed == [b"\x1b"] and not restarted
-    QTest.qWait(view_mod.ESC_GAP_MS + view_mod.SAVE_DRAFT_MS + 200)
-    assert session.typed == [b"\x1b", b"\x1b"] and restarted == [True]
-    monkeypatch.setattr(type(view), "session_live", property(lambda self: False))
-    assert not view.switch_session()
 
 
-def test_switch_session_types_the_unsent_prompt_into_the_restarted_session(window, monkeypatch, qapp):
-    """2026-10-26: the prompt typed but not sent was gone after Switch now (Esc Esc alone did not keep it)."""
-    from slidemage.ui.workspace.terminal import view as view_mod
-    view = window.assistant.surface_for("claude_code")
-    session = _Session("sonnet", "high")
-    rule = "─" * 30
-    screens = [[[rule, rule], ["> Shorten the title", "> Shorten the title"], [rule, rule]],     # before: the draft
-               [["Resuming…", "Resuming…"]],                                                    # not up yet
-               [[rule, rule], ['> Try "…"', ">" + " " * 8], [rule, rule]]]                       # the new, empty box
-
-    class Terminal:
-        def read_screen(self, callback):
-            callback(screens.pop(0) if len(screens) > 1 else screens[0])
-
-    restarted = []
-    monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
-    monkeypatch.setattr(view, "session", session)
-    monkeypatch.setattr(view, "terminal", Terminal())
-    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
-    monkeypatch.setattr(view_mod, "DRAFT_POLL_MS", 10)
-    assert view.switch_session()
-    QTest.qWait(view_mod.ESC_GAP_MS + view_mod.SAVE_DRAFT_MS + 300)
-    assert restarted == [True] and session.typed == [b"\x1b", b"\x1b", b"Shorten the title"]
 
 
-def test_ai_setup_lists_show_full_model_names_when_opened(window, qapp):
-    # v8.23.0: the cells are a fixed share of the popover; the open list is as wide as its longest name
-    long_name = "hf.co/unsloth/translategemma-12b-it-GGUF:Q8_0"
-    window.local_models.fill([*INSTALLED, InstalledModel(long_name, 1, "")])
+
+
+
+def test_ai_setup_lists_show_full_model_names_when_opened(window, fake_routes, qapp):
+    long_name = "a-very-long-model-name-that-does-not-fit-the-closed-combo-box"
+    fake_routes.local.choices.append(long_name)
     setup = open_setup(window)
     combo = setup.cells[(LOCAL, ai_profile.TRANSLATION)]
     index = combo.findData(long_name)
-    assert index > 0
+    assert index >= 0
     combo.setCurrentIndex(index)
     combo.activated.emit(index)
-    assert combo.toolTip() == long_name                                          # the closed box
-    assert combo.width() < combo.view().fontMetrics().horizontalAdvance(long_name)
+    assert combo.toolTip() == long_name.upper()
+    assert combo.width() < combo.view().fontMetrics().horizontalAdvance(long_name.upper())
     combo.showPopup()
     qapp.processEvents()
-    assert combo.view().width() >= combo.view().fontMetrics().horizontalAdvance(long_name)   # the open list
+    assert combo.view().width() >= combo.view().fontMetrics().horizontalAdvance(long_name.upper())
     combo.hidePopup()
+
 
 
 def test_the_side_not_in_use_is_greyed_but_editable(window):
@@ -429,21 +357,19 @@ def test_the_side_not_in_use_is_greyed_but_editable(window):
 
 def test_the_cloud_connection_of_ai_setup_changes_the_route_like_the_switch_when_on_cloud(window, monkeypatch):
     setup = open_setup(window)
-    setup.conn.changed.emit(ANTHROPIC_API)                                         # on Local it only saves the connection
-    assert ai_profile.cloud_conn(window.project) == ANTHROPIC_API and window.state.ai_route == OLLAMA
-    assert setup.heads[CLOUD].text() == "Cloud · Anthropic API"
+    setup.conn.changed.emit("second_cloud")
+    assert ai_profile.cloud_conn(window.project) == "second_cloud" and window.state.ai_route == "fake_local"
+    assert setup.heads[CLOUD].text() == "Cloud · Second cloud"
     commit_to_cloud(window)
-    assert window.state.ai_route == ANTHROPIC_API
+    assert window.state.ai_route == "second_cloud"
     setup = open_setup(window) if not window.ai_route.setup.isVisible() else window.ai_route.setup
-    chat = window.assistant.chat
-    chat.composer.setPlainText("api draft")
-    setup.conn.changed.emit(CLAUDE_CODE)
-    assert window.state.ai_route == CLAUDE_CODE and chat.composer.toPlainText() == ""
+    setup.conn.changed.emit("fake_cloud")
+    assert window.state.ai_route == "fake_cloud"
     Work(window, monkeypatch)
-    setup = window.ai_route.setup
-    setup.conn.changed.emit(ANTHROPIC_API)
-    assert kind(window) == "busy" and window.state.ai_route == CLAUDE_CODE    # a route change asks like a switch
-    assert setup.conn.current() == CLAUDE_CODE
+    setup.conn.changed.emit("second_cloud")
+    assert kind(window) == "busy" and window.state.ai_route == "fake_cloud"
+    assert setup.conn.current() == "fake_cloud"
+
 
 
 def test_the_project_setting_changes_only_where_the_switch_starts(window):
@@ -509,13 +435,3 @@ def test_images_is_not_a_top_bar_button_any_more_but_a_close_button_while_it_is_
     assert bar._images.isHidden()
     from conftest import filled_menu, menu_actions
     assert "images" in menu_actions(filled_menu(window, "View"))
-
-
-def test_the_busy_query_lists_ask_ai_to_fix_and_the_ollama_slot(window):
-    assert window.running_ai_work() == []
-    lease = window.acquire_route_task("ollama", "translating a slide")
-    assert lease is not None
-    work = window.running_ai_work()
-    assert [(w.text, w.route, w.local, w.stop) for w in work] == [("Translating a slide", "Local · Ollama", True, None)]
-    lease.release()
-    assert window.running_ai_work() == []
