@@ -329,7 +329,8 @@ def test_the_caption_under_the_terminal_names_the_models_of_the_task_buttons(env
 
 def test_the_terminal_has_no_bubble_strip_or_scope_of_its_own(env):
     assert not hasattr(env.view, "_bubble_row") and not hasattr(env.view, "more")
-    assert env.view.scope is area(env).scope
+    assert not hasattr(env.view, "scope")
+    assert env.view._surface_context.scope() == area(env).scope.current()
 
 
 # -- a change of slide waits for the selection to rest (v8.39.9) --------------------------------------------------
