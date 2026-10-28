@@ -251,7 +251,7 @@ def test_switch_to_deck_mode_sets_the_scope_switch(env):
     start_view(env)
     client = Client(env.view.session._server)
     assert on_thread(lambda: client.text("switch_to_deck_mode")) == "SlideMage is in Deck Mode now: go on with the request."
-    assert env.view.scope.current() == claude_scope.DECK
+    assert env.window.assistant.scope.current() == claude_scope.DECK
     assert claude_scope.load(env.view.session._focus_file)["scope"] == claude_scope.DECK
 
 
@@ -272,7 +272,7 @@ def test_the_scope_switch_and_the_focus_reach_the_hooks(env):
     wait_until(lambda: (claude_scope.load(focus_file) or {}).get("slide") == SLIDE)
     assert claude_scope.load(focus_file)["scope"] == claude_scope.SLIDE
     assert "THIS SLIDE" in claude_scope.prompt_context(claude_scope.load(focus_file))
-    env.view.scope._buttons[claude_scope.DECK].click()                  # the user switches to Deck
+    env.window.assistant.scope._buttons[claude_scope.DECK].click()      # the user switches to Deck
     assert claude_scope.load(focus_file)["scope"] == claude_scope.DECK
     env.window.assistant.shutdown()
     assert not focus_file.exists()                                       # removed with the session

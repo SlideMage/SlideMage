@@ -818,7 +818,8 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
             held.set()
 
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m", "is_local": True})())
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: ai_fix.ai_profile.Route("ollama", ai_fix.ai_profile.FIXES, "m"))
+    monkeypatch.setattr(ai_fix, "built", lambda *a: type("P", (), {"label": "m", "is_local": True})())
     monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
     window.open_slide_editor(path)
     file = window.centre.source.current
