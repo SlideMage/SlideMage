@@ -18,12 +18,12 @@ the morning; where they differ, this section wins.
 |---|---|---|---|
 | #20 | Phase 4: Anthropic API without the SDK; HTTPS proxy support (`HTTPS_PROXY`/`NO_PROXY`, CONNECT, proxy auth) and Stop ending a stuck connect/TLS handshake (review findings 6, 7) | `develop` | draft |
 | #21 | Phases 0–1: plugin host; all review findings on it fixed (1–5, 8, 11, and the release points: separate migration offers, self-test of the PySide6 set); `plugin_api` contract test; manual chapter and README | `develop` | draft |
-| #22 | `develop`'s 8 failing GUI tests | `develop` | ready for review |
+| #22 | `develop`'s 8 failing GUI tests | `develop` | merged |
 | #23 | Phase 2: CampusOnline out of core (v9.0.0, `Migration('campusonline', 'v9.0.0')`) | #21 | draft |
 | #24 | Phases 3 and 6 (core): AI routes in a registry, the AI UI and one AI tab over them, the host for AI plugins (`add_ai_route`, `add_settings_section`, entry points, terminal service, credentials, `ai_tools`, `RouteContext`, route task leases, chat surface context, …) | #21 (+#20 merged in) | draft |
 | #26 | Phase 7: the AI-free core (v10.0.0, migrations for Claude and Ollama, `--claude-hook` dispatches to the plugin); tests on shared fake routes; full suite clean apart from the font test #22 fixes | #24 | draft |
 
-Merge order: #22, #20, #21, then #23 and #24 (both on #21), then #26. Version numbers get renumbered at merge (and
+Merge order: #22 (merged), #20, #21, then #23 and #24 (both on #21), then #26. Version numbers get renumbered at merge (and
 see section 6 on renumbering for publication).
 
 **Plugins** (all on the real `plugin_api`, packaged code importing nothing else from SlideMage; `build.py --check`
@@ -126,7 +126,7 @@ Already merged as #19 (2026-10-27). Not part of the plugins work; PR 2 was stack
 > pagination, abort during backoff. The full suite: 3553 passed, 14 skipped, 8 failed, all 8 being `develop`'s
 > own (section 8).
 >
-> **Before merging:** regenerate `uv.lock` (`uv lock`); CI installs with pip, so CI doesn't need it. Check one real
+> **Before merging:** `uv.lock` is regenerated (the SDK and its dependencies are out). Check one real
 > API call from a Windows release build (certificates come from the system store now, not from `certifi`).
 
 ### 3.3 PR 3 (#21, draft): the plugin host (`feature/plugin-host` → `develop`)
@@ -206,7 +206,7 @@ Remove `course_schedule.py`, `admin_slides.py`, `ui/dialogs/admin_slides.py`, th
 for decks with a course link. With a `BREAKING:` paragraph and a `compat.py` entry, this would be **v9.0.0**
 (section 6).
 
-### 3.6 PR 6 (#22, ready for review): the 8 GUI tests failing on `develop` (`fix/develop-gui-tests` → `develop`)
+### 3.6 PR 6 (#22, merged): the 8 GUI tests failing on `develop` (`fix/develop-gui-tests` → `develop`)
 
 All 8 were tests that had fallen behind the app; no app code changes:
 - the AI switch moved out of the top bar, and Claude Code got session ids (both v8.61.0);
@@ -405,7 +405,7 @@ Your call, since it's your release process.
 4. The template: the relative-import check, the stdlib/PySide6 set in its README, and the real `plugin_api` in
    `example/__init__.py`. Shall we send the pull request?
 5. The Ollama handover.
-6. The 8 GUI tests that fail on `develop` itself (section 8): fixed in #22 (3.6), please review.
+6. The 8 GUI tests that fail on `develop` itself (section 8): fixed in #22 (3.6), merged.
 7. **Install from file…:** as built, any `.smplugin` that passes the checks installs after a warning ("not from the
    SlideMage plugin list", plus its network lines). Should it be limited to plugins listed in the catalogue? Your
    call.
