@@ -2875,3 +2875,8 @@ v8.68.0 (2026-10-28, direct request: "I want a \"Save\" button when I edit a dec
 
 NEW: A Save button for a deck's source.
 - When AutoSave is off, editing a deck's source (or Slidemaster.bib) shows a Save button next to the "x"; it does the same as Ctrl+S.
+
+v8.69.0 (2026-10-28, direct request: "Yes, fix it", the proposal: each preview depends only on the alt-text entries of its own slide's images, so a new alt text no longer invalidates every preview): A stored preview depends only on the alt texts of the pictures its render read. Every render reads media/alt-text.csv (Slidemaster_alt.lua) and records media/alt-text.json with it, and a render's manifest held each file's whole hash, so one new alt text, here a QR code's at 13:29, put every preview out of date: the background previews went from 215 left to 4040. The manifest now holds, for each of the two files, a KIND_ALT_TEXT entry: the hash of its rows for the files the render read, matched as Slidemaster_alt.lua matches a picture (the lower-case file name, or the name without its extension). render_key.Resolver.narrow_alt_text makes these entries for a render and for a deck compile's page (an alt-text file changed since the compile keeps its whole-file entry); manifest_current checks them; each file is parsed once per content (_alt_rows). Previews stored before this keep their whole-file entries until they are rendered again. Tests in test_render_key.py.
+
+NEW: A new alt text no longer makes every preview out of date.
+- Adding or editing the alt text of one picture now only re-renders the previews of the slides that show it.

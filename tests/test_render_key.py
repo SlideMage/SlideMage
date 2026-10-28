@@ -419,3 +419,28 @@ def test_deck_usage_orders_decks_by_recency(store):
     usage = store.deck_usage()
     assert [u["deck"] for u in usage] == ["a", "c", "b"]
     assert usage[0]["open_count"] == 2 and usage[0]["last_slide"] == "xyz" and usage[2]["last_slide"] == "q"
+
+
+def test_a_render_depends_only_on_the_alt_texts_of_the_pictures_it_read(ctx, resolver):
+    # A new alt text for one picture made every preview out of date: the alt-text files are read by every render
+    # (v8.69.0).
+    header = "image,role,status_en,short_alt_en,source_en,status_de,short_alt_de,source_de\n"
+    csv_path = write(ctx.root / "media" / "alt-text.csv", header + "media/a.png,informative,auto,A,,auto,,\n"
+                     "media/b.png,informative,auto,B,,auto,,\n")
+    json_path = write(ctx.root / "media" / "alt-text.json", json.dumps(
+        {"version": 2, "images": {"media/a.png": {"short": "A"}, "media/b.png": {"short": "B"}}}))
+    slide = write(ctx.slides_dir / "aaa-EN-One-current.tex", "\\includegraphics{media/a}\n")
+    picture = write(ctx.root / "media" / "a.png", "png")
+    entries = resolver.build_manifest([str(p) for p in (slide, picture, csv_path, json_path)]).entries
+    assert {kind for kind, rel, _sha in entries if "alt-text" in rel} == {render_key.KIND_ALT_TEXT}
+    assert resolver.manifest_current(entries)
+    write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\nmedia/b.png,informative,auto,B changed,,auto,,\n"
+          "media/c.png,informative,auto,C new,,auto,,\n", OLD + 10)
+    write(json_path, json.dumps({"version": 2, "images": {"media/a.png": {"short": "A"},
+                                                         "media/c.png": {"short": "C"}}}), OLD + 10)
+    assert resolver.manifest_current(entries)                 # another picture's alt text: still current
+    write(csv_path, header + "media/a.png,informative,auto,A changed,,auto,,\n", OLD + 20)
+    assert not resolver.manifest_current(entries)             # its own picture's alt text: out of date
+    write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\n", OLD + 30)
+    write(json_path, json.dumps({"version": 2, "images": {"MEDIA/A.PNG": {"short": "A, longer"}}}), OLD + 30)
+    assert not resolver.manifest_current(entries)             # matched by file name, whatever the case and folder
