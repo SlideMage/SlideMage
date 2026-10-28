@@ -10,7 +10,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
@@ -31,9 +31,9 @@ _selftest = _load_selftest()
 # The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
 # (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
 # The release history is also data, stored beside version.py.
-# Everything else the app needs is code: PyInstaller follows the imports. Not the Anthropic SDK, which
-# loads its resource modules lazily, and not QtWebEngine's helper process and resources, which the PySide6
-# hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
+# Everything else the app needs is code: PyInstaller follows the imports. Not QtWebEngine's helper process and
+# resources, which the PySide6 hooks of PyInstaller add as soon as QtWebEngineWidgets is imported
+# (ui/workspace/terminal/web.py).
 # ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
 # Plugins (plugins plan 2.2, PLUGIN_HOST_PLAN step 5) may import any standard-library module and PySide6's
 # modules, and PyInstaller bundles only what SlideMage itself imports: so the whole standard library except
@@ -55,7 +55,6 @@ def _stdlib_hidden_imports(names):
 
 PYSIDE6_MODULES = [f"PySide6.{name}" for name in ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtSvg")]
 HIDDEN_IMPORTS = list(dict.fromkeys([
-    *collect_submodules("anthropic"),
     *_stdlib_hidden_imports(STDLIB_MODULES),
     *PYSIDE6_MODULES,
 ]))

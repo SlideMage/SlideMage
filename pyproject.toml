@@ -19,7 +19,6 @@ dependencies = [
     "lxml",
     "python-pptx",
     "odfpy",
-    "anthropic>=1.13.0",
     # QR codes (qr_code.py): pure Python, BSD-3-Clause.
     "segno>=1.6",
     "ptyprocess>=0.7.0 ; sys_platform != 'win32'",

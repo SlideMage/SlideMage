@@ -166,7 +166,7 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
 
 1. **Clone the repo:**
    ```bash
-   git clone https://github.com/stpalan/SlideMage.git
+   git clone https://github.com/SlideMage/SlideMage.git
    cd SlideMage
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
@@ -189,7 +189,7 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
    pip install -e .            # add ".[dev]" for pytest/ruff
    ```
    This installs PySide6 (the GUI, with QtWebEngine for the Claude Code terminal), the
-   `anthropic` client (cloud models; unused unless you add an API key), PyMuPDF (PDF-to-PNG rendering for slide
+   Anthropic API client, written on the standard library (cloud models; unused unless you add an API key), PyMuPDF (PDF-to-PNG rendering for slide
    previews and tikz-illustration drafting), python-pptx (the Export-PPTX
    feature), and Pillow, plus the `slidemage` command (on Windows it opens without a console
    window).
