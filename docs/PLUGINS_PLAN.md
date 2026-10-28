@@ -373,9 +373,10 @@ bundled in core for the plugin to import (an exception to the import rule, and t
 version core ships) and dropping the API route (Claude Code never used the SDK). Jürgen does it now, ahead of
 phases 0–3: nothing depends on it. Fallback if it proves much harder: drop the API route, not bundle the SDK.
 
-Work: branch `feature/anthropic-stdlib` (from `feature/ai-tools-fixes`), client in `ai/anthropic_provider.py`
-(2.3's table is the checklist), then dropping `anthropic` from `pyproject.toml`, the spec and the third-party
-notices.
+Done on branch `feature/anthropic-stdlib` (from `feature/ai-tools-fixes`): the client in
+`ai/anthropic_provider.py` (2.3's table as the checklist; v8.65.1, `cc150b8`), then `anthropic` and what came only
+with it dropped from `pyproject.toml`, the spec and the third-party notices (v8.65.2, `69bf491`). `uv.lock` is
+regenerated when the branch is merged (CI installs with pip).
 
 ### 6.3 The CampusOnline plugin is ahead of phase 0
 
