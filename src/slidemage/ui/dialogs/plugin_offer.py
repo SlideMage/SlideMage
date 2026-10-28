@@ -8,9 +8,11 @@ first, and "Not now" is always there. The list is fetched when the sheet opens, 
 and still offers "Install from file…". Installing reuses the Plugins tab's download and install steps
 (settings_plugins), one plugin after the other, and ends with "Restart now" because plugins load once, at start.
 
-`preselected` maps a plugin id to the reason it is ticked ("You have an Anthropic API key"): the upgrade check
-(plugins/upgrade.py) fills it in the release that removes a feature from core. The flag is written when the sheet
-closes, by any button; a sheet that never opened leaves it unwritten, so the next start tries again.
+`preselected` maps a plugin id to the reason it is ticked ("You have an Anthropic API key"): the migrations of
+plugins/upgrade.py fill it in the release that removes a feature from core. With `onboarding=False` the sheet is
+only the migration notice: titled "These features are now plugins", listing just the preselected plugins. The
+flags (offer_seen for onboarding, the migration ids in migrations_seen.json) are written when the sheet closes,
+by any button; a sheet that never opened leaves them unwritten, so the next start tries again.
 
 The start-up caller (workspace/maintenance.py) fetches the catalogue first and opens the sheet, with that
 catalogue in `catalogue_data`, only when something is offerable; so offline and too-new never reach the sheet
@@ -41,6 +43,9 @@ INTRO = ("SlideMage works without plugins. These add features; you can add or re
 LOADING = "Loading the list of plugins…"
 OFFLINE = "The list of plugins could not be loaded."
 NEEDS_NEWER = "Needs a newer SlideMage"
+MIGRATION_TITLE = "These features are now plugins"
+MIGRATION_INTRO = ("These features used to be part of SlideMage and are now plugins. Install them to keep using "
+                   "them; you can add or remove plugins later in Settings → Plugins.")
 ALL_INSTALLED = "Every plugin of the list is installed."
 
 
@@ -74,9 +79,10 @@ class PluginRow(Card):
 
 class PluginOfferSheet(ModalSheet):
     def __init__(self, parent: QWidget | None = None, *, preselected: dict[str, str] | None = None,
-                 catalogue_data: Catalogue | None = None) -> None:
-        super().__init__("Plugins for SlideMage", parent, width=620)
+                 catalogue_data: Catalogue | None = None, onboarding: bool = True) -> None:
+        super().__init__("Plugins for SlideMage" if onboarding else MIGRATION_TITLE, parent, width=620)
         self.preselected = dict(preselected or {})
+        self.onboarding = onboarding
         self.catalogue: Catalogue | None = None
         self.rows: dict[str, PluginRow] = {}
         self.restart_requested = False
@@ -90,7 +96,7 @@ class PluginOfferSheet(ModalSheet):
         self.finished.connect(self._remember)
 
         page = Page()
-        self.intro = caption(INTRO)
+        self.intro = caption(INTRO if onboarding else MIGRATION_INTRO)
         page.body.addWidget(self.intro)
         self.status = QLabel(LOADING)
         self.status.setWordWrap(True)
@@ -123,7 +129,9 @@ class PluginOfferSheet(ModalSheet):
     # -- the flag and closing
 
     def _remember(self, _result: int) -> None:
-        upgrade.mark_offer_seen()
+        if self.onboarding:
+            upgrade.mark_offer_seen()
+        upgrade.mark_migrations_seen(self.preselected)
 
     def reject(self) -> None:
         if not self._busy:      # a download in flight is not left behind a closed sheet
@@ -150,7 +158,7 @@ class PluginOfferSheet(ModalSheet):
             return self._show_message(OFFLINE, offer_file=True)
         self.catalogue = result
         present = {p.id for p in session.loaded()} | {f.id for f in loader.discover()}
-        todo = [c for c in result.plugins if c.id not in present]
+        todo = [c for c in result.plugins if c.id not in present and (self.onboarding or c.id in self.preselected)]
         if not todo:
             return self._show_message(ALL_INSTALLED)
         self.status.hide()

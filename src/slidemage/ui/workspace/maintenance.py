@@ -575,15 +575,16 @@ def on_sync_translation_links(window) -> int:
 # -- plugins: the first-start sheet and the plugin updates ------------------------------------------
 
 def schedule_plugin_offer(window) -> None:
-    """The first-start sheet, once per machine, after the window is up; it never delays the start."""
-    if not plugin_upgrade.offer_seen():
+    """The first-start sheet once per machine, and the notice of a feature that became a plugin, once per feature;
+    after the window is up, never delaying the start."""
+    if not plugin_upgrade.offer_seen() or plugin_upgrade.MIGRATIONS:
         QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(show_plugin_offer, window))
 
 
 def show_plugin_offer(window) -> None:
     """Fetch the catalogue on a thread first; `window.plugin_offer_fetched` carries it to on_plugin_offer_fetched.
     The sheet is for a list with something in it: the public catalogue may still be empty."""
-    if plugin_upgrade.offer_seen():
+    if plugin_upgrade.offer_seen() and not plugin_upgrade.migrations_due(window.project):
         return
 
     def work() -> None:
@@ -597,18 +598,24 @@ def show_plugin_offer(window) -> None:
 
 
 def on_plugin_offer_fetched(window, result) -> None:
-    """Open the sheet, with the fetched catalogue, only when at least one plugin is offerable. Offline, too new,
-    or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins… is always there)."""
+    """Open the sheet, with the fetched catalogue, only when something is offerable: the onboarding (not seen yet)
+    and/or the plugins of due migrations (preselected, with their reason). Both due: one onboarding sheet.
+    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins…
+    is always there)."""
     if isinstance(result, Exception):
         window.log(f"Plugin list not loaded: {result}")
         return
-    if plugin_upgrade.offer_seen() or not plugin_upgrade.offerable(result):
+    onboarding = not plugin_upgrade.offer_seen()
+    offerable = {c.id for c in plugin_upgrade.offerable(result)}
+    if not offerable:
+        return
+    due = {i: why for i, why in plugin_upgrade.migrations_due(window.project).items() if i in offerable}
+    if not onboarding and not due:
         return
     if QApplication.activeModalWidget() is not None:       # another question is open: try again later
         QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(on_plugin_offer_fetched, window, result))
         return
-    used = plugin_upgrade.used_features(window.project) if plugin_upgrade.PRESELECT_ON_UPGRADE else {}
-    sheet = PluginOfferSheet(window, preselected=used, catalogue_data=result)
+    sheet = PluginOfferSheet(window, preselected=due, catalogue_data=result, onboarding=onboarding)
     sheet.exec()
     if sheet.restart_requested:
         window.relaunch_with_project(window.project.root)

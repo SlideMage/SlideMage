@@ -93,8 +93,30 @@ def test_preselect_picks_the_catalogue_plugins_in_use():
     assert upgrade.preselect(plugins, {}) == set()
 
 
-def test_preselection_is_off_until_a_release_removes_a_feature():
-    assert upgrade.PRESELECT_ON_UPGRADE is False
+def test_no_feature_is_migrated_in_this_release():
+    assert upgrade.MIGRATIONS == []
+    assert upgrade.migrations_due(None) == {}
+
+
+def test_migrations_due(ctx, monkeypatch):
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.70.0"),
+                                                upgrade.Migration("claude", "v9.0.0")])
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why", "claude": "why2"})
+    assert upgrade.migrations_due(ctx, "v8.70.0") == {"campusonline": "why"}       # claude: release is newer
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {"campusonline": "why", "claude": "why2"}
+    upgrade.mark_migrations_seen(["campusonline"])
+    assert upgrade.migrations_seen() == {"campusonline"}
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {"claude": "why2"}
+    assert not upgrade.offer_seen()                      # onboarding is a separate flag
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {})
+    assert upgrade.migrations_due(ctx, "v9.1.0") == {}
+
+
+def test_a_migrated_plugin_that_is_installed_is_not_due(ctx, monkeypatch):
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [upgrade.Migration("campusonline", "v8.0.0")])
+    monkeypatch.setattr(upgrade, "used_features", lambda c: {"campusonline": "why"})
+    monkeypatch.setattr(upgrade, "discover", lambda: [SimpleNamespace(id="campusonline")])
+    assert upgrade.migrations_due(ctx) == {}
 
 
 def test_the_offer_flag():
