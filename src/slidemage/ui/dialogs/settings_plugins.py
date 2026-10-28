@@ -173,6 +173,7 @@ class InstalledRow(Card):
             state, tone, details = self._state(plugin)
         else:       # put in place since the start
             state, tone, details = "Installed; it starts after a restart", "info", ""
+        state, tone, details = installer.row_state(self.plugin_id, (state, tone, details))
         self.state_chip = Chip(state, tone)
         head = [title, caption(origin), self.state_chip]
         layout.addWidget(row(*head, stretch=0))

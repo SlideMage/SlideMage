@@ -243,9 +243,10 @@ def test_remove_confirms_and_removes(app, tmp_path, monkeypatch):
     asked = answer(monkeypatch, True)
     tab.rows["hello"].remove_button.click()
     assert "Remove hello fixture" in asked[0]
-    assert not (loader.plugins_dir() / "hello").exists()
+    assert (loader.plugins_dir() / "hello").is_dir()
     assert installer.pending_restart()
-    assert "hello" not in tab.rows and "removed" in tab.status.text()
+    assert tab.rows["hello"].state_chip.text() == "Removed after a restart"
+    assert "removed" in tab.status.text()
 
 
 # -- install from file
@@ -427,7 +428,9 @@ def test_update_button_for_a_newer_release(app, tmp_path, monkeypatch):
     assert button is not None and "0.2.0" in button.text()
     button.click()
     idle(tab)
-    assert 'version = "0.2.0"' in (loader.plugins_dir() / "hello" / "plugin.toml").read_text()
+    assert 'version = "0.1.0"' in (loader.plugins_dir() / "hello" / "plugin.toml").read_text()
+    assert 'version = "0.2.0"' in (loader.plugins_dir() / ".pending" / "hello" / "plugin.toml").read_text()
+    assert "starts after a restart" in tab.rows["hello"].state_chip.text()
     assert tab.rows["hello"].update_button is None            # changed this session: restart first
     write_cache(entry("hello", version="0.1.0"))
     installer._changed.clear()

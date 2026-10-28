@@ -134,16 +134,17 @@ def test_requires_newer_slidemage(tmp_path):
     fails(make_zip(tmp_path, toml=HELLO_TOML.replace(">=8.0", ">=99.0")), "needs SlideMage")
 
 
-def test_reinstall_moves_old_and_cleanup_removes(tmp_path):
+def test_reinstall_stages_update_until_startup_cleanup(tmp_path):
     installer.install(make_zip(tmp_path))
     (loader.plugins_dir() / "hello" / "marker").write_text("old")
     installer.install(make_zip(tmp_path, name="again.zip"))
     base = loader.plugins_dir()
-    assert not (base / "hello" / "marker").exists()
-    olds = list((base / ".old").iterdir())
-    assert len(olds) == 1 and (olds[0] / "marker").is_file()
+    assert (base / "hello" / "marker").read_text() == "old"
+    assert (base / ".pending" / "hello" / "plugin.toml").is_file()
     installer.cleanup()
     assert not (base / ".old").exists()
+    assert not (base / ".pending").exists()
+    assert not (base / "hello" / "marker").exists()
     assert (base / "hello" / "plugin.toml").is_file()
 
 
@@ -151,6 +152,7 @@ def test_swap_failure_restores_old(tmp_path, monkeypatch):
     installer.install(make_zip(tmp_path))
     final = loader.plugins_dir() / "hello"
     (final / "marker").write_text("old")
+    installer.install(make_zip(tmp_path, name="pending.zip"))
     real = installer.os.replace
     calls = []
 
@@ -172,8 +174,10 @@ def test_remove(tmp_path):
     installer._changed.clear()
     installer.remove("hello")
     base = loader.plugins_dir()
+    assert (base / "hello").is_dir()
+    assert (base / ".pending" / "hello" / ".remove").is_file()
+    assert installer.apply_pending()
     assert not (base / "hello").exists()
-    assert len(list((base / ".old").iterdir())) == 1
     assert installer.changed_ids() == {"hello"}
 
 
@@ -216,3 +220,86 @@ def test_sha256_of(tmp_path):
     f = tmp_path / "a"
     f.write_bytes(b"abc")
     assert installer.sha256_of(f) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def versioned_zip(tmp_path, version):
+    return make_zip(tmp_path, name=f"{version}.zip",
+                    toml=HELLO_TOML.replace('version = "0.1.0"', f'version = "{version}"'),
+                    files={"hello/__init__.py": f'''from pathlib import Path
+VERSION = {version!r}
+def activate(host): pass
+def late():
+    from .lazy import VERSION as other
+    return VERSION, other
+def resource():
+    return Path(__file__).with_name("data.txt").read_text()
+''', "hello/lazy.py": f"VERSION = {version!r}\n", "hello/data.txt": version})
+
+
+def test_live_update_preserves_lazy_imports_and_resources(tmp_path, monkeypatch):
+    from slidemage.plugins.registry import Registrar
+
+    monkeypatch.delenv(loader.PATH_ENV, raising=False)
+    installer.install(versioned_zip(tmp_path, "1.0.0"))
+    try:
+        assert loader.load_all(Registrar)[0].state == "loaded"
+        import hello
+        installer.install(versioned_zip(tmp_path, "2.0.0"))
+        assert hello.late() == ("1.0.0", "1.0.0")
+        assert hello.resource() == "1.0.0"
+        loader._discard_module("hello")   # simulate the next process before applying the pending update
+        assert installer.apply_pending()
+        assert loader.load_all(Registrar)[0].state == "loaded"
+        import hello
+        assert hello.late() == ("2.0.0", "2.0.0")
+        assert hello.resource() == "2.0.0"
+        installer.remove("hello")
+        assert hello.resource() == "2.0.0"
+        loader._discard_module("hello")
+        assert installer.apply_pending()
+        assert loader.discover() == []
+    finally:
+        loader._discard_module("hello")
+
+
+def test_remove_before_lazy_import_keeps_live_files(tmp_path, monkeypatch):
+    from slidemage.plugins.registry import Registrar
+
+    monkeypatch.delenv(loader.PATH_ENV, raising=False)
+    installer.install(versioned_zip(tmp_path, "1.0.0"))
+    try:
+        loader.load_all(Registrar)
+        import hello
+        installer.install(versioned_zip(tmp_path, "2.0.0"))
+        installer.remove("hello")
+        assert hello.late() == ("1.0.0", "1.0.0")
+        assert hello.resource() == "1.0.0"
+        loader._discard_module("hello")
+        installer.cleanup()
+        assert loader.discover() == []
+    finally:
+        loader._discard_module("hello")
+
+
+def test_failed_startup_swap_restores_live_copy_and_keeps_pending(tmp_path, monkeypatch):
+    installer.install(versioned_zip(tmp_path, "1.0.0"))
+    installer.install(versioned_zip(tmp_path, "2.0.0"))
+    real = installer.os.replace
+
+    def fail_pending(src, dst):
+        if src == loader.plugins_dir() / ".pending" / "hello":
+            raise OSError("cannot publish")
+        real(src, dst)
+
+    monkeypatch.setattr(installer.os, "replace", fail_pending)
+    assert not installer.apply_pending()
+    assert loader.read_manifest(loader.plugins_dir() / "hello").version == "1.0.0"
+    assert loader.read_manifest(loader.plugins_dir() / ".pending" / "hello").version == "2.0.0"
+
+
+def test_install_after_removal_replaces_pending_removal(tmp_path):
+    installer.install(versioned_zip(tmp_path, "1.0.0"))
+    installer.remove("hello")
+    installer.install(versioned_zip(tmp_path, "2.0.0"))
+    assert installer.apply_pending()
+    assert loader.read_manifest(loader.plugins_dir() / "hello").version == "2.0.0"
