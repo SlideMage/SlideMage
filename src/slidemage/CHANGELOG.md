@@ -2865,3 +2865,8 @@ NEW: Contents and section slides get a preview by themselves, and the status lin
 - Selecting a contents, agenda or section slide now renders its preview at once instead of waiting for Render now.
 - After a deck has been compiled, these slides are also rendered in the background and counted, so "All previews are up to date." includes them.
 - "All previews are up to date." is now plain green text without a green background.
+
+v8.67.1 (2026-10-28, direct requests: "Let's set up an organization. Would we then move the SlideMage repo there, was well as the as-yet-to-be-developed theme and plugin repos?" and "I have created the organization SlideMage and am logged in in chrome. Can you do the rest?"): The repository moved from stpalan/SlideMage to the SlideMage organization, SlideMage/SlideMage, together with slidemage-website, slidemage-plugin-template and slidemage-plugin-hello, and it is public now. updater.REPO names the new place, so the update check and the release notes' changelog link go there directly; GitHub forwards the old name, so copies before this one still find their updates. README, REUSE.toml, docs/PROJECT_OVERVIEW.md and docs/SlideMage.md (the token for the update check now has the organization as its resource owner, needed only while a repository is private) say the same. Tests in test_release_notes.py.
+
+NEW: SlideMage now lives in the SlideMage organization on GitHub.
+- Updates come from github.com/SlideMage/SlideMage; older copies are forwarded there automatically.
