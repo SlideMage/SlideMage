@@ -5,9 +5,86 @@ network), and the streaming wire formats of both for it to answer with."""
 from __future__ import annotations
 
 import json
+import select
+import socket
+import ssl
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from socketserver import BaseRequestHandler, ThreadingTCPServer
+
+
+# A public, test-only self-signed certificate and key. Never used outside loopback tests.
+TEST_TLS_CERT = Path(__file__).with_name("fixtures") / "localhost.pem"
+
+
+class StallingServer:
+    """Accept TCP and read a ClientHello (or CONNECT), but never answer it."""
+
+    def __init__(self):
+        self.received = threading.Event()
+        self.release = threading.Event()
+        outer = self
+
+        class Handler(BaseRequestHandler):
+            def handle(self):
+                self.request.settimeout(5)
+                try:
+                    if self.request.recv(65536):
+                        outer.received.set()
+                        outer.release.wait(5)
+                except OSError:
+                    pass
+
+        self.server = ThreadingTCPServer(("127.0.0.1", 0), Handler)
+        self.address = self.server.server_address
+        threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+
+    def close(self):
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class ConnectProxy:
+    """A threaded CONNECT relay to a fixed local API, recording tunnel headers."""
+
+    def __init__(self, target):
+        self.requests = []
+        self.stop = threading.Event()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_CONNECT(self):
+                outer.requests.append({"path": self.path,
+                                       "headers": {k.lower(): v for k, v in self.headers.items()}})
+                try:
+                    with socket.create_connection(target, timeout=2) as upstream:
+                        self.send_response(200, "Connection established")
+                        self.end_headers()
+                        while not outer.stop.is_set():
+                            ready, _, _ = select.select([self.connection, upstream], [], [], 0.05)
+                            for source in ready:
+                                data = source.recv(65536)
+                                if not data:
+                                    return
+                                destination = upstream if source is self.connection else self.connection
+                                destination.sendall(data)
+                except OSError:
+                    pass  # the client aborted
+
+            def log_message(self, *_args):
+                pass
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
+
+    def close(self):
+        self.stop.set()
+        self.httpd.shutdown()
+        self.httpd.server_close()
 
 
 class Server:
@@ -15,7 +92,7 @@ class Server:
     (status, body); a `script` is used up first, one entry per request: a body, or a (status, body) or
     (status, body, headers) tuple) and records what it got."""
 
-    def __init__(self):
+    def __init__(self, *, tls: bool = False):
         self.status = 200
         self.body: dict | str = {}
         self.content_type = "application/json"
@@ -72,7 +149,12 @@ class Server:
                 pass
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        if tls:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(TEST_TLS_CERT)
+            self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+        scheme = "https" if tls else "http"
+        self.url = f"{scheme}://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(
             target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
         ).start()
