@@ -1,301 +1,424 @@
-# Plugins: the SlideMage side
+# Plugins plan
 
-Status: plan, 2026-10-27. Nothing implemented. Needs the user's go per step; pause after each committed step.
+Status: draft 3, 2026-10-28. Draft 2 (Stefan, 2026-10-26) is sections 1–5 unchanged; section 6 is what changed
+since then: the website's answers, decisions, and the work done. Each phase needs the user's go before it
+starts; pause after each committed phase. The website side is in
+`docs/Handover_2026-10-26-Plugins-For-Website.md`.
 
-Sources. Stefan's original plan (`docs/PLUGINS_PLAN.md`, 2026-10-26) is not in any repository we can reach, so
-this plan is rebuilt from what came out of it, and keeps its phase numbers, API names and route ids wherever
-they show:
+Goal: three features that ship in SlideMage today become plugins. SlideMage ships no plugin; on first start it
+offers to download some. A plugin lives in its own GitHub repository, and the SlideMage website lists them.
 
-- the four handovers of 2026-10-26: website, CampusOnline, Claude, Ollama (the Ollama one not seen yet);
-- the website's answer of 2026-10-27, "Website → app: what the plugins plan needs back" ("the website answer");
-- the code on `feature/ai-tools-fixes` (v8.65.0).
+- **Claude**: Claude Code (the terminal in the assistant, one-shot `claude -p` tasks, the MCP server) and the
+  Anthropic API.
+- **Ollama**: the local models and their admin (host, pull, remove).
+- **CampusOnline**: a deck's course link, the admin slides (title slide, course-sessions table) and "a session
+  is soon" for background renders.
 
-Where this plan adds something the handovers don't say, it is marked *(added)*. When Stefan's plan turns up,
-diff the two and keep his where they disagree, unless the code says otherwise.
+An installed plugin can show a box in the right column, add menu entries, add a tab or section to the Settings
+window, and add a tab to the Deck settings sheet.
 
-Three features built in today become plugins; SlideMage ships none and offers them on first start:
+## 1. What exists today
 
-| Plugin | Repository | Maintainer | Released with |
-|---|---|---|---|
-| `campusonline` | `JuergenFleiss/slidemage-plugin-campusonline` | Jürgen | the first SlideMage without built-in CampusOnline |
-| `ollama` | `stpalan/slidemage-plugin-ollama` | Stefan | the AI-free core (v10.0), together with `claude` |
-| `claude` | `JuergenFleiss/slidemage-plugin-claude` | Jürgen | the AI-free core (v10.0), together with `ollama` |
+### CampusOnline: small and already separate
 
-## 1. Fixed by the website side (all live)
+| Piece | Where | Moves to the plugin |
+|---|---|---|
+| REST client, parsing, LaTeX rendering | `course_schedule.py` (454 lines, stdlib only) | yes |
+| Admin slides logic | `admin_slides.py` | yes |
+| Admin slides tab of the Deck settings sheet | `ui/dialogs/admin_slides.py`, `ui/dialogs/deck_settings.py:65` | yes |
+| "Admin slides…" command, Deck menu | `ui/workspace/actions.py:77,302`, `deck_actions.py:32,194`, `menus.py:150` | yes |
+| The course link of a deck: the preamble comment `%% SlideMage course URL: …` | `deck_scan.py:55,249` (`Deck.course_url`), `deck_settings.py` (field and its write), `deck_editor.py:382-423` (normalise, write), the "Course page" field and Open button of Deck settings (`ui/dialogs/deck_settings.py:151,276`) | yes, see below |
+| Render priority before a session | `background_renders.py:212` (`session_soon`) | yes, through a hook |
 
-| Item | Value |
-|---|---|
-| Catalogue URL to hard-code | `https://slidemage.org/plugins/index.json` (final; no plugins in it yet) |
-| Test catalogue | `https://slidemage.org/plugins/index-test.json`: the listed plugins plus the hidden ones; today only `hello` 0.1.0 |
-| Plugin pages | `https://slidemage.org/plugins/` and `…/plugins/<id>/`. Hidden plugins have no page (`/plugins/hello/` is a 404) |
-| Schema | copy `schema/plugins-index.schema.json` from `stpalan/slidemage-website` (not from the handover); `$id` `https://slidemage.org/schema/plugins-index-1.json`, served there byte for byte |
-| `hello` for tests | `hello-0.1.0.smplugin`, SHA-256 `a72af2022f7b2a5b161964d6e55376815e76be50c8645e2d02ee2dc7358c00f9`, 12357 bytes. GitHub also has 0.2.0 (replaced asset, yanked), 0.3.0 (pre-release) and 0.4.0 (wrong asset name, marked "Latest"). None of these is in the catalogue, and none may ever be offered: **the app reads the catalogue, never "latest release"** |
-| Package folder | the id with `-` as `_` (`my-plugin` → `my_plugin/`), with `activate(host)` in its `__init__.py`. The loader uses the same rule |
-| Refused by the builder | `.pyc .pyo .so .pyd .dll .dylib .exe` in the asset; a release without `README.md` and `CHANGELOG.md` at its tag |
-| `.sha256` asset | `sha256sum` format; the first word is the hash |
-| Themes | Later, in the same catalogue: a top-level `"themes"` list, installed through the plugin installer, still `schema: 1`. Not before the framework redesign defines the theme package (`docs/plans/template-owned-layout-and-own-theme.md` on `dev-framework-redesign`). **The client ignores unknown top-level fields now.** |
-| Template | `stpalan/slidemage-plugin-template`; its `build.py --check` lints the imports. Once `plugin_api` has a real shape, its `example/__init__.py` and README must show it: tell the website side |
+The course link goes with the plugin. Nothing outside the CampusOnline code reads it: not the LaTeX framework,
+not the QR codes, not the compiler. It is a comment in the preamble, so a deck keeps it as plain text while the
+plugin is absent and compiles the same. The deck group "Course deck" (`deck_groups.TAG_COURSE`) is a core
+concept and stays; the plugin only uses it to decide when Admin slides is offered.
 
-## 2. Design
+### AI: large and woven through the core
 
-### 2.1 Rules for every plugin (handovers)
+About 12,000 lines across `ai/`, `ui/workspace/{ai_*,assistant*,chat/,terminal/}`, `ui/ai_models.py` and the
+Settings tabs AI, Cloud, Ollama and Prompts. Core features call AI: image descriptions (`alt_draft.py`), slide
+translation (`slide_add.py`), the syntax check, the AI review, rename and outline, the image pages, the task
+cards. All of them ask `ai_profile.resolve()` and run on what `ai/resolver.py` returns.
 
-- Import only `slidemage.plugin_api`, the standard library, PySide6 and its own package. Everything else in
-  `slidemage` is private and may change in any release.
-- Pure Python: the PyInstaller build cannot load compiled modules from a plugin.
-- No network I/O or slow work in `activate()`. Finding `claude` on `PATH` is fine; asking `/v1/models` is not.
-- Without the plugin, nothing in SlideMage names its service. Its data stays where it is: a deck's
-  `%% SlideMage course URL:` comment, and the AI settings in `ai_settings.json`.
+The seam already exists (`providers.ChatProvider`, the neutral `agent_types.py`, the provider-neutral
+`agent.py`, the single resolver), but the three routes are hard-coded: `LOCAL`, `CLAUDE_CODE`, `API` in
+`ai_profile.py`, `Route.name`, `SERVICES`, `resolver.provider_for()`, and 26 non-AI files that name Ollama.
 
-### 2.2 What stays in core, what moves
+## 2. Decisions
 
-| Stays in core | Moves to a plugin |
-|---|---|
-| AI layer: the `ChatProvider` protocol, `ChatReply`, `ProviderError`, `Cancelled`, `parse_json_object`, `agent_types`, the agent, the tools (`ai/tools/`), `ai/workspace.py`, `ai/guides.py`, `provider_tasks.py`, the image pipeline's backend protocols (`alt_draft`), `syntax_check`, `slide_add.translate_body` | **claude**: `claude_launch`, `claude_runner`, `claude_images`, `claude_hook`, `claude_scope`, `mcp_server`, the Anthropic part of `credentials`, `AnthropicProvider` (as the new stdlib client), `terminal/session.py`, `terminal/view.py`, `terminal/draft.py`, today's Cloud tab, the Claude Code parts of `ai_profile`/`resolver`, `tools/claude_task_benchmark.py` |
-| The tasks: `ai/claude_tasks.py` → `ai/tasks.py`, `terminal/tasks.py` → `ui/workspace/task_bubbles.py` (renamed in phase 3) | **ollama**: `OllamaProvider`, `ollama_admin`, `settings_ollama`, the Ollama host setting, model management |
-| The terminal service: `terminal/web.py`, `theme.py`, `assets/terminal/` (xterm.js), `pty_process.py`. QtWebEngine and pywinpty/ptyprocess are compiled | **campusonline**: `course_schedule`, `admin_slides` (+ its UI), the course link (`COURSE_URL_RE`, `parse_course_url`, `Deck.course_url`, `normalize_course_url`, `course_url_text`, `set_course_url`), the Deck menu command, the "session soon" render priority |
-| The external-edit watch: `ai/project_watch.py`, `terminal/sync.py` | |
-| The AI switch, AI setup, the assistant UI, the project's AI policy, the deck group "Course deck", `protected_regions.py` | |
+### 2.1 What a plugin is
 
-### 2.3 AI routes (`add_ai_route`)
+A Python package loaded in-process, with a manifest, that registers contributions with the host through one
+stable facade, `slidemage.plugin_api`. In-process because every plugin here contributes Qt widgets.
 
-Today `ai_profile` hard-codes `LOCAL`, `CLAUDE_CODE` and `API`, and `resolver.py` maps each to a class. In
-phase 3 these become routes registered by plugins. The route ids are `ollama`, `claude_code` and
-`anthropic_api`; the stored values `"local"` and `"api"` are read as `ollama` and `anthropic_api`. Sketch, to be
-replaced by Stefan's §2.4 when it turns up:
-
-```python
-@dataclass(frozen=True)
-class AiRoute:
-    id: str                          # "ollama", "claude_code", "anthropic_api"
-    name: str                        # "Ollama", "Claude Code", "Anthropic API"
-    is_local: bool                   # which side of Local | Cloud
-    tasks: frozenset[str]            # of ai.tasks: chat, image_description, translation, fixes_...
-    model_choices: Callable[[ProjectContext], list[str]]   # pickers; never waits on the network
-    problem: Callable[[ProjectContext, Route], str]        # "" or why it can't run (no key, not installed)
-    provider: Callable[[ProjectContext, Route], ChatProvider] | None = None
-    draft_backend: Callable | None = None                  # else alt_draft.ModelBackend(provider)
-    translation_backend: Callable | None = None
-    slide_translator: Callable | None = None
-    chat_surface: ChatSurfaceFactory | None = None         # Claude Code: the terminal instead of the chat view
+```
+slidemage-plugin-campusonline/            its own GitHub repository
+  plugin.toml                             id, name, version, api_version, requires_slidemage, summary,
+                                          author, homepage, license, needs, network (fields and rules: the
+                                          website handover, section 3)
+  campusonline/__init__.py                def activate(host: PluginHost) -> None
+  campusonline/...                        the plugin's modules, assets
+  tests/                                  run against SlideMage's plugin_api in CI
+  CHANGELOG.md, LICENSE, README.md
 ```
 
-`ChatSurface` is the lifecycle the core switch drives: `widget()`, `stop()` and `restart(model, continue_conversation)`,
-which covers today's Switch now (v8.61.0). "Cloud means" (`cloud_conn`) becomes the chosen route of the
-cloud side. `resolver`'s rule stays: no silent fallback to another route. With no route on a side, that side
-of the switch is disabled with "Install a plugin…".
+A release is a zip, `campusonline-1.2.0.smplugin`, attached to the repository's GitHub release.
 
-### 2.4 `slidemage.plugin_api` (`api_version = 1`)
+- `api_version` is an integer SlideMage bumps on a breaking change of `plugin_api`; a plugin naming another one
+  is listed as "needs SlideMage x.y" and not loaded. `requires_slidemage` is a version range.
+- Plugins import only `slidemage.plugin_api`, the stdlib, PySide6 and their own vendored pure-Python code. Core
+  never imports a plugin. A test in core checks the second; the plugin template's lint checks the first.
+- A plugin that raises in `activate()` is disabled for the session and named in the Plugins tab, never a crash
+  at start.
+- Installed plugins live in `config_dir()/plugins/<id>/`, unpacked. Enabled / disabled is per machine.
 
-The union of what the three handovers ask for:
+### 2.2 The frozen-build constraint
 
-| Area | Calls | For |
+SlideMage ships as a PyInstaller build with no pip inside. A downloaded plugin can only use what the build
+contains plus pure-Python code it carries. A compiled module in a plugin would have to match the build's Python
+version and platform exactly.
+
+- Ollama, CampusOnline: stdlib already. No issue.
+- Claude Code terminal: needs QtWebEngine and a pty (pywinpty / ptyprocess). Both are native, so they stay in
+  core as a generic embedded terminal service (run a command in a pty, show it). The Claude plugin decides what
+  runs there. A SlideMage without the Claude plugin still carries QtWebEngine; dropping it would need a second
+  build flavour, not worth it now.
+- Anthropic API: uses the anthropic SDK, which needs the compiled `pydantic_core`. See 2.3.
+
+### 2.3 Replacing the Anthropic SDK: does it cost functionality?
+
+No user-visible functionality is lost, if the replacement covers what `AnthropicProvider` uses today
+(`ai/providers.py:475-635`). The SDK is used as a transport only; prompts, tools and messages are already plain
+dicts. What a stdlib client (`http.client` + server-sent events, like the Ollama provider) has to reproduce:
+
+| SDK feature used today | Replacement |
+|---|---|
+| `messages.stream`: text deltas, the final message | parse the SSE events (`message_start`, `content_block_start/delta/stop`, `message_delta`, `message_stop`) |
+| tool use: the streamed `input_json_delta` pieces assembled into the tool input | concatenate per block, `json.loads` at `content_block_stop` |
+| `raw=message.content` handed back in the next turn (thinking blocks with signatures, tool_use blocks) | keep the blocks as the dicts they came in as; send them back unchanged |
+| prompt caching, `output_config.effort`, images, usage incl. cache tokens | plain request fields and response fields; no change |
+| `max_retries=2` with backoff on 429, 5xx, 529 and dropped connections | a small retry loop that honours `retry-after` |
+| typed errors mapped to messages (`_translate`) | map on the HTTP status and the error body instead |
+| `models.list` with pagination | follow `has_more` / `last_id` |
+| `abort()` from another thread by closing the socket | the same `_shutdown_socket` the Ollama provider uses |
+| TLS with the SDK's bundled certificates | stdlib `ssl.create_default_context()`; the updater and CampusOnline already reach HTTPS this way in the frozen builds |
+
+What does change:
+
+- **Maintenance.** The SDK follows new API features by itself. With our own client, a new API feature we want
+  (a new block type, a new beta header) is written by hand. The client touches only what SlideMage uses, so
+  this is small, but it is ongoing.
+- **Edge cases** the SDK handles silently (an event type the client does not know, a stream cut mid-block) need
+  tests. Unknown event types must be ignored, not fatal.
+- **Benefits:** the plugin is pure Python and installable into any build; the app loses `anthropic`, `pydantic`,
+  `pydantic_core`, `httpx` and friends (smaller download, faster first AI request, no `collect_submodules` hack).
+
+Recommendation: do it, in core first behind the existing `AnthropicProvider` interface, with recorded SSE
+streams as test fixtures, before moving it into the plugin.
+
+### 2.4 AI routes in a registry; the AI features stay in core
+
+The AI features (chat, image descriptions, translation, fixes / notes / transcripts, task cards, agent tools,
+prompts) are SlideMage features, not Claude's or Ollama's. They stay in core as the AI layer. Plugins contribute
+routes:
+
+```python
+class AiRoute(Protocol):
+    id: str                       # "ollama", "claude_code", "anthropic_api"
+    service: str                  # "Ollama", "Claude Code", "Anthropic API"
+    is_local: bool                # nothing leaves the machine: it belongs to Local, otherwise to Cloud
+    tasks: frozenset[str]         # which of ai_profile.TASKS it can answer
+    def problem(self, ctx) -> str: ...                       # "" or why it cannot run now
+    def models(self, ctx, task) -> list[str]: ...
+    def provider(self, ctx, route) -> ChatProvider | None    # None: no chat provider (Claude Code)
+    def draft_backend(self, ctx, route) -> ...               # image pipeline
+    def translation_backend(self, ctx, route) -> ...
+    def chat_surface(self, ...) -> QWidget | None            # None: the core chat view; Claude Code: its terminal
+```
+
+The Claude plugin registers two routes, the Ollama plugin one. `ai_profile` keeps mode, policy, per-task models
+and `resolve()`, over registry ids instead of three constants.
+
+The wording stays "Local | Cloud". Underneath, Local is "the routes with `is_local`" and Cloud the others;
+`cloud_conn` becomes "which cloud route". With only Local or only Cloud routes installed, the other side of the
+switch is shown disabled with "Install a plugin…". With no AI route, the assistant, the AI menu and every AI
+command hide, and SlideMage is a complete editor without AI.
+
+Settings keys stay where they are (`ai_settings.json`; `ai_models` keyed by route id, `local` read as `ollama`
+and `api` as `anthropic_api` until the first write), so nobody loses their models or key.
+
+### 2.5 The right column
+
+Today the column is the panels card (top: a picker ▾ and the chosen per-slide panel such as Notes, Images,
+Versions) and the assistant card (bottom), in a splitter (`side_panels.py`).
+
+A plugin box goes to one of two places, decided by the size the plugin declares, never by the plugin naming a
+place:
+
+```python
+host.add_sidebar_box(id, title, factory: Callable[[WindowApi], QWidget], *,
+                     size: Literal["compact", "large"], when: Callable[[DeckApi], bool] = always)
+```
+
+| | `size="compact"`: in the panel picker | `size="large"`: in the dock |
 |---|---|---|
-| Entry | `activate(host)` | all |
-| AI | `add_ai_route`, `ai_tools()` (the ToolBox for the MCP server), the neutral AI types | claude, ollama |
-| Settings | `add_settings_section(page="ai", ...)`, `add_settings_tab(...)`; `settings(plugin_id)`, with a one-time read of the old keys (`cloud_conn`, `ai_models`, `ollama_host`) | claude, ollama, campusonline (optional) |
-| Secrets | `credentials`: environment variable, OS keychain, file fallback, per plugin. It must find the existing `ANTHROPIC_API_KEY`, the keychain entry and the `anthropic_api_key` file | claude |
-| Process | `add_entry_point(name, fn)`; `entry_point_command(name)` gives the argv (`SlideMage --plugin claude:hook` frozen, `python -m slidemage --plugin claude:hook` from source) | claude |
-| Terminal | `terminal()`: a PTY in the assistant card; the plugin supplies argv and env. The external-edit watch, switched on while the terminal runs | claude |
-| Focus | the current deck, slide and scope; `protected_regions` (read) | claude |
-| Decks | a deck (`name`, `path`, `text`, `groups`); `edit_deck_text(deck, change)` (refuses if the file changed meanwhile, like `deck_editor.apply`); `insert_slides`, `insert_positions`, `deck_language`. The handover's `add_deck_marker` is dropped: the plugin parses its own comment (`course_link.py`) | campusonline |
-| UI | `add_deck_settings_tab(..., footer_action=...)`, `add_command`, `add_menu_entry("Deck", ...)`, `add_sidebar_box(size="compact", when=...)`, the kit widgets `Page`, `Field`, `caption` | campusonline |
-| Rendering | `add_render_priority(fn: Deck -> bool)` | campusonline |
-| Misc | `cache_dir()`, `legacy_cache_dir()` (where core kept a file before the plugin, e.g. `course-schedules.json`), `run_in_background`, `log`, `show_message`, `open_url`, `app_version` | all |
+| For | a few facts and buttons about the deck or slide, glanced at now and then | a working surface used for minutes at a time, next to the slide panels |
+| Where | an entry of the top card's ▾ picker, below the slide panels after a separator headed "Plugins" | a box in the bottom card, which today holds only the assistant |
+| Height | the top card's: 38 % of the column by default, at least 128 px; the content must fit one 64 px row and scroll beyond | the bottom card's: at least 380 px |
+| Shown with | replaces the slide panel while chosen | the slide panel above stays visible |
+| Example | CampusOnline: the deck's course, next session (date, time, room), Open course page, Admin slides… | the assistant (core); a future plugin with a large surface |
 
-The CampusOnline side of this table is drafted in the plugin's own repository as a `typing.Protocol`
-(`campusonline/host.py`, its step 2); `plugin_api` should be built to that.
+Rules of the dock:
 
-The API is versioned by `api_version`, not by SlideMage's version. An incompatible change means
-`api_version = 2`, and SlideMage keeps loading `api_version = 1` plugins for at least one major version.
+- The assistant is the dock's first box, present while an AI route is installed.
+- One box in the dock: no switcher, the column looks exactly as today. Two or more: the bottom card's header gets
+  a segmented switcher (assistant first, then plugins in install order); the choice is remembered in
+  `layout_settings` like the panel picker's.
+- No box in the dock (no AI plugin, no large plugin box): the bottom card is hidden and the top card takes the
+  column. "Focus assistant" becomes "Focus" and applies to whichever dock box is shown.
+- A running assistant (a streaming answer, a Claude Code terminal) keeps running while another dock box is shown;
+  the switcher marks it with the same busy dot the assistant header uses.
 
-### 2.5 Package, install, load *(added: the handovers leave the app mechanics open)*
+Rules of the picker:
 
-- **Place:** `config_dir()/plugins/<id>/`, unpacked. `plugins/state.json` holds the enabled ids, the installed
-  versions and the last catalogue check. Per machine, never in the project.
-- **Install** (from the catalogue or from a file):
-  1. Download to `plugins/.staging/`.
-  2. Check the SHA-256 (the catalogue's, or for a file the `.sha256` beside it if present).
-  3. Unzip with guards: no absolute paths, no `..`, a size cap, and a refusal of the builder's compiled
-     extensions.
-  4. Check `plugin.toml`, `api_version` and `requires_slidemage`.
-  5. Rename into place; the old version waits in `.old/` until the next start.
+- Plugin entries keep their own remembered choice like the panels do; the picker's summary line ("a few facts
+  about the slide") comes from an optional `summary(deck, slide) -> str` of the box.
+- `when` hides an entry, for CampusOnline a deck without a course link. If the shown entry is hidden, the picker
+  goes back to the slide panel shown before it, and returns to the plugin box when it is offered again.
 
-  Install from file shows "Not from the SlideMage plugin list" and the plugin's `network` lines first.
-- **Load:** at start, before the window. The package `<id with _>` is imported as `slidemage_plugins.<id>` with
-  `importlib` (no `sys.path` entry), so plugin packages can't clash with each other or shadow the stdlib.
-  A failing import or `activate` disables that plugin for the session and shows the traceback in
-  Settings → Plugins; the app starts anyway.
-- **Changes take effect at the next start**, with "Restart now". Modules can't be unloaded safely, and a
-  route that disappears would break running requests.
-- **Frozen build:** the spec collects the whole stdlib (minus `tkinter`, `test`, `idlelib`, `ensurepip`) and a
-  fixed set of PySide6 modules (`QtCore`, `QtGui`, `QtWidgets`, `QtNetwork`, `QtSvg`), because PyInstaller
-  bundles only what SlideMage itself imports. `--self-test --plugins` checks them, and the template documents
-  exactly this set.
+Both places give a box the same narrow window facade (focused deck and slide, their change signals, run a
+command, show a message), never `WorkspaceWindow`, so a box can be moved between them by changing its size in a
+plugin release. User-driven moving ("Move to dock") is not in v1.
 
-### 2.6 Catalogue client, first start, updates
+The two AI plugins add no box; they feed the one assistant: its model chip, its Local | Cloud switch and, for
+Claude Code, its terminal.
 
-- `plugins/catalogue.py`:
-  - fetches `index.json` over HTTPS with a timeout and caches the last good copy;
-  - `SLIDEMAGE_PLUGIN_CATALOGUE` points it at `index-test.json` *(added)*;
-  - an unknown `schema` shows "Update SlideMage to see plugins";
-  - unknown fields are ignored (themes, 1).
-- **Choosing a release:** the newest one whose `api_version` is supported and whose `requires_slidemage` fits
-  (a small parser for `>= <= == < >` comma lists).
-- **First-start sheet** (also Settings → Plugins and Help → Plugins…):
-  - "SlideMage works without plugins";
-  - "Recommended" first, marked, not preselected;
-  - per plugin: summary, needs, network, and "More…" (`homepage`);
-  - footer: "See all plugins and what they do" (`plugins_page`).
-- **Upgrade path:** preselect the plugins this person used:
-  - `claude`: an API key, or a Claude Code or API route in `ai_settings.json`;
-  - `ollama`: an Ollama host or local models set;
-  - `campusonline`: a deck with a course link.
+### 2.6 Settings: a shared page for the two AI plugins
 
-  A project with course links shows "This project uses CampusOnline course links. Install the plugin…" while
-  the plugin is missing.
-- **Updates:** with the app's update check and its mode (`updater.py`: off, ask, auto). A yanked installed
-  version shows "withdrawn: update or remove".
+Yes, but core owns the page. A page two plugins co-own has no owner: it exists only while one of them is
+installed, its layout depends on install order, and a version mismatch between them breaks it. Instead:
+
+- **AI tab** (core, shown when any AI route is installed): Local | Cloud policy of the project, which cloud route,
+  the model per task (from every installed route), and the prompts (today's Prompts tab is provider-neutral).
+- Each AI plugin adds a section to it: Ollama (host, installed models, pull and remove; today's Ollama tab),
+  Claude (API key, today's Cloud tab; Claude Code found or not).
+
+That turns today's AI, Cloud, Ollama and Prompts tabs into one or two.
+
+A new core **Plugins tab**: installed plugins with version, enabled switch (takes effect after a restart in v1),
+update, remove, "Install from file…", "Browse plugins…" and what each plugin contacts on the network.
+
+CampusOnline gets a Settings tab only if it has settings; its per-deck UI is a Deck settings tab (2.7).
+
+### 2.7 Extension points
+
+| Extension point | Used by |
+|---|---|
+| `add_command(id, title, scope, run, enabled, shortcut=None)`: palette, shortcuts | all |
+| `add_menu_entry(menu, command_id, section=None)`: into an existing top-level menu (File, Edit, Deck, Slide, View, Build, AI, Housekeeping, Help), in a section of its own named after the plugin unless `section` names one; Submenu supported | CampusOnline (Deck → Admin slides…, Open course page) |
+| `add_menu(title, sections)`: a new top-level menu, placed before Help | any plugin with many commands |
+| `add_settings_tab(title, factory)` / `add_settings_section(page="ai", title, factory)` | CampusOnline (if needed), Ollama, Claude |
+| `add_deck_settings_tab(title, factory)`, including a footer action ("Insert slides") and the dirty state | CampusOnline: one tab "Course" with the course link, Open, and the admin slides |
+| `add_deck_marker(name)`: read and write a `%% SlideMage <name>: …` preamble comment through the host's deck editing (undo, expected-text checks) | CampusOnline course link |
+| `add_render_priority(fn: deck -> bool)` | CampusOnline `session_soon` |
+| `add_sidebar_box(...)` (2.5) | CampusOnline |
+| `add_ai_route(route)` (2.4) | Ollama, Claude |
+| `settings(plugin_id)`: namespaced per-machine storage; `credentials`: keyring or file (from `ai/credentials.py`) | all |
+| `terminal()`: the embedded terminal service | Claude Code |
+| `ai_tools()`: the agent's ToolBox, for the MCP server | Claude Code |
+| `run_in_background`, `log`, `show_message` | all |
+
+Menu entries follow the declarative `MENU_BAR` of `menus.py`: plugin entries are merged into it at start, so the
+palette, the shortcuts list and the menu bar stay consistent. The AI menu itself is core; it is shown while an AI
+route is installed.
+
+Keep the API this small in v1; add points when a plugin needs them.
+
+### 2.8 Nothing bundled: first start and upgrades
+
+- **First start** (no `plugins/` folder and no "plugin offer seen" flag): a sheet lists the catalogue's plugins
+  with a one-line summary, what each needs (Ollama installed, Claude Code or an API key, a CAMPUSonline course)
+  and what it contacts on the network. The plugins the catalogue marks `recommended` (Claude and Ollama) come
+  first under "Recommended", with a line on what they add ("AI help with image descriptions, translation, fixes
+  and a chat about your slides"), the rest under "More plugins". Recommended means listed first and marked, not
+  preselected: Ollama does nothing without Ollama installed and Claude sends slides to the cloud, so the user
+  ticks them. The sheet's footer links to the website's plugin page ("See all plugins and what they do"), and
+  each plugin's "More…" to its own page. Buttons: "Install selected", "Not now". The Plugins tab and Help →
+  Plugins… offer the same list later.
+- **Offline**: the sheet says the list could not be loaded and offers "Install from file…".
+- **Upgrade** from a SlideMage that still had the features built in (this matters most): the first start of the
+  release that removed a feature checks whether it was in use and preselects its plugin, with the reason: an API
+  key or a Claude Code route in `ai_settings.json` → Claude; Ollama models chosen → Ollama; any deck with a
+  course link → CampusOnline. Without this, an update would silently remove features people use.
+- **Project hints**: opening a project whose decks carry a course link, or whose `project.json` sets an AI
+  policy, while the matching plugin is missing shows one dismissible line: "This project uses CampusOnline course
+  links. Install the plugin…".
+- **Updates**: the updater checks plugin updates in the same pass as its own, from the catalogue. A SlideMage
+  update that bumps `api_version` lists which installed plugins have a compatible release and holds the update
+  back (in "ask" mode) if one does not yet.
+
+### 2.9 Repositories and releases
+
+- One repository per plugin, each on its owner's account: `slidemage-plugin-claude` and
+  `slidemage-plugin-campusonline` (Jürgen Fleiß), `slidemage-plugin-ollama` (Stefan Palan), plus
+  `slidemage-plugin-template` with the manifest, the CI workflow and the lint rule.
+- Code moves with `git filter-repo` so each plugin keeps the history of its files.
+- Plugin CI: tests against the oldest and the newest SlideMage its `requires_slidemage` allows (SlideMage checked
+  out at those tags), builds the `.smplugin` and attaches it with its SHA-256 to a GitHub release.
+- Core keeps contract tests with a fake plugin in `tests/`, and a test that the plugin API's public names do not
+  change without an `api_version` bump.
+- The catalogue (`index.json`) is built by a scheduled job in the website repository (Stefan's account, GitHub
+  Pages) from the releases of the approved plugins: approval is a reviewed pull request adding the plugin to the
+  website's registry. The builder pins each release's SHA-256 when it first sees it. The app hard-codes only the
+  catalogue URL, `https://<domain>/plugins/index.json`; the custom domain must be chosen before phase 1 ships.
+  Details in the website handover.
+- For development, `SLIDEMAGE_PLUGIN_PATH` points SlideMage at plugin checkouts; they load like installed ones.
+- A plugin runs with the user's rights. The app installs from the catalogue only files whose SHA-256 matches and
+  warns on "Install from file…". Signatures come later.
 
 ## 3. Phases
 
-Phase numbers as in the handovers. Each step is one commit with its tests. A user-visible change gets the
-version bump and changelog line.
+Rough cost uses the usual calibration (~5 % of a 5-hour window per ~100k agent tokens). Nothing is released
+without its plugin: a feature leaves core only in the release whose first start can install it again.
 
-### Phase 0: `plugin_api` shape
+**Phase 0: plugin host** (~200k tokens). `slidemage/plugins/` (loader, manifest, registry, enable / disable),
+`slidemage/plugin_api.py` (versioned facade), menu and command merging, Settings and Deck settings tab hooks, the
+Plugins tab, `SLIDEMAGE_PLUGIN_PATH`, the core boundary test, a fake plugin in `tests/` (load, failing activate,
+wrong `api_version`).
 
-**0.1** Write `plugin_api.py` as signatures and docstrings only (2.4), and review it with Jürgen against the
-CampusOnline box and tab designs and Claude Code's `chat_surface` needs. Send its v1 shape to the website side
-for the template.
+**Phase 1: installing** (~150k tokens). Catalogue client, download with SHA-256 check, unpack, "Install from
+file…", the first-start sheet, the upgrade preselection, plugin updates in the updater. Needs the catalogue URL
+and format agreed with the website (the handover). The website side publishes a hidden test catalogue,
+`plugins/index-test.json`, with the sample plugin `hello`, which the installer's tests use.
 
-### Phase 1: plugin host and installing plugins
+**Phase 2: CampusOnline plugin, first release without a built-in feature** (~200–300k tokens). Jürgen's
+repository (`docs/Handover_2026-10-26-CampusOnline-Plugin.md`); he can create it and extract the code before
+phase 0 is done, and wire it to `plugin_api` once it exists. The core side of this phase removes the code from
+SlideMage. Moves `course_schedule.py`, `admin_slides.py`, `ui/dialogs/admin_slides.py`, the course-link code of
+`deck_scan` / `deck_settings` / `deck_editor` and the Deck settings field, and their tests. The plugin adds the
+"Course" Deck settings tab, the Deck menu entries, the sidebar box and the render priority. Done when: without
+the plugin, no trace of it in the UI and decks with a course link compile and save unchanged; with it,
+everything works as today; an upgraded install that had course links is offered the plugin.
 
-**1.1 Manifest and loader.** `plugins/manifest.py` (`tomllib`, the handover's field rules, `requires_slidemage`)
-and `plugins/loader.py` (2.5). Tests: a copy of `hello-0.1.0.smplugin` in `tests/fixtures/plugins/`, plus
-synthetic ones: bad manifest, raising `activate`, wrong `api_version`, compiled file, zip-slip.
+**Phase 3: AI route registry, inside core** (~400–600k tokens, the big one). No plugin yet. 3a resolver and
+profile on `AiRoute`, today's three routes registered from core; 3b UI (assistant, chat view, image pages, task
+cards, the 26 Ollama-naming files); 3c the AI tab with sections. Done when no core module outside the three
+route implementations names Ollama, Claude Code or the API.
 
-**1.2 Installer.** Staging, SHA-256, guards, swap, `.old`, `state.json`.
+**Phase 4: stdlib Anthropic client, inside core** (~100–150k tokens). 2.3, with recorded streams as fixtures;
+drop `anthropic` from `pyproject.toml` and the spec.
 
-**1.3 Entry points.** `--plugin <id>:<name>` in `cli.py`: loads that one plugin, no window, calls its entry
-point. Tests with a fixture plugin.
+**Phase 5: Ollama plugin** (~100k tokens). New repository; move `OllamaProvider`, `ollama_admin.py`,
+`settings_ollama.py`, the route.
 
-**1.4 Frozen build.** The spec's stdlib and PySide6 set; `--self-test --plugins` in the release workflow on all
-three platforms.
+**Phase 6: Claude plugin** (~250–350k tokens). Split the embedded terminal service (core) from the Claude Code
+session (plugin); new repository; move `claude_*.py`, `mcp_server.py`, the terminal session, the API route and
+the Claude settings section.
 
-**1.5 Settings → Plugins and Help → Plugins….** Installed (version, state, needs, network, Disable, Remove,
-the error) and Install from file….
+**Phase 7: AI-free SlideMage** (~100k tokens). No AI plugin: the assistant, the AI menu, every AI command and AI
+hints in dialogs disappear; image descriptions and translation keep their manual paths. GUI tests run with no
+plugin. Phases 5–7 release together, so no release has the AI half removed.
 
-**1.6 Catalogue client.** 2.6, validated against the copied schema. Tests on a recorded `index-test.json`. A
-network-marked test checks that the 0.2.0, 0.3.0 and 0.4.0 releases of `hello` are never offered and that
-0.1.0 installs with the hash above.
+**Phase 8: manual and changelogs.** A "Plugins" chapter in the manual; each plugin carries its own CHANGELOG in
+the app's format, checked by a copy of `release_notes.py` in the template.
 
-**1.7 First-start sheet, upgrade preselection, plugin updates.**
+Order: 0 → 1 → 2 (release) → 3 → 4 → 5 → 6 → 7 (release) → 8. Phase 3a can start in parallel with phase 2
+(different files).
 
-Release **v9.0.0**: the plugin host, `api_version = 1`. `hello` installs from `index-test.json`.
+## 4. Risks
 
-### Phase 2: CampusOnline as the first plugin
+- Plugin API churn across four repositories: keep the facade narrow, `api_version` honest, and the template's CI
+  testing against two SlideMage versions.
+- Losing features on update: the upgrade preselection (2.8) and the rule that no release removes a feature its
+  first start cannot reinstall.
+- First start needs the network for anything beyond plain editing; offline users get "Install from file…".
+- Arbitrary code: catalogue with hashes now, signatures later.
+- Python version of the build: pure-Python plugins survive it; a plugin that ever needs a compiled module needs
+  per-platform builds and a `python_abi` field.
 
-The plugin side has its own plan: `docs/PLAN.md` in `~/github/slidemage-plugin-campusonline` (branch
-`plugin-campusonline` on Jürgen's private fork `JuergenFleiss/SlideMageS` until it gets its public repository).
-Done there: the history filtered from `stpalan/SlideMage` `develop`, the template adopted, the package
-standard-library only, with what still needs SlideMage in `bridge/`. Then: the host Protocol, the Course tab and
-the box, moving the old cache. Its steps 5–6 wait for this phase.
+## 5. Decided
 
-**2.1 Host calls for CampusOnline**, built to the plugin's `campusonline/host.py` Protocol. Core callers use
-them first, so they are tested before anything moves.
+- One Claude plugin with two routes, Claude Code and the Anthropic API, and one Claude section in the AI tab.
+- The first-start sheet recommends the AI plugins and links to the website (2.8).
+- Box placement by declared size: compact in the panel picker, large in the dock (2.5).
+- Owners, each with a handover:
+  - CampusOnline: Jürgen Fleiß, `docs/Handover_2026-10-26-CampusOnline-Plugin.md`;
+  - Claude: Jürgen Fleiß, `docs/Handover_2026-10-26-Claude-Plugin.md`;
+  - Ollama: Stefan Palan, `docs/Handover_2026-10-26-Ollama-Plugin.md`;
+  - the website side: `docs/Handover_2026-10-26-Plugins-For-Website.md`.
+- So that the plugins' history extracts cleanly, phase 3 puts the Ollama route and provider in
+  `ai/ollama_route.py` and phase 4 the new Anthropic client in `ai/anthropic_provider.py`.
 
-**2.2 The plugin onto the real `plugin_api`** (plugin plan step 5): `bridge/` is deleted, and the plugin's tests
-run against the oldest and newest SlideMage it allows.
+## 6. Since draft 2 (2026-10-27/28)
 
-**2.3 Cut from core:** the files and code of 2.2. The tests move with them (`test_course_schedule`,
-`test_admin_slides*` and `test_course_url`, plus the course cases of `test_background_renders`,
-`test_deck_settings*`, `test_commands`, `test_menu_bar_gui` and `test_accessibility_gui`). Without the plugin,
-the deck keeps its comment and compiles the same.
+### 6.1 The website side is live (its answer of 2026-10-27)
 
-Release **v9.1.0** together with `campusonline` 1.0.0 (`requires_slidemage = ">=9.1"`). It has a `BREAKING:`
-paragraph, so auto-update asks first. The catalogue lists 1.0.0 before this ships.
+| Item | Value |
+|---|---|
+| Catalogue URL to hard-code | `https://slidemage.org/plugins/index.json` (final; no plugins listed yet) |
+| Test catalogue | `https://slidemage.org/plugins/index-test.json`: `hello` 0.1.0 only, SHA-256 `a72af2022f7b2a5b161964d6e55376815e76be50c8645e2d02ee2dc7358c00f9`, 12357 bytes. GitHub also has `hello` 0.2.0 (replaced asset, yanked), 0.3.0 (pre-release) and 0.4.0 (wrong asset name, marked "Latest"): none may ever be offered, so **the app reads the catalogue, never "latest release"**. Hidden plugins have no page (`/plugins/hello/` is a 404) |
+| Schema | copy `schema/plugins-index.schema.json` from `stpalan/slidemage-website`, not from the handover; served at its `$id` `https://slidemage.org/schema/plugins-index-1.json` |
+| Pages the app opens | `https://slidemage.org/plugins/`, `…/plugins/<id>/` (stable). The old `stpalan.github.io/slidemage-website/…` answers 301; don't hard-code it |
+| Package folder | the id with `-` as `_`; `activate(host)` in its `__init__.py`. The loader uses the same rule |
+| Refused by the builder | `.pyc .pyo .so .pyd .dll .dylib .exe` in the asset; a release without `README.md` and `CHANGELOG.md` at its tag. `.sha256` asset: `sha256sum` format |
+| Themes | later, in the same catalogue (a top-level `"themes"` list, installed through the plugin installer, still `schema: 1`), once the framework redesign defines the theme package. **The catalogue client ignores unknown top-level fields from its first release** |
+| Template | `stpalan/slidemage-plugin-template`; once `plugin_api` has its first real shape, the template's `example/__init__.py` and README must show it: tell the website side |
 
-### Phase 3: the core becomes provider-neutral (Stefan)
+### 6.2 Phase 4 decided and started ahead of the order
 
-**3.1** The `AiRoute` registry (2.3). `ai_profile` and `resolver` ask it; Ollama, Claude Code and the API
-register themselves from inside core. No visible change.
+Decided 2026-10-27 (Jürgen): replace the SDK, as 2.3 recommends. The alternatives weighed were keeping the SDK
+bundled in core for the plugin to import (an exception to the import rule, and the plugin tied to the SDK
+version core ships) and dropping the API route (Claude Code never used the SDK). Jürgen does it now, ahead of
+phases 0–3: nothing depends on it. Fallback if it proves much harder: drop the API route, not bundle the SDK.
 
-**3.2** The AI tab with sections (`add_settings_section(page="ai")`); the Cloud and Ollama tabs become sections.
+Work: branch `feature/anthropic-stdlib` (from `feature/ai-tools-fixes`), client in `ai/anthropic_provider.py`
+(2.3's table is the checklist), then dropping `anthropic` from `pyproject.toml`, the spec and the third-party
+notices.
 
-**3.3** Rename the task code out of `claude_*`: `ai/tasks.py`, `ui/workspace/task_bubbles.py`, and the
-`test_claude_tasks*` tests with them.
+### 6.3 The CampusOnline plugin is ahead of phase 0
 
-**3.4** The "no route" states: disabled sides, "Install a plugin…" on the Images page, in the chat and in the
-bubbles.
+Its own plan: `docs/PLAN.md` in `~/github/slidemage-plugin-campusonline`, branch `plugin-campusonline` on
+Jürgen's private fork `JuergenFleiss/SlideMageS` until the public repository (its step 6). Done:
 
-### Phase 4: Anthropic without the SDK (Jürgen; done first)
+- the history filtered from `stpalan/SlideMage` `develop` (the handover's clone URL
+  `JuergenFleiss/slidemage.git` doesn't exist);
+- the template adopted; the package standard-library only;
+- **the host interface drafted** as a `typing.Protocol` in `campusonline/host.py`, with a `FakeHost` in its
+  tests: phase 0 should build `plugin_api`'s CampusOnline part to it, or say where it differs;
+- the "Course" Deck settings tab (course link with Save and Open, admin slides, Insert slides as footer action),
+  the compact box (title, next session with time and room, Open course page, Admin slides…), the cache keeping
+  title and sessions, and the old `course-schedules.json` adopted once.
 
-Decided 2026-10-27 (Jürgen):
-- Replace the SDK rather than keep it bundled in core (A) or drop the API route (D). Claude Code never used
-  the SDK; only the API route does.
-- Jürgen writes it, now, ahead of phases 1–3: nothing depends on it.
-- If it turns out much harder than expected, fall back to dropping the API route, not to bundling the SDK.
+Waits for phase 0: the real `plugin_api`, then the public repository and 1.0.0.
 
-**4.1** The stdlib client in `ai/anthropic_provider.py`, behind today's `AnthropicProvider` interface (Claude
-handover §4). It must cover:
-- streamed text, stop_reason, and usage with cache tokens;
-- tool use, assembling the `input_json_delta` pieces;
-- raw blocks handed back unchanged in the next turn (thinking blocks with signatures);
-- images, `cache_control` and `output_config.effort`;
-- two retries on 429/5xx/529 and dropped connections, honouring `retry-after`;
-- the error messages per status;
-- `/v1/models` with pagination;
-- `abort()` by closing the socket;
-- unknown SSE events ignored.
+### 6.4 Where the CampusOnline draft differs from 2.7 (for Stefan)
 
-Recorded streams are the fixtures. Then drop `anthropic`, `pydantic`, `httpx` and the spec's
-`collect_submodules("anthropic")`.
+| 2.7 | CampusOnline's `host.py` | Why |
+|---|---|---|
+| `add_deck_marker(name)` | `edit_deck_text(deck, change)` plus the plugin's own `course_link.py` | a general text edit is smaller than a marker API and covers this case; it keeps undo and the expected-text check |
+| `add_command(id, title, scope, run, enabled, shortcut=None)` | `add_command(id, title, run, enabled)`, `enabled(None)` when no deck is open | `scope` and `shortcut` not needed by CampusOnline; fine to add |
+| `add_menu_entry(menu, command_id, section=None)` | `add_menu_entry("deck", command_id)` | the same, without `section` |
+| `add_sidebar_box(id, title, factory(WindowApi), size, when(DeckApi))` | `build(deck)`, `when(deck)`, size `"compact"`/`"full"` | rename `"full"` → `"large"`; `build` taking `WindowApi` instead of a deck is fine if the facade gives the focused deck |
+| `add_deck_settings_tab(title, factory)` with footer action and dirty state | `add_deck_settings_tab(title, build, footer_action=FooterAction(label, run, enabled))` | the same, made concrete |
+| — | `open_deck_settings(deck, tab)` | "Admin slides…" opens the sheet on the Course tab, as today |
+| — | `cache_dir()`, `legacy_cache_dir()` | the plugin's own cache, and where core kept `course-schedules.json` |
+| — | `insert_positions`, `insert_slides`, `deck_language`, `open_url` | the admin slides' deck edits and the course page |
+| — | widgets `Page`, `Field`, `caption` as host methods | the tab and box look like SlideMage's |
 
-### Phase 5: Ollama plugin (Stefan; see the Ollama handover)
+Also from the CampusOnline work:
 
-**5.1** `slidemage-plugin-ollama`: `OllamaProvider`, model management and the Ollama section, registered as the
-`ollama` route.
+- `add_render_priority`'s callback runs on a worker thread (`BackgroundRenders` asks there).
+- The template's `build.py --check` misses relative imports that leave the package (`from ..x import`).
+- The frozen build contains only the stdlib modules SlideMage itself imports: either bundle a stated set
+  (all of the stdlib minus `tkinter`, `test`, `idlelib`, `ensurepip`, checked by a self-test), or offer what
+  plugins need through `plugin_api` (for example an HTTP GET helper that also handles proxies and certificates).
 
-### Phase 6: Claude plugin and the cut
+### 6.5 Open
 
-**6.1** Split the terminal service and the external-edit watch from the Claude Code session (`host.terminal()`),
-and add `add_entry_point`.
-
-**6.2** `slidemage-plugin-claude` (Claude handover §5 and §6):
-1. Run `filter-repo`.
-2. Lay out the repository.
-3. In `activate`: two `add_ai_route` calls, `add_settings_section(page="ai")` and
-   `add_entry_point("hook")`.
-
-`claude_launch` builds the hook command from `entry_point_command`. Core keeps `--claude-hook` as an alias
-for one major version, for Claude Code sessions started by an older SlideMage.
-
-**6.3** Cut from core everything Claude and Ollama, with their tests (Claude handover §2). The settings and the
-key are found in their old places (2.4).
-
-### Phase 7: the AI-free core
-
-Release **v10.0.0** together with `claude` 1.0.0 and `ollama` 1.0.0 (both `requires_slidemage = ">=10.0"`),
-both listed before it ships. The first start offers each person the plugins they used.
-
-**Done when:**
-- With the plugins: everything works as today. That means Claude Code's terminal, tasks, images, Switch now,
-  scope and hooks; the API; Ollama and its model management; and CampusOnline. Existing users keep their key,
-  connection, models and course links.
-- Without them: the AI switch says "Install a plugin…", and nothing else names Claude, Ollama or CAMPUSonline.
-- Each plugin's tests pass against the oldest and newest SlideMage its `requires_slidemage` allows.
-
-## 4. Open
-
-1. **Stefan's original plan:** diff it against this one when it turns up. In particular, compare his §2.3 (SDK
-   assessment) and §2.4 (the `AiRoute` sketch) with 2.3 here.
-2. **The Ollama handover:** not seen. Phase 5 is a placeholder.
-3. ~~Who writes the stdlib Anthropic client~~: Jürgen, first (phase 4).
-4. **CampusOnline handover §7:** Jürgen to decide the repository owner, a Settings tab, and what goes in the box.
-5. **Install from file:** anything that passes the checks (planned), or only ids in the catalogue?
-6. ~~Which repository the `filter-repo` commands clone~~: done from `stpalan/SlideMage` (the handover's
-   `JuergenFleiss/slidemage.git` doesn't exist).
-7. **From the CampusOnline plan, for Stefan:**
-   - The template's `build.py --check` misses relative imports that leave the package (`from ..x import`).
-   - Bundle the whole stdlib (2.5), or offer an HTTP GET helper in `plugin_api` that also handles proxies and
-     certificates?
+- Version numbers: the handovers imply v9.0 for the plugin host (`hello` and CampusOnline say
+  `requires_slidemage = ">=9.0"`) and v10.0 for the AI-free core (Claude says `">=10.0"`).
+- The Ollama handover: not seen on this side.
+- CampusOnline handover §7: repository owner, a Settings tab (proposed: none for 1.0), what else the box shows.
+- "Install from file…": anything that passes the checks with a warning (2.9), or only catalogue ids?
