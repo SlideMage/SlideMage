@@ -5,6 +5,7 @@
 # Output lands in dist/SlideMage(.exe) and dist/SlideMage-folder/. The exe finds its project via
 # --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
 # last project opened, or a folder picker.
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -14,6 +15,19 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
 
+
+def _load_selftest():
+    # The list of bundled standard-library modules lives in the plugin host's self-test (plugins/selftest.py),
+    # which imports only the standard library, so it is loaded by path here rather than through the package.
+    path = ROOT / "src" / "slidemage" / "plugins" / "selftest.py"
+    spec = importlib.util.spec_from_file_location("slidemage_selftest_list", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_selftest = _load_selftest()
+
 # The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
 # (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
 # The release history is also data, stored beside version.py.
@@ -21,7 +35,34 @@ ASSETS = ROOT / "src" / "slidemage" / "assets"
 # loads its resource modules lazily, and not QtWebEngine's helper process and resources, which the PySide6
 # hooks of PyInstaller add as soon as QtWebEngineWidgets is imported (ui/workspace/terminal/web.py).
 # ptyprocess (pywinpty on Windows) is imported inside a function and found that way.
-HIDDEN_IMPORTS = collect_submodules("anthropic")
+# Plugins (plugins plan 2.2, PLUGIN_HOST_PLAN step 5) may import any standard-library module and PySide6's
+# modules, and PyInstaller bundles only what SlideMage itself imports: so the whole standard library except
+# selftest.EXCLUDED is a hidden import here, and so are the PySide6 modules a plugin's widgets come from.
+# `slidemage --self-test --plugins` checks that each one imports in the build (slidemage/plugins/selftest.py).
+STDLIB_MODULES = _selftest.bundled_stdlib_modules()   # for this platform: find_spec drops the others
+
+
+def _stdlib_hidden_imports(names):
+    hidden = []
+    for name in names:
+        spec = importlib.util.find_spec(name)
+        if spec is not None and spec.submodule_search_locations is not None:
+            hidden += collect_submodules(name)   # a package: its submodules too
+        else:
+            hidden.append(name)
+    return hidden
+
+
+PYSIDE6_MODULES = [f"PySide6.{name}" for name in ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtSvg")]
+HIDDEN_IMPORTS = list(dict.fromkeys([
+    *collect_submodules("anthropic"),
+    *_stdlib_hidden_imports(STDLIB_MODULES),
+    *PYSIDE6_MODULES,
+]))
+# The same list for the frozen self-test, which cannot ask find_spec what was bundled (slidemage/plugins/selftest.py).
+STDLIB_LIST_FILE = ROOT / "build" / _selftest.STDLIB_LIST_NAME
+STDLIB_LIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+STDLIB_LIST_FILE.write_text("\n".join(STDLIB_MODULES) + "\n", encoding="utf-8")
 # pywinpty's helpers, which conpty.dll and winpty.dll start at run time, so PyInstaller does not see them: without
 # OpenConsole.exe a program in the Claude Code terminal got a console closed at once and ended before printing
 # anything, exit code -1073741510 (0xC000013A), up to v8.58.0.
@@ -83,6 +124,7 @@ a = Analysis(
         (str(ROOT / "LICENSE"), "slidemage/legal"),
         (str(ROOT / "THIRD_PARTY_NOTICES.md"), "slidemage/legal"),
         (str(ROOT / "LICENSES"), "slidemage/legal/LICENSES"),
+        (str(STDLIB_LIST_FILE), "slidemage/plugins"),
         *TEMPLATE_DATAS,
         *WINPTY_HELPERS,
     ],
