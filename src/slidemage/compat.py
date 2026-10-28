@@ -105,6 +105,44 @@ def _detect_derived_layout_names(root: Path) -> list[Finding]:
     return findings
 
 
+# v9.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
+# layer guards these names like those of v9.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
+# a setting is the "is derived, not set" error); \SMFootlineVOffset is derived from the new hook \SMFootnoteFooterGap.
+GUARDED_V98_NAMES = (
+    "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
+    "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
+    "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection")
+_V98 = r"\\(" + "|".join(GUARDED_V98_NAMES) + r")(?![A-Za-z@])"
+_SETS_V98_NAME = re.compile(
+    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V98
+    + r"|" + _V98.replace("(", "(?P<assigned>", 1) + r"\s*=")
+# \SMEnumerateTextExtra is a hook of the catalog now: setting it is fine, defining it (a profile's \newlength) is not.
+_DEFINES_TEXT_EXTRA = re.compile(r"\\newlength\s*\{?\s*\\(SMEnumerateTextExtra)(?![A-Za-z@])")
+
+
+def _detect_font_measurement_names(root: Path) -> list[Finding]:
+    """Project-root layout profiles, templates and project macros that still define or set a number v9.8.0 derives."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        matches = list(_SETS_V98_NAME.finditer(text))
+        if path.name.startswith("SlideMage_layout_"):
+            matches += list(_DEFINES_TEXT_EXTRA.finditer(text))
+        for match in sorted(matches, key=lambda m: m.start()):
+            if is_commented(text, match.start()):
+                continue
+            name = match.group(1) or match.groupdict().get("assigned")
+            hint = ("set \\SMFootnoteFooterGap instead" if name == "SMFootlineVOffset"
+                    else "it is a hook of the catalog now, remove the \\newlength" if name == "SMEnumerateTextExtra"
+                    else "remove this line")
+            findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                    f"\\{name} is derived from the font now; {hint}."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -165,6 +203,26 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "the position, change the setting it follows (\\SMTopMargin, the \\SMFrametitle...Padding lengths, "
         "\\SMLogoHeight, \\SMTextMarginRight)."),
     detect=_detect_derived_layout_names,
+), Change(
+    id="font-measurements-derived",
+    since="v9.8.0",
+    severity=BREAKS,
+    title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
+    description=(
+        "The footer text's drop, the label and numeral boxes of lettered and numbered lists, the footnotes' offset "
+        "and the section frame's corrections are read from the font where they are used, with design hooks in the "
+        "catalog (\\SMLabelItemGap, \\SMEnumerateNestedSlotExtra, \\SMEnumerateNestedLabelGap, \\SMEnumerateTextExtra, "
+        "\\SMFootnoteFooterGap, \\SMSectionframeTitleGap). A project layout profile that still defines "
+        "\\SMFooterTextDrop, \\SMEnumerateLabelBox, \\SMEnumerateNestedLabelSep, \\SMEnumerateNestedLeftMargin, "
+        "\\SMEnumerateNestedMinNumber, \\SMEnumerateTextExtra, \\SMLabelItemWidth, \\SMLabelItemSep or one of the four "
+        "\\SMSectionframe corrections stops the compile with a LaTeX error at its \\newlength; a template or profile "
+        "that sets one of them or \\SMFootlineVOffset gets the error that names the name."),
+    fix=(
+        "Delete the lines that define or set these names from the profile or template; the framework derives them "
+        "from the font. To move the footnotes, set \\SMFootnoteFooterGap (the clear space between the last "
+        "footnote line's descenders and the footer box) instead of \\SMFootlineVOffset; to change a list's gaps, "
+        "set \\SMLabelItemGap, \\SMEnumerateNestedLabelGap or \\SMEnumerateNestedSlotExtra."),
+    detect=_detect_font_measurement_names,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

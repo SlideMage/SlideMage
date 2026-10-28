@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The hook catalog of latex/SlideMage_setup.tex (v9.7.0): every hook is read by the framework, the shipped
+"""The hook catalog of latex/SlideMage_setup.tex (v9.8.0): every hook is read by the framework, the shipped
 templates and the stress-test template set catalog names only, the stress-test template sets every hook, and
 every layout profile defines what the Fira profile defines."""
 import os
@@ -17,10 +17,17 @@ BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
 SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
-NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname"}
-# The four names the base derives (v9.7.0): the setup layer holds an error-raising macro under each, so a template or a
+NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname"}
+# The names the base derives (v9.7.0, v9.8.0): the setup layer holds an error-raising macro under each, so a template or a
 # profile that sets one is told; they are in the catalog's text but are not hooks.
-DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift"}
+DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift",
+           "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
+           "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
+           "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection"}
+# What a layout profile defines besides its fonts (v9.8.0): the font's metrics and the three top pull-ups, which step 10
+# derives as well. Nothing else is a number of the font.
+PROFILE_LENGTHS = {"SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"}
+PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
 PALETTE_FOR_SLIDES = {"c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
@@ -127,13 +134,18 @@ def profile_names(path: Path) -> set[str]:
 
 def test_every_layout_profile_defines_what_the_fira_profile_defines():
     fira = profile_names(LATEX / "SlideMage_layout_fira.tex")
-    assert {"SMFontAscender", "SMLinespread", "SMParskip", "SMFooterTextDrop", "SMColumnsTTopCompensation",
+    assert {"SMFontAscender", "SMLinespread", "SMParskip", "SMColumnsTTopCompensation",
             "SMCodeFont", "SMInlineCodeFont", "SMCardHeadingFont"} <= fira
     profiles = sorted(LATEX.glob("SlideMage_layout_*.tex"))
     assert {p.name for p in profiles} >= {"SlideMage_layout_fira.tex", "SlideMage_layout_lmsans.tex"}
     for path in profiles:
         lacking = fira - profile_names(path)
         assert not lacking, f"{path.name} lacks {sorted(lacking)}"
+        # since v9.8.0 a profile holds fonts, the font's metrics and the three pull-ups, no other number
+        lengths = defined(read(path), ("newlength",))
+        macros = defined(read(path), ("newcommand",))
+        assert lengths == PROFILE_LENGTHS, f"{path.name} defines lengths {sorted(lengths ^ PROFILE_LENGTHS)}"
+        assert macros == PROFILE_MACROS, f"{path.name} defines macros {sorted(macros ^ PROFILE_MACROS)}"
         text = code(read(path))
         for command in ("setsansfont", "setmonofont", "usefonttheme[onlymath]{serif}"):
             assert BS + command in text, f"{path.name}: no {command}"
@@ -149,8 +161,8 @@ def test_the_setup_header_lists_every_calibration_a_profile_defines():
 
 
 def test_no_template_or_profile_sets_a_derived_name():
-    """SMContentTopAlign, SMTitleBarBottomAlign, SMFootnoteRightShift and SMFooterRightShift are computed by the
-    base from the hooks and the font; setting one would contradict the next change to a hook."""
+    """The derived names (v9.7.0, v9.8.0) are computed by the base from the hooks and the font; setting one would
+    contradict the next change to a hook or to the font."""
     for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
         touched = defined(settings_before_base(template),
                           ("setlength", "addtolength", "renewcommand", "newlength", "newcommand", "providecommand"))
@@ -164,8 +176,7 @@ def test_the_base_derives_each_derived_name_and_the_setup_layer_guards_it():
     base, setup = read(LATEX / "SlideMage_base.tex"), read(LATEX / "SlideMage_setup.tex")
     for name in sorted(DERIVED):
         assert BS + "SM@derivedlength{" + name + "}" in base, name
-        assert BS + "newcommand{" + BS + name + "}{" + BS + "SM@derivedname{" in setup, name
-        assert BS + "let" + BS + "SM@guard@" + name + BS + name in setup, name
+        assert re.search(r"^" + re.escape(BS + "SM@guardname" + BS + name) + r"\s*$", setup, re.M), name
         assert BS + "newlength{" + BS + name + "}" not in setup, f"{name} is a length in the catalog again"
     assert "Derived, not set" in setup
 
@@ -173,7 +184,10 @@ def test_the_base_derives_each_derived_name_and_the_setup_layer_guards_it():
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("lualatex"),
                     reason="compiles with lualatex: SLIDEMAGE_TEX_TESTS=1")
 @pytest.mark.parametrize("setting", [BS + "setlength{" + BS + "SMContentTopAlign}{50bp}",
-                                     BS + "renewcommand{" + BS + "SMFooterRightShift}{3pt}"])
+                                     BS + "renewcommand{" + BS + "SMFooterRightShift}{3pt}",
+                                     BS + "setlength{" + BS + "SMFooterTextDrop}{1pt}",
+                                     BS + "renewcommand{" + BS + "SMLabelItemWidth}{3pt}",
+                                     BS + "setlength{" + BS + "SMFootlineVOffset}{-3pt}"])
 def test_a_template_that_sets_a_derived_name_gets_an_error_that_names_it(setting, tmp_path):
     (tmp_path / "template.tex").write_text(
         BS + "input{SlideMage_setup}\n" + setting + "\n" + BS + "input{SlideMage_base}\n", encoding="utf-8")

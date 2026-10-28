@@ -188,6 +188,31 @@ def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
     assert any(c.id == "derived-layout-names" and c.since == "v9.7.0" for c in compat.CHANGES)
 
 
+def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v9.7.0")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\newlength{\\SMFooterTextDrop}\n"
+        "\\setlength{\\SMFooterTextDrop}{-0.4pt}\n"
+        "% \\newlength{\\SMLabelItemWidth}\n"
+        "\\newlength{\\SMEnumerateTextExtra}\n"
+        "\\newlength{\\SMContentTopShift}\n"
+        "\\setlength{\\SMSectionframeHeightCorrection}{16pt}\n", encoding="utf-8")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMEnumerateTextExtra}{9pt}\n"                      # a hook now: fine
+        "\\setlength{\\SMFootlineVOffset}{-3pt}\n"
+        "\\newcommand{\\Foo}{\\hspace*{\\SMLabelItemWidth}}\n", encoding="utf-8")     # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMLabelItemSep}{1pt}\n", encoding="utf-8")                      # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_font_measurement_names(root)]
+    assert found == [("SlideMage_layout_own.tex", 1, "\\SMFooterTextDrop"),
+                     ("SlideMage_layout_own.tex", 2, "\\SMFooterTextDrop"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMEnumerateTextExtra"),
+                     ("SlideMage_layout_own.tex", 6, "\\SMSectionframeHeightCorrection"),
+                     ("SlideMage_template_inst.tex", 3, "\\SMFootlineVOffset")]
+    assert any(c.id == "font-measurements-derived" and c.since == "v9.8.0" for c in compat.CHANGES)
+
+
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
     root = make_project(tmp_path, "v7.0.2")
     (root / "decks" / "course.tex").write_text(

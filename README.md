@@ -409,9 +409,17 @@ copied package files in `texmf/` record the exact originals.
   the framework measures against: `\SMFontAscender` (0.935 em; used only where
   the loaded font gives none: SlideMage reads it from the font and hands it, with
   the Top Margin, to `SlideMage_measure.lua`), `\SMLinespread` and `\SMParskip`.
-  It also holds the numbers measured against this font (since v9.4.0): the footer text drop and
-  right shifts, the label widths of numbered and lettered lists, the section divider's title
-  corrections. A template does not change them; it picks a profile or ships its own.
+  Besides the fonts and their metrics it holds three numbers measured against this font, the
+  pull-ups of the frames the automatic Top Margin does not manage (`\SMContentTopShift`,
+  `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation`). Everything else it held until v9.7.0 is
+  read from the font where it is used, or is a hook of the catalog, since v9.8.0: the footer text's drop
+  (the frame number's ink centred in the footer box, from the digits' glyph boxes), the box of the label
+  of the lettered and numbered lists (`\SMLabelItemWidth`, the widest of a) to c) and 1) to 9) in the list's
+  font, with the gap `\SMLabelItemGap`), the numeral column of a nested enumerate (the widest numeral plus
+  `\SMEnumerateNestedSlotExtra`, then `\SMEnumerateNestedLabelGap`), the footnotes' offset
+  `\SMFootlineVOffset` (their descenders `\SMFootnoteFooterGap` above the footer box) and the section
+  frame's four corrections (the frame places its title by the title's own box, with
+  `\SMSectionframeTitleGap`). A template does not change a profile; it picks one or ships its own.
   A template picks its profile before it loads the setup layer,
   `\newcommand{\SMLayoutProfile}{name}` (`fira` if it says nothing), and
   `SlideMage_setup.tex` inputs `SlideMage_layout_<name>.tex`. A project can keep a
@@ -426,13 +434,15 @@ copied package files in `texmf/` record the exact originals.
   (`\SMTitleBarBottomAlign`, 22.17pt with this font against Fira's 25.32pt), the
   overlay coordinate `\SMContentTopAlign` and the right edges of the footer and the
   footnotes are derived by `SlideMage_base.tex` from the template's hooks and the font
-  (since v9.7.0); a template or a profile that sets one of those four names gets an error.
+  (since v9.7.0); a template or a profile that sets one of those four names gets an error, as it does for
+  the names of v9.8.0 (\SMFooterTextDrop, \SMFootlineVOffset, the label and numeral boxes, the section
+  frame's corrections).
   *Recipe for a new profile:* (1) copy `SlideMage_layout_fira.tex` and change the
   fonts, (2) run `python tools/calibrate_font_profile.py --profile <name>`: it compiles
   the calibration deck of `tests/fixtures/template_stress/` with the profile under the
-  SlideMage template, measures the PDF and prints each calibration with its current
-  value and the suggested one, (3) put the suggestions into the profile and run it again
-  until every line says `ok`, (4) compile the calibration deck with a template that picks
+  SlideMage template, measures the PDF, prints the three pull-ups with their current value
+  and the suggested one and checks each derived value against the geometry its hook asks for,
+  (3) put the suggestions into the profile and run it again until every line says `ok`, (4) compile the calibration deck with a template that picks
   the profile and run `tools/check_layout.py` on the PDF (it reads the margins, the
   ascender and the title bar's bottom edge from the PDF, so a template with other margins
   is checked against its own), adjust until the report is clean.
@@ -1952,6 +1962,19 @@ behave quite like a plain measured `\vbox`, see the comment above
 `sectionframe`). A longer/wrapped title therefore shrinks toppading
 automatically, pushing the whole title block up rather than changing the
 gap below it.
+
+**Since v9.8.0 the bar is placed by the title's own material, not by four numbers measured at Fira.**
+`\SMSectionframeBoxHeight` is the bar's height (85.34pt = 85.02bp, what the bar measured since v5.28.0). The
+bar's content (the strut, the title, the bottom strut) is typeset once into a box by the same
+`beamercolorbox` the frame title template uses, with a top padding as large as the bar; the box is that
+padding plus a constant high from there on, so the padding that gives the bar its height follows, for any
+title and any number of lines. The last baseline lies the depth of a `\strut` of the title font plus
+`\SMSectionframeTitleGap` (`0.5436em` of the title font, 11.27pt for Fira Sans) above the bar's bottom
+edge, which is where the old `\SMSectionframeBottomGap+\SMSectionframeBottomPadCorrection` (19.90pt) put it.
+`\SMSectionframeRefDepth`, `\SMSectionframeBottomGap`, `\SMSectionframeBottomPadCorrection` and
+`\SMSectionframeHeightCorrection` are gone (a template or profile that still sets one gets an error);
+`\sectionfigure` starts `\SMSectionframeBoxHeight + 0.12bp` below the page's top edge. The text that
+follows describes the formula that version replaced.
 
 **Since v5.28.0 every `sectionframe` bar is 85.04 bp tall, whatever the title.** The
 title measurement now starts with a `\strut` (one line height for every title, so tall
