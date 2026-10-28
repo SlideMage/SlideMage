@@ -28,6 +28,23 @@ def _load_selftest():
 
 _selftest = _load_selftest()
 
+
+def _load_plugin_api():
+    # plugin_api imports only the standard library until a plugin asks for a re-export, so it loads by path too.
+    path = ROOT / "src" / "slidemage" / "plugin_api.py"
+    spec = importlib.util.spec_from_file_location("slidemage_plugin_api_list", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module      # its dataclasses look their module up
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.modules[spec.name]
+    return module
+
+
+# The SlideMage modules plugin_api loads by name, which PyInstaller cannot follow.
+PLUGIN_API_MODULES = list(_load_plugin_api()._RUNTIME_MODULES)
+
 # The whole assets/ folder is data: the fonts (assets/fonts), the Claude Code terminal's page and scripts
 # (assets/terminal, loaded by QtWebEngine from a file), the frame thumbnails (assets/frames) and the icons.
 # The release history is also data, stored beside version.py.
@@ -57,6 +74,7 @@ PYSIDE6_MODULES = [f"PySide6.{name}" for name in ("QtCore", "QtGui", "QtWidgets"
 HIDDEN_IMPORTS = list(dict.fromkeys([
     *_stdlib_hidden_imports(STDLIB_MODULES),
     *PYSIDE6_MODULES,
+    *PLUGIN_API_MODULES,
 ]))
 # The same list for the frozen self-test, which cannot ask find_spec what was bundled (slidemage/plugins/selftest.py).
 STDLIB_LIST_FILE = ROOT / "build" / _selftest.STDLIB_LIST_NAME

@@ -41,7 +41,7 @@ from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QV
 
 from ... import (deck_context, deck_editor, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning)
-from ...ai.claude_tasks import LANGUAGE_NAMES
+from ...ai.tasks import LANGUAGE_NAMES
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow

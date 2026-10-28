@@ -77,7 +77,7 @@ def env(qapp, tmp_path, monkeypatch):
     e.window.state.set_mode("source")           # no Preview render thread to outlive the test
     e.window.state.set_deck(next(d for d in scan_decks(e.window.project) if d.name == "test"))
     e.window.state.set_focused_slide("abc")
-    e.view = e.window.assistant.claude_code
+    e.view = e.window.assistant.surface_for("claude_code")
     e.path = root / SLIDE
     yield e
     e.window.assistant.shutdown()
@@ -146,13 +146,14 @@ def test_a_process_that_cannot_start_is_shown_in_the_terminal_not_raised(env, mo
     def busy(self):
         raise OSError("port busy")
 
-    original = session_module.McpServer.start
-    monkeypatch.setattr(session_module.McpServer, "start", busy)
+    from slidemage.ai.mcp_server import McpServer
+    original = McpServer.start
+    monkeypatch.setattr(McpServer, "start", busy)
     use_claude_code(env)
     wait_until(lambda: env.view.status.text() == "Could not start")
     wait_until(lambda: "could not be started" in terminal_text(env).replace("\n", " "))     # the terminal is narrow
     assert not env.view.session.running
-    monkeypatch.setattr(session_module.McpServer, "start", original)      # the port is free again: Restart works
+    monkeypatch.setattr(McpServer, "start", original)      # the port is free again: Restart works
     env.view.restart_button.click()
     wait_until(lambda: env.view.session.running and env.view.status.text() == "Running")
 
@@ -207,19 +208,20 @@ def test_typing_resize_theme_exit_restart_and_shutdown(env):
     wait_until(lambda: "Fake Claude Code" in terminal_text(env))
     assert "Claude Code ended" not in terminal_text(env) and sync._timer.isActive()
     # Restart of a running process: the old one is ended, and its end is not reported as the new one's
-    first = env.view.session._process
+    first = env.view.session._pty._process
     session = env.view.session
-    old = session._generation
+    old_pty = session._pty
+    old = old_pty._generation
     env.view.restart_button.click()
-    wait_until(lambda: session._process is not first and session.running and session._generation > old)
+    wait_until(lambda: session._pty._process is not first and session.running)
     # Regression (1c7e047): queued output and exit from the previous process must not affect the new one.
-    session._ended.emit(old, 7)
-    session._chunk.emit(old, b"stale output\r\n")
+    old_pty._ended.emit(old, 7)
+    old_pty._chunk.emit(old, b"stale output\r\n")
     pump(0.3)
     assert not first.alive and env.view.status.text() == "Running"
     assert session._sync._timer.isActive() and "stale output" not in terminal_text(env)
     # Shutdown: process and MCP server are gone, twice is fine
-    session, process, port = env.view.session, env.view.session._process, env.view.session._server.port
+    session, process, port = env.view.session, env.view.session._pty._process, env.view.session._server.port
     env.window.assistant.shutdown()
     assert not process.alive and not session.running and env.view.session is None and env.view.terminal is None
     with pytest.raises(OSError):
@@ -251,7 +253,7 @@ def test_switch_to_deck_mode_sets_the_scope_switch(env):
     start_view(env)
     client = Client(env.view.session._server)
     assert on_thread(lambda: client.text("switch_to_deck_mode")) == "SlideMage is in Deck Mode now: go on with the request."
-    assert env.view.scope.current() == claude_scope.DECK
+    assert env.window.assistant.scope.current() == claude_scope.DECK
     assert claude_scope.load(env.view.session._focus_file)["scope"] == claude_scope.DECK
 
 
@@ -272,7 +274,7 @@ def test_the_scope_switch_and_the_focus_reach_the_hooks(env):
     wait_until(lambda: (claude_scope.load(focus_file) or {}).get("slide") == SLIDE)
     assert claude_scope.load(focus_file)["scope"] == claude_scope.SLIDE
     assert "THIS SLIDE" in claude_scope.prompt_context(claude_scope.load(focus_file))
-    env.view.scope._buttons[claude_scope.DECK].click()                  # the user switches to Deck
+    env.window.assistant.scope._buttons[claude_scope.DECK].click()      # the user switches to Deck
     assert claude_scope.load(focus_file)["scope"] == claude_scope.DECK
     env.window.assistant.shutdown()
     assert not focus_file.exists()                                       # removed with the session
@@ -485,7 +487,10 @@ def test_saved_chat_choice_applies_on_start_and_restart(env):
 def test_mcp_toolbox_reads_scope_and_focus_on_gui_thread(env):
     from slidemage.ai import claude_scope
 
-    session = session_module.ClaudeCodeSession(env.window, env.fake)
+    from slidemage.ai import claude_launch
+    from slidemage.ai.mcp_server import McpServer
+    session = session_module.ClaudeCodeSession(env.view.host, env.view._surface_context, env.fake,
+                                                claude_launch, claude_scope, McpServer, claude_launch.hook_command)
     try:
         env.window.open_slide_editor(env.path)
         box = on_thread(session._toolbox)

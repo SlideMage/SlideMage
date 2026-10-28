@@ -14,9 +14,9 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
-from ..ai import ai_profile, resolver
-from ..ai.ai_profile import API, CLAUDE_CODE, Route
-from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError
+from ..ai import ai_profile, resolver, routes
+from ..ai.ai_profile import Route
+from ..ai.providers import ChatProvider, InstalledModel, OllamaProvider, ProviderError  # OllamaProvider: LocalModelList
 from ..project import ProjectContext
 from . import background
 from .kit.widgets import ModalSheet, ModeBadge
@@ -80,6 +80,8 @@ class LocalModelList(QObject):
     def fill(self, installed: list[InstalledModel]) -> None:
         """Take a list somebody else has just asked for (the Settings sheet)."""
         self.installed = installed
+        from ..ai.ollama_route import cache_installed
+        cache_installed(self.project, installed)
         self.changed.emit()
 
 
@@ -88,22 +90,16 @@ def fill_model_combo(
     vision_only: bool = False, fallback_local: str = "",
 ) -> bool:
     """(Re)fill `combo` with the models of the active route for `task` and preselect its saved default, else
-    `fallback_local` when installed. Local lists `local_models` (the installed ones, asked of Ollama when None);
-    API the Claude models once a key is set; Claude Code its models with their efforts. With nothing to offer it
+    `fallback_local` when installed. Choices come from the registered route; `local_models` and `vision_only`
+    remain accepted for API compatibility. With nothing to offer it
     shows `empty_text` disabled and returns False."""
     route = ai_profile.resolve(project, task)
     combo.clear()
-    if route.route == API:
-        for model in resolver.api_models(project):
-            combo.addItem(model, model)
-    elif route.route == CLAUDE_CODE:
-        for choice in ai_profile.claude_code_choices():
-            combo.addItem(ai_profile.choice_label(CLAUDE_CODE, choice), choice)
-    else:
-        if local_models is None:
-            local_models = OllamaProvider.for_project(project).list_models(vision_only=vision_only)
-        for model in local_models:
-            combo.addItem(model, model)
+    found = routes.get(route.route)
+    if found is not None:
+        choices = found.model_choices(routes.context(project, found.id), task)
+        for choice in choices:
+            combo.addItem(found.choice_label(choice), choice)
     usable = combo.count() > 0
     combo.setEnabled(usable)
     if not usable:
@@ -122,7 +118,7 @@ CLOUD_SUFFIX = " · cloud"
 
 def cloud_label(project: ProjectContext, text: str) -> str:
     """`text` for a button that sends content to the AI: with " · cloud" while the AI switch is on Cloud."""
-    return text if ai_profile.active_route(project) == ai_profile.LOCAL else text + CLOUD_SUFFIX
+    return text if ai_profile.mode(project) == ai_profile.LOCAL else text + CLOUD_SUFFIX
 
 
 def confirm_cloud_request(parent: QWidget, project: ProjectContext, label: str, what: str) -> bool:

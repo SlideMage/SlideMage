@@ -41,15 +41,10 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-import uuid
-from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
-from .. import app_settings
-from ..project import ProjectContext
-from .agent_types import AgentMessage, AssistantMessage, ToolCall, ToolResultsMessage, ToolSpec
 
 Message = dict[str, str]
 
@@ -63,6 +58,11 @@ ANTHROPIC_FALLBACK_MODELS = (
 
 class ProviderError(Exception):
     """A request failed; str(exc) is the message to show the user."""
+
+
+class RouteUnavailable(ProviderError):
+    """A route cannot run this request; str(exc) says what is missing there. Raised by ai/resolver.py and by the
+    routes' backends; nothing falls back to another route or model when it is."""
 
 
 class Cancelled(ProviderError):
@@ -333,240 +333,6 @@ def _error_detail(raw: bytes) -> str:
     return str(error or text[:200])
 
 
-# Ollama older than 0.6.4 reports no capabilities; these model families call tools (checked by name).
-_TOOL_FAMILIES_RE = re.compile(
-    r"^(?:qwen2\.5|qwen3|qwq|llama3\.[123]|llama4|mistral|mixtral|command-r|firefunction|hermes3|granite3|"
-    r"gpt-oss|devstral|magistral|smollm2|nemotron|functiongemma)", re.IGNORECASE)
-
-
-@dataclass
-class InstalledModel:
-    name: str
-    size_bytes: int
-    modified_at: str
-    capabilities: tuple[str, ...] = ()
-
-    @property
-    def supports_tools(self) -> bool:
-        """Whether the model can call tools (the agent chat needs that): Ollama's own word for it,
-        else -- an Ollama too old to give capabilities -- the model's family name."""
-        if self.capabilities:
-            return "tools" in self.capabilities
-        return bool(_TOOL_FAMILIES_RE.match(self.name.rsplit("/", 1)[-1]))
-
-
-class OllamaProvider(_HttpProvider):
-    """Local Ollama. No API key, no per-image cost, nothing leaves the machine."""
-
-    service = "Ollama"
-    is_local = True
-
-    def __init__(self, model: str = "", host: str = app_settings.DEFAULT_OLLAMA_HOST) -> None:
-        super().__init__()
-        self.model = model
-        self.host = host
-        self._capabilities: dict[str, tuple[str, ...]] = {}     # what /api/show said, by model
-
-    @classmethod
-    def for_project(cls, ctx: ProjectContext, model: str = "") -> "OllamaProvider":
-        """On the project's Ollama host, read now: a host saved later in Settings applies to the next provider."""
-        return cls(model, app_settings.get_ollama_host(ctx))
-
-    @property
-    def label(self) -> str:
-        return self.model
-
-    def chat(
-        self, messages: list[Message], *, system: str = "",
-        images: list[bytes] | None = None, schema: dict | None = None,
-        temperature: float = 0.2, max_tokens: int = 2048, timeout: float = 300.0,
-        think: bool = False, num_ctx: int | None = None,
-    ) -> ChatReply:
-        turns: list[dict] = ([{"role": "system", "content": system}] if system else [])
-        turns += [dict(m) for m in messages]
-        if images:
-            turns[-1]["images"] = [base64.b64encode(i).decode("ascii") for i in images]
-        options: dict = {"temperature": temperature, "num_predict": max_tokens}
-        if num_ctx:
-            options["num_ctx"] = num_ctx
-        payload: dict = {"model": self.model, "stream": False, "options": options,
-                         "messages": turns}
-        if schema:
-            payload["format"] = schema
-        # `think` is sent ONLY when enabled -- never as an explicit false.
-        # On qwen3-vl:32b, `format` + `think: false` makes the model put its
-        # JSON answer in the response's `thinking` field and return an empty
-        # `content`, so every image fails with "non-JSON output: ''". Omitting
-        # the key entirely produces correct, well-formed output. (It does not
-        # even suppress thinking on that model -- `think: false` still
-        # returned 1000 characters of it, literal <think> tag included; it
-        # only breaks the channel separation.) Measured 2026-08-14 across the
-        # whole five-slide bake-off, where it failed all six images on the one
-        # model this was meant to run.
-        if think:
-            payload["think"] = True
-        status, raw = self._send(
-            "POST", self.host, "/api/chat", headers={"Content-Type": "application/json"},
-            payload=payload, timeout=timeout)
-        body = self._json(
-            status, raw, lambda s, detail: f"Ollama returned HTTP {s}: {detail}")
-        message = body.get("message") or {}
-        return ChatReply(
-            text=message.get("content") or "",
-            thinking=message.get("thinking") or "",
-            truncated=body.get("done_reason") == "length",
-        )
-
-    def stream_turn(
-        self, system: str, messages: list[AgentMessage], tools: list[ToolSpec],
-        on_text: Callable[[str], None], *, max_tokens: int = 16000, timeout: float = 300.0,
-    ) -> AssistantMessage:
-        """One model turn of the agent loop (see AnthropicProvider.stream_turn): /api/chat streams
-        one JSON object per line, text in pieces, each tool call whole."""
-        sees_images = any(isinstance(m, ToolResultsMessage) and any(r.images for r in m.results)
-                          for m in messages) and "vision" in self.capabilities()
-        payload: dict = {"model": self.model, "stream": True,
-                         "messages": _ollama_messages(system, messages, sees_images),
-                         "options": {"num_predict": max_tokens, "num_ctx": AGENT_NUM_CTX}}
-        if tools:
-            payload["tools"] = [{"type": "function", "function": {
-                "name": t.name, "description": t.description, "parameters": t.schema}} for t in tools]
-        text: list[str] = []
-        calls: list[ToolCall] = []
-        last: dict = {}
-        with self._request("POST", self.host, "/api/chat", headers={"Content-Type": "application/json"},
-                           payload=payload, timeout=timeout) as response:
-            if response.status != 200:
-                raise ProviderError(self._chat_error(_error_detail(response.read()), response.status))
-            for line in response:
-                if self._cancelled:
-                    raise Cancelled("Aborted.")
-                if not line.strip():
-                    continue
-                try:
-                    chunk = json.loads(line)
-                except ValueError as exc:
-                    raise ProviderError(f"Ollama sent an unreadable response: {exc}") from exc
-                if chunk.get("error"):
-                    raise ProviderError(self._chat_error(str(chunk["error"])))
-                message = chunk.get("message") or {}
-                if message.get("content"):
-                    text.append(message["content"])
-                    on_text(message["content"])
-                for entry in message.get("tool_calls") or ():
-                    function = entry.get("function") or {}
-                    calls.append(ToolCall(entry.get("id") or f"call_{uuid.uuid4().hex[:12]}",
-                                          function.get("name", ""), _arguments(function.get("arguments"))))
-                if chunk.get("done"):
-                    last = chunk
-                    break
-        if self._cancelled:
-            raise Cancelled("Aborted.")
-        if not last:
-            raise ProviderError("Ollama ended the answer early (the model may have crashed or run out of memory).")
-        return AssistantMessage(
-            text="".join(text), tool_calls=calls,
-            stop="tool_use" if calls else "max_tokens" if last.get("done_reason") == "length" else "end_turn",
-            usage={"input": last.get("prompt_eval_count", 0), "output": last.get("eval_count", 0)})
-
-    def _chat_error(self, detail: str, status: int = 0) -> str:
-        """The message for an /api/chat failure `detail` (Ollama's own error text)."""
-        if "does not support tools" in detail:
-            return f"{self.model} cannot call tools, so it cannot be used for the chat. Choose another model."
-        if "not found" in detail:
-            return f"Ollama has no model '{self.model}'. Install it (ollama pull {self.model}) or choose another."
-        return f"Ollama returned HTTP {status}: {detail}" if status else f"Ollama: {detail}"
-
-    def installed(self, *, detailed: bool = False) -> list[InstalledModel]:
-        """Every installed model, newest first; [] when unreachable. /api/tags does not say what a
-        model can do: `detailed` asks /api/show for each one (a request per model; for a worker
-        thread) so that `capabilities` is filled, for an Ollama whose /api/tags does not say."""
-        try:
-            status, raw = self._send("GET", self.host, "/api/tags", headers={},
-                                     payload=None, timeout=10)
-            body = self._json(status, raw, lambda s, detail: detail)
-        except ProviderError:
-            return []
-        entries = sorted(body.get("models", []), key=lambda e: e.get("modified_at", ""),
-                         reverse=True)
-        return [
-            InstalledModel(
-                name=entry["name"], size_bytes=entry.get("size", 0),
-                modified_at=entry.get("modified_at", ""),
-                capabilities=tuple(entry.get("capabilities") or (
-                    self.capabilities(entry["name"]) if detailed else ())),
-            )
-            for entry in entries
-        ]
-
-    def capabilities(self, model: str | None = None) -> tuple[str, ...]:
-        """What `model` (default: this provider's) can do -- "completion", "tools", "vision", ... --
-        according to /api/show; () when unknown (unreachable, or an Ollama too old to say). An answer is kept
-        for the life of this provider (the agent asks again on every turn)."""
-        model = model or self.model
-        if model in self._capabilities:
-            return self._capabilities[model]
-        try:
-            status, raw = self._send("POST", self.host, "/api/show", headers={"Content-Type": "application/json"},
-                                     payload={"model": model}, timeout=10)
-            body = self._json(status, raw, lambda s, detail: detail)
-        except ProviderError:
-            return ()
-        found = tuple(body.get("capabilities") or ())
-        if found:
-            self._capabilities[model] = found
-        return found
-
-    def tool_models(self) -> list[str]:
-        """The installed models the agent chat can use: the ones that call tools."""
-        return [m.name for m in self.installed(detailed=True) if m.supports_tools]
-
-    def list_models(self, *, vision_only: bool = False) -> list[str]:
-        """Every model Ollama has, or (translation is text-only and takes
-        any model; image description needs one) only vision-capable ones."""
-        return [m.name for m in self.installed()
-                if not vision_only or "vision" in m.capabilities]
-
-
-def _arguments(value) -> dict:
-    """A tool call's arguments as a dict (some Ollama versions send them as a JSON string)."""
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError:
-            return {}
-    return value if isinstance(value, dict) else {}
-
-
-def _ollama_messages(system: str, messages: list[AgentMessage], sees_images: bool) -> list[dict]:
-    """The agent's neutral history as /api/chat messages. A tool result is a "tool" message naming its
-    tool; the images it carries follow in a user message (only for a model that sees images)."""
-    wire: list[dict] = [{"role": "system", "content": system}] if system else []
-    names: dict[str, str] = {}      # the tool calls of the last assistant message, by id
-    for message in messages:
-        if isinstance(message, AssistantMessage):
-            names = {c.id: c.name for c in message.tool_calls}
-            turn: dict = {"role": "assistant", "content": message.text}
-            if message.tool_calls:
-                turn["tool_calls"] = [{"function": {"name": c.name, "arguments": c.input}}
-                                      for c in message.tool_calls]
-            wire.append(turn)
-        elif isinstance(message, ToolResultsMessage):
-            images: list[str] = []
-            for result in message.results:
-                text = ("Error: " if result.is_error else "") + result.text
-                if result.images and not sees_images:
-                    text += "\n(An image was rendered, but this model cannot look at images.)"
-                wire.append({"role": "tool", "content": text, "tool_name": names.get(result.call_id, "")})
-                if sees_images:
-                    images += [base64.b64encode(i).decode("ascii") for i in result.images]
-            if images:
-                wire.append({"role": "user", "content": "The image from the tool above:", "images": images})
-        else:
-            wire.append({"role": "user", "content": message.text})
-    return wire
-
-
 def _image_media_type(data: bytes) -> str:
     for magic, media_type in ((b"\x89PNG", "image/png"), (b"\xff\xd8", "image/jpeg"),
                               (b"GIF8", "image/gif")):
@@ -575,3 +341,12 @@ def _image_media_type(data: bytes) -> str:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
     raise ProviderError("Claude reads PNG, JPEG, GIF and WebP images only.")
+
+
+def __getattr__(name: str):
+    """OllamaProvider and InstalledModel moved to ai/ollama_route.py (this module keeps what every provider shares);
+    the old import path still works so that tests and older plugins need no change."""
+    if name in ("OllamaProvider", "InstalledModel"):
+        from . import ollama_route
+        return getattr(ollama_route, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

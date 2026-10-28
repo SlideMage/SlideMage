@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
 from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater, version
 from slidemage import translation_prompts as tp
-from slidemage.ai import credentials, ollama_admin
+from slidemage.ai import ai_profile, credentials, ollama_admin
 from slidemage.ai.anthropic_provider import AnthropicProvider
 from slidemage.ai.providers import InstalledModel, OllamaProvider
 from slidemage.ui.kit.theme import ThemeManager
@@ -39,13 +39,12 @@ class FakeApp(QWidget):
         self.log = self.logged.append
         self.commands = SimpleNamespace(run=lambda command_id, ctx: self.calls.append((command_id, ctx)))
 
-    def try_start_ollama_task(self, label, provider=None):
-        if self.slot_free:
-            self.slots.append(label)
-        return self.slot_free
-
-    def end_ollama_task(self, provider=None):
-        self.slots.append("end")
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
+        if not self.slot_free:
+            return None
+        self.slots.append(label)
+        return _RouteTaskLease(lambda: self.slots.append("end"))
 
 
 @pytest.fixture(autouse=True)
@@ -85,12 +84,12 @@ def answer(monkeypatch, button_text):
 
 def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qapp):
     sheet = open_sheet(qapp)
-    assert tab_names(sheet) == ["General", "AI", "Cloud", "Ollama", "Prompts", "Presentation", "Project", "About", "Plugins"]
+    assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Plugins"]
     sheet.show()
     qapp.processEvents()
     assert sheet.width() < 1000            # unwrapped notes once made this ~2200 px wide
     sheet.close()
-    assert open_sheet(qapp, tab=OLLAMA).current_tab() == OLLAMA
+    assert open_sheet(qapp, tab=OLLAMA).current_tab() == AI          # a section of the AI tab now
 
 
 def test_the_sheet_fits_the_screen_and_its_tabs_scroll(qapp):
@@ -161,11 +160,10 @@ def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):
 
 # -- AI --------------------------------------------------------------------------------------
 
-def test_the_model_of_each_task_is_not_here_but_in_ai_setup(qapp):
+def test_the_ai_tab_has_the_address_and_the_model_of_each_task(qapp):
     sheet = open_sheet(qapp, tab=AI)
-    assert sheet.ai.address.current() == "Sie"
-    assert [w.text() for w in sheet.ai.findChildren(QLabel)][0].startswith("The model of each AI task")
-    assert not sheet.ai.findChildren(QComboBox)           # AI setup (workspace/ai_setup.py) has the models
+    assert sheet.ai.language.address.current() == "Sie"
+    assert len(sheet.ai.models.findChildren(QComboBox)) == 2 * len(ai_profile.TASKS)
 
 
 def test_what_ollama_has_is_kept_for_the_pickers_of_the_window(qapp):
@@ -415,6 +413,34 @@ def test_a_request_that_blows_up_still_enables_the_list_again(monkeypatch, qapp)
     wait_until(lambda: changed)
     assert tab.models_list.isEnabled() and app.slots[-1] == "end" and "boom" in failures[0]
 
+
+
+def test_admin_lease_is_held_until_the_worker_exits(monkeypatch, qapp):
+    import threading
+    from slidemage.ui.dialogs import settings_ollama
+
+    app = FakeApp()
+    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
+    gate = threading.Event()
+    original_run = settings_ollama._AdminWorker.run
+
+    def run_then_wait(worker):
+        original_run(worker)
+        gate.wait(5)
+
+    monkeypatch.setattr(settings_ollama._AdminWorker, "run", run_then_wait)
+    monkeypatch.setattr(ollama_admin, "update_model", lambda *args, **kwargs: (True, ""))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    changed = []
+    tab.changed.connect(lambda: changed.append(True))
+    tab.models_list.item(0).setSelected(True)
+    try:
+        tab._on_update()
+        wait_until(lambda: changed)
+        assert app.slots == ["updating general-text"]
+    finally:
+        gate.set()
+    wait_until(lambda: app.slots == ["updating general-text", "end"])
 
 def test_a_busy_ollama_slot_stops_a_delete_and_an_update(monkeypatch, qapp):
     app = FakeApp()

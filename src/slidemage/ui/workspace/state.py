@@ -48,7 +48,7 @@ class WorkspaceState(QObject):
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
     lint_errors_changed = Signal(int)
-    ai_route_changed = Signal(str)           # the route of new AI work: ai_profile's LOCAL, CLAUDE_CODE or API
+    ai_route_changed = Signal(str)           # the route of new AI work: a route id (ai_profile.OLLAMA, CLAUDE_CODE, ANTHROPIC_API or a plugin's)
 
     def __init__(self, project: ProjectContext, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -154,7 +154,7 @@ class WorkspaceState(QObject):
 
     @property
     def ai_route(self) -> str:
-        """Where new AI work goes: ai_profile.LOCAL, or the cloud connection (CLAUDE_CODE or API)."""
+        """Where new AI work goes: the local route, or the cloud connection (a route id)."""
         return ai_profile.active_route(self.project)
 
     def set_ai_route(self, mode: str, conn: str | None = None) -> bool:

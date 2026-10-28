@@ -17,17 +17,25 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ...ai import routes
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, Popover, apply_shadow, clear_layout
 from .ai_work import RunningWork
 
 WIDTH = 360
-CONNECTION_TEXT = {"claude_code": "Claude Code", "api": "the Anthropic API"}
+
+
+def connection_text(conn: str) -> str:
+    """The cloud route as the warnings name it: "Claude Code", "the Anthropic API"."""
+    route = routes.get(conn)
+    service = route.service if route is not None else conn
+    return f"the {service}" if service.endswith("API") else service
+
 
 BUSY_TEXT = ("Switching changes the route for every AI task. Running work would have to stop first. "
              "A file write that has started finishes before the switch.")
 FINISHED_TEXT = "Nothing is running now, so you can switch without stopping anything."
-SESSION_TEXT = ("The Claude Code terminal is still running. Switching to Local ends it. SlideMage cannot tell "
+SESSION_TEXT = ("The Claude Code terminal is still running. Switching away ends it. SlideMage cannot tell "
                 "whether it is idle, and the session may not be resumable later.")
 
 
@@ -54,15 +62,18 @@ def finished_spec(cancel: Callable[[], None], switch: Callable[[], None]) -> Pop
                      (("Cancel", "secondary", cancel), ("Switch now", "primary", switch)))
 
 
-def session_spec(stay: Callable[[], None], end: Callable[[], None]) -> PopupSpec:
-    return PopupSpec("session", "terminal", "strong", "End the Claude Code session?", SESSION_TEXT,
+def session_spec(stay: Callable[[], None], end: Callable[[], None], service: str = "Claude Code") -> PopupSpec:
+    text = SESSION_TEXT if service == "Claude Code" else (
+        f"The {service} session is still running. Switching away ends it. "
+        "The session may not be resumable later.")
+    return PopupSpec("session", "terminal", "strong", f"End the {service} session?", text,
                      (("Stay", "secondary", stay), ("End session and switch", "primary", end)))
 
 
 def policy_spec(conn: str, cancel: Callable[[], None], switch: Callable[[], None],
                 change_setting: Callable[[], None]) -> PopupSpec:
     text = ("In Cloud mode every AI task (chat, image descriptions, translations, fixes) sends slide source, images "
-            f"and notes to {CONNECTION_TEXT[conn]}. The project setting stays Local, and the switch starts on Local "
+            f"and notes to {connection_text(conn)}. The project setting stays Local, and the switch starts on Local "
             "again next time.")
     return PopupSpec("policy", "warning", "warning", "This project is set to Local", text,
                      (("Cancel", "secondary", cancel), ("Switch to Cloud for this session", "cloud", switch)),
@@ -70,7 +81,7 @@ def policy_spec(conn: str, cancel: Callable[[], None], switch: Callable[[], None
 
 
 def first_use_spec(conn: str, cancel: Callable[[], None], use: Callable[[], None]) -> PopupSpec:
-    text = (f"Requests will send slide source, images and notes from this project to {CONNECTION_TEXT[conn]}. "
+    text = (f"Requests will send slide source, images and notes from this project to {connection_text(conn)}. "
             "Switching itself sends nothing. This is asked once for this project.")
     return PopupSpec("first", "cloud", "warning", "Use Cloud for all AI tasks?", text,
                      (("Cancel", "secondary", cancel), ("Use Cloud", "cloud", use)))

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from slidemage import alt_blocks, alt_draft, deck_editor, deck_scan
 from slidemage.ai import ai_profile
-from slidemage.ai.ai_profile import API, CLAUDE_CODE, CLOUD, LOCAL
+from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, LOCAL
 from slidemage.ai.providers import OllamaProvider
 from slidemage.ui.dialogs import deck_settings as deck_settings_module
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
@@ -96,14 +96,15 @@ def test_every_dialog_that_runs_ai_shows_the_route_badge_under_its_title(sheet, 
     commit_to_cloud(window)
     assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Cloud · Claude Code", True, "cloud")
     assert badge.toolTip() == "Change it with the Local | Cloud switch at the top of the assistant"
-    route(window).request(CLOUD, API)
+    route(window).request(CLOUD, ANTHROPIC_API)
     assert badge.text() == "Cloud · Anthropic API" and badge.property("cloud") is True      # refreshed while it is open
     route(window).request(LOCAL)
     assert (badge.text(), badge.property("cloud")) == ("Local · Ollama", False)
 
 
 def test_a_dialog_has_no_route_picker_of_its_own(sheet):
-    pickers = [control for control in sheet.findChildren(SegmentedControl) if {LOCAL, CLOUD} & set(control._buttons)]
+    pickers = [control for control in sheet.findChildren(SegmentedControl)       # Settings holds the project setting, a default
+               if {LOCAL, CLOUD} & set(control._buttons) and control.accessibleName() != "Project setting"]
     assert pickers == []
     assert not any(isinstance(w, QWidget) and w.accessibleName().startswith("AI route") for w in sheet.findChildren(QWidget)
                    if w is not badge_of(sheet))
@@ -260,7 +261,7 @@ def test_the_arrow_keys_flip_the_cloud_connection_and_the_project_setting_like_r
     assert setup.conn.accessibleName() == "Cloud connection" and setup.policy.accessibleName() == "Project setting"
     focus_on(window, setup.conn._buttons[CLAUDE_CODE])
     QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Right)
-    assert ai_profile.cloud_conn(window.project) == API
+    assert ai_profile.cloud_conn(window.project) == ANTHROPIC_API
 
 
 def test_tab_goes_through_ai_setup_in_reading_order_and_stays_inside(window, qapp):

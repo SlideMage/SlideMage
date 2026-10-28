@@ -424,3 +424,356 @@ def test_a_deck_changed_at_the_commit_is_not_overwritten(host, pctx, state, monk
     with pytest.raises(plugin_api.StaleFileError):
         host.insert_slides(deck, host.insert_positions(deck)[0], [("A", "a")], "en")
     assert_untouched(pctx, other, slides, csv)
+
+
+def test_legacy_settings_accessors(host, monkeypatch):
+    from slidemage import app_settings
+    from slidemage.plugins import migrate
+
+    monkeypatch.setattr(migrate, "legacy_anthropic_key", lambda ctx: "old-key" if ctx is host.ctx else None)
+    monkeypatch.setattr(app_settings, "get_ollama_host", lambda ctx: "http://old:11434")
+    assert host.legacy_secret("anthropic_api_key") == "old-key"
+    assert host.legacy_ollama_host() == "http://old:11434"
+    with pytest.raises(ValueError):
+        host.legacy_secret("other")
+
+
+def test_progress_is_delivered_on_ui_thread_before_done(host, qapp):
+    events = []
+    main = threading.get_ident()
+
+    def work(report):
+        report("one")
+        report("two")
+        return 42
+
+    host.run_in_background_with_progress(
+        work, lambda value: events.append((value, threading.get_ident())),
+        lambda result, error: events.append(((result, error), threading.get_ident())))
+    wait_until(lambda: len(events) == 3)
+    assert events == [("one", main), ("two", main), ((42, None), main)]
+
+
+def test_model_choices_notification_delegates(host):
+    seen = []
+    host.model_choices_changed("ollama")
+    host.ui = type("Ui", (), {"model_choices_changed": lambda self, route: seen.append(route)})()
+    host.model_choices_changed("ollama")
+    assert seen == ["ollama"]
+
+
+def test_lazy_ai_exports():
+    from slidemage import alt_draft, compiler
+    from slidemage.ai import tasks
+
+    assert plugin_api.Task is tasks.Task
+    assert plugin_api.TRANSLATE is tasks.TRANSLATE
+    assert plugin_api.check is tasks.check
+    assert plugin_api.IMAGE_DESCRIPTION_SCHEMA is alt_draft.RESPONSE_SCHEMA
+    assert plugin_api.DraftResult is alt_draft.DraftResult
+    assert isinstance(plugin_api.CancelToken(), compiler.CancelToken)
+    for name in ("answer_note", "repair_request", "translate_request", "SlideContext", "TranslationResult",
+                 "build_prompt", "draft_from_fields", "effective_system_prompt", "ImageEntry", "en_text_hash",
+                 "get_effective_prompt", "de_address", "glossary", "IMAGE_DESCRIPTION_RULES",
+                 "CLAUDE_CODE_PRE_APPROVED", "Outcome", "PromptConfig", "FIX_LATEX", "UPDATE_TRANSLATION",
+                 "PROOFREAD", "CONCISE", "TITLE", "NOTE", "SUMMARISE", "READABLE", "REWRITE", "REWRITE_PRESETS",
+                 "PROOFREAD_SELECTION", "update_request", "proofread_request", "concise_request", "title_request",
+                 "rewrite_request", "proofread_selection_request", "note_request", "summarise_request",
+                 "fix_request", "readable_request"):
+        assert getattr(plugin_api, name) is not None
+
+
+def test_hook_context_without_window(host, monkeypatch):
+    from slidemage import ai_review, alt_images, project, timing
+
+    monkeypatch.setattr(project, "from_environment", lambda: host.ctx)
+    hook = plugin_api.hook_context_from_environment()
+    assert hook.root == host.ctx.root
+    slide = host.ctx.slides_dir / "abc-EN-Hello-current.tex"
+    assert hook.slide_kind(slide) == "current"
+    assert hook.read_text(slide) == slide.read_bytes().decode("utf-8")
+    hook.write_snapshot("../an opaque id", {"before": "a\r\nb"})
+    assert hook.read_snapshot("../an opaque id") == {"before": "a\r\nb"}
+    hook.delete_snapshot("../an opaque id")
+    assert hook.read_snapshot("../an opaque id") == {}
+    assert hook.is_deck(host.ctx.decks_dir / "test.tex")
+    assert not hook.is_deck(slide)
+    calls = []
+    monkeypatch.setattr(alt_images, "is_store", lambda ctx, path: True)
+    monkeypatch.setattr(alt_images, "flag_edited_sources", lambda ctx, path, before: True)
+    monkeypatch.setattr(ai_review, "mark", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(ai_review, "inserted_slides", lambda *args: calls.append(args))
+    monkeypatch.setattr(timing, "event", lambda *args: calls.append(args))
+    assert hook.is_image_store(slide)
+    assert hook.flag_edited_sources(slide, "before")
+    hook.mark_review(slide, "edit", "plugin", before="old")
+    hook.record_inserted_slides(slide, "old", "new", "plugin")
+    hook.timing_event("prompt")
+    assert calls[0] == ((host.ctx, slide, "edit", "plugin"), {"before": "old"})
+    assert calls[1] == (host.ctx, slide, "old", "new", "plugin")
+    assert calls[2] == (host.ctx.root, "prompt")
+
+
+def test_route_task_lease_shares_core_slot_and_has_ownership(host, monkeypatch):
+    from slidemage.ui.workspace.window import WorkspaceWindow
+    from PySide6.QtWidgets import QMessageBox
+
+    class Window:
+        try_start_route_task = WorkspaceWindow.try_start_route_task
+        end_route_task = WorkspaceWindow.end_route_task
+        acquire_route_task = WorkspaceWindow.acquire_route_task
+
+        def __init__(self):
+            self._route_tasks = {}
+
+    window = Window()
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    host.ui = window
+    core = window.acquire_route_task("ollama", "drafting")
+    assert core is not None
+    assert host.acquire_route_task("ollama", "pulling") is None
+    other = host.acquire_route_task("another", "working")
+    assert other is not None
+    core.release()
+    lease = host.acquire_route_task("ollama", "pulling")
+    assert lease is not None
+    assert window.acquire_route_task("ollama", "drafting") is None
+    core.release()  # cannot release another owner's lease
+    assert host.acquire_route_task("ollama", "pulling") is None
+    lease.release()
+    lease.release()
+    with other:
+        assert host.acquire_route_task("another", "working") is None
+    assert host.acquire_route_task("another", "working") is not None
+
+
+
+def test_route_lease_survives_a_detached_worker_stop_until_it_exits(host, monkeypatch, qapp):
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QMessageBox
+    from slidemage.ui import background
+    from slidemage.ui.workspace.window import WorkspaceWindow
+
+    class Window:
+        try_start_route_task = WorkspaceWindow.try_start_route_task
+        end_route_task = WorkspaceWindow.end_route_task
+
+        def __init__(self):
+            self._route_tasks = {}
+
+    class Worker(QThread):
+        def run(self):
+            gate.wait(5)
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    host.ui = Window()
+    lease = host.acquire_route_task("ollama", "drafting")
+    gate = threading.Event()
+    worker = Worker()
+    background.start_detached(worker)
+    try:
+        assert not background.stop_worker(worker, wait_ms=10, on_done=lease.release)
+        assert host.acquire_route_task("ollama", "updating") is None
+        other = host.acquire_route_task("plugin-local", "working")
+        assert other is not None
+        other.release()
+    finally:
+        gate.set()
+        worker.wait()
+    wait_until(lambda: "ollama" not in host.ui._route_tasks)
+    assert host.acquire_route_task("ollama", "updating") is not None
+
+def test_chat_surface_context_operations(host, monkeypatch):
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.chat import plugin_surface
+
+    calls = []
+    class Signal:
+        def connect(self, callback):
+            self.callback = callback
+        def emit(self, value):
+            calls.append(("scope", value))
+            if hasattr(self, "callback"):
+                self.callback(value)
+    class Scope:
+        changed = Signal()
+        def current(self):
+            return "slide"
+        def set_current(self, value):
+            calls.append(("set", value))
+    class Workspace:
+        def __init__(self, app):
+            pass
+        def close(self):
+            calls.append("closed")
+        def show_slide(self, path):
+            calls.append(("show", path))
+    class Sync:
+        def __init__(self, app, root):
+            pass
+        def _apply(self, changes):
+            calls.append(("edits", changes))
+    monkeypatch.setattr(plugin_surface, "GuiWorkspace", Workspace)
+    monkeypatch.setattr(plugin_surface, "DiskSync", Sync)
+    monkeypatch.setattr(plugin_surface.attachments, "place_file", lambda ctx, path, dash_spaces: "media/file")
+    monkeypatch.setattr(plugin_surface.attachments, "save_image", lambda ctx, image: "media/image")
+    monkeypatch.setattr(plugin_surface, "bubbles", lambda app: [])
+    app = SimpleNamespace(ai_route=SimpleNamespace(open_setup=lambda: calls.append("setup")))
+    state = SimpleNamespace(project=host.ctx, deck=None)
+    context = plugin_surface.ChatSurfaceContext(app, state, Scope(), SimpleNamespace())
+    assert context.project_root == host.ctx.root and context.scope() == "slide"
+    context.on_scope_changed(lambda value: calls.append(("callback", value)))
+    assert not context.set_scope("deck")
+    state.deck = object()
+    assert context.set_scope("deck")
+    with pytest.raises(ValueError):
+        context.set_scope("bad")
+    context.open_ai_setup()
+    assert context.attach_file(Path("file")) == "media/file"
+    assert context.attach_image(object()) == "media/image"
+    context.apply_external_edits("changes")
+    assert context.tool_workspace() is context.tool_workspace()
+    assert "nothing to translate" in context.translate_slide(Path("slide.tex"))
+    context.close()
+    assert calls == [("set", "deck"), ("scope", "deck"), ("callback", "deck"), "setup",
+                     ("edits", "changes"), ("show", Path("slide.tex")), "closed"]
+
+
+def test_builtin_terminal_uses_surface_context_for_deck_and_translation():
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
+
+    calls = []
+    context = SimpleNamespace(set_scope=lambda scope: calls.append(scope) or True,
+                              translate_slide=lambda path: f"translated {path.name}")
+    view = SimpleNamespace(_surface_context=context)
+    assert ClaudeCodeView._switch_to_deck(view) == "SlideMage is in Deck Mode now: go on with the request."
+    assert calls == ["deck"]
+    assert ClaudeCodeView._translate_slide(view, Path("slide.tex")) == "translated slide.tex"
+    context.set_scope = lambda scope: False
+    assert ClaudeCodeView._switch_to_deck(view) == "No deck is open in SlideMage: ask the user to open one."
+
+
+def test_progress_error_is_delivered_after_reports(host, qapp):
+    events = []
+    def work(report):
+        report("before failure")
+        raise ValueError("failed")
+    host.run_in_background_with_progress(work, events.append, lambda result, error: events.append((result, error)))
+    wait_until(lambda: len(events) == 2)
+    assert events[0] == "before failure"
+    assert events[1][0] is None and isinstance(events[1][1], ValueError)
+
+
+def test_cancel_token_stops_host_tools(host):
+    cancel = plugin_api.CancelToken()
+    cancel.request_stop()
+    assert cancel.is_set()
+    box = host.ai_tools(cancel=cancel)
+    assert box is not None
+
+
+def test_tool_workspace_is_unwrapped_for_tools(host, monkeypatch):
+    from slidemage.ai import agent_toolbox
+    from slidemage.ui.workspace.chat import plugin_surface
+
+    core_workspace = object()
+    handle = plugin_surface.ToolWorkspace.__new__(plugin_surface.ToolWorkspace)
+    handle._workspace = core_workspace
+    monkeypatch.setattr(agent_toolbox, "agent_toolbox", lambda workspace, *args: workspace)
+    assert host.ai_tools(workspace=handle) is core_workspace
+
+
+def test_chat_reserves_the_captured_route(host, monkeypatch, qapp):
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.chat import session as chat_session
+
+    class Window:
+        def acquire_route_task(self, route, label):
+            return host_module.acquire_route_task(self, route, label)
+        def __init__(self):
+            self.taken = {}
+        def try_start_route_task(self, route, label, owner):
+            if route in self.taken:
+                return False
+            self.taken[route] = owner
+            return True
+        def end_route_task(self, route, owner):
+            if self.taken.get(route) is owner:
+                del self.taken[route]
+    class Thread:
+        def __init__(self, *args):
+            pass
+        def start(self):
+            pass
+    monkeypatch.setattr(chat_session, "Agent", lambda *args, **kwargs: object())
+    monkeypatch.setattr(chat_session, "_AgentThread", Thread)
+    window = Window()
+    workspace = SimpleNamespace(begin_request=lambda: None)
+    session = chat_session.ChatSession(workspace, window)
+    route = SimpleNamespace(route="plugin-local", is_local=True)
+    assert session.start(object(), "hello", "slide", route)
+    assert set(window.taken) == {"plugin-local"}
+    session._take_release()()
+    assert window.taken == {}
+
+
+def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, monkeypatch):
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.chat import plugin_surface
+
+    calls = []
+    path = host.ctx.root / "slides" / "abc.tex"
+    class Workspace:
+        def __init__(self, window):
+            pass
+        def on_gui(self, work, default):
+            calls.append("gui")
+            return work()
+        def begin_request(self):
+            calls.append("begin")
+        def context(self):
+            return SimpleNamespace(path=path)
+        def close(self):
+            calls.append("close")
+    monkeypatch.setattr(plugin_surface, "GuiWorkspace", Workspace)
+    app = SimpleNamespace(centre=SimpleNamespace(path=path, is_dirty=lambda path: True))
+    state = SimpleNamespace(project=host.ctx, focused_slide="abc", view="instructor", language="EN",
+                            deck=SimpleNamespace(path=host.ctx.root / "decks/test.tex", is_test_deck=False))
+    context = plugin_surface.ChatSurfaceContext(app, state, SimpleNamespace(), SimpleNamespace())
+    monkeypatch.setattr(host, "ai_tools", lambda scope, **kwargs: (scope, kwargs))
+    details = context.focus_details()
+    assert (details.slide_id, details.slide, details.deck, details.view, details.language, details.dirty) == (
+        "abc", path, state.deck.path, "instructor", "EN", True)
+    cancel = object()
+    scope, kwargs = context.build_tools(host, "deck", cancel)
+    assert scope == "deck" and kwargs["focus_slide"] == path and kwargs["cancel"] is cancel
+    assert kwargs["workspace"] is context.tool_workspace()
+    assert calls == ["gui", "begin"]
+    state.deck.is_test_deck = True
+    assert context.focus_details().deck is None
+    context.close()
+
+
+def test_claude_surface_builds_from_public_host_and_context(host, qapp):
+    from types import SimpleNamespace
+    from slidemage.ui.kit.widgets import caption
+    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
+
+    host.ui = SimpleNamespace(caption=caption, terminal_tokens=lambda: SimpleNamespace(info="#123456"))
+    callbacks, closed = [], []
+    context = SimpleNamespace(on_scope_changed=callbacks.append,
+                              selected_route=lambda route, task: SimpleNamespace(label="Claude Code · Sonnet"),
+                              close=lambda: closed.append(True))
+    launch = SimpleNamespace(INSTALL_URL="https://example.org", find_claude=lambda: None)
+    surface = ClaudeCodeView(host, context, launch, None, None, lambda: "hook")
+    try:
+        assert "Sonnet" in surface.caption.text()
+        surface._started = True
+        surface._open()
+        assert surface.needs_setup and "not installed" in surface.setup_title.text()
+        assert len(callbacks) == 1
+    finally:
+        surface.shutdown()
+        surface.deleteLater()
+    assert closed == [True]

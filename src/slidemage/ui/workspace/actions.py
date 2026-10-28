@@ -29,11 +29,11 @@ from ..text import plural
 from . import compare_rendered, compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
-from ...ai import ai_profile
+from ...ai import ai_profile, routes
 from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
 from .source_file import REPLACE_KEY, autosave_on
-from .terminal.tasks import DECK_TASKS, SLIDE_TASKS, selection_of
+from .task_bubbles import DECK_TASKS, SLIDE_TASKS, selection_of
 from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
@@ -51,6 +51,15 @@ MAC_KEYS = {
 
 
 # -- when a command is available -------------------------------------------------------
+
+AI_COMMANDS = ("ai:", "task:", "selection:")        # the commands that need an AI route, by id prefix
+AI_COMMAND_IDS = ("slide:readable", "slide:translate", "images")
+
+
+def _with_ai(visible):
+    """`visible`, and there is an AI route: with none installed every AI command is left out."""
+    return lambda w: bool(routes.all()) and visible(w)
+
 
 def _has_deck(w) -> bool:
     return w.state.deck is not None
@@ -170,6 +179,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
 
     def add(*args, **kwargs) -> None:
         command = Command(*args, **kwargs)
+        if command.id.startswith(AI_COMMANDS) or command.id in AI_COMMAND_IDS:
+            command = replace(command, visible=_with_ai(command.visible))
         registry.add(replace(command, **MAC_KEYS[command.id]) if mac and command.id in MAC_KEYS else command)
 
     # View & build -----------------------------------------------------------------
@@ -353,6 +364,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     # AI: the assistant's Local | Cloud switch, through its request flow (popovers included) ---------------
     for mode, label, icon in ((ai_profile.LOCAL, "Use Local AI", "computer"), (ai_profile.CLOUD, "Use Cloud AI", "cloud")):
         add(f"ai:{mode}", label, AI, lambda w, m=mode: w.ai_route.request(m), icon=icon,
+            enabled=lambda w, m=mode: bool(routes.on_side(m == ai_profile.LOCAL)),
             meta=lambda w, m=mode: _current(w.state.ai_mode == m))
     add("ai:setup", "AI setup…", AI, lambda w: w.ai_route.open_setup(), icon="tune",
         meta="models per task, cloud connection, project setting")
