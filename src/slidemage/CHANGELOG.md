@@ -2866,6 +2866,16 @@ NEW: Contents and section slides get a preview by themselves, and the status lin
 - After a deck has been compiled, these slides are also rendered in the background and counted, so "All previews are up to date." includes them.
 - "All previews are up to date." is now plain green text without a green background.
 
+v8.67.1 (2026-10-27, plugins plan, phase 4): The Anthropic API is reached without the anthropic SDK. AnthropicProvider moved to ai/anthropic_provider.py and talks to /v1/messages and /v1/models with http.client and server-sent events, as the Ollama provider already did with its own plumbing. It keeps what the SDK gave: streaming for chat() too, so that Stop always has a connection to end; two retries with backoff (or the server's retry-after) on 408/409/429/5xx and dropped connections, only before any answer has arrived, and a Stop that also ends the wait; the same error messages; unknown events and deltas ignored. The assistant's turn is kept as plain JSON blocks (thinking blocks with their signatures included) and replayed unchanged. Tests in test_agent_claude.py and test_ai_providers.py.
+
+NEW: Nothing changes for you; the Claude API route works as before.
+- The anthropic package is no longer used (its removal from the build is a separate step).
+
+v8.67.2 (2026-10-28, plugins plan, phase 4): The anthropic package and what came only with it (pydantic, pydantic_core, httpx2, httpcore2, anyio, jiter and others) leave pyproject.toml, the build spec and THIRD_PARTY_NOTICES.md; tools/third_party_notices.py no longer lists it. The download gets smaller and the first request to the API no longer waits for the SDK to load.
+
+NEW: Nothing changes for you; the Claude API route works as before.
+- SlideMage is a little smaller to download.
+
 v8.68.0 (2026-10-28, plugins plan, phases 0 and 1; docs/PLUGIN_HOST_PLAN.md): The plugin host. A plugin is a Python package with a plugin.toml, installed unpacked in config_dir()/plugins/<id>/ (or a checkout named by SLIDEMAGE_PLUGIN_PATH), imported under its own name and activated with slidemage.plugin_api (API 1): commands and Deck menu entries, Deck settings tabs with a footer action, Settings tabs, compact side-panel boxes, a render priority, and host services for deck edits, slide insertion, cache folders, settings and background work. A plugin that fails to load is shown with its error and never stops the start. plugins/installer.py checks the SHA-256, refuses unsafe or compiled archive members and swaps the folder atomically; plugins/catalogue.py reads https://slidemage.org/plugins/index.json (never GitHub's latest release). New Settings tab Plugins and Help → Plugins…; a first-start sheet when the list has something to offer; plugin updates follow the app's update mode. The frozen build bundles the standard library and PySide6's widget modules for plugins, checked by --self-test --plugins. Nothing that is built in moves out yet. Tests in tests/test_plugin_*.py; test_plugin_campusonline_e2e.py runs the real CampusOnline plugin when SLIDEMAGE_E2E_CAMPUSONLINE names its checkout.
 
 NEW: SlideMage can install plugins.

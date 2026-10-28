@@ -24,9 +24,9 @@ from . import ai_profile, claude_launch, credentials
 from .ai_profile import API, CLAUDE_CODE, LOCAL, Route
 from .claude_images import ClaudeDraftBackend, ClaudeTranslationBackend
 from .claude_runner import SlideTranslator
+from .anthropic_provider import AnthropicProvider
 from .providers import (
     ANTHROPIC_FALLBACK_MODELS,
-    AnthropicProvider,
     ChatProvider,
     OllamaProvider,
     ProviderError,

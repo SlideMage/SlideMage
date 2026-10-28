@@ -13,7 +13,8 @@ from conftest import SLIDE_TEXT, make_project
 from slidemage.ai import ai_profile
 from slidemage.ai.agent import Agent
 from slidemage.ai.agent_types import EDIT_AUTO, Done, EditApplied, TextDelta, ToolFinished
-from slidemage.ai.providers import AnthropicProvider, OllamaProvider
+from slidemage.ai.anthropic_provider import AnthropicProvider
+from slidemage.ai.providers import OllamaProvider
 from slidemage.project import ProjectContext
 from slidemage.ai.workspace import Workspace, WorkspaceContext
 

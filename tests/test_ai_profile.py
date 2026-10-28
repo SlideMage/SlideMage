@@ -12,7 +12,8 @@ import pytest
 from slidemage import alt_draft, app_settings, project
 from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
 from slidemage.ai.ai_profile import API, CHAT, CLAUDE_CODE, CLOUD, FIXES, IMAGE_DESCRIPTION, LOCAL, TRANSLATION, Route
-from slidemage.ai.providers import AnthropicProvider, OllamaProvider
+from slidemage.ai.anthropic_provider import AnthropicProvider
+from slidemage.ai.providers import OllamaProvider
 
 
 # -- defaults ----------------------------------------------------------------------------

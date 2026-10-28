@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater, version
 from slidemage import translation_prompts as tp
 from slidemage.ai import credentials, ollama_admin
-from slidemage.ai.providers import (
-    AnthropicProvider, InstalledModel, OllamaProvider)
+from slidemage.ai.anthropic_provider import AnthropicProvider
+from slidemage.ai.providers import InstalledModel, OllamaProvider
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Button
 from slidemage.ui.dialogs.settings import ABOUT, AI, CLOUD, GENERAL, OLLAMA, PROJECT, PROMPTS, SettingsSheet

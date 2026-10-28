@@ -66,7 +66,7 @@ dist\SlideMage.exe --project example     # Windows
 ```
 
 The one-file build is about 300 MB: besides Qt it carries QtWebEngine (the Claude Code
-tab's terminal is xterm.js in a web view), the bundled fonts and the `anthropic` client.
+tab's terminal is xterm.js in a web view), the bundled fonts and the Anthropic API client (standard library, no SDK).
 It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
 a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
 `libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
