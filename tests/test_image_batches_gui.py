@@ -174,7 +174,12 @@ def texts(page):
             page._forms[0].translate_button.text(), page._forms[0].save_translate_button.text())
 
 
-def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx):  # noqa: F811
+def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx, monkeypatch):  # noqa: F811
+    from slidemage.ai import ollama_route
+
+    monkeypatch.setattr(ollama_route, "_installed", {})
+    ollama_route.cache_installed(ctx, [ollama_route.InstalledModel("qwen3:8b", 1, "", ()),
+                                       ollama_route.InstalledModel("qwen3-vl:32b", 1, "", ("vision",))])
     page = make_page()
     page.refresh_model_preferences(["qwen3:8b"], ["qwen3-vl:32b"])
     assert page.draft_note.text() == "qwen3-vl:32b · Ollama"

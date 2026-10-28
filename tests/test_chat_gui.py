@@ -339,7 +339,10 @@ def test_the_permission_is_remembered(env):
 
 @pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
 def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
-    if not local:
+    if local:
+        ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+        ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
+    else:
         ai_profile.mark_cloud_seen(env.window.project)
     script(env, blocked()).is_local = local
     env.chat.send("go")
@@ -561,6 +564,8 @@ def slot(env):
     ("send", "go"), ("ask", "Make this slide more concise"),
 ], ids=["message", "suggestion"])
 def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch, entry, text):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
     assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())

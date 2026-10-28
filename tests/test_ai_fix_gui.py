@@ -300,6 +300,8 @@ def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkey
     file.ask_ai_button.click()
     finish(file.fix_panel)
     assert file.fix_panel.model_combo.currentText() == "qwen3"
+    ollama_route.cache_installed(file.app.project, [ollama_route.InstalledModel(name, 1, "", ())
+                                                    for name in ("qwen3", "other")])
     file.refresh_model_preference(["qwen3", "other"])
     assert [file.fix_panel.model_combo.itemText(i) for i in range(file.fix_panel.model_combo.count())] == [
         "qwen3", "other"]

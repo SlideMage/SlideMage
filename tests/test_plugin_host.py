@@ -605,6 +605,21 @@ def test_chat_surface_context_operations(host, monkeypatch):
                      ("edits", "changes"), ("show", Path("slide.tex")), "closed"]
 
 
+def test_builtin_terminal_uses_surface_context_for_deck_and_translation():
+    from types import SimpleNamespace
+    from slidemage.ui.workspace.terminal.view import ClaudeCodeView
+
+    calls = []
+    context = SimpleNamespace(set_scope=lambda scope: calls.append(scope) or True,
+                              translate_slide=lambda path: f"translated {path.name}")
+    view = SimpleNamespace(_surface_context=context)
+    assert ClaudeCodeView._switch_to_deck(view) == "SlideMage is in Deck Mode now: go on with the request."
+    assert calls == ["deck"]
+    assert ClaudeCodeView._translate_slide(view, Path("slide.tex")) == "translated slide.tex"
+    context.set_scope = lambda scope: False
+    assert ClaudeCodeView._switch_to_deck(view) == "No deck is open in SlideMage: ask the user to open one."
+
+
 def test_progress_error_is_delivered_after_reports(host, qapp):
     events = []
     def work(report):

@@ -95,7 +95,8 @@ class ClaudeCodeView(Surface):
         self._terminal_layout.addLayout(self._build_status_row())
         self.caption = caption("")
         self.caption.setTextFormat(Qt.TextFormat.RichText)
-        self.caption.linkActivated.connect(lambda _link: self.app.ai_route.open_setup())
+        self.caption.linkActivated.connect(lambda _link: (
+            self._surface_context.open_ai_setup() if self._surface_context else self.app.ai_route.open_setup()))
         self._terminal_layout.addWidget(self.caption)
         self._stack.addWidget(self._terminal_page)
         self.refresh_caption()
@@ -179,6 +180,10 @@ class ClaudeCodeView(Surface):
 
     def _switch_to_deck(self) -> str:
         """The terminal's switch_to_deck_mode, which the user has allowed (GUI thread)."""
+        if self._surface_context is not None:
+            if not self._surface_context.set_scope(DECK):
+                return "No deck is open in SlideMage: ask the user to open one."
+            return "SlideMage is in Deck Mode now: go on with the request."
         if self.state.deck is None:
             return "No deck is open in SlideMage: ask the user to open one."
         self.scope.set_current(DECK)
@@ -188,7 +193,8 @@ class ClaudeCodeView(Surface):
     # -- attachments ------------------------------------------------------------------------------
 
     def _pick_files(self) -> None:
-        names, _filter = QFileDialog.getOpenFileNames(self, "Attach files", str(self.state.project.root))
+        root = self._surface_context.project_root if self._surface_context else self.state.project.root
+        names, _filter = QFileDialog.getOpenFileNames(self, "Attach files", str(root))
         self.attach_files(names)
 
     def attach_files(self, names: list[str]) -> None:
@@ -264,6 +270,8 @@ class ClaudeCodeView(Surface):
 
     def _translate_slide(self, path: Path) -> str:
         """The terminal's translate_slide: the slide into view, then its Translate bubble (GUI thread)."""
+        if self._surface_context is not None:
+            return self._surface_context.translate_slide(path)
         self.session.workspace.show_slide(path)
         bubble = next((b for b in bubbles(self.app) if b.task is ai_tasks.TRANSLATE), None)
         if bubble is None:
