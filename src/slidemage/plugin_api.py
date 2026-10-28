@@ -900,6 +900,11 @@ _LAZY = {
     "CancelToken": "slidemage.compiler",
     "Outcome": "slidemage.ai.task_result",
 }
+# Every SlideMage module this file loads by name. PyInstaller doesn't see those imports, so the spec bundles these
+# and `slidemage --self-test --plugins` imports them (slidemage/plugins/selftest.py); without slidemage.plugins.hook
+# the frozen app's Claude Code hook failed with ModuleNotFoundError.
+_RUNTIME_MODULES = tuple(sorted({*_LAZY.values(), "slidemage.plugins.hook", "slidemage.project", "slidemage.ai.tasks",
+                                 "slidemage.alt_draft", "slidemage.translation_prompts"}))
 
 
 def __getattr__(name: str) -> Any:
