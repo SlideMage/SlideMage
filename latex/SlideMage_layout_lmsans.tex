@@ -101,19 +101,10 @@
 \newcommand{\SMLinespread}{1.15}
 \newcommand{\SMParskip}{0.5em}
 
-% Calibrations -------------------------------------------------------------------------
-% The pull-ups of the frames the automatic Top Margin does not manage, as in the Fira profile
-% (SlideMage_layout_fira.tex has the reasons); they are the only lengths of this profile that
-% were measured against the rendered PDF. Since v9.8.0 the footer text's drop, the list label and
-% numeral boxes, the footnotes' offset and the section frame's corrections are read from the font
-% where it is used or are hooks of the catalog (SlideMage_setup.tex, 'Derived, not set').
-% tools/calibrate_font_profile.py suggests these three for a new font.
-\newlength{\SMContentTopShift}
-\setlength{\SMContentTopShift}{11.17pt}
-\newlength{\SMColumnsTopCorrection}
-\setlength{\SMColumnsTopCorrection}{10.17pt}
-\newlength{\SMColumnsTTopCompensation}
-\setlength{\SMColumnsTTopCompensation}{13.55pt}
+% Since v9.9.0 this profile holds no length measured against the rendered PDF (as the Fira
+% profile, whose comment has the list): \SMContentTopShift (11.17pt here before) and the two
+% columns corrections (10.17pt, 13.55pt) are measured on the page, the other former calibrations
+% are read from the font (v9.8.0).
 
 % Code fonts ----------------------------------------------------------------------
 % \SMCodeFile (listings) and the like use Latin Modern Mono Regular; the theme's

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The hook catalog of latex/SlideMage_setup.tex (v9.8.0): every hook is read by the framework, the shipped
+"""The hook catalog of latex/SlideMage_setup.tex (v9.9.0): every hook is read by the framework, the shipped
 templates and the stress-test template set catalog names only, the stress-test template sets every hook, and
 every layout profile defines what the Fira profile defines."""
 import os
@@ -18,15 +18,16 @@ STRESS = ROOT / "tests" / "fixtures" / "template_stress"
 SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
 NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname"}
-# The names the base derives (v9.7.0, v9.8.0): the setup layer holds an error-raising macro under each, so a template or a
+# The names the base derives (v9.7.0, v9.8.0, v9.9.0): the setup layer holds an error-raising macro under each, so a template or a
 # profile that sets one is told; they are in the catalog's text but are not hooks.
 DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift",
            "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
            "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
-           "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection"}
-# What a layout profile defines besides its fonts (v9.8.0): the font's metrics and the three top pull-ups, which step 10
-# derives as well. Nothing else is a number of the font.
-PROFILE_LENGTHS = {"SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"}
+           "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection",
+           "SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"}
+# What a layout profile defines besides its fonts (v9.9.0): the font's metrics, and no length (the three top pull-ups
+# of v9.8.0 are measured on the page now). Nothing else is a number of the font.
+PROFILE_LENGTHS: set[str] = set()
 PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
@@ -134,14 +135,14 @@ def profile_names(path: Path) -> set[str]:
 
 def test_every_layout_profile_defines_what_the_fira_profile_defines():
     fira = profile_names(LATEX / "SlideMage_layout_fira.tex")
-    assert {"SMFontAscender", "SMLinespread", "SMParskip", "SMColumnsTTopCompensation",
+    assert {"SMFontAscender", "SMLinespread", "SMParskip",
             "SMCodeFont", "SMInlineCodeFont", "SMCardHeadingFont"} <= fira
     profiles = sorted(LATEX.glob("SlideMage_layout_*.tex"))
     assert {p.name for p in profiles} >= {"SlideMage_layout_fira.tex", "SlideMage_layout_lmsans.tex"}
     for path in profiles:
         lacking = fira - profile_names(path)
         assert not lacking, f"{path.name} lacks {sorted(lacking)}"
-        # since v9.8.0 a profile holds fonts, the font's metrics and the three pull-ups, no other number
+        # since v9.9.0 a profile holds fonts and the font's metrics, no other number
         lengths = defined(read(path), ("newlength",))
         macros = defined(read(path), ("newcommand",))
         assert lengths == PROFILE_LENGTHS, f"{path.name} defines lengths {sorted(lengths ^ PROFILE_LENGTHS)}"
@@ -151,17 +152,17 @@ def test_every_layout_profile_defines_what_the_fira_profile_defines():
             assert BS + command in text, f"{path.name}: no {command}"
 
 
-def test_the_setup_header_lists_every_calibration_a_profile_defines():
+def test_the_setup_header_says_a_profile_holds_no_measured_length_and_names_the_derived_ones():
     header = read(LATEX / "SlideMage_setup.tex").split(BS + "newcommand{" + BS + "SMSetupLoaded}")[0]
     fira = read(LATEX / "SlideMage_layout_fira.tex")
-    calibrations = set(re.findall(r"\\newlength\{\\(SM[A-Za-z]+)\}", fira))
-    missing = sorted(name for name in calibrations if BS + name not in header)
-    assert not missing, f"the setup header's list of what a profile defines lacks {missing}"
+    assert not re.findall(r"\\newlength\{\\(SM[A-Za-z]+)\}", code(fira))
+    missing = sorted(name for name in DERIVED if BS + name not in header)
+    assert not missing, f"the setup header's list of derived names lacks {missing}"
     assert "calibrate_font_profile.py" in header and "lmsans" in header
 
 
 def test_no_template_or_profile_sets_a_derived_name():
-    """The derived names (v9.7.0, v9.8.0) are computed by the base from the hooks and the font; setting one would
+    """The derived names (v9.7.0-v9.9.0) are computed by the base from the hooks and the font; setting one would
     contradict the next change to a hook or to the font."""
     for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
         touched = defined(settings_before_base(template),
@@ -187,7 +188,8 @@ def test_the_base_derives_each_derived_name_and_the_setup_layer_guards_it():
                                      BS + "renewcommand{" + BS + "SMFooterRightShift}{3pt}",
                                      BS + "setlength{" + BS + "SMFooterTextDrop}{1pt}",
                                      BS + "renewcommand{" + BS + "SMLabelItemWidth}{3pt}",
-                                     BS + "setlength{" + BS + "SMFootlineVOffset}{-3pt}"])
+                                     BS + "setlength{" + BS + "SMFootlineVOffset}{-3pt}",
+                                     BS + "setlength{" + BS + "SMContentTopShift}{11pt}"])
 def test_a_template_that_sets_a_derived_name_gets_an_error_that_names_it(setting, tmp_path):
     (tmp_path / "template.tex").write_text(
         BS + "input{SlideMage_setup}\n" + setting + "\n" + BS + "input{SlideMage_base}\n", encoding="utf-8")

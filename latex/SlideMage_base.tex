@@ -297,6 +297,13 @@
 \SM@derivedlength{SMSectionframeBottomGap}
 \SM@derivedlength{SMSectionframeBottomPadCorrection}
 \SM@derivedlength{SMSectionframeHeightCorrection}
+% v9.9.0: the pull-ups of the frames the automatic Top Margin does not correct by their content were
+% the last three numbers of the layout profiles. \SMContentTopShift is measured (the frame's origin,
+% see AUTOMATIC TOP MARGIN; 0pt until the first run has written \jobname.top), the two columns
+% corrections are measured where a columns environment starts such a frame.
+\SM@derivedlength{SMContentTopShift}
+\SM@derivedlength{SMColumnsTopCorrection}
+\SM@derivedlength{SMColumnsTTopCompensation}
 \makeatother
 % - \SMContentTopAlign, the Top Margin as an overlay coordinate: the same line the automatic Top Margin
 %   puts the first text line's box on (the Top Margin is in bp, the coordinate in pt: 41.58bp is 41.7359pt).
@@ -2654,7 +2661,8 @@
 % not portable between slides even for superficially similar content (see
 % slides/zgz-EBIT-Definition-current.tex's own v1-2-0 comment for a case
 % where an earlier, wrong correction was carried over uncritically).
-% (\SMContentTopShift is defined by the layout profile since v9.4.0; its history is below.)
+% (\SMContentTopShift was a number of the layout profile from v9.4.0 to v9.8.0 and is measured
+% since v9.9.0, see AUTOMATIC TOP MARGIN; its history is below.)
 % 11.5964pt (2026-07-22, direct instruction: "reduce the Top Margin"
 % generally, tested at 20%/30%/40% smaller against
 % slides/8s8-Unit-Investment-Trusts-current.tex before settling on 40% --
@@ -2677,7 +2685,7 @@
 % (\vbox to 0pt{...}) in front of the columns do not count, so a slide that puts such a
 % picture first needs no special treatment either. (\prevdepth cannot tell: those zero-size
 % boxes already set it.) Checked in LuaTeX by walking the current list.
-% (\SMColumnsTopCorrection is defined by the layout profile since v9.4.0.)
+% (\SMColumnsTopCorrection was a number of the layout profile from v9.4.0 to v9.8.0.)
 \SMLuaOnce{
 	slidemage_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
@@ -2694,16 +2702,36 @@
 % \SMManualTopMargin, a deck with \SMAutoTopMarginfalse) -- in every
 % other frame the measurement puts a columns-first slide on the margin by
 % itself, so this correction (and the [T] compensation below) stays out.
+% v9.9.0: the two corrections are measured where they are used, not numbers of the layout
+% profile (10.17pt and 13.76pt, fitted on Fira; with Latin Modern Sans under another title bar a
+% [T] columns landed 5.2pt high). Three reference lists are typeset in boxes at this point -- a
+% top-level itemize, the same itemize in the first column of a columns[t], and of a columns[T]
+% -- and \SMColumnsTopCorrection is how much lower the [t] one starts, \SMColumnsTTopCompensation
+% how much of that the [T] one has taken back; a list in a column of either kind then starts
+% where the list would start without the columns. Both names stay readable (the last values
+% measured, 0pt before the first columns of the deck).
+\makeatletter
+\newcommand{\SM@columnsprobe}{%
+	\SM@toprefprobe{\begin{itemize}\item\SM@topreftext\end{itemize}}\let\SM@columnsref\SM@topref
+	\SM@toprefprobe{\begin{columns}[t]\begin{column}{0.46\linewidth}\begin{itemize}\item\SM@topreftext\end{itemize}\end{column}\end{columns}}%
+	\global\SMColumnsTopCorrection=\dimexpr\SM@topref sp-\SM@columnsref sp\relax
+	\SM@toprefprobe{\begin{columns}[T]\begin{column}{0.46\linewidth}\begin{itemize}\item\SM@topreftext\end{itemize}\end{column}\end{columns}}%
+	\global\SMColumnsTTopCompensation=\dimexpr\SMColumnsTopCorrection+\SM@columnsref sp-\SM@topref sp\relax
+}
 \BeforeBeginEnvironment{columns}{%
+	\ifSM@topprobing\else
 	\ifnum0\ifdefined\SMTopAutoActive\SMTopAutoActive\fi=1
 		\def\SMColumnsAtTop{0}%
 	\else
 		\edef\SMColumnsAtTop{\directlua{tex.sprint(slidemage_list_has_no_visible_box() and "1" or "0")}}%
 	\fi
 	\ifnum\SMColumnsAtTop=1
+		\ifluatex\ifvmode\SM@columnsprobe\fi\fi
 		\vspace*{-\SMColumnsTopCorrection}%
 	\fi
+	\fi
 }
+\makeatother
 % The correction above is measured for `columns[t]`. `columns[T]` (top-aligned, used on
 % most text-next-to-image slides) already starts its columns higher by itself -- beamer's
 % own T key adds \vskip-1ex\nointerlineskip at every column head -- so the same pull-up left
@@ -2720,7 +2748,8 @@
 % \leavevmode, which clears it, so a list at the top of a [T] column kept its \topsep --
 % zero at normal size, but a smaller list (\shrinklists, \small) loads \@listi's 4pt and
 % started that much below a figure beside it that sat on the Top Margin.
-% (\SMColumnsTTopCompensation is defined by the layout profile since v9.4.0.)
+% (\SMColumnsTTopCompensation was a number of the layout profile from v9.4.0 to v9.8.0; it is
+% measured since v9.9.0, see above, and the figures in this paragraph are history.)
 \makeatletter
 \define@key{beamer@col}{T}[true]{%
 	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
@@ -2972,19 +3001,32 @@
 % latexmk reruns while the file changes, and one rerun converges.
 % Any older \SMIncrease/ReduceContentTopShift call still works but no
 % longer matters: the measurement corrects whatever is left.
-% Exceptions: [c] frames (centred on purpose), sectionframe (own geometry),
-% a \progressstrip frame, and any frame opened after
+% Exceptions: [c] frames (centred on purpose: no pull-up at all), sectionframe
+% (own geometry), and any frame opened after
 %   \SMManualTopMargin
-% which keeps the old hand-placed position. \SMAutoTopMarginfalse in a
-% deck's preamble switches the whole mechanism off.
+% which keeps the frame's default position: no correction that depends on what
+% the frame starts with. (A \progressstrip frame is measured since v5.30.5.)
+% The default position (v9.9.0) is \SMContentTopShift, the pull-up that puts the
+% first line of a top-level list on the Top Margin in a standard frame. It used to
+% be a number of the layout profile (11.5964pt, fitted on Fira under the default
+% title bar: with another title bar or font the frames above landed up to 2.9pt
+% off); now every top-aligned frame records where its body begins (the origin
+% marker) and how far below that a top-level itemize's first line would start
+% (typeset in a box there), and the measurement writes the pull-up most frames
+% share into \jobname.top. The corrections of the measured frames are relative
+% to it. \SMAutoTopMarginfalse in a deck's preamble places every frame like
+% \SMManualTopMargin does (the default position, measured; no content-dependent
+% correction anywhere in the deck); it does not switch the measurement off.
 \newif\ifSMAutoTopMargin
 \SMAutoTopMargintrue
 \makeatletter
 \newif\ifSM@topmanual
+\newif\ifSM@topsection
 \newcommand{\SMManualTopMargin}{\global\SM@topmanualtrue}
 \newcount\SM@topindex
 \newwrite\SM@topfile
 \newcommand{\SMSetTopCorrection}[2]{\global\@namedef{SM@topcorr@#1}{#2}}
+\newcommand{\SMSetContentTopShift}[1]{\global\SMContentTopShift=#1\relax}
 \ifluatex
 	\SMLuaOnce{
 		luatexbase.add_to_callback("pre_shipout_filter", function(head)
@@ -3012,19 +3054,47 @@
 	\fi
 	\ifSMAutoTopMargin\ifSM@topmanual\gdef\SM@topcorr{0pt}\fi\else\gdef\SM@topcorr{0pt}\fi
 }
-% In the frame body, right after the pull-up: the start marker.
+% In the frame body, right after the pull-up: the start marker, then the origin marker.
 \newcommand{\SM@topstart}{%
-	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
-		\directlua{slidemage_measure.top_begin(\SM@topthis, \strip@pt\dimexpr\SM@topcorr\relax)}%
-		\def\SMTopAutoActive{1}% this frame is measured: the columns hook stays out
-	\fi\fi\fi
+	\ifluatex
+		\directlua{slidemage_measure.top_begin(\SM@topthis, \strip@pt\dimexpr\SM@topcorr\relax,
+			\number\dimexpr\SMContentTopShift-\SMContentTopShiftReduction+\SM@topcorr\relax,
+			\strip@pt\SMContentTopShift, \ifSMAutoTopMargin\ifSM@topmanual false\else true\fi\else false\fi)}%
+		\ifSMAutoTopMargin\ifSM@topmanual\else
+			\def\SMTopAutoActive{1}% this frame is measured: the columns hook stays out
+		\fi\fi
+		\SM@toprefprobe{\begin{itemize}\item\SM@topreftext\end{itemize}}%
+		\directlua{slidemage_measure.top_origin(\SM@topthis, \SM@topref,
+			\ifSM@topsection false\else\ifSM@toptitled true\else false\fi\fi)}%
+	\fi
+}
+% The reference list's first line box, in sp below this point (\SM@topref): #1 typeset in
+% a box that starts as the body does here (the same \prevdepth, font, \parskip and list
+% settings), measured by SlideMage_measure.lua like a frame's first content. Nothing of it
+% reaches the page; a deck's default overlay specification stays out (an \item<+-> would
+% count a step).
+% The reference line's text: a capital and an ascender, as tall as a line of running text (a
+% [T] column aligns its first line by the line's height, not by \baselineskip).
+\newcommand{\SM@topreftext}{Xh}
+\newbox\SM@topprobebox
+\newif\ifSM@topprobing
+\newif\ifSM@toptitled
+\newcommand{\SM@toprefprobe}[1]{%
+	\begingroup
+	\SM@topprobingtrue
+	\def\beamer@defaultospec{<*>}% beamer's own default: every step
+	\def\SMColumnsAtTop{0}%
+	\ifvmode\dimen@=\prevdepth\else\dimen@=\z@\fi
+	\setbox\SM@topprobebox=\vbox{\prevdepth=\dimen@#1\par}%
+	\xdef\SM@topref{\directlua{tex.sprint(slidemage_measure.box_content_top(\number\SM@topprobebox))}}%
+	\endgroup
 }
 % End of the body, or anywhere a frame wants to stop the measurement
 % (\progressstrip): nothing after this marker counts as first content.
 \newcommand{\SM@topstop}{%
-	\ifluatex\ifSMAutoTopMargin
+	\ifluatex
 		\directlua{slidemage_measure.top_end(\SM@topthis)}%
-	\fi\fi
+	\fi
 }
 \makeatother
 
@@ -3046,6 +3116,7 @@
 	% already captured.
 	\setcounter{footnote}{0}%
 	\csname SM@topprepare\endcsname
+	\ifstrempty{#2}{\global\csname SM@toptitledfalse\endcsname}{\global\csname SM@toptitledtrue\endcsname}%
 	\SMOpenFrame{[#1]{#2}}%
 	% Forces this frame's own body to start with the correct default text
 	% color, regardless of what any *previous* frame left active
@@ -3107,6 +3178,7 @@
 	\global\def\SMChapterLogoPath{}% opt-in only for the frame just closed
 	\global\def\SMContentTopShiftReduction{0pt}% opt-in only for the frame just closed
 	\global\csname SM@topmanualfalse\endcsname% opt-in only for the frame just closed
+	\global\csname SM@topsectionfalse\endcsname% set by sectionframe for the frame just closed
 	\global\SMSideFootnotesfalse% opt-in only for the frame just closed
 	\global\def\SMFrametitleFullHeightYellow{}% opt-in only for the frame just closed
 	\global\def\SMFrametitleLogoFixed{}% opt-in only for the frame just closed
@@ -5057,6 +5129,7 @@
 \newenvironment{sectionframe}[2][t]{%
 	\begingroup
 	\SMManualTopMargin% own title-bar geometry: no automatic Top Margin
+	\global\csname SM@topsectiontrue\endcsname% its taller bar: not counted for \SMContentTopShift
 	% Disable hyphenation for the title -- both here, in the measurement
 	% box below, and (since this is in effect for the rest of the group,
 	% which \begin{standardframe} -- triggering the real \insertframetitle
@@ -5406,9 +5479,9 @@
 % 10pt and a list 14pt below the strip against the usual 16pt -- direct instruction, slide 1j2).
 \makeatletter
 \newcommand{\SM@topstrip}{%
-	\ifluatex\ifSMAutoTopMargin\ifSM@topmanual\else
+	\ifluatex
 		\directlua{slidemage_measure.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripHeight\relax)}%
-	\fi\fi\fi
+	\fi
 }
 \makeatother
 % \progressstrip{Step 1,Step 2,Step 3}{k} -- a full-width strip in the

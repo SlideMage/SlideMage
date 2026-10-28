@@ -143,6 +143,32 @@ def _detect_font_measurement_names(root: Path) -> list[Finding]:
     return findings
 
 
+# v9.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
+# correct by their content, are measured on the page. Guarded like v9.8.0's names: a profile's \newlength of one is a
+# LaTeX error "already defined", a setting the "is derived, not set" error.
+GUARDED_V99_NAMES = ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation")
+_V99 = r"\\(" + "|".join(GUARDED_V99_NAMES) + r")(?![A-Za-z@])"
+_SETS_V99_NAME = re.compile(
+    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V99
+    + r"|" + _V99.replace("(", "(?P<assigned>", 1) + r"\s*=")
+
+
+def _detect_top_pullup_names(root: Path) -> list[Finding]:
+    """Project-root layout profiles, templates and project macros that still define or set a pull-up v9.9.0 measures."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_V99_NAME.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        f"\\{match.group(1) or match.group('assigned')} is measured on the page now; "
+                                        "remove this line."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -223,6 +249,22 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "footnote line's descenders and the footer box) instead of \\SMFootlineVOffset; to change a list's gaps, "
         "set \\SMLabelItemGap, \\SMEnumerateNestedLabelGap or \\SMEnumerateNestedSlotExtra."),
     detect=_detect_font_measurement_names,
+), Change(
+    id="top-pullups-measured",
+    since="v9.9.0",
+    severity=BREAKS,
+    title="A layout profile no longer holds the top pull-ups",
+    description=(
+        "\\SMContentTopShift (where a frame with \\SMManualTopMargin, a section frame or a deck with "
+        "\\SMAutoTopMarginfalse starts its body) and \\SMColumnsTopCorrection and \\SMColumnsTTopCompensation (a "
+        "columns environment that starts such a frame) are measured on the page, so they follow the template's "
+        "title bar and Top Margin and the profile's font. A project layout profile that still defines one stops "
+        "the compile with a LaTeX error at its \\newlength; a template or profile that sets one gets the error that "
+        "names it. Slides may still read them."),
+    fix=(
+        "Delete the lines that define or set these three names from the profile or template; no number replaces "
+        "them. To move the first line of every frame, change \\SMTopMargin in the template."),
+    detect=_detect_top_pullup_names,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

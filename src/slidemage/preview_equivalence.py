@@ -56,14 +56,21 @@ AUDITED_FRAMEWORK = {
     # setup layer; both profiles keep fonts, metrics and the three top pull-ups; the setup layer guards twelve more names. Re-audited: no
     # version, footer-hide or deck-label rule entered the base, the setup layer or the profiles; the frame footer gained one call
     # (the text drop) before its first \vspace*, the deck-version text is untouched, and the theme is unchanged.
-    "SlideMage_setup.tex": "88eebb1795b7959f363a80f0e077d2682eeaa26cd86f77817980c779148c04ae",
-    "SlideMage_layout_fira.tex": "787079b0eb1af8f53a9ee6bd3b6adc6fa44cabd5d021ce15156358172adabb8c",
-    "SlideMage_layout_lmsans.tex": "cbda6da0c26208a37b6e256dc927d866f2bba7f07581d7495aaccd4ba80953f0",
-    "SlideMage_base.tex": "23fab915dfb11a348db14232def61c17d9a45088218ee3285821778a38b6d681",
+    # v9.9.0 (step 10): the top pull-ups leave both profiles; the base measures where each top-aligned frame's body
+    # begins (a second marker for SlideMage_measure.lua and a reference list typeset in a box that never reaches the
+    # page) and reads \SMContentTopShift back from \jobname.top; a columns environment at the top of a frame the
+    # measurement does not correct measures its correction the same way; the setup layer guards three more names.
+    # Re-audited: no version, footer-hide or deck-label rule entered the base, the Lua file, the setup layer or the
+    # profiles; the .top mechanism adds none (the value is the one most frames of the deck share, and a page compile
+    # keeps the deck's while one of its frames agrees), the frame footer and the theme are unchanged.
+    "SlideMage_setup.tex": "a202b75b023ed1305192c99e43d3760c1254332689f811dcdaf5cad4544cb7ce",
+    "SlideMage_layout_fira.tex": "0f44c15ff57f6c71def59b1421ca15c8653657a29711e4bace1ba8b36bd8ae67",
+    "SlideMage_layout_lmsans.tex": "8266f2aa8bf9f7d69946239f6010b5b4ae850935729ec63760db52f04402ee17",
+    "SlideMage_base.tex": "ea5024a6d47ec78d98ad38061cbb1e5825b4068577a109b831df7ba1c500457b",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "0afea7c0abf1f38c52aec6666c67e8b21692c2051e96f3bb7b969b8a945b7e11",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
-    "SlideMage_measure.lua": "3dc20806363e8b328f1fa902f24b1074fea247e73169296e5caa7a6ce57907c5",
+    "SlideMage_measure.lua": "0e0d9e7a0d5a6837850178176b2c269413b2f7de784a5086e02f5206ef8db163",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.

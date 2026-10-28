@@ -204,6 +204,17 @@ end
 -- that frame's pull-up on the next run (latexmk reruns while the file
 -- changes; moving the body moves the measured line by the same amount, so
 -- the second run lands on the margin and the file stays unchanged).
+--
+-- The body origin (v9.9.0). Every top-aligned frame also writes an origin
+-- marker with the distance from it to the first line of a reference list (a
+-- top-level itemize, typeset in a box at that point: TeX's own spacing, in the
+-- frame's own font). The pull-up that puts that line on the target is the
+-- frame's origin rule; the value most frames share (a standard frame with a
+-- one-line title) is written to \jobname.top as \SMContentTopShift, the pull-up
+-- of every frame the measurement does not correct by its content
+-- (\SMManualTopMargin, \SMAutoTopMarginfalse, sectionframe). It follows the
+-- template and the font instead of being a number measured once for Fira; the
+-- corrections of the measured frames are written relative to it.
 ---------------------------------------------------------------------------
 
 -- The Top Margin (bp) and the text font's ascender (em) come from the template
@@ -247,6 +258,7 @@ function slidemage_measure.derive_ascender()
 end
 
 local MARKER_ID = 20260930
+local ORIGIN_ID = MARKER_ID + 1     -- the body origin of a frame placed by its origin
 local SP_PER_PT = 65536
 local BP_PER_PT = 72 / 72.27
 
@@ -267,9 +279,19 @@ slidemage_measure.top_measured = slidemage_measure.top_measured or {}
 slidemage_measure.top_debug = false
 slidemage_measure.top_extra_pt = slidemage_measure.top_extra_pt or {}
 
--- TeX side: this frame (index) got `applied_pt` of automatic correction
-function slidemage_measure.top_begin(index, applied_pt)
+slidemage_measure.top_pullup = slidemage_measure.top_pullup or {}
+slidemage_measure.top_managed = slidemage_measure.top_managed or {}
+slidemage_measure.top_shift_pt = nil
+
+-- TeX side: this frame (index) got `applied_pt` of automatic correction; its
+-- whole pull-up was `pullup_sp` (\SMContentTopShift, which was `shift_pt` in
+-- this run, less the frame's \SMReduceContentTopShift, plus the correction);
+-- `managed`: the measurement corrects it by its content
+function slidemage_measure.top_begin(index, applied_pt, pullup_sp, shift_pt, managed)
   slidemage_measure.top_applied[index] = applied_pt
+  slidemage_measure.top_pullup[index] = pullup_sp or 0
+  slidemage_measure.top_shift_pt = shift_pt or 0
+  slidemage_measure.top_managed[index] = managed ~= false
   local n = node.new(WHATSIT, USER_DEFINED)
   n.user_id = MARKER_ID
   n.type = 100          -- integer
@@ -291,8 +313,26 @@ function slidemage_measure.top_end(index)
   node.write(n)
 end
 
+-- TeX side: the body origin, written right after the start marker; `ref_sp` is
+-- how far below this point the first line box of the reference list begins
+-- (slidemage_measure.box_content_top of the list typeset in a box here);
+-- `counts`: the frame takes part in \SMContentTopShift (a titled frame other
+-- than sectionframe)
+slidemage_measure.top_ref = slidemage_measure.top_ref or {}
+slidemage_measure.top_counts = slidemage_measure.top_counts or {}
+slidemage_measure.top_origin_y = slidemage_measure.top_origin_y or {}
+function slidemage_measure.top_origin(index, ref_sp, counts)
+  slidemage_measure.top_ref[index] = ref_sp
+  slidemage_measure.top_counts[index] = counts
+  local n = node.new(WHATSIT, USER_DEFINED)
+  n.user_id = ORIGIN_ID
+  n.type = 100
+  n.value = index
+  node.write(n)
+end
+
 local function is_marker(n)
-  return n.id == WHATSIT and n.subtype == USER_DEFINED and n.user_id == MARKER_ID
+  return n.id == WHATSIT and n.subtype == USER_DEFINED and (n.user_id == MARKER_ID or n.user_id == ORIGIN_ID)
 end
 
 -- a box whose own list holds PDF literals is a picture (TikZ, the bullet
@@ -451,6 +491,18 @@ content_top_v = function(box, y)
   return nil
 end
 
+-- The top of the first visible line of a box TeX has just set (a vbox: a
+-- reference list typeset where the body begins), in sp below its top edge;
+-- 0 when it shows nothing.
+function slidemage_measure.box_content_top(n)
+  configured()
+  local box = tex.box[n]
+  if not box or box.id ~= VLIST then
+    return 0
+  end
+  return math.floor(content_top_v(box, 0) or 0)
+end
+
 -- does this box contain one of our markers (anywhere inside)?
 local function has_marker(box)
   local list = box.head or box.list
@@ -499,7 +551,7 @@ events_v = function(box, y, events)
   end
   for n in node.traverse(list) do
     if is_marker(n) then
-      events[#events + 1] = { marker = n.value, y = cur }
+      events[#events + 1] = { marker = n.value, origin = n.user_id == ORIGIN_ID, y = cur }
     elseif n.id == HLIST or n.id == VLIST then
       if has_marker(n) then
         if n.id == VLIST then
@@ -551,7 +603,7 @@ events_h = function(box, base, events)
   for n in node.traverse(list) do
     if is_marker(n) then
       flush()
-      events[#events + 1] = { marker = n.value, y = base }
+      events[#events + 1] = { marker = n.value, origin = n.user_id == ORIGIN_ID, y = base }
     elseif n.id == GLYPH then
       local s = glyph_size(n)
       if s > maxsize then
@@ -585,10 +637,14 @@ end
 -- one frame's numbers from a page: first content top, content bottom (the
 -- end marker), and the top of the first thing after it (footnotes/footer)
 local function measure_events(events)
-  local index, top, bottom, after = nil, nil, nil, nil
+  local index, top, bottom, after, origin = nil, nil, nil, nil, nil
   local state = "before"
   for _, e in ipairs(events) do
-    if e.marker then
+    if e.origin then
+      if index and e.marker == index and state == "body" then
+        origin = e.y
+      end
+    elseif e.marker then
       if e.marker > 0 and state == "before" then
         index, state = e.marker, "body"
       elseif index and e.marker == -index and state == "body" then
@@ -605,7 +661,7 @@ local function measure_events(events)
       after = e.top
     end
   end
-  return index, top, bottom, after
+  return index, top, bottom, after, origin
 end
 
 local function to_bp(sp)
@@ -623,17 +679,26 @@ function slidemage_measure.top_measure_page(box)
   else
     events_h(box, box.height, events)
   end
-  local index, top, bottom, after = measure_events(events)
+  local index, top, bottom, after, origin = measure_events(events)
   if slidemage_measure.top_debug then
     for _, e in ipairs(events) do
       if e.marker then
-        texio.write_nl("log", string.format("  [ev] marker %d", e.marker))
+        texio.write_nl("log", string.format("  [ev] %s %d at %.3fbp", e.origin and "origin" or "marker", e.marker, to_bp(e.y)))
       else
         texio.write_nl("log", string.format("  [ev] item top %.2fbp bottom %.2fbp", to_bp(e.top), to_bp(e.bottom)))
       end
     end
   end
-  if index and top then
+  if index and origin then
+    -- where the origin would be without any pull-up (sp from the page's top)
+    slidemage_measure.top_origin_y[index] = origin + (slidemage_measure.top_pullup[index] or 0)
+    if slidemage_measure.top_debug then
+      texio.write_nl("log", string.format("slidemage top margin: frame %d origin at %.3fbp (%.3fbp without pull-up), "
+        .. "reference line %.3fpt below it", index, to_bp(origin), to_bp(slidemage_measure.top_origin_y[index]),
+        (slidemage_measure.top_ref[index] or 0) / SP_PER_PT))
+    end
+  end
+  if index and top and slidemage_measure.top_managed[index] then
     local m = { top = to_bp(top) }
     if bottom and after then
       -- room below the content, down to the footnotes/footer
@@ -649,6 +714,33 @@ end
 
 -- \AtEndDocument: the new corrections, written through TeX (\write) to
 -- \jobname.top, which TeX opened in the aux directory latexmk uses
+-- The deck's \SMContentTopShift (pt): for each frame that counts, the pull-up
+-- that puts its reference line on its target line; the value most of them
+-- share (to 0.0001pt; a tie goes to the frame that comes first), unless one of
+-- them still has this run's value, which then stays (a page compile of a few
+-- slides keeps the deck's). nil when no frame counts.
+local function origin_shift(keys, current)
+  local votes, first, best = {}, {}, nil
+  for order, index in ipairs(keys) do
+    local y = slidemage_measure.top_origin_y[index]
+    if y and slidemage_measure.top_counts[index] then
+      local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
+      local pt = (to_bp(y + (slidemage_measure.top_ref[index] or 0)) - target) / BP_PER_PT
+      local key = string.format("%.4f", pt)
+      votes[key] = (votes[key] or 0) + 1
+      first[key] = first[key] or order
+      if not best or votes[key] > votes[best] or (votes[key] == votes[best] and first[key] < first[best]) then
+        best = key
+      end
+    end
+  end
+  local keep = string.format("%.4f", current)
+  if votes[keep] then
+    return tonumber(keep)
+  end
+  return best and tonumber(best)
+end
+
 function slidemage_measure.top_emit()
   configured()
   local keys = {}
@@ -656,11 +748,22 @@ function slidemage_measure.top_emit()
     keys[#keys + 1] = index
   end
   table.sort(keys)
+  -- the corrections below are relative to \SMContentTopShift: to the one of the
+  -- next run, so a frame keeps its place when that value changes
+  local shift = slidemage_measure.top_shift_pt or 0
+  local next_shift = origin_shift(keys, shift) or shift
+  if next_shift ~= 0 then
+    tex.sprint(string.format(
+      "\\immediate\\write\\csname SM@topfile\\endcsname"
+      .. "{\\string\\SMSetContentTopShift{%.4fpt}}", next_shift))
+  end
   for _, index in ipairs(keys) do
-    local applied = slidemage_measure.top_applied[index]
+    local applied = slidemage_measure.top_applied[index] + shift - next_shift
     local measured = slidemage_measure.top_measured[index]
     local value = applied
-    if measured then
+    if not slidemage_measure.top_managed[index] then
+      value = 0
+    elseif measured then
       local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
       local delta_pt = (measured.top - target) / BP_PER_PT
       -- delta < 0: content too high, it moves down -- but never by more

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""tools/calibrate_font_profile.py (v9.8.0): reads a profile's three numbers, compares them with a measurement of the
-calibration deck's PDF, and checks the values the base derives against the geometry their hooks ask for. The pure
+"""tools/calibrate_font_profile.py (v9.9.0): checks the values the base derives against the geometry their hooks ask
+for, measured in the calibration deck's PDF; a profile holds no number for it to suggest any more. The pure
 parts are tested here; the compile-and-measure run is opt-in (needs LuaLaTeX: SLIDEMAGE_TEX_TESTS=1), like the other
 tests that compile."""
 import importlib.util
@@ -45,22 +45,15 @@ def test_a_profiles_lengths_are_read_in_pt():
     assert cal.tex_length(text, "SMD") is None and cal.tex_length(text, "SMZ") is None
 
 
-def test_the_shipped_profiles_numbers_are_all_readable():
+def test_the_shipped_profiles_hold_none_of_the_numbers_the_base_derives():
     for profile in ("fira", "lmsans"):
         text = cal.profile_text(ROOT / "latex", profile)
-        for name in ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"):
-            assert cal.tex_length(text, name) is not None, (profile, name)
-        # the numbers the base derives since v9.8.0 are not in the profile
+        # derived since v9.8.0, and the three pull-ups since v9.9.0
         for name in ("SMFooterTextDrop", "SMSectionframeHeightCorrection", "SMLabelItemWidth", "SMLabelItemSep",
-                     "SMEnumerateNestedMinNumber", "SMEnumerateNestedLeftMargin"):
+                     "SMEnumerateNestedMinNumber", "SMEnumerateNestedLeftMargin", "SMContentTopShift",
+                     "SMColumnsTopCorrection", "SMColumnsTTopCompensation"):
             assert cal.tex_length(text, name) is None, (profile, name)
-
-
-def test_a_row_is_ok_within_the_tolerance_and_an_advisory_one_never_fails():
-    assert cal.Row("SMA", 4.6, 4.8, "").ok and cal.Row("SMA", 4.6, 4.6 + cal.TOLERANCE, "").ok
-    assert not cal.Row("SMA", 4.6, 5.0, "").ok
-    assert cal.Row("SMA", 4.6, None, "").ok and cal.Row("SMA", None, 5.0, "").ok
-    assert cal.Row("SMA", 4.6, 9.0, "", advisory=True).ok
+    assert not hasattr(cal, "Row") and not hasattr(cal, "T_COLUMNS_OFFSET")    # nothing to suggest, no Fira offset
 
 
 def test_a_check_is_ok_within_its_tolerance_and_when_nothing_was_measured():
@@ -107,12 +100,13 @@ def test_the_calibration_deck_has_a_slide_for_each_measurement():
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
                     reason="compiles the calibration deck: SLIDEMAGE_TEX_TESTS=1 and latexmk")
 @pytest.mark.parametrize("profile", ["fira", "lmsans"])
-def test_a_shipped_profile_reads_back_its_own_calibrations_and_meets_its_hooks(profile, tmp_path):
+def test_a_shipped_profile_meets_its_hooks(profile, tmp_path):
     out = tmp_path / "cal.pdf"
     proc = subprocess.run([sys.executable, str(ROOT / "tools" / "calibrate_font_profile.py"), "--profile", profile,
                            "--keep-pdf", str(out)], capture_output=True, text=True, errors="replace")
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "SET" not in proc.stdout and "FAIL" not in proc.stdout and out.is_file()
+    assert "FAIL" not in proc.stdout and out.is_file()
+    assert proc.stdout.count("manual-top frame") == 3
     assert "footer number centred" in proc.stdout and "footnote descenders" in proc.stdout and "section bar height" in proc.stdout
 
 

@@ -106,26 +106,13 @@
 \newcommand{\SMLinespread}{1.15}
 \newcommand{\SMParskip}{0.5em}
 
-% Calibrations -------------------------------------------------------------------------
-% Since v9.8.0 this profile holds no length measured against the rendered PDF but the three
-% pull-ups below: the footer text's drop, the label and numeral boxes of the lists, the footnotes'
-% offset and the section frame's corrections are read from the font where it is used or are hooks
-% of the catalog (SlideMage_setup.tex, 'Derived, not set'). tools/calibrate_font_profile.py reports
-% what the PDF shows for each.
-
-% The pull-up of a top-aligned frame (standardframe) and the corrections of the frames the
-% automatic Top Margin does not manage (the [c] frame, sectionframe, \SMManualTopMargin,
-% \SMAutoTopMarginfalse). In every other frame the measurement corrects what is left, but not
-% to the last digit: with these at 0 the frames of the manual land a thousandth of a point
-% elsewhere and 11 of 92 pages differ in a few pixels (v9.4.0 trial), and a \begin{columns} below
-% a paragraph still needs the 10.17pt, so none of the three goes. 11.5964pt is 40% more than
-% the original 7.33pt (the Top Margin was reduced to 60%).
-\newlength{\SMContentTopShift}
-\setlength{\SMContentTopShift}{11.5964pt}
-\newlength{\SMColumnsTopCorrection}
-\setlength{\SMColumnsTopCorrection}{10.17pt}      % columns[t] starts 10.17pt below a list
-\newlength{\SMColumnsTTopCompensation}
-\setlength{\SMColumnsTTopCompensation}{13.76pt}  % columns[T] has taken part of that back
+% Since v9.9.0 this profile holds no length measured against the rendered PDF: the footer
+% text's drop, the label and numeral boxes of the lists, the footnotes' offset, the section
+% frame's corrections (v9.8.0) and the pull-ups of the frames the automatic Top Margin does not
+% correct by their content (\SMContentTopShift, 11.5964pt here before, and the two columns
+% corrections, 10.17pt and 13.76pt) are read from the font and the page where they are used or
+% are hooks of the catalog (SlideMage_setup.tex, 'Derived, not set'). tools/calibrate_font_profile.py
+% reports what the PDF shows for each.
 
 % Code fonts ----------------------------------------------------------------------
 % \SMCodeFile (listings) and the like use Fira Mono Regular; the theme's \ttfamily
