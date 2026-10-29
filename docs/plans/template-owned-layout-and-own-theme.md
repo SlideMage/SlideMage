@@ -914,7 +914,8 @@ mix it in.
 18. **Version re-designation and the public repository** (user plan 2026-10-29; once the redesign is done and a
     version is stable). Every version so far gets a leading 0 (e.g. v10.1.12 becomes v0.10.1.12, v8.69.0 becomes
     v0.8.69.0); the public repository starts with a fresh initial commit (no history), and versions go on from
-    v1.0.0. To plan in detail at that time; what the code needs:
+    v1.0.0. **Do not start any of this without the user's explicit authorization** (user, 2026-10-29); not even
+    preparatory code changes. To plan in detail at that time; what the code needs:
    - **CHANGELOG parsing:** `version._HISTORY_ENTRY_RE` accepts exactly three parts (`v\d+\.\d+\.\d+`); it must
      accept the four-part history entries. `updater.parse_version` already takes any number of parts, and
      `(0, 10, 1, 12) < (1, 0, 0)` compares correctly. Check `packaging/release_notes.py` and its tests the same way.
