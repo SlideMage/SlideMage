@@ -11,7 +11,7 @@ import sys
 import pytest
 from agent_fakes import ScriptedProvider, reply
 from test_claude_code_gui import env as claude_env, pump, use_claude_code, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, LF, slide_file
+from test_tasks_gui import BROKEN, LF, slide_file
 
 from slidemage import app_settings
 from slidemage.ai import ai_profile, claude_launch, credentials, resolver
@@ -21,7 +21,8 @@ from slidemage.ui.workspace.terminal import view as view_module
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 
-LOCAL, CLAUDE_CODE, API, CLOUD = ai_profile.LOCAL, ai_profile.CLAUDE_CODE, ai_profile.API, ai_profile.CLOUD
+LOCAL, OLLAMA, CLAUDE_CODE, ANTHROPIC_API, CLOUD = (ai_profile.LOCAL, ai_profile.OLLAMA, ai_profile.CLAUDE_CODE,
+                                                    ai_profile.ANTHROPIC_API, ai_profile.CLOUD)
 PROSE = LF.replace("First point", "This first point explains the main idea of the slide with enough ordinary words")
 
 
@@ -63,9 +64,9 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
     pump(0.2)
     assert a._stack.currentWidget() is a.chat and env.view.session is None and not env.log.exists()
     go(env, CLOUD, CLAUDE_CODE)
-    assert a._stack.currentWidget() is a.claude_code
+    assert a._stack.currentWidget() is a.surface_for("claude_code")
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert a._stack.currentWidget() is a.chat
     go(env, LOCAL)
     assert a._stack.currentWidget() is a.chat
@@ -75,14 +76,14 @@ def test_the_body_follows_the_route_and_the_terminal_starts_only_on_claude_code(
 def test_leaving_claude_code_ends_the_session_and_coming_back_starts_a_new_one(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     env.window.ai_route.request(LOCAL)
     assert env.window.ai_route.popover_kind == "session"
     env.window.ai_route._popover.spec.actions[-1][2]()           # End session and switch
-    assert env.window.state.ai_route == LOCAL and not env.view.session_live and not first.alive
+    assert env.window.state.ai_route == OLLAMA and not env.view.session_live and not first.alive
     assert env.window.assistant._stack.currentWidget() is env.window.assistant.chat
     go(env, CLOUD, CLAUDE_CODE)
-    wait_until(lambda: env.view.session_live and env.view.session._process is not first)
+    wait_until(lambda: env.view.session_live and env.view.session._pty._process is not first)
     assert env.view.status.text() == "Running"
 
 
@@ -97,8 +98,8 @@ def test_the_chat_has_no_scope_or_new_button_of_its_own(env):
 def test_the_header_names_each_route_and_what_its_conversation_runs_on(env, monkeypatch):
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
     head = header(env)
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.CHAT, "qwen3:8b")
-    ai_profile.set_model_choice(env.window.project, API, ai_profile.CHAT, "claude-sonnet-5-5")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, ANTHROPIC_API, ai_profile.CHAT, "claude-sonnet-5-5")
     env.window.refresh_ai_models()
     assert head.ai_switch.toolTip().startswith("Local · Ollama")
     assert head.route_note == "Chat with qwen3:8b · localhost:11434" and head.route_note in head.ai_switch.toolTip()
@@ -107,7 +108,7 @@ def test_the_header_names_each_route_and_what_its_conversation_runs_on(env, monk
     assert head.ai_switch.toolTip().startswith("Cloud · Claude Code")
     assert head.route_note == "Terminal · permissions are handled in Claude Code"
     assert head.ai_switch.segments.current() == CLOUD and head.ai_switch.property("cloud") is True
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert head.ai_switch.toolTip().startswith("Cloud · Anthropic API") and head.route_note == "Chat with claude-sonnet-5-5"
     go(env, LOCAL)
     assert head.route_note.startswith("Chat with qwen3:8b")
@@ -123,9 +124,9 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
     providers = [ScriptedProvider(reply("From the API.")), ScriptedProvider(reply("From Ollama."))]
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: providers.pop(0))
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.CHAT, "qwen3:8b")
     chat = area(env).chat
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     chat.send("one")
     wait_until(lambda: not chat.session.running)
     go(env, LOCAL)
@@ -135,7 +136,7 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
     assert len(chat.session.history) == 2
     header(env).new_button.click()                               # Local only
     assert chat.session.history == [] and not chat._empty.isHidden()
-    go(env, CLOUD, API)
+    go(env, CLOUD, ANTHROPIC_API)
     assert len(chat.session.history) == 2 and chat._empty.isHidden()
     header(env).new_button.click()
     assert chat.session.history == []
@@ -144,9 +145,9 @@ def test_new_conversation_clears_the_chat_of_the_route_on_show_and_no_other(env,
 def test_new_conversation_on_claude_code_starts_a_new_session(env):
     go(env, CLOUD, CLAUDE_CODE)
     wait_until(lambda: env.view.session is not None and env.view.session.running)
-    first = env.view.session._process
+    first = env.view.session._pty._process
     header(env).new_button.click()
-    wait_until(lambda: env.view.session._process is not first and env.view.session.running)
+    wait_until(lambda: env.view.session._pty._process is not first and env.view.session.running)
     assert not first.alive
 
 
@@ -200,10 +201,10 @@ def test_at_most_the_two_most_relevant_tasks_show_with_all_actions_last(env):
 
 
 def test_only_the_tasks_the_route_can_run_are_offered(env):
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.TRANSLATION, "translategemma:12b")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.TRANSLATION, "translategemma:12b")
     break_slide(env)
     wait_until(lambda: shown(env) == ["Translate to German", "All actions…"])         # Local cannot fix LaTeX
-    ai_profile.set_model_choice(env.window.project, LOCAL, ai_profile.TRANSLATION, "")
+    ai_profile.set_model_choice(env.window.project, OLLAMA, ai_profile.TRANSLATION, "")
     env.window.refresh_ai_models()
     wait_until(lambda: shown(env) == ["Check readability", "All actions…"])             # no translation model chosen: only the check
     go(env, CLOUD, CLAUDE_CODE)
@@ -261,7 +262,7 @@ def test_a_running_task_shows_its_pill_with_open_and_the_buttons_wait(env, tmp_p
     assert area(env)._stack.currentWidget() is area(env).task_card and not head.pill.isVisibleTo(head)
     assert shown(env) == ["All actions…"]
     area(env).task_card.back.click()                                  # Back to conversation: the card goes, its pill stays
-    assert area(env)._stack.currentWidget() is area(env).claude_code
+    assert area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
     assert head.pill.isVisibleTo(head) and head.pill.label.full_text() == "Better title · generating"
     assert shown(env) == ["All actions…"]
     head.pill.clicked.emit()                                          # Open
@@ -328,7 +329,8 @@ def test_the_caption_under_the_terminal_names_the_models_of_the_task_buttons(env
 
 def test_the_terminal_has_no_bubble_strip_or_scope_of_its_own(env):
     assert not hasattr(env.view, "_bubble_row") and not hasattr(env.view, "more")
-    assert env.view.scope is area(env).scope
+    assert not hasattr(env.view, "scope")
+    assert env.view._surface_context.scope() == area(env).scope.current()
 
 
 # -- a change of slide waits for the selection to rest (v8.39.9) --------------------------------------------------

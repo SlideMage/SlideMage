@@ -54,9 +54,9 @@ def env(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
     context = ProjectContext.at(root)
     monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
-    ai_profile.set_cloud_conn(context, ai_profile.API)
+    ai_profile.set_cloud_conn(context, ai_profile.ANTHROPIC_API)
     ai_profile.set_mode(context, ai_profile.CLOUD)
-    ai_profile.set_model_choice(context, ai_profile.API, ai_profile.CHAT, "claude-sonnet-5-5")
+    ai_profile.set_model_choice(context, ai_profile.ANTHROPIC_API, ai_profile.CHAT, "claude-sonnet-5-5")
     window = build_window(monkeypatch, context)
     window.show()
     window.state.set_mode("source")     # no Preview render thread to outlive the test
@@ -224,14 +224,14 @@ def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
     server.script = [ollama_ndjson(["Looking."], [("read_file", {"path": SLIDE})]), ollama_ndjson(["Fine as is."])]
     try:
         ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
-        ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3")
+        ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
         env.providers.append(OllamaProvider("qwen3", host=server.url))
         assert ai_profile.resolve(env.window.project, ai_profile.CHAT).label == "qwen3 · Ollama"
         ask(env)
         assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
             "AssistantText", "ToolCard", "AssistantText"]
         assert widgets(env, AssistantText)[-1].raw == "Fine as is." and not widgets(env, Notice)
-        assert env.window._ollama_task_label is None
+        assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
     finally:
         server.close()
 
@@ -339,7 +339,10 @@ def test_the_permission_is_remembered(env):
 
 @pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
 def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
-    if not local:
+    if local:
+        ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+        ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
+    else:
         ai_profile.mark_cloud_seen(env.window.project)
     script(env, blocked()).is_local = local
     env.chat.send("go")
@@ -446,7 +449,7 @@ def items(menu):
 def test_the_picker_lists_the_local_models_that_call_tools_and_marks_the_default(env):
     ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
     env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "old-model:7b")
+    ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "old-model:7b")
     env.chat.refresh_route()
     menu = open_route_menu(env)
     assert items(menu) == [                                                          # no cloud models on this route
@@ -458,9 +461,9 @@ def test_the_picker_lists_the_local_models_that_call_tools_and_marks_the_default
 def test_a_model_picked_in_the_menu_is_for_this_chat_only_and_the_default_stays(env):
     ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
     env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3:8b")
     env.chat._set_route("llama3.1:8b")
-    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
+    assert ai_profile.model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT) == "qwen3:8b"
     assert env.chat.route_chip.text() == "llama3.1:8b · Ollama" and env.chat.route().model == "llama3.1:8b"
     assert env.window.assistant.header.route_note.startswith("Chat with llama3.1:8b")
     menu = open_route_menu(env)
@@ -481,16 +484,16 @@ def test_the_picker_of_the_api_route_lists_its_models(env):
     menu.close()
     env.chat._set_route("claude-opus-5-5")
     assert env.chat.route_chip.text() == "claude-opus-5-5 · API"
-    assert ai_profile.model_choice(env.window.project, ai_profile.API, ai_profile.CHAT) == "claude-sonnet-5-5"
-    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == ""     # Local keeps its own
+    assert ai_profile.model_choice(env.window.project, ai_profile.ANTHROPIC_API, ai_profile.CHAT) == "claude-sonnet-5-5"
+    assert ai_profile.model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT) == ""     # Local keeps its own
 
 
 def test_a_model_picked_for_one_route_stays_with_it(env):
     env.chat._set_route("claude-opus-5-5")
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3:8b")
     env.window.state.set_ai_route(ai_profile.LOCAL)
     assert env.chat.route().model == "qwen3:8b"
-    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.API)
+    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
     assert env.chat.route().model == "claude-opus-5-5"
 
 
@@ -554,21 +557,24 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
 # -- the Ollama slot -------------------------------------------------------------------------------------
 
 def slot(env):
-    return env.window._ollama_task_label
+    return (env.window._route_tasks.get("ollama") or (None,))[0]
 
 
 @pytest.mark.parametrize("entry, text", [
     ("send", "go"), ("ask", "Make this slide more concise"),
 ], ids=["message", "suggestion"])
 def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch, entry, text):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    ai_profile.set_model_choice(env.window.project, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3")
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
-    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
+    lease = env.window.acquire_route_task("ollama", "drafting descriptions")
+    assert lease is not None
     script(env, reply("never"))
     getattr(env.chat, entry)(text)
     assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == text
     assert "Drafting descriptions is already running" in warned[0]
-    env.window.end_ollama_task()
+    lease.release()
 
 
 def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, monkeypatch):
@@ -715,7 +721,7 @@ def test_a_deck_the_agent_changed_goes_through_the_headers_and_the_slide_list(en
 def test_the_cloud_consent_is_the_windows_question(ctx, env, monkeypatch):
     asked = []
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
-    from slidemage.ai.providers import AnthropicProvider
+    from slidemage.ai.anthropic_provider import AnthropicProvider
     ws = env.chat.workspace
     assert on_thread(lambda: ws.confirm_cloud(AnthropicProvider("claude-sonnet-5-5"))) is True
     assert "cloud (claude-sonnet-5-5 · cloud)" in asked[0]

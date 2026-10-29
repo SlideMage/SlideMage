@@ -162,6 +162,7 @@ def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where
 # -- view, language, compile label ----------------------------------------------
 
 @pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
+# The AI switch left the bar in v8.61.0, so the tight bar fits down to 880 px and the tiny one is for less.
 def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window, qapp, theme):
     bar = topbar
     window.state.set_deck(MANUAL)
@@ -169,7 +170,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
     window.state.set_ai_route("cloud")
-    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (900, "tiny"), (2000, "full")):
+    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (850, "tiny"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density
@@ -818,20 +819,21 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
             held.set()
 
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m", "is_local": True})())
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: ai_fix.ai_profile.Route("ollama", ai_fix.ai_profile.FIXES, "m"))
+    monkeypatch.setattr(ai_fix, "built", lambda *a: type("P", (), {"label": "m", "is_local": True})())
     monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
     window.open_slide_editor(path)
     file = window.centre.source.current
     file.ask_ai_button.click()
     worker = file.fix_panel._worker
-    assert worker is not None and worker.isRunning() and window._ollama_task_label == "checking syntax"
+    assert worker is not None and worker.isRunning() and (window._route_tasks.get("ollama") or (None,))[0] == "checking syntax"
     window.state.set_mode("preview")           # the file is kept only because its check runs
     window.centre.source.show_path(None)
     assert file.keep_open
 
     assert window.close() is True
     assert aborted.is_set() and worker.isFinished()
-    assert window._ollama_task_label is None and not file.fix_panel.running
+    assert (window._route_tasks.get("ollama") or (None,))[0] is None and not file.fix_panel.running
 
 
 def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(window, monkeypatch):

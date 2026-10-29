@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import buttons, click, fake  # noqa: F401 -- a fixture
+from test_tasks_gui import buttons, click, fake  # noqa: F401 -- a fixture
 from test_image_batches_gui import result_of
 
 from slidemage.ai import ai_profile
@@ -99,7 +99,7 @@ def test_the_headers_tab_order_is_focus_new_conversation_scope_tasks_all_actions
 
 def test_the_headers_icons_have_names(fake):  # noqa: F811
     head = area(fake.env).header
-    assert head.route_icon.accessibleName() == "Cloud"
+    assert head.ai_switch.segments.accessibleName() == "AI for all tasks"      # the route is the switch since v8.61.0
     assert head.focus_button.accessibleName().startswith("Focus assistant")
     assert head.new_button.accessibleName().startswith("New conversation")
     assert head.scope.accessibleName() == "Scope of the assistant"
@@ -136,7 +136,7 @@ def test_closing_the_card_gives_the_keyboard_back_to_the_conversation(fake):  # 
     wait_until(lambda: card(env).phase == model.STOPPED)
     focus_on(env, action_buttons(env)[-1])                                       # Close
     action_buttons(env)[-1].click()
-    assert card(env) is None and area(env)._stack.currentWidget() is area(env).claude_code
+    assert card(env) is None and area(env)._stack.currentWidget() is area(env).surface_for("claude_code")
 
 
 def test_closing_a_card_on_the_chat_route_focuses_the_message_box(fake):  # noqa: F811

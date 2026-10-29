@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QPlainTextEdit, QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from .... import app_settings
-from ....ai import ai_profile, resolver
+from ....ai import ai_profile, resolver, routes
 from ....ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ....ai.agent_types import (
     EDIT_ASK,
@@ -40,7 +40,7 @@ from ....ai.agent_types import (
     ToolFinished,
     ToolStarted,
 )
-from ....ai.providers import ANTHROPIC_FALLBACK_MODELS, ChatProvider, ProviderError
+from ....ai.providers import ChatProvider, ProviderError
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
@@ -591,7 +591,7 @@ class ChatView(Surface):
         """Ask Ollama which installed models can call tools (one question at a time)."""
         if self._local_loader is not None:
             return
-        self._local_loader = loader = LocalModels()
+        self._local_loader = loader = LocalModels(self.state.project)
         loader.loaded.connect(self._on_local_models)
         background.start_detached(loader)
 
@@ -611,10 +611,16 @@ class ChatView(Surface):
             meta = " · ".join(filter(None, ["default" if model == default else "this chat only", note]))
             menu.add_item(model, model, icon="check" if model == route.model else "", meta=meta, enabled=enabled)
 
-        if route.route == ai_profile.API:
-            has_key = bool(resolver.api_models(project))
-            for model in ANTHROPIC_FALLBACK_MODELS:
-                add(model, "" if has_key else "needs an API key", has_key)
+        found = routes.get(route.route)
+        if found is None:
+            menu.add_item("", resolver.problem(project, route), enabled=False)
+        elif found.id != ai_profile.OLLAMA:
+            choices = found.model_choices(routes.context(project, found.id), ai_profile.CHAT)
+            reason = "" if choices else (resolver.problem(project, route) or "no model available")
+            for model in choices or dict.fromkeys(filter(None, [route.model, default])):
+                add(model, reason, bool(choices))
+            if not choices and not route.model and not default:
+                menu.add_item("", reason, enabled=False)
         else:
             self._load_local_models()
             known = self._local_models

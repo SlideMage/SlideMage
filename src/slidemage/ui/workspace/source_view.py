@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ...ai import routes
 from ... import latex_edit, slide_versioning
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
@@ -126,6 +127,12 @@ class SourcePane(Surface):
         self._version_button.clicked.connect(self.update_version)
         self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
+        # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S, beside the "x".
+        save_key = QKeySequence("Ctrl+S").toString(QKeySequence.SequenceFormat.NativeText)
+        self._save_button = Button("Save", "primary", compact=True)
+        self._save_button.setToolTip(f"Save this file ({save_key})")
+        self._save_button.clicked.connect(self.save)
+        top.addWidget(self._save_button)
         self._close_button = IconButton("close", "Close and go back to the slide")
         self._close_button.clicked.connect(self.close_requested.emit)
         top.addWidget(self._close_button)
@@ -389,6 +396,8 @@ class SourcePane(Surface):
         self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
         self._close_button.setVisible(has and not file.is_slide)
+        self._save_button.setVisible(has and not file.is_slide and not autosave_on())
+        self._save_button.setEnabled(has and file.dirty and not read_only)
         self._tools_button.setEnabled(has)
         frozen = has and file.is_slide and not file.is_current_slide
         self._frozen_bar.setVisible(frozen)
@@ -535,7 +544,8 @@ class SourcePane(Surface):
         menu = PopoverMenu(self, min_width=240)
         menu.add_item("reindent", "Reindent", meta="one tab per \\begin level",
                       enabled=file.is_slide and not file.editor.is_read_only())
-        menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide)
+        if routes.all():
+            menu.add_item("chat", "Ask the chat…", meta="about this slide", enabled=file.is_slide)
         menu.triggered.connect(self._on_tool_chosen)
         self._popup(menu, self._tools_button)
 

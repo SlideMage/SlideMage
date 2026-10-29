@@ -25,6 +25,8 @@ from pathlib import Path
 EXCLUDED = frozenset({
     "tkinter", "turtle", "turtledemo", "idlelib", "test", "ensurepip", "lib2to3", "pydoc_data", "this", "antigravity",
 })
+# Found by find_spec on Windows but not importable there: they need _curses or termios, which Windows lacks.
+POSIX_ONLY = frozenset({"curses", "pty", "tty"})
 # The list the spec writes beside the build (slidemage/plugins/), for the frozen self-test: find_spec in a frozen
 # app finds only what was bundled, so a module PyInstaller missed would silently drop out of the check.
 STDLIB_LIST_NAME = "stdlib_modules.txt"
@@ -56,10 +58,13 @@ def build_widget():
 def bundled_stdlib_modules() -> list[str]:
     """The top-level standard-library modules a plugin may import, on this platform: sys.stdlib_module_names
     without EXCLUDED and without private names (except _thread), and without those find_spec cannot find here
-    (msvcrt on Linux, say). Packages are listed by name; the spec adds their submodules."""
+    (msvcrt on Linux, say) or that cannot import here (POSIX_ONLY on Windows). Packages are listed by name; the
+    spec adds their submodules."""
     names = []
     for name in sorted(sys.stdlib_module_names):
         if name in EXCLUDED or (name.startswith("_") and name != "_thread"):
+            continue
+        if sys.platform == "win32" and name in POSIX_ONLY:
             continue
         try:
             found = importlib.util.find_spec(name) is not None
@@ -90,6 +95,18 @@ def _check_imports() -> list[str]:
             importlib.import_module(name)
         except Exception as e:
             problems.append(f"standard-library module {name} does not import: {e!r}")
+    return problems
+
+
+def _check_plugin_api_modules() -> list[str]:
+    from .. import plugin_api
+
+    problems = []
+    for name in plugin_api._RUNTIME_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception as e:
+            problems.append(f"plugin_api's module {name} does not import: {e!r}")
     return problems
 
 
@@ -191,7 +208,7 @@ def _check_widget(build) -> list[str]:
 
 
 def run() -> int:
-    problems = _check_imports() + _check_qt_imports() + _check_plugin()
+    problems = _check_imports() + _check_qt_imports() + _check_plugin_api_modules() + _check_plugin()
     if problems:
         print("SlideMage plugin self-test: failed")
         for problem in problems:

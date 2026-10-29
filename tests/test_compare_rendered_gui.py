@@ -16,7 +16,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 from test_chat_gui import EDIT, ask, env as chat_env, pump, script, wait_for_card, wait_until, widgets  # noqa: F401 -- a fixture
 from test_claude_code_gui import env as claude_env  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
+from test_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
 from test_task_card_gui import area, asked, card, phase_is, press, shown_buttons  # noqa: F401 -- a fixture
 from agent_fakes import call, reply
 
@@ -354,7 +354,7 @@ def test_the_task_card_compares_in_review_and_done(asked, renders):  # noqa: F81
     (dialog,) = renders.dialogs(env.window)
     assert dialog.texts == {"Before": BROKEN, "After": card(env).after} and "\\end{itemize}" in dialog.texts["After"]
     assert dialog.target.source_path == env.path and (dialog.view, dialog.language) == ("instructor", "EN")
-    assert len(renders.requests) == 2 and all(entry[6] == {'require_pdf': True} for entry in renders.requests)
+    assert len(renders.requests) == 2 and all(entry[5] == {'require_pdf': True} for entry in renders.requests)
     close(dialog)
     press(env, "Apply")
     wait_until(phase_is(env, model.DONE))

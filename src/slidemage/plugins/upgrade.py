@@ -50,11 +50,11 @@ MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v9.0.0")]
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:
-    """The AI routes (local, claude_code, api) that have a model chosen in the settings."""
+    """The AI routes (ollama, claude_code, anthropic_api) that have a model chosen in the settings."""
     stored = app_settings.get(ctx, ai_profile.MODELS_KEY)
     if not isinstance(stored, dict):
         return set()
-    return {route for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
+    return {ai_profile.route_id(route) for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
 
 
 def has_course_link(text: str) -> bool:
@@ -78,11 +78,11 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
     routes = _routes_with_models(ctx)
     if credentials.get_api_key(ctx) is not None:
         used[CLAUDE] = "You have an Anthropic API key"
-    elif app_settings.get(ctx, ai_profile.CONNECTION_KEY) in ai_profile.CONNECTIONS:
+    elif ai_profile.route_id(app_settings.get(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
         used[CLAUDE] = "You chose Claude Code or the API for cloud AI"
-    elif routes & {ai_profile.CLAUDE_CODE, ai_profile.API}:
+    elif routes & {ai_profile.CLAUDE_CODE, ai_profile.ANTHROPIC_API}:
         used[CLAUDE] = "You chose Claude models in the AI settings"
-    if ai_profile.LOCAL in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
+    if ai_profile.OLLAMA in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
         used[OLLAMA] = "You chose Ollama models"
     linked = course_linked_decks(ctx)
     if linked:

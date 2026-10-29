@@ -8,7 +8,7 @@ The checks run in this order and at most one popover shows for a request:
 1. AI work is running: the busy popover. "Stop and switch" cancels what can be cancelled (a file write that has
    started finishes first), the switch reads "stopping…", and when everything has ended the request starts over,
    so the checks below still apply. If the work ends by itself while the popover is open, it says so.
-2. Leaving Cloud · Claude Code while its terminal is alive: the session popover.
+2. Leaving a route whose conversation surface (the terminal of Claude Code) is alive: the session popover.
 3. To Cloud while the project setting is Local: the warning, every time.
 4. To Cloud for the first time in this project: asked once (`cloud_seen`).
 5. Otherwise the route is committed: `WorkspaceState.set_ai_route` tells every label, picker and conversation, and a
@@ -21,7 +21,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
-from ...ai import ai_profile
+from ...ai import ai_profile, routes
 from . import ai_popups
 from .ai_popups import DecisionPopover, PopupSpec
 
@@ -68,6 +68,8 @@ class AiRoute(QObject):
         project = self._window.project
         current = ai_profile.cloud_conn(project)
         conn = conn or current
+        if not routes.on_side(mode == LOCAL):         # that side has no route installed: its half is disabled
+            return
         if self._stopping or (mode == self._state.ai_mode and (mode == LOCAL or conn == current)):
             return
         self._close_popover()
@@ -82,9 +84,11 @@ class AiRoute(QObject):
         state, project = self._state, self._window.project
         if work := self._window.running_ai_work():
             return self._show(ai_popups.busy_spec(work, self._cancel, self._stop_and_switch))
-        if (state.ai_route == ai_profile.CLAUDE_CODE and (mode == LOCAL or conn != ai_profile.CLAUDE_CODE)
-                and self._window.assistant.claude_code.session_live):
-            return self._show(ai_popups.session_spec(self._cancel, self._end_session))
+        surface = self._window.assistant.surface_for(state.ai_route)      # a route with its own conversation surface
+        if surface is not None and (mode == LOCAL or conn != state.ai_route) and getattr(surface, "session_live", True):
+            route = routes.get(state.ai_route)
+            return self._show(ai_popups.session_spec(self._cancel, self._end_session,
+                                                     route.service if route else state.ai_route))
         if mode == CLOUD and state.ai_mode == LOCAL:
             if ai_profile.policy(project) == LOCAL:
                 return self._show(ai_popups.policy_spec(conn, self._cancel, self._commit, self._change_setting))
@@ -101,7 +105,8 @@ class AiRoute(QObject):
             ai_profile.mark_cloud_seen(project)      # the popovers above were the question
         self._state.set_ai_route(mode, conn)
         route = ai_profile.Route(self._state.ai_route, ai_profile.CHAT)
-        self._window.toast.show_message(LOCAL_AGAIN if mode == LOCAL else f"All AI tasks now use {route.name}")
+        message = LOCAL_AGAIN if mode == LOCAL and route.route == ai_profile.OLLAMA else f"All AI tasks now use {route.name}"
+        self._window.toast.show_message(message)
         self.switch.announce(mode)
         self.switch.refresh()
         if self._from_switch:           # a request that began on the switch ends there, on the segment selected now
@@ -131,7 +136,7 @@ class AiRoute(QObject):
         self._sync_watch()
 
     def _end_session(self) -> None:
-        self._window.assistant.claude_code.end_session()
+        self._window.assistant.surface_for(self._state.ai_route).stop()
         self._advance()
 
     def _change_setting(self) -> None:

@@ -23,6 +23,7 @@ from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
 from ..fileio import atomic_write, read_text_exact
 from ..project import ProjectContext
+from .credentials import PluginCredentials
 from .manifest import Manifest
 from .registry import Registrar
 
@@ -32,6 +33,8 @@ T = TypeVar("T")
 class HostUi(Protocol):
     """What the main window offers a plugin host (step 6)."""
 
+    def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool: ...
+    def end_route_task(self, route_id: str, owner: object) -> None: ...
     def open_deck_settings(self, deck: plugin_api.Deck, tab: str | None = None) -> None: ...
     def Page(self) -> Any: ...
     def Field(self, label: str, widget: Any) -> Any: ...
@@ -43,6 +46,10 @@ class HostUi(Protocol):
     def after_deck_edit(self, path: Path, summary: str, previous_text: str) -> None:
         """A plugin edit was written to the deck at `path`: do what a core deck edit does (rescan, refresh, history
         with previous_text for Undo)."""
+
+    # Optional (the host asks with getattr): the terminal's colours, and what the user is looking at.
+    # def terminal_tokens(self) -> Tokens
+    # def focus(self) -> plugin_api.Focus
 
 
 # -- deck snapshot ---------------------------------------------------------------------------------------------
@@ -95,6 +102,29 @@ class PluginSettings:
 
 
 # -- the host --------------------------------------------------------------------------------------------------
+
+class _RouteTaskLease:
+    def __init__(self, release: Callable[[], None]) -> None:
+        self._release = release
+
+    def release(self) -> None:
+        release, self._release = self._release, lambda: None
+        release()
+
+    def __enter__(self) -> _RouteTaskLease:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self.release()
+
+
+def acquire_route_task(ui: HostUi, route_id: str, label: str) -> plugin_api.RouteTaskLease | None:
+    """Use the same ownership and lease semantics for core and plugin work."""
+    owner = object()
+    if not ui.try_start_route_task(route_id, label, owner):
+        return None
+    return _RouteTaskLease(lambda: ui.end_route_task(route_id, owner))
+
 
 class PluginHost(Registrar):
     def __init__(self, manifest: Manifest, ctx: ProjectContext, ui: HostUi | None = None) -> None:
@@ -223,6 +253,103 @@ class PluginHost(Registrar):
         else:
             self._logger.log(logging.ERROR if error else logging.INFO, "%s", text)
 
+    # -- services of the AI host API
+
+    def terminal(self) -> plugin_api.TerminalService:
+        from ..ui.workspace.terminal.service import TerminalService
+
+        ui = self._window()
+        tokens = getattr(ui, "terminal_tokens", None)
+        return TerminalService(self.ctx.root, tokens)       # type: ignore[return-value]
+
+    def watch_external_edits(self, on_change: Callable[[plugin_api.ExternalEdits], None]) -> plugin_api.EditWatch:
+        from ..ui.workspace.terminal.sync import ExternalEditWatch
+
+        return ExternalEditWatch(self.ctx.root, on_change)      # type: ignore[return-value]
+
+    def credentials(self, env_var: str | None = None) -> PluginCredentials:
+        return PluginCredentials(self.manifest.id, env_var)
+
+    def acquire_route_task(self, route_id: str, label: str) -> plugin_api.RouteTaskLease | None:
+        return acquire_route_task(self._window(), route_id, label)
+
+    def model_choices_changed(self, route_id: str) -> None:
+        notify = getattr(self.ui, "model_choices_changed", None)
+        if notify is not None:
+            notify(route_id)
+
+    def legacy_secret(self, name: Literal["anthropic_api_key"]) -> str | None:
+        if name != "anthropic_api_key":
+            raise ValueError(f"unknown legacy secret: {name}")
+        from .migrate import legacy_anthropic_key
+
+        return legacy_anthropic_key(self.ctx)
+
+    def legacy_ollama_host(self) -> str:
+        from ..app_settings import get_ollama_host
+
+        return get_ollama_host(self.ctx)
+
+    def run_in_background_with_progress(self, work, progress, done) -> None:
+        from PySide6.QtCore import QObject, QThread, Signal
+
+        from ..ui.background import start_detached
+
+        class Worker(QThread):
+            reported = Signal(object)
+            result = None
+            error = None
+
+            def run(self) -> None:
+                try:
+                    self.result = work(self.reported.emit)
+                except BaseException as exc:
+                    self.error = exc
+
+        class Receiver(QObject):
+            def report(self, value) -> None:
+                try:
+                    progress(value)
+                except Exception:
+                    self_logger.exception("progress callback raised")
+
+        self_logger = self._logger
+        thread = Worker()
+        receiver = Receiver()
+        thread.reported.connect(receiver.report)
+
+        def finished() -> None:
+            try:
+                done(thread.result, thread.error)
+            except Exception:
+                self._logger.exception("done callback raised")
+            finally:
+                receiver.deleteLater()
+                thread.deleteLater()
+
+        start_detached(thread, finished)
+
+    def ai_tools(
+        self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
+        mode: Literal["ask", "auto"] = "auto", cancel: Any = None, workspace: Any = None,
+    ) -> Any:
+        if scope not in ("slide", "deck"):
+            raise ValueError(f"scope must be 'slide' or 'deck', not {scope!r}")
+        if mode not in ("ask", "auto"):
+            raise ValueError(f"mode must be 'ask' or 'auto', not {mode!r}")
+        from ..ai.agent_toolbox import agent_toolbox
+        from ..ai.workspace import Workspace
+
+        if workspace is not None:
+            from ..ui.workspace.chat.plugin_surface import ToolWorkspace
+            if isinstance(workspace, ToolWorkspace):
+                workspace = workspace._workspace
+        return agent_toolbox(workspace or Workspace(self.ctx), scope, focus_slide, cancel, mode)
+
+    def focus(self) -> plugin_api.Focus:
+        read = getattr(self.ui, "focus", None)
+        return read() if read is not None else plugin_api.Focus(None, None, "slide")
+
     # -- the window
 
     def _window(self) -> HostUi:
@@ -241,6 +368,35 @@ class PluginHost(Registrar):
 
     def caption(self, text: str, tone: Literal["", "error"] = "") -> Any:
         return self._window().caption(text, tone)
+
+    def Surface(self):
+        from ..ui.kit.widgets import Surface
+        return Surface()
+
+    def Button(self, text, kind="secondary", *, compact=False):
+        from ..ui.kit.widgets import Button
+        return Button(text, kind, compact=compact)
+
+    def Chip(self, text, tone="neutral"):
+        from ..ui.kit.widgets import Chip
+        return Chip(text, tone)
+
+    def IconButton(self, icon, tooltip):
+        from ..ui.kit.widgets import IconButton
+        return IconButton(icon, tooltip)
+
+    def IconLabel(self, icon, size):
+        from ..ui.kit.widgets import IconLabel
+        return IconLabel(icon, size)
+
+    def style_chat_widget(self, widget, role):
+        from ..ui.kit import kit_qss as q
+        widget.setObjectName({"surface": q.SURFACE, "cloud_card": q.CLOUD_CARD, "title": q.ASSISTANT_TITLE}[role])
+
+    def theme_color(self, role):
+        if role != "info":
+            raise ValueError(role)
+        return self._window().terminal_tokens().info
 
     # -- helpers
 

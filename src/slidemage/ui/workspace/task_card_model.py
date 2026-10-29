@@ -4,7 +4,7 @@
 
 A task card is the host-managed run of one AI task on one slide: Generate, Review, Apply, Check preview, and the
 ends it can come to (done, conflict, preview failed, overflow, stopped, failed, setup needed). The TaskRunner
-(terminal/tasks.py) owns the card and moves it between phases; the view (task_card.py) shows what this module
+(task_bubbles.py) owns the card and moves it between phases; the view (task_card.py) shows what this module
 says: the state line, the steps and the buttons of a phase.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ... import readability
-from ...ai import ai_profile, claude_tasks
+from ...ai import ai_profile, tasks as ai_tasks
 from ..text import plural
 
 GENERATE, REVIEW, APPLY, CHECK = "generate", "review", "apply", "check_preview"
@@ -32,19 +32,19 @@ LOOKS = {GENERATE: ("autorenew", "strong"), REVIEW: ("rate_review", "strong"), A
          PREVIEW_FAILED: ("error", "error"), OVERFLOW: ("error", "error"), STOPPED: ("stop_circle", "muted"), FAILED: ("error", "error"),
          SETUP: ("cloud_off", "warning")}
 _GENERATING = {  # the sentence of the Generate phase, by task: {id}, {src} and {dst} (language names)
-    claude_tasks.TRANSLATE.name: "Translating {id} from {src} to {dst}. LaTeX commands, labels and the glossary are kept.",
-    claude_tasks.UPDATE_TRANSLATION.name: "Updating the {dst} translation of {id} from the {src} slide. LaTeX commands, "
+    ai_tasks.TRANSLATE.name: "Translating {id} from {src} to {dst}. LaTeX commands, labels and the glossary are kept.",
+    ai_tasks.UPDATE_TRANSLATION.name: "Updating the {dst} translation of {id} from the {src} slide. LaTeX commands, "
                                           "labels and the glossary are kept.",
-    claude_tasks.FIX_LATEX.name: "Fixing the LaTeX errors of {id}. Only what the errors need is changed.",
-    claude_tasks.PROOFREAD.name: "Proofreading {id}. The meaning, the LaTeX commands and the labels are kept.",
-    claude_tasks.CONCISE.name: "Shortening {id}. The frame, reveal steps and version tags are kept.",
-    claude_tasks.TITLE.name: "Looking for a better title for {id}. The rest of the slide is kept.",
-    claude_tasks.NOTE.name: "Writing a speaker note for {id}. The slide itself is kept.",
-    claude_tasks.REWRITE.name: "Rewriting the selection in {id}. Only the selected text changes; LaTeX commands, labels and "
+    ai_tasks.FIX_LATEX.name: "Fixing the LaTeX errors of {id}. Only what the errors need is changed.",
+    ai_tasks.PROOFREAD.name: "Proofreading {id}. The meaning, the LaTeX commands and the labels are kept.",
+    ai_tasks.CONCISE.name: "Shortening {id}. The frame, reveal steps and version tags are kept.",
+    ai_tasks.TITLE.name: "Looking for a better title for {id}. The rest of the slide is kept.",
+    ai_tasks.NOTE.name: "Writing a speaker note for {id}. The slide itself is kept.",
+    ai_tasks.REWRITE.name: "Rewriting the selection in {id}. Only the selected text changes; LaTeX commands, labels and "
                                "citations are kept.",
-    claude_tasks.PROOFREAD_SELECTION.name: "Proofreading the selection in {id}. Only the selected text can change; the "
+    ai_tasks.PROOFREAD_SELECTION.name: "Proofreading the selection in {id}. Only the selected text can change; the "
                                            "meaning, the LaTeX commands and the labels are kept.",
-    claude_tasks.READABLE.name: "Making {id} readable: larger text and images, the slide laid out again. The meaning, "
+    ai_tasks.READABLE.name: "Making {id} readable: larger text and images, the slide laid out again. The meaning, "
                                 "the LaTeX markup and the labels are kept; the result is measured before anything is written."}
 FIT_RULES = (readability.CLIPPED, readability.OVERLAP)      # what counts as "does not fit" after Make readable
 
@@ -97,7 +97,7 @@ class Readable:
 
 @dataclass
 class TaskCard:
-    task: claude_tasks.Task
+    task: ai_tasks.Task
     title: str                         # what the user asked for: "Update DE translation"
     route: ai_profile.Route            # captured when the task started
     phase: str = GENERATE
@@ -132,7 +132,7 @@ class TaskCard:
 
     @property
     def is_translation(self) -> bool:
-        return self.task is claude_tasks.TRANSLATE
+        return self.task is ai_tasks.TRANSLATE
 
     @property
     def skipped(self) -> set[str]:
@@ -179,7 +179,7 @@ def first_error(log: str) -> str:
 
 def state_text(card: TaskCard) -> str:
     """The state line of the card's phase (the handoff's table)."""
-    names = claude_tasks.LANGUAGE_NAMES
+    names = ai_tasks.LANGUAGE_NAMES
     source = names.get(other_language(card.language), card.language)
     target = names.get(card.language, card.language)
     phase, file = card.phase, card.file
@@ -227,7 +227,7 @@ def _done_text(card: TaskCard, source: str) -> str:
     if card.is_translation:
         links = f"It stays linked to the {source} slide." if not card.warnings else f"It is not complete: {'; '.join(card.warnings)}."
         text = f"Created {name}. {links}"
-    elif card.task is claude_tasks.UPDATE_TRANSLATION:
+    elif card.task is ai_tasks.UPDATE_TRANSLATION:
         text = f"Updated {name}. It stays linked to the {source} slide."
     else:
         text = f"Changed {card.changed} line{'s' if card.changed != 1 else ''} in {name}."

@@ -11,8 +11,9 @@ import pytest
 
 from slidemage import alt_draft, app_settings, project
 from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
-from slidemage.ai.ai_profile import API, CHAT, CLAUDE_CODE, CLOUD, FIXES, IMAGE_DESCRIPTION, LOCAL, TRANSLATION, Route
-from slidemage.ai.providers import AnthropicProvider, OllamaProvider
+from slidemage.ai.ai_profile import ANTHROPIC_API, CHAT, CLAUDE_CODE, CLOUD, FIXES, IMAGE_DESCRIPTION, LOCAL, OLLAMA, TRANSLATION, Route
+from slidemage.ai.anthropic_provider import AnthropicProvider
+from slidemage.ai.providers import OllamaProvider
 
 
 # -- defaults ----------------------------------------------------------------------------
@@ -20,13 +21,13 @@ from slidemage.ai.providers import AnthropicProvider, OllamaProvider
 def test_a_fresh_project_is_local_with_claude_code_as_its_cloud(ctx):
     assert ai_profile.policy(ctx) == LOCAL and ai_profile.mode(ctx) == LOCAL
     assert ai_profile.cloud_conn(ctx) == CLAUDE_CODE and not ai_profile.cloud_seen(ctx)
-    assert ai_profile.active_route(ctx) == LOCAL
+    assert ai_profile.active_route(ctx) == OLLAMA
 
 
 def test_default_models_of_each_route(ctx):
     for task in ai_profile.TASKS:
-        assert ai_profile.model_choice(ctx, LOCAL, task) == ""                       # the pickers offer what is installed
-        assert ai_profile.model_choice(ctx, API, task) == "claude-sonnet-5-5"
+        assert ai_profile.model_choice(ctx, OLLAMA, task) == ""                       # the pickers offer what is installed
+        assert ai_profile.model_choice(ctx, ANTHROPIC_API, task) == "claude-sonnet-5-5"
     assert ai_profile.model_choice(ctx, CLAUDE_CODE, CHAT) == ""                     # its chat is the terminal's own model
     for task in (IMAGE_DESCRIPTION, TRANSLATION, FIXES):
         assert ai_profile.model_choice(ctx, CLAUDE_CODE, task) == "haiku:medium"
@@ -75,8 +76,8 @@ def test_setting_the_policy_replaces_the_older_override(ctx):
 # -- the cloud connection and the first use -----------------------------------------------------
 
 def test_the_cloud_connection_is_saved_in_the_app_settings(ctx):
-    ai_profile.set_cloud_conn(ctx, API)
-    assert ai_profile.cloud_conn(ctx) == API and app_settings.get(ctx, "cloud_conn") == "api"
+    ai_profile.set_cloud_conn(ctx, ANTHROPIC_API)
+    assert ai_profile.cloud_conn(ctx) == ANTHROPIC_API and app_settings.get(ctx, "cloud_conn") == "anthropic_api"
     assert "cloud_conn" not in project.read_project_json(ctx.root)           # personal: not tracked with the project
     app_settings.set(ctx, "cloud_conn", "carrier pigeon")
     assert ai_profile.cloud_conn(ctx) == CLAUDE_CODE
@@ -100,14 +101,14 @@ def test_marking_the_first_use_needs_no_earlier_flag(ctx):
 # -- models per route and task, and the migration ---------------------------------------------------
 
 def test_each_route_keeps_its_own_model_of_a_task(ctx):
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "translategemma:12b")
-    ai_profile.set_model_choice(ctx, API, TRANSLATION, "claude-opus-5-5")
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "translategemma:12b")
+    ai_profile.set_model_choice(ctx, ANTHROPIC_API, TRANSLATION, "claude-opus-5-5")
     ai_profile.set_model_choice(ctx, CLAUDE_CODE, TRANSLATION, "haiku:high")
-    assert [ai_profile.model_choice(ctx, route, TRANSLATION) for route in ai_profile.ROUTES] == [
+    assert [ai_profile.model_choice(ctx, route, TRANSLATION) for route in ai_profile.services()] == [
         "translategemma:12b", "haiku:high", "claude-opus-5-5"]
-    assert ai_profile.model_choice(ctx, LOCAL, IMAGE_DESCRIPTION) == ""        # other tasks are untouched
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "")                   # "" goes back to the default
-    assert ai_profile.model_choice(ctx, LOCAL, TRANSLATION) == ""
+    assert ai_profile.model_choice(ctx, OLLAMA, IMAGE_DESCRIPTION) == ""        # other tasks are untouched
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "")                   # "" goes back to the default
+    assert ai_profile.model_choice(ctx, OLLAMA, TRANSLATION) == ""
 
 
 def test_a_claude_code_choice_must_be_one_of_its_models_and_efforts(ctx):
@@ -121,27 +122,27 @@ def test_the_models_of_the_earlier_version_read_as_local_and_api_models(ctx):
                             "translation_model": "ollama:sun_leaf/HY-MT:7b",
                             "syntax_check_model": "anthropic:claude-opus-5-5",
                             "chat_model": "anthropic:claude-haiku-4-5-20251001"})
-    assert ai_profile.model_choice(ctx, LOCAL, IMAGE_DESCRIPTION) == "qwen3:8b"
-    assert ai_profile.model_choice(ctx, LOCAL, TRANSLATION) == "sun_leaf/HY-MT:7b"
-    assert ai_profile.model_choice(ctx, LOCAL, FIXES) == "" and ai_profile.model_choice(ctx, API, FIXES) == "claude-opus-5-5"
-    assert ai_profile.model_choice(ctx, API, CHAT) == "claude-haiku-4-5-20251001"
-    assert ai_profile.model_choice(ctx, LOCAL, CHAT) == ""
+    assert ai_profile.model_choice(ctx, OLLAMA, IMAGE_DESCRIPTION) == "qwen3:8b"
+    assert ai_profile.model_choice(ctx, OLLAMA, TRANSLATION) == "sun_leaf/HY-MT:7b"
+    assert ai_profile.model_choice(ctx, OLLAMA, FIXES) == "" and ai_profile.model_choice(ctx, ANTHROPIC_API, FIXES) == "claude-opus-5-5"
+    assert ai_profile.model_choice(ctx, ANTHROPIC_API, CHAT) == "claude-haiku-4-5-20251001"
+    assert ai_profile.model_choice(ctx, OLLAMA, CHAT) == ""
     assert app_settings.get(ctx, "drafting_model") == "qwen3:8b"                # reading rewrites nothing
 
 
 def test_the_first_save_moves_the_earlier_models_into_the_new_place(ctx):
     app_settings.save(ctx, {"drafting_model": "qwen3:8b", "chat_model": "anthropic:claude-opus-5-5", "dark": True})
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "x")
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "x")
     settings = app_settings.load(ctx)
-    assert settings["ai_models"] == {LOCAL: {IMAGE_DESCRIPTION: "qwen3:8b", TRANSLATION: "x"},
-                                     API: {CHAT: "claude-opus-5-5"}}
+    assert settings["ai_models"] == {OLLAMA: {IMAGE_DESCRIPTION: "qwen3:8b", TRANSLATION: "x"},
+                                     ANTHROPIC_API: {CHAT: "claude-opus-5-5"}}
     assert "drafting_model" not in settings and "chat_model" not in settings and settings["dark"] is True
 
 
 # -- the resolver ----------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode, conn, route", [(LOCAL, CLAUDE_CODE, LOCAL), (LOCAL, API, LOCAL),
-                                               (CLOUD, CLAUDE_CODE, CLAUDE_CODE), (CLOUD, API, API)])
+@pytest.mark.parametrize("mode, conn, route", [(LOCAL, CLAUDE_CODE, OLLAMA), (LOCAL, ANTHROPIC_API, OLLAMA),
+                                               (CLOUD, CLAUDE_CODE, CLAUDE_CODE), (CLOUD, ANTHROPIC_API, ANTHROPIC_API)])
 @pytest.mark.parametrize("task", ai_profile.TASKS)
 def test_resolve_follows_the_mode_and_the_connection_for_every_task(ctx, mode, conn, route, task):
     ai_profile.set_mode(ctx, mode)
@@ -149,24 +150,24 @@ def test_resolve_follows_the_mode_and_the_connection_for_every_task(ctx, mode, c
     resolved = ai_profile.resolve(ctx, task)
     assert resolved.route == route and resolved.task == task
     assert resolved.model == ai_profile.route_for(ctx, route, task).model
-    assert resolved.is_local is (route == LOCAL)
+    assert resolved.is_local is (route == OLLAMA)
     assert (resolved.effort is not None) == (route == CLAUDE_CODE and task != CHAT)
 
 
 def test_the_labels_name_the_model_and_the_service(ctx):
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "translategemma:12b")
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "translategemma:12b")
     ai_profile.set_model_choice(ctx, CLAUDE_CODE, TRANSLATION, "haiku:medium")
-    ai_profile.set_model_choice(ctx, API, TRANSLATION, "claude-sonnet-4-5")
-    labels = [ai_profile.route_for(ctx, route, TRANSLATION).label for route in ai_profile.ROUTES]
+    ai_profile.set_model_choice(ctx, ANTHROPIC_API, TRANSLATION, "claude-sonnet-4-5")
+    labels = [ai_profile.route_for(ctx, route, TRANSLATION).label for route in ai_profile.services()]
     assert labels == ["translategemma:12b · Ollama", "Claude Code · Haiku · effort medium", "claude-sonnet-4-5 · API"]
-    assert ai_profile.route_for(ctx, LOCAL, CHAT).label == "no model chosen · Ollama"
+    assert ai_profile.route_for(ctx, OLLAMA, CHAT).label == "no model chosen · Ollama"
     assert ai_profile.route_for(ctx, CLAUDE_CODE, CHAT).label == "Claude Code · terminal"
-    assert [ai_profile.route_for(ctx, route, CHAT).name for route in ai_profile.ROUTES] == [
+    assert [ai_profile.route_for(ctx, route, CHAT).name for route in ai_profile.services()] == [
         "Local · Ollama", "Cloud · Claude Code", "Cloud · Anthropic API"]
 
 
 def test_a_picker_choice_replaces_the_saved_one_for_that_request_only(ctx):
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "a")
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "a")
     assert ai_profile.resolve(ctx, TRANSLATION, "b").model == "b"
     assert ai_profile.resolve(ctx, TRANSLATION).model == "a"
     ai_profile.set_mode(ctx, CLOUD)
@@ -180,11 +181,11 @@ def test_a_pick_that_claude_code_does_not_offer_is_no_pick(ctx):
 
 
 def test_a_route_keeps_what_it_was_resolved_with(ctx):
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "a")
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "a")
     before = ai_profile.resolve(ctx, TRANSLATION)
     ai_profile.set_mode(ctx, CLOUD)
-    ai_profile.set_model_choice(ctx, LOCAL, TRANSLATION, "z")
-    assert before.route == LOCAL and before.model == "a"           # the request under way
+    ai_profile.set_model_choice(ctx, OLLAMA, TRANSLATION, "z")
+    assert before.route == OLLAMA and before.model == "a"           # the request under way
     assert ai_profile.resolve(ctx, TRANSLATION).route == CLAUDE_CODE
     with pytest.raises(dataclasses.FrozenInstanceError):
         before.model = "b"
@@ -193,18 +194,18 @@ def test_a_route_keeps_what_it_was_resolved_with(ctx):
 # -- from a Route to something that runs, and never another route -------------------------------------
 
 def test_local_and_api_routes_have_providers_of_their_own_kind(ctx, monkeypatch):
-    local = resolver.provider_for(ctx, Route(LOCAL, CHAT, "qwen3:8b"))
+    local = resolver.provider_for(ctx, Route(OLLAMA, CHAT, "qwen3:8b"))
     assert isinstance(local, OllamaProvider) and local.model == "qwen3:8b"
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    cloud = resolver.provider_for(ctx, Route(API, CHAT, "claude-opus-5-5"))
+    cloud = resolver.provider_for(ctx, Route(ANTHROPIC_API, CHAT, "claude-opus-5-5"))
     assert isinstance(cloud, AnthropicProvider) and cloud.model == "claude-opus-5-5"
 
 
 def test_a_route_that_is_not_ready_says_so_and_nothing_takes_its_place(ctx):
     with pytest.raises(resolver.RouteUnavailable, match="Choose an Ollama model for translation"):
-        resolver.provider_for(ctx, ai_profile.route_for(ctx, LOCAL, TRANSLATION))               # no model chosen
+        resolver.provider_for(ctx, ai_profile.route_for(ctx, OLLAMA, TRANSLATION))               # no model chosen
     with pytest.raises(resolver.RouteUnavailable, match="API key"):
-        resolver.provider_for(ctx, ai_profile.route_for(ctx, API, TRANSLATION))                 # an Ollama model does not stand in
+        resolver.provider_for(ctx, ai_profile.route_for(ctx, ANTHROPIC_API, TRANSLATION))                 # an Ollama model does not stand in
     with pytest.raises(resolver.RouteUnavailable, match="not available on Cloud · Claude Code"):
         resolver.provider_for(ctx, ai_profile.route_for(ctx, CLAUDE_CODE, TRANSLATION))         # neither does the API
     assert "terminal" in resolver.problem(ctx, ai_profile.route_for(ctx, CLAUDE_CODE, CHAT))
@@ -215,16 +216,16 @@ def test_the_image_backends_of_each_route(ctx, monkeypatch, tmp_path):
     claude = tmp_path / "claude"
     monkeypatch.setattr(claude_launch, "find_claude", lambda: claude)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    local = resolver.draft_backend(ctx, Route(LOCAL, IMAGE_DESCRIPTION, "qwen3-vl:32b"))
+    local = resolver.draft_backend(ctx, Route(OLLAMA, IMAGE_DESCRIPTION, "qwen3-vl:32b"))
     assert isinstance(local, alt_draft.ModelBackend) and local.provider.is_local and local.label == "qwen3-vl:32b"
-    cloud = resolver.draft_backend(ctx, Route(API, IMAGE_DESCRIPTION, "claude-sonnet-5-5"))
+    cloud = resolver.draft_backend(ctx, Route(ANTHROPIC_API, IMAGE_DESCRIPTION, "claude-sonnet-5-5"))
     assert isinstance(cloud, alt_draft.ModelBackend) and isinstance(cloud.provider, AnthropicProvider)
     code = resolver.draft_backend(ctx, Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "low"))
     assert isinstance(code, claude_images.ClaudeDraftBackend) and (code.model, code.effort, code.claude) == ("haiku", "low", claude)
     assert not code.provider.is_local and code.provider is code
     translating = resolver.translation_backend(ctx, Route(CLAUDE_CODE, TRANSLATION, "opus", "high"))
     assert isinstance(translating, claude_images.ClaudeTranslationBackend) and translating.effort == "high"
-    assert isinstance(resolver.translation_backend(ctx, Route(LOCAL, TRANSLATION, "m")), alt_draft.ModelTranslationBackend)
+    assert isinstance(resolver.translation_backend(ctx, Route(OLLAMA, TRANSLATION, "m")), alt_draft.ModelTranslationBackend)
 
 
 def test_claude_code_that_is_not_installed_is_an_error_not_a_swap(ctx, monkeypatch):

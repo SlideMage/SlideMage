@@ -4,7 +4,7 @@
 update (pull) and delete, as `ollama pull` and `ollama rm` would (ai/ollama_admin.py).
 
 Deleting removes a model from Ollama's own store, not from a list SlideMage keeps. Both actions take
-the app-wide Ollama slot (`app.try_start_ollama_task`), so a model is not deleted or re-pulled under
+the Ollama route lease, so a model is not deleted or re-pulled under
 a drafting or translation batch that is using it. Both run on a thread (ui/background) that is not
 tied to the sheet: it ends, and frees the slot, even when the sheet is closed meanwhile.
 """
@@ -16,7 +16,7 @@ from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QListWidget, QListWidgetItem, QMessageBox
 
 from ... import app_settings, deck_snapshot
-from ...ai import ollama_admin
+from ...ai import ai_profile, ollama_admin
 from ...ai.providers import InstalledModel
 from .. import background
 from ..kit.widgets import Button, Field, Page, caption, row
@@ -107,7 +107,8 @@ class OllamaTab(Page):
         if not models:
             return
         what = f"deleting {len(models)} model(s)" if len(models) > 1 else f"deleting {models[0]}"
-        if not self.app.try_start_ollama_task(what):
+        lease = self.app.acquire_route_task(ai_profile.OLLAMA, what)
+        if lease is None:
             return
         detail = (f'"{models[0]}"' if len(models) == 1 else
                   f"these {len(models)} models:\n\n" + "\n".join(f"  • {m}" for m in models))
@@ -119,20 +120,17 @@ class OllamaTab(Page):
             "shares its files: like \"ollama rm\", Ollama only removes files no other installed model "
             "still references.")
         if confirm != QMessageBox.StandardButton.Yes:
-            self.app.end_ollama_task()
+            lease.release()
             return
-        self._run(lambda: self._delete_models(models), "Deleted", "Delete failed")
+        self._run(lambda: self._delete_models(models), "Deleted", "Delete failed", lease)
 
     def _delete_models(self, models: list[str]) -> Results:
         results: Results = []
-        try:
-            for model in models:
-                ok, error = ollama_admin.delete_model(model, app_settings.get_ollama_host(self.app.project))
-                results.append((model, ok, error or "Unknown error"))
-                if ok:
-                    self.app.log(f"Deleted Ollama model {model}")
-        finally:
-            self.app.end_ollama_task()      # freed here, so closing the sheet cannot keep the slot
+        for model in models:
+            ok, error = ollama_admin.delete_model(model, app_settings.get_ollama_host(self.app.project))
+            results.append((model, ok, error or "Unknown error"))
+            if ok:
+                self.app.log(f"Deleted Ollama model {model}")
         return results
 
     def _on_update(self) -> None:
@@ -148,26 +146,23 @@ class OllamaTab(Page):
             "cannot be cancelled once started.")
         if confirm != QMessageBox.StandardButton.Yes:
             return
-        if not self.app.try_start_ollama_task(
-                f"updating {len(models)} model(s)" if len(models) > 1 else f"updating {models[0]}"):
+        lease = self.app.acquire_route_task(
+            ai_profile.OLLAMA, f"updating {len(models)} model(s)" if len(models) > 1 else f"updating {models[0]}")
+        if lease is None:
             return
-        self._run(lambda: self._update_models(models), "Updated", "Update failed")
+        self._run(lambda: self._update_models(models), "Updated", "Update failed", lease)
 
     def _update_models(self, models: list[str]) -> Results:
         results: Results = []
-        try:
-            for model in models:
-                self.app.log(f"Updating Ollama model {model}…")
-                ok, error = ollama_admin.update_model(model, app_settings.get_ollama_host(self.app.project),
-                                                    on_progress=self.app.log)
-                results.append((model, ok, error))
-                self.app.log(
-                    f"Updated Ollama model {model}" if ok else f"Failed to update {model}: {error}")
-        finally:
-            self.app.end_ollama_task()
+        for model in models:
+            self.app.log(f"Updating Ollama model {model}…")
+            ok, error = ollama_admin.update_model(model, app_settings.get_ollama_host(self.app.project),
+                                                  on_progress=self.app.log)
+            results.append((model, ok, error))
+            self.app.log(f"Updated Ollama model {model}" if ok else f"Failed to update {model}: {error}")
         return results
 
-    def _run(self, work: Callable[[], Results], done: str, failed_title: str) -> None:
+    def _run(self, work: Callable[[], Results], done: str, failed_title: str, lease) -> None:
         """Start `work` on a thread of its own with the list locked; `done` ("Deleted") and `failed_title`
         word the message about the models it failed for."""
         self.update_button.setEnabled(False)
@@ -175,7 +170,11 @@ class OllamaTab(Page):
         self.models_list.setEnabled(False)
         worker = _AdminWorker(work)
         worker.done.connect(lambda results: self._on_finished(results, done, failed_title))
-        background.start_detached(worker)
+        try:
+            background.start_detached(worker, on_done=lease.release)
+        except BaseException:
+            lease.release()
+            raise
 
     def _on_finished(self, results: Results, done: str, failed_title: str) -> None:
         self.models_list.setEnabled(True)

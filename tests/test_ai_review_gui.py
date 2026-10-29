@@ -12,13 +12,13 @@ from PySide6.QtWidgets import QStyleOptionViewItem
 
 from conftest import build_window
 from slidemage import ai_review, slide_ids, slide_source
-from slidemage.ai import claude_tasks
+from slidemage.ai import tasks as ai_tasks
 from slidemage.ai.providers import OllamaProvider
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.widgets import Button, Chip
 from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
 from slidemage.ui.workspace.terminal.sync import DiskSync
-from slidemage.ui.workspace.terminal.tasks import TaskRunner, _Capture
+from slidemage.ui.workspace.task_bubbles import TaskRunner, _Capture
 
 SLIDE = "slides/abc-EN-Hello-current.tex"
 
@@ -137,8 +137,8 @@ def test_pinned_frozen_row_does_not_show_the_current_files_mark(window):
     assert not window.centre.details.findChildren(Chip)
 
 
-@pytest.mark.parametrize("task", [claude_tasks.CONCISE, claude_tasks.PROOFREAD, claude_tasks.TITLE,
-                                  claude_tasks.NOTE, claude_tasks.FIX_LATEX, claude_tasks.UPDATE_TRANSLATION])
+@pytest.mark.parametrize("task", [ai_tasks.CONCISE, ai_tasks.PROOFREAD, ai_tasks.TITLE,
+                                  ai_tasks.NOTE, ai_tasks.FIX_LATEX, ai_tasks.UPDATE_TRANSLATION])
 @pytest.mark.parametrize("open_buffer", [False, True])
 def test_every_headless_text_task_marks_its_actual_target(window, task, open_buffer):
     workspace = GuiWorkspace(window)
@@ -148,7 +148,7 @@ def test_every_headless_text_task_marks_its_actual_target(window, task, open_buf
     runner = TaskRunner(window, workspace)
     assert runner._write(capture, before.replace("First point", "New point")) is not None
     saved = ai_review.unreviewed(window.project)[path.relative_to(window.project.root).as_posix()]
-    assert saved["kind"] == ("translation" if task is claude_tasks.UPDATE_TRANSLATION else "edit")
+    assert saved["kind"] == ("translation" if task is ai_tasks.UPDATE_TRANSLATION else "edit")
     assert saved["source"] == task.name
     assert window.slide_list.tree.data_of(item(window, "abc" if open_buffer else "abd")).unreviewed
 
@@ -158,7 +158,7 @@ def test_translation_marks_both_partner_and_changed_source_and_inserted_call(win
     path = window.project.root / SLIDE
     before = window.centre.slide_text(path)
     body = slide_ids.body_of(before).replace("Hello", "Hallo")
-    capture = _Capture(claude_tasks.TRANSLATE, path, "abc-EN-Hello", before, "", body, "", "DE", "\r\n", window.state.deck.path)
+    capture = _Capture(ai_tasks.TRANSLATE, path, "abc-EN-Hello", before, "", body, "", "DE", "\r\n", window.state.deck.path)
     runner = TaskRunner(window, workspace)
     created, warnings = runner._translate(capture, body)
     assert created.id_slug.endswith("-DE-Hello") and warnings == []
@@ -173,10 +173,10 @@ def test_task_conflict_does_not_mark_and_summary_does_not_mark(window):
     workspace = GuiWorkspace(window)
     path = window.project.root / SLIDE
     before = window.centre.slide_text(path)
-    capture = _Capture(claude_tasks.TITLE, path, "abc-EN-Hello", "old", "", before, "", "", "\r\n", window.state.deck.path)
+    capture = _Capture(ai_tasks.TITLE, path, "abc-EN-Hello", "old", "", before, "", "", "\r\n", window.state.deck.path)
     runner = TaskRunner(window, workspace)
     assert runner._write(capture, "new") is None
-    capture = _Capture(claude_tasks.SUMMARISE, path, "abc", "", "", "", "", "", "", None)
+    capture = _Capture(ai_tasks.SUMMARISE, path, "abc", "", "", "", "", "", "", None)
     runner._apply(capture, SimpleNamespace(text="summary", elapsed_s=1))
     assert not ai_review.unreviewed(window.project)
 

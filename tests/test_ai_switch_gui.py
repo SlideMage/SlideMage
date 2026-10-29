@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 
 from slidemage.ai import ai_profile
-from slidemage.ai.ai_profile import API, CLAUDE_CODE, CLOUD, LOCAL
+from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, LOCAL, OLLAMA
 from slidemage.ai.providers import InstalledModel, OllamaProvider
 from slidemage.ui.kit.fonts import load_fonts
 from slidemage.ui.workspace.ai_work import RunningWork
@@ -69,11 +69,11 @@ def settle(qapp, window):
 def test_the_state_follows_ai_profile_and_tells_only_about_a_changed_route(window):
     seen = []
     window.state.ai_route_changed.connect(seen.append)
-    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, LOCAL)
+    assert (window.state.ai_mode, window.state.ai_route) == (LOCAL, OLLAMA)
     assert window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
     assert not window.state.set_ai_route(CLOUD) and seen == [CLAUDE_CODE]
-    assert window.state.set_ai_route(CLOUD, API) and seen == [CLAUDE_CODE, API]
-    assert window.state.set_ai_route(LOCAL) and seen[-1] == LOCAL
+    assert window.state.set_ai_route(CLOUD, ANTHROPIC_API) and seen == [CLAUDE_CODE, ANTHROPIC_API]
+    assert window.state.set_ai_route(LOCAL) and seen[-1] == OLLAMA
     assert not window.state.set_ai_route(LOCAL, CLAUDE_CODE)           # the connection matters only on Cloud
     assert ai_profile.cloud_conn(window.project) == CLAUDE_CODE
 
@@ -170,7 +170,7 @@ def test_work_that_ends_by_itself_turns_the_popover_into_the_finished_one(window
 
 def test_the_session_popover_asks_before_the_claude_code_terminal_is_ended(window, monkeypatch):
     window.state.set_ai_route(CLOUD)
-    claude = window.assistant.claude_code
+    claude = window.assistant.surface_for("claude_code")
     ended = []
     monkeypatch.setattr(type(claude), "session_live", property(lambda self: not ended))
     monkeypatch.setattr(claude, "end_session", lambda: ended.append(True))
@@ -182,7 +182,7 @@ def test_the_session_popover_asks_before_the_claude_code_terminal_is_ended(windo
     route(window).request(LOCAL)
     choose_primary(window)
     assert ended == [True] and window.state.ai_mode == LOCAL
-    window.state.set_ai_route(CLOUD, API)
+    window.state.set_ai_route(CLOUD, ANTHROPIC_API)
     ended.clear()
     route(window).request(CLOUD, CLAUDE_CODE)                           # another connection is no session to end
     assert kind(window) == "" and window.state.ai_route == CLAUDE_CODE
@@ -252,7 +252,7 @@ def test_each_route_keeps_its_own_draft_and_conversation(window, monkeypatch):
     assert chat.composer.toPlainText() == "" and chat.session.history == [] and chat._messages.count() == 3
     assert not chat._empty.isHidden()
     chat.composer.setPlainText("a Cloud draft")
-    route(window).request(CLOUD, API)
+    route(window).request(CLOUD, ANTHROPIC_API)
     assert chat.composer.toPlainText() == ""
     route(window).request(CLOUD, CLAUDE_CODE)
     assert chat.composer.toPlainText() == "a Cloud draft"
@@ -299,7 +299,7 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     chat, image = setup.cells[(LOCAL, ai_profile.CHAT)], setup.cells[(LOCAL, ai_profile.IMAGE_DESCRIPTION)]
     assert [chat.itemData(i) for i in range(chat.count())] == ["", "chat-model"]            # models that call tools
     assert [image.itemData(i) for i in range(image.count())] == ["", "vision-model"]
-    assert setup.heads[CLAUDE_CODE].text() == "Cloud · Claude Code"
+    assert setup.heads[CLOUD].text() == "Cloud · Claude Code"
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
     assert cloud_chat.isVisible() and cloud_chat.currentData() == ""
     assert cloud_chat.currentText() in cloud_chat.toolTip() and "switch or restart" in cloud_chat.toolTip()
@@ -312,7 +312,7 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     assert ai_profile.route_for(window.project, CLAUDE_CODE, ai_profile.CHAT).model == "sonnet"
     image.setCurrentIndex(1)
     image.activated.emit(1)
-    assert ai_profile.model_choice(window.project, LOCAL, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
+    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.IMAGE_DESCRIPTION) == "vision-model"
     assert window.toast.findChildren(type(setup.heads[LOCAL]))[0].text() == \
         "Default for Local · Image descriptions: vision-model"
     assert window.images_page.draft_model.currentData() == "vision-model"      # the pickers start on it
@@ -320,7 +320,7 @@ def test_ai_setup_saves_every_cell_as_a_default_and_says_so(window, qapp):
     cloud.setCurrentIndex(cloud.findData("opus:high"))
     cloud.activated.emit(cloud.currentIndex())
     assert ai_profile.model_choice(window.project, CLAUDE_CODE, ai_profile.TRANSLATION) == "opus:high"
-    assert ai_profile.model_choice(window.project, LOCAL, ai_profile.TRANSLATION) == ""      # each side its own
+    assert ai_profile.model_choice(window.project, OLLAMA, ai_profile.TRANSLATION) == ""      # each side its own
 
 
 class _Session:
@@ -333,36 +333,37 @@ class _Session:
 
 def test_a_new_claude_code_default_asks_a_running_session_to_switch_or_start_afresh(window, monkeypatch):
     from slidemage.ui.workspace import ai_setup
-    view = window.assistant.claude_code
+    view = window.assistant.surface_for("claude_code")
     session = _Session("sonnet", "high")
     switched, restarted, asked = [], [], []
     monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
     monkeypatch.setattr(view, "session", session)
-    monkeypatch.setattr(view, "switch_session", lambda: switched.append(True) or True)
-    monkeypatch.setattr(view, "restart", lambda resume=False: restarted.append(resume))
+    def restart(choice, continue_conversation):
+        (switched if continue_conversation else restarted).append(choice)
+    monkeypatch.setattr(view, "restart", restart)
     setup = open_setup(window)
     cloud_chat = setup.cells[(CLOUD, ai_profile.CHAT)]
 
     def pick(choice, answer):
-        monkeypatch.setattr(ai_setup, "ask_session_model", lambda _parent, label: asked.append(label) or answer)
+        monkeypatch.setattr(ai_setup, "ask_session_model", lambda _parent, label, _service: asked.append(label) or answer)
         cloud_chat.setCurrentIndex(cloud_chat.findData(choice))
         cloud_chat.activated.emit(cloud_chat.currentIndex())
         return window.toast.findChildren(QLabel)[0].text()
 
     assert pick("opus:high", ai_setup.SWITCH).endswith("switches to it and continues the conversation.")
-    assert asked == ["Opus · high"] and switched == [True] and not restarted
+    assert asked == ["Opus · high"] and switched == ["opus:high"] and not restarted
     assert pick("opus:low", ai_setup.NEW_CONVERSATION).endswith("restarted on it with a new conversation.")
-    assert asked[-1] == "Opus · low" and restarted == [False] and switched == [True]     # an effort level too
+    assert asked[-1] == "Opus · low" and restarted == ["opus:low"] and switched == ["opus:high"]     # an effort level too
     session.model, session.effort = "opus", "low"
     asked.clear()
     assert pick("opus:low", None).endswith(".") and not asked                            # what it runs on already
     assert pick("haiku:low", None).endswith("keeps its model until it is restarted.")
-    assert switched == [True] and restarted == [False]
+    assert switched == ["opus:high"] and restarted == ["opus:low"]
 
 
 def test_switch_session_saves_the_draft_with_esc_esc_then_resumes(window, monkeypatch, qapp):
     from slidemage.ui.workspace.terminal import view as view_mod
-    view = window.assistant.claude_code
+    view = window.assistant.surface_for("claude_code")
     session = _Session("sonnet", "high")
     restarted = []
     monkeypatch.setattr(type(view), "session_live", property(lambda self: True))
@@ -379,7 +380,7 @@ def test_switch_session_saves_the_draft_with_esc_esc_then_resumes(window, monkey
 def test_switch_session_types_the_unsent_prompt_into_the_restarted_session(window, monkeypatch, qapp):
     """2026-10-26: the prompt typed but not sent was gone after Switch now (Esc Esc alone did not keep it)."""
     from slidemage.ui.workspace.terminal import view as view_mod
-    view = window.assistant.claude_code
+    view = window.assistant.surface_for("claude_code")
     session = _Session("sonnet", "high")
     rule = "─" * 30
     screens = [[[rule, rule], ["> Shorten the title", "> Shorten the title"], [rule, rule]],     # before: the draft
@@ -428,11 +429,11 @@ def test_the_side_not_in_use_is_greyed_but_editable(window):
 
 def test_the_cloud_connection_of_ai_setup_changes_the_route_like_the_switch_when_on_cloud(window, monkeypatch):
     setup = open_setup(window)
-    setup.conn.changed.emit(API)                                         # on Local it only saves the connection
-    assert ai_profile.cloud_conn(window.project) == API and window.state.ai_route == LOCAL
-    assert setup.heads[CLAUDE_CODE].text() == "Cloud · API"
+    setup.conn.changed.emit(ANTHROPIC_API)                                         # on Local it only saves the connection
+    assert ai_profile.cloud_conn(window.project) == ANTHROPIC_API and window.state.ai_route == OLLAMA
+    assert setup.heads[CLOUD].text() == "Cloud · Anthropic API"
     commit_to_cloud(window)
-    assert window.state.ai_route == API
+    assert window.state.ai_route == ANTHROPIC_API
     setup = open_setup(window) if not window.ai_route.setup.isVisible() else window.ai_route.setup
     chat = window.assistant.chat
     chat.composer.setPlainText("api draft")
@@ -440,7 +441,7 @@ def test_the_cloud_connection_of_ai_setup_changes_the_route_like_the_switch_when
     assert window.state.ai_route == CLAUDE_CODE and chat.composer.toPlainText() == ""
     Work(window, monkeypatch)
     setup = window.ai_route.setup
-    setup.conn.changed.emit(API)
+    setup.conn.changed.emit(ANTHROPIC_API)
     assert kind(window) == "busy" and window.state.ai_route == CLAUDE_CODE    # a route change asks like a switch
     assert setup.conn.current() == CLAUDE_CODE
 
@@ -512,8 +513,9 @@ def test_images_is_not_a_top_bar_button_any_more_but_a_close_button_while_it_is_
 
 def test_the_busy_query_lists_ask_ai_to_fix_and_the_ollama_slot(window):
     assert window.running_ai_work() == []
-    assert window.try_start_ollama_task("translating a slide")
+    lease = window.acquire_route_task("ollama", "translating a slide")
+    assert lease is not None
     work = window.running_ai_work()
     assert [(w.text, w.route, w.local, w.stop) for w in work] == [("Translating a slide", "Local · Ollama", True, None)]
-    window.end_ollama_task()
+    lease.release()
     assert window.running_ai_work() == []

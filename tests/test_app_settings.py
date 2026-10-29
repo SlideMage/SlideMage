@@ -21,14 +21,14 @@ def _project_file(ctx):
 
 def test_ai_settings_go_to_the_machine_and_the_rest_stays_in_the_project(tmp_path):
     ctx = _project(tmp_path)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3:8b")
     app_settings.set_ollama_host(ctx, "http://gpu-box:11434")
     app_settings.set(ctx, "last_deck", "course")
     assert set(_project_file(ctx)) == {"last_deck"}
     machine = read_json(app_settings.MACHINE_STORE_PATH)
-    assert machine["ai_models"] == {"local": {"chat": "qwen3:8b"}} and machine["ollama_host"] == "http://gpu-box:11434"
+    assert machine["ai_models"] == {"ollama": {"chat": "qwen3:8b"}} and machine["ollama_host"] == "http://gpu-box:11434"
     assert app_settings.get(ctx, "last_deck") == "course"
-    assert ai_profile.model_choice(ctx, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
+    assert ai_profile.model_choice(ctx, ai_profile.OLLAMA, ai_profile.CHAT) == "qwen3:8b"
 
 
 def test_every_project_on_this_machine_sees_the_same_ai_settings(tmp_path):

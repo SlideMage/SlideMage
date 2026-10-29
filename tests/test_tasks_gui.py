@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The tasks of the assistant card (ui/workspace/terminal/tasks.py, assistant.py and assistant_header.py), with the fake
+"""The tasks of the assistant card (ui/workspace/task_bubbles.py, assistant.py and assistant_header.py), with the fake
 `claude -p` of tests/fake_claude.py: which tasks the focus and the lint offer, a fix applied into the open buffer, a
 translation that creates the partner only on success, the conflicts (typing, a changed source), Stop, the
 route's model and effort and the project's German address, the image bubbles (describe, translate the descriptions), the deck bubbles
@@ -25,7 +25,7 @@ from slidemage.ai import ai_profile, claude_launch, claude_runner, credentials, 
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ui.kit.widgets import Button, ModalSheet
 from slidemage.ui.workspace import task_card_model as card_model
-from slidemage.ui.workspace.terminal import tasks as tasks_module
+from slidemage.ui.workspace import task_bubbles as tasks_module
 
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
@@ -395,7 +395,7 @@ def test_two_clicks_start_one_task(fake):
     env = fake.env
     fake.reply({"answer": GERMAN, "delay": 0.3})
     click(env, "Translate to German")
-    env.window.assistant.tasks.start(tasks_module.claude_tasks.TRANSLATE)
+    env.window.assistant.tasks.start(tasks_module.ai_tasks.TRANSLATE)
     settled(env)
     assert len(fake.calls()) == 1
 
@@ -907,13 +907,13 @@ def test_on_local_a_task_with_no_ollama_path_says_so_and_nothing_runs(ctx, fake)
         assert "no other route or model is used" in card_model.state_text(card)
         assert not env.window.assistant.tasks.busy
     assert fake.calls() == [] and slide_file(env).editor.text() == BROKEN
-    assert env.window._ollama_task_label is None                                 # the slot was never taken
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None                                 # the slot was never taken
 
 
 def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_ollama_slot(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     provider, seen, held = OfflineProvider(), [], []
 
     def provider_for(_ctx, route):
@@ -921,7 +921,7 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
         return provider
 
     def translate_body(_ctx, given, body):
-        held.append(env.window._ollama_task_label)
+        held.append((env.window._route_tasks.get("ollama") or (None,))[0])
         assert given is provider
         return GERMAN["body"], None
 
@@ -930,20 +930,20 @@ def test_on_local_a_translation_runs_on_the_translation_model_and_holds_the_olla
     click(env, "Translate to German")
     assert settled(env).startswith("Applied automatically")
     assert len(german_files(env)) == 1 and fake.calls() == []                    # no claude process
-    assert [(r.route, r.model) for r in seen] == [("local", "translator")] and held == ["translating a slide"]
-    assert env.window._ollama_task_label is None and env.window.assistant.tasks._providers == []
+    assert [(r.route, r.model) for r in seen] == [(ai_profile.OLLAMA, "translator")] and held == ["translating a slide"]
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None and env.window.assistant.tasks._providers == []
 
 
 def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     provider = OfflineProvider()
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: ("", "Ollama is not reachable."))
     click(env, "Translate to German")
     assert settled(env) == "Ollama is not reachable. Nothing was changed." and german_files(env) == []
-    assert env.window._ollama_task_label is None
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
 
     release = threading.Event()
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: (release.wait(5), ("", "Aborted."))[1])
@@ -957,7 +957,7 @@ def test_a_translation_on_a_provider_that_fails_or_is_stopped_creates_nothing(ct
 def test_a_provider_translation_that_breaks_the_slide_is_refused_like_a_claude_answer(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.TRANSLATION, "translator")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.TRANSLATION, "translator")
     monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: OfflineProvider())
     broken = GERMAN["body"].replace("\\end{itemize}", "")
     monkeypatch.setattr(tasks_module.slide_add, "translate_body", lambda *a: (broken, None))
@@ -968,7 +968,7 @@ def test_a_provider_translation_that_breaks_the_slide_is_refused_like_a_claude_a
 def test_on_local_describing_images_uses_the_vision_model_backend(ctx, fake, monkeypatch):
     env = fake.env
     on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.IMAGE_DESCRIPTION, "vision")
+    ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.IMAGE_DESCRIPTION, "vision")
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
     provider = OfflineProvider()
@@ -986,9 +986,9 @@ def test_on_local_describing_images_uses_the_vision_model_backend(ctx, fake, mon
     monkeypatch.setattr(tasks_module.resolver, "draft_backend", lambda _ctx, route: made.append(route) or Backend())
     click(env, "Describe images (2)")
     assert settled(env).endswith(": 2 described")
-    assert [(r.route, r.model) for r in made] == [("local", "vision")] and fake.calls() == []
+    assert [(r.route, r.model) for r in made] == [(ai_profile.OLLAMA, "vision")] and fake.calls() == []
     assert [e.drafted_by for e in alt_images.load_store(ctx).values()] == ["offline"] * 2
-    assert env.window._ollama_task_label is None
+    assert (env.window._route_tasks.get("ollama") or (None,))[0] is None
 
 
 def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx, fake, monkeypatch):
@@ -997,7 +997,7 @@ def test_a_route_that_is_not_ready_starts_no_task_and_no_other_route_is_used(ctx
     click(env, "Translate to German")                                            # no Ollama model is chosen
     assert "Choose an Ollama model for translation" in env.window.assistant.tasks.card.note and fake.calls() == []
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)                             # no API key: Claude Code does not stand in
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)                             # no API key: Claude Code does not stand in
     click(env, "Translate to German")
     assert "No Anthropic API key" in env.window.assistant.tasks.card.note and fake.calls() == []
     assert german_files(env) == [] and not env.window.assistant.tasks.busy
@@ -1025,7 +1025,7 @@ def test_the_terminal_is_told_why_translate_slide_cannot_run_on_the_route(ctx, f
 
     env = fake.env
     credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    on_route(fake, ai_profile.CLOUD, ai_profile.ANTHROPIC_API)
     client = Client(env.view.session._server)
     answer = on_thread(lambda: client.text("translate_slide", path=SLIDE))
     assert "No Anthropic API key" in answer and fake.calls() == [] and not env.window.assistant.tasks.busy

@@ -6,21 +6,29 @@ API-key sources. (The route resolver and its settings are in test_ai_profile.py.
 from __future__ import annotations
 
 import base64
+import ctypes
+import errno
+import socket
+import ssl
 import threading
+import time
+import urllib.parse
+from types import SimpleNamespace
 
 import pytest
 
 from slidemage import app_settings
 from slidemage.ai import credentials
+from slidemage.ai.anthropic_provider import AnthropicProvider
 from slidemage.ai.providers import (
-    AnthropicProvider,
     Cancelled,
     OllamaProvider,
     ProviderError,
+    _shutdown_socket,
     parse_json_object,
 )
 
-from fake_http import api_key_of, message_sse
+from fake_http import TEST_TLS_CERT, ConnectProxy, Server, api_key_of, message_sse, wait_for_first_piece
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake"
 
@@ -35,7 +43,7 @@ def settings(tmp_path, monkeypatch):
 def anthropic(server, **kwargs):
     provider = AnthropicProvider(api_key=kwargs.pop("api_key", "sk-test"), **kwargs)
     provider.base_url = server.url
-    provider.max_retries = 0     # an error answer is the test; the SDK's backoff would only slow it
+    provider.max_retries = 0     # an error answer is the test; the backoff would only slow it
     return provider
 
 
@@ -162,19 +170,281 @@ def test_capabilities_are_asked_once_per_model(server):
     assert OllamaProvider("m", host="http://127.0.0.1:9").capabilities() == ()
 
 
-# -- Anthropic ---------------------------------------------------------------
+@pytest.mark.parametrize("service", ["anthropic", "ollama"])
+def test_abort_interrupts_tcp_connect_polling(monkeypatch, service):
+    p = AnthropicProvider(api_key="sk-test") if service == "anthropic" else OllamaProvider("m")
+    p.base_url = p.host = "http://192.0.2.1"
+    entered, closed = threading.Event(), threading.Event()
+    outcome = []
 
-def test_abort_closes_the_client_so_a_request_not_yet_streaming_ends_too():
-    class Closable:
-        closed = False
+    class Socket:
+        def setblocking(self, _blocking):
+            pass
+
+        def connect_ex(self, _address):
+            assert p._sock is self  # abort can reach even the first connect attempt
+            entered.set()
+            return errno.EINPROGRESS
+
+        def shutdown(self, _how):
+            closed.set()
 
         def close(self):
-            self.closed = True
+            closed.set()
 
-    provider = AnthropicProvider("claude-sonnet-5-5", api_key="k")
-    provider._client = client = Closable()
+    def select_pending(_read, _write, _exception, timeout):
+        assert timeout <= 0.05
+        closed.wait(timeout)
+        return [], [], []
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("192.0.2.1", 80))])
+    monkeypatch.setattr(socket, "socket", lambda *_args: Socket())
+    monkeypatch.setattr("slidemage.ai.providers.select.select", select_pending)
+    # These are Python socket doubles; the real Winsock path is checked separately.
+    monkeypatch.setattr("slidemage.ai.providers._shutdown_socket", lambda sock: sock.close() if sock else None)
+
+    def run():
+        try:
+            p.chat([{"role": "user", "content": "hi"}], timeout=60)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+        assert closed.is_set() and p._sock is None
+    finally:
+        p.abort()
+        closed.set()
+        worker.join(2)
+
+
+def test_connect_falls_back_from_unavailable_ipv6_and_restores_the_timeout(monkeypatch):
+    p = OllamaProvider()
+    calls = []
+
+    class Socket:
+        def setblocking(self, value):
+            calls.append(("blocking", value))
+
+        def connect_ex(self, target):
+            assert p._sock is self
+            calls.append(("connect", target))
+            return errno.EINPROGRESS
+
+        def getsockopt(self, *_args):
+            return 0
+
+        def settimeout(self, value):
+            calls.append(("timeout", value))
+
+        def close(self):
+            calls.append("close")
+
+    sock = Socket()
+
+    def create(family, *_args):
+        if family == socket.AF_INET6:
+            raise OSError(errno.EAFNOSUPPORT, "IPv6 disabled")
+        return sock
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", 80, 0, 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 80))])
+    monkeypatch.setattr(socket, "socket", create)
+    monkeypatch.setattr("slidemage.ai.providers.select.select", lambda _r, w, _e, _t: ([], w, []))
+    assert p._create_socket(("localhost", 80), 60) is sock
+    assert calls == [("blocking", False), ("connect", ("127.0.0.1", 80)), ("timeout", 60)]
+
+
+def test_tcp_connect_timeout_closes_the_published_socket(monkeypatch):
+    p = OllamaProvider()
+    closed = []
+
+    class Socket:
+        def setblocking(self, _value):
+            pass
+
+        def connect_ex(self, _target):
+            return errno.EINPROGRESS
+
+        def close(self):
+            closed.append(True)
+
+    clock = iter([0, 2])
+    monkeypatch.setattr("slidemage.ai.providers.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("192.0.2.1", 80))])
+    monkeypatch.setattr(socket, "socket", lambda *_args: Socket())
+    with pytest.raises(TimeoutError):
+        p._create_socket(("192.0.2.1", 80), 1)
+    assert closed == [True] and p._sock is None
+
+
+def test_windows_abort_closes_the_detached_socket_handle(monkeypatch):
+    calls = []
+
+    class Socket:
+        def detach(self):
+            calls.append("detach")
+            return 12345
+
+        def close(self):
+            calls.append("close")
+
+    def closesocket(handle):
+        calls.append(("closesocket", handle.value))
+
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(ws2_32=SimpleNamespace(closesocket=closesocket)), raising=False)
+    monkeypatch.setattr("slidemage.ai.providers.sys.platform", "win32")
+    _shutdown_socket(Socket())
+    assert calls == ["detach", ("closesocket", 12345), "close"]
+
+
+# -- HTTPS proxies -----------------------------------------------------------
+
+@pytest.fixture
+def proxy_environment(monkeypatch):
+    # Exercise the real environment resolver, with no developer proxy settings.
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "")
+    context = ssl.create_default_context(cafile=str(TEST_TLS_CERT))
+    monkeypatch.setattr(ssl, "_create_default_https_context", lambda: context)
+
+
+@pytest.fixture
+def https_server(proxy_environment):
+    srv = Server(tls=True)
+    yield srv
+    srv.close()
+
+
+@pytest.fixture
+def proxy(https_server):
+    relay = ConnectProxy(https_server.httpd.server_address)
+    yield relay
+    relay.close()
+
+
+@pytest.mark.parametrize("variable", ["HTTPS_PROXY", "https_proxy", "ALL_PROXY"])
+def test_anthropic_https_uses_connect_proxy(https_server, proxy, monkeypatch, variable):
+    monkeypatch.setenv(variable, proxy.url)
+    answer_with(https_server, [{"type": "text", "text": "via proxy"}])
+    p = anthropic(https_server)
+    # This name cannot resolve directly: only the local proxy routes it to the API.
+    p.base_url = "https://api.anthropic.test"
+    assert p.chat([{"role": "user", "content": "hi"}]).text == "via proxy"
+    assert len(proxy.requests) == 1 and proxy.requests[0]["path"] == "api.anthropic.test:443"
+    assert "proxy-authorization" not in proxy.requests[0]["headers"]
+    assert https_server.requests[0]["headers"]["host"] == "api.anthropic.test"
+    assert api_key_of(https_server.requests[0]) == "sk-test"
+
+
+@pytest.mark.parametrize("variable", ["NO_PROXY", "no_proxy"])
+def test_anthropic_no_proxy_bypasses_connect(https_server, proxy, monkeypatch, variable):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+    monkeypatch.setenv(variable, "127.0.0.1")
+    answer_with(https_server, [{"type": "text", "text": "direct"}])
+    assert anthropic(https_server).chat([{"role": "user", "content": "hi"}]).text == "direct"
+    assert not proxy.requests
+
+
+@pytest.mark.parametrize("bypass", ["", "localhost,127.0.0.1,::1"])
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "127.0.0.2", "::1"])
+def test_local_ollama_is_never_proxied(proxy_environment, monkeypatch, bypass, host):
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:8080")
+    monkeypatch.setenv("NO_PROXY", bypass)
+    authority = f"[{host}]" if ":" in host else host
+    conn = OllamaProvider()._connection(urllib.parse.urlsplit(f"https://{authority}:11434"), 1)
+    try:
+        assert conn.host == host and conn._tunnel_host is None
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("variable", ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"])
+def test_https_proxy_connection_configuration(proxy_environment, monkeypatch, variable):
+    monkeypatch.setenv(variable, "http://user%40name:p%3Ass@proxy.test:8080")
+    parts = urllib.parse.urlsplit("https://api.anthropic.test:8443")
+    for provider in (AnthropicProvider(), OllamaProvider()):
+        conn = provider._connection(parts, 10)
+        try:
+            assert (conn.host, conn.port) == ("proxy.test", 8080)
+            assert (conn._tunnel_host, conn._tunnel_port) == ("api.anthropic.test", 8443)
+            assert conn._tunnel_headers["Proxy-Authorization"] == "Basic dXNlckBuYW1lOnA6c3M="
+        finally:
+            conn.close()
+
+
+@pytest.mark.parametrize("variable", ["NO_PROXY", "no_proxy"])
+def test_proxy_bypass_connection_configuration(proxy_environment, monkeypatch, variable):
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:8080")
+    monkeypatch.setenv(variable, ".anthropic.test")
+    conn = AnthropicProvider()._connection(urllib.parse.urlsplit("https://api.anthropic.test"), 10)
+    try:
+        assert conn.host == "api.anthropic.test" and conn._tunnel_host is None
+    finally:
+        conn.close()
+
+
+def test_proxy_basic_auth_is_only_sent_to_the_proxy(https_server, proxy, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url.replace("http://", "http://user%40name:p%3Ass@"))
+    answer_with(https_server, [{"type": "text", "text": "ok"}])
+    p = anthropic(https_server)
+    p.base_url = "https://api.anthropic.test:8443"
+    assert p.chat([{"role": "user", "content": "hi"}]).text == "ok"
+    assert proxy.requests[0]["path"] == "api.anthropic.test:8443"
+    assert proxy.requests[0]["headers"]["proxy-authorization"] == "Basic " + base64.b64encode(b"user@name:p:ss").decode()
+    assert "proxy-authorization" not in https_server.requests[0]["headers"]
+
+
+def test_abort_ends_a_stream_through_the_connect_proxy(https_server, proxy, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", proxy.url)
+    answer_with(https_server, [{"type": "text", "text": "Hello there"}])
+    body = https_server.body
+    https_server.stall_after = body.index("event: content_block_delta", body.index("content_block_delta") + 1)
+    p = anthropic(https_server)
+    p.base_url = "https://api.anthropic.test"
+    texts, outcome = [], []
+
+    def run():
+        try:
+            p.stream_turn("", [], [], texts.append)
+        except ProviderError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        wait_for_first_piece(worker, texts)
+        assert p._sock is not None and len(proxy.requests) == 1
+        started = time.monotonic()
+        p.abort()
+        worker.join(1)
+        assert not worker.is_alive() and time.monotonic() - started < 1
+        assert len(outcome) == 1 and isinstance(outcome[0], Cancelled)
+    finally:
+        p.abort()
+        https_server.delay.set()
+        worker.join(2)
+
+
+# -- Anthropic ---------------------------------------------------------------
+
+def test_abort_before_the_request_ends_it_without_connecting(server):
+    provider = anthropic(server)
     provider.abort()
-    assert client.closed and provider._cancelled
+    with pytest.raises(Cancelled):
+        provider.chat([{"role": "user", "content": "hi"}])
+    assert not server.requests
 
 
 def test_anthropic_request_shape_with_image_and_json_mode(server):
@@ -186,7 +456,7 @@ def test_anthropic_request_shape_with_image_and_json_mode(server):
     request = server.requests[0]
     assert (request["method"], request["path"]) == ("POST", "/v1/messages")
     assert api_key_of(request) == "sk-test"
-    assert request["headers"]["anthropic-version"]          # the SDK's own API version (2023-06-01 up to SDK 1.x)
+    assert request["headers"]["anthropic-version"] == "2023-06-01"
     assert request["headers"]["content-type"] == "application/json"
     body = request["body"]
     assert set(body) == {"model", "max_tokens", "system", "messages", "stream"}
@@ -245,6 +515,18 @@ def test_anthropic_lists_models(server):
     assert server.requests[0]["path"].startswith("/v1/models")
     server.status = 401
     assert anthropic(server).list_models() == []
+
+
+def test_anthropic_list_models_follows_the_pages(server):
+    server.routes = {
+        "/v1/models?limit=1000": (200, {"data": [{"id": "a"}, {"id": "b"}], "has_more": True, "last_id": "b"}),
+        "/v1/models?limit=1000&after_id=b": (200, {"data": [{"id": "c"}], "has_more": False, "last_id": "c"}),
+    }
+    provider = anthropic(server)
+    assert provider.list_models() == ["a", "b", "c"]
+    assert [r["path"] for r in server.requests] == list(server.routes)
+    assert server.requests[0]["headers"]["x-api-key"] == "sk-test"
+    assert anthropic(server, api_key="").list_models() == []
 
 
 def test_parse_json_object_tolerates_fences_think_blocks_and_prose():

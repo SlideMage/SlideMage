@@ -14,9 +14,9 @@ per fix); everything stays reviewable against the editor, which is never
 locked. The check runs on a worker thread; Esc or Stop ends it. The model
 comes from the active AI route (AI setup, task "Fixes, notes,
 transcripts"; the first cloud request in a project asks for consent,
-ui/ai_models.provider_from_combo), and the answering model is named in the
+ui/ai_models.picked_route and built), and the answering model is named in the
 panel. Only Local and the API run it: Claude Code's equivalent is its "Fix
-LaTeX errors" task, which edits the slide (ui/workspace/terminal/tasks.py), so
+LaTeX errors" task, which edits the slide (ui/workspace/task_bubbles.py), so
 on that route Check says so and nothing is sent.
 """
 from __future__ import annotations
@@ -36,8 +36,8 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, syntax_check
-from ...ai import ai_profile
-from ..ai_models import fill_model_combo, provider_from_combo
+from ...ai import ai_profile, resolver
+from ..ai_models import fill_model_combo, picked_route, built
 from .. import background
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
@@ -157,7 +157,7 @@ class AiFixPanel(Surface):
         self.editor = editor
         self.path, self.filename = path, path.name
         self._worker: Optional[_CheckWorker] = None
-        self._provider = None   # the running check's, whose Ollama slot it holds
+        self._provider = None   # the running check's provider
         self._route = None      # and the Route it was started on
         self._rows: list[_IssueRow] = []
         self._models_loaded = False
@@ -237,21 +237,31 @@ class AiFixPanel(Surface):
             return
         if not self._models_loaded:
             self.refresh_model_preference()
-        provider = provider_from_combo(self, self.app.project, self.model_combo, ai_profile.FIXES,
-                                       "this file's full LaTeX source")
-        if provider is None or not self.app.try_start_ollama_task("checking syntax", provider):
+        route = picked_route(self, self.app.project, self.model_combo, ai_profile.FIXES,
+                             "this file's full LaTeX source")
+        provider = None if route is None else built(self, resolver.provider_for, self.app.project, route)
+        if provider is None:
             self._show_state()
             return
-        self._provider = provider   # whose Ollama slot stop() and _on_finished() give back
-        self._route = ai_profile.resolve(self.app.project, ai_profile.FIXES, self.model_combo.currentData() or "")
-        self._clear_rows()
-        self.status.setText(f"Checking with {provider.label}… (Esc to abort)")
-        worker = _CheckWorker(syntax_check.SyntaxChecker(provider), self.editor.text())
-        worker.finished_with_result.connect(lambda result, w=worker: self._on_finished(w, result))
-        self._worker = worker
-        self.running_changed.emit(True)
-        self._show_state()
-        worker.start()
+        lease = self.app.acquire_route_task(route.route, "checking syntax")
+        if lease is None:
+            self._show_state()
+            return
+        try:
+            self._provider = provider   # the provider used by this check
+            self._route, self._lease = route, lease
+            self._clear_rows()
+            self.status.setText(f"Checking with {provider.label}… (Esc to abort)")
+            worker = _CheckWorker(syntax_check.SyntaxChecker(provider), self.editor.text())
+            worker.finished_with_result.connect(lambda result, w=worker: self._on_finished(w, result))
+            self._worker = worker
+            self.running_changed.emit(True)
+            self._show_state()
+            worker.start()
+        except BaseException:
+            self._worker = None
+            lease.release()
+            raise
 
     def abort(self) -> bool:
         """Stop a running check; whether one was running (so Esc knows if it was used)."""
@@ -267,8 +277,7 @@ class AiFixPanel(Surface):
         worker, self._worker = self._worker, None
         if worker is None:
             return
-        provider = self._provider      # its Ollama slot is given back once the worker is really over
-        background.stop_worker(worker, worker.checker.abort, on_done=lambda: self.app.end_ollama_task(provider))
+        background.stop_worker(worker, worker.checker.abort, on_done=self._lease.release)
         self.running_changed.emit(False)
         self._show_state()
 
@@ -283,7 +292,7 @@ class AiFixPanel(Surface):
         self._worker = None
         worker.wait()
         worker.deleteLater()
-        self.app.end_ollama_task(self._provider)
+        self._lease.release()
         self.running_changed.emit(False)
         if result.cancelled:
             self.status.setText("Check aborted.")

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 
 from slidemage import alt_draft, alt_images
 from slidemage.ai import ai_profile, resolver
-from slidemage.ai.ai_profile import CLAUDE_CODE, IMAGE_DESCRIPTION, LOCAL, TRANSLATION, Route
+from slidemage.ai.ai_profile import CLAUDE_CODE, IMAGE_DESCRIPTION, OLLAMA, Route, TRANSLATION
 from slidemage.ai.providers import OllamaProvider
 from slidemage.batch_result import (
     CANCELLED, DONE, DRAFT, FAILED, KEPT, TRANSLATE, BatchResult, ItemOutcome, display_name)
@@ -25,7 +25,7 @@ from slidemage.ui.pages import image_results, image_runs
 from test_images_page_gui import CHART, make_page, run_jobs_inline, wait_for  # noqa: F401 -- make_page is a fixture
 
 HAIKU = Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "medium")
-QWEN = Route(LOCAL, IMAGE_DESCRIPTION, "qwen3-vl:32b")
+QWEN = Route(OLLAMA, IMAGE_DESCRIPTION, "qwen3-vl:32b")
 CLOUD_NOTE = "Claude Code · Haiku · effort medium · sends this image to the cloud"
 FIRST, SECOND, THIRD, FOURTH = (f"media/{name}.png" for name in ("first", "second", "third", "fourth"))
 
@@ -73,7 +73,7 @@ def test_the_question_names_the_model_and_what_is_sent():
     assert image_results.question(TRANSLATE, 3, "manual", Route(CLAUDE_CODE, TRANSLATION, "haiku", "medium")) == (
         "Translate 3 descriptions in manual to German?",
         "Claude Code · Haiku · effort medium · sends each description to the cloud · a few seconds per image.")
-    assert image_results.question(TRANSLATE, 3, "manual", Route(LOCAL, TRANSLATION, "hy-mt")) == (
+    assert image_results.question(TRANSLATE, 3, "manual", Route(OLLAMA, TRANSLATION, "hy-mt")) == (
         "Translate 3 descriptions in manual to German?", "hy-mt · Ollama.")
 
 
@@ -174,7 +174,12 @@ def texts(page):
             page._forms[0].translate_button.text(), page._forms[0].save_translate_button.text())
 
 
-def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx):  # noqa: F811
+def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx, monkeypatch):  # noqa: F811
+    from slidemage.ai import ollama_route
+
+    monkeypatch.setattr(ollama_route, "_installed", {})
+    ollama_route.cache_installed(ctx, [ollama_route.InstalledModel("qwen3:8b", 1, "", ()),
+                                       ollama_route.InstalledModel("qwen3-vl:32b", 1, "", ("vision",))])
     page = make_page()
     page.refresh_model_preferences(["qwen3:8b"], ["qwen3-vl:32b"])
     assert page.draft_note.text() == "qwen3-vl:32b · Ollama"
@@ -411,7 +416,7 @@ def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_p
 pytest.importorskip("PySide6.QtWebEngineWidgets")
 from test_claude_code_gui import env as claude_env  # noqa: E402,F401 -- a fixture
 from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE  # noqa: E402
-from test_claude_tasks_gui import buttons, click, fake, pump, settled, wait_until, with_pictures  # noqa: E402,F401
+from test_tasks_gui import buttons, click, fake, pump, settled, wait_until, with_pictures  # noqa: E402,F401
 
 windows_only = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 

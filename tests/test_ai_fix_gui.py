@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from slidemage.ai import ai_profile
 from slidemage.ai.providers import OllamaProvider
 from slidemage.syntax_check import SyntaxCheckResult, SyntaxIssue
 from slidemage.ui.kit.theme import ThemeManager
@@ -33,12 +34,10 @@ class FakeApp:
     def open_slide_editor(self, path, **_kwargs):
         pass
 
-    def try_start_ollama_task(self, label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.started.append(label)
-        return not self.busy
-
-    def end_ollama_task(self, provider=None):
-        self.ended.append(True)
+        return None if self.busy else _RouteTaskLease(lambda: self.ended.append(True))
 
 
 class FakeProvider:
@@ -48,7 +47,8 @@ class FakeProvider:
 @pytest.fixture
 def make_file(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: FakeProvider())
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: ai_profile.Route(ai_profile.OLLAMA, ai_profile.FIXES, "qwen3"))
+    monkeypatch.setattr(ai_fix, "built", lambda *a: FakeProvider())
 
     def make(text=BROKEN, name="abc-EN-Demo-current.tex"):
         path = tmp_path / name
@@ -272,7 +272,7 @@ def test_another_model_task_running_or_a_declined_model_starts_no_check(make_fil
     file.ask_ai_button.click()
     assert not file.fix_panel.running and not file.keep_open
     file.app.busy = False
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: None)     # no model, or consent declined
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: None)     # no model, or consent declined
     file.fix_panel.run_check()
     assert not file.fix_panel.running and file.app.started == ["checking syntax"]
 
@@ -289,13 +289,19 @@ def test_a_frozen_version_cannot_be_fixed_and_a_bib_has_no_check(make_file, monk
 
 
 def test_the_panels_model_picker_follows_the_settings_defaults(make_file, monkeypatch):
+    from slidemage.ai import ollama_route
+
     file = make_file()
+    # The picker reads the background listing, never the network on the UI thread.
+    monkeypatch.setattr(ollama_route, "_installed", {file.app.project.root: [ollama_route.InstalledModel("qwen3", 1, "", ())]})
     fake_checker(monkeypatch, result_for())
     file.refresh_model_preference(["ignored"])            # before the first check there is nothing to refresh
     assert file.fix_panel.model_combo.count() == 0
     file.ask_ai_button.click()
     finish(file.fix_panel)
     assert file.fix_panel.model_combo.currentText() == "qwen3"
+    ollama_route.cache_installed(file.app.project, [ollama_route.InstalledModel(name, 1, "", ())
+                                                    for name in ("qwen3", "other")])
     file.refresh_model_preference(["qwen3", "other"])
     assert [file.fix_panel.model_combo.itemText(i) for i in range(file.fix_panel.model_combo.count())] == [
         "qwen3", "other"]
@@ -306,7 +312,8 @@ def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_noth
     from slidemage.ui import ai_models
 
     file = make_file()
-    monkeypatch.setattr(ai_fix, "provider_from_combo", ai_models.provider_from_combo)
+    monkeypatch.setattr(ai_fix, "picked_route", ai_models.picked_route)
+    monkeypatch.setattr(ai_fix, "built", ai_models.built)
     ai_profile.set_mode(file.app.project, ai_profile.CLOUD)
     ai_profile.mark_cloud_seen(file.app.project)
     told = []
@@ -315,4 +322,4 @@ def test_on_claude_code_the_check_is_refused_with_the_routes_name_and_sends_noth
     panel = file.fix_panel
     assert not panel.running and file.app.started == []
     assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and "no other route or model" in told[0]
-    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.claude_code_choices()
+    assert [panel.model_combo.itemData(i) for i in range(panel.model_combo.count())] == ai_profile.model_choices(file.app.project, ai_profile.CLAUDE_CODE, ai_profile.FIXES)

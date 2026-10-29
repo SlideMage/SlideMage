@@ -21,7 +21,8 @@ accessible transcripts.
 > like `CONVERSION_NOTES.md`) -- the mechanism being explained still
 > applies regardless.
 
-`stpalan/SlideMage` is the authoritative repository (it was a flat copy of
+`SlideMage/SlideMage` is the authoritative repository (`stpalan/SlideMage` until
+2026-10-28, when it moved to the SlideMage organization; it was a flat copy of
 the app folder before v4.0.0, when it took over the `latex/`/`example/`/
 `src/` structure from Jürgen Fleiß's fork, `JuergenFleiss/slidemage`,
 merged with that fork's history).
@@ -66,7 +67,7 @@ dist\SlideMage.exe --project example     # Windows
 ```
 
 The one-file build is about 300 MB: besides Qt it carries QtWebEngine (the Claude Code
-tab's terminal is xterm.js in a web view), the bundled fonts and the `anthropic` client.
+tab's terminal is xterm.js in a web view), the bundled fonts and the Anthropic API client (standard library, no SDK).
 It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
 a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
 `libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
@@ -185,7 +186,7 @@ screenshots.
 
 ## Releases and updates
 
-Pushing a tag `vX.Y.Z` to `stpalan/SlideMage` makes GitHub build the
+Pushing a tag `vX.Y.Z` to `SlideMage/SlideMage` makes GitHub build the
 Windows and Linux executables (`.github/workflows/release.yml`) and attach
 them, zipped, to that tag's release page. The workflow refuses a tag that
 doesn't equal `VERSION_NUMBER` in `src/slidemage/version.py`, so a release
@@ -338,7 +339,7 @@ https://github.com/stpalan/slidemage-plugin-template.
 
 `plugin.toml` gives `id` (lower-case letters, digits and hyphens, 2 to 32
 characters), `name`, `version` (x.y.z), `api_version = 1`, `requires_slidemage` (such
-as `>=8.68`), `summary` (at most 120 characters), `author`, `homepage`, `license`,
+as `>=8.71`), `summary` (at most 120 characters), `author`, `homepage`, `license`,
 and the lists `needs` and `network`, which the user reads before installing.
 `activate(host)` receives the `Host` of `slidemage.plugin_api` (`API_VERSION = 1`)
 and may register:

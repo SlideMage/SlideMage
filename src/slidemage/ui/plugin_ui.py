@@ -15,6 +15,7 @@ from typing import Any
 
 from PySide6.QtCore import Signal
 
+from ..plugin_api import Focus
 from ..plugins import session
 from ..plugins.host import deck_snapshot
 from ..plugins.registry import set_box_refresher
@@ -72,6 +73,40 @@ class WindowHostUi:
             log.log(logging.ERROR if error else logging.INFO, "%s", text)
         else:
             window.toast.show_message(text, error=error, timeout_ms=6000 if error else None)
+
+    def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool:
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        return window.try_start_route_task(route_id, label, owner)
+
+    def end_route_task(self, route_id: str, owner: object) -> None:
+        window = self.window
+        if window is not None:
+            window.end_route_task(route_id, owner)
+
+    def model_choices_changed(self, route_id: str) -> None:
+        window = self.window
+        if window is not None:
+            window.model_choices_changed.emit(route_id)
+
+    def terminal_tokens(self) -> Any:
+        """The design tokens the embedded terminal is coloured with."""
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        return window.theme.tokens
+
+    def focus(self) -> Focus:
+        """What the user is looking at: the deck, the slide the editor shows, and the assistant's scope."""
+        window = self.window
+        if window is None:
+            return Focus(None, None, "slide")
+        deck = window.state.deck
+        slide = window.centre.path
+        scope = "deck" if window.assistant.scope.current() == "deck" else "slide"
+        return Focus(deck.path if deck is not None and not deck.is_test_deck else None,
+                     slide if slide is not None and slide.parent.name == "slides" else None, scope)
 
     # -- plugin deck edits and the Deck settings sheet: while the sheet has unsaved core changes a plugin may not
     # write the deck (plugin_api.EditRefusedError); an edit made while it is clean is taken over by the sheet.

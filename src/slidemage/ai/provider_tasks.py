@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""A Claude Code task (claude_tasks.Task) on a Local or API provider: the same rules, request, answer shape and check
+"""A Claude Code task (ai_tasks.Task) on a Local or API provider: the same rules, request, answer shape and check
 as claude_runner.run_task, with the provider's chat in place of the `claude -p` process.
 
 The rules go in as the system prompt and the schema is asked for as JSON (Ollama's `format`, the API's system
-prompt); the reply is parsed, then claude_tasks.check decides as it does for Claude. A reply that is not JSON or does
+prompt); the reply is parsed, then ai_tasks.check decides as it does for Claude. A reply that is not JSON or does
 not pass the check gets one repair round with the refused answer and the reasons, like run_task's. Blocking: the
 caller runs it on a thread, and abort() on the provider ends it. No Qt.
 """
@@ -14,7 +14,7 @@ import threading
 import time
 
 from ..project import ProjectContext
-from . import claude_tasks
+from . import tasks as ai_tasks
 from .claude_runner import CANCELLED, FAILED, Outcome, judge
 from .providers import Cancelled, ChatProvider, ProviderError, parse_json_object
 
@@ -23,9 +23,9 @@ MAX_TOKENS = 8192       # the whole new slide source comes back
 TIMEOUT_S = 600.0
 
 
-def run_task(ctx: ProjectContext, provider: ChatProvider, task: claude_tasks.Task, captured: str, request: str,
+def run_task(ctx: ProjectContext, provider: ChatProvider, task: ai_tasks.Task, captured: str, request: str,
              cancel: threading.Event | None = None, span: tuple[int, int] | None = None) -> Outcome:
-    """Run `task` on the `captured` text (or its `span`, claude_tasks.check) with `request` on `provider` and check the
+    """Run `task` on the `captured` text (or its `span`, ai_tasks.check) with `request` on `provider` and check the
     answer."""
     cancel = cancel or threading.Event()
     started = time.monotonic()
@@ -53,6 +53,6 @@ def run_task(ctx: ProjectContext, provider: ChatProvider, task: claude_tasks.Tas
                 break
         elif not (problems := judge(ctx, task, captured, answer, outcome, "The model", span)):
             break
-        request = claude_tasks.repair_request(request, answer, problems)
+        request = ai_tasks.repair_request(request, answer, problems)
     outcome.elapsed_s = time.monotonic() - started
     return outcome

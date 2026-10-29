@@ -6,22 +6,11 @@ built with.
 
 | Package | Version | Licence | Home page |
 |---|---|---|---|
-| annotated-types | 0.8.0 | MIT | https://github.com/annotated-types/annotated-types |
-| anthropic | 1.15.0 | MIT | https://github.com/anthropics/anthropic-sdk-python |
-| anyio | 4.15.1 | MIT | https://anyio.readthedocs.io/en/latest/ |
 | defusedxml | 0.7.1 | PSFL | https://github.com/tiran/defusedxml |
-| docstring_parser | 0.18.0 | MIT | https://github.com/rr-/docstring_parser |
-| h11 | 0.16.0 | MIT | https://github.com/python-hyper/h11 |
-| httpcore2 | 2.14.0 | BSD-3-Clause | https://github.com/pydantic/httpx2/blob/main/src/httpcore2/CHANGELOG.md |
-| httpx2 | 2.14.0 | BSD-3-Clause | https://github.com/pydantic/httpx2/blob/main/src/httpx2/CHANGELOG.md |
-| idna | 3.20 | BSD-3-Clause | https://github.com/kjd/idna/blob/master/HISTORY.md |
-| jiter | 0.17.0 | MIT | https://github.com/pydantic/jiter/ |
 | lxml | 6.1.3 | BSD-3-Clause | https://lxml.de/ |
 | odfpy | 1.4.1 | Apache Software License, GNU General Public License (GPL), GNU Library or Lesser General Public License (LGPL) | https://github.com/eea/odfpy |
 | opentelemetry-api | 1.45.1 | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api |
 | pillow | 13.0.0 | MIT-CMU (HPND) | https://pillow.readthedocs.io/en/stable/releasenotes/index.html |
-| pydantic | 2.14.1 | MIT | https://github.com/pydantic/pydantic |
-| pydantic_core | 2.50.1 | MIT | https://github.com/pydantic/pydantic |
 | pymupdf | 1.28.2 | AGPL-3.0-or-later (MuPDF, Artifex Software) | https://pymupdf.readthedocs.io/ |
 | PySide6 | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
 | PySide6_Addons | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
@@ -32,10 +21,8 @@ built with.
 | pywinpty | 3.1.0 | MIT License | https://github.com/andfoy/pywinpty/blob/main/CHANGELOG.md |
 | segno | 1.6.6 | BSD-3-Clause | https://github.com/heuer/segno/ |
 | shiboken6 | 6.12.0 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only (Qt for Python, The Qt Company) | https://pyside.org |
-| sniffio | 1.3.1 | MIT OR Apache-2.0 | https://github.com/python-trio/sniffio |
 | truststore | 0.10.5 | MIT | https://truststore.readthedocs.io |
 | typing_extensions | 4.16.0 | PSF-2.0 | https://github.com/python/typing_extensions/issues |
-| typing-inspection | 0.4.4 | MIT | https://github.com/pydantic/typing-inspection |
 | xlsxwriter | 3.2.9 | BSD-2-Clause | https://github.com/jmcnamara/XlsxWriter |
 
 ## Also bundled

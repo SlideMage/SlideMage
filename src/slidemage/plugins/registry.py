@@ -9,6 +9,8 @@ The calls that are not add_* raise NotImplementedError here, so a half-built hos
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +19,9 @@ from ..plugin_api import FooterAction
 from .manifest import Manifest
 
 MENUS = ("deck",)
+ENTRY_NAME = re.compile(r"[a-z][a-z0-9_-]*\Z")
+PLUGIN_FLAG = "--plugin"       # cli.py: SlideMage --plugin <id>:<name> [args...]
+SETTINGS_PAGES = ("ai",)
 
 BoxRefresher = Callable[[str, str], None]
 """(plugin id, box key) -> None: the window's side panels build that box again (see refresh_sidebar_box)."""
@@ -51,6 +56,13 @@ class SettingsTab:
 
 
 @dataclass(frozen=True)
+class SettingsSection:
+    page: str
+    title: str
+    build: Callable[[], Any]
+
+
+@dataclass(frozen=True)
 class SidebarBox:
     key: str
     title: str
@@ -67,8 +79,11 @@ class Contributions:
     menu_entries: list[tuple[str, str]] = field(default_factory=list)  # (menu, command id)
     deck_settings_tabs: list[DeckSettingsTab] = field(default_factory=list)
     settings_tabs: list[SettingsTab] = field(default_factory=list)
+    settings_sections: list[SettingsSection] = field(default_factory=list)
     sidebar_boxes: list[SidebarBox] = field(default_factory=list)
     render_priorities: list[Callable[[Any], bool]] = field(default_factory=list)
+    entry_points: dict[str, Callable[[list[str]], int]] = field(default_factory=dict)
+    ai_routes: list[Any] = field(default_factory=list)
 
 
 class Registrar:
@@ -120,6 +135,18 @@ class Registrar:
         self._check_open()
         self.contributions.settings_tabs.append(SettingsTab(title, build))
 
+    def add_ai_route(self, route: Any) -> None:
+        self._check_open()
+        if any(existing.id == route.id for existing in self.contributions.ai_routes):
+            raise ValueError(f"AI route {route.id!r} is already registered")
+        self.contributions.ai_routes.append(route)
+
+    def add_settings_section(self, page: str, title: str, build: Callable[[], Any]) -> None:
+        self._check_open()
+        if page not in SETTINGS_PAGES:
+            raise ValueError(f"unknown settings page {page!r}")
+        self.contributions.settings_sections.append(SettingsSection(page, title, build))
+
     def add_sidebar_box(
         self, key: str, title: str, build: Callable[[Any], Any], size: str = "compact",
         when: Callable[[Any], bool] = lambda deck: True,
@@ -137,6 +164,21 @@ class Registrar:
         self._check_open()
         self.contributions.render_priorities.append(soon)
 
+    def add_entry_point(self, name: str, fn: Callable[[list[str]], int]) -> None:
+        self._check_open()
+        if not ENTRY_NAME.match(name):
+            raise ValueError(f"entry point name {name!r} must be lower case letters, digits, '-' and '_'")
+        if name in self.contributions.entry_points:
+            raise ValueError(f"entry point {name!r} is already registered")
+        self.contributions.entry_points[name] = fn
+
+    def entry_point_command(self, name: str) -> list[str]:
+        """The argv that runs an entry point: a frozen build has no `python -m`, its executable takes the flag."""
+        spec = f"{self.manifest.id}:{name}"
+        if getattr(sys, "frozen", False):
+            return [sys.executable, PLUGIN_FLAG, spec]
+        return [sys.executable, "-m", "slidemage", PLUGIN_FLAG, spec]
+
     def refresh_sidebar_box(self, key: str) -> None:
         if not any(b.key == key for b in self.contributions.sidebar_boxes):
             raise ValueError(f"unknown sidebar box {key!r}")
@@ -150,3 +192,4 @@ class Registrar:
     cache_dir = legacy_cache_dir = settings = run_in_background = insert_positions = _unavailable
     insert_slides = edit_deck_text = deck_language = open_url = open_deck_settings = _unavailable
     log = show_message = Page = Field = caption = _unavailable
+    terminal = watch_external_edits = credentials = ai_tools = focus = _unavailable

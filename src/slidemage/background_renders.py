@@ -652,6 +652,7 @@ class BackgroundRenderer:
             where = self.resolver._relative(path)
             if where is not None:
                 entries.append([where[0], where[1], recorded[norm(path)][1]])
+        entries = self.resolver.narrow_alt_text(entries, recorded)
         entries.sort()
         return entries
 

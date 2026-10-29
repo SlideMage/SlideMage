@@ -12,6 +12,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from .. import splash
+from ..ai import routes
 from ..plugins import installer, loader, session
 from ..plugins.host import PluginHost
 from ..project import ProjectContext
@@ -41,6 +42,7 @@ def main(project_context: ProjectContext) -> None:
     app.setWindowIcon(QIcon(str(ICON_PATH)))
     theme = ThemeManager(project=project_context)
     theme.apply()
+    routes.register_builtin_routes()        # before the plugins: a plugin's route comes after core's own
     load_plugins(project_context)
     window = WorkspaceWindow(theme, project_context)
     window.show()
