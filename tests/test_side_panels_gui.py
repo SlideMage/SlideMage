@@ -131,7 +131,7 @@ def project(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def column(project, qapp, ctx, fake_routes):
+def column(project, qapp, ctx, fake_routes, monkeypatch):
     """The right column over the "course" deck, with the slide list that applies its edits."""
     state = WorkspaceState(ctx)
     window = FakeWindow(state)

@@ -307,18 +307,11 @@ def test_tab_goes_through_ai_setup_and_stays_inside(window, qapp):
     rows = [(setup.cells[(LOCAL, task)], setup.cells[(CLOUD, task)]) for task in ai_profile.TASKS]
     stops = [cell for pair in rows for cell in pair]
     assert tab(len(stops)) == stops
-    more = tab(3)
-    assert more[0] in setup.policy._buttons.values() and more[1].text() == "Settings → AI…"
-    assert more[2] in setup.conn._buttons.values()
+    more = tab(3)                                                  # the connection, the setting, the link
+    assert more[0] in setup.conn._buttons.values() and more[1] in setup.policy._buttons.values()
+    assert more[2].text() == "Settings → AI…"
     assert tab()[0] is setup.cells[(LOCAL, ai_profile.CHAT)]       # and round again: it never leaves the popover
     assert tab(back=True)[0] is more[2]
-
-
-@pytest.mark.xfail(strict=True, reason="Cloud connection is created after the other controls, so Tab order differs from the visual order")
-def test_ai_setup_tabs_to_the_cloud_connection_before_the_project_setting(window, qapp):
-    setup = open_setup(window)
-    tab(len(ai_profile.TASKS) * 2)
-    assert tab()[0] in setup.conn._buttons.values()
 
 
 def test_escape_closes_ai_setup_and_returns_the_focus_to_the_caret(window, qapp):

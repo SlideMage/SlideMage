@@ -125,7 +125,6 @@ def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
 
 def test_scheduled_for_onboarding_or_configured_migrations(monkeypatch):
     scheduled = []
-    monkeypatch.setattr(upgrade, "MIGRATIONS", [])
     monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda *a: scheduled.append(a))
     maintenance.schedule_plugin_offer(SimpleNamespace())
     assert len(scheduled) == 1 and scheduled[0][0] == maintenance.PLUGIN_OFFER_DELAY_MS

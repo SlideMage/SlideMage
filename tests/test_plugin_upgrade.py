@@ -103,8 +103,9 @@ def test_a_course_link_in_the_body_or_empty_does_not_count():
     assert not upgrade.has_course_link("%% SlideMage course URL:   \n\\begin{document}\n")
 
 
-def test_campusonline_is_the_only_migration_in_this_release():
-    assert upgrade.MIGRATIONS == [upgrade.Migration("campusonline", "v9.0.0")]
+def test_each_removed_feature_is_migrated_in_the_release_that_removed_it():
+    assert upgrade.MIGRATIONS == [upgrade.Migration("campusonline", "v9.0.0"), upgrade.Migration("claude", "v9.1.0"),
+                                  upgrade.Migration("ollama", "v9.1.0")]
 
 
 def test_linked_deck_is_due_even_after_onboarding_was_dismissed(ctx, monkeypatch):
