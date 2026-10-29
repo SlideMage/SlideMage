@@ -461,7 +461,7 @@ def test_the_window_in_front_stops_background_renders_and_the_chip_says_why(wind
     progress = Progress([DeckProgress("a", total=10, fresh=4)], scanned_at=1.0, paused_because=idle_gate.IN_USE)
     monkeypatch.setattr(type(renderer), "progress", property(lambda _self: progress, lambda _self, _value: None),
                         raising=False)
-    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
+    assert controller.summary() == ("Preview rendering waits while you use SlideMage · 6 left", "muted")
     assert idle_gate.IN_USE_EXPLAINED in controller.hover_text()
     assert "switch to another window" in idle_gate.IN_USE_EXPLAINED
 
@@ -501,5 +501,5 @@ def test_the_chip_says_the_renders_wait_as_soon_as_the_user_is_back_not_a_planne
     renderer.gate.note_focus(True)                               # back; the planner has not stepped yet
     assert progress.paused_because is None
     assert not renderer.sweeping() and renderer.waiting_because() == idle_gate.IN_USE
-    assert controller.summary() == ("Previews wait while you use SlideMage · 6 left", "muted")
+    assert controller.summary() == ("Preview rendering waits while you use SlideMage · 6 left", "muted")
     assert controller.dial_state() == "waiting"

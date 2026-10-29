@@ -636,7 +636,7 @@ class CentreColumn(QFrame):
             return "This project has no decks yet."
         if deck.is_test_deck:
             return (f"{deck.name} is a test deck: it has no slide list. Compile it from the top bar, "
-                    "or edit its source with Deck → Edit deck source.")
+                    "or edit its source with Deck → Source.")
         return "Select a slide in the list. Click it to open its source."
 
     def refresh(self) -> None:

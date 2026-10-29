@@ -251,14 +251,14 @@ def test_a_failed_preview_keeps_the_change_and_opens_the_source_or_the_log(fake)
     click(env, "Fix LaTeX errors")
     wait_until(phase_is(env, model.PREVIEW_FAILED))
     assert state(env) == f"Changes applied to {FILE}. The preview failed: Undefined control sequence on line 9. Nothing was rolled back."
-    assert shown_buttons(env) == ["Open source", "View log", "Close"] and slide_file(env).editor.text() == LF
+    assert shown_buttons(env) == ["Source", "View log", "Close"] and slide_file(env).editor.text() == LF
     area(env).task_card.steps_toggle.click()
     assert step_rows(env)[3] == ("Check preview", "failed")
     drawer = env.window.compile_display.drawer
     press(env, "View log")
     assert drawer.isVisibleTo(drawer.parentWidget())
     env.window.state.set_mode("preview")
-    press(env, "Open source")
+    press(env, "Source")
     assert env.window.state.mode == "source" and env.window.centre.path == env.path
     press(env, "Close")
     assert card(env) is None

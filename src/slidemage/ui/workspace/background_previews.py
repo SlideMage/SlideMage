@@ -520,7 +520,7 @@ class BackgroundPreviews(QObject):
                 return f"Preparing previews · {left} left", "info"
             reason = renderer.waiting_because()
             if reason == idle_gate.IN_USE:
-                return f"Previews wait while you use SlideMage · {left} left", "muted"
+                return f"Preview rendering waits while you use SlideMage · {left} left", "muted"
             return (f"Preview rendering paused ({reason}) · {left} left" if reason else f"Previews · {left} left"), "muted"
         if progress.failures:
             return f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered", "warning"
