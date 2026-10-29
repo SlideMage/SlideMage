@@ -71,7 +71,7 @@ OLD_MENU_BAR = {
     "Project compatibility…": "project_compat",
 }
 OLD_DECK_ROW = {
-    "Open latest PDF": "open_pdf", "Deck settings…": "deck_settings", "Edit deck source": "deck_source",
+    "Open latest PDF": "open_pdf", "Deck settings…": "deck_settings", "Source": "deck_source",
     "Duplicate deck…": "duplicate_deck", "Tags…": "deck_tags", "Export PPTX…": "export_pptx", "Export LaTeX…": "export_latex",
     "Archive deck…": "archive_deck", "Refresh decks": "refresh_decks",
 }
