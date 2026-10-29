@@ -21,7 +21,7 @@ the morning; where they differ, this section wins.
 | #22 | `develop`'s 8 failing GUI tests | `develop` | merged |
 | #23 | Phase 2: CampusOnline out of core (v9.0.0, `Migration('campusonline', 'v9.0.0')`) | #21 | draft |
 | #24 | Phases 3 and 6 (core): AI routes in a registry, the AI UI and one AI tab over them, the host for AI plugins (`add_ai_route`, `add_settings_section`, entry points, terminal service, credentials, `ai_tools`, `RouteContext`, route task leases, chat surface context, …) | #21 (+#20 merged in) | draft |
-| #26 | Phase 7: the AI-free core (v10.0.0, migrations for Claude and Ollama, `--claude-hook` dispatches to the plugin); tests on shared fake routes; full suite clean apart from the font test #22 fixes | #24 | draft |
+| #26 | Phase 7: the AI-free core (v9.1.0, migrations for Claude and Ollama, `--claude-hook` dispatches to the plugin); tests on shared fake routes; full suite clean apart from the font test #22 fixes | #24 | draft |
 
 Merge order: #22 (merged), #20, #21, then #23 and #24 (both on #21), then #26. Version numbers get renumbered at merge (and
 see section 6 on renumbering for publication).
@@ -43,7 +43,7 @@ see section 6 on renumbering for publication).
   release workflow is the first real check, so the size the bundled stdlib adds is unknown too. No real Anthropic
   call from a Windows release build yet (certificates now come from the system store, not `certifi`).
 - **The plugins' CI doesn't test against SlideMage.** Their Check workflows don't install SlideMage, and
-  `requires_slidemage` (`>=9.0` for CampusOnline, `>=10.0` for Claude and Ollama) names releases that don't exist
+  `requires_slidemage` (`>=9.0` for CampusOnline, `>=9.1` for Claude and Ollama, decided 2026-10-29) names releases that don't exist
   yet. Pin CI to a SlideMage release and set the ranges once the version question (section 6) is decided.
 - **No acceptance test from an installed `.smplugin`.** The CampusOnline end-to-end test loads the checkout and
   pretends the app is v9.0.0. It doesn't install a release archive or drive a real course fetch and insertion.
@@ -69,7 +69,7 @@ passes; review findings 8–10 fixed in CampusOnline; #20's proxy and abort fixe
 | Plugin | Where now | Next |
 |---|---|---|
 | CampusOnline | `SlideMage/slidemage-plugin-campusonline` (public; `main` and `develop`) | 1.0.0 with SlideMage 9.0, registry entry |
-| Claude | `SlideMage/slidemage-plugin-claude` (public; `main` and `develop`) | 1.0.0 with SlideMage 10.0, registry entry |
+| Claude | `SlideMage/slidemage-plugin-claude` (public; `main` and `develop`) | 1.0.0 with SlideMage 9.1, registry entry |
 | Ollama | `SlideMage/slidemage-plugin-ollama` (public; `main` and `develop`; yours to maintain) | same |
 | Template | local branch `plugin-api-1` of your template: the real API in the example, frozen-app import contract, relative-import check, a changelog checker (`release_notes.py`) | pull request to you, if you want it |
 
@@ -414,7 +414,8 @@ a `BREAKING:` paragraph needs a `compat.py` entry. The plugin host breaks nothin
     keeps `">=9.0"`;
   - `hello` gets a release with `">=8.66"`, so the installer can be tested against `index-test.json` on the host
     release;
-  - **v10.0** stays the AI-free core, as the Claude handover says.
+  - **v10.0** stays the AI-free core, as the Claude handover says. (Superseded 2026-10-29: the AI-free core is
+    v9.1.0; 10.x is the framework redesign's.)
 - The alternative: ship the host as v9.0.0 with a `BREAKING:` paragraph and a `compat.py` entry anyway.
 
 **Jürgen's proposal on top: renumber SlideMage for publication**, to something like **0.4**. A public first

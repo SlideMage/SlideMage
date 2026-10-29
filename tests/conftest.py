@@ -65,18 +65,10 @@ def _no_cloud_credentials(monkeypatch):
     """No test may find a real Anthropic key (environment or keychain), so
     none can reach the network by accident; tests that need a key set one
     explicitly."""
-    from slidemage.ai import credentials
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from slidemage.plugins import migrate
 
-    monkeypatch.delenv(credentials.ENV_VAR, raising=False)
-    monkeypatch.setattr(credentials, "_keyring", lambda: None)
-
-
-@pytest.fixture(autouse=True)
-def _claude_signed_in(monkeypatch):
-    """No test may run the real `claude auth status`: Claude Code counts as signed in unless a test says not."""
-    from slidemage.ai import claude_launch
-
-    monkeypatch.setattr(claude_launch, "signed_in", lambda claude: True)
+    monkeypatch.setattr(migrate, "_keyring", lambda: None)
 
 
 @pytest.fixture(autouse=True)
@@ -150,9 +142,11 @@ def _fresh_ai_session():
     from slidemage.ai import ai_profile
 
     ai_profile._modes.clear()
-    from slidemage.ai import ollama_route
+    from slidemage.ai import routes
 
-    ollama_route._installed.clear()
+    routes.clear()
+    yield
+    routes.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -417,3 +411,18 @@ def write_test_file(path: Path, text: str | bytes, *, newline: str | None = "") 
     else:
         path.write_text(text, encoding="utf-8", newline=newline)
     return path
+
+
+@pytest.fixture
+def fake_routes(_fresh_ai_session):
+    """Register isolated local and cloud route doubles; modify them per test as needed."""
+    from types import SimpleNamespace
+
+    from fake_routes import FakeRoute
+    from slidemage.ai import routes
+
+    local = FakeRoute(is_local=True, id="fake_local")
+    cloud = FakeRoute(id="fake_cloud")
+    routes.register(local)
+    routes.register(cloud)
+    return SimpleNamespace(local=local, cloud=cloud)

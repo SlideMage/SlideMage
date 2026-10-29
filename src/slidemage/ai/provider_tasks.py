@@ -15,7 +15,7 @@ import time
 
 from ..project import ProjectContext
 from . import tasks as ai_tasks
-from .claude_runner import CANCELLED, FAILED, Outcome, judge
+from .task_result import CANCELLED, FAILED, Outcome, judge
 from .providers import Cancelled, ChatProvider, ProviderError, parse_json_object
 
 NUM_CTX = 16384         # Ollama's context window: a slide, its findings and the answer fit with room to spare

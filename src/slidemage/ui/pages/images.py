@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import alt_draft, alt_images, image_review, slide_language
-from ...ai import ai_profile
+from ...ai import ai_profile, routes
 from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
@@ -102,9 +102,11 @@ class ImagesPage(ImageRunsMixin, Surface):
     def _build_batch_controls(self, layout: QVBoxLayout) -> None:
         self.draft_model, self.translate_model = QComboBox(), QComboBox()
         self.draft_note, self.translate_note = caption(""), caption("")
-        layout.addWidget(Field("Describe images with", self.draft_model))
+        self.draft_field = Field("Describe images with", self.draft_model)
+        layout.addWidget(self.draft_field)
         layout.addWidget(self.draft_note)
-        layout.addWidget(Field("Translate with", self.translate_model))
+        self.translate_field = Field("Translate with", self.translate_model)
+        layout.addWidget(self.translate_field)
         layout.addWidget(self.translate_note)
         self.draft_model.currentIndexChanged.connect(self._update_labels)
         self.translate_model.currentIndexChanged.connect(self._update_labels)
@@ -489,6 +491,10 @@ class ImagesPage(ImageRunsMixin, Surface):
         """What the route in use does with the content: a note under each picker names the model and, on Cloud, what
         is sent; the buttons that send it say "· cloud". Asked again when the route or a picker changes."""
         project = self.app.project
+        has_ai = bool(routes.all())
+        for widget in (self.draft_field, self.translate_field, self.draft_note, self.translate_note,
+                       self.draft_button, self.draft_all_button, self.translate_all_button):
+            widget.setVisible(has_ai)
         for combo, note, task, sends in ((self.draft_model, self.draft_note, ai_profile.IMAGE_DESCRIPTION, SENDS_IMAGE),
                                          (self.translate_model, self.translate_note, ai_profile.TRANSLATION, SENDS_TEXT)):
             route = ai_profile.resolve(project, task, combo.currentData() or "")

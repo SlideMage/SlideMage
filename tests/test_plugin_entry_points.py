@@ -8,7 +8,6 @@ import sys
 import pytest
 
 from slidemage import cli, project
-from slidemage.ai import claude_hook
 from slidemage.plugins import loader
 from slidemage.plugins.manifest import Manifest, read_manifest
 from slidemage.plugins.registry import Registrar
@@ -95,8 +94,9 @@ def test_a_disabled_plugin_is_not_run(plugin_path, capsys):
 
 
 def test_claude_hook_flag_is_unchanged(monkeypatch):
-    monkeypatch.setattr(claude_hook, "main", lambda: 7)
-    assert run([cli.CLAUDE_HOOK_FLAG]) == 7
+    from slidemage.plugins import entry
+    monkeypatch.setattr(entry, "run", lambda spec, args: 7 if (spec, args) == ("claude:hook", ["arg"]) else 2)
+    assert run([cli.CLAUDE_HOOK_FLAG, "arg"]) == 7
 
 
 def registrar():

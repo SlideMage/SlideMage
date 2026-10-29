@@ -286,9 +286,9 @@ class PluginHost(Registrar):
         return legacy_anthropic_key(self.ctx)
 
     def legacy_ollama_host(self) -> str:
-        from ..app_settings import get_ollama_host
+        from ..app_settings import peek_ollama_host
 
-        return get_ollama_host(self.ctx)
+        return peek_ollama_host(self.ctx)
 
     def run_in_background_with_progress(self, work, progress, done) -> None:
         from PySide6.QtCore import QObject, QThread, Signal

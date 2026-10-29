@@ -21,9 +21,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .. import app_settings, deck_scan
-from ..ai import ai_profile, credentials
+from ..ai import ai_profile
 from ..project import ProjectContext
 from . import session
+from .migrate import legacy_anthropic_key
 from .catalogue import Catalogue, CataloguePlugin, best_release
 from .loader import discover, plugins_dir
 from .manifest import parse_version
@@ -46,15 +47,20 @@ class Migration:
     release: str
 
 
-MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v9.0.0")]
+# Each removed feature gets a one-time offer in the release that removes it.
+MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v9.0.0"), Migration(CLAUDE, "v9.1.0"), Migration(OLLAMA, "v9.1.0")]
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:
     """The AI routes (ollama, claude_code, anthropic_api) that have a model chosen in the settings."""
-    stored = app_settings.get(ctx, ai_profile.MODELS_KEY)
-    if not isinstance(stored, dict):
-        return set()
-    return {ai_profile.route_id(route) for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
+    stored = app_settings.peek(ctx, ai_profile.MODELS_KEY)
+    found = ({ai_profile.route_id(route) for route, tasks in stored.items()
+              if isinstance(tasks, dict) and any(tasks.values())} if isinstance(stored, dict) else set())
+    for key in ("chat_model", "drafting_model", "translation_model", "syntax_check_model", "ai_draft_model"):
+        value = app_settings.peek(ctx, key)
+        if isinstance(value, str) and value.strip():
+            found.add(ai_profile.ANTHROPIC_API if value.startswith("anthropic:") else ai_profile.OLLAMA)
+    return found
 
 
 def has_course_link(text: str) -> bool:
@@ -76,13 +82,13 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
     """Plugin id -> why it is suggested, for each built-in feature this machine or project uses."""
     used: dict[str, str] = {}
     routes = _routes_with_models(ctx)
-    if credentials.get_api_key(ctx) is not None:
+    if legacy_anthropic_key(ctx) is not None:
         used[CLAUDE] = "You have an Anthropic API key"
-    elif ai_profile.route_id(app_settings.get(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
+    elif ai_profile.route_id(app_settings.peek(ctx, ai_profile.CONNECTION_KEY)) in ai_profile.CONNECTIONS:
         used[CLAUDE] = "You chose Claude Code or the API for cloud AI"
     elif routes & {ai_profile.CLAUDE_CODE, ai_profile.ANTHROPIC_API}:
         used[CLAUDE] = "You chose Claude models in the AI settings"
-    if ai_profile.OLLAMA in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
+    if ai_profile.OLLAMA in routes or str(app_settings.peek(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
         used[OLLAMA] = "You chose Ollama models"
     linked = course_linked_decks(ctx)
     if linked:

@@ -343,10 +343,3 @@ def _image_media_type(data: bytes) -> str:
     raise ProviderError("Claude reads PNG, JPEG, GIF and WebP images only.")
 
 
-def __getattr__(name: str):
-    """OllamaProvider and InstalledModel moved to ai/ollama_route.py (this module keeps what every provider shares);
-    the old import path still works so that tests and older plugins need no change."""
-    if name in ("OllamaProvider", "InstalledModel"):
-        from . import ollama_route
-        return getattr(ollama_route, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

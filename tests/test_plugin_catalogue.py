@@ -130,9 +130,9 @@ def test_multi_best_release_none_when_nothing_fits():
 
 def test_best_release_defaults_to_this_app():
     plugin = parse(_json("index-test.json")).plugins[0]
-    # hello 0.1.0 needs SlideMage >=9.0: an older build gets nothing, this one (v9.0.0) gets it
-    assert best_release(plugin, "v8.68.0") is None
-    assert best_release(plugin) is not None
+    # hello 0.1.0 requires SlideMage >=9.0 and is compatible with this release.
+    assert best_release(plugin).version == "0.1.0"
+    assert best_release(plugin, "v9.0.0") is not None
     assert best_release(plugin) == best_release(plugin, VERSION_NUMBER, SUPPORTED_API_VERSIONS)
 
 

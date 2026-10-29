@@ -12,18 +12,59 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from slidemage import alt_blocks, alt_draft, deck_editor, deck_scan
 from slidemage.ai import ai_profile
-from slidemage.ai.ai_profile import ANTHROPIC_API, CLAUDE_CODE, CLOUD, LOCAL
-from slidemage.ai.providers import OllamaProvider
+from slidemage.ai.ai_profile import CLOUD, LOCAL
+from fake_routes import FakeProvider, FakeRoute
+from slidemage.ai import routes
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
 from slidemage.ui.dialogs.deck_settings import DeckSettingsSheet
 from slidemage.ui.dialogs.settings import SettingsSheet
+from slidemage.ui.dialogs.settings_ai import AiPage
 from slidemage.ui.kit import widgets
 from slidemage.ui.kit.widgets import ModeBadge, Popover, SegmentedControl
 from slidemage.ui.pages import image_dialogs
 from slidemage.ui.workspace import ai_setup, ai_switch
-from conftest import qapp as qapp  # noqa: F401 -- a fixture
-from test_ai_switch_gui import INSTALLED, commit_to_cloud, kind, open_setup, route, window as window  # noqa: F401
+from conftest import build_window, qapp as qapp  # noqa: F401 -- a fixture
+from slidemage.ui.kit.fonts import load_fonts
+from slidemage.ui.workspace.ai_work import RunningWork
 from test_deck_settings_gui import TEMPLATES, make_deck
+
+
+@pytest.fixture
+def window(qapp, monkeypatch, fake_routes):
+    routes.register(FakeRoute(id="second_cloud", service="Second cloud"))
+    assert load_fonts()
+    window = build_window(monkeypatch)
+    window.resize(1700, 800)
+    window.show()
+    window.state.set_mode("source")
+    qapp.processEvents()
+    return window
+
+
+def route(window):
+    return window.ai_route
+
+
+def kind(window):
+    return route(window).popover_kind
+
+
+def commit_to_cloud(window):
+    ai_profile.set_policy(window.project, CLOUD)
+    ai_profile.mark_cloud_seen(window.project)
+    route(window).request(CLOUD)
+
+
+def open_setup(window):
+    window.ai_switch.caret.click()
+    return route(window).setup
+
+
+class Work:
+    def __init__(self, window, monkeypatch):
+        self.running = True
+        self.item = lambda: RunningWork("A task", "Fake route", False, lambda: None)
+        monkeypatch.setattr(window.assistant.chat, "running_work", lambda: [self.item()] if self.running else [])
 
 
 def focus_on(window, widget):
@@ -55,7 +96,6 @@ def deck_sheet(window, tmp_path, monkeypatch):
 
 
 def add_slide_sheet(window, tmp_path, monkeypatch):
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
     deck = next(d for d in deck_scan.scan_decks(window.project) if not d.archived)
     insert_at, indent = deck_editor.append_position(deck)
     return AddSlideSheet(window, deck, insert_at, indent, is_dirty=window.centre.unsaved)
@@ -65,7 +105,7 @@ def tuning_sheet(window, tmp_path, monkeypatch):
     monkeypatch.setattr(alt_blocks, "resolve_image", lambda _ctx, _reference: None)
     context = alt_draft.SlideContext(slide_id="one", title="T", body="", source="", image="chart.png")
     return image_dialogs.PromptTuningSheet(window, "media/chart.png", tmp_path / "chart.png", context,
-                                           OllamaProvider("offline-test"), "", lambda: None)
+                                           FakeProvider("offline-test"), "", lambda: None)
 
 
 SHEETS = {"Settings": settings_sheet, "Deck settings": deck_sheet, "Add slide": add_slide_sheet,
@@ -89,29 +129,30 @@ def badge_of(sheet) -> ModeBadge:
 def test_every_dialog_that_runs_ai_shows_the_route_badge_under_its_title(sheet, window):
     badge = badge_of(sheet)
     assert isinstance(badge, ModeBadge) and sheet._root.itemAt(0).widget() is sheet._title      # right under the title
-    assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Local · Ollama", False, "computer")
+    assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Local · Fake local", False, "computer")
     assert badge.toolTip() == "Change it with the Local | Cloud switch at the top of the assistant"
     commit_to_cloud(window)
-    assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Cloud · Claude Code", True, "cloud")
+    assert (badge.text(), badge.property("cloud"), badge.icon.text()) == ("Cloud · Fake cloud", True, "cloud")
     assert badge.toolTip() == "Change it with the Local | Cloud switch at the top of the assistant"
-    route(window).request(CLOUD, ANTHROPIC_API)
-    assert badge.text() == "Cloud · Anthropic API" and badge.property("cloud") is True      # refreshed while it is open
+    route(window).request(CLOUD, "second_cloud")
+    assert badge.text() == "Cloud · Second cloud" and badge.property("cloud") is True      # refreshed while it is open
     route(window).request(LOCAL)
-    assert (badge.text(), badge.property("cloud")) == ("Local · Ollama", False)
+    assert (badge.text(), badge.property("cloud")) == ("Local · Fake local", False)
 
 
 def test_a_dialog_has_no_route_picker_of_its_own(sheet):
-    pickers = [control for control in sheet.findChildren(SegmentedControl)       # Settings holds the project setting, a default
-               if {LOCAL, CLOUD} & set(control._buttons) and control.accessibleName() != "Project setting"]
-    assert pickers == []
+    pickers = [control for control in sheet.findChildren(SegmentedControl) if {LOCAL, CLOUD} & set(control._buttons)]
+    # Settings contains the project default, not a switch for the current session.
+    pages = sheet.findChildren(AiPage)
+    assert pickers == ([pages[0].policy] if pages else [])
     assert not any(isinstance(w, QWidget) and w.accessibleName().startswith("AI route") for w in sheet.findChildren(QWidget)
                    if w is not badge_of(sheet))
 
 
 def test_the_badge_names_its_route_for_a_screen_reader(qapp):
     badge = ModeBadge()
-    badge.set_route("Cloud · Claude Code", True)
-    assert badge.accessibleName() == "AI route: Cloud · Claude Code" and badge.accessibleDescription() == badge.toolTip()
+    badge.set_route("Cloud · Fake cloud", True)
+    assert badge.accessibleName() == "AI route: Cloud · Fake cloud" and badge.accessibleDescription() == badge.toolTip()
 
 
 def test_a_sheet_without_a_window_has_no_badge(tmp_path, monkeypatch, qapp):
@@ -236,8 +277,6 @@ def test_the_link_of_the_policy_popover_is_reachable_from_the_keyboard(window, q
 
 
 def test_the_popover_replacing_its_text_keeps_the_focus_on_the_same_button(window, monkeypatch):
-    from test_ai_switch_gui import Work
-
     work = Work(window, monkeypatch)
     route(window).request(CLOUD)
     popover = route(window)._popover
@@ -256,15 +295,15 @@ def test_the_arrow_keys_flip_the_cloud_connection_and_the_project_setting_like_r
         policies = [b.focusPolicy() for b in control._buttons.values()]
         assert policies.count(Qt.FocusPolicy.TabFocus) == 1 and policies.count(Qt.FocusPolicy.NoFocus) == 1
     assert setup.conn.accessibleName() == "Cloud connection" and setup.policy.accessibleName() == "Project setting"
-    focus_on(window, setup.conn._buttons[CLAUDE_CODE])
+    focus_on(window, setup.conn._buttons["fake_cloud"])
     QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Right)
-    assert ai_profile.cloud_conn(window.project) == ANTHROPIC_API
+    assert ai_profile.cloud_conn(window.project) == "second_cloud"
 
 
-def test_tab_goes_through_ai_setup_in_reading_order_and_stays_inside(window, qapp):
+def test_tab_goes_through_ai_setup_and_stays_inside(window, qapp):
     setup = open_setup(window)
     assert QApplication.focusWidget() is setup
-    # reading order: Local then Cloud of every row, including Claude Code chat
+    # reading order: Local then Cloud of every row, including chat
     rows = [(setup.cells[(LOCAL, task)], setup.cells[(CLOUD, task)]) for task in ai_profile.TASKS]
     stops = [cell for pair in rows for cell in pair]
     assert tab(len(stops)) == stops
@@ -292,12 +331,11 @@ def test_escape_closes_ai_setup_and_returns_the_focus_to_the_caret(window, qapp)
 def test_ai_setup_announces_the_confirmation_of_a_default(window, monkeypatch):
     told = []
     monkeypatch.setattr(ai_setup, "announce", lambda widget, text: told.append(text))
-    window.local_models.fill(INSTALLED)
     setup = open_setup(window)
     image = setup.cells[(LOCAL, ai_profile.IMAGE_DESCRIPTION)]
     image.setCurrentIndex(1)
     image.activated.emit(1)
-    assert told == ["Default for Local · Image descriptions: vision-model"]
+    assert told == ["Default for Local · Image descriptions: FAKE-2"]
 
 
 def test_a_popover_keeps_tab_inside_and_gives_the_keyboard_back_when_it_closes(window, qapp):

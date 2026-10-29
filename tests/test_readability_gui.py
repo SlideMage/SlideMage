@@ -11,7 +11,8 @@ import types
 
 import pytest
 from conftest import build_window, make_project, wait_until
-from test_claude_code_gui import pump
+from PySide6.QtWidgets import QApplication
+import time
 from PySide6.QtWidgets import QLabel
 from test_readability import footer, pdf_of, record_for, slide, title, body
 
@@ -70,7 +71,10 @@ def labels(panel) -> list[str]:
 
 def shown_buttons(env) -> list[str]:
     row = env.area.header._actions
-    pump(0.05)
+    end = time.monotonic() + 0.05
+    while time.monotonic() < end:
+        QApplication.processEvents()
+        time.sleep(0.005)
     return [row.itemAt(i).widget().text() for i in range(row.count()) if row.itemAt(i).widget().isVisibleTo(env.area.header)]
 
 

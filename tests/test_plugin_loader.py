@@ -159,12 +159,13 @@ def test_ai_routes_are_registered_after_activation_and_duplicates_fail_atomicall
     assert plugin.state == 'loaded'
     assert routes.get('plugin_route') is plugin.contributions.ai_routes[0]
     del sys.modules['hello']
+    routes.register(SimpleNamespace(id='occupied'))
     source.write_text('from types import SimpleNamespace\n'
                       'def activate(host):\n'
                       '    host.add_ai_route(SimpleNamespace(id="another_route"))\n'
-                      '    host.add_ai_route(SimpleNamespace(id="ollama"))\n')
+                      '    host.add_ai_route(SimpleNamespace(id="occupied"))\n')
     plugin = load()['hello']
-    assert plugin.state == 'failed' and 'ollama' in plugin.reason
+    assert plugin.state == 'failed' and 'occupied' in plugin.reason
     assert routes.get('another_route') is None
     registrar = Registrar(SimpleNamespace(id='hello'))
     with pytest.raises(RuntimeError):

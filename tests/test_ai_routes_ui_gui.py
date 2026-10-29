@@ -9,69 +9,21 @@ from PySide6.QtWidgets import QComboBox, QMenu
 
 from slidemage.ai import ai_profile, routes
 from slidemage.ai.ai_profile import CHAT, CLOUD, LOCAL, TRANSLATION
-from slidemage.ai.providers import InstalledModel, OllamaProvider
+from fake_routes import FakeRoute
 from slidemage.ui import ai_models
 from slidemage.ui.dialogs.settings import PLUGINS
 from slidemage.ui.kit.fonts import load_fonts
 from conftest import build_window, qapp as qapp  # noqa: F401
 
-INSTALLED = [InstalledModel("chat-model", 1, "", ("tools",))]
-
-
-class FakeRoute:
-    """A fourth route, as a plugin would register it."""
-    id, service, is_local = "fake", "Fake AI", False
-    tasks = frozenset(ai_profile.TASKS)
-    def settings_section(self):
-        return None
-
-    def __init__(self, is_local: bool = False, id: str = "fake") -> None:
-        self.is_local, self.id = is_local, id
-
-    def problem(self, ctx, route) -> str:
-        return ""
-
-    def model_choices(self, ctx, task) -> list[str]:
-        return ["fake-1", "fake-2"]
-
-    def default_choice(self, task) -> str:
-        return "fake-1"
-
-    def choice_label(self, choice) -> str:
-        return choice.upper()
-
-    def split_choice(self, choice):
-        return choice, None
-
-    def valid_choice(self, ctx, choice):
-        return choice in ("fake-1", "fake-2")
-
-    def work_label(self, route):
-        return route.model
-
-    def provider(self, ctx, route):
-        return None
-
-    draft_backend = translation_backend = slide_translator = provider
-
-    def task_runner(self, ctx, route):
-        return None
-
-    def chat_surface(self, *args, **kwargs):
-        return None
-
 
 @pytest.fixture(autouse=True)
-def _registry():
-    yield
-    routes.clear()
-    routes.register_builtin_routes()
+def _registry(fake_routes):
+    return fake_routes
 
 
 @pytest.fixture
 def window(qapp, monkeypatch):
     assert load_fonts()
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: list(INSTALLED))
     window = build_window(monkeypatch)
     window.resize(1700, 800)
     window.show()
@@ -85,7 +37,7 @@ def texts(combo: QComboBox):
 
 
 def test_a_fourth_route_is_in_the_switch_setup_and_pickers(window, qapp, monkeypatch):
-    routes.register(FakeRoute())
+    routes.register(FakeRoute(id="fake", service="Fake AI"))
     ctx = window.project
     ai_profile.set_cloud_conn(ctx, "fake")
     window.state.set_ai_route(CLOUD)
@@ -93,7 +45,7 @@ def test_a_fourth_route_is_in_the_switch_setup_and_pickers(window, qapp, monkeyp
     assert window.state.ai_route == "fake" and "Cloud · Fake AI" in window.ai_switch.toolTip()
     window.ai_switch.caret.click()
     setup = window.ai_route.setup
-    assert setup.conn is not None and set(setup.conn._buttons) == {"claude_code", "anthropic_api", "fake"}
+    assert setup.conn is not None and set(setup.conn._buttons) == {"fake_cloud", "fake"}
     assert setup.heads[CLOUD].text() == "Cloud · Fake AI"
     cell = setup.cells[(CLOUD, TRANSLATION)]
     assert texts(cell) == ["FAKE-1", "FAKE-2"] and cell.currentData() == "fake-1"
@@ -142,13 +94,50 @@ def test_with_no_route_the_ai_ui_hides(window, qapp):
     assert window.assistant.isVisible() and window.commands["ai:setup"].visible(window)
     routes.clear()
     ai_profile._modes.clear()
-    window.assistant.refresh_models()
+    window.refresh_ai_models()
     qapp.processEvents()
     assert window.assistant.isHidden() and not window.assistant.available
     for command in window.commands:
-        if command.id.startswith(("ai:", "task:", "selection:")) or command.id in ("slide:readable", "images"):
+        if command.id.startswith(("ai:", "task:", "selection:")) or command.id in ("slide:readable", "slide:translate"):
             assert not command.visible(window), command.id
     assert ai_profile.active_route(window.project) == "" and ai_profile.cloud_conn(window.project) == "claude_code"
+    assert window.commands["images"].visible(window)
     ai_menu = next(m for m in window.menuBar().findChildren(QMenu) if m.objectName() == "menu:ai")
+    assert not ai_menu.menuAction().isVisible()
     ai_menu.aboutToShow.emit()
     assert not [a for a in ai_menu.actions() if not a.isSeparator()]            # the AI menu has nothing to show
+
+
+def test_route_owned_surface_is_shown_and_new_conversation_resets_it(window, fake_routes, qapp):
+    from fake_chat import FakeChatSurface
+
+    fake_routes.cloud.surface_factory = FakeChatSurface
+    window.assistant.refresh_models()
+    surface = window.assistant.surface_for(fake_routes.cloud.id)
+    surface.replies.append("A scripted answer")
+    window.state.set_ai_route(CLOUD)
+    qapp.processEvents()
+    assert window.assistant._stack.currentWidget() is surface
+    surface.composer.setText("Hello")
+    surface.send()
+    assert surface.turns == ["Hello"] and surface.answer.text() == "A scripted answer"
+    window.assistant.new_conversation()
+    assert surface.turns == [] and surface.answer.text() == "" and surface.restarts == [("", False)]
+
+
+def test_scripted_task_runner_receives_and_validates_the_captured_slide(window, fake_routes):
+    import threading
+
+    from fake_chat import FakeTaskRunner
+    from slidemage.ai import tasks
+    from slidemage.ai.task_result import DONE
+
+    captured = "\\begin{standardframe}{Old}\\n\\end{standardframe}"
+    runner = FakeTaskRunner(window.project, {"title": "New"})
+    fake_routes.local.runner = runner
+    route = ai_profile.resolve(window.project, ai_profile.FIXES)
+    from slidemage.ui.workspace.task_bubbles import _runner_of
+
+    outcome = _runner_of(window.project, route)(tasks.TITLE, captured, "Change title", threading.Event(), None)
+    assert outcome.status == DONE and "{New}" in outcome.text
+    assert runner.calls[0][:3] == (tasks.TITLE, captured, "Change title")

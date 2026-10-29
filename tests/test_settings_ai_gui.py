@@ -13,18 +13,14 @@ from conftest import qapp as qapp  # noqa: F401
 from slidemage.ai import routes
 from slidemage.plugins import session
 from slidemage.plugins.registry import Registrar
-from slidemage.ui.dialogs.settings import AI, CLOUD, GENERAL, OLLAMA, PLUGINS, PROMPTS, PROJECT
+from slidemage.ui.dialogs.settings import AI, GENERAL, OLLAMA, PLUGINS, PROMPTS, PROJECT
 from test_settings_gui import open_sheet, tab_names
-from test_ai_routes_ui_gui import FakeRoute
+from fake_routes import FakeRoute
 
 
 @pytest.fixture(autouse=True)
-def _fresh_routes():
-    routes.clear()
-    routes.register_builtin_routes()
-    yield
-    routes.clear()
-    routes.register_builtin_routes()
+def _fresh_routes(fake_routes):
+    return fake_routes
 
 
 def fake_plugin(registrar_calls):
@@ -37,30 +33,28 @@ def fake_plugin(registrar_calls):
 def test_the_ai_tab_has_the_policy_the_models_the_prompts_and_a_section_per_service(qapp):
     sheet = open_sheet(qapp, tab=AI)
     assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Plugins"]
-    assert list(sheet.ai.sections) == ["prompts", "Ollama", "Claude Code", "Anthropic API"]     # core's sections, in this order
+    assert list(sheet.ai.sections) == ["prompts"]
     assert sheet.ai.policy.current() in ("local", "cloud")
-    assert sheet.ai.cloud_route_field.isVisibleTo(sheet.ai) and sheet.ai.models.heads["local"].text() == "Local · Ollama"
-    claude = sheet.ai.sections["Anthropic API"]
-    assert sheet.cloud is not None and sheet.cloud.isAncestorOf(sheet.cloud.key_edit) and claude.isAncestorOf(sheet.cloud)
-    assert any("Claude Code" in label.text() for label in sheet.ai.sections["Claude Code"].findChildren(QLabel))      # found / not found
-    assert sheet.ai.sections["Ollama"].isAncestorOf(sheet.ollama)
+    assert not sheet.ai.cloud_route_field.isVisibleTo(sheet.ai)
+    assert sheet.ai.models.heads["local"].text() == "Local · Fake local"
     assert sheet.ai.sections["prompts"].isAncestorOf(sheet.prompts)
 
 
 def test_changing_the_cloud_route_changes_the_cloud_column_of_the_models(qapp):
+    route = FakeRoute(id="second_cloud", service="Second cloud")
+    routes.register(route)
     sheet = open_sheet(qapp, tab=AI)
-    sheet.ai.cloud_route.set_current("anthropic_api")
-    sheet.ai.cloud_route.changed.emit("anthropic_api")
-    assert sheet.ai.models.heads["cloud"].text() == "Cloud · Anthropic API"
-    sheet.ai.cloud_route.changed.emit("claude_code")
-    assert sheet.ai.models.heads["cloud"].text() == "Cloud · Claude Code"
+    sheet.ai.cloud_route.changed.emit("second_cloud")
+    assert sheet.ai.models.heads["cloud"].text() == "Cloud · Second cloud"
+    sheet.ai.cloud_route.changed.emit("fake_cloud")
+    assert sheet.ai.models.heads["cloud"].text() == "Cloud · Fake cloud"
 
 
 def test_a_plugins_section_follows_the_built_in_ones(qapp, monkeypatch):
     plugin = fake_plugin(lambda host: host.add_settings_section("ai", "Fake AI", lambda: QLabel("fake section body")))
     monkeypatch.setattr(session, "active", lambda: [plugin])
     sheet = open_sheet(qapp, tab=AI)
-    assert list(sheet.ai.sections) == ["prompts", "Ollama", "Claude Code", "Anthropic API", "Fake AI"]
+    assert list(sheet.ai.sections) == ["prompts", "Fake AI"]
     assert any(l.text() == "fake section body" for l in sheet.ai.sections["Fake AI"].findChildren(QLabel))
 
 
@@ -82,14 +76,16 @@ def test_a_plugins_route_with_a_section_gets_a_section_titled_by_its_service(qap
     assert "Acme" in sheet.ai.sections
 
 
-def test_a_route_may_share_a_service_and_so_a_section(qapp):
+def test_a_route_may_share_a_service_and_so_a_section(qapp, fake_routes):
+    fake_routes.local.settings_section = lambda: lambda: QLabel("first local part")
     route = FakeRoute(is_local=True, id="acme.local")
-    route.service = "Ollama"
-    route.settings_section = lambda: lambda: QLabel("second ollama part")
+    route.service = "Fake local"
+    route.settings_section = lambda: lambda: QLabel("second local part")
     routes.register(route)
     sheet = open_sheet(qapp, tab=AI)
-    assert list(sheet.ai.sections).count("Ollama") == 1
-    assert any(l.text() == "second ollama part" for l in sheet.ai.sections["Ollama"].findChildren(QLabel))
+    assert list(sheet.ai.sections).count("Fake local") == 1
+    labels = [l.text() for l in sheet.ai.sections["Fake local"].findChildren(QLabel)]
+    assert "first local part" in labels and "second local part" in labels
 
 
 def test_without_ai_routes_there_is_no_ai_tab(qapp):
@@ -103,7 +99,7 @@ def test_without_ai_routes_there_is_no_ai_tab(qapp):
     sheet.close()
 
 
-@pytest.mark.parametrize("alias, section", [(CLOUD, "Anthropic API"), (OLLAMA, "Ollama"), (PROMPTS, "prompts")])
+@pytest.mark.parametrize("alias, section", [(PROMPTS, "prompts")])
 def test_the_old_tabs_open_the_ai_tab_at_their_section(qapp, alias, section):
     sheet = open_sheet(qapp, tab=alias)
     assert sheet.current_tab() == AI and sheet.scrolled_to == section

@@ -24,7 +24,7 @@ from collections.abc import Callable
 from typing import Protocol
 
 from .. import compiler
-from . import agent_context, ai_profile, claude_scope
+from . import agent_context, ai_profile, focus_scope
 from .agent_types import (
     EDIT_ASK,
     AgentEvent,
@@ -95,9 +95,9 @@ class Agent:
         is also the return value, says how it ended."""
         reason, message = "error", "The run was interrupted."      # what a BaseException leaves behind
         try:
-            self._tools.ctx.scope = {agent_context.SCOPE_SLIDE: claude_scope.SLIDE,
-                                     agent_context.SCOPE_DECK: claude_scope.DECK}.get(scope)
-            self._tools.ctx.focus_slide = claude_scope.slide_focus(self._tools.ctx.root, self.workspace.context().path)
+            self._tools.ctx.scope = {agent_context.SCOPE_SLIDE: focus_scope.SLIDE,
+                                     agent_context.SCOPE_DECK: focus_scope.DECK}.get(scope)
+            self._tools.ctx.focus_slide = focus_scope.slide_focus(self._tools.ctx.root, self.workspace.context().path)
             reason, message = self._run(history, request, scope)
         except Cancelled:
             reason, message = "stopped", ""

@@ -883,12 +883,11 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
 
 
 @pytest.mark.parametrize('debounce', [False, True])
-def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
-    import base64
+def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
     from agent_fakes import FakeWorkspace
     from slidemage import compiler
-    from slidemage.ai.mcp_server import McpServer
     from slidemage.ai.tools import build_toolbox
+    from slidemage.ai.agent_types import ToolCall
     from slidemage.ai.workspace import WorkspaceContext
 
     view, target, path = pane
@@ -926,11 +925,10 @@ def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, de
 
     monkeypatch.setattr(view._renders, 'request', request)
     monkeypatch.setattr(ws, 'preview_service', lambda: view._renders)
-    server = McpServer(lambda: build_toolbox(ws, lambda _: None, compiler.CancelToken()))
-    response = server.handle(dict(jsonrpc='2.0', id=1, method='tools/call', params=dict(
-        name='render_preview', arguments={})))['result']
-    assert not response['isError']
-    assert response['content'][1] == dict(type='image', mimeType='image/png', data=base64.b64encode(png).decode())
+    box = build_toolbox(ws, lambda _: None, compiler.CancelToken())
+    response = box.execute(ToolCall('1', 'render_preview', {}))
+    assert not response.is_error
+    assert response.images == [png]
     if debounce:
         view._debounce.stop()
         view._launch_pending()
@@ -964,10 +962,10 @@ def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkey
     ("none", "displayed"), ("other-slide", "cached"), ("other-view", "cached"),
     ("disk", "superseded"), ("buffer", "superseded"), ("generation", "superseded"),
 ])
-def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_path, monkeypatch, qapp, change, outcome):
+def test_refresh_tool_publishes_saved_artifact_through_gui_workspace(pane, tmp_path, monkeypatch, qapp, change, outcome):
     from slidemage import compiler
-    from slidemage.ai.mcp_server import McpServer
     from slidemage.ai.tools import build_toolbox
+    from slidemage.ai.agent_types import ToolCall
     from slidemage.ai.workspace import WorkspaceContext
     from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
 
@@ -1004,11 +1002,10 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', render)
-    server = McpServer(lambda: build_toolbox(workspace, lambda _: None, compiler.CancelToken()))
+    box = build_toolbox(workspace, lambda _: None, compiler.CancelToken())
     responses = []
-    worker = WorkerThread(target=lambda: responses.append(server.handle(dict(
-        jsonrpc='2.0', id=1, method='tools/call', params=dict(name='refresh_preview',
-                                                               arguments={'view': 'instructor'})))['result']))
+    worker = WorkerThread(target=lambda: responses.append(
+        box.execute(ToolCall('1', 'refresh_preview', {'view': 'instructor'}))))
     worker.start()
     for _ in range(100):
         qapp.processEvents()
@@ -1034,8 +1031,8 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
             break
     assert not worker.is_alive()
     response, = responses
-    assert not response['isError'], response
-    text = response['content'][0]['text']
+    assert not response.is_error, response
+    text = response.text
     assert 'instructor, EN: rendered' in text and outcome in text
     assert ('displayed' in text) == (outcome == 'displayed')
     if outcome == 'displayed':

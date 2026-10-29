@@ -95,6 +95,7 @@ def test_offline_or_too_new_shows_no_sheet_and_writes_no_flag(monkeypatch, qapp,
 
 
 def test_offerable_opens_the_sheet_with_the_prefetched_catalogue(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "migrations_due", lambda _ctx: {})
     def no_fetch(timeout=10):
         raise AssertionError("fetched again")
 
@@ -108,6 +109,7 @@ def test_offerable_opens_the_sheet_with_the_prefetched_catalogue(monkeypatch, qa
 
 
 def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "migrations_due", lambda _ctx: {})
     monkeypatch.setattr(catalogue, "fetch", lambda timeout=10: CAT)
     got = []
     window = SimpleNamespace(project=None, plugin_offer_fetched=SimpleNamespace(emit=got.append))
@@ -135,6 +137,7 @@ def test_scheduled_for_onboarding_or_configured_migrations(monkeypatch):
 
 
 def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "migrations_due", lambda _ctx: {})
     shown = []
 
     class FakeSheet:
@@ -154,6 +157,7 @@ def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
 
 
 def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "migrations_due", lambda _ctx: {})
     class FakeSheet:
         restart_requested = True
 
@@ -171,6 +175,7 @@ def test_the_restart_the_sheet_asked_for(monkeypatch, qapp):
 
 
 def test_a_failing_sheet_leaves_the_flag_alone(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "migrations_due", lambda _ctx: {})
     def broken(parent, *, preselected, catalogue_data, onboarding=True):
         raise RuntimeError("no sheet")
 

@@ -11,18 +11,14 @@ from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
 from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater, version
 from slidemage import translation_prompts as tp
-from slidemage.ai import ai_profile, credentials, ollama_admin
-from slidemage.ai.anthropic_provider import AnthropicProvider
-from slidemage.ai.providers import InstalledModel, OllamaProvider
+from slidemage.ai import ai_profile
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import Button
-from slidemage.ui.dialogs.settings import ABOUT, AI, CLOUD, GENERAL, OLLAMA, PROJECT, PROMPTS, SettingsSheet
-from conftest import EXAMPLE_PROJECT, wait_until
+from slidemage.ui.dialogs.settings import ABOUT, AI, GENERAL, OLLAMA, PROJECT, PROMPTS, SettingsSheet
+from conftest import EXAMPLE_PROJECT
 from test_templates import _framework, _project
 from slidemage.project import ProjectContext
 
-INSTALLED = [InstalledModel("general-text", 2_000_000_000, "", ("tools",)), InstalledModel("translator", 1_000_000, ""),
-             InstalledModel("vision", 7_000_000_000, "", ("vision",)), InstalledModel("vision-2", 5_000_000, "", ("vision",))]
 
 
 class FakeApp(QWidget):
@@ -48,17 +44,13 @@ class FakeApp(QWidget):
 
 
 @pytest.fixture(autouse=True)
-def fakes(tmp_path, monkeypatch):
+def fakes(tmp_path, monkeypatch, fake_routes):
     monkeypatch.setattr(updater, "config_dir", lambda: tmp_path / "cfg")
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: list(INSTALLED))
-    monkeypatch.setattr(AnthropicProvider, "list_models", lambda self: [])
 
 
 def loaded(sheet, qapp):
     """The sheet once the model lists the thread fetched have arrived."""
-    sheet._loader.wait()
     qapp.processEvents()
-    assert sheet.loaded
     return sheet
 
 
@@ -164,295 +156,6 @@ def test_the_ai_tab_has_the_address_and_the_model_of_each_task(qapp):
     sheet = open_sheet(qapp, tab=AI)
     assert sheet.ai.language.address.current() == "Sie"
     assert len(sheet.ai.models.findChildren(QComboBox)) == 2 * len(ai_profile.TASKS)
-
-
-def test_what_ollama_has_is_kept_for_the_pickers_of_the_window(qapp):
-    sheet = open_sheet(qapp)
-    assert [m.name for m in sheet.installed] == [m.name for m in INSTALLED]
-    assert sheet.ollama.models_list.count() == len(INSTALLED)
-
-
-def test_an_unreachable_ollama_is_said_by_the_ollama_tab(monkeypatch, qapp):
-    monkeypatch.setattr(OllamaProvider, "installed", lambda self, **_: [])
-    sheet = open_sheet(qapp)
-    assert sheet.installed == [] and "not reachable" in sheet.ollama.status.text()
-    assert not sheet.ollama.models_list.isEnabled() and not sheet.ollama.delete_button.isEnabled()
-
-
-def test_the_models_found_reach_the_window_when_the_sheet_closes(monkeypatch, qapp):
-    from slidemage.ui.workspace import window as window_module
-
-    sheet = open_sheet(qapp)
-    monkeypatch.setattr(sheet, "exec", lambda: None)
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab, **_kw: sheet)
-    filled, refreshed = [], []
-    app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
-    window_module.WorkspaceWindow.open_settings(app)
-    assert filled == [sheet.installed] and refreshed == []          # the list's `changed` refreshes the pickers
-
-
-def test_a_sheet_closed_before_the_models_arrived_refreshes_nothing(monkeypatch, qapp):
-    from slidemage.ui.workspace import window as window_module
-
-    sheet = SettingsSheet(FakeApp())
-    loader = sheet._loader
-    sheet.reject()                                  # closed at once
-    loader.wait()
-    qapp.processEvents()                            # its answer arrives to nobody
-    assert not sheet.loaded and sheet.installed == []
-
-    filled, refreshed = [], []
-    app = SimpleNamespace(local_models=SimpleNamespace(fill=filled.append), refresh_ai_models=lambda: refreshed.append(True))
-    monkeypatch.setattr(window_module, "SettingsSheet", lambda _app, _tab, **_kw: SimpleNamespace(exec=lambda: 0, loaded=False, after=None))
-    window_module.WorkspaceWindow.open_settings(app)
-    assert filled == [] and refreshed == [True]       # nothing was found; the keys and defaults may have changed
-
-
-def test_a_reload_while_one_is_running_waits_for_its_answer_instead_of_stacking(qapp):
-    sheet = SettingsSheet(FakeApp())
-    first = sheet._loader
-    sheet.reload_models()
-    sheet.reload_models()
-    assert sheet._loader is first and sheet._reload_pending      # no second loader yet
-    first.wait()
-    qapp.processEvents()                                         # the answer arrives and starts the rerun
-    second = sheet._loader
-    assert second is not None and second is not first and not sheet._reload_pending
-    loaded(sheet, qapp)
-    assert [m.name for m in sheet.installed] == [m.name for m in INSTALLED] and sheet._loader is None
-
-
-def test_an_answer_that_is_not_the_current_loaders_is_dropped(qapp):
-    sheet = open_sheet(qapp)
-    sheet._on_models(object(), [InstalledModel("stale", 1, "")])
-    assert "stale" not in [m.name for m in sheet.installed]
-
-
-# -- Cloud -------------------------------------------------------------------------------------
-
-class FakeKeyring:
-    """A keychain; `usable=False` is keyring's `fail` backend."""
-
-    def __init__(self, usable=True):
-        self.store, self.priority = {}, 5 if usable else 0
-
-    def get_keyring(self):
-        return self
-
-    def get_password(self, service, user):
-        return self.store.get((service, user))
-
-    def set_password(self, service, user, value):
-        if self.priority == 0:
-            raise RuntimeError("no backend")
-        self.store[(service, user)] = value
-
-    def delete_password(self, service, user):
-        self.store.pop((service, user), None)
-
-
-def test_the_cloud_tab_has_the_key_and_points_to_the_switch_and_ai_setup_for_the_rest(qapp):
-    sheet = open_sheet(qapp, tab=CLOUD)
-    assert not hasattr(sheet.cloud, "connection") and not hasattr(sheet.cloud, "project_choice")
-    assert "switch at the top of the assistant" in sheet.cloud.findChildren(QLabel)[0].text()
-
-
-@pytest.mark.parametrize("backend", ["missing", "unusable"])
-def test_the_key_message_says_where_a_key_will_live_without_a_keychain(qapp, monkeypatch, backend):
-    if backend == "unusable":
-        monkeypatch.setattr(credentials, "_keyring", lambda: FakeKeyring(usable=False))
-    sheet = open_sheet(qapp, tab=CLOUD)
-    status = sheet.cloud.key_status
-    assert "No API key set" in status.text() and "settings file" in status.text() and "keyring" in status.text()
-
-    sheet.cloud.key_edit.setText("sk-ant-fake-1")
-    sheet.cloud._on_key_save()
-    assert sheet.cloud.key_edit.text() == ""
-    assert app_settings.get(EXAMPLE_PROJECT, credentials.FILE_SETTING_KEY) == "sk-ant-fake-1"
-    assert credentials.get_api_key(EXAMPLE_PROJECT).source == "settings file"
-    assert "settings file on this computer" in status.text() and "keyring" in status.text()
-    assert credentials.FILE_SETTING_KEY not in (EXAMPLE_PROJECT.settings_dir / "app_settings.json").read_text(encoding="utf-8")
-    assert "sk-ant-fake-1" not in status.text()                    # the key itself is never shown
-
-    sheet.cloud._on_key_remove()
-    assert app_settings.get(EXAMPLE_PROJECT, credentials.FILE_SETTING_KEY) is None and "No API key set" in status.text()
-
-
-def test_the_key_message_with_a_keychain_and_with_the_environment_variable(ctx, monkeypatch, qapp):
-    keyring = FakeKeyring()
-    monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
-    sheet = open_sheet(qapp, tab=CLOUD)
-    status = sheet.cloud.key_status
-    assert "stored in the system keychain" in status.text()
-
-    sheet.cloud.key_edit.setText("sk-ant-fake-2")
-    sheet.cloud._on_key_save()
-    assert status.text() == "Key stored in the system keychain."
-    assert app_settings.get(ctx, credentials.FILE_SETTING_KEY) is None and credentials.get_api_key(ctx).source == "keychain"
-
-    monkeypatch.setenv(credentials.ENV_VAR, "sk-ant-fake-env")
-    sheet.cloud._on_key_remove()                  # refreshes: the variable is still there and wins
-    assert credentials.ENV_VAR in status.text() and "environment variable" in status.text()
-    monkeypatch.delenv(credentials.ENV_VAR)
-    sheet.cloud._on_key_remove()
-    assert "No API key set" in status.text() and not keyring.store
-
-
-def test_a_keychain_entry_that_cannot_be_removed_is_reported_not_swallowed(ctx, monkeypatch, qapp):
-    keyring = FakeKeyring()
-    keyring.store[("SlideMage", "anthropic-api-key")] = "sk-ant-old"
-    monkeypatch.setattr(credentials, "_keyring", lambda: keyring)
-
-    def refuse(service, user):
-        raise RuntimeError("locked")
-
-    keyring.delete_password = refuse
-    with pytest.raises(OSError, match="locked"):
-        credentials.set_api_key(ctx, "")
-    assert credentials.get_api_key(ctx).value == "sk-ant-old"            # still there, and the caller was told
-    keyring.priority = 0                                              # the save fails; the old entry still shadows
-    with pytest.raises(OSError):
-        credentials.set_api_key(ctx, "sk-ant-new")
-    assert app_settings.get(ctx, credentials.FILE_SETTING_KEY) == "sk-ant-new"
-    del keyring.delete_password                                       # a keychain that lets go: nothing shadows the file
-    assert credentials.set_api_key(ctx, "sk-ant-newer") == credentials.SOURCE_FILE
-    assert credentials.get_api_key(ctx).value == "sk-ant-newer" and not keyring.store
-
-
-# -- Ollama ------------------------------------------------------------------------------------
-
-def test_the_installed_models_are_listed_with_their_size_and_selection_enables_the_buttons(qapp):
-    sheet = open_sheet(qapp, tab=OLLAMA)
-    tab = sheet.ollama
-    texts = [tab.models_list.item(i).text() for i in range(tab.models_list.count())]
-    assert texts[0] == "general-text   —   1.9 GB" and texts[2].endswith("(vision)")
-    assert not tab.update_button.isEnabled() and not tab.delete_button.isEnabled()
-    tab.models_list.item(1).setSelected(True)
-    assert tab.selected() == ["translator"] and tab.update_button.isEnabled() and tab.delete_button.isEnabled()
-
-
-def test_a_changed_host_is_saved_and_the_models_are_asked_for_again(qapp):
-    app = FakeApp()
-    sheet = open_sheet(qapp, app, tab=OLLAMA)
-    asked = []
-    sheet.ollama.changed.connect(lambda: asked.append(1))
-    sheet.ollama.host_edit.setText("http://ollama.example:11434")
-    sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get_ollama_host(EXAMPLE_PROJECT) == "http://ollama.example:11434" and asked == [1]
-    sheet.ollama.host_edit.setText("")             # empty clears the override
-    sheet.ollama.host_edit.editingFinished.emit()
-    assert app_settings.get(EXAMPLE_PROJECT, app_settings.OLLAMA_HOST_SETTING_KEY) is None
-    assert sheet.ollama.host_edit.text() == app_settings.get_ollama_host(EXAMPLE_PROJECT)
-
-
-@pytest.mark.parametrize("operation, message", [("delete", "in use"), ("update", "no space")])
-def test_model_changes_run_on_a_thread_and_refresh_the_list(monkeypatch, qapp, operation, message):
-    app = FakeApp()
-    sheet = open_sheet(qapp, app, tab=OLLAMA)
-    tab = sheet.ollama
-    changed, asked, processed = [], [], []
-
-    def change(model, host, on_progress=None):
-        processed.append(model)
-        if on_progress:
-            on_progress(f"pulling {model}")
-        return model == "general-text", message
-
-    monkeypatch.setattr(ollama_admin, f"{operation}_model", change)
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
-    failures = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *args: failures.append(args[2]))
-    tab.changed.connect(lambda: changed.append(1))
-    tab.models_list.item(0).setSelected(True)
-    tab.models_list.item(1).setSelected(True)
-
-    getattr(tab, f"_on_{operation}")()
-    assert not tab.models_list.isEnabled()
-    assert not getattr(tab, f"{operation}_button").isEnabled()
-    wait_until(lambda: changed)
-
-    assert processed == ["general-text", "translator"] and changed == [1]
-    assert tab.models_list.isEnabled()
-    verb = "deleting" if operation == "delete" else "updating"
-    assert app.slots == [f"{verb} 2 model(s)", "end"]
-    past = "Deleted" if operation == "delete" else "Updated"
-    assert failures and f"{past} 1 of 2" in failures[0]
-    if operation == "delete":
-        assert "general-text" in asked[0] and "translator" in asked[0]
-        assert "translator: in use" in failures[0]
-    else:
-        assert "pulling general-text" in app.logged and "Updated Ollama model general-text" in app.logged
-        assert "Failed to update translator: no space" in app.logged
-
-
-def test_declining_the_delete_question_deletes_nothing(monkeypatch, qapp):
-    app = FakeApp()
-    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
-    deleted = []
-    monkeypatch.setattr(ollama_admin, "delete_model", lambda model, host: deleted.append(model) or (True, ""))
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
-    tab.models_list.item(0).setSelected(True)
-    tab._on_delete()
-    assert deleted == [] and app.slots == ["deleting general-text", "end"]      # the slot is given back
-
-
-def test_a_request_that_blows_up_still_enables_the_list_again(monkeypatch, qapp):
-    app = FakeApp()
-    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
-
-    def explode(model, host, on_progress=None):
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(ollama_admin, "update_model", explode)
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    failures, changed = [], []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *args: failures.append(args[2]))
-    tab.changed.connect(lambda: changed.append(1))
-    tab.models_list.item(0).setSelected(True)
-    tab._on_update()
-    wait_until(lambda: changed)
-    assert tab.models_list.isEnabled() and app.slots[-1] == "end" and "boom" in failures[0]
-
-
-
-def test_admin_lease_is_held_until_the_worker_exits(monkeypatch, qapp):
-    import threading
-    from slidemage.ui.dialogs import settings_ollama
-
-    app = FakeApp()
-    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
-    gate = threading.Event()
-    original_run = settings_ollama._AdminWorker.run
-
-    def run_then_wait(worker):
-        original_run(worker)
-        gate.wait(5)
-
-    monkeypatch.setattr(settings_ollama._AdminWorker, "run", run_then_wait)
-    monkeypatch.setattr(ollama_admin, "update_model", lambda *args, **kwargs: (True, ""))
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    changed = []
-    tab.changed.connect(lambda: changed.append(True))
-    tab.models_list.item(0).setSelected(True)
-    try:
-        tab._on_update()
-        wait_until(lambda: changed)
-        assert app.slots == ["updating general-text"]
-    finally:
-        gate.set()
-    wait_until(lambda: app.slots == ["updating general-text", "end"])
-
-def test_a_busy_ollama_slot_stops_a_delete_and_an_update(monkeypatch, qapp):
-    app = FakeApp()
-    app.slot_free = False
-    tab = open_sheet(qapp, app, tab=OLLAMA).ollama
-    monkeypatch.setattr(ollama_admin, "delete_model", lambda model, host: pytest.fail("deleted while busy"))
-    monkeypatch.setattr(ollama_admin, "update_model", lambda model, host, on_progress=None: pytest.fail("updated while busy"))
-    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    tab.models_list.item(0).setSelected(True)
-    tab._on_delete()
-    tab._on_update()
-    assert app.slots == []
 
 
 # -- Prompts -----------------------------------------------------------------------------------
@@ -570,7 +273,7 @@ def test_a_new_override_needs_its_model_languages_and_text_and_is_selected_once_
     app = FakeApp(ctx)
     sheet = open_sheet(qapp, app, tab=PROMPTS)
     page = translation(sheet)
-    assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == [m.name for m in sheet.installed]
+    assert [page.model_combo.itemText(i) for i in range(page.model_combo.count())] == ["fake-1", "fake-2"]
     page.chooser.setCurrentIndex(page.chooser.count() - 1)
     page.editor.edit.setPlainText("For this model.")
     page.editor.save_button.click()

@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Composite slide edits with fake buffers/rendering and socket-free MCP."""
-import base64
 import importlib.util
-import io
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -12,11 +10,9 @@ from types import SimpleNamespace
 import pytest
 from agent_fakes import FakeWorkspace, call
 
-from slidemage.ai import claude_hook
 from slidemage import ai_review, compiler, deck_outline, preview_target, slide_snapshot
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
-from slidemage.ai.mcp_server import McpServer
-from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox, undo_edit
+from slidemage.ai.tools import build_toolbox, undo_edit
 from slidemage.ai.workspace import WorkspaceContext
 from slidemage.deck_scan import scan_decks
 from slidemage.project import ProjectContext
@@ -265,13 +261,6 @@ def test_non_live_slides_are_refused(env, slide):
     assert result.is_error and not env.events and not env.renders
 
 
-def test_mcp_returns_preview_and_exposes_modify_as_mutating(env):
-    server = McpServer(lambda: build_toolbox(env.ws, env.events.append, compiler.CancelToken(), EDIT_AUTO,
-                                            tools=CLAUDE_CODE_TOOLS))
-    response = server.handle(dict(jsonrpc="2.0", id=1, method="tools/call", params=dict(
-        name="modify_slide", arguments=dict(slide="abc", edits=EDITS))))["result"]
-    assert not response["isError"]
-    assert response["content"][1] == dict(type="image", mimeType="image/png", data=base64.b64encode(PNG).decode())
 
 
 # -- optional timing (SLIDEMAGE_TIMING=1) ---------------------------------------------------------------
@@ -290,8 +279,8 @@ def test_timing_is_silent_when_off(env, monkeypatch):
 def test_timing_records_the_request_in_order(env, monkeypatch):
     monkeypatch.setenv("SLIDEMAGE_TIMING", "1")
     monkeypatch.setenv("SLIDEMASTER_PROJECT", str(env.root))
-    monkeypatch.setattr("sys.stdin", SimpleNamespace(buffer=io.BytesIO(b'{"hook_event_name": "UserPromptSubmit"}')))
-    assert claude_hook.main() == 0
+    from slidemage import timing
+    timing.event(env.root, "prompt")
     assert not modify(env).is_error
     events = _timeline(env)
     assert [e["event"] for e in events] == ["prompt", "tool_start", "slide_written", "render_done", "tool_end"]

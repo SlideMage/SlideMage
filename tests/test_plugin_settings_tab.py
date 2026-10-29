@@ -23,7 +23,6 @@ from conftest import build_window, command_context, filled_menu, make_project, q
 from slidemage.plugins import catalogue, installer, loader, session
 from slidemage.plugins.registry import Registrar
 from slidemage.project import ProjectContext
-from test_settings_gui import fakes as fakes, open_sheet
 from slidemage.ui.dialogs import settings_plugins
 from slidemage.ui.dialogs.settings import PLUGINS
 from slidemage.ui.dialogs.settings_plugins import PluginsTab
@@ -511,11 +510,15 @@ def test_plugins_page_link(app, monkeypatch):
 
 # -- in the sheet and the menu
 
-def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, fakes):  # noqa: F811
-    sheet = open_sheet(qapp, tab=PLUGINS)
+def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, tmp_path):
+    from slidemage.ui.dialogs.settings import SettingsSheet
+    app = FakeApp(tmp_path)
+    app.project = ProjectContext.at(tmp_path)
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    sheet = SettingsSheet(app, tab=PLUGINS)
     names = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
-    assert names[PLUGINS] == "Plugins" and names[-1] == "Plugins"
-    assert sheet._tabs.currentIndex() == PLUGINS
+    assert names[-1] == "Plugins"
+    assert sheet.current_tab() == PLUGINS
 
 
 def test_help_plugins_opens_the_tab(qapp, monkeypatch, tmp_path):

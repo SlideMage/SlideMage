@@ -2925,3 +2925,12 @@ NEW: CampusOnline features are now a plugin.
 - The course link of a deck, the admin slides and rendering ahead of a course session moved into the CampusOnline plugin; install it from Settings → Plugins or the first-start sheet.
 - Your decks keep their course link, and the first-start sheet ticks the plugin for you when your project uses it.
 - A project with course links now tells you once, with a button to the plugin list, when the plugin is missing.
+
+v9.1.0 (2026-10-29, AI-free core): AI routes are supplied by plugins through the public route, terminal, credentials, task and image APIs. Legacy settings are read without migration by plugin compatibility readers.
+
+BREAKING: AI is now two plugins, Claude and Ollama; SlideMage offers them at the next start to everyone who used them; your keys, models and settings carry over
+
+NEW: SlideMage works as a complete editor without an AI plugin.
+- Manual image descriptions and translation remain available.
+- Plugins provide AI routes and retain existing settings.
+

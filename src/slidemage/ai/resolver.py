@@ -18,7 +18,6 @@ The route decides how; this module decides what is refused first: an unknown rou
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from .. import alt_draft
@@ -26,14 +25,7 @@ from ..plugin_api import AiRoute
 from ..project import ProjectContext
 from . import ai_profile, routes
 from .ai_profile import Route
-from .anthropic_api_route import NO_KEY  # noqa: F401 -- re-exported: the texts the UI and the tests show (3b moves them)
-from .claude_code_route import CHAT_IN_TERMINAL, NO_CLAUDE, claude_path as _claude_path  # noqa: F401
 from .providers import ChatProvider, RouteUnavailable
-
-
-def claude_path() -> Path:
-    """The user's `claude` executable, or RouteUnavailable(NO_CLAUDE)."""
-    return _claude_path()
 
 
 def not_offered(route: Route, what: str, instead: str = "") -> str:
@@ -72,7 +64,7 @@ def provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
     found = _route(route)
     provider = found.provider(routes.context(ctx, found.id), route)
     if provider is None:
-        raise RouteUnavailable(not_offered(route, "This feature", "It needs an Ollama or an API model: switch the route."))
+        raise RouteUnavailable(not_offered(route, "This feature", "Choose a route that provides this feature."))
     if reason := found.problem(routes.context(ctx, found.id), route):
         raise RouteUnavailable(reason)
     return provider

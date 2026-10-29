@@ -20,15 +20,12 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QGridLayout, QLabel, QMessageBox, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QGridLayout, QLabel, QVBoxLayout, QWidget
 
-from ...ai import ai_profile, credentials, routes, translation_style
+from ...ai import ai_profile, routes, translation_style
 from ...ai.ai_profile import CHAT, CLAUDE_CODE, CLOUD, LOCAL, TASKS, TASK_LABELS
-from ...ai.claude_launch import find_claude
-from ...ai.providers import InstalledModel
 from ...project import ProjectContext
-from ..kit.widgets import Button, Field, Page, SegmentedControl, caption, row
-from .settings_ollama import OllamaTab
+from ..kit.widgets import Field, Page, SegmentedControl, caption
 from .settings_prompts import PromptsTab
 
 log = logging.getLogger(__name__)
@@ -67,105 +64,13 @@ class LanguageBlock(Page):
             "German\" per line; every translation request carries the file as it is."))
 
 
-class ApiKeyBlock(Page):
-    cloud_changed = Signal()         # the API key changed: the models on offer differ now
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        self.project = project
-        layout = self.body
-        layout.addWidget(caption(
-            "A cloud route (Claude Code or the Anthropic API) receives whatever its task sends: slide text, images, "
-            "notes. Which side the project uses is the Local | Cloud switch at the top of the assistant; what Cloud means (Claude Code or the "
-            "Anthropic API) and the project's own setting are in AI setup, its ▾."))
-        self.key_edit = QLineEdit()
-        self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key_edit.setPlaceholderText("sk-ant-…")
-        save_key = Button("Save key", compact=True)
-        save_key.clicked.connect(self._on_key_save)
-        remove_key = Button("Remove key", compact=True)
-        remove_key.clicked.connect(self._on_key_remove)
-        layout.addWidget(Field("Anthropic API key", row(self.key_edit, save_key, remove_key)))
-        self.key_status = caption(self.key_message(credentials.get_api_key(project)))
-        layout.addWidget(self.key_status)
-
-    @staticmethod
-    def key_message(key: credentials.ApiKey | None) -> str:
-        """Where the key in use lives, or where a key saved now would go."""
-        keychain = credentials.keychain_available()
-        if key is None:
-            return "No API key set. " + (
-                "A key you save is stored in the system keychain." if keychain else
-                "A key you save is stored in SlideMage's settings file on this computer (ai_settings.json, "
-                "outside the project), because no system keychain is available. Install the optional "
-                "'keyring' package to use it.")
-        return {
-            credentials.SOURCE_ENV: f"Using the key from the {credentials.ENV_VAR} environment variable "
-                                    "(it takes precedence over a saved key).",
-            credentials.SOURCE_KEYCHAIN: "Key stored in the system keychain.",
-            credentials.SOURCE_FILE: "Key stored in SlideMage's settings file on this computer (ai_settings.json, "
-                                     "outside the project). " + (
-                                         "Save it again to move it to the system keychain." if keychain else
-                                         "Install the optional 'keyring' package to use the system keychain instead."),
-        }[key.source]
-
-    def _on_cloud_changed(self) -> None:
-        self.key_status.setText(self.key_message(credentials.get_api_key(self.project)))
-        self.cloud_changed.emit()
-
-    def _on_key_save(self) -> None:
-        key = self.key_edit.text().strip()
-        if not key:
-            return
-        self._store_key(key)
-
-    def _on_key_remove(self) -> None:
-        self._store_key("")
-
-    def _store_key(self, key: str) -> None:
-        try:
-            credentials.set_api_key(self.project, key)
-        except OSError as exc:
-            QMessageBox.warning(self, "API key", f"Couldn't save the API key: {exc}")
-            return
-        self.key_edit.clear()
-        self._on_cloud_changed()
-
-
-class ClaudeCodeStatus(Page):
-    """Whether Claude Code is installed (found at …), for the Claude section."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        found = find_claude()
-        self.status = caption(f"Claude Code found at {found}." if found else
-                              "Claude Code not found. Install it, or use the Anthropic API.")
-        self.body.addWidget(self.status)
-
-
-def build_ollama_section() -> QWidget:
-    page = building()
-    page.ollama = OllamaTab(page.app)
-    return page.ollama
-
-
-def build_api_section() -> QWidget:
-    page = building()
-    page.cloud = ApiKeyBlock(page.project)
-    return page.cloud
-
-
-def build_claude_code_section() -> QWidget:
-    return ClaudeCodeStatus()
-
-
 class ModelsGrid(QWidget):
     """The model of each task on the local route and on the chosen cloud route, saved as the user's defaults."""
 
     def __init__(self, app) -> None:
         super().__init__()
         self.app, self.project = app, app.project
-        self.installed: list[InstalledModel] = []
+        self.installed: list = []
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setColumnStretch(1, 1)
@@ -196,7 +101,7 @@ class ModelsGrid(QWidget):
     def _offered(self, route, task: str) -> list[str]:
         return list(route.model_choices(routes.context(self.project, route.id), task))
 
-    def set_installed(self, installed: list[InstalledModel]) -> None:
+    def set_installed(self, installed: list) -> None:
         self.installed = installed
         self.refresh()
 
@@ -254,8 +159,8 @@ class AiPage(Page):
         super().__init__()
         global _building
         self.app, self.project = app, app.project
-        self.ollama: OllamaTab | None = None
-        self.cloud: ApiKeyBlock | None = None
+        self.ollama = None
+        self.cloud = None
         self.sections: dict[str, QWidget] = {}          # key (service, PROMPTS_KEY or a plugin's title) -> section
         layout = self.body
         layout.addWidget(caption(
@@ -308,10 +213,6 @@ class AiPage(Page):
         finally:
             _building = None
         layout.addStretch(1)
-        if self.ollama is not None:
-            self.ollama.changed.connect(self.changed)
-        if self.cloud is not None:
-            self.cloud.cloud_changed.connect(self._on_api_key)
 
     def _add_section(self, key: str, title: str, widget: QWidget) -> None:
         field = Field(title, widget)
@@ -325,16 +226,5 @@ class AiPage(Page):
             return                       # a plugin's route: not one ai_profile can start on yet
         self.models.refresh()
 
-    def _on_api_key(self) -> None:
+    def set_installed(self, installed) -> None:
         self.models.refresh()
-        self.changed.emit()
-
-    def set_installed(self, installed: list[InstalledModel]) -> None:
-        from ...ai.ollama_route import cache_installed
-        cache_installed(self.project, installed)
-        if self.ollama is not None:
-            self.ollama.fill(installed)
-        self.prompts.translation.set_models([model.name for model in installed])
-        self.models.refresh()
-        if hasattr(self.app, "model_choices_changed"):
-            self.app.model_choices_changed.emit(ai_profile.OLLAMA)

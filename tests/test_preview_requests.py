@@ -117,28 +117,19 @@ def test_cancel_before_process_registration_kills_new_process(tmp_path):
     cancel._set_process(None)
 
 
-def test_terminal_stop_cancels_current_toolbox(qapp, tmp_path):
-    from slidemage.ai.agent_toolbox import agent_toolbox
+def test_agent_stop_cancels_current_toolbox(tmp_path):
+    from fake_routes import FakeProvider
+    from slidemage.ai.agent import Agent
     from slidemage.ai.workspace import Workspace
-    from slidemage.ui.workspace.terminal.session import ClaudeCodeSession
 
-    session = ClaudeCodeSession.__new__(ClaudeCodeSession)
-    # No terminal, WebEngine view, listening server, or paid model is started.
-    session._lock = threading.Lock()
-    session._cancel = compiler.CancelToken()
+    provider = FakeProvider()
     workspace = Workspace(ProjectContext.at(tmp_path))
-    session.host = SimpleNamespace(
-        ai_tools=lambda scope, *, cancel, **_: agent_toolbox(workspace, scope, None, cancel, "auto"))
-    session.context = SimpleNamespace(build_tools=lambda host, scope, cancel: host.ai_tools(scope, cancel=cancel))
-    session.scope = "deck"
-    session._timer = SimpleNamespace(stop=lambda: None)
-    session._sync = SimpleNamespace(stop=lambda **k: None)
-    session._pty = SimpleNamespace(stop=lambda: None)
-    box = session._toolbox()
-    session.stop()
-    assert box.ctx.cancel.is_set()
-    session._cancel = compiler.CancelToken()
-    assert not session._toolbox().ctx.cancel.is_set()
+    agent = Agent(provider, workspace)
+    box = agent._tools
+    assert not box.ctx.cancel.is_set()
+    agent.stop()
+    assert box.ctx.cancel.is_set() and provider.aborted
+    assert not Agent(FakeProvider(), workspace)._tools.ctx.cancel.is_set()
 
 
 def test_cancel_preamble_build_propagates_and_releases_format_lock(tmp_path, monkeypatch):

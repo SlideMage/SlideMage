@@ -30,7 +30,7 @@ from . import compare_rendered, compile_actions, deck_actions, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile, routes
-from ...ai.claude_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
+from ...ai.focus_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
 from .source_file import REPLACE_KEY, autosave_on
 from .task_bubbles import DECK_TASKS, SLIDE_TASKS, selection_of
@@ -53,7 +53,7 @@ MAC_KEYS = {
 # -- when a command is available -------------------------------------------------------
 
 AI_COMMANDS = ("ai:", "task:", "selection:")        # the commands that need an AI route, by id prefix
-AI_COMMAND_IDS = ("slide:readable", "slide:translate", "images")
+AI_COMMAND_IDS = ("slide:readable", "slide:translate")
 
 
 def _with_ai(visible):

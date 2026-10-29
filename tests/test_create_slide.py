@@ -9,8 +9,7 @@ from agent_fakes import FakeWorkspace, call
 
 from slidemage import ai_review, compiler, deck_editor, deck_headers, preview_target, slide_add, slide_ids, slide_snapshot
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, EditApplied
-from slidemage.ai.mcp_server import McpServer
-from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox
+from slidemage.ai.tools import build_toolbox
 from slidemage.ai.workspace import WorkspaceContext
 from slidemage.deck_scan import scan_decks
 from slidemage.project import ProjectContext
@@ -235,18 +234,6 @@ def test_translation_insertion_failure_restores_source(env, monkeypatch):
     assert not new_slides(env) and not ai_review.unreviewed(env.project)
 
 
-def test_mcp_exposes_create_slide_and_returns_png_content(env):
-    import base64
-    server = McpServer(lambda: build_toolbox(env.workspace, env.events.append, compiler.CancelToken(), EDIT_AUTO,
-                                            tools=CLAUDE_CODE_TOOLS))
-    response = server.handle(dict(jsonrpc="2.0", id=1, method="tools/call", params=dict(
-        name="create_slide", arguments=dict(title="Draft", slug="Draft", body=BODY, deck="test"))))
-    result = response["result"]
-    assert not result["isError"]
-    assert result["content"][1] == dict(type="image", mimeType="image/png", data=base64.b64encode(PNG).decode())
-    response = server.handle(dict(jsonrpc="2.0", id=2, method="tools/call", params=dict(
-        name="create_slide", arguments=dict(title="Draft", slug="Draft", body="bad", deck="test"))))
-    assert response["result"]["isError"]
 
 
 def test_default_language_is_the_edited_language(env):

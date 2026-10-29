@@ -11,7 +11,7 @@ import threading
 import pytest
 from conftest import SLIDE_TEXT
 
-from slidemage.ai import claude_runner, tasks as ai_tasks, provider_tasks
+from slidemage.ai import task_result, tasks as ai_tasks, provider_tasks
 from slidemage.ai.providers import Cancelled, ChatReply, ProviderError
 from slidemage.project import ProjectContext
 
@@ -51,7 +51,7 @@ def run(ctx, provider, cancel=None):
 def test_the_rules_the_schema_and_the_request_go_to_the_provider_and_a_good_answer_is_the_result(ctx):
     provider = Provider('{"body": %s, "note": "Split after the list."}' % json.dumps(BIGGER))
     outcome = run(ctx, provider)
-    assert (outcome.status, outcome.text, outcome.attempts, outcome.note) == (claude_runner.DONE, BIGGER, 1, "Split after the list.")
+    assert (outcome.status, outcome.text, outcome.attempts, outcome.note) == (task_result.DONE, BIGGER, 1, "Split after the list.")
     (messages, kwargs), = provider.calls
     assert messages == [{"role": "user", "content": REQUEST}]
     assert kwargs["system"] == ai_tasks.READABLE.rules and kwargs["schema"] == ai_tasks.READABLE.schema
@@ -66,42 +66,42 @@ def test_a_reply_in_a_fence_or_in_the_thinking_field_is_read(ctx):
 
 def test_an_answer_that_changes_nothing_is_nothing_to_change_with_the_models_note(ctx):
     outcome = run(ctx, Provider('{"body": %s, "note": "Too much text: split."}' % json.dumps(LF)))
-    assert (outcome.status, outcome.text, outcome.note) == (claude_runner.NOTHING, "", "Too much text: split.")
+    assert (outcome.status, outcome.text, outcome.note) == (task_result.NOTHING, "", "Too much text: split.")
 
 
 def test_a_refused_answer_gets_one_repair_round_with_the_reasons(ctx):
     broken = json.dumps(LF.replace("1-0-0", "2-0-0"))
     provider = Provider('{"body": %s}' % broken, '{"body": %s}' % json.dumps(BIGGER))
     outcome = run(ctx, provider)
-    assert (outcome.status, outcome.text, outcome.attempts) == (claude_runner.DONE, BIGGER, 2)
+    assert (outcome.status, outcome.text, outcome.attempts) == (task_result.DONE, BIGGER, 2)
     repair = provider.calls[1][0][0]["content"]
     assert repair.startswith(REQUEST) and "Your previous answer was refused" in repair and "protected part" in repair
     twice = run(ctx, Provider('{"body": %s}' % broken, '{"body": %s}' % broken))
-    assert twice.status == claude_runner.FAILED and twice.attempts == 2
+    assert twice.status == task_result.FAILED and twice.attempts == 2
     assert twice.message.startswith("The model's answer was refused: ") and "protected part" in twice.message
 
 
 def test_a_reply_that_is_not_json_is_repaired_once_then_fails(ctx):
     provider = Provider("Sure! Here is the slide: \\begin{frame}", '{"body": %s}' % json.dumps(BIGGER))
     outcome = run(ctx, provider)
-    assert outcome.status == claude_runner.DONE and outcome.attempts == 2
+    assert outcome.status == task_result.DONE and outcome.attempts == 2
     assert "was not a JSON object" in provider.calls[1][0][0]["content"]
     bad = run(ctx, Provider("not json", ""))
-    assert bad.status == claude_runner.FAILED and bad.attempts == 2
+    assert bad.status == task_result.FAILED and bad.attempts == 2
     assert bad.message == "The model's answer was refused: the answer was not a JSON object."
 
 
 def test_a_reply_cut_off_at_the_token_limit_fails_without_a_second_try(ctx):
     provider = Provider(ChatReply('{"body": "\\begin{', truncated=True))
     outcome = run(ctx, provider)
-    assert outcome.status == claude_runner.FAILED and outcome.attempts == 1 and "cut off" in outcome.message
+    assert outcome.status == task_result.FAILED and outcome.attempts == 1 and "cut off" in outcome.message
     assert len(provider.calls) == 1
 
 
 def test_a_provider_error_is_the_message_and_an_abort_is_a_cancel(ctx):
     outcome = run(ctx, Provider(ProviderError("Ollama is not reachable.")))
-    assert (outcome.status, outcome.message, outcome.attempts) == (claude_runner.FAILED, "Ollama is not reachable.", 1)
-    assert run(ctx, Provider(Cancelled("stopped"))).status == claude_runner.CANCELLED
+    assert (outcome.status, outcome.message, outcome.attempts) == (task_result.FAILED, "Ollama is not reachable.", 1)
+    assert run(ctx, Provider(Cancelled("stopped"))).status == task_result.CANCELLED
     cancel = threading.Event()
     cancel.set()
-    assert run(ctx, Provider('{"body": "x"}'), cancel).status == claude_runner.CANCELLED
+    assert run(ctx, Provider('{"body": "x"}'), cancel).status == task_result.CANCELLED

@@ -419,7 +419,8 @@ Also from the CampusOnline work:
 ### 6.5 Open
 
 - Version numbers: the handovers imply v9.0 for the plugin host (`hello` and CampusOnline say
-  `requires_slidemage = ">=9.0"`) and v10.0 for the AI-free core (Claude says `">=10.0"`).
+  `requires_slidemage = ">=9.0"`) and v10.0 for the AI-free core (Claude said `">=10.0"`). Decided 2026-10-29: the AI-free core is v9.1.0
+  (9.x is the plugin work's, 10.x the framework redesign's); Claude and Ollama require `">=9.1"`.
 - The Ollama handover: not seen on this side.
 - CampusOnline handover §7: repository owner, a Settings tab (proposed: none for 1.0), what else the box shows.
 - "Install from file…": anything that passes the checks with a warning (2.9), or only catalogue ids?

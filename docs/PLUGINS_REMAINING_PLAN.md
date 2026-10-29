@@ -19,8 +19,8 @@ requests wait for Jürgen's go.
 | Ollama plugin | `~/github/slidemage-plugin-ollama`, branch `plugin-ollama` (history filtered) | | its repository |
 
 Version numbers: phase 2's release removes a feature, so it is **v9.0.0** with a `BREAKING:` paragraph and a
-`compat.py` entry; phase 7's is **v10.0.0**, likewise (as the handovers have it; the renumbering for publication
-in the handover's section 6 is Stefan's decision and would be applied at release). Branches renumber at merge.
+`compat.py` entry; phase 7's is **v9.1.0**, likewise (decided by Stefan on 2026-10-29: 9.x is the plugin work's range, the framework
+redesign takes 10.x; the renumbering for publication in the handover's section 6 comes later). Branches renumber at merge.
 
 ## Phase 3: AI routes in a registry (plan §2.4)
 
@@ -126,7 +126,7 @@ third.
   plugins now).
 - Turn on the upgrade preselection for Claude and Ollama, and the project hint for an AI policy.
 - GUI tests run with no AI plugin.
-- Release v10.0.0, with a `BREAKING:` paragraph and a `compat.py` entry.
+- Release v9.1.0, with a `BREAKING:` paragraph and a `compat.py` entry.
 
 ## Phase 8: manual and changelogs
 

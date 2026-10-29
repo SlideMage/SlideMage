@@ -52,7 +52,6 @@ def produce(copy: Path) -> dict:
     ctx = project.ProjectContext.at(copy)
     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == DECK)
     jobs = compiler.build_jobs(deck, "instructor")
-    for job in jobs:
     log: list[str] = []
     results = compiler.run_jobs(ctx, jobs, log.append)
     if not all(results.values()):

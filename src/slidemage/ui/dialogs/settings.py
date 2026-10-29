@@ -39,17 +39,14 @@ from PySide6.QtCore import QThread, QTimer, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
 from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
-from ...ai import routes
-from ...ai.providers import InstalledModel, OllamaProvider
+from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
-from ...project import ProjectContext
-from .. import background
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
-from .settings_ai import PROMPTS_KEY, AiPage, ApiKeyBlock as CloudTab, LanguageBlock as AiTab  # noqa: F401 -- the old names
+from .settings_ai import PROMPTS_KEY, AiPage, LanguageBlock as AiTab  # noqa: F401
 from .settings_plugins import PluginsTab
 from ..presentation.settings_page import PresentationTab
 
@@ -70,19 +67,6 @@ UPDATE_NOTES = {
     updater.UPDATE_MODE_AUTO: "Checked when SlideMage starts; a newer release is installed automatically. "
                               "One that changes how SlideMage works is always asked about.",
 }
-
-
-class _ModelLoader(QThread):
-    """The installed Ollama models."""
-
-    loaded = Signal(object, object)       # this loader, [InstalledModel]
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        self.project = project
-
-    def run(self) -> None:
-        self.loaded.emit(self, OllamaProvider.for_project(self.project).installed(detailed=True))
 
 
 class GeneralTab(Page):
@@ -348,7 +332,7 @@ class SettingsSheet(ModalSheet):
         super().__init__("Settings", app, width=760)
         self.app = app
         add_route_badge(self, app)
-        self.installed: list[InstalledModel] = []       # what Ollama has, once `loaded`
+        self.installed: list = []       # what Ollama has, once `loaded`
         self.loaded = False
         self._loader: QThread | None = None
         self._reload_pending = False
@@ -435,29 +419,15 @@ class SettingsSheet(ModalSheet):
             return page
 
     def reload_models(self) -> None:
-        """Ask Ollama again; while a request is out, the next one waits for its answer."""
-        if self._loader is not None:
-            self._reload_pending = True
-            return
-        loader = _ModelLoader(self.app.project)
-        loader.loaded.connect(self._on_models)
-        self._loader = loader
-        background.start_detached(loader)
-
-    def _on_models(self, loader: QThread, installed: list[InstalledModel]) -> None:
-        if loader is not self._loader:
-            return
-        self.installed = installed
-        self._loader = None
-        self.loaded = True
+        """Refresh the route-owned model lists."""
         if self.ai:
-            self.ai.set_installed(installed)
-        if self._reload_pending:
-            self._reload_pending = False
-            self.reload_models()
+            self.ai.models.refresh()
+            local = next(iter(routes.on_side(True)), None)
+            choices = local.model_choices(routes.context(self.app.project, local.id), ai_profile.TRANSLATION) if local else []
+            self.ai.prompts.translation.set_models(choices)
 
     def close_then(self, action: Callable[[], None]) -> None:
-        """Close the sheet, and let the window run `action` after it (the sheet is modal)."""
+        """Close the modal sheet before the window runs its follow-up action."""
         self.after = action
         self.accept()
 

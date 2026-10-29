@@ -10,7 +10,6 @@ import json
 import pytest
 
 from slidemage import alt_images, bundled_copies, image_review
-from slidemage.ai import claude_hook
 from slidemage.ai.tools import build_toolbox
 from slidemage.alt_images import SOURCE_REVIEWED, SOURCE_TO_REVIEW, ImageEntry
 from slidemage.deck_scan import scan_decks
@@ -203,28 +202,8 @@ def test_a_chat_tool_creating_the_store_file_flags_its_sources(agent):
     assert alt_images.source_state(stored(ctx)) == SOURCE_TO_REVIEW
 
 
-@pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit"])
-def test_the_claude_code_hook_sends_a_changed_source_to_review(root, tool):
-    ctx = ProjectContext.at(root)
-    put(ctx, source="Own illustration")
-    path = ctx.media_dir / "alt-text.json"
-    event = {"cwd": str(root), "tool_name": tool, "tool_use_id": "t1", "tool_input": {"file_path": str(path)}}
-    claude_hook.record_write(ctx, {**event, "hook_event_name": "PreToolUse"})
-    path.write_text(path.read_text(encoding="utf-8").replace("Own illustration", "Photo: Smith"), encoding="utf-8")
-    claude_hook.record_write(ctx, {**event, "hook_event_name": "PostToolUse"})
-    assert stored(ctx).source_status == SOURCE_TO_REVIEW
-    assert not list(ctx.claude_hook_dir.glob("*.json"))
 
 
-def test_the_hook_leaves_a_failed_write_and_other_edits_of_the_store_alone(root):
-    ctx = ProjectContext.at(root)
-    put(ctx, source="Own illustration", short="s")
-    path = ctx.media_dir / "alt-text.json"
-    event = {"cwd": str(root), "tool_name": "Edit", "tool_use_id": "t2", "tool_input": {"file_path": str(path)}}
-    claude_hook.record_write(ctx, {**event, "hook_event_name": "PreToolUse"})
-    path.write_text(path.read_text(encoding="utf-8").replace('"short": "s"', '"short": "t"'), encoding="utf-8")
-    claude_hook.record_write(ctx, {**event, "hook_event_name": "PostToolUse"})
-    assert stored(ctx).source_status == SOURCE_REVIEWED and stored(ctx).short == "t"
 
 
 def test_importing_the_manual_sends_a_replaced_entry_with_another_source_to_review(root, tmp_path):

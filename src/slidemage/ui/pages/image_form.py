@@ -393,7 +393,11 @@ class ImageForm(Surface):
 
     def refresh_route(self) -> None:
         """The buttons that send the text to the AI say "· cloud" while the AI switch is on Cloud."""
+        from ...ai import routes
+
         project = self.app.project
+        self.translate_button.setVisible(bool(routes.all()))
+        self.save_translate_button.setVisible(bool(routes.all()))
         if not self.translating:
             self.translate_button.setText(cloud_label(project, "Translate"))
         self.save_translate_button.setText(cloud_label(project, "Save, then translate"))

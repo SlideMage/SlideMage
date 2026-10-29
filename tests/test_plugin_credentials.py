@@ -12,8 +12,7 @@ import sys
 import pytest
 
 from slidemage import project
-from slidemage.ai import credentials as legacy
-from slidemage.plugins import credentials as creds
+from slidemage.plugins import credentials as creds, migrate
 from slidemage.plugins.credentials import PluginCredentials
 from slidemage.plugins.migrate import legacy_anthropic_key
 from slidemage.project import ProjectContext
@@ -132,28 +131,28 @@ def pctx(tmp_path):
 
 
 def test_no_old_key(pctx, monkeypatch):
-    monkeypatch.delenv(legacy.ENV_VAR, raising=False)
-    monkeypatch.setattr(legacy, "_keyring", lambda: None)
-    monkeypatch.setattr(legacy.app_settings, "get", lambda ctx, key: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(migrate, "_keyring", lambda: None)
+    monkeypatch.setattr(migrate.app_settings, "peek", lambda ctx, key: None)
     assert legacy_anthropic_key(pctx) is None
 
 
 def test_old_key_places_in_order(pctx, monkeypatch):
     fake = FakeKeyring()
-    monkeypatch.setattr(legacy, "_keyring", lambda: fake)
-    monkeypatch.setattr(legacy.app_settings, "get", lambda ctx, key: "from-file" if key == legacy.FILE_SETTING_KEY else None)
-    monkeypatch.delenv(legacy.ENV_VAR, raising=False)
+    monkeypatch.setattr(migrate, "_keyring", lambda: fake)
+    monkeypatch.setattr(migrate.app_settings, "peek", lambda ctx, key: "from-file" if key == "anthropic_api_key" else None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert legacy_anthropic_key(pctx) == "from-file"
-    fake.store[(legacy.KEYRING_SERVICE, legacy.KEYRING_USER)] = "from-keychain"
+    fake.store[("SlideMage", "anthropic-api-key")] = "from-keychain"
     assert legacy_anthropic_key(pctx) == "from-keychain"
-    monkeypatch.setenv(legacy.ENV_VAR, "from-env")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-env")
     assert legacy_anthropic_key(pctx) == "from-env"
 
 
 def test_old_key_is_left_where_it_is(pctx, monkeypatch):
     fake = FakeKeyring()
-    fake.store[(legacy.KEYRING_SERVICE, legacy.KEYRING_USER)] = "k"
-    monkeypatch.setattr(legacy, "_keyring", lambda: fake)
-    monkeypatch.delenv(legacy.ENV_VAR, raising=False)
+    fake.store[("SlideMage", "anthropic-api-key")] = "k"
+    monkeypatch.setattr(migrate, "_keyring", lambda: fake)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     legacy_anthropic_key(pctx)
-    assert fake.store == {(legacy.KEYRING_SERVICE, legacy.KEYRING_USER): "k"}
+    assert fake.store == {("SlideMage", "anthropic-api-key"): "k"}

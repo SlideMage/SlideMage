@@ -58,6 +58,18 @@ def _store_path(ctx: ProjectContext) -> Path:
     return ctx.settings_dir / "app_settings.json"
 
 
+def peek(ctx: ProjectContext, key: str, default: Any = None) -> Any:
+    """Read a legacy setting with machine precedence, without migrating either file."""
+    machine = read_json(MACHINE_STORE_PATH)
+    if key in MACHINE_KEYS and key in machine:
+        return machine[key]
+    return read_json(_store_path(ctx)).get(key, default)
+
+
+def peek_ollama_host(ctx: ProjectContext) -> str:
+    return peek(ctx, OLLAMA_HOST_SETTING_KEY) or os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST
+
+
 def load(ctx: ProjectContext) -> dict[str, Any]:
     """The project's settings with this machine's AI settings (MACHINE_KEYS) over them."""
     project_settings = read_json(_store_path(ctx))

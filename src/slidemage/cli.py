@@ -80,11 +80,11 @@ def main(argv: list[str] | None = None) -> None:
         serve()
         return
     if (sys.argv[1:] if argv is None else argv)[:1] == [CLAUDE_HOOK_FLAG]:
-        # Claude Code's PreToolUse hook (ai/claude_hook.py), run as this program in a frozen build, which
-        # has no `python -m`: before anything else, no window.
-        from .ai import claude_hook
+        splash.close()
+        from .plugins import entry
 
-        sys.exit(claude_hook.main())
+        rest = (sys.argv[1:] if argv is None else argv)[1:]
+        sys.exit(entry.run("claude:hook", rest))
     if (sys.argv[1:] if argv is None else argv)[:1] == [PLUGIN_FLAG]:
         # A plugin's entry point (Host.add_entry_point), run as this program: no window, only that plugin loaded.
         splash.close()
