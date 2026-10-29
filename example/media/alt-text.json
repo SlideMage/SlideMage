@@ -66,6 +66,17 @@
         "1vk": {}
       }
     },
+    "media/qr-slidemage-org.pdf": {
+      "role": "informative",
+      "status": "reviewed",
+      "short": "QR code linking to https://slidemage.org",
+      "long": "",
+      "source": "Made with SlideMage's QR button.",
+      "takeaway_default": "",
+      "used_on": {
+        "1a4": {}
+      }
+    },
     "media/screenshot-slide-appendix-grid.png": {
       "role": "informative",
       "status": "auto",
