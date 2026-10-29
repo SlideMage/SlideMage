@@ -77,12 +77,17 @@ AUDITED_FRAMEWORK = {
     # Merged from develop (2026-10-29, v9.x there): \SMQRCode's code is a link ([link], or a \url/\href caption),
     # every \href's underline (\SMHrefUnderline) is one box, so it stays on its text's line, and a caption wider
     # than the code is centred under it. No view-dependent rule.
+    # v10.12.0 (step 12): a footnote in revealed content is covered on the steps that hide that content (the theme replaces
+    # beamer's two footnote-box definitions, with a cover for an uncovered one), and a columns[T] below other content gets
+    # back its head's pull-up, measured at that point (the base's T key). Re-audited: no version, footer-hide or deck-label
+    # rule entered the base or the theme; the covering follows beamer's overlay steps, which a handout collapses for the
+    # content and its footnotes alike, and the frame footer is unchanged.
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "ac9735b3a95f2b2fdd783b1af75c1d4c9f5ecf0c1eb70b241d4653b31720db38",
+    "SlideMage_base.tex": "784fd6bf5669c7359c028f47c9a231fb9ead0c0805ed842dc905da4e5c34a6b2",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "4559742259fb03c65fe314852bb51c456fcd69ac4831c70716d43a92b53bf623",
+    "beamerthemeSlideMage.sty": "ee3700ac4a7985783a47eb21c37466f236e5f0a1f81a85bd7f04a40ae2b5b1e7",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
 }

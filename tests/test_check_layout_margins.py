@@ -72,14 +72,18 @@ def test_maths_fonts_are_not_body_fonts_and_the_others_are():
 
 def test_the_usual_last_footnote_line_is_the_decks_own(tmp_path):
     class Stub:
-        def __init__(self, tops, standard=True):
+        def __init__(self, tops, standard=True, slide_id=None):
             self.footnotes = [pymupdf.Rect(0, y, 10, y + 5) for y in tops]
             self.standard = standard
+            self.slide_id = slide_id
     assert cl.usual_footnote_top([]) == cl.FOOTNOTE_LAST_TOP
     assert cl.usual_footnote_top([Stub([]), Stub([], standard=False)]) == cl.FOOTNOTE_LAST_TOP
     # the highest last line of any ordinary frame, plus the allowance for a source line without a raised marker
     assert cl.usual_footnote_top([Stub([230.0, 241.9]), Stub([243.1]), Stub([200.0], standard=False)]) == \
         241.9 + cl.FOOTNOTE_MARKER_ALLOWANCE
+    # only a slide's last step counts: on an earlier one a footnote of revealed content is hidden (v10.12.0)
+    steps = [Stub([238.0], slide_id="ZCM"), Stub([238.0, 243.0], slide_id="ZCM"), Stub([243.1], slide_id="ZC8")]
+    assert cl.usual_footnote_top(steps) == 243.0 + cl.FOOTNOTE_MARKER_ALLOWANCE
 
 
 def test_the_geometric_hooks_come_from_the_pdf_and_an_older_pdf_has_none(tmp_path):

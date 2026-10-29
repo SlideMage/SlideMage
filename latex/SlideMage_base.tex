@@ -2781,14 +2781,48 @@
 % started that much below a figure beside it that sat on the Top Margin.
 % (\SMColumnsTTopCompensation was a number of the layout profile from v10.4.0 to v10.8.0; it is
 % measured since v10.9.0, see above, and the figures in this paragraph are history.)
+% Below other content (v10.12.0): the T key's pull-up at every column head (beamer's 1ex and no
+% interline glue) took the columns' first line up to the content above -- a columns[T] under a
+% list or a table nearly touched it (seen on calibration slide ZC6) -- and the compensation
+% above applies only where the columns start the frame. When the frame's vertical list already
+% holds a visible box (the test of the columns hook), the rule of the top is applied at this
+% point: a top-level itemize and a [T] column holding it are typeset in boxes here
+% (\SM@toprefprobe, with the list's \prevdepth, as the columns will be), and the difference goes
+% in front of the columns, so that their first reference line starts where the list's would
+% without the columns -- the gap a list keeps below that content. (Not a [t] column: its head's
+% \leavevmode leaves an empty line above a list, which sets the list a line lower than without
+% the columns.) A plain \vspace keeps \prevdepth, so the columns' own interline glue is the one
+% measured. Where the columns start the frame, nothing changes (the compensation above, or the
+% frame's measurement).
 \makeatletter
+\newcommand{\SM@columnsTgap}{%
+	\SM@toprefprobe{\begin{itemize}\item\SM@topreftext\end{itemize}}%
+	\let\SM@columnsTref\SM@topref
+	\SM@toprefprobe{\begin{columns}[T]\begin{column}{0.46\linewidth}\begin{itemize}\item\SM@topreftext\end{itemize}\end{column}\end{columns}}%
+	\vspace{\dimexpr\SM@columnsTref sp-\SM@topref sp\relax}%
+}
+\newcommand{\SM@columnsTbelow}{%
+	\ifluatex\ifSM@topprobing\else
+		\ifnum\directlua{tex.sprint(slidemage_list_has_no_visible_box() and "1" or "0")}=0
+			\SM@columnsTgap
+		\fi
+	\fi\fi
+}
+% A columns[T] right after a table or a picture opens in the paragraph that holds it (the columns
+% environment ends that paragraph right after its keys); the key ends it first, so that the
+% measurement sees the content above. Inside the columns' own box (the per-column keys) the mode is
+% internal and nothing is done, as before.
 \define@key{beamer@col}{T}[true]{%
 	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
 	\ifvmode
 		\ifnum0\ifdefined\SMColumnsAtTop\SMColumnsAtTop\fi=1
 			\vspace*{\SMColumnsTTopCompensation}%
+		\else
+			\SM@columnsTbelow
 		\fi
-	\fi
+	\else\ifinner\else
+		\par\SM@columnsTbelow
+	\fi\fi
 }
 \makeatother
 
