@@ -2934,3 +2934,8 @@ NEW: SlideMage works as a complete editor without an AI plugin.
 - Manual image descriptions and translation remain available.
 - Plugins provide AI routes and retain existing settings.
 
+
+v9.1.1 (2026-10-29, the taskbar showed the simplified mark): icon.ico carries the full SlideMage mark (three layered slides, the yellow dot and the two text bars) at every size, 16 to 256 px, rendered from the mark per size. The 16 to 32 px sizes held the simplified small mark (a large yellow dot, no bars), which Windows shows in the taskbar, the title bar and Explorer.
+
+NEW: The app icon is the full SlideMage logo at every size.
+- The taskbar and the title bar show the same icon as the desktop shortcut.
