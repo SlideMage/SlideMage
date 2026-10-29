@@ -44,7 +44,8 @@ def test_the_code_links_and_a_caption_href_keeps_its_underline(tmp_path):
     old = f"\\SMQRCode[0.25\\textheight]{{{path}}}{{\\url{{https://example.org/old}}}}"
     plain = f"\\SMQRCode[0.25\\textheight]{{{path}}}{{QR 3}} [not a link]"
     body = ("\\begin{standardframe}{QR}\nSee \\href{https://example.org/body}{the body link} here.\n\n"
-            f"{link}\\hspace{{1cm}}{old}\\hspace{{1cm}}{plain}\n\\end{{standardframe}}\n")
+            # room on the left: the caption is wider than its code and overhangs it on both sides
+            f"\\hspace*{{1cm}}{link}\\hspace{{1cm}}{old}\\hspace{{1cm}}{plain}\n\\end{{standardframe}}\n")
     pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz8-EN-QR-Test", body,
                                                  deck_version="instructor", capture_snapshot=False)
     with pymupdf.open(pdf) as doc:
@@ -75,3 +76,38 @@ def test_an_href_wider_than_its_line_keeps_its_underline_under_its_text_anywhere
     body_gap = next(gap for text, gap in gaps.items() if text.startswith("the body link"))
     narrow_gap = next(gap for text, gap in gaps.items() if text.startswith("a link much wider"))
     assert abs(narrow_gap - body_gap) < 0.03, gaps
+
+
+def caption_middle(page, code, first, last):
+    """The middle (x) of the caption line from the word `first` to the word `last`, right under `code`."""
+    words = [w for w in page.get_text("words") if code.y1 - 1 < w[1] < code.y1 + 40]
+    start = next(w for w in words if w[4] == first)
+    end = next(w for w in words if w[4] == last and abs(w[3] - start[3]) < 1)
+    return (start[0] + end[2]) / 2
+
+
+def test_a_caption_wider_than_its_code_is_centred_under_it_and_the_code_keeps_its_place(tmp_path):
+    # A caption TeX cannot break (a long link segment, words in an \mbox) stuck out to the right of the code
+    # (2026-10-29); now it overhangs equally on both sides, and the code's box stays as wide as the code.
+    image = tmp_path / "qr-x.pdf"
+    qr_code.save(qr_code.make(QRSpec("url", {"url": "https://example.org/page"})), image)
+    path = image.as_posix()
+    wide = qr_code.snippet(path, 0.15, "\\mbox{Widecaption is much wider than its code}", "https://example.org/wide")
+    narrow = qr_code.snippet(path, 0.15, "Narrow", "https://example.org/narrow")
+    last = qr_code.snippet(path, 0.15, "Last", "https://example.org/last")
+    body = (f"\\begin{{standardframe}}{{QR}}\n\\hspace*{{3cm}}{wide}\\hspace{{2cm}}{narrow}\\hspace{{2cm}}{last}\n"
+            "\\end{standardframe}\n")
+    pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz7-EN-QR-Wide", body,
+                                                 deck_version="instructor", capture_snapshot=False)
+    with pymupdf.open(pdf) as doc:
+        page = doc[0]
+        codes = {item["uri"]: item["from"] for item in page.get_links() if item.get("uri")}
+        wide_code, narrow_code = codes["https://example.org/wide"], codes["https://example.org/narrow"]
+        last_code = codes["https://example.org/last"]
+        wide_mid = caption_middle(page, wide_code, "Widecaption", "code")
+        narrow_mid = caption_middle(page, narrow_code, "Narrow", "Narrow")
+    assert abs(wide_mid - (wide_code.x0 + wide_code.x1) / 2) < 1, (wide_mid, wide_code)
+    assert abs(narrow_mid - (narrow_code.x0 + narrow_code.x1) / 2) < 1, (narrow_mid, narrow_code)
+    # the wide caption takes no room in the row: the gap after its code is the gap after a narrow one's
+    assert abs((narrow_code.x0 - wide_code.x1) - (last_code.x0 - narrow_code.x1)) < 0.5, codes
+    assert wide_code.y0 == narrow_code.y0 == last_code.y0

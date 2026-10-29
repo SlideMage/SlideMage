@@ -6,6 +6,7 @@ import gc
 import hashlib
 from types import SimpleNamespace
 import threading
+import time
 from threading import Thread as WorkerThread
 
 import pymupdf
@@ -1716,12 +1717,14 @@ def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(
 
 def test_while_scrolling_no_check_starts_until_the_selection_rests(stored, monkeypatch):
     # v8.53.0: slides scrolled past started checks that the next slide superseded before they answered.
-    monkeypatch.setattr(preview_view, "SCROLLING_MS", 300)
     view, store = stored.view, stored.store
-    stored.show("A")                                              # the first change: a click, checked at once
+    stored.show("A")                  # on show since the fixture (its first change, a click): no change, checked at once
     assert not view._defer_checks
     stored.pump(lambda: view._page.pixmap is not None)
     asked = len(store.calls)
+    # The next change counts as scrolling when it comes within SCROLLING_MS of A's. A was put on show in the fixture,
+    # before the three test pages were rendered, so with the real 300 ms that depended on how fast the machine was.
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 60_000)
     stored.show("B")                                              # within SCROLLING_MS: scrolling
     for _ in range(5):
         stored.qapp.processEvents()
@@ -1731,6 +1734,16 @@ def test_while_scrolling_no_check_starts_until_the_selection_rests(stored, monke
     assert not view._defer_checks
     stored.pump(lambda: view._page.pixmap is not None and not view._page.dimmed)
     assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"]) and len(store.calls) > asked
+
+
+def test_a_slide_change_after_the_selection_rested_is_a_click_and_checked_at_once(stored, monkeypatch):
+    view = stored.view
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 50)
+    time.sleep(.1)                                                # longer than SCROLLING_MS since A was put on show
+    stored.show("B")
+    assert not view._defer_checks
+    stored.pump(lambda: view._page.pixmap is not None and not view._page.dimmed)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])
 
 
 def test_the_neighbours_stored_pages_are_read_ahead_and_the_next_slide_shows_at_once(stored):

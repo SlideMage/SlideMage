@@ -190,6 +190,23 @@ def test_links_ask_first_and_only_web_and_mail_addresses_open(make):
     assert controller.opened == ["mailto:a@b.org"]
 
 
+def test_a_map_location_link_opens_and_dangerous_schemes_stay_closed(make):
+    # A QR code for a place links with a geo: URI (qr_code.link_target): a click opens the system's map app.
+    from slidemage import qr_code
+    from slidemage.qr_code import QRSpec
+    controller = make()
+    controller._confirm = lambda _w, uri: True
+    geo = qr_code.link_target(QRSpec("location", {"place": "47.0707, 15.4395", "map_link": qr_code.LINK_GEO}))
+    assert geo.startswith("geo:")
+    controller.session.request_link(geo)
+    controller.session.request_link("GEO:0,0?q=Graz")
+    assert controller.opened == [geo, "GEO:0,0?q=Graz"]
+    for uri in ("file:///C:/Windows/System32/calc.exe", "javascript:alert(1)", "ms-settings:privacy",
+                "geoplugin:x", "C:\\Windows\\notepad.exe", "smb://host/share"):
+        controller.session.request_link(uri)
+    assert controller.opened == [geo, "GEO:0,0?q=Graz"]
+
+
 def test_the_pen_draws_without_ctrl_and_ctrl_still_lases_and_clear_empties_the_page(make):
     controller = make()
     session = controller.session
