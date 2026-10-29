@@ -911,6 +911,27 @@ mix it in.
    - **Website side:** nothing to list, since private themes are never in the catalogue. Tell them that the theme
      package's first real users install from a private repository, so a theme repository should follow the same
      release rules whether or not it is listed.
+18. **Version re-designation and the public repository** (user plan 2026-10-29; once the redesign is done and a
+    version is stable). Every version so far gets a leading 0 (e.g. v10.1.12 becomes v0.10.1.12, v8.69.0 becomes
+    v0.8.69.0); the public repository starts with a fresh initial commit (no history), and versions go on from
+    v1.0.0. To plan in detail at that time; what the code needs:
+   - **CHANGELOG parsing:** `version._HISTORY_ENTRY_RE` accepts exactly three parts (`v\d+\.\d+\.\d+`); it must
+     accept the four-part history entries. `updater.parse_version` already takes any number of parts, and
+     `(0, 10, 1, 12) < (1, 0, 0)` compares correctly. Check `packaging/release_notes.py` and its tests the same way.
+   - **Projects remember versions:** `.slidemage/project.json` holds `last_app_version`, `highest_app_version` and
+     `compat.checked_version` (e.g. "v10.9.0"). Opened by v1.0.0, such a project looks "used by a newer SlideMage"
+     and no compat change would ever be pending (`checked_version` above the app). Needed: read an old-scheme
+     version (major 2 or higher before the switch) as `0.<old>`, or migrate the file once.
+   - **Compat registry:** `Change.since` values ("v9.0.0", ...) become `v0.9.0.0` ... with `REGISTRY_FROM` and the
+     test that pairs BREAKING releases with entries.
+   - **Update check:** an installed v8.x/v10.x build only offers a higher version, so it never offers v1.0.0. Installs
+     before the switch (the user's and Jürgen's) are updated by hand once; say so in the release notes.
+   - **Release tags and builds:** `release.yml` builds on `v*` tags and requires tag = `VERSION_NUMBER`; the fresh
+     repository starts its tags at v1.0.0. Decide what happens to `SlideMage/SlideMage` (the current, private
+     repository with history) and where the public one lives; the update check and website point to the public one.
+   - **Fresh initial commit:** the public repository holds the tree as it is then, minus the institution templates
+     (step 16) and anything private; the CHANGELOG keeps the history as text (under the 0.x numbers).
+   - Open with the user then: whether the history CHANGELOG ships in full or is cut, and the repository question.
 
 ## Open decisions (ask the user at the step named)
 
