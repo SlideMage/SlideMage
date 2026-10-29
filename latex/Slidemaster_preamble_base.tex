@@ -266,14 +266,19 @@
 		* \dimexpr0.2pt\relax
 		/ (\SMHrefUnderlineBodyHeight - \SMHrefUnderlineFnHeight)\relax
 }
+% One \mbox around text, step back and rule (2026-10-29, direct instruction): TeX may break a line at the
+% negative \hspace, and did wherever the link text was wider than the room left on its line (a QR code's
+% caption, a narrow table cell): the rule then stood a whole line below its text.
 \newcommand{\SMHrefUnderline}[1]{%
-	\sbox{\SMHrefTextBox}{#1}%
-	\textcolor{c_custom_gray}{\usebox{\SMHrefTextBox}}%
-	\hspace{-\wd\SMHrefTextBox}%
-	\SMHrefUnderlineMeasureRefHeights
-	\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
-	\SMHrefUnderlineSetThickness
-	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+	\mbox{%
+		\sbox{\SMHrefTextBox}{#1}%
+		\textcolor{c_custom_gray}{\usebox{\SMHrefTextBox}}%
+		\hspace{-\wd\SMHrefTextBox}%
+		\SMHrefUnderlineMeasureRefHeights
+		\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
+		\SMHrefUnderlineSetThickness
+		\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+	}%
 }
 \renewcommand{\href}[2]{\SMOrigHref{#1}{\SMHrefUnderline{#2}}}
 % \url{} (the `url` package hyperref depends on/patches) defaults to a
@@ -6724,10 +6729,9 @@
 % a caption that is exactly \url{address} or \href{address}{text} gives the
 % address, so codes inserted before [link] existed are links too. The link
 % is \SMOrigHref: no underline, and with the deck's colorlinks no border.
-% In the caption, an \href's underline is kept on its text's line: the
-% underline (\SMHrefUnderline) is the text, a negative \hspace and the rule,
-% and when the link text is wider than the code, TeX broke the line at that
-% \hspace and set the rule a whole line lower (found 2026-10-29).
+% An \href in the caption keeps its underline under its text since
+% \SMHrefUnderline is one box (a caption link wider than the code had its
+% rule set a whole line lower, found 2026-10-29).
 \newsavebox{\SMQRCodeBox}
 \providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
 \ExplSyntaxOn
@@ -6745,7 +6749,6 @@
 					{ \tl_set:Nx \l__smqr_link_tl { \tl_item:nn {#1} { 2 } } }
 			}
 	}
-\cs_new_eq:NN \__smqr_underline:n \relax
 \NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m !o}
 	{
 		\group_begin:
@@ -6756,11 +6759,7 @@
 		\begin{minipage}[t]{\wd\SMQRCodeBox}
 			\centering\usebox{\SMQRCodeBox}
 			\tl_if_blank:nF {#3}
-				{
-					\cs_set_eq:NN \__smqr_underline:n \SMHrefUnderline
-					\cs_set_protected:Npn \SMHrefUnderline ##1 { \mbox { \__smqr_underline:n {##1} } }
-					\par{\SMQRCodeCaptionStyle #3\par}%     the code's own white border is the gap
-				}
+				{ \par{\SMQRCodeCaptionStyle #3\par} }%     the code's own white border is the gap
 		\end{minipage}
 		\group_end:
 	}

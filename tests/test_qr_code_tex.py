@@ -60,3 +60,18 @@ def test_the_code_links_and_a_caption_href_keeps_its_underline(tmp_path):
         caption_gap = next(gap for text, gap in gaps.items() if text.startswith("example.org/page/long"))
         assert 0.1 < body_gap < 0.25
         assert abs(caption_gap - body_gap) < 0.03, gaps                  # was a whole line lower
+
+
+def test_an_href_wider_than_its_line_keeps_its_underline_under_its_text_anywhere():
+    # \SMHrefUnderline is one box: TeX broke the line at its negative \hspace wherever the link text was wider
+    # than the room left (a narrow table cell, a narrow box), not only in a QR caption (2026-10-29).
+    body = ("\\begin{standardframe}{Links}\nSee \\href{https://example.org/body}{the body link} here.\n\n"
+            "\\parbox[t]{1.5cm}{\\href{https://example.org/narrow}{a link much wider than its box}}\n"
+            "\\end{standardframe}\n")
+    pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz9-EN-Link-Test", body,
+                                                 deck_version="instructor", capture_snapshot=False)
+    with pymupdf.open(pdf) as doc:
+        gaps = underline_gaps(doc[0])
+    body_gap = next(gap for text, gap in gaps.items() if text.startswith("the body link"))
+    narrow_gap = next(gap for text, gap in gaps.items() if text.startswith("a link much wider"))
+    assert abs(narrow_gap - body_gap) < 0.03, gaps
