@@ -930,9 +930,14 @@ mix it in.
    - **Release tags and builds:** `release.yml` builds on `v*` tags and requires tag = `VERSION_NUMBER`; the fresh
      repository starts its tags at v1.0.0. Decide what happens to `SlideMage/SlideMage` (the current, private
      repository with history) and where the public one lives; the update check and website point to the public one.
+     **Decided by the user on 2026-10-29:** the public repository is `SlideMage/SlideMage`, cut fresh (initial
+     commit, no history); the full history is kept in a private repository that only the user and Jürgen Fleiß can
+     access (its name and how the current repository becomes it are still to settle). The update check and the
+     website keep pointing to `SlideMage/SlideMage`.
    - **Fresh initial commit:** the public repository holds the tree as it is then, minus the institution templates
      (step 16) and anything private; the CHANGELOG keeps the history as text (under the 0.x numbers).
-   - Open with the user then: whether the history CHANGELOG ships in full or is cut, and the repository question.
+   - Open with the user then: whether the history CHANGELOG ships in full or is cut; the private history
+     repository's name, and the order of moving the current repository there and cutting the public one.
 
 ## Open decisions (ask the user at the step named)
 
