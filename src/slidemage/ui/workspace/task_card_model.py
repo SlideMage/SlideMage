@@ -315,7 +315,7 @@ def actions(card: TaskCard) -> list[Action]:
     if phase == CONFLICT:
         return [Action("compare", "Compare with current", True), *rendered, Action("again", "Run again"), Action("close", "Dismiss")]
     if phase == PREVIEW_FAILED:
-        return [Action("source", "Open source", True), Action("log", "View log"), Action("close", "Close")]
+        return [Action("source", "Source", True), Action("log", "View log"), Action("close", "Close")]
     if phase in (STOPPED, FAILED):
         return [Action("again", "Run again", True), Action("close", "Close")]
     if phase == SETUP:

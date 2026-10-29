@@ -248,7 +248,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         hint=REPLACE_KEY)
 
     # Slide: the focused slide, or the selected ones ---------------------------------------
-    for name, label in (("open", "Open source"), ("preview", "Preview"), ("images", "Images")):
+    for name, label in (("open", "Source"), ("preview", "Preview"), ("images", "Images")):
         add(f"slide:{name}", label, SLIDE, _run_slide(name), visible=_one_slide)
     add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
         visible=lambda w: bool(_review_paths(w)),
@@ -306,7 +306,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
-    add("deck_source", "Edit deck source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
+    add("deck_source", "Source", DECK, _deck("open_deck_source_editor"), enabled=_active_deck)
     add("deck_tags", "Tags…", DECK, lambda w: deck_actions.on_edit_deck_tags(w, w.state.deck),
         enabled=lambda w: _active_deck(w) and not _keeps_group(w))
     add("new_deck", "New deck…", DECK, deck_actions.on_new_deck)

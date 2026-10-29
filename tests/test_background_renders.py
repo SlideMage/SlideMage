@@ -673,10 +673,10 @@ def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(projec
     assert r.progress.working is None                          # the new progress names what runs, from the workers
     r._trace = background_renders.Trace(tmp_path / "trace.log")
     r.window_focus(True)
-    r.trace("chip: Previews wait while you use SlideMage")
+    r.trace("chip: Preview rendering waits while you use SlideMage")
     lines = (tmp_path / "trace.log").read_text(encoding="utf-8").splitlines()
     assert "focus in: stopped 0 | in_front=True" in lines[0] and "running=0" in lines[0]
-    assert lines[1].split(" ", 2)[2].startswith("chip: Previews wait")
+    assert lines[1].split(" ", 2)[2].startswith("chip: Preview rendering waits")
 
 
 def test_a_slide_the_plan_counted_as_fresh_is_not_counted_again_when_its_page_number_is_refreshed(project, store, raster):

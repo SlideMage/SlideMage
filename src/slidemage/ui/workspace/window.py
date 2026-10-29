@@ -756,7 +756,7 @@ class WorkspaceWindow(QMainWindow):
         )
 
     def open_deck_source_editor(self, deck: Deck) -> None:
-        """⋮ -> "Edit deck source" -- opens the deck's raw .tex file in the same
+        """Deck → "Source" ("Edit deck source" until v9.2.0) -- opens the deck's raw .tex file in the same
         editor used for a slide's own source. A save is routed through the same
         after_deck_edit() pipeline every list action already uses, so a hand-edit
         gets header-sync, the slide list redrawn, and an Undo entry exactly like

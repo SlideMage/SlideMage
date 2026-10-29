@@ -16,6 +16,8 @@ slide (Slidemaster_preamble_base.tex). Used by the Source view's "Insert QR" dia
   size away. On the screen a module is (slide height / modules), so the code's share of the
   slide height follows from the room's farthest-viewer-to-screen-height ratio alone. A rule of
   thumb, on the safe side; sizes of 0.6 and more are meant (a code may have a slide of its own).
+* A click does what a scan does (2026-10-29): the call ends in [link] (`link_target`) for a link, an email
+  and a map location, and \\SMQRCode makes the code a link to it.
 * What the project keeps: the file in media/, its alt text in media/alt-text.json, and in
   media/qr-codes.json the kind and fields it was made from, so the dialog can open it again.
 """
@@ -340,9 +342,25 @@ def caption_latex(spec: QRSpec, mode: str, custom: str = "") -> str:
     return slide_import.escape_latex(text)
 
 
-def snippet(image: str, height: float, caption: str) -> str:
-    """The \\SMQRCode call: `image` root-relative, `height` a share of \\textheight."""
-    return f"\\SMQRCode[{height:.2f}\\textheight]{{{image}}}{{{caption}}}"
+def link_target(spec: QRSpec) -> str:
+    """The address a click on the code opens (2026-10-29, direct instruction: the same as a scan): the link,
+    the mailto: link, the map link or geo: URI; "" for a contact or an event, which no link opens."""
+    return payload(spec) if spec.kind in (KIND_URL, KIND_EMAIL, KIND_LOCATION) else ""
+
+
+def link_latex(link: str) -> str:
+    """`link` as the [link] argument of \\SMQRCode: percent-encoded where TeX or the optional argument would
+    misread it (spaces, brackets, ~), and % and # escaped as in caption_latex."""
+    encoded = quote(link, safe=":/?#@!$&'()*+,;=%-._").replace("~", "%7E")     # quote() keeps ~ always
+    for char in "%#":
+        encoded = encoded.replace(char, "\\" + char)
+    return encoded
+
+
+def snippet(image: str, height: float, caption: str, link: str = "") -> str:
+    """The \\SMQRCode call: `image` root-relative, `height` a share of \\textheight, `link` (link_target) the
+    address the code links to, written as the trailing [link] argument; "" for none."""
+    return f"\\SMQRCode[{height:.2f}\\textheight]{{{image}}}{{{caption}}}" + (f"[{link_latex(link)}]" if link else "")
 
 
 def place(call: str, corner: str = "") -> str:
@@ -510,5 +528,5 @@ def create(ctx: ProjectContext, spec: QRSpec, *, height: float = DEFAULT_HEIGHT,
     image = path.relative_to(ctx.root).as_posix()
     _record(ctx, image, spec, caption_mode, caption)
     height = min(MAX_HEIGHT, max(0.05, height))
-    call = place(snippet(image, height, caption_latex(spec, caption_mode, caption)), corner)
+    call = place(snippet(image, height, caption_latex(spec, caption_mode, caption), link_target(spec)), corner)
     return Created(image, path, call, size_note(code, spec.border))

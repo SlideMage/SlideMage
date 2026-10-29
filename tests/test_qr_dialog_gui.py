@@ -29,7 +29,7 @@ def test_a_link_becomes_a_pdf_in_media_and_a_call_without_a_caption(dialog, ctx)
     assert dialog.result() == dialog.DialogCode.Accepted
     pdfs = list((ctx.root / "media").glob("qr-*.pdf"))
     assert len(pdfs) == 1
-    assert dialog.snippet == f"\\SMQRCode[0.60\\textheight]{{media/{pdfs[0].name}}}{{}}"      # no caption by default
+    assert dialog.snippet == f"\\SMQRCode[0.60\\textheight]{{media/{pdfs[0].name}}}{{}}[https://example.org/talk]"
 
 
 def test_its_text_as_caption_and_a_corner(dialog, ctx):
@@ -39,7 +39,7 @@ def test_its_text_as_caption_and_a_corner(dialog, ctx):
     dialog._on_insert()
     image = list((ctx.root / "media").glob("qr-*.pdf"))[0].name
     assert dialog.snippet == (f"\\cornerfigure[corner=se]{{\\SMQRCode[0.60\\textheight]{{media/{image}}}"
-                              "{\\url{https://example.org/talk}}}")
+                              "{\\url{https://example.org/talk}}[https://example.org/talk]}")
 
 
 def test_a_custom_caption_and_the_png_format(dialog, ctx):
