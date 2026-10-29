@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat.py change "own-theme-and-content-names" (v9.1.0, BREAKING): the names SlideMage's content
+"""compat.py change "own-theme-and-content-names" (v10.1.0, BREAKING): the names SlideMage's content
 carried from the Gotham theme become SlideMage names (sm_rename.THEME_RENAMES, approved 2026-10-26), and the
 Gotham theme's own names become the names of the SlideMage theme (beamerthemeSlideMage.sty).
 
@@ -51,7 +51,7 @@ from .tex_source import is_commented
 CHANGE_ID = "own-theme-and-content-names"
 
 TEMP_DECK_PREFIX = "_slidemage"
-# Frametitle paddings were the same register under either name in v9.0.0 (SlideMage_setup aliased them), so a
+# Frametitle paddings were the same register under either name in v10.0.0 (SlideMage_setup aliased them), so a
 # file that mixes the two spellings is not ambiguous.
 _ALIASED = frozenset(k for k in sm_rename.THEME_RENAMES if k.startswith("gothamFrametitle"))
 _NEW_NAMES = sorted({new for old, new in sm_rename.THEME_RENAMES.items() if old not in _ALIASED}, key=len, reverse=True)
@@ -186,7 +186,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v9.1.0",
+    since="v10.1.0",
     severity=BREAKS,
     title="SlideMage has its own beamer theme, and its names no longer carry Gotham's",
     description=(

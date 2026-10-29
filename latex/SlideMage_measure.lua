@@ -205,7 +205,7 @@ end
 -- changes; moving the body moves the measured line by the same amount, so
 -- the second run lands on the margin and the file stays unchanged).
 --
--- The body origin (v9.9.0). Every top-aligned frame also writes an origin
+-- The body origin (v10.9.0). Every top-aligned frame also writes an origin
 -- marker with the distance from it to the first line of a reference list (a
 -- top-level itemize, typeset in a box at that point: TeX's own spacing, in the
 -- frame's own font). The pull-up that puts that line on the target is the

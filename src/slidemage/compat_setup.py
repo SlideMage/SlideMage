@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The setup-layer half of compat change "slidemage-names-and-setup-layer" (v9.0.0, BREAKING);
+"""The setup-layer half of compat change "slidemage-names-and-setup-layer" (v10.0.0, BREAKING);
 compat_names.py holds the renaming half and calls these text rewrites.
 
-From v9.0.0 a template starts with \\input{SlideMage_setup}, which loads the beamer theme and
+From v10.0.0 a template starts with \\input{SlideMage_setup}, which loads the beamer theme and
 defines every template setting with its default (the hook catalog). A template then changes a
 setting instead of creating it, and a deck no longer loads the theme:
 

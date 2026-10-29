@@ -1,6 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
-% SlideMage setup layer and hook catalog (SlideMage v9.0.0, theme v9.7.0).
+% SlideMage setup layer and hook catalog (SlideMage v10.0.0, theme v10.7.0).
 %
 % A template \input{}s this file first, sets whatever it wants to change from
 % the catalog below, then \input{}s SlideMage_base:
@@ -54,7 +54,7 @@
 %                   and the math handling that goes with them
 %   metrics         \SMFontAscender (the ascender in em, used where the font gives none of
 %                   its own), \SMLinespread, \SMParskip
-% Nothing else: since v9.9.0 no length of a profile is measured against the rendered PDF;
+% Nothing else: since v10.9.0 no length of a profile is measured against the rendered PDF;
 % every other length is read from the font or the page where it is used or is a hook of the
 % catalog below (see 'Derived, not set').
 %
@@ -77,17 +77,17 @@
 % the footer, the section bar's height, and the first line of the frames the automatic Top
 % Margin does not correct by their content on the Top Margin.
 %
-% Derived, not set (SlideMage v9.7.0, v9.8.0, v9.9.0)
+% Derived, not set (SlideMage v10.7.0, v10.8.0, v10.9.0)
 % ---------------------------------------------------
 % These lengths follow from the hooks and the font, and SlideMage_base computes them after the
 % template (the first four) or where the font they depend on is in force (the rest). Slides may
 % read them. A template or a profile that sets one gets an error, below, instead of a number
 % that the next change to a hook or a font would silently contradict.
-%   v9.7.0   \SMContentTopAlign (the Top Margin as a coordinate for overlays),
+%   v10.7.0   \SMContentTopAlign (the Top Margin as a coordinate for overlays),
 %            \SMTitleBarBottomAlign (where the title bar ends), \SMFootnoteRightShift (a
 %            footnote's right edge against the text margin), \SMFooterRightShift (the same for
 %            the frame number)
-%   v9.8.0   \SMFooterTextDrop (the frame number's ink centred in the footer box),
+%   v10.8.0   \SMFooterTextDrop (the frame number's ink centred in the footer box),
 %            \SMFootlineVOffset (the footnotes' descender \SMFootnoteFooterGap above the
 %            footer box), \SMLabelItemWidth, \SMLabelItemSep (the widest label of the lists
 %            with "a)" / "1." labels and the gap to the text), \SMEnumerateNestedMinNumber,
@@ -96,7 +96,7 @@
 %            corrections \SMSectionframeRefDepth, \SMSectionframeBottomGap,
 %            \SMSectionframeBottomPadCorrection, \SMSectionframeHeightCorrection (the frame
 %            places its title by the title's own box, with \SMSectionframeTitleGap)
-%   v9.9.0   \SMContentTopShift (the pull-up of a frame the automatic Top Margin does not
+%   v10.9.0   \SMContentTopShift (the pull-up of a frame the automatic Top Margin does not
 %            correct by its content: measured from where the frame's body begins, written
 %            to \jobname.top), \SMColumnsTopCorrection and \SMColumnsTTopCompensation (a
 %            columns environment that starts such a frame: measured against a list where
@@ -280,7 +280,7 @@
 \setlength{\SMRightFooterPadding}{3.5ex}        % the gap before the frame number
 \newlength{\SMFootnoteFooterGap}
 % The clear space between the descenders of the last footnote line and the top edge of the
-% footer box. (Until v9.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
+% footer box. (Until v10.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
 % body font's ex: -0.5ex-0.77pt; the base derives that offset now, from this gap, the footnote
 % font's descender and the footline's size. 1.6136pt is what the Fira default looked like:
 % an underlined link in a footnote clears the box by 1.74pt, and the offset had moved the

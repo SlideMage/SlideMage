@@ -79,7 +79,7 @@
 %%    lists, repeated reset blocks) is replaced by the commands of item 3. The
 %%    patches that mini frames apply to beamer's \insertnavigation,
 %%    \sectionentry and \slideentry are installed only when they are switched on.
-%% 6. (v9.2.0) The parts SlideMage_base.tex used to replace after the theme loaded are
+%% 6. (v10.2.0) The parts SlideMage_base.tex used to replace after the theme loaded are
 %%    defined here, once: the final colours of the footnote, footline, button, frame
 %%    title, canvas and the blocks, the text margins, the itemize bullets, the logo
 %%    macro with the frame title hook and the template without the inline logo, the
@@ -88,26 +88,26 @@
 %%    definition) and the table-of-contents template SMPlainEnumerate. Colours that
 %%    depend on the template are still derived by \SMApplyColorRoles, which the base
 %%    calls after the template.
-%% 7. (v9.3.0) The font loading is gone from this file: the sans and mono fonts with
+%% 7. (v10.3.0) The font loading is gone from this file: the sans and mono fonts with
 %%    their weight mapping, the tabular figures and the messages about missing fonts
 %%    moved to the layout profile SlideMage_layout_fira.tex, which SlideMage_setup.tex
 %%    loads before the theme. \parskip and \linespread read the profile's \SMParskip and
 %%    \SMLinespread (0.5em and 1.15) where they were set before.
-%% 8. (v9.4.0) The lengths and settings that are design choices are defined by the catalog
+%% 8. (v10.4.0) The lengths and settings that are design choices are defined by the catalog
 %%    in SlideMage_setup.tex and no longer here: the frame title paddings and subtitle
 %%    settings, the footline lengths (new \SMFootlineSidePadding in place of the literal
 %%    3ex), \SMFooterBoxHeight, the footnote size and spacing, the side-footnote lengths, the
 %%    block side margin and title marker width, and the text margins, which the new macro
 %%    \SMApplyLayoutHooks applies after the template. \SMFootnoteRightShift moved to the
 %%    layout profile.
-%% 9. (v9.7.0) \SMContentTopAlign, \SMTitleBarBottomAlign, \SMFootnoteRightShift and
+%% 9. (v10.7.0) \SMContentTopAlign, \SMTitleBarBottomAlign, \SMFootnoteRightShift and
 %%    \SMFooterRightShift are derived by SlideMage_base (from the Top Margin, from the
 %%    paddings, the frame title font and the logo height, and from the text margin and the
 %%    logo's right padding) and are no longer set by a template or a layout profile.
 %%    Comments only; the code of this file did not change.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/28}{9.7.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/28}{10.7.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -1262,7 +1262,7 @@ fg=normal~text.fg
 % (The redraw uses \includegraphics directly rather than \SMInstituteLogo:
 % that macro is the invisible in-flow logo of the frametitle template,
 % redefined above. Gotham's instituteLogo/includeLogo templates, which the
-% theme called before v9.1.0, relied on an internal property-list lookup
+% theme called before v10.1.0, relied on an internal property-list lookup
 % that was only valid in the context of the original frametitle rendering.)
 % Additionally paints white across the *entire* width of the strip between
 % the logo's bottom edge and the title bar's actual bottom edge, so the
@@ -1798,7 +1798,7 @@ fg=normal~text.fg
 % text margin, not the logo's edge above it; this pushes further right by
 % the difference between the two, which is the text margin less the logo's
 % right padding.
-% (v9.7.0: \SMFootnoteRightShift is derived by the base from those two hooks; it was a number
+% (v10.7.0: \SMFootnoteRightShift is derived by the base from those two hooks; it was a number
 % of the layout profile, calibrated against the rendered PDF.)
 
 % Side footnotes: \sidefootnotes (called *before* \begin{standardframe}, like

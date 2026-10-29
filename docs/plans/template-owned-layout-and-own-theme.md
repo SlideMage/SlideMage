@@ -625,7 +625,7 @@ mix it in.
    - Slide 1gr, the snippets and every example slide use the new names. Compat change
      `own-theme-and-content-names`. Pixel-identical, with the same fonts in the PDF. Afterwards a grep for
      `gotham` finds only history, LICENSE/attribution text and the compat mapping.
-   - **Done 2026-10-26 (v9.1.0), notes for the later steps:**
+   - **Done 2026-10-26 (v10.1.0), notes for the later steps:**
      - `latex/beamerthemeSlideMage.sty` is one file (2214 lines against 5626). Its kept features are switched by
        `\SMMiniFramesPosition`, `\SMProgressBarPosition`, `\SMDividerFrames`/`\SMDividerLook` and
        `\SMWatermarkDefault` (and siblings), documented at the end of `SlideMage_setup.tex`; the patches mini frames
@@ -646,7 +646,7 @@ mix it in.
    - Base loads its packages explicitly.
    - Load-time computations that depend on hooks move to base or to the point of use.
    - Pixel-identical. Not breaking.
-   - **Done 2026-10-27 (v9.2.0), notes for the later steps:**
+   - **Done 2026-10-27 (v10.2.0), notes for the later steps:**
      - Moved into `beamerthemeSlideMage.sty` (base 6998 → 5712 lines, theme 2213 → 3467): the colours of footnote,
        footline text, buttons, canvas, frame title text and blocks (block, alerted, example, reference, info; the
        theme's own native-block colours and `alertedBlock`/`example text` are gone); the text margins; `\SMBulletDot`
@@ -681,7 +681,7 @@ mix it in.
    - The ascender and Top Margin go from TeX to Lua; the ascender is derived where luaotfload allows it.
    - `latex_export` finds the profile.
    - Pixel-identical.
-   - **Done 2026-10-27 (v9.3.0), notes for the later steps:**
+   - **Done 2026-10-27 (v10.3.0), notes for the later steps:**
      - `latex/SlideMage_layout_fira.tex` holds, in the old order: the fontspec load with `no-math`, the availability
        check and warnings (moved out of the theme with their `\msg_new` texts), the Fira Sans weight mapping, Fira Mono,
        the tabular figures, then `\SMFontAscender`, `\SMLinespread` and `\SMParskip`, `\SMCodeFont`,
@@ -722,7 +722,7 @@ mix it in.
      identical. Otherwise write them as metric expressions, and only failing that as profile values.
    - Design values become catalog hooks.
    - Pixel-identical. Any intended difference needs the user's approval with before/after images.
-   - **Inventory 2026-10-27** (redone against v9.3.0; `b:` = `SlideMage_base.tex`, `t:` = `beamerthemeSlideMage.sty`,
+   - **Inventory 2026-10-27** (redone against v10.3.0; `b:` = `SlideMage_base.tex`, `t:` = `beamerthemeSlideMage.sty`,
      `s:` = `SlideMage_setup.tex`, `p:` = `SlideMage_layout_fira.tex`, `m:` = `SlideMage_measure.lua`). Classes: **H**
      design hook (catalog, a template may change it), **M** font metric (layout profile, a template cannot change it),
      **D** derived (base, an expression of its inputs), **I** internal (stays where it is), **O** obsolete (try as 0, delete
@@ -813,7 +813,7 @@ mix it in.
 
      Counts (74 rows; a row can hold several names; the class before a bracket): H 34, M 9, D 7, I 19, O 5 (the O rows may
      end as M, see the trials).
-   - **Done 2026-10-27 (v9.4.0), notes for the later steps:**
+   - **Done 2026-10-27 (v10.4.0), notes for the later steps:**
      - **Hooks.** Defined in `SlideMage_setup.tex` after `\usetheme` (the theme and the base no longer define them): text margins `\SMTextMarginLeft/Right`; `\SMFrametitle{Top,Bottom,Left,Right}Padding`, `\SMFrameSubtitleSep`, `\SMFrameSubtitleStrutEnd`; `\SMFooterBoxHeight`, `\SMFooterTextSize`, `\SMFooterIDSize`, `\SMFootlineHeight/Depth/SidePadding`, `\SMRightFooterPadding`, `\SMFootlineVOffset` (default `-0.5ex-0.77pt`: the base's five `\addtolength` lines summed in sp); `\SMFootnoteSize`, `\SMFootnoteSep`, the four `\SMSideFootnote...` lengths; `\SMBlockSideMargin`, `\SMBlockTitleMarkerWidth`; `\SMTitleframe{BoxHeight,TextSep,BandGap,BottomPad}`, `\SMSectionframe{BoxHeight,ContentDrop}`, `\SMQuote{BoxHeight,AttributionGap}`, `\SMProgressStripHeight`; the list ratio macros, `\SMTallItemBaseRatio`, `\SMLabelItemItemsep`, `\SMTightDisplaySkip`, `\SMBesideFigureTopGap`; `\SMImageBorderWidth`, `\SMWarningSign{Padding,BorderWidth}`, `\SMCodeSize`; `\SMContentTopAlign`, `\SMTitleBarBottomAlign`. Block, frametitle, caption and bibliography sizes are beamer fonts: a template uses `\setbeamerfont` after setup (documented in the catalog). The one new name that is not a rename is `\SMFootlineSidePadding`.
      - **Evaluation point.** Hooks in ex/em stay in the preamble's normal font, as before, except `\SMFootlineSidePadding`: the footline template had a literal `3ex` evaluated inside the footline's `\scriptsize`, so it is a macro (`3ex`), not a length. The first compare after the move differed on every page in exactly that (4.6pt on the footer); a numeric dump of every `\SM...` length before and after (in sp) is the fast check for this kind of slip.
      - **`\SMApplyLayoutHooks`.** A template changes hooks after the theme has loaded, so what must reach registers that are not SlideMage's own (`\beamer@leftmargin`, `\footnotesep`, the `footnote` beamer font) is applied by this theme macro, which the base calls right after `\SMApplyColorRoles`. Add anything of that kind there.
@@ -823,7 +823,7 @@ mix it in.
      - **Open for the user.** (a) `\SMContentTopAlign` 41.58pt against `\SMTopMargin` 41.58bp: equal in intent, 0.156pt apart in fact; deriving one from the other moves every overlay figure, floating block and `\SMFit` by 0.156pt (0.05mm, not seen by eye, but not pixel-identical), and would let a template change the Top Margin without re-measuring. Needs a yes, with before/after images if wanted. (b) `\SMTitleBarBottomAlign`: same kind of question, deriving it removes the second hand-kept number but changes 14-16 pixels per page at the logo. (c) Should the footer and footnote right shifts follow `\SMFrametitleRightPadding` (a 0.04pt / 0.24pt visible move on the default look)? (d) Is `\SMFootlineVOffset`'s -0.77pt a design choice (kept as hook) or a font calibration? (e) Is the 41pt `\SMTitleframeBottomPad` a hook (kept) or a Fira calibration?
      - **Consumers.** `appendix_toc.py` reads `\SMTextMarginLeft` where it had `.45cm` (and `\SMFrametitleRightPadding`, as before); `check_layout.py` keeps its constants (step 6 replaces them) with a comment naming the hooks; `ai/guides.py` names none of the moved values. Pins renewed (setup, profile, base, theme); no view-dependent rule entered them.
 6. **Effective margins for the tools.** Base writes the PDF info keys; `check_layout.py` reads them.
-   - **Done 2026-10-27 (v9.5.0), notes for the later steps:** the keys are `SMTopMargin` (`\SMTopMargin`) and
+   - **Done 2026-10-27 (v10.5.0), notes for the later steps:** the keys are `SMTopMargin` (`\SMTopMargin`) and
      `SMLeftMargin` (`\SMFrametitleLeftPadding`: the old constant 12.55 was exactly this length, 12.552bp, the
      strut has no width), in bp rather than the pt section 5 named, because the tool measures in PDF units. Written
      by the base right after `\SMApplyLayoutHooks`; `check_layout.pdf_margins()` reads them and falls back to
@@ -841,7 +841,7 @@ mix it in.
    - Add `tools/calibrate_font_profile.py`.
    - Add a test that every catalog hook is used somewhere in base or the theme, and that the shipped templates
      use catalog names only.
-   - **Done 2026-10-27 (v9.6.0), notes for the later steps:**
+   - **Done 2026-10-27 (v10.6.0), notes for the later steps:**
      - **Profile.** `latex/SlideMage_layout_lmsans.tex` ships to users (decision 2026-10-27): Latin Modern Sans (`lmsans10-*.otf`) with its regular and bold, Latin Modern Mono (`lmmono10-regular`, `lmmonolt10-bold`), the same math handling as Fira. It defines every name the Fira profile defines (a test compares the two lists). Its ascender is read from the font: luaotfload gives 0.806 for Latin Modern Sans (the profile's number is the fallback and says so). A template picks it with `\newcommand{\SMLayoutProfile}{lmsans}` before the setup layer. The catalog header lists what a profile defines (fonts, metrics, the 17 calibrations) and the recipe; README has both.
      - **Calibration tool.** `tools/calibrate_font_profile.py --profile <name>` compiles the calibration deck with the profile under the SlideMage template (the catalog's defaults, so the numbers are the profile's), measures the PDF and prints current value, suggestion and the reading for 11 calibrations; run on `fira` it reproduces the Fira values (`ok` everywhere, within 0.3pt, after taking out two offsets that are Fira's own: 0.22pt of glyph overhang at the footer's and footnote's right edge, and 2.36pt for `columns[T]` in a manual-top frame). Measured: footer text drop (ink of the frame number between the box's edges, from pixels), the two right shifts (against the logo's visible edge), `\SMContentTopShift`, `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation` (three manual-top frames, `\SMManualTopMargin`), the section frame's height correction, the two label-item lengths (widest label and a C, at the 10pt `\small`), the nested numeral slot and left margin (widest numeral plus the 0.43pt that Fira's slot has). Not measured, kept as Fira's: `\SMEnumerateLabelBox`, `\SMEnumerateTextExtra` (a design value), the nested label gap, and the section frame's `RefDepth`, `BottomGap` and `BottomPadCorrection`. lmsans values: footer drop -0.37pt, footer right shift -0.33pt (Fira 4.6: the footer's paddings are in ex, which is smaller in this font), footnote right shift 4.8pt, content top shift 11.17pt, columns 10.17pt and 13.55pt, section height correction 15.95pt, label width 9.16pt and sep 5.20pt, nested numeral slot 8.18pt and left margin 13.43pt.
      - **check_layout.py** was Fira- and template-bound beyond the margins: it assumed the Fira ascender (0.935), a title bar ending at 20-30bp, "Fira" in a font name for body text, and a last footnote line at 242.64. It now reads the ascender and the title bar's bottom edge from the PDF (the base writes `SMFontAscender` and `SMTitleBarBottom`, from `\SMTitleBarBottomAlign`, next to the two margins), tests body text as "not a maths font", and takes the usual last-footnote position from the deck (the highest last line plus 1.5pt, which is what a `\source` line without a raised marker needs). On the manual the findings are unchanged.
@@ -851,7 +851,7 @@ mix it in.
      - **Regression.** Identical to the step 6 baselines: in-repo 12 entries, 1084 pages, and the private copy 57 entries, 7160 pages, 0 differences (the harness compares the PDF font lists too). Tests: 3383 passed, 2 GUI/process tests failed under load and passed alone; the opt-in compile tests (`SLIDEMAGE_TEX_TESTS=1`) of the tool and the stress deck pass. Renders of the calibration deck (stress template, three versions; SlideMage template with fira and with lmsans) and the stress deck are in `C:/Users/ms/SlideMage/regression/step7-renders/`.
    - **Next (approved by the user 2026-10-28):** `docs/plans/layout-from-metrics.md` makes
      the layout follow the font and the template (the stress test's findings above, and the user's step 5 answers).
-     It is steps 8-13 (v9.7.0-v9.12.0); the steps below moved to 14-17 (renumbered 2026-10-28).
+     It is steps 8-13 (v10.7.0-v10.12.0); the steps below moved to 14-17 (renumbered 2026-10-28).
 8.-13. **Layout from metrics**: see `docs/plans/layout-from-metrics.md`.
 14. **Bibliography file** (section 7). Can go any time after step 1.
 15. **Documentation.**
@@ -923,7 +923,7 @@ mix it in.
      `compat.checked_version` (e.g. "v10.9.0"). Opened by v1.0.0, such a project looks "used by a newer SlideMage"
      and no compat change would ever be pending (`checked_version` above the app). Needed: read an old-scheme
      version (major 2 or higher before the switch) as `0.<old>`, or migrate the file once.
-   - **Compat registry:** `Change.since` values ("v9.0.0", ...) become `v0.9.0.0` ... with `REGISTRY_FROM` and the
+   - **Compat registry:** `Change.since` values ("v10.0.0", ...) become `v0.9.0.0` ... with `REGISTRY_FROM` and the
      test that pairs BREAKING releases with entries.
    - **Update check:** an installed v8.x/v10.x build only offers a higher version, so it never offers v1.0.0. Installs
      before the switch (the user's and Jürgen's) are updated by hand once; say so in the release notes.

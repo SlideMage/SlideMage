@@ -79,7 +79,7 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
+# v10.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
 # template or profile that sets them with an error.
 DERIVED_LAYOUT_NAMES = ("SMContentTopAlign", "SMTitleBarBottomAlign", "SMFooterRightShift", "SMFootnoteRightShift")
 _DERIVED = r"\\(" + "|".join(DERIVED_LAYOUT_NAMES) + r")(?![A-Za-z@])"
@@ -105,8 +105,8 @@ def _detect_derived_layout_names(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
-# layer guards these names like those of v9.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
+# v10.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
+# layer guards these names like those of v10.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
 # a setting is the "is derived, not set" error); \SMFootlineVOffset is derived from the new hook \SMFootnoteFooterGap.
 GUARDED_V98_NAMES = (
     "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
@@ -122,7 +122,7 @@ _DEFINES_TEXT_EXTRA = re.compile(r"\\newlength\s*\{?\s*\\(SMEnumerateTextExtra)(
 
 
 def _detect_font_measurement_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a number v9.8.0 derives."""
+    """Project-root layout profiles, templates and project macros that still define or set a number v10.8.0 derives."""
     findings = []
     paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
              for p in sorted(root.glob(pattern))]
@@ -143,8 +143,8 @@ def _detect_font_measurement_names(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
-# correct by their content, are measured on the page. Guarded like v9.8.0's names: a profile's \newlength of one is a
+# v10.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
+# correct by their content, are measured on the page. Guarded like v10.8.0's names: a profile's \newlength of one is a
 # LaTeX error "already defined", a setting the "is derived, not set" error.
 GUARDED_V99_NAMES = ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation")
 _V99 = r"\\(" + "|".join(GUARDED_V99_NAMES) + r")(?![A-Za-z@])"
@@ -155,7 +155,7 @@ _SETS_V99_NAME = re.compile(
 
 
 def _detect_top_pullup_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a pull-up v9.9.0 measures."""
+    """Project-root layout profiles, templates and project macros that still define or set a pull-up v10.9.0 measures."""
     findings = []
     paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
              for p in sorted(root.glob(pattern))]
@@ -216,7 +216,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_omitslide,
 ), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
     id="derived-layout-names",
-    since="v9.7.0",
+    since="v10.7.0",
     severity=BREAKS,
     title="Four layout positions follow the template's settings and can no longer be set",
     description=(
@@ -231,7 +231,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_derived_layout_names,
 ), Change(
     id="font-measurements-derived",
-    since="v9.8.0",
+    since="v10.8.0",
     severity=BREAKS,
     title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
     description=(
@@ -251,7 +251,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_font_measurement_names,
 ), Change(
     id="top-pullups-measured",
-    since="v9.9.0",
+    since="v10.9.0",
     severity=BREAKS,
     title="A layout profile no longer holds the top pull-ups",
     description=(

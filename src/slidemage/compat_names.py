@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat.py change "slidemage-names-and-setup-layer" (v9.0.0, BREAKING): the framework's
+"""compat.py change "slidemage-names-and-setup-layer" (v10.0.0, BREAKING): the framework's
 files carry the SlideMage name instead of "Slidemaster".
 
 This module holds the part of the change that renames and runs the whole change;
@@ -253,7 +253,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v9.0.0",
+    since="v10.0.0",
     severity=BREAKS,
     title="The framework's files are named SlideMage, and templates load SlideMage_setup",
     description=(

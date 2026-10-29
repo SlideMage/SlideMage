@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The hook catalog of latex/SlideMage_setup.tex (v9.9.0): every hook is read by the framework, the shipped
+"""The hook catalog of latex/SlideMage_setup.tex (v10.9.0): every hook is read by the framework, the shipped
 templates and the stress-test template set catalog names only, the stress-test template sets every hook, and
 every layout profile defines what the Fira profile defines."""
 import os
@@ -18,15 +18,15 @@ STRESS = ROOT / "tests" / "fixtures" / "template_stress"
 SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
 NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname"}
-# The names the base derives (v9.7.0, v9.8.0, v9.9.0): the setup layer holds an error-raising macro under each, so a template or a
+# The names the base derives (v10.7.0, v10.8.0, v10.9.0): the setup layer holds an error-raising macro under each, so a template or a
 # profile that sets one is told; they are in the catalog's text but are not hooks.
 DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift",
            "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
            "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
            "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection",
            "SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"}
-# What a layout profile defines besides its fonts (v9.9.0): the font's metrics, and no length (the three top pull-ups
-# of v9.8.0 are measured on the page now). Nothing else is a number of the font.
+# What a layout profile defines besides its fonts (v10.9.0): the font's metrics, and no length (the three top pull-ups
+# of v10.8.0 are measured on the page now). Nothing else is a number of the font.
 PROFILE_LENGTHS: set[str] = set()
 PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
@@ -142,7 +142,7 @@ def test_every_layout_profile_defines_what_the_fira_profile_defines():
     for path in profiles:
         lacking = fira - profile_names(path)
         assert not lacking, f"{path.name} lacks {sorted(lacking)}"
-        # since v9.9.0 a profile holds fonts and the font's metrics, no other number
+        # since v10.9.0 a profile holds fonts and the font's metrics, no other number
         lengths = defined(read(path), ("newlength",))
         macros = defined(read(path), ("newcommand",))
         assert lengths == PROFILE_LENGTHS, f"{path.name} defines lengths {sorted(lengths ^ PROFILE_LENGTHS)}"
@@ -162,7 +162,7 @@ def test_the_setup_header_says_a_profile_holds_no_measured_length_and_names_the_
 
 
 def test_no_template_or_profile_sets_a_derived_name():
-    """The derived names (v9.7.0-v9.9.0) are computed by the base from the hooks and the font; setting one would
+    """The derived names (v10.7.0-v10.9.0) are computed by the base from the hooks and the font; setting one would
     contradict the next change to a hook or to the font."""
     for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
         touched = defined(settings_before_base(template),

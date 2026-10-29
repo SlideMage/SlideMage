@@ -392,17 +392,17 @@ copied package files in `texmf/` record the exact originals.
 
 ## Directory layout
 
-- `beamerthemeSlideMage.sty` — the beamer theme (since v9.1.0): a pruned and
+- `beamerthemeSlideMage.sty` — the beamer theme (since v10.1.0): a pruned and
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
   loads it, decks never name it. It holds the colour roles,
-  the frame title and footline templates, since v9.2.0 also the logo macro and frame
+  the frame title and footline templates, since v10.2.0 also the logo macro and frame
   title hook, the footnote template, the block templates and the itemize bullets
   (`SlideMage_base.tex` no longer replaces them), and four optional features that are off
   until a template switches them on (mini frames, progress bars, automatic
-  divider frames, a watermark — see the end of `SlideMage_setup.tex`). Since v9.3.0
+  divider frames, a watermark — see the end of `SlideMage_setup.tex`). Since v10.3.0
   it sets font *sizes* only; the font files come from the layout profile below.
-- `SlideMage_layout_fira.tex` — a **layout profile** (since v9.3.0): everything that
+- `SlideMage_layout_fira.tex` — a **layout profile** (since v10.3.0): everything that
   depends on the font. It loads Fira Sans Light (with its weight mapping: Regular
   is the bold) and Fira Mono, defines `\SMCodeFont`, `\SMInlineCodeFont` and
   `\SMCardHeadingFont`, keeps the math in Computer Modern, and gives the metrics
@@ -411,8 +411,8 @@ copied package files in `texmf/` record the exact originals.
   the Top Margin, to `SlideMage_measure.lua`), `\SMLinespread` and `\SMParskip`.
   Besides the fonts and their metrics it holds three numbers measured against this font, the
   pull-ups of the frames the automatic Top Margin does not manage (`\SMContentTopShift`,
-  `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation`). Everything else it held until v9.7.0 is
-  read from the font where it is used, or is a hook of the catalog, since v9.8.0: the footer text's drop
+  `\SMColumnsTopCorrection`, `\SMColumnsTTopCompensation`). Everything else it held until v10.7.0 is
+  read from the font where it is used, or is a hook of the catalog, since v10.8.0: the footer text's drop
   (the frame number's ink centred in the footer box, from the digits' glyph boxes), the box of the label
   of the lettered and numbered lists (`\SMLabelItemWidth`, the widest of a) to c) and 1) to 9) in the list's
   font, with the gap `\SMLabelItemGap`), the numeral column of a nested enumerate (the widest numeral plus
@@ -425,7 +425,7 @@ copied package files in `texmf/` record the exact originals.
   `SlideMage_setup.tex` inputs `SlideMage_layout_<name>.tex`. A project can keep a
   profile of its own next to its templates; the TeX search path finds it, and
   Export LaTeX takes it along.
-- `SlideMage_layout_lmsans.tex` — the second **layout profile** (since v9.6.0): Latin
+- `SlideMage_layout_lmsans.tex` — the second **layout profile** (since v10.6.0): Latin
   Modern Sans and Latin Modern Mono, which every TeX distribution has, so decks set
   in it compile on a machine without the Fira fonts. A template uses it with
   `\newcommand{\SMLayoutProfile}{lmsans}` before `\input{SlideMage_setup}`. It defines
@@ -434,8 +434,8 @@ copied package files in `texmf/` record the exact originals.
   (`\SMTitleBarBottomAlign`, 22.17pt with this font against Fira's 25.32pt), the
   overlay coordinate `\SMContentTopAlign` and the right edges of the footer and the
   footnotes are derived by `SlideMage_base.tex` from the template's hooks and the font
-  (since v9.7.0); a template or a profile that sets one of those four names gets an error, as it does for
-  the names of v9.8.0 (\SMFooterTextDrop, \SMFootlineVOffset, the label and numeral boxes, the section
+  (since v10.7.0); a template or a profile that sets one of those four names gets an error, as it does for
+  the names of v10.8.0 (\SMFooterTextDrop, \SMFootlineVOffset, the label and numeral boxes, the section
   frame's corrections).
   *Recipe for a new profile:* (1) copy `SlideMage_layout_fira.tex` and change the
   fonts, (2) run `python tools/calibrate_font_profile.py --profile <name>`: it compiles
@@ -454,12 +454,12 @@ copied package files in `texmf/` record the exact originals.
   switched on. A test checks that the template sets every hook of the catalog, that every
   hook is read by the base or the theme, and that the shipped templates set catalog names
   only.
-- `SlideMage_setup.tex` — the setup layer and hook catalog (since v9.0.0):
+- `SlideMage_setup.tex` — the setup layer and hook catalog (since v10.0.0):
   loads the beamer theme (decks never name it) and defines every setting a
   template may change, each with its default and a comment — the `c_*`
   palette (SlideMage's own colours), the role colours (`\SMBulletColor`,
   `\SMTitleBoxColor`, ...), `\SMInstituteLogoPath`, `\SMLogoHeight`, the Top Margin
-  (`\SMTopMargin`), the title-bar paddings (`\SMFrametitleRightPadding`, ...), and since v9.4.0 every
+  (`\SMTopMargin`), the title-bar paddings (`\SMFrametitleRightPadding`, ...), and since v10.4.0 every
   other design value: text margins, footer and footnote sizes and spacing, block margins, title,
   section, quote and progress-strip frame sizes, list spacing ratios, image border width, code size.
   It also inputs the layout profile. The one file a template author reads.
@@ -1715,10 +1715,10 @@ if you want a particular slide vertically centered instead.
 **Names:** everything this framework adds is named `\SM...` (`\SMContentTopAlign`,
 `\ifSMInstructorVersion`, TikZ style `SMImageBorder`, environment `SMTable`);
 no `\gotham...` name is left: up to v5.2.0 the framework's own macros were
-`\gotham...`, up to v9 so were its environments, counters, TikZ styles and beamer
-templates (`gothamtable`, `gotham arrow`, ...), and up to v9 the vendored Gotham
+`\gotham...`, up to v8 so were its environments, counters, TikZ styles and beamer
+templates (`gothamtable`, `gotham arrow`, ...), and up to v8 the vendored Gotham
 theme's own names (`\gothamFootlineVOffset`, `\gothamInstituteLogoSquare`, ...), which are
-`\SM...` since v9.1.0 (`\SMFootlineVOffset`, `\SMInstituteLogo`, ...).
+`\SM...` since v10.1.0 (`\SMFootlineVOffset`, `\SMInstituteLogo`, ...).
 Project compatibility migrates a project that still uses them when it is opened;
 `python -m slidemage.sm_rename <project folder>` (`--dry-run` first to see the
 counts) does the v5.2.0 part.
@@ -1963,7 +1963,7 @@ behave quite like a plain measured `\vbox`, see the comment above
 automatically, pushing the whole title block up rather than changing the
 gap below it.
 
-**Since v9.8.0 the bar is placed by the title's own material, not by four numbers measured at Fira.**
+**Since v10.8.0 the bar is placed by the title's own material, not by four numbers measured at Fira.**
 `\SMSectionframeBoxHeight` is the bar's height (85.34pt = 85.02bp, what the bar measured since v5.28.0). The
 bar's content (the strut, the title, the bottom strut) is typeset once into a box by the same
 `beamercolorbox` the frame title template uses, with a top padding as large as the bar; the box is that
@@ -3113,11 +3113,11 @@ else the folder with `slide_ids.csv` above the PDF, else
 is the logo's visible right edge, measured on the rendered page (since
 v5.15.1); in every template it coincides with the framework's own Right Margin,
 `\SMFrametitleRightPadding` from the page edge. The Top and Left Margin are the
-deck's own (since v9.5.0): `SlideMage_base.tex` writes them into the PDF's info
+deck's own (since v10.5.0): `SlideMage_base.tex` writes them into the PDF's info
 dictionary as `SMTopMargin` (`\SMTopMargin`) and `SMLeftMargin`
 (`\SMFrametitleLeftPadding`, the title text's left edge), in PDF units, so a
 template that changes them is checked against its own values. A PDF from before
-v9.5.0 is checked against the SlideMage template's 41.58 and 12.55. Since v9.6.0 the PDF also
+v10.5.0 is checked against the SlideMage template's 41.58 and 12.55. Since v10.6.0 the PDF also
 records the text font's ascender (`SMFontAscender`, how far a text line's top is above its baseline)
 and where the title bar ends (`SMTitleBarBottom`), so a deck in another font or with another title
 bar is checked against its own, and the last footnote line of a frame is compared with the highest

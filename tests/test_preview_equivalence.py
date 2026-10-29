@@ -123,7 +123,7 @@ def test_footer_body_class_theme_and_conditional_preamble_are_not_proofs(tmp_pat
                               r"\newcommand{\FooterText}{\SMDeckVersion}")
     custom = classify_views(specs(tmp_path, "Text", preamble=footer))
     assert all(not d.certain for d in custom.decisions)
-    # Since v9.0.0 the template loads the theme; a deck that loads one itself (even the stock one) is unaudited.
+    # Since v10.0.0 the template loads the theme; a deck that loads one itself (even the stock one) is unaudited.
     for name in ("SlideMage", "mytheme"):
         theme = PREAMBLE.replace(r"\documentclass{beamer}", r"\documentclass{beamer}" + "\n" + rf"\usetheme{{{name}}}")
         decisions = classify_views(specs(tmp_path / name, "Text", preamble=theme)).decisions

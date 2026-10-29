@@ -170,7 +170,7 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
 
 
 def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
-    root = make_project(tmp_path, "v9.6.0")
+    root = make_project(tmp_path, "v10.6.0")
     (root / "SlideMage_template_inst.tex").write_text(
         "\\input{SlideMage_setup}\n"
         "\\setlength{\\SMTitleBarBottomAlign}{25.32pt}\n"
@@ -185,11 +185,11 @@ def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
     assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleBarBottomAlign"),
                      ("SlideMage_template_inst.tex", 4, "\\SMFooterRightShift"),
                      ("SlideMage_layout_own.tex", 1, "\\SMFootnoteRightShift")]
-    assert any(c.id == "derived-layout-names" and c.since == "v9.7.0" for c in compat.CHANGES)
+    assert any(c.id == "derived-layout-names" and c.since == "v10.7.0" for c in compat.CHANGES)
 
 
 def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tmp_path):
-    root = make_project(tmp_path, "v9.7.0")
+    root = make_project(tmp_path, "v10.7.0")
     (root / "SlideMage_layout_own.tex").write_text(
         "\\newlength{\\SMFooterTextDrop}\n"
         "\\setlength{\\SMFooterTextDrop}{-0.4pt}\n"
@@ -210,11 +210,11 @@ def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tm
                      ("SlideMage_layout_own.tex", 4, "\\SMEnumerateTextExtra"),
                      ("SlideMage_layout_own.tex", 6, "\\SMSectionframeHeightCorrection"),
                      ("SlideMage_template_inst.tex", 3, "\\SMFootlineVOffset")]
-    assert any(c.id == "font-measurements-derived" and c.since == "v9.8.0" for c in compat.CHANGES)
+    assert any(c.id == "font-measurements-derived" and c.since == "v10.8.0" for c in compat.CHANGES)
 
 
 def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path):
-    root = make_project(tmp_path, "v9.8.0")
+    root = make_project(tmp_path, "v10.8.0")
     (root / "SlideMage_layout_own.tex").write_text(
         "\\newlength{\\SMContentTopShift}\n"
         "\\setlength{\\SMContentTopShift}{11.5964pt}\n"
@@ -234,8 +234,8 @@ def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path
                      ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
                      ("SlideMage_template_inst.tex", 2, "\\SMColumnsTopCorrection")]
     change = next(c for c in compat.CHANGES if c.id == "top-pullups-measured")
-    assert change.since == "v9.9.0" and change.detect is compat._detect_top_pullup_names
-    ev = compat.evaluate(root, "v9.9.0")
+    assert change.since == "v10.9.0" and change.detect is compat._detect_top_pullup_names
+    ev = compat.evaluate(root, "v10.9.0")
     assert change.id in [p.change.id for p in ev.loud]
     # the shipped profiles hold none of them any more
     shipped = Path(compat.__file__).resolve().parents[2] / "latex"

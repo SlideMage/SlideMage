@@ -28,7 +28,7 @@ between title bar and footer -- with a comment line in its own slide file:
 (several checks comma-separated, or "all"). Exempted findings are counted, not listed.
 
 The Top and Left Margin are the deck's own: SlideMage_base.tex writes them into the PDF
-(info keys SMTopMargin, SMLeftMargin, since v9.5.0), and since v9.6.0 also the text font's
+(info keys SMTopMargin, SMLeftMargin, since v10.5.0), and since v10.6.0 also the text font's
 ascender (SMFontAscender) and the title bar's bottom edge (SMTitleBarBottom), so that a template
 with another font, other margins or another title bar is checked against its own values. An
 older PDF is checked against the SlideMage template's 41.58, 12.55, 0.935 and 25.2. Exemptions are read from the slide files of the project the PDF
@@ -53,7 +53,7 @@ CHECKS = ("top", "coltop", "left", "right", "bottom", "bleed", "jitter")
 
 TOP_MARGIN = 41.58       # top of a plain first body line's line box (\SMTopMargin in SlideMage_setup.tex, 41.58bp)
 LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding
-# Both are only the fallback for a PDF from before SlideMage v9.5.0: since then the base writes the deck's own
+# Both are only the fallback for a PDF from before SlideMage v10.5.0: since then the base writes the deck's own
 # margins into the PDF's info dictionary (SMTopMargin, SMLeftMargin, in bp), which pdf_margins() reads.
 FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it (the fallback: see usual_footnote_top)
 FOOTNOTE_MARKER_ALLOWANCE = 1.5  # a footnote line with its raised marker has a line box this much higher than a \source line

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""tools/calibrate_font_profile.py (v9.9.0): checks the values the base derives against the geometry their hooks ask
+"""tools/calibrate_font_profile.py (v10.9.0): checks the values the base derives against the geometry their hooks ask
 for, measured in the calibration deck's PDF; a profile holds no number for it to suggest any more. The pure
 parts are tested here; the compile-and-measure run is opt-in (needs LuaLaTeX: SLIDEMAGE_TEX_TESTS=1), like the other
 tests that compile."""
@@ -48,7 +48,7 @@ def test_a_profiles_lengths_are_read_in_pt():
 def test_the_shipped_profiles_hold_none_of_the_numbers_the_base_derives():
     for profile in ("fira", "lmsans"):
         text = cal.profile_text(ROOT / "latex", profile)
-        # derived since v9.8.0, and the three pull-ups since v9.9.0
+        # derived since v10.8.0, and the three pull-ups since v10.9.0
         for name in ("SMFooterTextDrop", "SMSectionframeHeightCorrection", "SMLabelItemWidth", "SMLabelItemSep",
                      "SMEnumerateNestedMinNumber", "SMEnumerateNestedLeftMargin", "SMContentTopShift",
                      "SMColumnsTopCorrection", "SMColumnsTTopCompensation"):
