@@ -932,12 +932,13 @@ mix it in.
      repository with history) and where the public one lives; the update check and website point to the public one.
      **Decided by the user on 2026-10-29:** the public repository is `SlideMage/SlideMage`, cut fresh (initial
      commit, no history); the full history is kept in a private repository that only the user and Jürgen Fleiß can
-     access (its name and how the current repository becomes it are still to settle). The update check and the
+     access, named `SlideMage_pre_v1` (user, 2026-10-29); how the current repository becomes it is still to
+     settle. The update check and the
      website keep pointing to `SlideMage/SlideMage`.
    - **Fresh initial commit:** the public repository holds the tree as it is then, minus the institution templates
      (step 16) and anything private; the CHANGELOG keeps the history as text (under the 0.x numbers).
-   - Open with the user then: whether the history CHANGELOG ships in full or is cut; the private history
-     repository's name, and the order of moving the current repository there and cutting the public one.
+   - Open with the user then: whether the history CHANGELOG ships in full or is cut; the order of moving
+     the current repository to `SlideMage_pre_v1` and cutting the public one.
 
 ## Open decisions (ask the user at the step named)
 
