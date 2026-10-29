@@ -939,6 +939,24 @@ mix it in.
      (step 16) and anything private; the CHANGELOG keeps the history as text (under the 0.x numbers).
    - Open with the user then: whether the history CHANGELOG ships in full or is cut; the order of moving
      the current repository to `SlideMage_pre_v1` and cutting the public one.
+19. **Clean up everything no longer needed** (user request 2026-10-29; the very last step, after everything else is
+    merged and verified). List what will go and get the user's OK before deleting anything that cannot be
+    recreated:
+   - **Worktrees and branches:** every step, baseline and check worktree under `.claude/worktrees/` (`fw-step*`,
+     `fw-baseline*`, `fw-check-*`, finally `fw-redesign` itself once the branch is merged where it belongs) and their
+     merged `claude/fw-*` branches; the branch `fw-redesign-conflict-copy-28170940`; the stash
+     `fw-redesign-sync-leftover-v941-theme-header`; any leftover `(conflicted copy ...)` files under `.git`.
+   - **Regression data:** `D:\uniCLOUD\SlideMage\.regression\` (baselines, compare outputs, diff images, logs; about
+     1 GB+, private renders) and the per-machine folders `C:\Users\palans\SlideMage\regression\` and
+     `C:\Users\ms\SlideMage\regression\` (project copies, configs, baselines), unless the user wants a current
+     baseline kept for future framework work; then keep only that one and its config.
+   - **Temporary files:** build output of the stress/calibration decks, `.top`/`.ovl`/aux files left outside build
+     folders, sessions' scratch and Temp compile folders, old test builds and dists in `C:\Users\<user>\SlideMage`,
+     `docs/plans/step*-status.md` files, and `.git/info/exclude` entries that no longer apply.
+   - **Documents:** the handover documents in the main checkout's `docs/` that are finished (this one included,
+     after its content is in the plan or no longer needed), and plan notes that only served the work in progress.
+   - Check afterwards: `git worktree list`, `git branch`, `git stash list`, `git fsck --connectivity-only`, and that
+     the main checkout and the user's real project still compile.
 
 ## Open decisions (ask the user at the step named)
 
