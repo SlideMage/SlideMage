@@ -323,12 +323,12 @@
 %   box begins (its height plus depth, and the offset, are its \footheight) plus a fixed 4pt
 %   (beamerbaseframecomponents.sty, \beamer@calculateheadfoot), and the last footnote line's baseline
 %   is the bottom of that area. So the baseline lies
-%       \SMFootlineHeight + \SMFootlineDepth + offset + 4pt
+%       the footline box's height + its depth (the theme's \SM@footlineheight and \SM@footlinedepth) + offset + 4pt
 %   above the page's bottom edge, and the offset that puts the descenders of that line (the depth of
 %   "gjpqy" in the footnote font) \SMFootnoteFooterGap above the footer box follows.
 \makeatletter
 \begingroup\usebeamerfont{footnote}\settodepth{\dimen0}{gjpqy}
-\global\SMFootlineVOffset=\dimexpr\SMFooterBoxHeight+\SMFootnoteFooterGap+\dimen0-4pt-\SMFootlineHeight-\SMFootlineDepth\relax
+\global\SMFootlineVOffset=\dimexpr\SMFooterBoxHeight+\SMFootnoteFooterGap+\dimen0-4pt-\SM@footlineheight-\SM@footlinedepth\relax
 \xdef\SMPDFInfoFootnoteDescender{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
 \makeatother
 
@@ -364,9 +364,9 @@
 	{ \exp_args:Nx \hypersetup { pdfinfo = { #1 = { \dim_to_decimal_in_bp:n { \use:c {#1} } } } } }
 \clist_map_function:nN
 	{ SMLogoHeight, SMTextMarginLeft, SMTextMarginRight, SMFrametitleTopPadding, SMFrametitleBottomPadding,
-	  SMFrametitleRightPadding, SMFrameSubtitleStrutEnd, SMFootnoteSep, SMSideFootnoteHsize, SMSideFootnoteTopSep,
+	  SMFrametitleRightPadding, SMFrameSubtitleStrutEnd, SMFootnoteSep, SMSideFootnoteHsize, SMSideFootnoteTitleBlockSep,
 	  SMSideFootnoteRightInset, SMBlockSideMargin, SMBlockTitleMarkerWidth, SMTitleframeBoxHeight,
-	  SMTitleframeBottomPad, SMSectionframeBoxHeight, SMQuoteBoxHeight, SMQuoteAttributionGap, SMProgressStripHeight }
+	  SMTitleframeBottomPad, SMSectionframeBoxHeight, SMQuoteBoxHeight, SMQuoteAttributionGap, SMProgressStripRoom }
 	\SM_pdfinfo_length:n
 \ExplSyntaxOff
 \makeatletter
@@ -2151,8 +2151,8 @@
 % Fira Sans, -0.37pt for Latin Modern Sans) centres the ink of the frame number in the footer box. The
 % template below starts the footer line with \vspace*{drop}, which in the footline box's horizontal
 % mode is a \vadjust below the line, as is the \vspace*{0.4ex} that ends it; the box has the declared
-% depth \SMFootlineDepth, so the number's baseline lies
-%     \SMFootlineDepth + (the depth of the line) + 0.4ex + drop
+% depth \SM@footlinedepth, so the number's baseline lies
+%     \SM@footlinedepth + (the depth of the line) + 0.4ex + drop
 % above the page's bottom edge. The depth of the line is that of the slide id's strut
 % (\SMFooterIDStrut makes it the same on every slide). The ink of the digits is what luaotfload
 % keeps as the height and depth of a digit's box (the glyph's bounding box: 676 and 19 units in Fira
@@ -2162,16 +2162,16 @@
 \newcommand{\SM@footertextdrop}{%
 	\setbox\z@\hbox{\SMFooterIDSize\SMFooterIDStrut}\setlength{\SM@footerlinedepth}{\dp\z@}%
 	\setbox\z@\hbox{0123456789}%
-	\setlength{\SMFooterTextDrop}{\dimexpr(\SMFooterBoxHeight-\ht\z@+\dp\z@)/2-\SMFootlineDepth-\SM@footerlinedepth-0.4ex\relax}}
+	\setlength{\SMFooterTextDrop}{\dimexpr(\SMFooterBoxHeight-\ht\z@+\dp\z@)/2-\SM@footlinedepth-\SM@footerlinedepth-0.4ex\relax}}
 \makeatother
 %
 % \SMFooterRightShift (v10.7.0: derived; it was a number of the layout profile, 4.6pt for Fira Sans,
 % -0.33pt for Latin Modern Sans) puts the frame number's right edge on the logo's right edge above
 % it, as the footnotes' lines end there. The footer line is typeset in the footline box, which is
 % \hsize wide and ends its lines \rightskip before that; after the number come, in this order,
-% \hspace*{-4em} and the shift (set here), then the box's \SMRightFooterPadding and its
-% \SMFootlineHRightOffset. So the number's right edge is
-%     \hsize - \rightskip - \SMRightFooterPadding - \SMFootlineHRightOffset + 4em + shift
+% \hspace*{-4em} and the shift (set here), then the box's \SMFootlineHRightOffset (until v10.11.0 an
+% allowance \SMRightFooterPadding came before it, which the shift cancelled). So the number's right edge is
+%     \hsize - \rightskip - \SMFootlineHRightOffset + 4em + shift
 % and the shift that puts it at \paperwidth - \SMFrametitleRightPadding follows. Every term is the
 % one in force where the footer is typeset (the \rightskip is 3ex of the footline font, the 4em is
 % the footer's), which is why the shift is computed in the frame footer template and not once: the
@@ -2397,7 +2397,7 @@
 		\ifSMFooterShowID(slide id: \slideID\ifSMOmittedSlide\SMOmittedSlideMarker\fi\ifSMSlideVersionSet\ | v\slideVersion\SMSlideLanguageFooterTag\fi\ifSMFooterShowDeck\ | \SMDeckVersionText\fi)%
 		\else\ifSMFooterShowDeck(\SMDeckVersionText)\fi\fi}\hspace*{2em}\insertframenumber%
 	\hspace*{-4em}%
-	\setlength{\SMFooterRightShift}{\dimexpr\paperwidth-\SMFrametitleRightPadding-\hsize+\rightskip+\SMRightFooterPadding+\SMFootlineHRightOffset-4em\relax}%
+	\setlength{\SMFooterRightShift}{\dimexpr\paperwidth-\SMFrametitleRightPadding-\hsize+\rightskip+\SMFootlineHRightOffset-4em\relax}%
 	\hspace*{-\SMFooterRightShift}%
 	\vspace*{0.4ex}%
 }
@@ -5252,7 +5252,7 @@
 	% 2.31pt: the clearance above the footer box that \SMSideFootnoteHsize's
 	% 207pt default leaves under a standard title bar.
 	\global\SMSideFootnoteRightInset=\dimexpr\SMSectionFigureWidth+3.1pt\relax
-	\global\SMSideFootnoteHsize=\dimexpr\SMSectionFigureHeight-\SMSideFootnoteTopSep-2.31pt\relax
+	\global\SMSideFootnoteHsize=\dimexpr\SMSectionFigureHeight-\SMSideFootnoteTitleBlockSep-2.31pt\relax
 }
 
 % quoteframe: a quote slide (ExampleSlides.pptx slide 4) -- institute logo
@@ -5517,7 +5517,7 @@
 % The strip is an overlay (a zero-size box: the Top Margin measurement does not see it), so
 % the body below it starts where the title bar's body would -- under the strip. The frame's
 % own target line is therefore the Top Margin plus the strip's height
-% \SMProgressStripHeight (the strip's bottom edge minus the title bar's: measured 11.08pt in
+% \SMProgressStripRoom (the strip's bottom edge minus the title bar's: measured 11.08pt in
 % the PDF; the node is 11.19pt minimum height): the first line sits as far below the strip
 % as it sits below the title bar on any other frame, whatever the body starts with (v5.30.5; the
 % frame used to be exempt from the measurement, with a fixed -3pt, which left a paragraph
@@ -5525,7 +5525,7 @@
 \makeatletter
 \newcommand{\SM@topstrip}{%
 	\ifluatex
-		\directlua{slidemage_measure.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripHeight\relax)}%
+		\directlua{slidemage_measure.top_extra(\SM@topthis, \strip@pt\dimexpr\SMProgressStripRoom\relax)}%
 	\fi
 }
 \makeatother

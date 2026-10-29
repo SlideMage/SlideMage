@@ -136,6 +136,27 @@
 \SM@guardname\SMColumnsTTopCompensation
 \makeatother
 
+% Names that were hooks and are gone (v10.11.0): the footline box's height and depth and the allowance
+% before the frame number moved nothing on the page, because the derived \SMFootlineVOffset and
+% \SMFooterRightShift cancelled them; two hooks were renamed for what they do. A template or a
+% profile that still sets one gets an error that says what to do.
+\makeatletter
+\newcommand{\SM@removedname}[2]{\PackageError{SlideMage}{#1 is no longer a hook}{#2}}
+\newcommand{\SM@renamedname}[2]{\PackageError{SlideMage}{#1 was renamed #2}{%
+	Use #2 in the template or the layout profile; the value means what it did.}}
+\newcommand{\SMFootlineHeight}{\SM@removedname{\string\SMFootlineHeight}{%
+	The footline box's height moved nothing on the page (the derived \string\SMFootlineVOffset cancels it).
+	Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMFootlineDepth}{\SM@removedname{\string\SMFootlineDepth}{%
+	The footline box's depth moved nothing on the page (the derived \string\SMFootlineVOffset cancels it).
+	Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMRightFooterPadding}{\SM@removedname{\string\SMRightFooterPadding}{%
+	The allowance before the frame number moved nothing on the page (the derived \string\SMFooterRightShift
+	cancels it). Remove the line that sets it from the template or the layout profile.}}
+\newcommand{\SMProgressStripHeight}{\SM@renamedname{\string\SMProgressStripHeight}{\string\SMProgressStripRoom}}
+\newcommand{\SMSideFootnoteTopSep}{\SM@renamedname{\string\SMSideFootnoteTopSep}{\string\SMSideFootnoteTitleBlockSep}}
+\makeatother
+
 % The layout profile: fonts and font metrics (see the header). Loaded before the
 % theme, so that the theme's own lengths in ex and em see its fonts.
 \providecommand{\SMLayoutProfile}{fira}
@@ -274,15 +295,8 @@
 \setlength{\SMFooterBoxHeight}{7.26pt}          % height of the footer box
 \newcommand{\SMFooterTextSize}{\fontsize{5}{3}\selectfont}   % footer text: {font size}{baseline skip} in pt
 \newcommand{\SMFooterIDSize}{\fontsize{4}{4}\selectfont}     % the slide id in the footer
-\newlength{\SMFootlineHeight}
-\setlength{\SMFootlineHeight}{1.5ex}            % the footline box: height above the baseline. Beamer ends the frame text area at the box's top; the footnotes' offset is derived
-                                                % from this and the depth, so changing them changes no position on the page (v10.10.0, checked)
-\newlength{\SMFootlineDepth}
-\setlength{\SMFootlineDepth}{0.1ex}             % and depth below it (see the height)
 \newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left end of the footline, where the footer text begins (a macro: its ex is the footline font's). The right end of the line is
                                                 % pinned to the logo's padding edge by \SMFooterRightShift, so this padding has no effect there
-\newlength{\SMRightFooterPadding}
-\setlength{\SMRightFooterPadding}{3.5ex}        % an allowance in the footline before the frame number; the footer's derived shift cancels it, so the frame number and the slide id stay where they are (v10.10.0, checked)
 \newlength{\SMFootnoteFooterGap}
 % The clear space between the descenders of the last footnote line and the top edge of the
 % footer box. (Until v10.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
@@ -297,9 +311,9 @@
 % Side footnotes (\sidefootnotes, \sectionfigure): the strip along the page's right edge.
 \newlength{\SMSideFootnoteHsize}
 \setlength{\SMSideFootnoteHsize}{207pt}         % its length: the strip's lines wrap at this width (a line is at most this long)
-\newlength{\SMSideFootnoteTopSep}
-\setlength{\SMSideFootnoteTopSep}{3pt}          % the gap between the foot of the title block and the strip. The foot is the bottom of the title box plus beamer's gap under it, which lies below the visible bar
-                                                % when the bar is trimmed to the logo (see \SMFrametitleBottomPadding), so the gap seen from the bar is larger by that
+\newlength{\SMSideFootnoteTitleBlockSep}
+\setlength{\SMSideFootnoteTitleBlockSep}{3pt}   % the distance the strip hangs below the foot of the title block (until v10.11.0 \SMSideFootnoteTopSep). The foot is the bottom of the title box plus beamer's gap under it,
+                                                % which lies below the visible bar when the bar is trimmed to the logo (see \SMFrametitleBottomPadding), so the gap seen from the bar is larger by that
 \newlength{\SMSideFootnoteRightInset}
 \setlength{\SMSideFootnoteRightInset}{2pt}      % the gap to the page's right edge (frames with a side image set their own)
 \newlength{\SMSideFootnoteMarkerShift}
@@ -340,8 +354,8 @@
 \setlength{\SMQuoteBoxHeight}{0.8\paperheight}  % \quoteframe: height of the box
 \newlength{\SMQuoteAttributionGap}
 \setlength{\SMQuoteAttributionGap}{1.8ex}       % the gap above the attribution
-\newlength{\SMProgressStripHeight}
-\setlength{\SMProgressStripHeight}{11.08pt}     % \progressstrip: how far the content below the strip is moved down. The strip is drawn at a height of its own (11.2pt); this is the room it is given
+\newlength{\SMProgressStripRoom}
+\setlength{\SMProgressStripRoom}{11.08pt}       % \progressstrip: the room below the strip, i.e. how far the content under it is moved down (until v10.11.0 \SMProgressStripHeight). It is not the strip's drawn height, which is its own (11.2pt)
 
 % ---------------------------------------------------------------------------
 % Lists

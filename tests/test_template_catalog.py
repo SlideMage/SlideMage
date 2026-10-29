@@ -17,7 +17,11 @@ BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
 SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
-NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname"}
+# The names that were hooks and are gone (v10.11.0): the setup layer holds an error-raising macro under each. The first three
+# moved nothing; the other two were renamed.
+REMOVED = {"SMFootlineHeight", "SMFootlineDepth", "SMRightFooterPadding"}
+RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep": "SMSideFootnoteTitleBlockSep"}
+NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)
 # The names the base derives (v10.7.0, v10.8.0, v10.9.0): the setup layer holds an error-raising macro under each, so a template or a
 # profile that sets one is told; they are in the catalog's text but are not hooks.
 DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift",
@@ -202,3 +206,18 @@ def test_a_template_that_sets_a_derived_name_gets_an_error_that_names_it(setting
     log = (tmp_path / "deck.log").read_text(encoding="utf-8", errors="replace").replace("\n", "")
     name = re.search(r"(SM[A-Za-z]+)\}", setting).group(1)
     assert "is derived, not set" in log and BS + name + " is derived" in log
+
+
+def test_the_removed_and_renamed_names_are_errors_in_the_setup_layer_and_no_template_sets_them():
+    setup = read(LATEX / "SlideMage_setup.tex")
+    for name in sorted(REMOVED | set(RENAMED)):
+        assert re.search(re.escape(BS + "newcommand{" + BS + name + "}"), code(setup)), name
+    for new in RENAMED.values():
+        assert new in catalog()["lengths"]
+    for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
+        text = code(read(template))
+        for name in sorted(REMOVED | set(RENAMED)):
+            assert not re.search(re.escape(BS + name) + r"(?![A-Za-z@])", text), f"{template.name} sets {name}"
+    for name in sorted(REMOVED | set(RENAMED)):
+        for part in (read(LATEX / "SlideMage_base.tex"), read(LATEX / "beamerthemeSlideMage.sty")):
+            assert not re.search(re.escape(BS + name) + r"(?![A-Za-z@])", code(part)), name

@@ -70,12 +70,16 @@ AUDITED_FRAMEWORK = {
     # geometric hooks into the PDF info dictionary; the setup layer's comments say what the hooks do, its one default is
     # new (8.505pt). Re-audited: no version, footer-hide or deck-label rule entered the base or the setup layer; the info
     # keys are lengths of the template, the same in every view, and the frame footer is unchanged.
-    "SlideMage_setup.tex": "034594246e378231f504a4f124af4c04867454fa27e32cb5f551b0eb8cf2d927",
+    # v10.11.0 (step 11b): two hooks are renamed and three that moved nothing are removed; the setup layer holds an error macro
+    # under each old name, and the theme keeps the footline box's height and depth as lengths of its own. Re-audited: no version,
+    # footer-hide or deck-label rule entered the setup layer, the base or the theme; the footer line lost an allowance its shift
+    # cancelled, and the regression harness shows every page identical.
+    "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "fd967b4170cd6ca6890118247354b931fc34f1cd2c56489dc021cd5b21f77e8f",
+    "SlideMage_base.tex": "aedfd602718ae1abfb2fbad8d37008be2a56516259c59a77b67cffabca59721e",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
-    "beamerthemeSlideMage.sty": "1d7a6ea75bcd6ecfa51b8ace9a8715e74650f1c022ba5d4a6b3eedaa8a8a4638",
+    "beamerthemeSlideMage.sty": "4559742259fb03c65fe314852bb51c456fcd69ac4831c70716d43a92b53bf623",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
 }

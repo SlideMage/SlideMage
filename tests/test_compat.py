@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 
-from slidemage import compat, project, version
+from slidemage import compat, compat_hooks, project, version
 from slidemage.compat import APPEARANCE, BREAKS, Change, Finding
 
 NOW = datetime(2026, 10, 6, 12, 0, 0)
@@ -265,6 +265,41 @@ def test_titleframe_pad_detector_reports_templates_that_set_the_hook_not_reads(t
     shipped = Path(compat.__file__).resolve().parents[2]
     for template in (shipped / "latex" / "SlideMage_template_slidemage.tex", shipped / "example" / "SlideMage_template_uni-graz.tex"):
         assert not compat._SETS_TITLEFRAME_PAD.search(template.read_text(encoding="utf-8")), template.name
+
+
+def test_hook_renames_migrate_in_project_files_and_the_removed_names_are_reported(tmp_path):
+    root = make_project(tmp_path, "v10.10.0")
+    template = root / "SlideMage_template_inst.tex"
+    template.write_bytes(
+        b"\\input{SlideMage_setup}\r\n"
+        b"\\setlength{\\SMProgressStripHeight}{12pt}\r\n"
+        b"% \\setlength{\\SMSideFootnoteTopSep}{4pt}\r\n"
+        b"\\setlength{\\SMSideFootnoteTopSep}{5pt}\r\n"
+        b"\\setlength{\\SMFootlineHeight}{2ex}\r\n"
+        b"\\setlength{\\SMFootlineDepth}{0.2ex}\r\n"
+        b"\\setlength{\\SMRightFooterPadding}{4ex}\r\n")
+    (root / "slides" / "a-EN-A-current.tex").write_text("\\SMProgressStripHeight\n", encoding="utf-8")   # slides are not scanned
+    change = next(c for c in compat.CHANGES if c.id == "hook-renames-and-removals")
+    assert change.since == "v10.11.0" and change.severity == compat.BREAKS
+    found = [(f.line, f.message.split(" ")[0]) for f in change.detect(root)]
+    assert found == [(2, "\\SMProgressStripHeight"), (4, "\\SMSideFootnoteTopSep"), (5, "\\SMFootlineHeight"),
+                     (6, "\\SMFootlineDepth"), (7, "\\SMRightFooterPadding")]
+    planned = change.migrate(root)
+    assert list(planned) == [Path("SlideMage_template_inst.tex")]
+    migrated = planned[Path("SlideMage_template_inst.tex")]
+    assert b"\\SMProgressStripRoom}{12pt}\r\n" in migrated and migrated.count(b"\\SMSideFootnoteTitleBlockSep") == 2
+    assert b"StripHeight" not in migrated and b"TopSep" not in migrated and migrated.count(b"\r\n") == 7
+    assert b"\\SMFootlineHeight}{2ex}" in migrated                       # the removed names are left for the user
+    template.write_bytes(migrated)
+    assert change.migrate(root) == {}                                    # idempotent
+    assert [f.message.split(" ")[0] for f in change.detect(root)] == [
+        "\\SMFootlineHeight", "\\SMFootlineDepth", "\\SMRightFooterPadding"]
+    # the shipped templates and profiles use none of the five
+    shipped = Path(compat.__file__).resolve().parents[2]
+    for path in [shipped / "latex" / "SlideMage_template_slidemage.tex", shipped / "example" / "SlideMage_template_uni-graz.tex",
+                 *sorted((shipped / "latex").glob("SlideMage_layout_*.tex"))]:
+        text = path.read_text(encoding="utf-8")
+        assert not compat_hooks._RENAMED_RE.search(text) and not compat_hooks._REMOVED_RE.search(text), path.name
 
 
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):

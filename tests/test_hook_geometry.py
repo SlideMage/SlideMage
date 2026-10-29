@@ -57,7 +57,7 @@ MEASURED = {
     "SMFootnoteFooterGap": "test_footnotes_stand_the_gap_above_the_footer_and_the_sep_apart",
     "SMFootnoteSep": "test_footnotes_stand_the_gap_above_the_footer_and_the_sep_apart",
     "SMSideFootnoteHsize": "test_the_side_footnote_strip_is_as_long_and_as_far_from_the_edge_as_the_hooks_say",
-    "SMSideFootnoteTopSep": "test_the_side_footnote_strip_is_as_long_and_as_far_from_the_edge_as_the_hooks_say",
+    "SMSideFootnoteTitleBlockSep": "test_the_side_footnote_strip_is_as_long_and_as_far_from_the_edge_as_the_hooks_say",
     "SMSideFootnoteRightInset": "test_the_side_footnote_strip_is_as_long_and_as_far_from_the_edge_as_the_hooks_say",
     "SMBlockSideMargin": "test_a_block_sets_its_text_the_side_margin_in",
     "SMTitleframeBoxHeight": "test_the_title_frame_text_stands_the_bottom_pad_above_the_boxs_edge",
@@ -69,14 +69,11 @@ MEASURED = {
 # Lengths with no clean reading in the PDF, each with the reason. Everything here is still read by the base or the theme
 # (tests/test_template_catalog.py) and set by the stress-test template.
 NOT_READ_BACK = {
-    "SMFootlineHeight": "the footline box's height; the footnotes' offset is derived from it, so only the frame text area's end moves with it",
-    "SMFootlineDepth": "the footline box's depth; derived into the footnotes' offset like the height",
-    "SMRightFooterPadding": "cancelled in the footer: \\SMFooterRightShift puts the frame number on the logo's edge whatever this is",
     "SMBlockTitleMarkerWidth": "the width a block title leaves for its marker; visible only when a title wraps (the marker sits at the right edge)",
     "SMTitleframeTextSep": "the title/subtitle spacing in the title frame; the default look is held by the regression harness",
     "SMTitleframeBandGap": "the title/subtitle spacing in the title frame; the default look is held by the regression harness",
     "SMSectionframeContentDrop": "the section frame's body drop under its bar, measured against a standard frame's by step 10",
-    "SMProgressStripHeight": "the offset the content below a \\progressstrip is moved down by; the strip is drawn at a size of its own",
+    "SMProgressStripRoom": "the offset the content below a \\progressstrip is moved down by; the strip is drawn at a size of its own",
     "SMSideFootnoteMarkerShift": "shifts a footnote marker 1-2pt right, below the resolution of a reliable reading",
     "SMLabelItemItemsep": "item spacing of labelled lists",
     "SMEnumerateTextExtra": "text offset of an enumerate, checked by the calibration tool through the numeral gap",
@@ -282,7 +279,7 @@ def test_the_side_footnote_strip_is_as_long_and_as_far_from_the_edge_as_the_hook
     patch = [d["rect"] for d in page.get_drawings() if cl.is_white(d.get("fill")) and d["rect"].x0 > 400 and d["rect"].y0 < 1
              and d["rect"].width < 60]
     foot = patch[0].y1
-    top = foot + hooks["SMSideFootnoteTopSep"]
+    top = foot + hooks["SMSideFootnoteTitleBlockSep"]
     lengths = [r.height for r in strip]
     assert max(lengths) <= hooks["SMSideFootnoteHsize"] + 0.3
     assert max(lengths) >= 0.9 * hooks["SMSideFootnoteHsize"]

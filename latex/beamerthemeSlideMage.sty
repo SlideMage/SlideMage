@@ -1576,8 +1576,14 @@ fg=normal~text.fg
 }
 
 % ---- Footline -------------------------------------------------------------
-% \SMFootlineVOffset, \SMFootlineHeight, \SMFootlineDepth, \SMFootlineSidePadding and
-% \SMRightFooterPadding are hooks of the catalog.
+% \SMFootlineSidePadding is a hook of the catalog (\SMFootlineVOffset is derived).
+% The footline box's height and depth were hooks until v10.11.0 (\SMFootlineHeight, \SMFootlineDepth):
+% the footnotes' offset and the frame number's drop are derived from them and cancel them, so they
+% are the theme's own lengths now, with the values the catalog had.
+\newlength{\SM@footlineheight}
+\setlength{\SM@footlineheight}{1.5ex}
+\newlength{\SM@footlinedepth}
+\setlength{\SM@footlinedepth}{0.1ex}
 \newlength{\SMFootlineHRightOffset}
 \setlength{\SMFootlineHRightOffset}{\spaceskip}
 
@@ -1589,15 +1595,14 @@ fg=normal~text.fg
     sep=0pt,
     leftskip=\SMFootlineSidePadding,
     rightskip=\SMFootlineSidePadding,
-    ht={\SMFootlineHeight},
-    dp={\SMFootlineDepth},
+    ht={\SM@footlineheight},
+    dp={\SM@footlinedepth},
   ]{footline}
   \ifbeamertemplateempty{frame~footer}{
     \hfill \ \SM@strut
   }{
     \usebeamertemplate*{frame~footer}
   }
-  \hspace{\SMRightFooterPadding}
   {\usebeamertemplate{page~number~in~head/foot}}
   \hspace*{\SMFootlineHRightOffset}
   \end{beamercolorbox}
@@ -1839,7 +1844,7 @@ fg=normal~text.fg
 % down the right edge of the page: from just below the title bar to just above
 % the footer's yellow box. Like \SMFooterBoxHeight above, calibrated
 % against the measured PDF coordinates: the title bar's bottom edge sits
-% 219.57pt above the page's bottom edge; minus \SMSideFootnoteTopSep (3pt),
+% 219.57pt above the page's bottom edge; minus \SMSideFootnoteTitleBlockSep (3pt),
 % \SMFooterBoxHeight (7.26pt), and ~2pt of clearance above the footer box
 % leaves 207pt. Re-measure if the frametitle font or its padding ever changes.
 % (\SMSideFootnoteHsize is a hook of the catalog.)
@@ -1847,7 +1852,7 @@ fg=normal~text.fg
 % text itself sits at the strip's *bottom* end (it is \raggedright, i.e.
 % flush with the line start, which the rotation turns into bottom-aligned),
 % so this gap only matters for footnotes long enough to fill the whole run.
-% (\SMSideFootnoteTopSep is a hook of the catalog.)
+% (\SMSideFootnoteTitleBlockSep is a hook of the catalog.)
 % Distance from the page's right edge to the strip's outer edge -- the rotated
 % counterpart of the small gap the bottom footnotes keep above the footer box.
 % (\SMSideFootnoteRightInset, 2pt, is a hook of the catalog; the frames with a side image set it for themselves.)
@@ -2015,7 +2020,7 @@ fg=normal~text.fg
 		\vss
 		\begin{tikzpicture}[remember picture, overlay]
 			\node[rotate=90, anchor=south east, inner sep=0pt]
-				at ($(SMTitleBottom -| current page.east)+(-\SMSideFootnoteRightInset,-\SMSideFootnoteTopSep)$)
+				at ($(SMTitleBottom -| current page.east)+(-\SMSideFootnoteRightInset,-\SMSideFootnoteTitleBlockSep)$)
 				{\usebeamercolor[fg]{footnote}\color{footnote.fg}\box\SMSideFootnotesBox};
 		\end{tikzpicture}%
 		}%
@@ -2535,7 +2540,7 @@ fg=normal~text.fg
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-\SMProgressHeadFootLineheight}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-\SMProgressHeadFootLineheight}
 
 \vspace{-0.6\paperheight}
 \rotatebox{90}{
@@ -2550,7 +2555,7 @@ fg=normal~text.fg
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-\SMProgressHeadFootLineheight}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-\SMProgressHeadFootLineheight}
 
 \vspace{\SM@temp@heightFrametitle}
 \hspace{-2.3em}
@@ -3040,7 +3045,7 @@ miniframe~subsection~current, miniframe~subsection~done, miniframe~subsection~to
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-0.25\baselineskip}
 
 \vspace{0.12275\paperheight}
 \rotatebox{90}{
@@ -3053,7 +3058,7 @@ miniframe~subsection~current, miniframe~subsection~done, miniframe~subsection~to
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-0.25\baselineskip}
 
 \hspace{-\SMProgressHeadFootLineheight}
 \vspace{\SM@temp@heightFrametitle-27.75pt}
@@ -3124,7 +3129,7 @@ miniframe~subsection~current, miniframe~subsection~done, miniframe~subsection~to
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-0.25\baselineskip}
 
 \vspace{0.12275\paperheight}
 \rotatebox{90}{
@@ -3143,7 +3148,7 @@ miniframe~subsection~current, miniframe~subsection~done, miniframe~subsection~to
 \settoheight{\SM@temp@heightFrametitle}{\SM@strut}
 \addtolength{\SM@temp@heightFrametitle}{\SMFrametitleTopPadding+\SMFrametitleBottomPadding+\SMProgressHeadFootLineheight}
 
-\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SMFootlineHeight-\SMFootlineDepth-0.25\baselineskip}
+\setlength{\SM@temp@PaperheightFrametitle}{\paperheight-\SM@temp@heightFrametitle-\SM@footlineheight-\SM@footlinedepth-0.25\baselineskip}
 
 \hspace{-\SMProgressHeadFootLineheight-0.2pt}
 \vspace{\SM@temp@heightFrametitle-27.75pt}
