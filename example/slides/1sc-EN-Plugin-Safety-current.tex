@@ -1,0 +1,18 @@
+%% Included in decks: slidemage-manual
+%%
+
+% SlideMage manual, chapter "Plugins": needs, network contacts and trust.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Before you install}
+	\small
+	A plugin runs inside SlideMage \textcolor{c_primary_highlight}{with your rights}.
+	Install only what you trust.
+	\par\medskip
+	\shrinklists{1}
+	\begin{itemize}
+		\item \textbf{Needs and network}: read what the plugin needs and which services it contacts in the Available list
+		\item \textbf{From the SlideMage list}: reviewed; each download is checked against the list's SHA-256 before installation
+		\item \textbf{From a file}: not reviewed by SlideMage. The warning shows its name, version and network contacts; nothing installs until you confirm
+		\item \textbf{Every archive}: paths outside its folder, symbolic links and compiled files (e.g.\ \SMCode{.pyc}, \SMCode{.so}, \SMCode{.dll}) are refused
+	\end{itemize}
+\end{standardframe}

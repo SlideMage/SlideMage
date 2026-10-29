@@ -65,18 +65,10 @@ def _no_cloud_credentials(monkeypatch):
     """No test may find a real Anthropic key (environment or keychain), so
     none can reach the network by accident; tests that need a key set one
     explicitly."""
-    from slidemage.ai import credentials
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from slidemage.plugins import migrate
 
-    monkeypatch.delenv(credentials.ENV_VAR, raising=False)
-    monkeypatch.setattr(credentials, "_keyring", lambda: None)
-
-
-@pytest.fixture(autouse=True)
-def _claude_signed_in(monkeypatch):
-    """No test may run the real `claude auth status`: Claude Code counts as signed in unless a test says not."""
-    from slidemage.ai import claude_launch
-
-    monkeypatch.setattr(claude_launch, "signed_in", lambda claude: True)
+    monkeypatch.setattr(migrate, "_keyring", lambda: None)
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +97,19 @@ def _fresh_tool_lookups():
     preview_cache._TOOLS.clear()
     yield
     preview_cache._TOOLS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_config_dir(monkeypatch, tmp_path):
+    """Machine preferences belong to this test, including modules that imported config_dir directly."""
+    from slidemage import project, updater
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    monkeypatch.setenv("APPDATA", str(config))
+    monkeypatch.setattr(project, "config_dir", lambda: config / "slidemage")
+    # Follow test-specific overrides of project.config_dir as well.
+    monkeypatch.setattr(updater, "config_dir", lambda: project.config_dir())
 
 
 @pytest.fixture(autouse=True)
@@ -137,6 +142,11 @@ def _fresh_ai_session():
     from slidemage.ai import ai_profile
 
     ai_profile._modes.clear()
+    from slidemage.ai import routes
+
+    routes.clear()
+    yield
+    routes.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -183,11 +193,11 @@ def filled_menu(ctx, title: str):
     """The menu bar's menu `title` ("Deck"), filled for `ctx` as when it opens."""
     from PySide6.QtWidgets import QMenu
 
-    from slidemage.ui.workspace.menus import MENU_BAR, fill_menu
+    from slidemage.ui.workspace.menus import fill_menu, menu_bar
 
     menu = QMenu()
     _FILLED_MENUS.append(menu)
-    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in MENU_BAR}[title])
+    fill_menu(menu, ctx, {t.replace("&", ""): sections for t, sections in menu_bar(ctx)}[title])
     return menu
 
 
@@ -401,3 +411,18 @@ def write_test_file(path: Path, text: str | bytes, *, newline: str | None = "") 
     else:
         path.write_text(text, encoding="utf-8", newline=newline)
     return path
+
+
+@pytest.fixture
+def fake_routes(_fresh_ai_session):
+    """Register isolated local and cloud route doubles; modify them per test as needed."""
+    from types import SimpleNamespace
+
+    from fake_routes import FakeRoute
+    from slidemage.ai import routes
+
+    local = FakeRoute(is_local=True, id="fake_local")
+    cloud = FakeRoute(id="fake_cloud")
+    routes.register(local)
+    routes.register(cloud)
+    return SimpleNamespace(local=local, cloud=cloud)

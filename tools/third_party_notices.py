@@ -14,7 +14,7 @@ from importlib import metadata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DIRECT = ("PySide6", "pymupdf", "pillow", "lxml", "python-pptx", "odfpy", "anthropic", "ptyprocess", "pywinpty",
+DIRECT = ("PySide6", "pymupdf", "pillow", "lxml", "python-pptx", "odfpy", "ptyprocess", "pywinpty",
           "keyring")
 # What the package metadata of these does not say clearly (checked against their projects).
 KNOWN = {

@@ -6,6 +6,7 @@ import gc
 import hashlib
 from types import SimpleNamespace
 import threading
+import time
 from threading import Thread as WorkerThread
 
 import pymupdf
@@ -883,12 +884,11 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
 
 
 @pytest.mark.parametrize('debounce', [False, True])
-def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
-    import base64
+def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
     from agent_fakes import FakeWorkspace
     from slidemage import compiler
-    from slidemage.ai.mcp_server import McpServer
     from slidemage.ai.tools import build_toolbox
+    from slidemage.ai.agent_types import ToolCall
     from slidemage.ai.workspace import WorkspaceContext
 
     view, target, path = pane
@@ -926,11 +926,10 @@ def test_mcp_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, de
 
     monkeypatch.setattr(view._renders, 'request', request)
     monkeypatch.setattr(ws, 'preview_service', lambda: view._renders)
-    server = McpServer(lambda: build_toolbox(ws, lambda _: None, compiler.CancelToken()))
-    response = server.handle(dict(jsonrpc='2.0', id=1, method='tools/call', params=dict(
-        name='render_preview', arguments={})))['result']
-    assert not response['isError']
-    assert response['content'][1] == dict(type='image', mimeType='image/png', data=base64.b64encode(png).decode())
+    box = build_toolbox(ws, lambda _: None, compiler.CancelToken())
+    response = box.execute(ToolCall('1', 'render_preview', {}))
+    assert not response.is_error
+    assert response.images == [png]
     if debounce:
         view._debounce.stop()
         view._launch_pending()
@@ -964,10 +963,10 @@ def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkey
     ("none", "displayed"), ("other-slide", "cached"), ("other-view", "cached"),
     ("disk", "superseded"), ("buffer", "superseded"), ("generation", "superseded"),
 ])
-def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_path, monkeypatch, qapp, change, outcome):
+def test_refresh_tool_publishes_saved_artifact_through_gui_workspace(pane, tmp_path, monkeypatch, qapp, change, outcome):
     from slidemage import compiler
-    from slidemage.ai.mcp_server import McpServer
     from slidemage.ai.tools import build_toolbox
+    from slidemage.ai.agent_types import ToolCall
     from slidemage.ai.workspace import WorkspaceContext
     from slidemage.ui.workspace.chat.gui_workspace import GuiWorkspace
 
@@ -1004,11 +1003,10 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', render)
-    server = McpServer(lambda: build_toolbox(workspace, lambda _: None, compiler.CancelToken()))
+    box = build_toolbox(workspace, lambda _: None, compiler.CancelToken())
     responses = []
-    worker = WorkerThread(target=lambda: responses.append(server.handle(dict(
-        jsonrpc='2.0', id=1, method='tools/call', params=dict(name='refresh_preview',
-                                                               arguments={'view': 'instructor'})))['result']))
+    worker = WorkerThread(target=lambda: responses.append(
+        box.execute(ToolCall('1', 'refresh_preview', {'view': 'instructor'}))))
     worker.start()
     for _ in range(100):
         qapp.processEvents()
@@ -1034,8 +1032,8 @@ def test_refresh_mcp_publishes_saved_artifact_through_gui_workspace(pane, tmp_pa
             break
     assert not worker.is_alive()
     response, = responses
-    assert not response['isError'], response
-    text = response['content'][0]['text']
+    assert not response.is_error, response
+    text = response.text
     assert 'instructor, EN: rendered' in text and outcome in text
     assert ('displayed' in text) == (outcome == 'displayed')
     if outcome == 'displayed':
@@ -1719,12 +1717,14 @@ def test_a_refresh_that_changes_nothing_rebuilds_neither_the_chips_nor_the_menu(
 
 def test_while_scrolling_no_check_starts_until_the_selection_rests(stored, monkeypatch):
     # v8.53.0: slides scrolled past started checks that the next slide superseded before they answered.
-    monkeypatch.setattr(preview_view, "SCROLLING_MS", 300)
     view, store = stored.view, stored.store
-    stored.show("A")                                              # the first change: a click, checked at once
+    stored.show("A")                  # on show since the fixture (its first change, a click): no change, checked at once
     assert not view._defer_checks
     stored.pump(lambda: view._page.pixmap is not None)
     asked = len(store.calls)
+    # The next change counts as scrolling when it comes within SCROLLING_MS of A's. A was put on show in the fixture,
+    # before the three test pages were rendered, so with the real 300 ms that depended on how fast the machine was.
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 60_000)
     stored.show("B")                                              # within SCROLLING_MS: scrolling
     for _ in range(5):
         stored.qapp.processEvents()
@@ -1734,6 +1734,16 @@ def test_while_scrolling_no_check_starts_until_the_selection_rests(stored, monke
     assert not view._defer_checks
     stored.pump(lambda: view._page.pixmap is not None and not view._page.dimmed)
     assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"]) and len(store.calls) > asked
+
+
+def test_a_slide_change_after_the_selection_rested_is_a_click_and_checked_at_once(stored, monkeypatch):
+    view = stored.view
+    monkeypatch.setattr(preview_view, "SCROLLING_MS", 50)
+    time.sleep(.1)                                                # longer than SCROLLING_MS since A was put on show
+    stored.show("B")
+    assert not view._defer_checks
+    stored.pump(lambda: view._page.pixmap is not None and not view._page.dimmed)
+    assert view._page.pixmap.toImage() == pixels(stored.png["OTHER"])
 
 
 def test_the_neighbours_stored_pages_are_read_ahead_and_the_next_slide_shows_at_once(stored):

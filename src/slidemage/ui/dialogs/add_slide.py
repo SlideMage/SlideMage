@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
-from ...ai import ai_profile, claude_runner, resolver
+from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
 from ...project import ProjectContext
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
@@ -64,7 +64,7 @@ MARGINS = 48     # of the sheet
 
 class _TranslateWorker(QThread):
     """One translation of a slide body off the GUI thread, so that Cancel can end it. `translator` is a
-    ChatProvider (slide_add.translate_body) or a claude_runner.SlideTranslator; either has is_local and abort()."""
+    ChatProvider (slide_add.translate_body) or a route-provided translator; either has is_local and abort()."""
 
     translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
 
@@ -75,8 +75,9 @@ class _TranslateWorker(QThread):
         self.body = body
 
     def run(self) -> None:
-        translate = (self.translator.translate if isinstance(self.translator, claude_runner.SlideTranslator)
-                     else lambda body: slide_add.translate_body(self.ctx, self.translator, body))
+        translate = getattr(self.translator, "translate", None)
+        if translate is None:
+            translate = lambda body: slide_add.translate_body(self.ctx, self.translator, body)
         text, error = translate(self.body)
         self.translated.emit(self, text, error)
 
@@ -101,7 +102,7 @@ class AddSlideSheet(ModalSheet):
         self._models_filled = False
         self._worker: Optional[_TranslateWorker] = None
         self._route: Optional[ai_profile.Route] = None      # of the running translation
-        self._translator = None                            # what it runs on: its Ollama slot and abort()
+        self._translator = None                            # the running translator, including abort()
         self._slides = slide_add.project_slides(self.app.project)
         self._template = slide_snapshot.detect_template(deck.preamble_text)
 
@@ -437,7 +438,9 @@ class AddSlideSheet(ModalSheet):
         for chip in self.views.values():
             chip.setEnabled(not frozen)
         slide = self.picked()
-        can_translate = slide is not None and self.chosen_target() is not None \
+        has_ai = bool(routes.all())
+        self.machine.setVisible(has_ai)
+        can_translate = has_ai and slide is not None and self.chosen_target() is not None \
             and slide_add.can_machine_translate(slide, self.chosen_target())
         if can_translate != self.machine.isEnabled():
             self.machine.setEnabled(can_translate)
@@ -526,13 +529,21 @@ class AddSlideSheet(ModalSheet):
         if route is None:
             return
         translator = built(self, resolver.slide_translator, self.app.project, route)
-        if translator is None or not self.app.try_start_ollama_task("translating a slide", translator):
+        if translator is None:
             return
-        self._route, self._translator = route, translator
-        self._worker = _TranslateWorker(self.app.project, translator, slide_add.source_body(self.app.project, self.picked()))
-        self._worker.translated.connect(self._on_translated)
-        self._busy(f"Translating with {translator.label}…")
-        self._worker.start()
+        lease = self.app.acquire_route_task(route.route, "translating a slide")
+        if lease is None:
+            return
+        self._route, self._translator, self._lease = route, translator, lease
+        try:
+            self._worker = _TranslateWorker(self.app.project, translator, slide_add.source_body(self.app.project, self.picked()))
+            self._worker.translated.connect(self._on_translated)
+            self._busy(f"Translating with {translator.label}…")
+            self._worker.start()
+        except BaseException:
+            self._worker = None
+            lease.release()
+            raise
 
     def _busy(self, text: str) -> None:
         running = self._worker is not None
@@ -551,7 +562,7 @@ class AddSlideSheet(ModalSheet):
         self._worker = None
         worker.wait()
         worker.deleteLater()
-        self.app.end_ollama_task(self._translator)
+        self._lease.release()
         self._busy("")
         if error:
             self._sync()
@@ -583,5 +594,5 @@ class AddSlideSheet(ModalSheet):
         worker, self._worker = self._worker, None
         if worker is not None:
             translator = self._translator
-            background.stop_worker(worker, translator.abort, on_done=lambda: self.app.end_ollama_task(translator))
+            background.stop_worker(worker, translator.abort, on_done=self._lease.release)
         super().done(result)

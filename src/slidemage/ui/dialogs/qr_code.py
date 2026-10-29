@@ -61,6 +61,7 @@ ERROR_TIPS = {"L": "L: 7 % of the code can be damaged and still be read. The coa
 FORMAT_FILTERS = ";;".join(f"{name} (*.{ext})" for name, ext in (("PDF", "pdf"), ("PNG", "png"),
                                                                     ("SVG", "svg"), ("EPS", "eps")))
 _CALL = re.compile(r"\\SMQRCode\[([0-9.]+)\\textheight\]\{([^{}]+)\}\{")
+_LINK = re.compile(r"\[[^\]\n]*\]")
 _WHEN = "yyyy-MM-dd HH:mm"
 _DAY = "yyyy-MM-dd"
 
@@ -99,6 +100,9 @@ def existing_call(project: ProjectContext, text: str, start: int, end: int) -> O
         position += 1
     if depth:
         return None
+    link = _LINK.match(text, position)          # the trailing [link] (qr_code.snippet) belongs to the call
+    if link:
+        position = link.end()
     image = match.group(2)
     stored = qr_code.load_spec(project, image)
     if stored is None:

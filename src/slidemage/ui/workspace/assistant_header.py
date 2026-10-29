@@ -8,7 +8,7 @@
 2. the scope (This slide | Whole deck) and its target: "1y8 · Title", " · not saved" with edits that could not be saved in the Source
    view; for the deck "name · 80 slides";
 3. at most two task buttons that fit the scope, the slide (with a selection in the Source view: Rewrite selection and
-   Proofread selection, which then come first) and what the route can run (terminal/tasks.py
+   Proofread selection, which then come first) and what the route can run (task_bubbles.py
    `contextual`), and "All actions…" (⌘K). When no task is on show the row offers "Check readability" (the slide or
    the deck; no AI, so on every route) instead: with a task the row would no longer fit one line of the column, and the
    command is always in ⌘K;
@@ -16,7 +16,7 @@
    translation · generating"), or a running batch or image task, which have no card.
 
 The header only shows and asks: the card around it (assistant.py) acts. The task offers are the bubbles of
-terminal/tasks.py, worked out for the scope when the slide, its text or the route changes; the command palette
+task_bubbles.py, worked out for the scope when the slide, its text or the route changes; the command palette
 reads the same list (`offers`).
 """
 from __future__ import annotations
@@ -27,9 +27,9 @@ from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
-from ... import app_settings, deck_outline, slide_language
+from ... import deck_outline, slide_language
 from ...ai import ai_profile
-from ...ai.claude_scope import DECK, SLIDE
+from ...ai.focus_scope import DECK, SLIDE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface
@@ -37,11 +37,10 @@ from ..text import plural
 from .ai_switch import AiSwitch
 from .state import SETTLE_MS, WorkspaceState
 from .task_card_model import PILL_WORDS
-from .terminal.tasks import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides, selection_of
+from .task_bubbles import Bubble, TaskRunner, bubbles, contextual, deck_bubbles, deck_slides, selection_of
 
 POLL_MS = 400       # how often the file shown and its unsaved state are looked at (neither has a signal)
 TYPING_MS = 500     # the offers follow the text a moment after the last keystroke
-SUBTITLES = {ai_profile.CLAUDE_CODE: "Terminal · permissions are handled in Claude Code"}
 # The header's width below which the switch drops the connection's name (the subtitle says it), and its icons only.
 SWITCH_NAMED_WIDTH, SWITCH_LABELS_WIDTH = 360, 280
 
@@ -160,16 +159,13 @@ class AssistantHeader(Surface):
 
     # -- the route (row 1) ------------------------------------------------------------------
 
-    def show_route(self, route: ai_profile.Route) -> None:
-        """Say what `route`'s conversation runs on (the chat's model, or Claude Code's terminal), in the switch's
-        tooltip (`route_note`); the switch names the route."""
-        if route.route in SUBTITLES:
-            subtitle = SUBTITLES[route.route]
+    def show_route(self, route: ai_profile.Route, surface_subtitle: str = "") -> None:
+        """Say what `route`'s conversation runs on (the chat's model, or what the route's own surface says, as
+        Claude Code's terminal does: `surface_subtitle`), in the switch's tooltip (`route_note`); the switch names the route."""
+        if surface_subtitle:
+            subtitle = surface_subtitle
         else:
             subtitle = f"Chat with {route.model or 'no model chosen'}"
-            if route.is_local:
-                host = app_settings.get_ollama_host(self.state.project)
-                subtitle += f" · {host.split('://', 1)[-1].rstrip('/')}"
         self.route_note = subtitle
         self.ai_switch.set_note(subtitle)
 
@@ -213,7 +209,7 @@ class AssistantHeader(Surface):
         self._typing.start()
 
     def offers(self, scope: str) -> list[Bubble]:
-        """The tasks that fit `scope` now, as terminal/tasks.py finds them (kept until something changes)."""
+        """The tasks that fit `scope` now, as task_bubbles.py finds them (kept until something changes)."""
         if scope not in self._offers:
             self._offers[scope] = deck_bubbles(self.app) if scope == DECK else bubbles(self.app)
         return self._offers[scope]

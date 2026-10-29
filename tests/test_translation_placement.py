@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Where the call of a new translation goes in the deck: directly after the first call of its source, called the
 way the source is, wherever a translation is made (slide_add.translation_call; the Add slide sheet, the task card
-and the batch are in test_add_slide_gui.py and test_claude_tasks_gui.py)."""
+and the batch are in test_add_slide_gui.py and test_tasks_gui.py)."""
 from __future__ import annotations
 
 import pytest

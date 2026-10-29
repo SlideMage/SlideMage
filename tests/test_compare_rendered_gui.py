@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Compare rendered (ui/workspace/compare_rendered.py): the dialog with a stand-in for the render service (no LaTeX, no
 MuPDF) and the places that open it: the task card (Review, Conflict, Done), the chat's diff cards, the palette command
-and the Details view for the text before a Claude Code edit. The projects are throwaway ones."""
+and the Details view for the text before an AI edit. The projects are throwaway ones."""
 from __future__ import annotations
 
-import sys
 import threading
 from pathlib import Path
 
@@ -14,22 +13,16 @@ from PySide6.QtCore import QBuffer, QIODevice, Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
-from test_chat_gui import EDIT, ask, env as chat_env, pump, script, wait_for_card, wait_until, widgets  # noqa: F401 -- a fixture
-from test_claude_code_gui import env as claude_env  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
+from slidemage.ui.kit.widgets import Button
+from test_tasks_gui import pump, wait_until
+from test_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
 from test_task_card_gui import area, asked, card, phase_is, press, shown_buttons  # noqa: F401 -- a fixture
-from agent_fakes import call, reply
 
 from slidemage import ai_review
-from slidemage.ai import claude_hook
-from slidemage.ai.agent_types import EDIT_AUTO
-from slidemage.ui.kit.widgets import Button
-from slidemage.ui.workspace.chat.cards import DiffCard
 from slidemage.ui.workspace import compare_rendered, task_card_model as model
 from slidemage.ui.workspace.compare_rendered import CompareRendered
 
-pytest.importorskip("PySide6.QtWebEngineWidgets")
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
+
 
 
 def png(color: str, width: int = 320) -> bytes:
@@ -88,6 +81,11 @@ class FakeRenders:
 
 
 @pytest.fixture
+def env(fake):  # noqa: F811
+    return fake.env
+
+
+@pytest.fixture
 def renders(monkeypatch):
     service = FakeRenders()
     monkeypatch.setattr(compare_rendered, "RenderService", lambda: service)
@@ -114,8 +112,8 @@ def close(dialog) -> None:
 
 # -- the dialog ----------------------------------------------------------------------------------------------
 
-def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(env, renders):  # noqa: F811
+    env = env
     env.window.state.set_view("during-course")
     before = env.path.read_bytes()
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
@@ -134,8 +132,8 @@ def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(ch
     close(dialog)
 
 
-def test_the_arrow_keys_and_buttons_move_both_sides_and_the_shorter_one_has_no_page(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_the_arrow_keys_and_buttons_move_both_sides_and_the_shorter_one_has_no_page(env, renders):  # noqa: F811
+    env = env
     renders.plan("old text", pages=3)
     renders.plan("new text", pages=2)
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
@@ -159,8 +157,8 @@ def test_the_arrow_keys_and_buttons_move_both_sides_and_the_shorter_one_has_no_p
     close(dialog)
 
 
-def test_a_side_that_fails_says_why_while_the_other_is_shown(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_a_side_that_fails_says_why_while_the_other_is_shown(env, renders):  # noqa: F811
+    env = env
     renders.plan("new text", error="Render failed.\n! Undefined control sequence.\nl.9 \\Oops")
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     settle(dialog)
@@ -177,8 +175,8 @@ def test_a_side_that_fails_says_why_while_the_other_is_shown(chat_env, renders):
     close(dialog)
 
 
-def test_text_diff_shows_the_source_diff_and_the_arrows_only_move_pages(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_text_diff_shows_the_source_diff_and_the_arrows_only_move_pages(env, renders):  # noqa: F811
+    env = env
     renders.plan("old text", pages=3)
     dialog = compare_rendered.open_compare(env.window, env.path, "old text\n", "new text\n")
     settle(dialog)
@@ -193,8 +191,8 @@ def test_text_diff_shows_the_source_diff_and_the_arrows_only_move_pages(chat_env
     close(dialog)
 
 
-def test_closing_cancels_the_pending_renders(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_closing_cancels_the_pending_renders(env, renders):  # noqa: F811
+    env = env
     renders.plan("old text", hold=True)
     renders.plan("new text", hold=True)
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
@@ -206,8 +204,8 @@ def test_closing_cancels_the_pending_renders(chat_env, renders):  # noqa: F811
     assert all(not side.worker.isRunning() or side.worker.wait(2000) for side in dialog._sides)
 
 
-def test_a_slow_side_does_not_hold_the_other(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_a_slow_side_does_not_hold_the_other(env, renders):  # noqa: F811
+    env = env
     renders.plan("new text", hold=True)
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     wait_until(lambda: not dialog._sides[0].busy)
@@ -218,8 +216,8 @@ def test_a_slow_side_does_not_hold_the_other(chat_env, renders):  # noqa: F811
     close(dialog)
 
 
-def test_only_a_slide_file_with_a_change_opens(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_only_a_slide_file_with_a_change_opens(env, renders):  # noqa: F811
+    env = env
     assert compare_rendered.open_compare(env.window, env.root / "SlideMage.bib", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.root / "decks" / "test.tex", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.path, "same", "same") is None
@@ -229,8 +227,8 @@ def test_only_a_slide_file_with_a_change_opens(chat_env, renders):  # noqa: F811
 
 
 @pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
-def test_the_dialog_in_both_themes(chat_env, renders, dark, tmp_path):  # noqa: F811
-    env = chat_env
+def test_the_dialog_in_both_themes(env, renders, dark, tmp_path):  # noqa: F811
+    env = env
     env.window.theme.set_dark(dark)
     env.window.theme.apply()
     renders.plan("old text", pages=2)
@@ -245,93 +243,60 @@ def test_the_dialog_in_both_themes(chat_env, renders, dark, tmp_path):  # noqa: 
 
 # -- the chat's diff cards -----------------------------------------------------------------------------------
 
-def test_a_diff_card_of_a_slide_offers_compare_rendered_in_every_state(chat_env, renders):  # noqa: F811
-    env = chat_env
-    script(env, reply("", call("edit_file", **EDIT)), reply("Done."))
-    env.chat.send("Edit it")
-    card_ = wait_for_card(env, "asking")
-    assert not card_.compare_button.isHidden()
+
+def test_slide_diff_card_offers_compare_in_each_state(env, renders):
+    chat = env.window.assistant.chat
     after = LF.replace("First point", "1st point")
-    card_.compare_button.click()
-    (dialog,) = renders.dialogs(env.window)
-    assert dialog.texts == {"Before": LF, "After": after} and renders.requests[0][1].source_path == env.path
-    close(dialog)
-    card_.apply_button.click()
-    wait_until(lambda: not env.chat.session.running)
-    pump()
-    assert card_.state == "applied" and not card_.compare_button.isHidden()
-    card_.compare_button.click()
-    (dialog,) = renders.dialogs(env.window)
-    assert dialog.texts["After"] == after
-    close(dialog)
+    card_ = chat._new_diff("edit", env.path, LF, after)
+    for state in ("proposed", "asking", "applied"):
+        if state == "asking":
+            card_.ask()
+        elif state == "applied":
+            card_.applied(True, True, False)
+        assert not card_.compare_button.isHidden()
+        card_.compare_button.click()
+        (dialog,) = renders.dialogs(env.window)
+        assert dialog.texts == {"Before": LF, "After": after}
+        close(dialog)
 
 
-def test_a_diff_card_of_a_new_file_or_a_bib_has_no_compare_rendered(chat_env, renders):  # noqa: F811
-    env = chat_env
-    env.chat._set_mode(EDIT_AUTO)
-    script(env, reply("", call("write_file", path="notes.txt", content="x"),
-                      call("edit_file", path="SlideMage.bib", old_text="Older", new_text="Oldest")), reply("Done."))
-    ask(env)
-    cards = widgets(env, DiffCard)
-    assert len(cards) == 2 and all(c.state == "applied" and c.compare_button.isHidden() for c in cards)
+def test_new_file_and_bib_diff_cards_have_no_compare(env, renders):
+    chat = env.window.assistant.chat
+    new = chat._new_diff("new", env.root / "notes.txt", "", "x")
+    bib = chat._new_diff("bib", env.root / "SlideMage.bib", "old", "new")
+    assert new.compare_button.isHidden() and bib.compare_button.isHidden()
 
 
-def test_a_chat_edit_keeps_the_text_before_for_the_palette_command(chat_env, renders):  # noqa: F811
-    env = chat_env
-    env.chat._set_mode(EDIT_AUTO)
-    commands, window = env.window.commands, env.window
-    assert not commands["slide:compare"].visible(window)
-    script(env, reply("", call("edit_file", **EDIT)), reply("Done."))
-    ask(env)
-    assert commands["slide:compare"].visible(window) and commands["slide:compare"].enabled(window)
-    assert commands["slide:compare"].title(window) == "Compare rendered with last AI edit"
-    assert commands.run("slide:compare", window)
-    (dialog,) = renders.dialogs(window)
-    assert dialog.texts["Before"] == LF and dialog.texts["After"] == window.centre.slide_text(env.path)
-    assert "1st point" in dialog.texts["After"]
-    close(dialog)
-
-
-# -- Claude Code's edits -------------------------------------------------------------------------------------
-
-def terminal_edit(env, old: str, new: str) -> None:
-    event = dict(cwd=str(env.root), tool_name="Edit", tool_use_id=f"t-{new}", hook_event_name="PreToolUse",
-                 tool_input={"file_path": "slides/abc-EN-Hello-current.tex"})
-    claude_hook.record_write(env.window.project, event)
-    env.path.write_bytes(env.path.read_bytes().replace(old.encode(), new.encode()))
-    claude_hook.record_write(env.window.project, {**event, "hook_event_name": "PostToolUse"})
-    env.window.centre.sync_source(env.path)                                   # the file watcher's job
-    env.window.refresh_ai_review()
-
-
-def test_a_claude_code_edit_can_be_compared_from_the_details_and_the_palette(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_a_recorded_ai_edit_can_be_compared_from_details_and_palette(env, renders):
     window = env.window
     window.state.set_mode("details")
     window.state.set_focused_slide("abc")
     pump(0.1)
     assert not window.commands["slide:compare"].visible(window)
-    assert "Compare rendered" not in [b.text() for b in window.centre.details.findChildren(Button)]
-    terminal_edit(env, "First point", "Native change")
-    wait_until(lambda: ai_review.is_unreviewed(window.project, env.path))
-    pump(0.1)
-    assert window.commands["slide:compare"].visible(window)
+    after = LF.replace("First point", "AI change")
+    ai_review.mark(window.project, env.path, "edit", "fake route", before=LF, text=after)
+    window.centre.edit_slide_text(env.path, lambda _text: after)
+    window.refresh_ai_review()
+    wait_until(lambda: window.commands["slide:compare"].visible(window))
     button = next(b for b in window.centre.details.findChildren(Button) if b.text() == "Compare rendered")
     button.click()
     (dialog,) = renders.dialogs(window)
-    assert dialog.texts["Before"] == LF and "Native change" in dialog.texts["After"]
-    assert dialog.target.source_path == env.path
+    assert dialog.texts["Before"] == LF and "AI change" in dialog.texts["After"]
     close(dialog)
-    ai_review.mark_reviewed(window.project, [env.path])                      # kept after the review
+    assert window.commands.run("slide:compare", window)
+    (dialog,) = renders.dialogs(window)
+    assert dialog.texts["Before"] == LF and "AI change" in dialog.texts["After"]
+    close(dialog)
+    ai_review.mark_reviewed(window.project, [env.path])
     window.refresh_ai_review()
     assert window.commands["slide:compare"].visible(window)
-    window.state.set_focused_slide("abd")                                     # another slide has no earlier text
+    window.state.set_focused_slide("abd")
     pump(0.1)
     assert not window.commands["slide:compare"].visible(window)
 
 
-def test_the_command_says_so_when_the_slide_is_as_it_was(chat_env, renders):  # noqa: F811
-    env = chat_env
+def test_the_command_says_so_when_the_slide_is_as_it_was(env, renders):  # noqa: F811
+    env = env
     window, shown = env.window, []
     window.toast.show_message = shown.append
     kept = LF.replace("First", "Old")

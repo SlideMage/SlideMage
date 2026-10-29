@@ -12,18 +12,12 @@ from PySide6.QtWidgets import QMessageBox
 from slidemage.ui.workspace import maintenance
 from slidemage import alt_images, housekeeping
 from slidemage.ui.workspace import window as window_module
-from slidemage.ai.providers import OllamaProvider
 from slidemage.ui.dialogs.open_project import OpenProjectSheet
 
 from conftest import build_window
 
 
-def _mock_ollama_lists(monkeypatch) -> None:
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
-
-
 def _make_window(monkeypatch, qapp):
-    _mock_ollama_lists(monkeypatch)
     return build_window(monkeypatch)
 
 

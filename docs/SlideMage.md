@@ -2,7 +2,8 @@
 
 A PySide6 (Qt) app for compiling, editing and archiving this project's `decks/`
 and `slides/`: since 6.0 one workspace window per open deck, with an AI assistant
-(it was a Tkinter GUI until 2026-08 and a window of tabs and tables until 6.0). This file is the "what and why" for future
+(since 9.1 supplied by the Claude and Ollama plugins, see "Plugins" in the README; without one SlideMage is a
+complete editor) (it was a Tkinter GUI until 2026-08 and a window of tabs and tables until 6.0). This file is the "what and why" for future
 sessions working on this code -- the module docstrings cover the "how" at
 the code level.
 
@@ -70,8 +71,9 @@ deck switcher offers the rest). From top to bottom and left to right:
   Every edit goes through `deck_editor` and rescans the decks.
 - **Centre** (`centre.py`): **Preview** (`preview_view.py`), **Source** (`source_view.py`
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
-  line, Insert, Cite, Tools and the conflict bar when a file changes on disk under edits
-  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56, `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
+  line, Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
+  Tools and the conflict bar when a file changes on disk under edits
+  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56 (a deck's source and `SlideMage.bib` then have a **Save** button beside the "x", v8.68), `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
@@ -188,10 +190,21 @@ deck switcher offers the rest). From top to bottom and left to right:
   Images page is open), ⇥ -- and goes on into the slide list, the centre and the assistant (`TopBar._set_tab_order`).
   A segmented control is one stop (**←/→** change it); the deck switcher opens on the current deck with **Enter**,
   **Space** or **↓**, and **Esc** returns to it.
+- **Background previews** (`ui/workspace/background_previews.py`): the dial and the status text beside it both open the
+  *Background previews* window (v8.66): a large dial, the decks with their three versions, the disk space of the
+  stored previews, a tick per deck that turns its background previews on or off, Pause, Render now and Try failed
+  slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
+  done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
+  slides on selection and in the background).
+- **Plugins** (v8.71, `plugins/`, `ui/dialogs/settings_plugins.py`, `plugin_offer.py`): Settings → Plugins and Help →
+  Plugins… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
+  **Install from file…**); the first-start sheet offers them once, preselecting a plugin for a feature the user
+  used before. Claude and Ollama (the AI, v9.1) and CampusOnline (v9.0) are plugins; with no AI route registered
+  the assistant, the AI menu, the AI commands and the AI tab of Settings are hidden.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
-  entry is a registered command.
+  entry is a registered command. A list of slides or text matches that is cut short ends with **Show all**.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
-  settings (with Admin slides), Housekeeping, Snapshots, Tags, Import PPTX/ODP, About and
+  settings (the CampusOnline plugin adds its Admin slides tab), Housekeeping, Snapshots, Tags, Import PPTX/ODP, About and
   the project-compatibility sheets.
 
 Archiving a deck (see below) asks for confirmation before moving anything; so do the
@@ -239,8 +252,8 @@ marker convention and the project format guard
 
 ### Access token for a private repository
 
-While the repository is private, GitHub only shows its releases to a
-logged-in account, so the check needs a GitHub token. Without one, the
+`SlideMage/SlideMage` has been public since v8.67.1, so the check needs no token. A private copy (a fork,
+say) only shows its releases to a logged-in account, so the check needs a GitHub token there. Without one, the
 check reports that no release was found.
 
 1. **Create the token.** On GitHub: Settings → Developer settings →
@@ -631,14 +644,16 @@ What matters when touching *this code*:
   **General** (dark mode, the Source editor's tab width, the template single slides render
   with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
   update checks, both stored per user in `project.config_dir()`, never in the project
-  folder), **AI** (the German address of Claude Code translations; the
+  folder), **AI** (since v8.72 one tab, present only when an AI plugin is installed, with a section per service:
+  the German address of Claude Code translations; Claude's API key, Ollama's host URL and models, the Prompts
+  and the sections that plugins add, each scrolling in the tab; the
   default model of each task, what Cloud means and the project's Local | Cloud setting are
   **AI setup**, the ▾ of the AI switch in the top bar, `ui/workspace/ai_setup.py`: every
   model picker lists the models of the route in use and preselects its default, picking
   another there applies to that use only; the local chat lists only models that can call
   tools, local image descriptions only vision models; Claude Code chat saves a model and
-  effort used on the next start or Restart, or inherits **Claude Code default**), **Cloud** (the Anthropic API key
-  with where it is stored), **Ollama**
+  effort used on the next start or Restart, or inherits **Claude Code default**), the **Claude** section (the
+  Anthropic API key with where it is stored), the **Ollama** section
   (`settings_ollama.py`: the host URL and the installed models, update and delete) and
   **Prompts** (`settings_prompts.py`: the editable system prompt of image descriptions,
   stored by `draft_prompts.py`, and the translation prompts of `translation_prompts.py`:
@@ -928,7 +943,8 @@ What matters when touching *this code*:
     `assets/terminal/`) in a `QWebEngineView` with a `QWebChannel`, on a pty
     (`pty_process.py`: `ptyprocess`, `pywinpty` on Windows). QtWebEngine is what makes the
     one-file build about 300 MB.
-- **The `ai/` package** (no Qt): `providers.py` (`ChatProvider`, `OllamaProvider`,
+- **The `ai/` package** (no Qt; since v9.1 the Claude Code, Anthropic API and Ollama routes are supplied by
+  the Claude and Ollama plugins through `ai/routes.py`, so some modules named here now live with the plugins): `providers.py` (`ChatProvider`, `OllamaProvider`,
   `AnthropicProvider`; both stream a tool-using turn, `ProviderError`, `Cancelled`),
   `ai_profile.py` (`resolve(ctx, task)`: the route and model of a request from the
   session's Local | Cloud mode, the cloud connection, the project's policy and the models
@@ -956,7 +972,7 @@ What matters when touching *this code*:
   `mask_protected_regions` now), `syntax_check.py`, `alt_draft.py` (image descriptions and
   translation backends), `image_review.py`, `slide_add.py`, `deck_outline.py`,
   `latex_edit.py`, `preview_target.py`, `snippets.py`, `compile_status.py`, `housekeeping.py`,
-  `app_info.py`, `admin_slides.py`.
+  `app_info.py` (the admin slides moved into the CampusOnline plugin in v9.0).
 
 ## GUI framework: PySide6 (Qt)
 

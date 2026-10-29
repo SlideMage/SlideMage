@@ -1,6 +1,6 @@
 % !TeX program = lualatex
-% The SlideMage manual: explains how SlideMage works (Part A, chapters 1-5)
-% and shows every feature working (Part B, chapters 6-9), in the generic
+% The SlideMage manual: explains how SlideMage works (Part A, chapters 1-7)
+% and shows every feature working (Part B, chapters 8-12), in the generic
 % SlideMage template. Most slides demonstrate what they explain: the title
 % slide is a \titleframe, every chapter divider a sectionframe carrying the
 % chapter's agenda (\SMChapterAgenda), the reveal-step slides reveal, and
@@ -28,6 +28,8 @@
 \SMUseBibliography
 
 \newcommand{\FooterText}{SlideMage Manual}
+% The shared contents slide defaults to six Part A chapters for older decks.
+\newcommand{\SMManualPartASections}{7}
 
 \ifdefined\deckversionoverride
 	\deckversion[\deckversionoverride]
@@ -98,6 +100,14 @@
 	\slide{1je-EN-Presenting}
 	\slide{1n6-EN-Safety-Nets}
 
+	\section{Plugins}
+	\slide{1vx-EN-Chapter-Plugins}
+	\slide{1iz-EN-Installing-Plugins}
+	\slide{1sc-EN-Plugin-Safety}
+	\slide{1ft-EN-Plugin-Updates}
+	\slide{1x9-EN-Writing-a-Plugin}
+	\slide{1z5-EN-Testing-a-Plugin}
+
 	\section{Accessibility}
 	\slide{1wj-EN-Chapter-Accessibility}
 	\slide{1ih-EN-Describing-Images}
@@ -126,6 +136,7 @@
 	\slide{1x6-EN-Blocks}
 	\slide{1wa-EN-Columns-and-Tables}
 	\slide{1c9-EN-Placing-Figures}
+	\slide{1a4-EN-QR-Codes}
 	\slide{1nz-EN-Footnotes-Sources-Citations}
 	\slide{1u5-EN-Color-and-Emphasis}
 	\slide{1gr-EN-Layout-Grid}

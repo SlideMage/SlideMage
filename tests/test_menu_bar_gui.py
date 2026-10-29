@@ -22,7 +22,7 @@ from slidemage.ui.workspace.source_file import REPLACE_KEY
 from test_workspace_window import COURSE as COURSE_DECK
 
 COURSE = SimpleNamespace(name="course", path="course.tex", archived=False, group="course", groups=("course",),
-                         course_url="https://example.org/course", supports_version=True)
+                         supports_version=True)
 TITLES = ["File", "Edit", "Deck", "Slide", "View", "Build", "AI", "Housekeeping", "Help"]
 
 
@@ -73,7 +73,7 @@ def test_the_deck_menu_in_order_with_its_separators(qapp):
     ctx = command_context(COURSE, decks=[COURSE])
     assert names(filled_menu(ctx, "Deck")) == [
         "submenu:switch deck", "refresh_decks", "|", "present", "open_pdf", "|",
-        "deck_settings", "deck_tags", "admin_slides", "deck_source", "|",
+        "deck_settings", "deck_tags", "deck_source", "|",
         "add_slide", "duplicate_deck", "submenu:export", "create_snapshot", "|",
         "update_deck_versions", "rerender_deck_previews", "deck:readability", "|", "archive_deck"]
 
@@ -87,7 +87,7 @@ def test_the_file_edit_housekeeping_and_help_menus(qapp):
         "housekeeping", "|", "#Cleanup", "empty_pdf", "remove_temp", "archive_unused", "|", "#Updating",
         "update_previews", "sync_links"]
     assert names(filled_menu(ctx, "Help")) == [
-        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "project_compat"]
+        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "plugins", "project_compat"]
 
 
 def test_view_has_radio_groups_that_follow_the_state(window):

@@ -137,7 +137,10 @@ class TerminalWidget(QWidget):
         super().__init__(parent)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.bridge = TerminalBridge(theme_json(tokens))
-        self.bridge.ready.connect(self.ready)
+        self.terminal_size: tuple[int, int] | None = None
+        self._pending_output: list[bytes] = []
+        self.bridge.ready.connect(self._ready)
+        self.bridge.resized.connect(self._remember_size)
         self.bridge.resized.connect(self.resized)
         self.bridge.input_data.connect(self.input_data)
         self.bridge.image_pasted.connect(self.image_pasted)
@@ -162,6 +165,16 @@ class TerminalWidget(QWidget):
             child.installEventFilter(self)
         self.view.load(QUrl.fromLocalFile(str(PAGE)))
 
+    def _remember_size(self, cols: int, rows: int) -> None:
+        self.terminal_size = (cols, rows)
+
+    def _ready(self, cols: int, rows: int) -> None:
+        self._remember_size(cols, rows)
+        pending, self._pending_output = self._pending_output, []
+        for data in pending:
+            self.write(data)
+        self.ready.emit(cols, rows)
+
     def eventFilter(self, watched, event) -> bool:
         """Files dropped on the web view are taken here (the page would otherwise open them)."""
         kind = event.type()
@@ -177,7 +190,10 @@ class TerminalWidget(QWidget):
         return super().eventFilter(watched, event)
 
     def write(self, data: bytes) -> None:
-        self.bridge.output.emit(base64.b64encode(data).decode("ascii"))
+        if self.terminal_size is None:
+            self._pending_output.append(data)
+        else:
+            self.bridge.output.emit(base64.b64encode(data).decode("ascii"))
 
     def reset(self) -> None:
         self.bridge.reset_terminal.emit()

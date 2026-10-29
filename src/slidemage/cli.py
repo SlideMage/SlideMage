@@ -15,6 +15,8 @@ CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook in
 # each build with it before uploading, so a build that stops at startup (a library missing from the bundle, as
 # PyMuPDF 2.0's layout model in v8.33.0's Windows build) is never published.
 SELF_TEST_FLAG = "--self-test"
+PLUGIN_FLAG = "--plugin"     # first argument: <id>:<name> [args...], a plugin's entry point as a program (plugins/entry.py)
+PLUGINS_FLAG = "--plugins"   # after SELF_TEST_FLAG: the plugin host's self-test instead (plugins/selftest.py)
 
 
 def _prepare_gui(project_root: Path | None) -> None:
@@ -78,11 +80,28 @@ def main(argv: list[str] | None = None) -> None:
         serve()
         return
     if (sys.argv[1:] if argv is None else argv)[:1] == [CLAUDE_HOOK_FLAG]:
-        # Claude Code's PreToolUse hook (ai/claude_hook.py), run as this program in a frozen build, which
-        # has no `python -m`: before anything else, no window.
-        from .ai import claude_hook
+        splash.close()
+        from .plugins import entry
 
-        sys.exit(claude_hook.main())
+        rest = (sys.argv[1:] if argv is None else argv)[1:]
+        sys.exit(entry.run("claude:hook", rest))
+    if (sys.argv[1:] if argv is None else argv)[:1] == [PLUGIN_FLAG]:
+        # A plugin's entry point (Host.add_entry_point), run as this program: no window, only that plugin loaded.
+        splash.close()
+        from .plugins import entry
+
+        rest = (sys.argv[1:] if argv is None else argv)[1:]
+        if not rest:
+            print("SlideMage: --plugin wants <plugin id>:<entry point>", file=sys.stderr)
+            sys.exit(entry.NOT_FOUND)
+        sys.exit(entry.run(rest[0], rest[1:]))
+    if (sys.argv[1:] if argv is None else argv)[:2] == [SELF_TEST_FLAG, PLUGINS_FLAG]:
+        # The plugin host's check (plugins/selftest.py): every standard-library module a plugin may import, then a
+        # plugin loaded through the loader. No window; before the window's imports, so it is checked on its own.
+        splash.close()
+        from .plugins import selftest
+
+        sys.exit(selftest.run())
     if (sys.argv[1:] if argv is None else argv)[:1] == [SELF_TEST_FLAG]:
         splash.close()
         try:

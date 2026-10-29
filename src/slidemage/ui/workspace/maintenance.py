@@ -30,12 +30,18 @@ from typing import Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from ... import bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
+from ... import app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
 from ... import version as version_mod
+from ...plugins import catalogue as plugin_catalogue
+from ...plugins import session as plugin_session
+from ...plugins import updates as plugin_updates
+from ...plugins import upgrade as plugin_upgrade
 from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, HousekeepingSheet
 from ..dialogs.open_project import NewerProjectSheet
+from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
+from ..dialogs.settings_plugins import download_release, install_downloaded
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -43,6 +49,16 @@ STARTUP_UPDATE_CHECK_DELAY_MS = 3000
 # the window is up -- a local comparison, no network.
 BUNDLED_COPIES_CHECK_DELAY_MS = 1500
 RENDER_SWEEP_DELAY_MS = 8000
+# The first-start plugin sheet opens once the window has settled, after the checks that may ask something.
+PLUGIN_OFFER_DELAY_MS = 4000
+OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Settings → Plugins
+# The project hint for decks with a course link while the CampusOnline plugin is not loaded (v9.0.0 moved the feature
+# into the plugin). Dismissed per project: app_settings key (a project one), set by "Don't show again" or by opening Plugins.
+COURSE_HINT_DELAY_MS = 6000
+COURSE_HINT_DISMISSED_KEY = "campusonline_hint_dismissed"
+COURSE_HINT_DISMISS = "dismiss-campusonline-hint"
+COURSE_HINT_TEXT = ("This project uses CampusOnline course links. Install or enable the plugin to open them, "
+                    "insert admin slides and render ahead of a session.")
 # The project compatibility check (compat.py): static scans of the project, a
 # local comparison -- shown before the framework/manual update offer.
 COMPAT_CHECK_DELAY_MS = 1000
@@ -563,3 +579,162 @@ def on_sync_translation_links(window) -> int:
             "not be resolved -- see the log pane for details.",
         )
     return changed
+
+
+# -- plugins: the first-start sheet and the plugin updates ------------------------------------------
+
+def schedule_plugin_offer(window) -> None:
+    """The first-start sheet once per machine, and the notice of a feature that became a plugin, once per feature;
+    after the window is up, never delaying the start."""
+    if not plugin_upgrade.offer_seen() or plugin_upgrade.MIGRATIONS:
+        QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(show_plugin_offer, window))
+
+
+def show_plugin_offer(window) -> None:
+    """Fetch the catalogue on a thread first; `window.plugin_offer_fetched` carries it to on_plugin_offer_fetched.
+    The sheet is for a list with something in it: the public catalogue may still be empty."""
+    if plugin_upgrade.offer_seen() and not plugin_upgrade.migrations_due(window.project):
+        return
+
+    def work() -> None:
+        try:
+            result = plugin_catalogue.fetch()
+        except Exception as exc:        # offline, too new, broken: only logged
+            result = exc
+        window.plugin_offer_fetched.emit(result)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def on_plugin_offer_fetched(window, result) -> None:
+    """Open the sheet, with the fetched catalogue, only when something is offerable: the onboarding (not seen yet)
+    and/or the plugins of due migrations (preselected, with their reason). Both due: one onboarding sheet.
+    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins…
+    is always there)."""
+    pending = plugin_upgrade.migrations_due(window.project)
+    if isinstance(result, Exception):
+        window.log(f"Plugin list not loaded: {result}")
+        if plugin_upgrade.CAMPUSONLINE in pending:
+            schedule_course_hint(window, unavailable=True)
+        return
+    onboarding = not plugin_upgrade.offer_seen()
+    offerable = {c.id for c in plugin_upgrade.offerable(result)}
+    if plugin_upgrade.CAMPUSONLINE in pending and plugin_upgrade.CAMPUSONLINE not in offerable:
+        schedule_course_hint(window, unavailable=True)
+    if not offerable:
+        return
+    due = {i: why for i, why in pending.items() if i in offerable}
+    if not onboarding and not due:
+        return
+    if QApplication.activeModalWidget() is not None:       # another question is open: try again later
+        QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(on_plugin_offer_fetched, window, result))
+        return
+    sheet = PluginOfferSheet(window, preselected=due, catalogue_data=result, onboarding=onboarding)
+    if plugin_upgrade.CAMPUSONLINE in due:
+        window._course_migration_shown = True
+    sheet.exec()
+    if sheet.restart_requested:
+        window.relaunch_with_project(window.project.root)
+
+
+def schedule_course_hint(window, *, unavailable: bool = False) -> None:
+    """Show the project hint after a migration notice, or when the plugin cannot be offered."""
+    installed = any(p.id == plugin_upgrade.CAMPUSONLINE for p in plugin_upgrade.discover())
+    if (unavailable or installed or plugin_upgrade.CAMPUSONLINE in plugin_upgrade.migrations_seen()) and not getattr(
+            window, "_course_hint_scheduled", False):
+        window._course_hint_scheduled = True
+        QTimer.singleShot(COURSE_HINT_DELAY_MS, partial(show_course_hint, window))
+
+
+def show_course_hint(window) -> None:
+    if getattr(window, "_course_migration_shown", False):
+        return
+    if app_settings.get(window.project, COURSE_HINT_DISMISSED_KEY):
+        return
+    if plugin_upgrade.CAMPUSONLINE in {p.id for p in plugin_session.loaded()}:
+        return
+    if not plugin_upgrade.course_linked_decks(window.project):
+        return
+    window.toast.show_message(
+        COURSE_HINT_TEXT, [(OPEN_PLUGINS, "Open Plugins"), (COURSE_HINT_DISMISS, "Don't show again")],
+        timeout_ms=15000)
+
+
+def schedule_plugin_update_check(window) -> None:
+    """Plugin updates are looked for with the app's own update check and follow its mode; off checks nothing."""
+    if updater.get_update_mode() != updater.UPDATE_MODE_OFF:
+        QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(plugin_update_check, window))
+
+
+def plugin_update_check(window) -> None:
+    """At most once a day, and only when a plugin was installed through SlideMage. The catalogue is fetched on
+    a thread (and, in auto mode, the updates installed there); `window.plugin_updates_done` carries the outcome."""
+    if not plugin_updates.installed_plugins(plugin_session.loaded()) or not plugin_updates.check_due():
+        return
+    mode = updater.get_update_mode()
+    if mode == updater.UPDATE_MODE_OFF:
+        return
+
+    def work() -> None:
+        window.plugin_updates_done.emit(plugin_update_work(mode))
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+class PluginUpdates:
+    """What one plugin update check found: (id, installed version, release) for each update, the "name version"
+    texts installed in auto mode, and what failed."""
+
+    def __init__(self, names: dict[str, str], updates: list, installed: list[str], failed: list[str]) -> None:
+        self.names, self.updates, self.installed, self.failed = names, updates, installed, failed
+
+
+def plugin_update_work(mode: str) -> PluginUpdates | Exception:
+    """Fetch the catalogue and compare (a worker thread's job); in auto mode also download and install each update,
+    hash checked. Failures are returned, not raised: they are only logged."""
+    try:
+        fresh = plugin_catalogue.fetch()
+    except plugin_catalogue.CatalogueError as exc:
+        return exc
+    loaded = plugin_session.loaded()
+    names = {p.id: p.manifest.name for p in plugin_updates.installed_plugins(loaded)}
+    found = plugin_updates.available_updates(loaded, fresh)
+    installed: list[str] = []
+    failed: list[str] = []
+    if mode == updater.UPDATE_MODE_AUTO:
+        for plugin_id, _have, release in found:
+            try:
+                manifest = install_downloaded(download_release(release), release)
+            except Exception as exc:        # one plugin failing must not stop the others
+                failed.append(f"{names[plugin_id]}: {exc}")
+            else:
+                installed.append(f"{manifest.name} {manifest.version}")
+    return PluginUpdates(names, found, installed, failed)
+
+
+def on_plugin_updates_done(window, result) -> None:
+    """Quiet by design: a failed check is only logged and tried again at the next start."""
+    if isinstance(result, Exception):
+        window.log(f"Plugin update check failed: {result}")
+        return
+    plugin_updates.mark_checked()
+    for line in result.failed:
+        window.log(f"Plugin update failed: {line}")
+    mode = updater.get_update_mode()
+    if mode == updater.UPDATE_MODE_OFF or not result.updates:
+        return
+    if mode == updater.UPDATE_MODE_AUTO:
+        if result.installed:
+            window.log("Plugin updates installed: " + ", ".join(result.installed))
+            window.toast.show_message("Plugin updates installed; they take effect after a restart", timeout_ms=7000)
+        return
+    text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
+                     for plugin_id, _have, release in result.updates)
+    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Plugins")], timeout_ms=12000)
+
+
+def on_plugin_toast_action(window, key: str) -> None:
+    if key == OPEN_PLUGINS:
+        window.open_plugins()
+    elif key == COURSE_HINT_DISMISS:
+        app_settings.set(window.project, COURSE_HINT_DISMISSED_KEY, True)

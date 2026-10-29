@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Images page (ui/pages/images.py and friends): what its forms save, how a slide is left, and
-how a drafting or translating job runs, stops and gives the Ollama slot back."""
+how a drafting or translating job runs, stops and releases its route."""
 from __future__ import annotations
 
 import threading
@@ -14,9 +14,9 @@ import pytest
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
 
 from slidemage import alt_blocks, alt_draft, alt_images, image_review
-from slidemage.ai import ai_profile, claude_images, claude_launch, resolver
-from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
-from slidemage.ai.providers import OllamaProvider
+from slidemage.ai import ai_profile, resolver
+from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, Route
+from fake_routes import FakeProvider
 from slidemage.alt_blocks import SlideRow
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.pages import image_dialogs, image_runs, images
@@ -35,6 +35,7 @@ class FakeApp:
         self.theme = ThemeManager()
         self.logged: list[str] = []
         self.slots: list[str] = []          # "took"/"gave" per Ollama slot call
+        self.routes = []
         self.unsaved: set[Path] = set()     # slide files with unsaved edits in the Source view
         self.synced: list[Path] = []
         self.opened: list[Path] = []
@@ -44,19 +45,18 @@ class FakeApp:
     def log(self, line):
         self.logged.append(line)
 
-    def try_start_ollama_task(self, _label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.slots.append("took")
-        return True
-
-    def end_ollama_task(self, provider=None):
-        self.slots.append("gave")
+        self.routes.append(route_id)
+        return _RouteTaskLease(lambda: self.slots.append("gave"))
 
     def open_slide_editor(self, path):
         self.opened.append(path)
 
 
 @pytest.fixture
-def make_page(monkeypatch, qapp, tmp_path, ctx):
+def make_page(monkeypatch, qapp, tmp_path, ctx, fake_routes):
     """The page over two slides ("one": all `image_refs`, "two": the first) and an in-memory store."""
 
     def make(image_refs=None):
@@ -83,7 +83,6 @@ def make_page(monkeypatch, qapp, tmp_path, ctx):
             return changed
 
         monkeypatch.setattr(alt_images, "update_store", update_store)
-        monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: [])
         app = FakeApp(ctx)
         page = images.ImagesPage(app, WorkspaceState(ctx), app.centre)
         page.reload()
@@ -100,9 +99,8 @@ def run_jobs_inline(monkeypatch):
 
 def choose_provider(monkeypatch, provider=None):
     """The picked route is Local, and the provider its backends are built on the given one."""
-    provider = provider or OllamaProvider("offline-test")
-    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
-    monkeypatch.setattr(image_runs, "provider_from_combo", lambda *_args: provider)
+    provider = provider or FakeProvider("offline-test")
+    monkeypatch.setattr(image_runs, "picked_route", lambda *_args: Route("fake_local", IMAGE_DESCRIPTION, "offline-test"))
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
 
@@ -423,19 +421,19 @@ class FakeBackend:
 def test_draft_slide_runs_one_job_writes_the_draft_and_gives_the_slot_back(make_page, monkeypatch, local):
     page = make_page()
     run_jobs_inline(monkeypatch)
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     provider.is_local = local
     choose_provider(monkeypatch, provider)
-    given = []
-    release = page.app.end_ollama_task
-    page.app.end_ollama_task = lambda provider=None: (given.append(provider), release(provider))
+    route_id = "fake_local" if local else "fake_cloud"
+    monkeypatch.setattr(page, "_draft_backend",
+                        lambda: (Route(route_id, IMAGE_DESCRIPTION, "offline-test"), FakeBackend(None, provider)))
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
     monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
     monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
         alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
     page._draft_slide()
     assert page.app.slots == ["took", "gave"] and page._job is None and page.job_card.isHidden()
-    assert given == [provider]
+    assert page.app.routes == [route_id]
     drafted = page.store[CHART]
     assert (drafted.short, drafted.long, drafted.drafted_by) == ("drafted short", "drafted long", "offline-test")
     assert page._forms[0].fields["short"].toPlainText() == "drafted short"      # the untouched form shows it
@@ -498,7 +496,7 @@ def wait_for(condition, seconds=5.0):
 def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make_page, monkeypatch, ctx):
     page = make_page()
     choose_provider(monkeypatch)
-    backend = SlowBackend(ctx, OllamaProvider("offline-test"))
+    backend = SlowBackend(ctx, FakeProvider("offline-test"))
     monkeypatch.setattr(alt_draft, "ModelBackend", lambda _ctx, provider, **kw: backend)
     monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
     queue = [alt_draft.ImageJob(f"media/{i}.png", Path("x.png"), "one", page.first.path) for i in range(500)]
@@ -520,7 +518,7 @@ def test_stop_ends_a_batch_after_the_current_image_and_takes_the_click_back(make
 def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_page, monkeypatch):
     page = make_page()
     release = threading.Event()
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     aborted = []
     provider.abort = lambda: (aborted.append(True), release.set())
 
@@ -528,13 +526,13 @@ def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_pag
         release.wait(5)                                              # a request that only abort ends
         return alt_draft.BatchSummary()
 
-    page.app.try_start_ollama_task("test", provider)
-    job = Job("Drafting", provider, work, Route(LOCAL, IMAGE_DESCRIPTION, "offline-test"))
-    page._start(job, "one image", 5, lambda outcome: None)
+    lease = page.app.acquire_route_task("fake_local", "test")
+    job = Job("Drafting", provider, work, Route("fake_local", IMAGE_DESCRIPTION, "offline-test"))
+    page._start(job, "one image", 5, lambda outcome: None, lease)
     assert job.isRunning()
     job.position = (3, 5)
     [work] = page.running_work()                       # what the AI switch's busy popover lists
-    assert (work.text, work.route, work.local) == ("Drafting · 2 of 5 done", "offline-test · Ollama", True)
+    assert (work.text, work.route, work.local) == ("Drafting · 2 of 5 done", "offline-test", True)
     assert "cancelled, not moved" in work.line and work.stop == page._abort_job
     page.shutdown()
     assert page.running_work() == []
@@ -711,7 +709,7 @@ def test_changing_the_filter_or_deck_keeps_the_translation_and_find_asks_first(m
 def test_stop_on_a_single_translation_aborts_it_at_once(make_page, monkeypatch):
     page = make_page()
     release = threading.Event()
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     provider.abort = release.set
     choose_provider(monkeypatch, provider)
 
@@ -818,7 +816,7 @@ def test_the_replace_sheet_validates_the_name_and_refuses_to_overwrite(qapp, mon
 
 def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(ctx, qapp, monkeypatch, tmp_path):
     release = threading.Event()
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     provider.abort = release.set
 
     class Backend:
@@ -843,7 +841,7 @@ def test_closing_the_tuning_sheet_stops_a_running_draft_and_hands_the_slot_back(
 
 
 def test_a_tuned_draft_can_be_accepted_with_its_hint(ctx, qapp, monkeypatch, tmp_path):
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
 
     class Backend:
         def __init__(self, _ctx, provider, **kwargs):
@@ -958,69 +956,39 @@ def test_a_show_filter_that_keeps_the_slide_does_not_ask_and_keeps_the_translati
 
 # -- the other routes ---------------------------------------------------------------------------------------
 
-def on_claude_code(ctx, monkeypatch, tmp_path):
-    claude = tmp_path / "claude"
-    monkeypatch.setattr(claude_launch, "find_claude", lambda: claude)
-    ai_profile.set_mode(ctx, ai_profile.CLOUD)
-    ai_profile.mark_cloud_seen(ctx)
-    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.IMAGE_DESCRIPTION, "haiku:low")
-    ai_profile.set_model_choice(ctx, ai_profile.CLAUDE_CODE, ai_profile.TRANSLATION, "opus:high")
-    return claude
-
-
-def test_on_claude_code_the_pickers_offer_its_models_and_the_backends_are_claudes(make_page, ctx, monkeypatch, tmp_path):
-    page = make_page()
-    claude = on_claude_code(ctx, monkeypatch, tmp_path)
-    page.refresh_model_preferences()
-    assert page.draft_model.isEnabled() and page.draft_model.currentText() == "Haiku · low"
-    assert page.translate_model.currentData() == "opus:high"
-    (drafting_route, drafting), (translating_route, translating) = page._draft_backend(), page._translation_backend("the text")
-    assert drafting_route.label == "Claude Code · Haiku · effort low" and translating_route.label == "Claude Code · Opus · effort high"
-    assert isinstance(drafting, claude_images.ClaudeDraftBackend) and (drafting.model, drafting.effort) == ("haiku", "low")
-    assert isinstance(translating, claude_images.ClaudeTranslationBackend) and (translating.model, translating.effort) == ("opus", "high")
-    assert drafting.claude == claude and not drafting.provider.is_local
-
-
-def test_a_drafting_run_on_claude_code_takes_no_ollama_slot_and_stop_ends_its_process(make_page, ctx, monkeypatch, tmp_path):
-    page = make_page()
-    on_claude_code(ctx, monkeypatch, tmp_path)
-    page.refresh_model_preferences()
-    started = threading.Event()
-
-    def draft(self, _path, _context):
-        started.set()
-        self.cancel.wait(5)
-        return alt_draft.DraftResult(error="Cancelled")
-
-    monkeypatch.setattr(claude_images.ClaudeDraftBackend, "draft", draft)
-    monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, *_args: None)
-    monkeypatch.setattr(alt_draft, "slide_jobs", lambda _ctx, row, entries: [
-        alt_draft.ImageJob(CHART, Path("chart.png"), row.slide_id, row.path)])
-    page._draft_slide()
-    assert started.wait(5) and page.app.slots == ["took"]              # asks the window, which gives no slot to a cloud route
-    job = page._job
-    page._abort_job()
-    assert job.provider.cancel.is_set()                                 # Stop ended the process
-    job.wait()
-
-
-def test_tuning_a_prompt_is_not_offered_on_claude_code(make_page, ctx, monkeypatch, tmp_path):
-    page = make_page()
-    on_claude_code(ctx, monkeypatch, tmp_path)
-    page.refresh_model_preferences()
-    told = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
-    page._tune(page._forms[0])
-    assert len(told) == 1 and "not available on Cloud · Claude Code" in told[0] and page.app.slots == []
-
-
-def test_claude_code_that_is_missing_stops_a_run_before_anything_starts(make_page, ctx, monkeypatch):
+def test_pickers_and_backends_follow_the_registered_route(make_page, ctx, fake_routes):
     page = make_page()
     ai_profile.set_mode(ctx, ai_profile.CLOUD)
     ai_profile.mark_cloud_seen(ctx)
-    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
+    page.refresh_model_preferences()
+    assert page.draft_model.isEnabled() and page.draft_model.currentText() == "FAKE-1"
+    assert page.translate_model.currentData() == "fake-1"
+    drafting_route, drafting = page._draft_backend()
+    translating_route, translating = page._translation_backend("the text")
+    assert drafting_route.route == translating_route.route == fake_routes.cloud.id
+    assert drafting.provider in fake_routes.cloud.providers
+    assert translating.provider in fake_routes.cloud.providers
+
+
+def test_unavailable_route_stops_a_run_before_anything_starts(make_page, ctx, fake_routes, monkeypatch):
+    page = make_page()
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    fake_routes.cloud.problem_text = "The fake route is unavailable."
     page.refresh_model_preferences()
     told = []
     monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
     page._translate_all()
-    assert len(told) == 1 and "not installed" in told[0] and page.app.slots == [] and page._job is None
+    assert told == ["The fake route is unavailable."] and page.app.slots == [] and page._job is None
+
+
+def test_tuning_requires_a_provider_on_the_selected_route(make_page, ctx, fake_routes, monkeypatch):
+    page = make_page()
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    ai_profile.mark_cloud_seen(ctx)
+    monkeypatch.setattr(fake_routes.cloud, "provider", lambda *_args: None)
+    page.refresh_model_preferences()
+    told = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _p, _t, text: told.append(text))
+    page._tune(page._forms[0])
+    assert len(told) == 1 and "not available on Cloud · Fake cloud" in told[0]
+    assert page.app.slots == []

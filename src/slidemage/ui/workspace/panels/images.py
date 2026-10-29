@@ -14,19 +14,19 @@ field for the panel's language (source or source_de), saved with the rest and wi
 The takeaway and the German descriptions are the Images page's."""
 from __future__ import annotations
 
-import threading
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
 from .... import alt_blocks, alt_draft, alt_images, image_review
-from ....ai import ai_profile, resolver
+from ....ai import ai_profile, resolver, routes
 from ....project import ProjectContext
 from ....slide_language import bare_id
 from ...ai_models import built, cloud_label, task_route
+from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
 from ...pages.image_form import ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused
@@ -35,6 +35,15 @@ from .base import Row, SidePanel, box, empty_row, text
 
 THUMBNAIL = 56
 PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+
+class _DraftWorker(QThread):
+    def __init__(self, work):
+        super().__init__()
+        self.work = work
+
+    def run(self):
+        self.work()
 
 
 class ImageForm(Row):
@@ -84,6 +93,7 @@ class ImageForm(Row):
         buttons = QHBoxLayout()
         self.project = project
         self.redraft_button = Button(cloud_label(project, "Redraft…"), "secondary", compact=True)
+        self.redraft_button.setVisible(bool(routes.all()))
         self.redraft_button.setToolTip("Ask the vision model of the active AI route (AI setup) for a "
                                        "new description. It fills the fields; nothing is saved until you save.")
         self.save_button = Button("Save draft", "secondary", compact=True)
@@ -128,7 +138,7 @@ class ImageDescriptions(SidePanel):
     key = "images"
     title = "Image descriptions"
 
-    drafted = Signal(str, str, object, object)   # slide id, reference, whose Ollama slot to give back, alt_draft.DraftResult
+    drafted = Signal(str, str, object, object)   # slide id, reference, provider, alt_draft.DraftResult
 
     def __init__(self, app, state, actions) -> None:
         super().__init__(app, state, actions)
@@ -146,6 +156,7 @@ class ImageDescriptions(SidePanel):
 
     def refresh_route(self) -> None:
         for form in self._forms:
+            form.redraft_button.setVisible(bool(routes.all()))
             form.redraft_button.setText(cloud_label(form.project, "Redraft…"))
 
     def build(self, id_slug: str) -> None:
@@ -225,24 +236,33 @@ class ImageDescriptions(SidePanel):
             return
         route = task_route(self, self.app.project, ai_profile.IMAGE_DESCRIPTION, "the slide's text and this image")
         backend = None if route is None else built(self, resolver.draft_backend, self.app.project, route)
-        if backend is None or not self.app.try_start_ollama_task("drafting a description", backend.provider):
+        if backend is None:
             return
-        form.redraft_button.setEnabled(False)
-        form.note.setText(f"Drafting with {backend.label}…")
-        form.note.show()
-        context = alt_draft.build_context(self.app.project, path, form.reference)
-        threading.Thread(target=self._draft_bg, args=(slide_id, form.reference, backend.provider, backend, found[0][1], context),
-                         daemon=True).start()
+        lease = self.app.acquire_route_task(route.route, "drafting a description")
+        if lease is None:
+            return
+        try:
+            form.redraft_button.setEnabled(False)
+            form.note.setText(f"Drafting with {backend.label}…")
+            form.note.show()
+            context = alt_draft.build_context(self.app.project, path, form.reference)
+            worker = _DraftWorker(lambda: self._draft_bg(slide_id, form.reference, backend.provider, backend, found[0][1], context))
+            background.start_detached(worker, on_done=lease.release)
+        except BaseException:
+            lease.release()
+            raise
 
     def _draft_bg(self, slide_id: str, reference: str, provider, backend, resolved: Path, context) -> None:
         try:
             result = backend.draft(resolved, context)
         except Exception as exc:  # noqa: BLE001 -- shown on the form; the slot must still be given back
             result = alt_draft.DraftResult(error=str(exc) or type(exc).__name__)
-        self.drafted.emit(slide_id, reference, provider, result)
+        try:
+            self.drafted.emit(slide_id, reference, provider, result)
+        except RuntimeError:  # the panel was destroyed while the worker finished
+            pass
 
     def _on_drafted(self, slide_id: str, reference: str, provider, result) -> None:
-        self.app.end_ollama_task(provider)
         if self._slide is None or self._slide[0] != slide_id:
             return
         form = next((f for f in self._forms if f.reference == reference), None)

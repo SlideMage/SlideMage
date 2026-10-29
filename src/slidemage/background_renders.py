@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, course_schedule, deck_language, deck_settings, render_key, render_store, slide_language
+from . import app_settings, deck_language, deck_settings, render_key, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -202,7 +202,8 @@ class BackgroundRenderer:
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
                  raster: Optional[RasterClient] = None, batch_renderer: Optional[Callable] = None,
                  on_change: Callable[[], None] = lambda: None,
-                 soon: Optional[Callable[[Deck], bool]] = None, clock: Callable[[], float] = time.time) -> None:
+                 plugin_soon: Optional[Callable[[Deck], bool]] = None,
+                 clock: Callable[[], float] = time.time) -> None:
         self.ctx, self.store = ctx, store
         self.hashes = HashCache(store.db, store.lock)
         self.resolver = render_key.Resolver(ctx, self.hashes, store, engine_fp=engine_fp)
@@ -212,7 +213,7 @@ class BackgroundRenderer:
             enabled=lambda: self.enabled, only_on_mains=lambda: bool(setting(ctx, ONLY_MAINS_KEY, True)),
             free_bytes=lambda: power_status.free_bytes(store.root), cpu_load=self._cpu.load)
         self._decks, self._open_deck = decks, open_deck
-        self._soon = soon or (lambda deck: course_schedule.session_soon(deck.course_url))
+        self.plugin_soon = plugin_soon          # the loaded plugins' rule (plugins.host.plugin_render_priority); settable
         self._render = renderer or self._render_pdf
         self._render_batch = batch_renderer or self._render_batch_pdf
         self._raster = raster
@@ -236,6 +237,10 @@ class BackgroundRenderer:
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
         self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
         self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
+
+    def _soon(self, deck: Deck) -> bool:
+        """A loaded plugin's rule (a session soon, say)."""
+        return bool(self.plugin_soon is not None and self.plugin_soon(deck))
 
     # -- settings ------------------------------------------------------------------------
 
@@ -354,7 +359,7 @@ class BackgroundRenderer:
     # -- what is outstanding ---------------------------------------------------------------
 
     def ordered_decks(self) -> list[Deck]:
-        """The decks to prepare, most important first: the open deck, those with a course session soon, the
+        """The decks to prepare, most important first: the open deck, those a plugin says are needed soon, the
         decks opened on this machine by recency, then the rest by the newest change to their file."""
         usage = {u["deck"]: u for u in self.store.deck_usage()}
         off = self.decks_off()

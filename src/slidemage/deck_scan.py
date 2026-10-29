@@ -52,7 +52,6 @@ DECKTAGS_RE = re.compile(r"\\decktags\{([^}]*)\}")
 # \deckappendixtoc in the preamble: always generate the appendix TOC for
 # this deck (whole-deck compiles), whatever the toolbar checkbox says.
 DECKAPPENDIXTOC_RE = re.compile(r"\\deckappendixtoc(?![a-zA-Z@])")
-COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
 # The default groups' tags and the manual's (deck_groups.py).
 TAG_WORK = deck_groups.TAG_WORK
 TAG_COURSE = deck_groups.TAG_COURSE
@@ -99,7 +98,6 @@ class Deck:
     # The deck's own \decktags{...}, lowercased, in file order. Parsed from
     # the deck's text (parse_tags()), never inferred from its filename.
     tags: list[str] = field(default_factory=list)
-    course_url: str | None = None
     # \deckappendixtoc in the preamble (parse_appendix_toc())
     appendix_toc: bool = False
     # which PDF "Open pdf" opens by default (parse_open_pdf(); None = instructor)
@@ -246,17 +244,9 @@ def parse_appendix_toc(text: str) -> bool:
                for m in DECKAPPENDIXTOC_RE.finditer(preamble))
 
 
-def parse_course_url(text: str) -> str | None:
-    """Read the first course URL marker in the deck preamble."""
-    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
-    preamble = text[:begin.start()] if begin else text
-    match = COURSE_URL_RE.search(preamble)
-    return match.group(1).strip() or None if match else None
-
-
 # "%% SlideMage open PDF: during-course" in the preamble (v5.34.0, direct
 # instruction): which PDF the deck table's "Open pdf" opens by default.
-# Missing = the instructor PDF. A comment, like the course URL, so a deck
+# Missing = the instructor PDF. A comment, so a deck
 # with it still compiles against an older framework.
 OPEN_PDF_CHOICES = ("instructor", "during-course", "after-course", "presenter")
 OPEN_PDF_RE = re.compile(r"^[ \t]*%% SlideMage open PDF:[ \t]*([^\r\n]*)\r?$", re.MULTILINE)
@@ -299,7 +289,6 @@ def read_deck(path: Path, archived: bool = False,
         chapters=parse_chapters(text),
         output_folders=_parse_output_folders(text),
         tags=tags,
-        course_url=parse_course_url(text),
         appendix_toc=parse_appendix_toc(text),
         open_pdf=parse_open_pdf(text),
         groups=in_groups,

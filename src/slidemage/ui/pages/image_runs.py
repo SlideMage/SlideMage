@@ -5,8 +5,7 @@ the prompt.
 
 A mixin of ImagesPage (images.py), which holds the state these methods work on: the slide and forms
 on show, the model pickers, the job card and the results panel. One job runs at a time (image_jobs.Job,
-a QThread that `background.stop_worker` can always end) and holds the app-wide Ollama slot for its
-whole life; a cloud provider needs none, which the window's try_start_ollama_task decides.
+a QThread that `background.stop_worker` can always end) and holds its route lease for its whole life.
 
 A job captures its route when it starts: the picked Route and the backend built from it once, so a
 switch of the AI route changes nothing about a run under way. What became of each image is noted as it
@@ -23,7 +22,7 @@ from PySide6.QtWidgets import QMessageBox
 from ... import alt_draft, alt_images
 from ...ai import resolver
 from ...batch_result import DONE, DRAFT, KEPT, TRANSLATE, ItemOutcome
-from ..ai_models import built, picked_route, provider_from_combo
+from ..ai_models import built, picked_route
 from .. import background
 from ..workspace.ai_work import RunningWork
 from .image_dialogs import PromptTuningSheet
@@ -37,9 +36,10 @@ class ImageRunsMixin:
         """Whether a form on show is waiting for its translation."""
         return self._translating is not None and self._translating in self._forms
 
-    def _start(self, job: Job, detail: str, steps: int, on_outcome) -> None:
-        """Run `job` (its Ollama slot is taken); `on_outcome(summary or exception)` follows on this thread."""
+    def _start(self, job: Job, detail: str, steps: int, on_outcome, lease) -> None:
+        """Run `job` (its route lease is held); `on_outcome(summary or exception)` follows on this thread."""
         self._job, self._on_outcome = job, on_outcome
+        job.route_lease = lease
         self.results.clear()
         job.progress.connect(lambda index, total, image: self._on_progress(job, index, total, image))
         job.image_done.connect(lambda image, outcome: self._on_image_done(job, image, outcome))
@@ -47,7 +47,12 @@ class ImageRunsMixin:
         self.job_card.start(job.title, detail, steps)
         self.app.log(f"{job.title}: {detail}")
         self._update_buttons()
-        job.start()
+        try:
+            job.start()
+        except BaseException:
+            self._job = None
+            lease.release()
+            raise
 
     def running_work(self) -> list[RunningWork]:
         """The run under way, for the AI switch's busy popup (workspace/ai_work.py)."""
@@ -72,7 +77,7 @@ class ImageRunsMixin:
         self._job, on_outcome = None, self._on_outcome
         job.wait()
         job.deleteLater()
-        self.app.end_ollama_task(job.provider)
+        job.route_lease.release()
         self.job_card.hide()
         self._update_buttons()
         on_outcome(outcome)
@@ -92,13 +97,13 @@ class ImageRunsMixin:
 
     def _abort_job(self, *, closing: bool = False) -> None:
         """End the running job now (Stop on a single request, "Stop and switch", closing the window): its thread
-        is kept until it has ended and gives the Ollama slot back then. What it had done stays written; the images
+        is kept until it has ended and releases its route then. What it had done stays written; the images
         it did not reach are cancelled, which the results panel says (not while the window closes)."""
         job, self._job = self._job, None
         if job is None:
             return
         provider = job.provider
-        background.stop_worker(job, provider.abort, on_done=lambda: self.app.end_ollama_task(provider))
+        background.stop_worker(job, provider.abort, on_done=job.route_lease.release)
         self.job_card.hide()
         if self._translation_in_flight():
             self._translating.end_translation(alt_draft.TranslationResult(error="stopped"))
@@ -141,7 +146,7 @@ class ImageRunsMixin:
     def _draft_backend(self):
         """(the Route, the backend) that describe images on the active route with the picked model; None (the
         user is told) when there is none, the route cannot run it or a cloud request was declined. Asked on the
-        GUI thread, before an Ollama slot is reserved."""
+        GUI thread, before a route lease is acquired."""
         route = picked_route(self, self.app.project, self.draft_model, "image_description",
                              "the slide's text and the images to describe")
         backend = None if route is None else built(self, resolver.draft_backend, self.app.project, route)
@@ -163,37 +168,51 @@ class ImageRunsMixin:
                                     "files the model cannot read.")
             return
         picked = self._draft_backend()
-        if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
+        if picked is None:
             return
         route, backend = picked
-        job = draft_job("Drafting descriptions", self.app.project, jobs, backend, route)
-        self._start(job, f"{view.row.path.name} via {backend.label}", len(jobs), self._drafted)
+        lease = self.app.acquire_route_task(route.route, "drafting descriptions")
+        if lease is None:
+            return
+        try:
+            job = draft_job("Drafting descriptions", self.app.project, jobs, backend, route)
+            self._start(job, f"{view.row.path.name} via {backend.label}", len(jobs), self._drafted, lease)
+        except BaseException:
+            lease.release()
+            raise
 
     def _draft_all(self, only: Optional[list[str]] = None) -> None:
         """Draft what still needs it, after asking; with `only` (Retry failed) just those images."""
         picked = self._draft_backend()
-        if picked is None or not self.app.try_start_ollama_task("drafting descriptions", picked[1].provider):
+        if picked is None:
             return
         route, backend = picked
-        queue = alt_draft.images_needing_drafts(self.app.project)
-        redraftable = alt_draft.images_needing_drafts(self.app.project, redraft_unless_model=backend.label)
-        if only is not None:
-            queue = redraftable = [job for job in redraftable if job.image in only]
-        other_model = max(len(redraftable) - len(queue), 0)
-        if not queue and not other_model:
-            QMessageBox.information(self, "Nothing to draft",
-                                    "Every describable image already has a draft or a reviewed description.")
-            self.app.end_ollama_task(backend.provider)
+        lease = self.app.acquire_route_task(route.route, "drafting descriptions")
+        if lease is None:
             return
-        go, again = confirm(self, DRAFT, len(queue), self.app.project.root.name, route,
-                            f"Also redraft {other_model} image(s) drafted by a different model" if other_model else "")
-        if not go:
-            self.app.end_ollama_task(backend.provider)
-            return
-        if again:
-            queue = redraftable
-        job = draft_job("Drafting image descriptions", self.app.project, queue, backend, route)
-        self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted)
+        try:
+            queue = alt_draft.images_needing_drafts(self.app.project)
+            redraftable = alt_draft.images_needing_drafts(self.app.project, redraft_unless_model=backend.label)
+            if only is not None:
+                queue = redraftable = [job for job in redraftable if job.image in only]
+            other_model = max(len(redraftable) - len(queue), 0)
+            if not queue and not other_model:
+                QMessageBox.information(self, "Nothing to draft",
+                                        "Every describable image already has a draft or a reviewed description.")
+                lease.release()
+                return
+            go, again = confirm(self, DRAFT, len(queue), self.app.project.root.name, route,
+                                f"Also redraft {other_model} image(s) drafted by a different model" if other_model else "")
+            if not go:
+                lease.release()
+                return
+            if again:
+                queue = redraftable
+            job = draft_job("Drafting image descriptions", self.app.project, queue, backend, route)
+            self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._drafted, lease)
+        except BaseException:
+            lease.release()
+            raise
 
     def _drafted(self, outcome: object) -> None:
         summary = outcome
@@ -213,8 +232,9 @@ class ImageRunsMixin:
         view = self._current
         if view is None or self._job is not None:
             return
-        provider = provider_from_combo(self, self.app.project, self.draft_model, "image_description",
-                                       "the slide's text and the image to describe")
+        route = picked_route(self, self.app.project, self.draft_model, "image_description",
+                             "the slide's text and the image to describe")
+        provider = None if route is None else built(self, resolver.provider_for, self.app.project, route)
         if provider is None:
             return
         found = alt_draft.draftable_images(self.app.project, replace(view.row, images=[form.reference]), self._entries)
@@ -222,11 +242,16 @@ class ImageRunsMixin:
             QMessageBox.information(self, "Nothing to draft", "The model cannot read this image: it is decorative, "
                                     "a vector file it cannot render, or the file is missing.")
             return
-        if not self.app.try_start_ollama_task("tuning a description prompt", provider):
+        lease = self.app.acquire_route_task(route.route, "tuning a description prompt")
+        if lease is None:
             return
         reference, resolved = found[0]
-        sheet = PromptTuningSheet(self.app, reference, resolved, alt_draft.build_context(self.app.project, view.row.path, reference),
-                                  provider, form.entry.hint, lambda: self.app.end_ollama_task(provider))
+        try:
+            sheet = PromptTuningSheet(self.app, reference, resolved, alt_draft.build_context(self.app.project, view.row.path, reference),
+                                      provider, form.entry.hint, lease.release)
+        except BaseException:
+            lease.release()
+            raise
         if not sheet.exec() or sheet.result_draft is None:
             return
         result = sheet.result_draft
@@ -244,22 +269,29 @@ class ImageRunsMixin:
     def _translate_all(self, only: Optional[list[str]] = None) -> None:
         """Translate what still needs it, after asking; with `only` (Retry failed) just those images."""
         picked = self._translation_backend("the descriptions of all untranslated images")
-        if picked is None or not self.app.try_start_ollama_task("translating images", picked[1].provider):
+        if picked is None:
             return
         route, backend = picked
-        queue = [image for image in alt_draft.images_needing_translation(self.app.project)
-                 if only is None or image in only]
-        if not queue:
-            QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
-                                    "current (non-stale) German translation.")
-            self.app.end_ollama_task(backend.provider)
+        lease = self.app.acquire_route_task(route.route, "translating images")
+        if lease is None:
             return
-        go, _again = confirm(self, TRANSLATE, len(queue), self.app.project.root.name, route)
-        if not go:
-            self.app.end_ollama_task(backend.provider)
-            return
-        job = translate_job("Translating descriptions to German", self.app.project, queue, backend, route)
-        self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated)
+        try:
+            queue = [image for image in alt_draft.images_needing_translation(self.app.project)
+                     if only is None or image in only]
+            if not queue:
+                QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
+                                        "current (non-stale) German translation.")
+                lease.release()
+                return
+            go, _again = confirm(self, TRANSLATE, len(queue), self.app.project.root.name, route)
+            if not go:
+                lease.release()
+                return
+            job = translate_job("Translating descriptions to German", self.app.project, queue, backend, route)
+            self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated, lease)
+        except BaseException:
+            lease.release()
+            raise
 
     def _translated(self, outcome: object) -> None:
         line = ""
@@ -306,15 +338,22 @@ class ImageRunsMixin:
                 return
             english = form.english()
         picked = self._translation_backend("this image's description text")
-        if picked is None or not self.app.try_start_ollama_task("translating this image", picked[1].provider):
+        if picked is None:
             return
         route, backend = picked
-        short, long, takeaway = english
-        entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
-        form.begin_translation(english)
-        self._translating = form
-        job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry), route)
-        self._start(job, f"{form.reference} via {backend.label}", 1, lambda outcome: self._translated_one(form, outcome))
+        lease = self.app.acquire_route_task(route.route, "translating this image")
+        if lease is None:
+            return
+        try:
+            short, long, takeaway = english
+            entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
+            form.begin_translation(english)
+            self._translating = form
+            job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry), route)
+            self._start(job, f"{form.reference} via {backend.label}", 1, lambda outcome: self._translated_one(form, outcome), lease)
+        except BaseException:
+            lease.release()
+            raise
 
     def _translated_one(self, form: ImageForm, outcome: object) -> None:
         self._translating = None

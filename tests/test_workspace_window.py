@@ -169,7 +169,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
     if theme is not None:
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
-    window.state.set_ai_route("cloud")
+    assert not window.assistant.available
     for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (850, "tiny"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
@@ -798,10 +798,19 @@ def test_closing_asks_about_a_pending_side_panel_edit_too(window, monkeypatch):
 def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path, monkeypatch):
     import threading
 
-    from slidemage.ai.providers import OllamaProvider
     from slidemage.syntax_check import SyntaxCheckResult
+    from slidemage.ai import routes
     from slidemage.ui.workspace import ai_fix
 
+    class FakeRoute:
+        id, service, is_local = "ollama", "Fake", True
+        def model_choices(self, ctx, task): return ["m"]
+        def default_choice(self, task): return "m"
+        def choice_label(self, choice): return choice
+        def split_choice(self, choice): return choice, None
+        def valid_choice(self, ctx, choice): return True
+
+    routes.register(FakeRoute())
     path = tmp_path / "abc-EN-Test-current.tex"
     path.write_text("\\slide{abc-EN-Test}\nBODY\n", encoding="utf-8", newline="")
     held, aborted = threading.Event(), threading.Event()
@@ -818,21 +827,21 @@ def test_closing_the_window_aborts_and_joins_a_running_ai_check(window, tmp_path
             aborted.set()
             held.set()
 
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["m"])
-    monkeypatch.setattr(ai_fix, "provider_from_combo", lambda *a: type("P", (), {"label": "m", "is_local": True})())
+    monkeypatch.setattr(ai_fix, "picked_route", lambda *a: type("R", (), {"route": "ollama", "label": "m"})())
+    monkeypatch.setattr(ai_fix, "built", lambda *a: type("P", (), {"label": "m", "is_local": True})())
     monkeypatch.setattr(ai_fix.syntax_check, "SyntaxChecker", Checker)
     window.open_slide_editor(path)
     file = window.centre.source.current
     file.ask_ai_button.click()
     worker = file.fix_panel._worker
-    assert worker is not None and worker.isRunning() and window._ollama_task_label == "checking syntax"
+    assert worker is not None and worker.isRunning() and (window._route_tasks.get("ollama") or (None,))[0] == "checking syntax"
     window.state.set_mode("preview")           # the file is kept only because its check runs
     window.centre.source.show_path(None)
     assert file.keep_open
 
     assert window.close() is True
     assert aborted.is_set() and worker.isFinished()
-    assert window._ollama_task_label is None and not file.fix_panel.running
+    assert (window._route_tasks.get("ollama") or (None,))[0] is None and not file.fix_panel.running
 
 
 def test_the_right_column_hosts_the_side_panels_and_is_refreshed_with_the_decks(window, monkeypatch):
@@ -1323,3 +1332,12 @@ def test_a_written_slide_file_drops_the_outline_until_the_list_rebuilds(qapp, mo
     assert window.centre.source.current.write_now()
     window.slide_list._apply_preview_rows(window.slide_list._outline)           # does not bring a dropped outline back
     assert state.current_outline() is None
+
+
+def test_without_ai_the_editor_and_manual_images_remain_available(window):
+    from slidemage.ai import routes
+
+    assert not routes.all()
+    assert window.assistant.isHidden()
+    assert window.commands["images"].visible(window)
+    assert not window.commands["ai:setup"].visible(window)

@@ -34,10 +34,11 @@ def replace_with_retry(source: Path, target: Path, attempts: int = 40, delay: fl
             time.sleep(delay)
 
 
-def atomic_write(path: Path, data: str | bytes, *, expected_text: str | None = None) -> None:
+def atomic_write(path: Path, data: str | bytes, *, expected_text: str | None = None, mode: int | None = None) -> None:
     """Write `data` (text as UTF-8 with plain "\\n" line ends) to a temporary file beside `path`, flush it to
     disk, then replace `path` with it. Missing folders are created. An expected_text mismatch
-    immediately before replacement raises StaleFileError and leaves the current file untouched."""
+    immediately before replacement raises StaleFileError and leaves the current file untouched. `mode` sets the
+    new file's permission bits (default: the private ones of a temporary file)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
@@ -46,6 +47,8 @@ def atomic_write(path: Path, data: str | bytes, *, expected_text: str | None = N
             handle.write(data.encode("utf-8") if isinstance(data, str) else data)
             handle.flush()
             os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(temporary, mode)
         replace_with_retry(temporary, path, attempts=8, expected_text=expected_text)
     finally:
         temporary.unlink(missing_ok=True)
@@ -57,10 +60,16 @@ def read_text_exact(path: Path) -> str:
         return f.read()
 
 
-def write_text_exact(path: Path, text: str) -> None:
-    """Write `text` as it is: no line-ending translation."""
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
+def write_text_exact(path: Path, text: str, *, expected_text: str | None = None) -> None:
+    """Write `text` as it is: UTF-8, no line-ending translation. The file is replaced, never truncated in
+    place: the text goes to a temporary file beside it, which then takes its place (atomic_write), so a failure
+    midway leaves the old file complete. An existing file keeps its permission bits, and a symbolic link keeps
+    pointing at its target. expected_text, if given, is checked against the file immediately before the
+    replacement (StaleFileError on a mismatch)."""
+    if path.is_symlink():
+        path = path.resolve()
+    mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    atomic_write(path, text, expected_text=expected_text, mode=mode)
 
 
 def read_json(path: Path, kind: type = dict) -> Any:

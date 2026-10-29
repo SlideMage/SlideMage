@@ -2,8 +2,8 @@
 
 LaTeX/beamer setup for research and teaching slides, built on its own beamer theme (a modified fork of
 Romain Noël's [Gotham theme](https://gitlab.com/RomainNOEL/beamertheme-gotham)) with institution color/logo
-customization layers, plus SlideMage, a PySide6 desktop app (one workspace per deck, with an
-AI assistant) for compiling decks and managing slide IDs, image descriptions, and
+customization layers, plus SlideMage, a PySide6 desktop app (one workspace per deck, and an AI
+assistant from the Claude and Ollama plugins) for compiling decks and managing slide IDs, image descriptions, and
 accessible transcripts.
 
 > **This repository is self-contained**: the framework, the app and a small
@@ -67,11 +67,14 @@ dist\SlideMage.exe --project example     # Windows
 ```
 
 The one-file build is about 300 MB: besides Qt it carries QtWebEngine (the Claude Code
-tab's terminal is xterm.js in a web view), the bundled fonts and the `anthropic` client.
+tab's terminal is xterm.js in a web view), the bundled fonts and the Anthropic API client (standard library, no SDK).
 It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
 a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
 `libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
-library); install them with the package manager. The **Claude Code** route is optional: it
+library); install them with the package manager. Since v9.1 AI comes from plugins (**Settings → Plugins**,
+see "Plugins" below): the **Claude** plugin supplies the Claude Code route and the Anthropic API, the **Ollama**
+plugin the local models; without them SlideMage is a complete editor with no assistant, AI menu or AI commands.
+The **Claude Code** route is optional: it
 runs the user's own `claude` command (installed and logged in); without it the assistant
 says so and nothing is sent, and everything else works. A cloud model in the chat needs an
 Anthropic API key (`ANTHROPIC_API_KEY`, else the system keychain through the optional
@@ -95,7 +98,7 @@ screenshots.
   history and the update check are also in Deck settings → General → Maintenance and Settings → Project / About.
 - **Left:** the slide list in sections (find, drag and drop, multi-select, *Call as*
   variants, undo); **centre:** the focused slide as a page, as source (with lint, Insert,
-  Cite, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
+  Cite, QR, Ask AI to fix), side by side, or as facts (rename, duplicate, delete);
   **right:** one side panel for the slide (used in decks, versions, visibility,
   citations, language, image descriptions, transcript entry, speaker notes) above the AI
   assistant.
@@ -106,10 +109,12 @@ screenshots.
   opens by itself on a failure.
 - **Images page:** a full-window page for describing, drafting, translating and reviewing
   image descriptions (see "Describing images").
-- **AI assistant** (one card under the side panels, 360 px column; *Focus assistant* hides the
+- **AI assistant** (supplied by the Claude and Ollama plugins since v9.1: without one, the card, the AI menu and the
+  AI commands are hidden; one card under the side panels, 360 px column; *Focus assistant* hides the
   panels). Its header names the route (Local · Ollama, Cloud · Claude Code, Cloud ·
   Anthropic API) and what the conversation runs on, has a scope (*This slide* | *Whole deck*)
-  with its target, the two most relevant tasks the route can run (Translate, Fix LaTeX
+  with its target (in *This slide* the assistant asks to switch to *Whole deck* before it touches other slides or
+  the deck), the two most relevant tasks the route can run (Translate, Fix LaTeX
   errors, Make more concise, ...; the others are in Ctrl+K) and *New conversation*, which
   clears this route's conversation only. A task on one slide (also the Language panel's
   Translate) opens a **task card** in place of the conversation: Generate, then Review
@@ -169,7 +174,8 @@ screenshots.
   AI dialogs show the route read-only as a small badge under their title); each route keeps its own models and its own chat draft
   and conversation, a task a route cannot do is
   refused instead of using another route, and the first cloud request in a project says
-  what will be sent. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
+  what will be sent. AI requests honour the proxy settings of the network, and **Stop** ends a connection
+  that is stuck. On Cloud · Claude Code the body is a terminal running the user's own installed `claude`
   in the project folder (permissions are Claude Code's). In **AI setup → Chat**, choose a
   saved model and effort for new sessions. While Claude Code is running, a changed default asks
   what to do with it: **Switch now** restarts Claude Code on it in the same conversation (SlideMage
@@ -180,9 +186,11 @@ screenshots.
   **Claude Code default** keeps Claude Code's own model setting. SlideMage serves it
   the focused slide over a local MCP server and blocks edits to protected parts with a hook.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
-- **Settings** (File → Settings…): General, AI (German address of translations), Cloud (the API
-  key), Ollama (models, updating, deleting), Prompts (image-description and translation
-  prompts). The model of each task is in AI setup, not here.
+- **Settings** (File → Settings…): General, AI, Presentation, Project, About and Plugins; each tab scrolls when
+  it does not fit the screen. Since v8.72 the **AI** tab (there only when an AI plugin is installed) is one
+  tab with a section per service: the German address of translations, Claude's API key, Ollama's models
+  (updating, deleting), Prompts (image-description and translation prompts), and sections that plugins add. The
+  model of each task is in AI setup, not here. **Plugins** (also Help → Plugins…) is described below.
 
 ## Releases and updates
 
@@ -234,9 +242,9 @@ higher major number -- is **always asked about, even in automatic mode**:
 the dialog shows the `BREAKING:` paragraphs and offers *Install anyway*,
 *Stay on vN.x* (installs the newest non-breaking release instead, if there
 is one) or *Not now*. **Check for updates…** (Settings → About) works in every mode.
-Because the repository is private, all of this needs a GitHub token with
-read access to it (Settings → General → Updates, or
-`$SLIDEMAGE_GITHUB_TOKEN`). A source checkout is updated with `git pull`
+The repository (`github.com/SlideMage/SlideMage`) is public, so none of this needs a token; for a private
+copy, add a GitHub token with read access to it (Settings → General → Updates, or
+`$SLIDEMAGE_GITHUB_TOKEN`). Closing SlideMage asks about Update version too, when that setting is on (see below). A source checkout is updated with `git pull`
 instead and never checks on start.
 
 **Project format.** Opening a project writes
@@ -271,6 +279,117 @@ up first); a git checkout -- a developer's `SlideMage/latex` -- is never
 touched. A project without the manual is offered to add it (only missing
 files are added, nothing is overwritten): the way to get the manual into a
 project of your own.
+
+## Plugins
+
+A plugin adds a feature to SlideMage from outside its core: a command, a Deck
+menu entry, a settings tab or a side-panel box. SlideMage works without any
+plugin, and none is installed by default. Three plugins carry features that used to be built in:
+**Claude** and **Ollama** (the AI: the assistant, the AI menu and AI commands, drafted image descriptions and machine
+translation; since v9.1, needing SlideMage 9.1 or newer) and **CampusOnline** (the course link of a deck, the Admin
+slides and rendering ahead of a course session; since v9.0). Without them SlideMage is a complete editor; manual
+image descriptions and translation stay. Decks keep their course link whether or not the plugin is installed.
+
+### Installing and removing
+
+On the first start, SlideMage offers the plugins of its list in a sheet (*Plugins for SlideMage*), shown
+only when the list has something in it and once per computer. The recommended plugins, Claude and Ollama, are
+marked and come first. Nothing is ticked, except a plugin for a feature you used before (an API key, a model,
+a project with course links), which is ticked with the reason; a copy that had those features before offers
+them once as *These features are now plugins*. **Install selected** installs the ticked ones (then **Restart
+now**), **Install from file…** a plugin file, **See all plugins and what they do** opens
+https://slidemage.org/plugins/, **Not now** closes the sheet. A project with course links opened without the
+CampusOnline plugin shows a hint once, with **Open Plugins** and **Don't show again**.
+
+Everything else is in **File → Settings… → Plugins** (also **Help → Plugins…**):
+
+- **Installed**: each plugin with its version and state (*Loaded*, *Disabled*,
+  *Failed to load* with **Details…**, or *Incompatible*). The **Enabled** switch
+  turns it on or off; **Update to …** and **Remove** are on the same row.
+- **Available**: the plugins of the list at https://slidemage.org/plugins/, each
+  with its summary, what it needs and what it contacts on the network. **Install**
+  installs it; **Check for plugins** fetches the list again.
+- **Install from file…**: a `.smplugin` file that is not from the list. A sheet
+  warns that it is not from the SlideMage plugin list and runs with your rights,
+  and shows its name, version and network lines. Nothing is installed until you
+  confirm. A `.sha256` file named after the plugin (`name.smplugin.sha256`) beside
+  it must match.
+
+Changes take effect after a restart: plugins load once, before the window opens. A plugin can add Settings
+tabs; AI services add sections to the AI tab.
+
+### Safety
+
+A plugin runs inside SlideMage with your rights. Plugins from the SlideMage list
+are reviewed, and each download is checked against its SHA-256 from the list before
+anything is installed. A plugin installed with **Install from file…** is not
+reviewed by SlideMage, so install only what you trust. Every archive is refused if
+it has paths outside the plugin's folder, symbolic links or compiled files
+(`.pyc`, `.so`, `.dll` and similar).
+
+### Updates
+
+The start-up update check also looks for newer releases of installed plugins from
+the list, at most once a day, in the app's update mode (**File → Settings… →
+General → Updates**, see [Releases and updates](#releases-and-updates)): *don't
+check* means no plugin check; *ask* (the default) names the plugins with a newer
+release, and **Update to …** installs one; *install automatically* installs them;
+they take effect after a restart. A plugin run from a checkout is not updated.
+
+### Where plugins live
+
+Installed plugins are in `plugins/<id>/` inside SlideMage's settings folder:
+`~/.config/slidemage/` on Linux (or `$XDG_CONFIG_HOME`),
+`~/Library/Application Support/SlideMage/` on macOS, `%APPDATA%\SlideMage\` on
+Windows. The same folder holds `plugins/state.json` (the plugins switched off),
+`plugins/catalogue.json` (the last list, for offline use) and
+`plugins/settings/<id>.json` (each plugin's settings). Caches go to the per-user
+cache folder, not the project. Removing a plugin moves its folder to `plugins/.old/`,
+which is deleted at the next start.
+
+### For plugin authors
+
+A plugin is a folder with a `plugin.toml` and a Python package named after its id,
+hyphens replaced by underscores. Start from
+https://github.com/stpalan/slidemage-plugin-template.
+
+`plugin.toml` gives `id` (lower-case letters, digits and hyphens, 2 to 32
+characters), `name`, `version` (x.y.z), `api_version = 1`, `requires_slidemage` (such
+as `>=8.71`), `summary` (at most 120 characters), `author`, `homepage`, `license`,
+and the lists `needs` and `network`, which the user reads before installing.
+`activate(host)` receives the `Host` of `slidemage.plugin_api` (`API_VERSION = 1`)
+and may register:
+
+- `add_command(id, title, run, enabled)`: a palette command; `id` starts with the
+  plugin's id.
+- `add_menu_entry("deck", command_id)`: a Deck menu entry, the only menu open to
+  plugins for now.
+- `add_deck_settings_tab(...)`, `add_settings_tab(title, build)`: tabs in the Deck
+  settings and Settings sheets.
+- `add_sidebar_box(key, title, build, size="compact", when)`: a side-panel box. Only
+  `"compact"` works for now.
+- `add_render_priority(soon)`: renders a deck earlier in the background while
+  `soon(deck)` is true.
+
+The `add_*` calls work only inside `activate()`. The other services are
+`cache_dir()`, `legacy_cache_dir()`, `settings()`, `run_in_background(work, done)`,
+`insert_positions`, `insert_slides`, `edit_deck_text`, `deck_language`, `open_url`,
+`open_deck_settings`, `log`, `show_message`, and the widgets `Page()`, `Field()` and
+`caption()`. The docstrings in `plugin_api.py` say what each does.
+
+The rules: import only `slidemage.plugin_api`, the standard library, PySide6 and
+your own package; pure Python (compiled files are refused). `activate()` runs at
+every start, so keep it quick and off the network: network work goes through
+`run_in_background`. Callbacks run on the UI thread, and a `Deck` is a snapshot.
+
+To run a checkout, set `SLIDEMAGE_PLUGIN_PATH` to the folder holding its
+`plugin.toml` (several folders are separated by `:` on Linux and macOS, `;` on
+Windows) and start SlideMage. It replaces an installed plugin with the same id.
+
+`slidemage --self-test --plugins` checks the standard-library modules a plugin may
+import and loads a minimal test plugin through the loader; the release build runs
+it on every platform. It does not load your plugin: use the checkout method for
+that. To list a plugin, submit it at https://slidemage.org/plugins/submit/.
 
 ## Project compatibility (since v5.29.0)
 
@@ -310,7 +429,7 @@ idempotent, and written all or nothing, with line endings kept.
 The framework's old name was "Slidemaster". The change `slidemage-names-and-setup-layer`
 (`src/slidemage/compat_names.py`) renames the project's `Slidemaster_preamble_<key>.tex`
 to `SlideMage_template_<key>.tex`, `Slidemaster_project_macros.tex` to
-`SlideMage_project_macros.tex` and `Slidemaster.bib` to `SlideMage.bib`, and rewrites the
+`SlideMage_project_macros.tex` and `SlideMage.bib` to `SlideMage.bib`, and rewrites the
 names inside decks, templates and `.latexmkrc` files. The environment variables are now
 `$SLIDEMAGE_LATEX` and `$SLIDEMAGE_PROJECT`; the old names are no longer read, and a
 variable still set under its old name is reported once in the log and in this sheet.
@@ -854,7 +973,7 @@ manual can't be moved into another group by accident. A copy made with
 ### Deck settings and course links
 
 **Deck settings…** (Deck menu; `Ctrl+,`) opens a sheet with the deck-wide settings
-(General, PDF output and Admin slides tabs). They are written into the deck's own
+(General and PDF output tabs, and the CampusOnline plugin's Admin slides tab). They are written into the deck's own
 .tex file, all in one go when you press **Save**, so they stay with the deck when
 it is moved, copied or archived:
 
@@ -867,7 +986,7 @@ it is moved, copied or archived:
   dark cards and gray code panels. Saved in the deck and applied to its previews
   and compiled PDFs; title and footer bars keep the institution colors.
 - **Footer text**: `\FooterText`, the left part of the footer.
-- **Course link**: a full HTTP or HTTPS URL; **Open** saves the settings and
+- **Course link** (CampusOnline plugin): a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.
 - **Where the PDFs go**: the `\deckoutputfolder` of all outputs and of each
   version, the presenter PDF and the transcript (**Browse...** picks a folder; a
@@ -885,7 +1004,9 @@ comment:
 The comment does not change the compiled slides. The link stays with the
 deck when it is moved or archived.
 
-For a linked CAMPUSonline course, open the **Admin slides** tab of the Deck settings.
+With the **CampusOnline** plugin installed (Settings → Plugins), a linked CAMPUSonline course also has the
+**Admin slides** tab in the Deck settings. Without the plugin the comment above stays in the deck, untouched, and
+the deck compiles the same.
 SlideMage reads the course's Abhaltungstermine page when the tab is first shown, asks
 which group to use when several are listed (**Course sessions**), and previews the LaTeX
 table. Choose a deck position and click **Insert slides** to create an editable schedule
@@ -898,7 +1019,7 @@ with Date/Time/Location/Session, and the new slide is named
 `<id>-EN-Course-Sessions` instead of `<id>-DE-Course-Sessions`. For an
 English deck, group names ("Standardgruppe"), session types ("Abhaltung",
 "Prüfung", ...) and remarks are translated from a fixed word list in
-`course_schedule.py`; a remark with a word that isn't on the list stays
+the plugin; a remark with a word that isn't on the list stays
 German rather than half-translated, and dates, times and rooms are kept as
 the course system lists them.
 
@@ -1309,12 +1430,14 @@ From SlideMage (the normal day-to-day path): edits in the Source view are
 compile or close the window; **Ctrl+S** writes at once and renders). With
 AutoSave on (the default) there is no unsaved state to lose. Switched off (the
 **AutoSave On | Off** after the menu bar's Help, Settings → General, or File → *Turn AutoSave off*), only
-Ctrl+S saves, and SlideMage points out unsaved files before you leave them or
+Ctrl+S saves (a deck's source and `SlideMage.bib` then show a **Save** button next to the ×, which does the same), and SlideMage points out unsaved files before you leave them or
 close the window. A slide changed since its last
 version shows a **+** after its version number (`\setSlideVersion{1-2-0+}`,
 footer `v1.2.0+`): the content is no longer exactly that version. The first
 time a slide is edited, the content as it was is frozen as its version (a slide
-with no version line counts as `1.0.0`), so no history is lost.
+with no version line counts as `1.0.0`), so no history is lost. A deck's PDF (a compile, a snapshot, a PowerPoint export) shows the last version
+of a slide marked with a **+**, not its unversioned changes; **Settings → General → Compile decks with the
+changes not yet made a version** (off by default) includes them instead.
 
 When the changes are worth a version, press **Update version**: it asks how
 significant the change since the last version is -- **Major**, **Minor** or
@@ -1327,7 +1450,8 @@ number is never reused. A typo fix needs no version at all: keep typing, the
 **+** stays. `current.tex` itself is never renamed -- only the frozen snapshot
 gets the `-v<version>.tex` suffix, exactly as in the manual workflow. The
 **Slide versions** panel adds **Freeze as vX.Y.Z** (Major, Minor or Patch),
-which does the same as Update version from there.
+which does the same as Update version from there. With **Ask about Update version when leaving a changed
+slide** on (Settings → General), closing SlideMage asks it for each slide you changed, the open one included.
 
 **Settings → General → Render the Preview after each autosave** (off by
 default) renders the slide again a moment after each autosave while the
@@ -1345,20 +1469,25 @@ Patch / Minor / Major choice; existing deck calls keep following current or thei
 When you switch to another window, or leave SlideMage untouched for a minute, it renders the
 slides of your decks in the background (never during a presentation; coming back to SlideMage
 stops it at once, so the app answers right away), with every reveal step, so they are ready when you open a deck. The
-decks go in the order you used them (the open deck first; a deck whose course session is
-coming up, from the schedule SlideMage already fetched, counts as used), within a deck the
+decks go in the order you used them (the open deck first; with the CampusOnline plugin, a deck whose course session is
+coming up counts as used), within a deck the
 instructor version comes first, then During course and After course, and within a version
 the slides start where you last looked. A deck whose files did not change is not rendered
 again. Whatever you do stops it: a render you ask for, a compile or an AI task goes first, and
 the slider's renders never wait for it. A small dial at the bottom of the centre column shows how much of all your decks' previews is up to date (hover for
-details); clicking it opens a window with every deck, its three versions and what is outstanding, with **Pause** and
-**Render now**. A chip next to it says how many are left and can leave the open deck out, and once every preview is
-rendered says so in green, "All previews are up to date."; on battery nothing runs.
+details); clicking it, or the status text next to it, opens the same *Background previews* window: a large dial, every deck
+with its three versions and what is outstanding, the disk space the stored previews take, a tick per deck that turns
+its background previews on or off, and **Pause**, **Render now** and **Try failed slides again**. The status text
+says how many are left (it can leave the open deck out), "Preview rendering paused" with the reason while paused,
+and once every preview is rendered "All previews are up to date." as plain green text; on battery nothing runs.
+Contents, agenda and section slides, which depend on the whole deck, get their preview when you select them and,
+once the deck has been compiled, in the background too.
 
 A prepared render is only used while everything it was made from is unchanged: the slide,
 the deck's preamble, the template files, the images and the bibliography it reads, and the TeX
 engine. It is never shown as current otherwise, and a slide that fails to render is tried again
-only after you changed something. The renders are kept on this computer, outside the project folder (your user cache folder, so a synced project
+only after you changed something, except that failed slides get one more try on their own once everything else is
+rendered. A new alt text only makes the previews of the slides that show that picture out of date. The renders are kept on this computer, outside the project folder (your user cache folder, so a synced project
 never carries them) up to
 the disk limit in **Settings → General → Background previews** (2 GB by default); archiving a deck
 removes the renders only it used. Set `SLIDEMAGE_NO_BACKGROUND_PREVIEWS=1` to keep SlideMage from
@@ -1516,12 +1645,12 @@ all…**. As of 2026-08-25 every existing image has a German translation.
 
 Exactly what gets sent to the model — the instruction text, and how many
 blank lines separate it from the text to translate — is configurable per
-model and per language pair from **File → Settings… → Prompts**, since different models expect different prompt shapes (a
+model and per language pair from **File → Settings… → AI → Prompts**, since different models expect different prompt shapes (a
 dedicated MT model wants a short bare instruction; a general
 instruction-tuned model tolerates a longer one). A model/pair with no
 specific entry there falls back to that same tab's single editable
 **default prompt**. The same Settings sheet also holds the dark-mode
-toggle (General) and an **Ollama** tab for
+toggle (General) and an **Ollama** section in the AI tab (Ollama plugin) for
 freeing disk space — lists every installed model with its on-disk size
 and can delete one via Ollama's own reference-counted deletion, which
 only removes files no other installed model still shares.
@@ -1820,7 +1949,9 @@ pixel-identical; everything below is what new slides should use.
   a live preview, the recommended height for a seminar room and a lecture
   hall (a phone reads a module from about 500 times its size away; the
   farthest seat is about 4 or 8 screen heights away), PDF or PNG in
-  `media/`, and a copy as PDF, PNG, SVG or EPS anywhere else. The assistant
+  `media/`, and a copy as PDF, PNG, SVG or EPS anywhere else. *On the slide* puts the call where the cursor is or in
+  a corner (as `\cornerfigure[corner=se]{...}`, which the **Insert** menu has as well), and a new code has no
+  caption unless you choose one; with the cursor on a code's line, **QR** changes that code. The assistant
   makes codes with its `make_qr_code` tool. What a code was made from is
   kept in `media/qr-codes.json`, its alt text in `media/alt-text.json`.
 - **`\SMTikzword{name}{text}`** -- a word as a named TikZ node, so an
@@ -2891,8 +3022,8 @@ generated compile-time projection — see "Repository layout" above.)
 and the palette; the list on its left is
 slide-centric, filtered by state, and the top bar's **Close images** returns to the deck):
 
-1. **Draft all…** runs a vision model (a local Ollama model, or a Claude model when the AI switch is
-   on Cloud) over every image that
+1. **Draft all…** (with the Ollama or Claude plugin) runs a vision model (a local Ollama model, or a Claude model
+   when the AI switch is on Cloud) over every image that
    still needs a description — once per image, not once per slide it appears
    on. It writes each one as it finishes and derives its queue from the
    store, so it is resumable — stop it, close the app, come back tomorrow.

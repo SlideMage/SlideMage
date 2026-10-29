@@ -308,7 +308,6 @@ def test_settings_opens_at_the_deck_groups_and_the_deck_switcher_follows_a_saved
     window = build_window(monkeypatch, ProjectContext.at(root))
     assert [h for h, decks in menus.deck_sections(window.decks, window.deck_groups) if decks] == ["Course decks"]
     sheet = SettingsSheet(window, focus=DECK_GROUPS)      # what window.open_deck_groups() opens
-    sheet._loader.wait()
     assert sheet.current_tab() == PROJECT and sheet.focusWidget() is sheet.project_tab.deck_groups.list
     fill_group_sheet(monkeypatch, heading="Workshops", label="Workshop", tag="workshops")
     sheet.project_tab.deck_groups.add_group()

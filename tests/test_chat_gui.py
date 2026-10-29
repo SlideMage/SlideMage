@@ -19,9 +19,9 @@ from PySide6.QtCore import QPoint, QRect
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from slidemage import app_settings, compiler
-from slidemage.ai import ai_profile, credentials, resolver
+from slidemage.ai import ai_profile
 from slidemage.ai.agent_types import EDIT_ASK, EDIT_AUTO, ToolCall
-from slidemage.ai.providers import ANTHROPIC_FALLBACK_MODELS, Cancelled
+from slidemage.ai.providers import Cancelled
 from slidemage.deck_scan import scan_decks
 from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import compile_actions
@@ -48,28 +48,29 @@ def pump(seconds=0.0):
 
 
 @pytest.fixture
-def env(qapp, tmp_path, monkeypatch):
-    """The main window on a throwaway project, the chat on Cloud · Anthropic API with a key, and every request
-    answered by the provider the test scripts."""
+def env(qapp, tmp_path, monkeypatch, fake_routes):
+    """The main window on a throwaway project, with scripted providers on fake routes."""
     root = make_project(monkeypatch, tmp_path / "project")
     context = ProjectContext.at(root)
-    monkeypatch.setenv(credentials.ENV_VAR, "sk-test")
-    ai_profile.set_cloud_conn(context, ai_profile.API)
+    ai_profile.set_cloud_conn(context, fake_routes.cloud.id)
     ai_profile.set_mode(context, ai_profile.CLOUD)
-    ai_profile.set_model_choice(context, ai_profile.API, ai_profile.CHAT, "claude-sonnet-5-5")
+    ai_profile.mark_cloud_seen(context)
+    ai_profile.set_model_choice(context, fake_routes.cloud.id, ai_profile.CHAT, "fake-1")
     window = build_window(monkeypatch, context)
     window.show()
     window.state.set_mode("source")     # no Preview render thread to outlive the test
     window.state.set_deck(next(d for d in scan_decks(window.project) if d.name == "test"))
     window.state.set_focused_slide("abc")
     providers = []
-    monkeypatch.setattr(resolver, "provider_for", lambda _ctx, route: providers.pop(0))
+    for route in (fake_routes.local, fake_routes.cloud):
+        monkeypatch.setattr(route, "provider", lambda _ctx, _route: providers.pop(0))
 
     class Env:
         pass
 
     e = Env()
     e.window, e.root, e.chat, e.providers = window, root, window.assistant.chat, providers
+    e.routes = fake_routes
     e.path = root / SLIDE
     yield e
     e.chat.shutdown()
@@ -183,13 +184,13 @@ def test_a_six_line_input_and_send_row_fit_at_640px(env):
 # -- the text of an answer, and the cards ---------------------------------------------------------
 
 def test_the_answer_streams_into_the_list_with_the_provider_label(env):
-    script(env, reply("All good, nothing to change."), label="claude-sonnet-5-5 · cloud")
+    script(env, reply("All good, nothing to change."), label="fake-1 · cloud")
     ask(env, "Check this slide")
     assert [w.raw for w in widgets(env, AssistantText)] == ["All good, nothing to change."]
     assert len(widgets(env, UserBubble)) == 1
     assert env.chat._empty.isHidden() and not env.chat.status.isVisible()
     assert env.chat.send_button.isVisible() and not env.chat.stop_button.isVisible()
-    assert any(w.text() == "claude-sonnet-5-5 · cloud" for w in widgets(env, QLabel))     # who answers
+    assert any(w.text() == "fake-1 · cloud" for w in widgets(env, QLabel))     # who answers
     assert len(env.chat.session.history) == 2                                           # the request and the answer
     assert slot(env) is None
 
@@ -209,31 +210,10 @@ def test_tool_calls_become_cards_with_their_result_and_failures_open(env):
 
 def test_a_failed_request_ends_in_a_notice_not_a_crash(env):
     from slidemage.ai.providers import ProviderError
-    script(env, ProviderError("Anthropic unreachable: boom"))
+    script(env, ProviderError("Fake route unreachable: boom"))
     ask(env)
-    assert [n.text() for n in widgets(env, Notice)] == ["Anthropic unreachable: boom"]
+    assert [n.text() for n in widgets(env, Notice)] == ["Fake route unreachable: boom"]
     assert not env.chat.session.running
-
-
-def test_a_local_model_answers_through_ollama_and_holds_the_slot(env):
-    from fake_http import Server, ollama_ndjson
-
-    from slidemage.ai.providers import OllamaProvider
-    server = Server()
-    server.content_type = "application/x-ndjson"
-    server.script = [ollama_ndjson(["Looking."], [("read_file", {"path": SLIDE})]), ollama_ndjson(["Fine as is."])]
-    try:
-        ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
-        ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3")
-        env.providers.append(OllamaProvider("qwen3", host=server.url))
-        assert ai_profile.resolve(env.window.project, ai_profile.CHAT).label == "qwen3 · Ollama"
-        ask(env)
-        assert [type(w).__name__ for w in widgets(env, (AssistantText, ToolCard))] == [
-            "AssistantText", "ToolCard", "AssistantText"]
-        assert widgets(env, AssistantText)[-1].raw == "Fine as is." and not widgets(env, Notice)
-        assert env.window._ollama_task_label is None
-    finally:
-        server.close()
 
 
 # -- edits against the real buffers ---------------------------------------------------------------
@@ -339,11 +319,14 @@ def test_the_permission_is_remembered(env):
 
 @pytest.mark.parametrize("local", [True, False], ids=["local", "cloud"])
 def test_stop_ends_a_run_that_waits_for_the_model(env, monkeypatch, local):
-    if not local:
+    if local:
+        ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+        ai_profile.set_model_choice(env.window.project, env.routes.local.id, ai_profile.CHAT, "fake-1")
+    else:
         ai_profile.mark_cloud_seen(env.window.project)
     script(env, blocked()).is_local = local
     env.chat.send("go")
-    assert slot(env) == ("answering in the chat" if local else None)
+    assert slot(env) == "answering in the chat"
     wait_until(lambda: env.chat.stop_button.isVisible())
     assert env.chat.status.isVisible()
     env.chat.stop_button.click()
@@ -429,69 +412,32 @@ def open_route_menu(env):
     return next(w for w in QApplication.topLevelWidgets() if type(w).__name__ == "PopoverMenu" and w.isVisible())
 
 
-def test_on_claude_code_the_chat_is_the_terminal_and_nothing_is_sent(env):
-    ai_profile.set_cloud_conn(env.window.project, ai_profile.CLAUDE_CODE)
-    env.chat.refresh_route()
-    assert env.chat.route_chip.text() == "Claude Code · terminal"
-    assert "terminal" in env.chat.route_note.text() and not env.chat.route_note.isHidden()
-    env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble)   # nothing was sent, no other model used
-    assert [n.text() for n in widgets(env, Notice)] == [resolver.CHAT_IN_TERMINAL]
-
-
 def items(menu):
     return [(entry[1], entry[3], entry[4]) for entry in menu._entries if entry[0] == "item"]
 
 
-def test_the_picker_lists_the_local_models_that_call_tools_and_marks_the_default(env):
-    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
-    env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "old-model:7b")
-    env.chat.refresh_route()
+def test_route_model_picker_is_per_conversation_and_follows_the_active_route(env):
     menu = open_route_menu(env)
-    assert items(menu) == [                                                          # no cloud models on this route
-        ("old-model:7b", "default · not installed, or cannot call tools", "check"),
-        ("qwen3:8b", "this chat only", ""), ("llama3.1:8b", "this chat only", ""), ("setup", "", "")]
+    assert items(menu)[:2] == [("fake-1", "default", "check"), ("fake-2", "this chat only", "")]
     menu.close()
-
-
-def test_a_model_picked_in_the_menu_is_for_this_chat_only_and_the_default_stays(env):
-    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
-    env.chat._local_models = ["qwen3:8b", "llama3.1:8b"]
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
-    env.chat._set_route("llama3.1:8b")
-    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == "qwen3:8b"
-    assert env.chat.route_chip.text() == "llama3.1:8b · Ollama" and env.chat.route().model == "llama3.1:8b"
-    assert env.window.assistant.header.route_note.startswith("Chat with llama3.1:8b")
-    menu = open_route_menu(env)
-    assert items(menu)[:2] == [("qwen3:8b", "default", ""), ("llama3.1:8b", "this chat only", "check")]
-    menu.close()
-    env.chat._set_route("qwen3:8b")                       # the default again: nothing is overridden
-    assert env.chat._model == "" and env.chat.route_chip.text() == "qwen3:8b · Ollama"
-    env.chat._set_route("llama3.1:8b")
-    env.chat.new_chat()                                    # a new conversation forgets the pick
-    assert env.chat._model == "" and env.chat.route_chip.text() == "qwen3:8b · Ollama"
-
-
-def test_the_picker_of_the_api_route_lists_its_models(env):
-    menu = open_route_menu(env)
-    assert [key for key, _meta, _icon in items(menu)] == [*ANTHROPIC_FALLBACK_MODELS, "setup"]
-    assert all(row.isEnabled() for row in menu._rows)
-    assert dict((key, meta) for key, meta, _icon in items(menu))["claude-sonnet-5-5"] == "default"
-    menu.close()
-    env.chat._set_route("claude-opus-5-5")
-    assert env.chat.route_chip.text() == "claude-opus-5-5 · API"
-    assert ai_profile.model_choice(env.window.project, ai_profile.API, ai_profile.CHAT) == "claude-sonnet-5-5"
-    assert ai_profile.model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT) == ""     # Local keeps its own
-
-
-def test_a_model_picked_for_one_route_stays_with_it(env):
-    env.chat._set_route("claude-opus-5-5")
-    ai_profile.set_model_choice(env.window.project, ai_profile.LOCAL, ai_profile.CHAT, "qwen3:8b")
+    env.chat._set_route("fake-2")
+    assert env.chat.route().model == "fake-2"
+    assert ai_profile.model_choice(env.window.project, env.routes.cloud.id, ai_profile.CHAT) == "fake-1"
     env.window.state.set_ai_route(ai_profile.LOCAL)
-    assert env.chat.route().model == "qwen3:8b"
-    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.API)
-    assert env.chat.route().model == "claude-opus-5-5"
+    assert env.chat.route().model == "fake-1"
+    env.window.state.set_ai_route(ai_profile.CLOUD, env.routes.cloud.id)
+    assert env.chat.route().model == "fake-2"
+    env.chat.new_chat()
+    assert env.chat.route().model == "fake-1"
+
+
+def test_unavailable_route_explains_why_nothing_was_sent(env):
+    env.routes.cloud.problem_text = "The fake route is unavailable."
+    env.chat.refresh_route()
+    assert env.chat.route_note.text() == env.routes.cloud.problem_text
+    env.chat.send("go")
+    assert not env.chat.session.running and not widgets(env, UserBubble)
+    assert widgets(env, Notice)[-1].text() == env.routes.cloud.problem_text
 
 
 def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
@@ -504,33 +450,6 @@ def test_while_a_run_is_going_the_model_and_the_scope_stay_as_they_are(env):
     wait_until(lambda: not env.chat.session.running)
     pump()
     assert env.chat.route_chip.isEnabled()
-
-
-def test_only_one_question_to_ollama_about_local_models_is_out_at_a_time(env, monkeypatch):
-    started = []
-    monkeypatch.setattr(chat_view.background, "start_detached", started.append)
-    env.chat._local_loader = None
-    env.chat._load_local_models()
-    env.chat._load_local_models()
-    assert len(started) == 1
-    env.chat._on_local_models(["qwen3:8b"])
-    assert env.chat._local_models == ["qwen3:8b"]
-    env.chat._load_local_models()
-    assert len(started) == 2
-
-
-def test_without_a_key_or_a_chosen_model_the_chat_says_what_to_do(env, monkeypatch):
-    monkeypatch.delenv(credentials.ENV_VAR)
-    credentials.set_api_key(env.window.project, "")        # the one a test project's settings file holds
-    env.chat.refresh_route()
-    assert "API key" in env.chat.route_note.text()
-    env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble)
-    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)         # Local has no model until one is chosen
-    env.chat.refresh_route()
-    assert "Choose an Ollama model for chat" in env.chat.route_note.text()
-    env.chat.send("go")
-    assert not env.chat.session.running and not widgets(env, UserBubble)
 
 
 # -- the palette -------------------------------------------------------------------------------------------
@@ -551,24 +470,27 @@ def test_the_palette_row_opens_the_chat_and_sends_the_text(env):
     assert len(widgets(env, UserBubble)) == 1 and widgets(env, AssistantText)[0].raw == "On it."
 
 
-# -- the Ollama slot -------------------------------------------------------------------------------------
+# -- the route slot -------------------------------------------------------------------------------------
 
 def slot(env):
-    return env.window._ollama_task_label
+    return (env.window._route_tasks.get(env.window.state.ai_route) or (None,))[0]
 
 
 @pytest.mark.parametrize("entry, text", [
     ("send", "go"), ("ask", "Make this slide more concise"),
 ], ids=["message", "suggestion"])
-def test_a_busy_ollama_slot_keeps_the_chat_from_starting(env, monkeypatch, entry, text):
+def test_a_busy_route_slot_keeps_the_chat_from_starting(env, monkeypatch, entry, text):
+    ai_profile.set_mode(env.window.project, ai_profile.LOCAL)
+    ai_profile.set_model_choice(env.window.project, env.routes.local.id, ai_profile.CHAT, "fake-1")
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args: warned.append(args[2]))
-    assert env.window.try_start_ollama_task("drafting descriptions", ScriptedProvider())
+    lease = env.window.acquire_route_task(env.routes.local.id, "drafting descriptions")
+    assert lease is not None
     script(env, reply("never"))
     getattr(env.chat, entry)(text)
     assert not env.chat.session.running and not widgets(env, UserBubble) and env.chat.composer.toPlainText() == text
     assert "Drafting descriptions is already running" in warned[0]
-    env.window.end_ollama_task()
+    lease.release()
 
 
 def test_a_start_that_fails_gives_the_slot_back_and_leaves_the_chat_idle(env, monkeypatch):
@@ -587,16 +509,6 @@ def test_the_tools_menu_entry_opens_the_chat_on_this_slide_ready_to_type(env):
     env.chat.scope.set_current("deck")
     env.window.focus_chat()
     assert env.window.assistant._stack.currentWidget() is env.chat and env.chat.scope.current() == "slide"
-    assert not env.chat.session.running and not widgets(env, UserBubble)
-
-
-def test_on_claude_code_the_chat_entries_say_the_conversation_is_the_terminal(env):
-    env.window.state.set_ai_route(ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
-    shown = []
-    env.window.toast.show_message = shown.append
-    env.window.ask_chat("hello")
-    env.window.focus_chat()
-    assert shown == [resolver.CHAT_IN_TERMINAL] * 2
     assert not env.chat.session.running and not widgets(env, UserBubble)
 
 
@@ -626,14 +538,12 @@ def test_the_workspace_answers_from_the_buffers(env):
 
 @pytest.mark.parametrize("tool", ["read_buffer", "lint", "render_preview", "get_focus"])
 @pytest.mark.parametrize("dirty", [False, True])
-def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, tool, dirty):
+def test_tools_check_current_revision_before_disk_sync_polls(env, monkeypatch, tool, dirty):
     from conftest import SLIDE_TEXT
-    from mcp_client import Client
     from slidemage import latex_lint, preview_target, slide_snapshot
-    from slidemage.ai.mcp_server import McpServer
     from slidemage.ai.tools import CLAUDE_CODE_TOOLS, build_toolbox
 
-    # Use the MCP handler directly: no terminal or DiskSync poll can absorb the write first.
+    # Call the core tools directly, before a DiskSync poll can absorb the write.
     ws = env.chat.workspace
 
     def toolbox():
@@ -642,7 +552,7 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
 
     file = open_buffer(env, dirty=dirty)
     before = file.editor.text()
-    disk_text = SLIDE_TEXT.replace("\r\n", "\n").replace("First point", "Claude's new point") + "\\begin{itemize}\n"
+    disk_text = SLIDE_TEXT.replace("\r\n", "\n").replace("First point", "The new point") + "\\begin{itemize}\n"
     env.path.write_bytes(disk_text.replace("\n", "\r\n").encode())
     checked, reloaded = [], []
     real_lint, real_reload = latex_lint.lint_text, env.window.centre.disk_changed
@@ -672,13 +582,10 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
     Image.new("RGB", (16, 9), "white").save(png_buffer, format="PNG")
     png = png_buffer.getvalue()
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((png, png), ()))
-    server = McpServer(toolbox)
-    client = Client(server)
-    monkeypatch.setattr(client, "raw", lambda body: (200, server.handle(body)))
     args = {"path": SLIDE} if tool in ("read_buffer", "lint") else {}
-    result = on_thread(lambda: client.call(tool, **args))
-    assert not result.get("isError"), result
-    text = result["content"][0]["text"]
+    result = on_thread(lambda: toolbox().execute(call(tool, **args)))
+    assert not result.is_error, result.text
+    text = result.text
     expected = before if dirty else disk_text
     plusless = slide_versioning.without_plus
     assert plusless(file.editor.text()) == expected and file.dirty == dirty   # an outside edit gets the "+"
@@ -689,7 +596,7 @@ def test_mcp_checks_current_revision_before_disk_sync_polls(env, monkeypatch, to
     else:
         assert "editor (unsaved)" in text if dirty else "file" in text and "unsaved" not in text
     if tool == "read_buffer":
-        assert "% typed" in text if dirty else "Claude's new point" in text
+        assert "% typed" in text if dirty else "The new point" in text
     else:
         assert expected in [slide_versioning.without_plus(t) for t in checked]
     if tool in ("lint", "get_focus"):
@@ -715,10 +622,10 @@ def test_a_deck_the_agent_changed_goes_through_the_headers_and_the_slide_list(en
 def test_the_cloud_consent_is_the_windows_question(ctx, env, monkeypatch):
     asked = []
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.StandardButton.Yes)
-    from slidemage.ai.providers import AnthropicProvider
+    from fake_routes import FakeProvider
     ws = env.chat.workspace
-    assert on_thread(lambda: ws.confirm_cloud(AnthropicProvider("claude-sonnet-5-5"))) is True
-    assert "cloud (claude-sonnet-5-5 · cloud)" in asked[0]
+    assert on_thread(lambda: ws.confirm_cloud(FakeProvider("fake-1", is_local=False))) is True
+    assert "cloud (fake-1)" in asked[0]
     assert "rendered previews" in asked[0] and ai_profile.cloud_seen(env.window.project)
 
 
@@ -1021,3 +928,25 @@ def test_version_notification_obeys_live_render_setting(env, monkeypatch):
     app_settings.set(window.project, LIVE_RENDER_SETTING_KEY, True)
     window.after_version_updates([path, path])
     assert calls == [True]
+
+
+def test_route_owned_surface_keeps_its_conversation_and_confirms_ending_it(env):
+    from fake_chat import FakeChatSurface
+
+    env.routes.cloud.surface_factory = FakeChatSurface
+    env.window.assistant.refresh_models()
+    surface = env.window.assistant.surface_for(env.routes.cloud.id)
+    env.window.assistant._show_body()
+    assert env.window.assistant._stack.currentWidget() is surface
+    surface.replies.append("A scripted answer")
+    surface.composer.setText("Hello")
+    surface.send()
+    assert surface.turns == ["Hello"] and surface.answer.text() == "A scripted answer"
+    env.window.ai_route.request(ai_profile.LOCAL)
+    assert env.window.ai_route.popover_kind == "session" and surface.session_live
+    env.window.ai_route._end_session()
+    assert surface.stopped and env.window.state.ai_mode == ai_profile.LOCAL
+    env.window.state.set_ai_route(ai_profile.CLOUD, env.routes.cloud.id)
+    assert surface.turns == ["Hello"]
+    env.window.assistant.new_conversation()
+    assert surface.turns == [] and surface.answer.text() == "" and surface.restarts == [("", False)]

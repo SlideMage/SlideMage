@@ -47,14 +47,34 @@ def _keep(thread: QThread, on_done: Optional[Callable[[], None]] = None, delete:
     if app is not None and not app.property("_slidemage_background_quit_hook"):
         app.aboutToQuit.connect(_wait_for_threads)
         app.setProperty("_slidemage_background_quit_hook", True)
+    watch = _running.get(thread)
+    if watch is not None:
+        previous = watch.on_done
+        if previous is not None and on_done is not None:
+            def both() -> None:
+                try:
+                    previous()
+                finally:
+                    on_done()
+            watch.on_done = both
+        elif on_done is not None:
+            watch.on_done = on_done
+        watch.delete = watch.delete or delete
+        return watch
     watch = _running[thread] = _Watch(thread, on_done, delete)
     return watch
 
 
 def start_detached(thread: QThread, on_done: Optional[Callable[[], None]] = None) -> None:
     """Start `thread`; `on_done()` runs on the GUI thread once it has ended."""
-    _keep(thread, on_done)
-    thread.start()
+    watch = _keep(thread, on_done)
+    try:
+        thread.start()
+    except BaseException:
+        _running.pop(thread, None)
+        thread.finished.disconnect(watch.done)
+        watch.deleteLater()
+        raise
 
 
 def stop_worker(thread: QThread, abort: Optional[Callable[[], None]] = None, *, wait_ms: int = 100,
@@ -67,9 +87,12 @@ def stop_worker(thread: QThread, abort: Optional[Callable[[], None]] = None, *, 
     if abort is not None:
         abort()
     if thread.wait(wait_ms):
-        if on_done is not None:
-            on_done()
-        thread.deleteLater()
+        if thread in _running:
+            _keep(thread, on_done, delete=True).done()
+        else:
+            if on_done is not None:
+                on_done()
+            thread.deleteLater()
         return True
     watch = _keep(thread, on_done, delete=True)
     if thread.isFinished():                 # it ended between the wait and the connection

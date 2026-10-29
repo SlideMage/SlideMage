@@ -3,8 +3,6 @@
 """Claude provenance persists until explicit review, across all writing processes."""
 from datetime import datetime
 from hashlib import sha256
-import json
-import os
 import subprocess
 import sys
 
@@ -12,7 +10,6 @@ import pytest
 
 from test_agent_tools import Box, LF, SLIDE
 from slidemage import ai_review, fileio, slide_rename, unused_content
-from slidemage.ai import claude_hook, project_watch
 from slidemage.ai.agent_types import EDIT_AUTO
 from slidemage.ai.tools.edits import ToolError, write_text
 from slidemage.project import ProjectContext
@@ -175,56 +172,10 @@ def test_deleting_and_archiving_drop_marks_but_skipped_archives_keep_them(projec
     assert fileio.read_json(project.ai_review_path) == {}
 
 
-@pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit"])
-def test_real_post_hook_process_marks_written_slide_and_poll_notices_store(project, tool):
-    event = dict(cwd=str(project.root), tool_name=tool, tool_use_id="tool-1",
-                 tool_input={"file_path": SLIDE})
-    env = {**os.environ, "SLIDEMAGE_PROJECT": str(project.root)}
-    def hook(name):
-        payload = json.dumps({**event, "hook_event_name": name})
-        done = subprocess.run([sys.executable, "-m", "slidemage.ai.claude_hook"],
-                              input=payload, text=True, env=env, capture_output=True, timeout=30)
-        assert done.returncode == 0, done.stderr
-    hook("PreToolUse")
-    path = project.root / SLIDE
-    path.write_text(LF.replace("First point", "Native change"))
-    before = project_watch.scan(project.root)
-    hook("PostToolUse")
-    entry = ai_review.unreviewed(project)[SLIDE]
-    assert entry["source"] == f"Claude Code terminal: {tool}" and entry["kind"] == "edit"
-    assert project.ai_review_path in project_watch.diff(before, project_watch.scan(project.root)).added
-    assert not list(project.claude_hook_dir.glob("*.json"))
 
 
-def test_hook_handles_relative_new_write_failures_noops_and_frozen_files(project):
-    path = project.slides_dir / "zzz-EN-New-current.tex"
-    event = dict(cwd=str(project.slides_dir), hook_event_name="PreToolUse", tool_name="Write",
-                 tool_use_id="new", tool_input={"file_path": path.name, "content": "new"})
-    claude_hook.record_write(project, event)
-    path.write_text("new")
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse"})
-    assert ai_review.unreviewed(project)["slides/" + path.name]["kind"] == "draft"
-    ai_review.mark_reviewed(project, [path])
-    claude_hook.record_write(project, event)
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse"})
-    assert not ai_review.unreviewed(project)
-    path.write_text("changed")
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse", "tool_response": {"isError": True}})
-    frozen = project.slides_dir / "abc-EN-Hello-v1-0-0.tex"
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse", "tool_input": {"file_path": str(frozen)}})
-    assert not ai_review.unreviewed(project)
 
 
-def test_native_deck_write_notes_only_inserted_live_calls_on_the_slides(project):
-    deck = project.decks_dir / "test.tex"
-    event = dict(cwd=str(project.root), tool_name="Write", tool_use_id="deck-write",
-                 hook_event_name="PreToolUse", tool_input={"file_path": str(deck)})
-    claude_hook.record_write(project, event)
-    deck.write_text(deck.read_text().replace("\\end{document}",
-                    "\\slide{abd-EN-Second}\n\\slideversion{abc-EN-Hello}{1-0-0}\n\\end{document}"))
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse"})
-    assert set(ai_review.unreviewed(project)) == {"slides/abd-EN-Second-current.tex"}
-    assert next(iter(ai_review.unreviewed(project).values()))["decks"] == ["decks/test.tex"]
 
 
 @pytest.mark.parametrize("buffer", [False, True])
@@ -259,21 +210,6 @@ def test_a_chat_edit_keeps_the_text_it_replaced(project, buffer):
     assert ai_review.last_before(project, path) is not None                              # kept after the review
 
 
-def test_the_hook_keeps_the_text_before_a_terminal_edit_but_not_for_a_new_slide(project):
-    path = project.root / SLIDE
-    event = dict(cwd=str(project.root), tool_name="Edit", tool_use_id="e1", hook_event_name="PreToolUse",
-                 tool_input={"file_path": SLIDE})
-    claude_hook.record_write(project, event)
-    path.write_bytes(path.read_bytes().replace(b"First point", b"Native change"))
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse"})
-    assert ai_review.last_before(project, path) == LF                     # line ends as the hook reads them
-    new = project.slides_dir / "zzz-EN-New-current.tex"
-    event = {**event, "tool_name": "Write", "tool_use_id": "e2", "tool_input": {"file_path": str(new)}}
-    claude_hook.record_write(project, event)
-    new.write_text("new")
-    claude_hook.record_write(project, {**event, "hook_event_name": "PostToolUse"})
-    assert ai_review.is_unreviewed(project, new) and ai_review.last_before(project, new) is None
-    assert ai_review.last_before(project, project.bibliography_path) is None
 
 
 def test_the_kept_text_follows_a_rename_and_ignores_an_unchanged_write(project):

@@ -6,7 +6,6 @@ Images page, for "Stop and switch" and for the assistant's image tasks. The pipe
 image (alt_draft's outcomes, an edit made during the run kept), is tested here too."""
 from __future__ import annotations
 
-import sys
 import threading
 from pathlib import Path
 
@@ -15,24 +14,25 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 
 from slidemage import alt_draft, alt_images
 from slidemage.ai import ai_profile, resolver
-from slidemage.ai.ai_profile import CLAUDE_CODE, IMAGE_DESCRIPTION, LOCAL, TRANSLATION, Route
-from slidemage.ai.providers import OllamaProvider
+from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, Route, TRANSLATION
+from fake_routes import FakeProvider
 from slidemage.batch_result import (
     CANCELLED, DONE, DRAFT, FAILED, KEPT, TRANSLATE, BatchResult, ItemOutcome, display_name)
 from slidemage.ui.kit import kit_qss as q
 from slidemage.ui.kit.widgets import Button
 from slidemage.ui.pages import image_results, image_runs
-from test_images_page_gui import CHART, make_page, run_jobs_inline, wait_for  # noqa: F401 -- make_page is a fixture
+from test_images_page_gui import CHART, run_jobs_inline, wait_for
+from test_images_page_gui import make_page as make_page
 
-HAIKU = Route(CLAUDE_CODE, IMAGE_DESCRIPTION, "haiku", "medium")
-QWEN = Route(LOCAL, IMAGE_DESCRIPTION, "qwen3-vl:32b")
-CLOUD_NOTE = "Claude Code · Haiku · effort medium · sends this image to the cloud"
+CLOUD = Route("fake_cloud", IMAGE_DESCRIPTION, "fake-1")
+LOCAL = Route("fake_local", IMAGE_DESCRIPTION, "fake-2")
+CLOUD_NOTE = "fake-1 · sends this image to the cloud"
 FIRST, SECOND, THIRD, FOURTH = (f"media/{name}.png" for name in ("first", "second", "third", "fourth"))
 
 
 # -- the model: titles, summary, labels, the question ---------------------------------------------------------------
 
-def result_of(kind=DRAFT, route=QWEN, **kinds):
+def result_of(kind=DRAFT, route=LOCAL, **kinds):
     """A result with one image per outcome kind given: first=DONE, ..."""
     return BatchResult(kind, route, tuple((f"media/{name}.png", ItemOutcome(outcome, "overloaded" if outcome == FAILED else ""))
                                           for name, outcome in kinds.items()))
@@ -59,22 +59,22 @@ def test_a_result_without_failures_is_done_and_offers_no_retry():
 
 
 def test_the_images_a_run_did_not_reach_are_cancelled():
-    result = BatchResult.of(DRAFT, QWEN, [FIRST, SECOND, THIRD], {FIRST: ItemOutcome(DONE)})
+    result = BatchResult.of(DRAFT, LOCAL, [FIRST, SECOND, THIRD], {FIRST: ItemOutcome(DONE)})
     assert [outcome.kind for _image, outcome in result.items] == [DONE, CANCELLED, CANCELLED]
     assert display_name(FIRST) == "first.png" and display_name("tikz:abc") == "tikz:abc"
 
 
 def test_the_question_names_the_model_and_what_is_sent():
-    assert image_results.question(DRAFT, 4, "slidemage-manual", HAIKU) == (
+    assert image_results.question(DRAFT, 4, "slidemage-manual", CLOUD) == (
         "Draft 4 image descriptions in slidemage-manual?",
-        "Claude Code · Haiku · effort medium · sends each image and its slide text to the cloud · 10–60 s per image.")
-    assert image_results.question(DRAFT, 1, "manual", QWEN) == (
-        "Draft 1 image description in manual?", "qwen3-vl:32b · Ollama · expect this to take hours.")
-    assert image_results.question(TRANSLATE, 3, "manual", Route(CLAUDE_CODE, TRANSLATION, "haiku", "medium")) == (
+        "fake-1 · sends each image and its slide text to the cloud · 10–60 s per image.")
+    assert image_results.question(DRAFT, 1, "manual", LOCAL) == (
+        "Draft 1 image description in manual?", "fake-2 · expect this to take hours.")
+    assert image_results.question(TRANSLATE, 3, "manual", Route("fake_cloud", TRANSLATION, "fake-1")) == (
         "Translate 3 descriptions in manual to German?",
-        "Claude Code · Haiku · effort medium · sends each description to the cloud · a few seconds per image.")
-    assert image_results.question(TRANSLATE, 3, "manual", Route(LOCAL, TRANSLATION, "hy-mt")) == (
-        "Translate 3 descriptions in manual to German?", "hy-mt · Ollama.")
+        "fake-1 · sends each description to the cloud · a few seconds per image.")
+    assert image_results.question(TRANSLATE, 3, "manual", Route("fake_local", TRANSLATION, "fake-2")) == (
+        "Translate 3 descriptions in manual to German?", "fake-2.")
 
 
 # -- the pipeline: outcomes, an edit during the run is kept -------------------------------------------------------------
@@ -174,29 +174,28 @@ def texts(page):
             page._forms[0].translate_button.text(), page._forms[0].save_translate_button.text())
 
 
-def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx):  # noqa: F811
+def test_the_note_and_the_buttons_follow_the_route_in_use(make_page, ctx):
     page = make_page()
-    page.refresh_model_preferences(["qwen3:8b"], ["qwen3-vl:32b"])
-    assert page.draft_note.text() == "qwen3-vl:32b · Ollama"
-    assert page.translate_note.text() == "qwen3:8b · Ollama"
+    page.refresh_model_preferences()
+    assert page.draft_note.text() == "fake-1" and page.translate_note.text() == "fake-1"
     assert texts(page) == ("Draft this slide", "Draft all…", "Translate all…", "Translate", "Save, then translate")
-    ai_profile.set_mode(ctx, ai_profile.CLOUD)                            # what the AI switch does, then the window's refresh
-    page.refresh_model_preferences(["qwen3:8b"], ["qwen3-vl:32b"])
+    ai_profile.set_mode(ctx, ai_profile.CLOUD)
+    page.refresh_model_preferences()
     assert page.draft_note.text() == CLOUD_NOTE
-    assert page.translate_note.text() == "Claude Code · Haiku · effort medium · sends the description to the cloud"
+    assert page.translate_note.text() == "fake-1 · sends the description to the cloud"
     assert texts(page) == ("Draft this slide · cloud", "Draft all… · cloud", "Translate all… · cloud", "Translate · cloud",
                            "Save, then translate · cloud")
     ai_profile.set_mode(ctx, ai_profile.LOCAL)
-    page.refresh_model_preferences(["qwen3:8b"], ["qwen3-vl:32b"])
-    assert page.draft_note.text() == "qwen3-vl:32b · Ollama" and texts(page)[0] == "Draft this slide"
+    page.refresh_model_preferences()
+    assert page.draft_note.text() == "fake-1" and texts(page)[0] == "Draft this slide"
 
 
-def test_the_note_follows_the_picker(make_page, ctx):  # noqa: F811
+def test_the_note_follows_the_picker(make_page, ctx):
     page = make_page()
     ai_profile.set_mode(ctx, ai_profile.CLOUD)
-    page.refresh_model_preferences([], [])
-    page.draft_model.setCurrentIndex(page.draft_model.findData("sonnet:high"))
-    assert page.draft_note.text() == "Claude Code · Sonnet · effort high · sends this image to the cloud"
+    page.refresh_model_preferences()
+    page.draft_model.setCurrentIndex(page.draft_model.findData("fake-2"))
+    assert page.draft_note.text() == "fake-2 · sends this image to the cloud"
 
 
 # -- the Images page: the question, the captured route, the progress ---------------------------------------------------
@@ -249,13 +248,13 @@ def answer(monkeypatch, button=QMessageBox.StandardButton.Ok):
 
 
 @pytest.mark.parametrize(("route", "text", "line"), [
-    (HAIKU, "Draft 2 image descriptions in {root}?",
-     "Claude Code · Haiku · effort medium · sends each image and its slide text to the cloud · 10–60 s per image."),
-    (QWEN, "Draft 2 image descriptions in {root}?", "qwen3-vl:32b · Ollama · expect this to take hours."),
+    (CLOUD, "Draft 2 image descriptions in {root}?",
+     "fake-1 · sends each image and its slide text to the cloud · 10–60 s per image."),
+    (LOCAL, "Draft 2 image descriptions in {root}?", "fake-2 · expect this to take hours."),
 ], ids=["cloud", "local"])
 def test_draft_all_asks_with_the_model_and_what_is_sent(make_page, monkeypatch, route, text, line):  # noqa: F811
     page = make_page()
-    run_on(monkeypatch, page, route, Backend(OllamaProvider("offline-test")), FIRST, SECOND)
+    run_on(monkeypatch, page, route, Backend(FakeProvider("offline-test")), FIRST, SECOND)
     asked = answer(monkeypatch, QMessageBox.StandardButton.Cancel)
     page._draft_all()
     assert asked[0][0] == text.format(root=page.app.project.root.name) and asked[0][1].startswith(line)
@@ -264,39 +263,39 @@ def test_draft_all_asks_with_the_model_and_what_is_sent(make_page, monkeypatch, 
 
 def test_translate_all_asks_with_the_model_and_what_is_sent(make_page, monkeypatch):  # noqa: F811
     page = make_page()
-    route = Route(CLAUDE_CODE, TRANSLATION, "haiku", "medium")
-    run_on(monkeypatch, page, route, Backend(OllamaProvider("offline-test")), FIRST, SECOND, THIRD)
+    route = Route("fake_cloud", TRANSLATION, "fake-1")
+    run_on(monkeypatch, page, route, Backend(FakeProvider("offline-test")), FIRST, SECOND, THIRD)
     asked = answer(monkeypatch, QMessageBox.StandardButton.Cancel)
     page._translate_all()
     assert asked[0][0] == f"Translate 3 descriptions in {page.app.project.root.name} to German?"
-    assert asked[0][1].startswith("Claude Code · Haiku · effort medium · sends each description to the cloud")
+    assert asked[0][1].startswith("fake-1 · sends each description to the cloud")
 
 
 def test_a_batch_keeps_the_route_it_started_on_when_the_switch_moves(make_page, monkeypatch, ctx):  # noqa: F811
     page = make_page()
     release = threading.Event()
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     provider.abort = release.set
     backend = Backend(provider, block=release)
     built = []
-    run_on(monkeypatch, page, HAIKU, backend, FIRST, SECOND)
+    run_on(monkeypatch, page, CLOUD, backend, FIRST, SECOND)
     monkeypatch.setattr(resolver, "draft_backend", lambda _ctx, route: built.append(route) or backend)
     answer(monkeypatch)
     page._draft_all()
     job = page._job
     assert wait_for(lambda: backend.drafted == [FIRST])
-    assert job.route == HAIKU and built == [HAIKU]
+    assert job.route == CLOUD and built == [CLOUD]
     ai_profile.set_mode(ctx, ai_profile.CLOUD)
     ai_profile.set_mode(ctx, ai_profile.LOCAL)                              # the switch moves under the running batch
     page.refresh_model_preferences([], [])
-    assert wait_for(lambda: page.job_card.detail.text() == "Image 1 of 2 · first.png · Claude Code · Haiku · effort medium")
-    assert job.route == HAIKU
+    assert wait_for(lambda: page.job_card.detail.text() == "Image 1 of 2 · first.png · fake-1")
+    assert job.route == CLOUD
     [work] = page.running_work()
-    assert work.text == "Drafting image descriptions · 0 of 2 done" and work.route == "Claude Code · Haiku · effort medium"
+    assert work.text == "Drafting image descriptions · 0 of 2 done" and work.route == "fake-1"
     release.set()
     assert wait_for(lambda: page._job is None)
-    assert built == [HAIKU] and backend.drafted == [FIRST, SECOND]           # one backend, built once, for both images
-    assert page.results.result.route == HAIKU
+    assert built == [CLOUD] and backend.drafted == [FIRST, SECOND]           # one backend, built once, for both images
+    assert page.results.result.route == CLOUD
 
 
 # -- the Images page: the results panel -----------------------------------------------------------------------------
@@ -311,8 +310,8 @@ def rows(view):
 def test_the_panel_lists_each_image_after_a_run_and_retry_runs_only_the_failed(make_page, monkeypatch):  # noqa: F811
     page = make_page()
     run_jobs_inline(monkeypatch)
-    backend = Backend(OllamaProvider("offline-test"), {SECOND: alt_draft.DraftResult(error="overloaded")})
-    run_on(monkeypatch, page, HAIKU, backend, FIRST, SECOND, THIRD, FOURTH)
+    backend = Backend(FakeProvider("offline-test"), {SECOND: alt_draft.DraftResult(error="overloaded")})
+    run_on(monkeypatch, page, CLOUD, backend, FIRST, SECOND, THIRD, FOURTH)
     original = backend.draft
 
     def draft(path, context):
@@ -327,7 +326,7 @@ def test_the_panel_lists_each_image_after_a_run_and_retry_runs_only_the_failed(m
     page._draft_all()
     view = page.results
     assert not view.isHidden()
-    assert view.title.text() == "Image descriptions · partly done" and view.route.text() == "Claude Code · Haiku · effort medium"
+    assert view.title.text() == "Image descriptions · partly done" and view.route.text() == "fake-1"
     assert rows(view) == [("first.png", "Drafted · needs review"), ("second.png", "Failed · overloaded"),
                           ("third.png", "You edited it during the run · your text kept"),
                           ("fourth.png", "Cancelled · not sent")]
@@ -351,7 +350,7 @@ def test_the_panel_lists_each_image_after_a_run_and_retry_runs_only_the_failed(m
 def test_a_draft_over_text_typed_into_the_form_counts_as_kept(make_page, monkeypatch):  # noqa: F811
     page = make_page()
     run_jobs_inline(monkeypatch)
-    run_on(monkeypatch, page, HAIKU, Backend(OllamaProvider("offline-test")), CHART)
+    run_on(monkeypatch, page, CLOUD, Backend(FakeProvider("offline-test")), CHART)
     page._forms[0].fields["long"].setPlainText("TYPED, NOT SAVED")
     answer(monkeypatch)
     page._draft_all()
@@ -363,7 +362,7 @@ def test_a_draft_over_text_typed_into_the_form_counts_as_kept(make_page, monkeyp
 def test_a_translation_batch_has_its_own_title_and_labels(make_page, monkeypatch):  # noqa: F811
     page = make_page()
     run_jobs_inline(monkeypatch)
-    run_on(monkeypatch, page, Route(CLAUDE_CODE, TRANSLATION, "haiku", "medium"), Backend(OllamaProvider("offline-test")),
+    run_on(monkeypatch, page, Route("fake_cloud", TRANSLATION, "fake-1"), Backend(FakeProvider("offline-test")),
            FIRST, SECOND)
     answer(monkeypatch)
     page._translate_all()
@@ -375,10 +374,10 @@ def test_a_translation_batch_has_its_own_title_and_labels(make_page, monkeypatch
 def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_page, monkeypatch):  # noqa: F811
     page = make_page()
     release = threading.Event()
-    provider = OllamaProvider("offline-test")
+    provider = FakeProvider("offline-test")
     provider.abort = release.set
     backend = Backend(provider, block=None)
-    run_on(monkeypatch, page, HAIKU, backend, FIRST, SECOND, THIRD)
+    run_on(monkeypatch, page, CLOUD, backend, FIRST, SECOND, THIRD)
     second_started = threading.Event()
     original = backend.draft
 
@@ -395,7 +394,7 @@ def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_p
     assert wait_for(second_started.is_set)
     assert wait_for(lambda: FIRST in page._job.outcomes)
     [work] = page.running_work()
-    assert work.line == ("Drafting image descriptions · 1 of 3 done · Claude Code · Haiku · effort medium. "
+    assert work.line == ("Drafting image descriptions · 1 of 3 done · fake-1. "
                          "Pending images are cancelled, not moved to the other route")
     work.stop()                                                           # "Stop and switch"
     assert page._job is None
@@ -408,15 +407,27 @@ def test_stop_and_switch_cancels_the_pending_images_and_the_panel_says_so(make_p
 
 # -- the window: the side panels and the assistant's image tasks -------------------------------------------------------
 
-pytest.importorskip("PySide6.QtWebEngineWidgets")
-from test_claude_code_gui import env as claude_env  # noqa: E402,F401 -- a fixture
-from test_claude_images import ANSWER as IMAGE_ANSWER, GERMAN as GERMAN_IMAGE  # noqa: E402
-from test_claude_tasks_gui import buttons, click, fake, pump, settled, wait_until, with_pictures  # noqa: E402,F401
-
-windows_only = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
+from selection_make_readable_image_batches_helpers import buttons, click, pump, settled, slide_file, wait_until  # noqa: E402
+from selection_make_readable_image_batches_helpers import fake as fake  # noqa: E402
 
 
-@windows_only
+@pytest.fixture(autouse=True)
+def _registered_routes(fake_routes):
+    return fake_routes
+
+
+def with_pictures(fake, **entries):
+    from selection_make_readable_image_batches_helpers import LF
+    env = fake.env
+    text = LF + "\n" + "\n".join("\\includegraphics{media/" + name + ".png}" for name in entries)
+    slide_file(env).editor.replace_all_text(text)
+    alt_images.save_store(env.window.project, {f"media/{name}.png": alt_images.ImageEntry(image=f"media/{name}.png", **fields)
+                                               for name, fields in entries.items()})
+    fake.monkeypatch.setattr(alt_draft, "draftable_images", lambda _ctx, row, _entries: [(image, Path("x.png")) for image in row.images])
+    fake.monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, _path, image: SimpleContext(image))
+    env.window.assistant.header.schedule()
+
+
 def test_the_side_panels_say_cloud_while_the_switch_is_on_cloud(fake):  # noqa: F811
     env = fake.env
     panels = env.window.side_panels
@@ -431,69 +442,76 @@ def test_the_side_panels_say_cloud_while_the_switch_is_on_cloud(fake):  # noqa: 
     pump(0.1)
     redraft = [b for b in panels.panels["images"].findChildren(Button) if b.text().startswith("Redraft")]
     assert [b.text() for b in redraft] == ["Redraft…"]
-    env.window.state.set_ai_route(ai_profile.CLOUD, CLAUDE_CODE)           # the open panel follows the switch, no rebuild
+    env.window.state.set_ai_route(ai_profile.CLOUD, "fake_cloud")           # the open panel follows the switch, no rebuild
     assert [b.text() for b in redraft] == ["Redraft… · cloud"]
 
 
-@windows_only
 def test_the_images_page_of_the_window_follows_the_switch(fake):  # noqa: F811
     window = fake.env.window
     page = window.images_page
     window.state.set_ai_route(ai_profile.LOCAL)
-    assert page.draft_all_button.text() == "Draft all…" and page.draft_note.text().endswith("· Ollama")
-    window.state.set_ai_route(ai_profile.CLOUD, CLAUDE_CODE)
+    assert page.draft_all_button.text() == "Draft all…" and page.draft_note.text() == "fake-1"
+    window.state.set_ai_route(ai_profile.CLOUD, "fake_cloud")
     assert page.draft_all_button.text() == "Draft all… · cloud" and page.draft_note.text() == CLOUD_NOTE
 
 
-@windows_only
-def test_an_image_task_of_the_assistant_ends_in_the_same_panel_and_retry_runs_the_failed(fake, monkeypatch):  # noqa: F811
+def test_an_image_task_of_the_assistant_ends_in_the_same_panel_and_retry_runs_the_failed(fake, monkeypatch):
     env = fake.env
     area = env.window.assistant
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
-    fake.reply({"answer": IMAGE_ANSWER}, {"error": "overloaded"}, {"answer": IMAGE_ANSWER})
+    backend = Backend(FakeProvider(), {"media/b.png": alt_draft.DraftResult(error="overloaded")})
+    monkeypatch.setattr(fake.routes.cloud, "draft_backend", lambda *_args: backend)
     click(env, "Describe images (2)")
     assert settled(env).endswith(": 1 described, 1 failed (media/b.png: overloaded)")
     view = area.image_results
     assert area._stack.currentWidget() is area._results_page and view.result is area.tasks.result
-    assert view.title.text() == "Image descriptions · partly done" and view.route.text() == "Claude Code · Haiku · effort medium"
+    assert view.title.text() == "Image descriptions · partly done" and view.route.text() == "fake-1"
     assert rows(view) == [("a.png", "Drafted · needs review"), ("b.png", "Failed · overloaded")]
     assert view.retry.text() == "Retry failed (1)"
+    backend.results.clear()
     asked = answer(monkeypatch)
     view.retry.click()
     assert asked[0][0] == f"Draft 1 image description in {env.window.project.root.name}?"
     assert settled(env).endswith(": 1 described")
-    assert [call["images"][0]["media_type"] for call in fake.calls()] == ["image/png"] * 3 and len(fake.calls()) == 3
+    assert backend.drafted == ["media/a.png", "media/b.png", "media/b.png"]
     assert view.title.text() == "Image descriptions · done" and view.retry is None
-    view.back.click()                                                    # Back to conversation
+    view.back.click()
     assert area.tasks.result is None and area._stack.currentWidget() is not area._results_page
 
 
-@windows_only
-def test_a_stopped_image_task_shows_its_cancelled_images(fake, tmp_path):  # noqa: F811
+def test_a_stopped_image_task_shows_its_cancelled_images(fake, monkeypatch):
     env = fake.env
     area = env.window.assistant
     with_pictures(fake, a={}, b={})
     wait_until(lambda: "Describe images (2)" in buttons(env))
-    fake.reply({"answer": IMAGE_ANSWER, "delay": 5, "marker": str(tmp_path / "late")})
+    release = threading.Event()
+    provider = FakeProvider()
+    provider.abort = release.set
+    class CancelledBackend(Backend):
+        def draft(self, path, context):
+            super().draft(path, context)
+            return alt_draft.DraftResult(error="aborted")
+
+    backend = CancelledBackend(provider, block=release)
+    monkeypatch.setattr(fake.routes.cloud, "draft_backend", lambda *_args: backend)
     click(env, "Describe images (2)")
-    wait_until(lambda: fake.log.exists())
+    wait_until(lambda: bool(backend.drafted))
     area.task_row.stop_button.click()
     settled(env)
     assert rows(area.image_results) == [("a.png", "Cancelled · not sent"), ("b.png", "Cancelled · not sent")]
     assert area.image_results.retry is None and area.image_results.title.text() == "Image descriptions · partly done"
-    click(env, "Describe images (2)")                                    # a new task clears the panel
+    click(env, "Describe images (2)")
     assert area.tasks.result is None
     area.tasks.stop()
     settled(env)
 
 
-@windows_only
-def test_translating_the_descriptions_ends_in_the_panel_too(fake):  # noqa: F811
+def test_translating_the_descriptions_ends_in_the_panel_too(fake, monkeypatch):  # noqa: F811
     env = fake.env
     with_pictures(fake, a=dict(short="A bar chart.", long="Two bars."))
     wait_until(lambda: "Translate image descriptions (1)" in buttons(env))
-    fake.reply({"answer": GERMAN_IMAGE})
+    monkeypatch.setattr(fake.routes.cloud, "translation_backend", lambda *_args: Backend(FakeProvider()))
     click(env, "Translate image descriptions (1)")
     settled(env)
     view = env.window.assistant.image_results

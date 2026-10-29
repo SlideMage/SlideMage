@@ -218,14 +218,19 @@
 		* \dimexpr0.2pt\relax
 		/ (\SMHrefUnderlineBodyHeight - \SMHrefUnderlineFnHeight)\relax
 }
+% One \mbox around text, step back and rule (2026-10-29, direct instruction): TeX may break a line at the
+% negative \hspace, and did wherever the link text was wider than the room left on its line (a QR code's
+% caption, a narrow table cell): the rule then stood a whole line below its text.
 \newcommand{\SMHrefUnderline}[1]{%
-	\sbox{\SMHrefTextBox}{#1}%
-	\textcolor{c_custom_gray}{\usebox{\SMHrefTextBox}}%
-	\hspace{-\wd\SMHrefTextBox}%
-	\SMHrefUnderlineMeasureRefHeights
-	\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
-	\SMHrefUnderlineSetThickness
-	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+	\mbox{%
+		\sbox{\SMHrefTextBox}{#1}%
+		\textcolor{c_custom_gray}{\usebox{\SMHrefTextBox}}%
+		\hspace{-\wd\SMHrefTextBox}%
+		\SMHrefUnderlineMeasureRefHeights
+		\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
+		\SMHrefUnderlineSetThickness
+		\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+	}%
 }
 \renewcommand{\href}[2]{\SMOrigHref{#1}{\SMHrefUnderline{#2}}}
 % \url{} (the `url` package hyperref depends on/patches) defaults to a
@@ -5638,19 +5643,100 @@
 % several codes go side by side or in columns, and
 % \cornerfigure{\SMQRCode{...}{...}} puts one in a corner. The caption's
 % look is \SMQRCodeCaptionStyle, which a template may redefine.
+%
+% \SMQRCode[height]{image}{caption}[link] (2026-10-29, direct instruction):
+% the code itself is a link to what it encodes, so a click in the PDF or in
+% the presentation opens what a scan would. [link] (written right after the
+% caption, no space: SlideMage's Insert writes it for a link, an email and a
+% map location) is that address, % and # escaped as \% and \#. Without it,
+% a caption that is exactly \url{address} or \href{address}{text} gives the
+% address, so codes inserted before [link] existed are links too. The link
+% is \SMOrigHref: no underline, and with the deck's colorlinks no border.
+% An \href in the caption keeps its underline under its text since
+% \SMHrefUnderline is one box (a caption link wider than the code had its
+% rule set a whole line lower, found 2026-10-29).
+%
+% A caption wider than the code (a line TeX cannot break: a long word or
+% link) is centred on the code and overhangs it equally on both sides; it
+% stuck out to the right before (2026-10-29). The caption is set once at the
+% code's width to find its widest line (\__smqr_widest_line:); only when that
+% is wider than the code is it set again at that width, in a box centred
+% under the code. The code's box stays as wide as the code, so its place in
+% columns and corners does not change, and a caption that fits is set as
+% before.
 \newsavebox{\SMQRCodeBox}
 \providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
-\NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m}{%
-	\begingroup
-	\sbox{\SMQRCodeBox}{\includegraphics[height=#1]{#2}}%
-	\begin{minipage}[t]{\wd\SMQRCodeBox}%
-		\centering\usebox{\SMQRCodeBox}%
-		\if\relax\detokenize{#3}\relax\else
-			\par{\SMQRCodeCaptionStyle #3\par}%     the code's own white border is the gap
-		\fi
-	\end{minipage}%
-	\endgroup
-}
+\ExplSyntaxOn
+\tl_new:N \l__smqr_link_tl
+\dim_new:N \g__smqr_caption_dim
+\box_new:N \l__smqr_line_box
+\box_new:N \l__smqr_caption_box
+% In the vertical list of a paragraph just ended: take its lines off from the
+% last and keep the natural width of the widest in \g__smqr_caption_dim.
+\cs_new_protected:Npn \__smqr_widest_line:
+	{
+		\unskip \unpenalty \unskip \unkern
+		\box_set_to_last:N \l__smqr_line_box
+		\box_if_empty:NF \l__smqr_line_box
+			{
+				\hbox_set:Nn \l__smqr_line_box { \hbox_unpack:N \l__smqr_line_box }
+				\dim_gset:Nn \g__smqr_caption_dim
+					{ \dim_max:nn { \g__smqr_caption_dim } { \box_wd:N \l__smqr_line_box } }
+				\__smqr_widest_line:
+			}
+	}
+\cs_new_protected:Npn \__smqr_caption:n #1
+	{
+		\dim_gzero:N \g__smqr_caption_dim
+		\hbox_set:Nn \l__smqr_caption_box
+			{
+				\begin{minipage}{\wd\SMQRCodeBox}
+					\centering \SMQRCodeCaptionStyle #1 \par \__smqr_widest_line:
+				\end{minipage}
+			}
+		\dim_compare:nNnTF { \g__smqr_caption_dim } > { \wd\SMQRCodeBox }
+			{
+				\par
+				{
+					\SMQRCodeCaptionStyle
+					\makebox [\linewidth] [c]
+						{
+							\begin{minipage}[t]{\g__smqr_caption_dim}
+								\centering \SMQRCodeCaptionStyle #1 \par
+							\end{minipage}
+						}
+					\par
+				}
+			}
+			{ \par{\SMQRCodeCaptionStyle #1\par} }
+	}
+\cs_new_protected:Npn \__smqr_caption_link:n #1
+	{
+		\tl_clear:N \l__smqr_link_tl
+		\tl_if_head_is_N_type:nT {#1}
+			{
+				\bool_lazy_or:nnT
+					{ \bool_lazy_and_p:nn { \tl_if_head_eq_meaning_p:nN {#1} \url }
+						{ \int_compare_p:nNn { \tl_count:n {#1} } = 2 } }
+					{ \bool_lazy_and_p:nn { \tl_if_head_eq_meaning_p:nN {#1} \href }
+						{ \int_compare_p:nNn { \tl_count:n {#1} } = 3 } }
+					{ \tl_set:Nx \l__smqr_link_tl { \tl_item:nn {#1} { 2 } } }
+			}
+	}
+\NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m !o}
+	{
+		\group_begin:
+		\IfNoValueTF {#4} { \__smqr_caption_link:n {#3} } { \tl_set:Nn \l__smqr_link_tl {#4} }
+		\sbox \SMQRCodeBox { \includegraphics [height=#1] {#2} }
+		\tl_if_empty:NF \l__smqr_link_tl
+			{ \sbox \SMQRCodeBox { \exp_args:No \SMOrigHref { \l__smqr_link_tl } { \usebox \SMQRCodeBox } } }
+		\begin{minipage}[t]{\wd\SMQRCodeBox}
+			\centering\usebox{\SMQRCodeBox}
+			\tl_if_blank:nF {#3} { \__smqr_caption:n {#3} }%     the code's own white border is the gap
+		\end{minipage}
+		\group_end:
+	}
+\ExplSyntaxOff
 
 % Navigation for readers (2026-10-04, SlideMage manual: readers must find
 % their way without knowing that the logo is a hidden link). Three opt-in

@@ -4,6 +4,7 @@
 Citations, Language, Image descriptions, Transcript entry, Speaker notes)."""
 from __future__ import annotations
 
+import weakref
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from conftest import build_window, make_project, wait_until
 from slidemage import app_settings, deck_scan, slide_snapshot
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
+from slidemage.ui import plugin_ui
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.kit.widgets import SegmentedControl, Toast
 from slidemage.ui.workspace import slide_list as slide_list_module
@@ -84,12 +86,10 @@ class FakeWindow:
             add_slide=lambda *a, **k: self.slide_list.add_slide(*a, **k), translate=lambda: self.translated.append(True),
             add_reference=self.centre.source.add_reference)
 
-    def try_start_ollama_task(self, label, provider=None):
+    def acquire_route_task(self, route_id, label):
+        from slidemage.plugins.host import _RouteTaskLease
         self.busy = label
-        return True
-
-    def end_ollama_task(self, provider=None):
-        self.busy = None
+        return _RouteTaskLease(lambda: setattr(self, "busy", None))
 
     def refresh_open_deck_editors(self):
         self.refreshed = getattr(self, "refreshed", 0) + 1
@@ -131,10 +131,11 @@ def project(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def column(project, qapp, ctx):
+def column(project, qapp, ctx, fake_routes, monkeypatch):
     """The right column over the "course" deck, with the slide list that applies its edits."""
     state = WorkspaceState(ctx)
     window = FakeWindow(state)
+    monkeypatch.setattr(plugin_ui.HOST_UI, "_window", weakref.ref(window))     # the assistant's terminal asks it for the theme
     holder = QWidget()
     window.slide_list = SlideList(window, state, ThemeManager(), Toast(holder))
     window.panels = SidePanels(window, state, window.actions)
@@ -608,9 +609,9 @@ def test_a_pending_image_edit_is_saved_as_a_draft_when_the_slide_is_left(ctx, co
 def redraft_on(monkeypatch, images, provider):
     """The active route is Local with `provider` as its provider (the backends made on it are the test's fakes)."""
     from slidemage.ai import resolver
-    from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, LOCAL, Route
+    from slidemage.ai.ai_profile import IMAGE_DESCRIPTION, Route
 
-    monkeypatch.setattr(images, "task_route", lambda *args: Route(LOCAL, IMAGE_DESCRIPTION, "qwen3"))
+    monkeypatch.setattr(images, "task_route", lambda *args: Route("fake_local", IMAGE_DESCRIPTION, "fake-1"))
     monkeypatch.setattr(resolver, "provider_for", lambda _ctx, _route: provider)
 
 
@@ -633,15 +634,8 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
             drafted.append((resolved, context.image))
             return alt_draft.DraftResult(short="Drafted short", long="Drafted long", model="qwen3 · local")
 
-    class Now:
-        def __init__(self, target, args, daemon):
-            self.run = lambda: target(*args)
-
-        def start(self):
-            self.run()
-
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(images.threading, "Thread", Now)
+    monkeypatch.setattr(images.background, "start_detached", lambda worker, on_done: (worker.run(), on_done()))
     form = panel._forms[0]
     form.redraft_button.click()
     assert drafted[0] == (paths.path, "media/pic.png")
@@ -666,14 +660,8 @@ def test_redraft_is_ignored_after_switching_to_a_slide_with_the_same_image(ctx, 
         draft=lambda *args: alt_draft.DraftResult(short="Slide A short", long="Slide A long", model=given.label)))
     pending = []
 
-    class Later:
-        def __init__(self, target, args, daemon):
-            pending.append(lambda: target(*args))
-
-        def start(self):
-            pass
-
-    monkeypatch.setattr(images.threading, "Thread", Later)
+    monkeypatch.setattr(images.background, "start_detached",
+                        lambda worker, on_done: pending.append(lambda: (worker.run(), on_done())))
     panel._forms[0].redraft_button.click()
     assert window.busy == "drafting a description"
     state.set_focused_slide("abc")
@@ -718,19 +706,11 @@ def test_redraft_that_raises_still_ends_with_an_error_and_gives_back_its_slot(co
         def draft(self, resolved, context):
             raise ValueError("boom")
 
-    class Now:
-        def __init__(self, target, args, daemon):
-            self.run = lambda: target(*args)
-
-        def start(self):
-            self.run()
-
-    ended = []
-    monkeypatch.setattr(window, "end_ollama_task", ended.append)
     monkeypatch.setattr(alt_draft, "ModelBackend", Failing)
-    monkeypatch.setattr(images.threading, "Thread", Now)
     panel._forms[0].redraft_button.click()
-    assert ended == [provider] and "The draft failed: boom" in panel._forms[0].note.text()
+    wait_until(lambda: window.busy is None)
+    assert "The draft failed: boom" in panel._forms[0].note.text()
+
 
 
 def test_transcript_entry_renders_student_versions_only(content):
@@ -832,10 +812,7 @@ def test_a_frozen_versions_notes_are_read_only(ctx, content, project, paths):
 
 
 def test_the_reference_form_can_start_from_a_missing_key(ctx, qapp, project, monkeypatch):
-    from slidemage.ai.providers import OllamaProvider
     from slidemage.ui.dialogs.citation import CitationDialog
-
-    monkeypatch.setattr(OllamaProvider, "list_models", lambda self, vision_only=False: ["qwen3"])
     parent = QWidget()
     parent.project = ctx
     dialog = CitationDialog(parent, "ghost1999")

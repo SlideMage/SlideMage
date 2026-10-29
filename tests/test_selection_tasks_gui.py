@@ -1,34 +1,28 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Rewrite selection and Proofread selection through the window (Claude Code reviews plan, step R1): the capture in the
-Source view, the header's buttons, the palette's commands, the editor's context menu, and the task card from Generate
-to Done on the three routes with stand-ins for `claude -p` and the providers. The project is a throwaway one."""
+"""Selection tasks through the source view, commands, menus and task card on scripted routes."""
 from __future__ import annotations
 
-import json
-import sys
 
 import pytest
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication
-from test_claude_code_gui import env as claude_env, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import LF, buttons, ctx, fake, on_route, settled, slide_file  # noqa: F401
-from test_make_readable_gui import JsonProvider
-from test_task_card_gui import card, phase_is, shown_buttons, state
+from selection_make_readable_image_batches_helpers import (LF, buttons, card, phase_is, settled, shown_buttons,
+                                                        slide_file, state, wait_until)
+from selection_make_readable_image_batches_helpers import ctx as ctx, fake as fake
+
 
 from slidemage import selection
 from slidemage.latex_edit import utf16_len
-from slidemage.ai import ai_profile, claude_launch, claude_tasks, credentials, resolver
+from slidemage.ai import ai_profile, tasks as ai_tasks
 from slidemage.ai.agent_types import EDIT_ASK
 from slidemage.ai.tools import ToolContext, ToolError, focus
 from slidemage.ui.kit.widgets import Button, PopoverMenu
 from slidemage.ui.workspace import task_card_model as model
 from slidemage.ui.workspace.insert_popovers import InstructionPopover
-from slidemage.ui.workspace.terminal import tasks as tasks_module
+from slidemage.ui.workspace import task_bubbles as tasks_module
 
-pytest.importorskip("PySide6.QtWebEngineWidgets")
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
 
 OPENING = LF.replace("First point", "Opening remark")
 SHOWN = ["Rewrite selection", "Proofread selection"]
@@ -151,7 +145,7 @@ def test_the_header_button_asks_how_to_rewrite_and_the_other_starts_the_proofrea
     fake.reply({"answer": {"text": "Opening remark"}})
     menu.triggered.emit("Shorten")
     wait_until(phase_is(env, model.REVIEW))
-    assert card(env).title == "Rewrite selection · Shorten" and card(env).instruction == claude_tasks.REWRITE_PRESETS["Shorten"]
+    assert card(env).title == "Rewrite selection · Shorten" and card(env).instruction == ai_tasks.REWRITE_PRESETS["Shorten"]
     assert [b.label for b in area.header.shown] == []                              # nothing else starts while one waits
 
 
@@ -187,7 +181,7 @@ def test_the_context_menu_offers_the_edit_commands_and_the_two_tasks_when_the_se
     fake.reply({"answer": {"edits": [{"before": "First point", "after": "First points"}]}})
     menu.triggered.emit("proofread")
     wait_until(phase_is(env, model.REVIEW))
-    assert card(env).task is claude_tasks.PROOFREAD_SELECTION and card(env).title == "Proofread selection"
+    assert card(env).task is ai_tasks.PROOFREAD_SELECTION and card(env).title == "Proofread selection"
     # Starting the task can already close and delete the context menu.
     from shiboken6 import isValid
     if isValid(menu):
@@ -201,13 +195,11 @@ def test_a_rewrite_is_reviewed_applied_into_the_buffer_and_taken_back_by_the_edi
     select(env, "First point")
     fake.reply({"answer": {"text": "Opening remark"}})
     env.window.assistant.rewrite_selection("Simplify")
-    assert card(env).route.route == ai_profile.CLAUDE_CODE
+    assert card(env).route.route == fake.routes.cloud.id
     wait_until(phase_is(env, model.REVIEW))
     request, = requests(fake)
-    assert request.startswith("Rewrite the selection of this slide. Instruction: " + claude_tasks.REWRITE_PRESETS["Simplify"])
+    assert request.startswith("Rewrite the selection of this slide. Instruction: " + ai_tasks.REWRITE_PRESETS["Simplify"])
     assert "<selection>\nFirst point\n</selection>" in request
-    argv = fake.calls()[0]["argv"]
-    assert argv[argv.index("--json-schema") + 1] == json.dumps(claude_tasks.REWRITE.schema)
     assert state(env).startswith("Proposed change to abc-EN-Hello-current.tex. Nothing is written yet.")
     assert shown_buttons(env) == ["Apply", "Reject", "View full diff", "Compare rendered"]
     assert (card(env).before, card(env).after, card(env).changed) == (LF, OPENING, 1)
@@ -323,71 +315,67 @@ def test_nothing_starts_without_a_selection_to_work_on(fake):  # noqa: F811
     select(env, "First point")
     tasks = env.window.assistant.tasks
     slide_file(env).editor.moveCursor(QTextCursor.MoveOperation.Start)
-    tasks.start(claude_tasks.PROOFREAD_SELECTION)                                      # the selection went before the click
+    tasks.start(ai_tasks.PROOFREAD_SELECTION)                                      # the selection went before the click
     assert card(env) is None and env.window.assistant.task_row.status.text() == selection.NO_SELECTION
 
 
 # -- the routes ------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode, conn, kind", [(ai_profile.LOCAL, ai_profile.CLAUDE_CODE, "local"), (ai_profile.CLOUD, ai_profile.API, "api")])
-def test_on_local_and_the_api_a_rewrite_runs_on_the_provider_with_the_fixes_model(ctx, fake, monkeypatch, mode, conn, kind):  # noqa: F811
+@pytest.mark.parametrize("mode, side", [(ai_profile.LOCAL, "local"), (ai_profile.CLOUD, "cloud")])
+def test_rewrite_runs_on_the_selected_route(ctx, fake, mode, side):
     env = asked(fake)
-    ai_profile.mark_cloud_seen(ctx)
-    credentials.set_api_key(ctx, "key")
-    on_route(fake, mode, conn)
-    ai_profile.set_model_choice(ctx, kind, ai_profile.FIXES, "chosen-model")
+    route = getattr(fake.routes, side)
+    ai_profile.set_mode(ctx, mode)
+    ai_profile.set_model_choice(ctx, route.id, ai_profile.FIXES, "fake-2")
     select(env, "First point")
-    provider, seen = JsonProvider(json.dumps({"text": "Opening remark"}), mode == ai_profile.LOCAL), []
-    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, route: seen.append(route) or provider)
+    fake.reply({"answer": {"text": "Opening remark"}})
     env.window.assistant.rewrite_selection("Shorten")
     wait_until(phase_is(env, model.REVIEW))
-    assert fake.calls() == [] and [(r.route, r.model) for r in seen] == [(kind, "chosen-model")]
-    (messages, kwargs), = provider.calls
-    assert messages[0]["content"].startswith("Rewrite the selection") and kwargs["system"] == claude_tasks.REWRITE.rules
-    assert card(env).after == OPENING and env.window._ollama_task_label is None
+    assert (card(env).route.route, card(env).route.model) == (route.id, "fake-2")
+    assert fake.runner.calls[-1][0] is ai_tasks.REWRITE
+    assert card(env).after == OPENING
     env.window.assistant.tasks.apply()
     wait_until(phase_is(env, model.DONE))
     assert slide_file(env).editor.text() == OPENING
 
 
-def test_on_local_a_proofread_edit_list_is_checked_against_the_selection(ctx, fake, monkeypatch):  # noqa: F811
+def test_provider_proofreading_is_checked_against_the_selection(ctx, fake, monkeypatch):
+    from fake_routes import FakeProvider
+
     env = asked(fake)
-    on_route(fake, ai_profile.LOCAL)
-    ai_profile.set_model_choice(ctx, ai_profile.LOCAL, ai_profile.FIXES, "chosen-model")
+    ai_profile.set_mode(ctx, ai_profile.LOCAL)
+    fake.routes.local.runner = None
+    provider = FakeProvider(reply='{"edits": [{"before": "Second", "after": "2nd"}]}')
+    monkeypatch.setattr(fake.routes.local, "provider", lambda *_args: provider)
     select(env, "First point")
-    provider = JsonProvider(json.dumps({"edits": [{"before": "Second", "after": "2nd"}]}))
-    monkeypatch.setattr(tasks_module.resolver, "provider_for", lambda _ctx, _route: provider)
     env.window.assistant.proofread_selection()
     wait_until(phase_is(env, model.FAILED))
-    assert len(provider.calls) == 2 and "does not occur" in state(env) and slide_file(env).editor.text() == LF
+    assert len(provider.requests) == 2 and "does not occur" in state(env)
+    assert provider.requests[0][1]["system"] == ai_tasks.PROOFREAD_SELECTION.rules
+    assert slide_file(env).editor.text() == LF
 
 
-def test_routes_that_are_not_ready_run_nothing_and_no_other_route_stands_in(ctx, fake, monkeypatch):  # noqa: F811
+def test_unavailable_route_starts_no_selection_task(fake):
     env = fake.env
     select(env, "First point")
-    tasks = env.window.assistant.tasks
-    on_route(fake, ai_profile.LOCAL)                                                 # no Ollama model is chosen
+    fake.routes.cloud.problem_text = "Fake cloud unavailable."
     env.window.assistant.rewrite_selection("Simplify")
-    assert card(env).phase == model.SETUP and "Choose an Ollama model" in card(env).note
-    tasks.close_card()
-    credentials.set_api_key(ctx, "")
-    on_route(fake, ai_profile.CLOUD, ai_profile.API)
+    assert card(env).phase == model.SETUP and card(env).note == "Fake cloud unavailable."
+    assert fake.calls() == [] and not env.window.assistant.tasks.busy
+    env.window.assistant.tasks.close_card()
     env.window.assistant.proofread_selection()
-    assert card(env).phase == model.SETUP and "No Anthropic API key" in card(env).note
-    tasks.close_card()
-    on_route(fake, ai_profile.CLOUD, ai_profile.CLAUDE_CODE)
-    monkeypatch.setattr(claude_launch, "find_claude", lambda: None)
-    assert tasks.refusal(claude_tasks.REWRITE) == resolver.NO_CLAUDE
+    assert card(env).phase == model.SETUP and card(env).note == "Fake cloud unavailable."
+    env.window.assistant.tasks.close_card()
     env.window.assistant.rewrite_selection("Custom…")
     popups(InstructionPopover)[0].entry.setText("x")
     next(b for b in popups(InstructionPopover)[0].findChildren(Button) if b.text() == "Rewrite").click()
-    assert card(env).phase == model.SETUP and card(env).note == resolver.NO_CLAUDE and card(env).instruction == "x"
-    assert fake.calls() == [] and not tasks.busy
+    assert card(env).phase == model.SETUP and card(env).instruction == "x"
+    assert fake.calls() == [] and not env.window.assistant.tasks.busy
 
 
 def test_the_selection_tasks_are_card_tasks_of_the_fixes_kind_that_every_route_can_run():
-    for task in (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION):
+    for task in (ai_tasks.REWRITE, ai_tasks.PROOFREAD_SELECTION):
         assert tasks_module.KINDS[task.name] == ai_profile.FIXES
         assert task in tasks_module.CARD_TASKS and task in tasks_module.PROVIDER_TASKS and task in tasks_module.PRIORITY
         assert task not in tasks_module.DECK_TASKS and task not in tasks_module.SLIDE_TASKS
-    assert tasks_module.PRIORITY[:2] == (claude_tasks.REWRITE, claude_tasks.PROOFREAD_SELECTION)
+    assert tasks_module.PRIORITY[:2] == (ai_tasks.REWRITE, ai_tasks.PROOFREAD_SELECTION)

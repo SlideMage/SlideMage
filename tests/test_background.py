@@ -54,3 +54,24 @@ def test_stopped_workers_are_retained_and_reported_on_the_gui_thread(slow):
     thread.wait()
     app.processEvents()
     assert done == [True] and thread not in background._running
+
+
+@pytest.mark.parametrize("slow", [False, True], ids=["stopped", "still-running"])
+def test_stopping_a_detached_worker_preserves_both_callbacks(slow):
+    import threading
+
+    app = QApplication.instance() or QApplication([])
+    gate = threading.Event()
+    thread = Slow(gate)
+    done = []
+    background.start_detached(thread, lambda: done.append("detached"))
+    assert background.stop_worker(
+        thread, None if slow else gate.set, wait_ms=10 if slow else 2000,
+        on_done=lambda: done.append("stopped"),
+    ) is not slow
+    if slow:
+        assert done == []
+        gate.set()
+        thread.wait()
+        app.processEvents()
+    assert done == ["detached", "stopped"] and thread not in background._running

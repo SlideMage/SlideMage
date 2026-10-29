@@ -25,6 +25,7 @@ from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
+from ...ai import routes
 from ... import app_settings
 from ... import (
     latex_edit,
@@ -241,6 +242,7 @@ class SourceFile(Surface):
         self.lint_changed.emit()
 
     def _update_status(self) -> None:
+        self.ask_ai_button.setVisible(bool(routes.all()))        # no AI route installed: no AI hint
         if self.lint is None:
             return
         errors, warnings = len(self.lint.errors), len(self.lint.warnings)

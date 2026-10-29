@@ -74,10 +74,13 @@ AUDITED_FRAMEWORK = {
     # under each old name, and the theme keeps the footline box's height and depth as lengths of its own. Re-audited: no version,
     # footer-hide or deck-label rule entered the setup layer, the base or the theme; the footer line lost an allowance its shift
     # cancelled, and the regression harness shows every page identical.
+    # Merged from develop (2026-10-29, v9.x there): \SMQRCode's code is a link ([link], or a \url/\href caption),
+    # every \href's underline (\SMHrefUnderline) is one box, so it stays on its text's line, and a caption wider
+    # than the code is centred under it. No view-dependent rule.
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "aedfd602718ae1abfb2fbad8d37008be2a56516259c59a77b67cffabca59721e",
+    "SlideMage_base.tex": "ac9735b3a95f2b2fdd783b1af75c1d4c9f5ecf0c1eb70b241d4653b31720db38",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "4559742259fb03c65fe314852bb51c456fcd69ac4831c70716d43a92b53bf623",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",

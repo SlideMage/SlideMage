@@ -1,0 +1,11 @@
+id = "deckedit"
+name = "deckedit fixture"
+version = "0.1.0"
+api_version = 1
+requires_slidemage = ">=8.0"
+summary = "Fixture plugin that edits a deck from its Deck settings tab."
+author = "Test"
+homepage = "https://example.org/deckedit"
+license = "GPL-3.0-or-later"
+needs = []
+network = []

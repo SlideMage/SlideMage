@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Screenshots of SlideMage's workspace window, made offscreen from the real widgets.
 
-    python tools/manual/make_screenshots.py OUT_DIR [--only NAME ...] [--scale N] [--list]
+    python tools/manual/make_screenshots.py OUT_DIR [--plugins DIR ...] [--only NAME ...] [--scale N] [--list]
 
 Writes OUT_DIR/screenshot-slidemage-<name>.png for the main views: the workspace in Preview, Source,
 Split and Details, each side panel, the chat, the command palette, the deck and compile menus, the
@@ -10,6 +10,11 @@ compile job card, the Images page, the slide list with a selection, and the Sett
 Add slide, Tags, transcript preview and About sheets. Nothing is written into the repository: the run
 works on a throwaway copy of `example/` (with the sibling `latex/` framework), in the light theme (--dark: the dark one),
 with a fixed Ollama model list and no network.
+
+The AI comes from plugins (v9.1.0): --plugins names checkouts of slidemage-plugin-claude and
+slidemage-plugin-ollama (default: SLIDEMAGE_PLUGIN_PATH, else the sibling folders of this repository), loaded
+as dev plugins; the plugins installed on this computer are not. Without them the shots show SlideMage with no
+AI, and the chat shot is left out.
 
 The manual's own images (MANUAL_IMAGES: crops of these shots, reduced to 256 colours) are written to
 OUT_DIR/manual/ under the names the manual's slides use; copy them into example/media/.
@@ -70,15 +75,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--scale", type=int, default=2, help="device pixel ratio of the shots (default 2)")
     parser.add_argument("--dark", action="store_true", help="the dark theme instead of the light one")
     parser.add_argument("--list", action="store_true", help="print the names of the shots and exit")
+    parser.add_argument("--plugins", nargs="+", type=Path, metavar="DIR",
+                        help="plugin checkouts to load (default: SLIDEMAGE_PLUGIN_PATH, else ../slidemage-plugin-claude "
+                             "and ../slidemage-plugin-ollama)")
     return parser.parse_args(argv)
+
+
+def plugin_folders(args: argparse.Namespace) -> list[Path]:
+    """The plugin checkouts the run loads: --plugins, else SLIDEMAGE_PLUGIN_PATH, else the sibling checkouts."""
+    if args.plugins:
+        return args.plugins
+    if os.environ.get("SLIDEMAGE_PLUGIN_PATH"):
+        return [Path(p) for p in os.environ["SLIDEMAGE_PLUGIN_PATH"].split(os.pathsep) if p]
+    return [p for p in (REPO.parent / f"slidemage-plugin-{name}" for name in ("claude", "ollama")) if p.is_dir()]
 
 
 def prepare_project(parent: Path) -> Path:
     """A copy of example/ and latex/ under `parent` with fresh settings and the placeholder decks."""
-    ignore = shutil.ignore_patterns(".build", "*.pdf", "__pycache__", ".backups", "app_settings.json", "project.json")
+    # The compiled decks (decks/pdf/) stay behind, not every PDF: the framework's logo and the slides' PDF media
+    # are needed for a render.
+    ignore = shutil.ignore_patterns(".build", "pdf", "__pycache__", ".backups", "app_settings.json", "project.json")
     project = parent / "example"
     shutil.copytree(REPO / "example", project, ignore=ignore)
     shutil.copytree(REPO / "latex", parent / "latex", ignore=ignore)
+    cache = REPO / "example" / ".build" / "preview-cache"
+    if cache.is_dir():      # the stored previews, for the slide list's thumbnails (older ones say "preview old")
+        shutil.copytree(cache, project / ".build" / "preview-cache", ignore=shutil.ignore_patterns("build.lock"))
     (project / "decks" / "slidemage-manual-copy.tex").unlink(missing_ok=True)   # the project's copy: not part of the picture
     manual = (project / "decks" / "slidemage-manual.tex").read_text(encoding="utf-8")
     preamble = manual.split("\\begin{document}")[0]
@@ -111,7 +133,22 @@ class Shooter:
         answers with that page as current for this slide (since v8.54.0 a held page is checked first)."""
         preview = self.window.centre.preview
         target = preview._target
-        pixmap = preview._image(target)[0]
+        found = preview._image(target)
+        for _ in range(40):            # a stored page is looked up off the GUI thread: wait for it to arrive
+            if found is not None:
+                break
+            self.settle(2, 50)
+            found = preview._image(target)
+        if found is None:              # the throwaway copy has no stored previews: render the slide once
+            preview.render_now()
+            for _ in range(1800):      # a cold LaTeX run takes up to a few minutes
+                self.settle(1, 100)
+                found = preview._image(target)
+                if found is not None:
+                    break
+        if found is None:
+            raise SystemExit(f"no preview of {target.key}: the render did not finish")
+        pixmap = found[0]
         lookup = preview._image
         preview._image = lambda shown, **kw: (pixmap, True, '') if shown.key == target.key else lookup(shown, **kw)
         preview._refresh()
@@ -311,8 +348,8 @@ def shot_sheets(shooter: Shooter) -> None:
     shooter.focus(SLIDE)
     deck = window.state.deck
     sheet = SettingsSheet(window)
-    for index, name in enumerate(("general", "models", "cloud", "ollama", "prompts")):
-        shooter.sheet_shot(f"settings-{name}", sheet, index)
+    for index in range(sheet._tabs.count()):      # General, AI (with an AI plugin), ..., Plugins, plugins' own tabs
+        shooter.sheet_shot(f"settings-{sheet._tabs.tabText(index).lower()}", sheet, index)
     sheet.close()
     sheet = AddSlideSheet(window, deck, 0, "\t", where="after 1y8", is_dirty=window.centre.is_dirty)
     shooter.sheet_shot("add-slide", sheet)
@@ -378,6 +415,7 @@ def make_manual_images(out_dir: Path) -> None:
 def run(args: argparse.Namespace, work: Path) -> None:
     project = prepare_project(work)
     os.environ["SLIDEMAGE_PROJECT"] = str(project)
+    os.environ["SLIDEMAGE_LATEX"] = str(work / "latex")     # the copy's framework, also when the repo is on another drive
     os.environ["QT_SCALE_FACTOR"] = str(args.scale)
     # On Windows the offscreen platform no longer matches the bundled Roboto weights (v8.27.3: every weight is its own
     # file), and labels fall back to the icon font; the native platform draws them, the window is never on screen.
@@ -394,25 +432,33 @@ def run(args: argparse.Namespace, work: Path) -> None:
     from slidemage.project import ProjectContext
     from slidemage.ui import layout_settings
 
-    # This computer's own settings are neither read nor written: the shots look the same on every machine.
+    # This computer's own settings and plugins are neither read nor written: the shots look the same on every machine.
     layout_settings.STORE_PATH = work / "layout.json"
     app_settings.MACHINE_STORE_PATH = work / "ai_settings.json"
-    from slidemage.ai import credentials
-    from slidemage.ai.providers import AnthropicProvider, InstalledModel, OllamaProvider
+    from slidemage.plugins import credentials, loader
+    from slidemage.ui.app import load_plugins
     from slidemage.ui.kit.fonts import load_fonts
     from slidemage.ui.kit.theme import ThemeManager
     from slidemage.ui.workspace.window import WorkspaceWindow
 
-    # No network and no keys, so the same model lists come out on every machine.
-    models = [InstalledModel("qwen3:8b", 5_200_000_000, "2026-09-30T10:00:00Z", ("completion", "tools")),
-              InstalledModel("llama3.2-vision:11b", 7_900_000_000, "2026-09-12T10:00:00Z", ("completion", "vision")),
-              InstalledModel("gemma3:12b", 8_100_000_000, "2026-08-21T10:00:00Z", ("completion", "vision"))]
-    OllamaProvider.installed = lambda self, detailed=False: models if detailed else [m.name for m in models]
-    OllamaProvider.list_models = lambda self, vision_only=False: [m.name for m in models]
-    AnthropicProvider.list_models = lambda self: []
+    loader.plugins_dir = lambda: work / "plugins"
+    os.environ[loader.PATH_ENV] = os.pathsep.join(str(p) for p in plugin_folders(args))
     credentials._keyring = lambda: None
-    os.environ.pop(credentials.ENV_VAR, None)
-    app_settings.set(ProjectContext.at(project), "chat_model", "ollama:qwen3:8b")
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    load_plugins(ProjectContext.at(project))
+
+    # No network and no keys, so the same model lists come out on every machine.
+    if "ollama" in sys.modules:
+        from ollama.provider import InstalledModel, OllamaProvider
+        models = [InstalledModel("qwen3:8b", 5_200_000_000, "2026-09-30T10:00:00Z", ("completion", "tools")),
+                  InstalledModel("llama3.2-vision:11b", 7_900_000_000, "2026-09-12T10:00:00Z", ("completion", "vision")),
+                  InstalledModel("gemma3:12b", 8_100_000_000, "2026-08-21T10:00:00Z", ("completion", "vision"))]
+        OllamaProvider.installed = lambda self, detailed=False: models if detailed else [m.name for m in models]
+        OllamaProvider.list_models = lambda self, vision_only=False: [m.name for m in models]
+        app_settings.set(ProjectContext.at(project), "chat_model", "ollama:qwen3:8b")
+    if "claude" in sys.modules:
+        from claude.api.provider import AnthropicProvider
+        AnthropicProvider.list_models = lambda self: []
 
     load_fonts()
     theme = ThemeManager(dark=args.dark)
@@ -426,6 +472,9 @@ def run(args: argparse.Namespace, work: Path) -> None:
     shooter.settle(20, 50)
     try:
         for name, shot in SHOTS.items():
+            if name == "chat" and not window.assistant.available:
+                print("chat: left out, no AI plugin loaded (see --plugins)")
+                continue
             if args.only is None or name in args.only:
                 shot(shooter)
     finally:

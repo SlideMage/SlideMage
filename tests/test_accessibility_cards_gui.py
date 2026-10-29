@@ -2,19 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Keyboard and live-region support of the assistant (workspace v6, step 7): the Tab order of its header, the task
 card's initial focus, focus kept on a phase's buttons and given back when the card closes, the announcements of its
-phases and of an image batch's end, and the accessible names of the icons. The tasks run on the stand-in for `claude`
-(fake_claude.py); the project is a throwaway one."""
+phases and of an image batch's end, and the accessible names of the icons. The tasks use a scripted fake route on a throwaway project."""
 from __future__ import annotations
-
-import sys
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from test_claude_code_gui import env as claude_env, pump, wait_until  # noqa: F401 -- a fixture
-from test_claude_tasks_gui import buttons, click, fake  # noqa: F401 -- a fixture
-from test_image_batches_gui import result_of
+from assistant_accessibility_helpers import buttons, click, env as assistant_env, fake, pump, wait_until  # noqa: F401
+from slidemage.batch_result import BatchResult, DRAFT, ItemOutcome
+from slidemage.ai.ai_profile import Route
 
 from slidemage.ai import ai_profile
 from slidemage.ai.agent_types import EDIT_ASK
@@ -24,8 +21,15 @@ from slidemage.ui.pages.image_results import BatchResultView
 from slidemage.ui.workspace import task_card as task_card_module
 from slidemage.ui.workspace import task_card_model as model
 
-pytest.importorskip("PySide6.QtWebEngineWidgets")
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the stand-in for claude is a POSIX script")
+def result_of(**kinds):
+    return BatchResult(DRAFT, Route("fake_local", ai_profile.IMAGE_DESCRIPTION, "fake-1"),
+                       tuple((f"media/{name}.png", ItemOutcome(outcome)) for name, outcome in kinds.items()))
+
+
+
+@pytest.fixture(name="env")
+def _env(assistant_env):  # noqa: F811
+    return assistant_env
 
 
 def area(env):
@@ -74,7 +78,7 @@ def test_the_headers_tab_order_is_focus_new_conversation_scope_tasks_all_actions
     head = area(env).header
     wait_until(lambda: len(buttons(env)) >= 2)
     head.refresh_content()
-    fake.reply({"answer": {"title": "T"}, "delay": 5})
+    fake.reply({"answer": {"title": "T"}, "delay": 60})
     task_buttons = [w for w in (head._actions.itemAt(i).widget() for i in range(head._actions.count()))
                     if w is not head.all_actions]
     assert task_buttons                                                      # two contextual tasks on this slide
@@ -99,7 +103,7 @@ def test_the_headers_tab_order_is_focus_new_conversation_scope_tasks_all_actions
 
 def test_the_headers_icons_have_names(fake):  # noqa: F811
     head = area(fake.env).header
-    assert head.ai_switch.segments.accessibleName() == "AI for all tasks"      # the route is the switch since v8.61.0
+    assert head.ai_switch.caret.accessibleName() == "AI setup"
     assert head.focus_button.accessibleName().startswith("Focus assistant")
     assert head.new_button.accessibleName().startswith("New conversation")
     assert head.scope.accessibleName() == "Scope of the assistant"
@@ -110,7 +114,7 @@ def test_the_headers_icons_have_names(fake):  # noqa: F811
 def test_a_task_card_that_opens_takes_the_focus_on_its_first_action_and_keeps_it_across_phases(asked):
     env = asked.env
     activate(env)
-    asked.reply({"answer": {"title": "A new title"}})
+    asked.reply({"answer": {"title": "A new title"}, "delay": 0.2})
     click(env, "Better title")
     view = area(env).task_card
     wait_until(lambda: card(env).phase == model.REVIEW)
@@ -126,17 +130,17 @@ def test_a_task_card_that_opens_takes_the_focus_on_its_first_action_and_keeps_it
 def test_closing_the_card_gives_the_keyboard_back_to_the_conversation(fake):  # noqa: F811
     env = fake.env
     activate(env)
-    fake.reply({"answer": {"title": "T"}, "delay": 5})
+    fake.reply({"answer": {"title": "T"}, "delay": 60})
     click(env, "Better title")
     assert QApplication.focusWidget() is action_buttons(env)[0]                  # Stop
-    area(env).task_card.back.click()                                             # Back to conversation: the terminal
+    area(env).task_card.back.click()                                             # Back to conversation: the route surface
     assert not area(env).task_card.isAncestorOf(QApplication.focusWidget())
     area(env).tasks.show_card()
     area(env).tasks.stop()
     wait_until(lambda: card(env).phase == model.STOPPED)
     focus_on(env, action_buttons(env)[-1])                                       # Close
     action_buttons(env)[-1].click()
-    assert card(env) is None and area(env)._stack.currentWidget() is area(env).claude_code
+    assert card(env) is None and area(env)._stack.currentWidget() is area(env).surface_for("fake_cloud")
 
 
 def test_closing_a_card_on_the_chat_route_focuses_the_message_box(fake):  # noqa: F811
@@ -144,7 +148,8 @@ def test_closing_a_card_on_the_chat_route_focuses_the_message_box(fake):  # noqa
     ai_profile.mark_cloud_seen(env.window.project)
     env.window.state.set_ai_route(ai_profile.LOCAL)
     pump(0.05)
-    click(env, "Better title")                                                   # Local cannot run it: Setup needed
+    env.routes.local.problem_text = "Fake route unavailable"
+    click(env, "Better title")                                                   # Setup needed
     assert card(env).phase == model.SETUP and area(env)._stack.currentWidget() is area(env).task_card
     close = focus_on(env, action_buttons(env)[-1])
     assert close.text() == "Close"
@@ -204,7 +209,7 @@ class SimpleCard:
 
 # -- the image results ----------------------------------------------------------------------------------------------
 
-def test_the_end_of_a_batch_announces_the_results_title_and_summary(qapp, monkeypatch):
+def test_the_end_of_a_batch_announces_the_results_title_and_summary(qapp, monkeypatch, fake_routes):
     told = []
     monkeypatch.setattr(image_results, "announce", lambda widget, text: told.append((widget, text)))
     panel = BatchResultView()

@@ -324,3 +324,16 @@ def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
     ev = compat.evaluate(root, "v8.0.0")
     assert not ev.loud
     assert [(p.change.id, p.findings) for p in ev.quiet] == [(change.id, findings)]
+
+
+def test_campusonline_plugin_change_is_noted_for_decks_with_a_course_link(tmp_path):
+    root = make_project(tmp_path, "v8.68.0")
+    (root / "decks" / "course.tex").write_text(
+        "\\documentclass{beamer}\n%% SlideMage course URL: https://campus.example/c/1\n\\begin{document}\n",
+        encoding="utf-8")
+    (root / "decks" / "plain.tex").write_text(
+        "\\begin{document}\n%% SlideMage course URL: https://campus.example/c/2\n", encoding="utf-8")
+    change = next(c for c in compat.CHANGES if c.id == "campusonline-plugin")
+    assert change.since == "v9.0.0" and change.migrate is None and "plugin" in change.fix
+    assert [(f.file, f.line) for f in change.detect(root)] == [("decks/course.tex", 2)]
+    assert [p.change.id for p in compat.evaluate(root, "v9.0.0").quiet] == ["campusonline-plugin"]

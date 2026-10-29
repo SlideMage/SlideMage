@@ -1078,6 +1078,8 @@ _PROGRESS_STRIP_RE = re.compile(r"\\progressstrip\s*\{")
 _WARNING_SIGN_RE = re.compile(r"\\SMWarningSign\s*(?:\[[^\]]*\])?\s*\{")
 # \SMQRCode[height]{image}{caption}: the code is described in its own section, the caption stays.
 _QR_CODE_RE = re.compile(r"\\SMQRCode\s*(?:\[[^\]]*\])?\s*\{")
+# ... and its trailing [link] (2026-10-29), the address the code links to: not slide text.
+_QR_CODE_LINK_RE = re.compile(r"\[[^\]\n]*\]")
 _TOC_RE = re.compile(r"\\tableofcontents\s*(?:\[([^\]]*)\])?")
 _TOC_SECTIONS_RE = re.compile(r"sections\s*=\s*\{?\s*([\d\s,\-]+)\}?")
 _TOC_SLOT_RE = re.compile(r"\x02SMTOC:([\d,\-]*)\x02")
@@ -1115,9 +1117,11 @@ def _arguments(text: str, start: int, count: int) -> tuple[list[str], int]:
     return arguments, cursor
 
 
-def _replace_command(text: str, pattern: re.Pattern, count: int, render) -> str:
+def _replace_command(text: str, pattern: re.Pattern, count: int, render,
+                     trailing: re.Pattern | None = None) -> str:
     """Every `pattern` call with `count` arguments (the first one's brace
-    ends the pattern) replaced by render(arguments)."""
+    ends the pattern) replaced by render(arguments); what `trailing` matches
+    right after the last argument is part of the call and dropped."""
     out: list[str] = []
     index = 0
     while True:
@@ -1131,7 +1135,8 @@ def _replace_command(text: str, pattern: re.Pattern, count: int, render) -> str:
             index = match.end()
             continue
         out.append(text[index:match.start()] + render(arguments))
-        index = after
+        extra = trailing.match(text, after) if trailing else None
+        index = extra.end() if extra else after
 
 
 def _progress_strip(arguments: list[str]) -> str:
@@ -1158,7 +1163,8 @@ def _convert_body(text: str, bib: dict, depth: int = 0) -> str:
     text = _figure_commands(text)
     text = _replace_command(text, _PROGRESS_STRIP_RE, 2, _progress_strip)
     text = _replace_command(text, _QR_CODE_RE, 2,
-                            lambda arguments: f"\n{arguments[1].strip()}\n" if arguments[1].strip() else " ")
+                            lambda arguments: f"\n{arguments[1].strip()}\n" if arguments[1].strip() else " ",
+                            _QR_CODE_LINK_RE)
     text = _replace_command(text, _WARNING_SIGN_RE, 5,
                             lambda arguments: f"⚠ {arguments[2].strip()}")
     text = _GRAPHICS_RE.sub(" ", text)

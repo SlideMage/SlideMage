@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Rewrite selection and Proofread selection, the parts without a window (Claude Code reviews plan, step R1): the
-capture of a selection (selection.py), the requests, and claude_tasks.check on a range of the file: every character
+capture of a selection (selection.py), the requests, and ai_tasks.check on a range of the file: every character
 outside the range stays, the protected parts and the lint errors are the whole file's, an edit's `before` must occur
 exactly once in the selection."""
 from __future__ import annotations
@@ -11,8 +11,8 @@ from conftest import SLIDE_TEXT
 from slidemage.project import ProjectContext
 
 from slidemage import protected_regions, selection
-from slidemage.ai import claude_runner, claude_tasks, provider_tasks
-from slidemage.ai.claude_tasks import PROOFREAD_SELECTION, REWRITE, check
+from slidemage.ai import task_result, tasks as ai_tasks, provider_tasks
+from slidemage.ai.tasks import PROOFREAD_SELECTION, REWRITE, check
 
 LF = SLIDE_TEXT.replace("\r\n", "\n")
 FIRST = LF.index("First point")
@@ -59,24 +59,24 @@ def test_a_selection_next_to_a_protected_part_is_fine():
 # -- the requests -----------------------------------------------------------------------------------
 
 def test_a_rewrite_request_has_the_instruction_the_selection_and_its_context():
-    request = claude_tasks.rewrite_request(LF, *SPAN, "Simplify the wording.")
+    request = ai_tasks.rewrite_request(LF, *SPAN, "Simplify the wording.")
     assert request.startswith("Rewrite the selection of this slide. Instruction: Simplify the wording.\n<before>\n")
     assert "\n<selection>\nFirst point\n</selection>\n<after>\n\n\t\t\\item Second point" in request
     assert request.index("\\begin{itemize}") < request.index("<selection>")
-    assert claude_tasks.rewrite_request(LF, *SPAN, "  as a question  ").splitlines()[0].endswith("Instruction: as a question")
+    assert ai_tasks.rewrite_request(LF, *SPAN, "  as a question  ").splitlines()[0].endswith("Instruction: as a question")
 
 
 def test_the_context_of_a_long_slide_is_cut():
     text = "x" * 5000 + "SELECTED" + "y" * 5000
-    request = claude_tasks.rewrite_request(text, 5000, 5008, "Shorten")
+    request = ai_tasks.rewrite_request(text, 5000, 5008, "Shorten")
     assert request.count("x") == request.count("y") == selection.CONTEXT_CHARS
     assert "<selection>\nSELECTED\n</selection>" in request
 
 
 def test_a_proofread_request_names_the_language_and_keeps_the_german_address():
-    de = claude_tasks.proofread_selection_request(LF, *SPAN, "DE", "du")
+    de = ai_tasks.proofread_selection_request(LF, *SPAN, "DE", "du")
     assert "German slide" in de and '"du"' in de and "<selection>\nFirst point\n</selection>" in de
-    assert '"S' not in claude_tasks.proofread_selection_request(LF, *SPAN, "EN")
+    assert '"S' not in ai_tasks.proofread_selection_request(LF, *SPAN, "EN")
 
 
 # -- check: a rewrite replaces the range only -------------------------------------------------------------
@@ -166,14 +166,14 @@ class Provider:
 
 def test_the_provider_runner_returns_the_whole_file_with_only_the_range_replaced_and_repairs_once(ctx):
     provider = Provider(['{"text": "First {point"}', '{"text": "Opening"}'])
-    request = claude_tasks.rewrite_request(LF, *SPAN, "Shorten")
+    request = ai_tasks.rewrite_request(LF, *SPAN, "Shorten")
     outcome = provider_tasks.run_task(ctx, provider, REWRITE, LF, request, span=SPAN)
-    assert outcome.status == claude_runner.DONE and outcome.attempts == 2
+    assert outcome.status == task_result.DONE and outcome.attempts == 2
     assert outcome.text == LF.replace("First point", "Opening")
     assert "Your previous answer was refused" in provider.requests[1]
 
 
 def test_the_judge_says_nothing_to_change_for_an_unchanged_range(ctx):
-    outcome = claude_runner.Outcome(claude_runner.FAILED)
-    assert claude_runner.judge(ctx, PROOFREAD_SELECTION, LF, {"edits": []}, outcome, span=SPAN) == []
-    assert outcome.status == claude_runner.NOTHING
+    outcome = task_result.Outcome(task_result.FAILED)
+    assert task_result.judge(ctx, PROOFREAD_SELECTION, LF, {"edits": []}, outcome, span=SPAN) == []
+    assert outcome.status == task_result.NOTHING
