@@ -1,14 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Deck settings sheet (UI_REDESIGN_PLAN.md, step 9): the deck-wide settings that live in the
-deck's own file -- template, language, footer text, course link, the PDF shown by "Open pdf", where
-the PDFs go, the appendix TOC (deck_settings.py reads and writes them) -- and, as a third tab, the
-admin slides generated from the linked course (ui/dialogs/admin_slides.py).
+deck's own file -- template, language, footer text, the PDF shown by "Open pdf", where the PDFs
+go, the appendix TOC (deck_settings.py reads and writes them) -- and the tabs of the loaded plugins.
 
 Save closes the sheet with `action == "save"`; `result_settings()` is then the edited, checked
-settings (a bad value shows under the form instead). On the Admin slides tab the button is Insert
-slides (`action == "insert"`; `admin` has the slides and the position). Both edit the deck file, so
-Insert waits until the form has no unsaved changes. The caller writes whichever it was.
+settings (a bad value shows under the form instead). The caller writes them.
 
 The Maintenance rows of General run a window command (`action == "command:<id>"`, see `COMMAND`): the
 sheet is modal, so it closes first, asks about unsaved changes before, and the caller runs the command
@@ -23,18 +20,17 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 
-from ... import deck_editor, deck_settings, open_path, project
+from ... import deck_settings, project
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ...plugins import session
 from ...plugins.host import deck_snapshot
 from ..plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from ..ai_models import add_route_badge
-from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, row, set_property
-from .admin_slides import AdminSlidesTab
+from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, set_property
 
-GENERAL, OUTPUT, ADMIN = range(3)
-SAVE, INSERT, COMMAND = "save", "insert", "command:"
+GENERAL, OUTPUT = range(2)
+SAVE, COMMAND = "save", "command:"
 MAINTENANCE = (       # (command id, name, what it does, button)
     ("create_snapshot", "Deck snapshot", "A dated, self-contained copy of the deck that compiles as it does today.",
      "Create snapshot…"),
@@ -69,10 +65,8 @@ class DeckSettingsSheet(ModalSheet):
         self.action = ""
         self.add_tab("General", self._build_general(templates))
         self.add_tab("PDF output", self._build_output())
-        self.admin = AdminSlidesTab(deck)
-        self.add_tab("Admin slides", self.admin)
         self.plugin_tabs: dict[int, tuple] = {}      # tab index -> (the plugin's DeckSettingsTab, its page)
-        self.tab_titles = ["General", "PDF output", "Admin slides"]
+        self.tab_titles = ["General", "PDF output"]
         for plugin in session.active():
             for plugin_tab in plugin.contributions.deck_settings_tabs:
                 self._add_plugin_tab(plugin, plugin_tab)
@@ -82,8 +76,6 @@ class DeckSettingsSheet(ModalSheet):
         self.add_button("Cancel", role="reject")
         self.save_button = self.add_button("Save", kind="primary")
         self.save_button.clicked.connect(self._on_save)
-        self.insert_button = self.add_button("Insert slides", kind="primary")
-        self.insert_button.clicked.connect(self._on_insert)
         self.plugin_button = self.add_button("", kind="primary")     # the footer action of the shown plugin tab
         self.plugin_button.clicked.connect(self._on_plugin_action)
 
@@ -91,22 +83,21 @@ class DeckSettingsSheet(ModalSheet):
         self.template_combo.currentIndexChanged.connect(self._sync_dark_mode)
         for widget in (self.template_combo, self.language_combo, self.open_pdf_combo):
             widget.currentIndexChanged.connect(self._sync_footer)
-        for widget in (self.footer_edit, self.url_edit, *self.output_edits.values()):
+        for widget in (self.footer_edit, *self.output_edits.values()):
             widget.textChanged.connect(self._sync_footer)
         self.dark_mode_check.toggled.connect(self._sync_footer)
         self.appendix_check.toggled.connect(self._sync_footer)
         for check in self.footer_checks.values():
             check.toggled.connect(self._sync_footer)
-        self.admin.changed.connect(self._sync_footer)
         for _tab, page in self.plugin_tabs.values():
             if hasattr(page, "changed"):
                 page.changed.connect(self._sync_footer)
-        self.tab_changed.connect(self._on_tab)
+        self.tab_changed.connect(lambda _index: self._sync_footer())
         HOST_UI.register_sheet(self)
         if isinstance(tab, str):
             tab = self.tab_titles.index(tab) if tab in self.tab_titles else GENERAL
         self.set_current_tab(tab)
-        self._on_tab(tab)
+        self._sync_footer()
 
     # -- building --------------------------------------------------------------------------
 
@@ -133,7 +124,6 @@ class DeckSettingsSheet(ModalSheet):
         self.template_combo.setCurrentIndex(max(self.template_combo.findData(settings.template), 0))
         self.language_combo.setCurrentIndex(max(self.language_combo.findData(settings.language), 0))
         self.footer_edit.setText(settings.footer_text)
-        self.url_edit.setText(settings.course_url)
         self.appendix_check.setChecked(settings.appendix_toc)
         self.open_pdf_combo.setCurrentIndex(max(0, self.open_pdf_combo.findData(settings.open_pdf)))
         for key, edit in self.output_edits.items():
@@ -142,7 +132,6 @@ class DeckSettingsSheet(ModalSheet):
             check.setChecked(key not in settings.footer_hide)
         self.dark_mode_check.setChecked(settings.dark_mode)
         self._sync_dark_mode()
-        self.admin.refresh_deck(deck)
         self._initial = self._values()
         self._sync_footer()
 
@@ -204,15 +193,6 @@ class DeckSettingsSheet(ModalSheet):
         shown_row.addStretch(1)
         layout.addWidget(Field("Footer shows", shown))
 
-        self.url_edit = QLineEdit(settings.course_url)
-        self.url_edit.setPlaceholderText("https://… (the course page)")
-        self.open_button = Button("Open", compact=True)
-        self.open_button.setEnabled(bool(settings.course_url.strip()))
-        self.url_edit.textChanged.connect(lambda text: self.open_button.setEnabled(bool(text.strip())))
-        self.open_button.clicked.connect(self._on_open_link)
-        layout.addWidget(Field("Course link", row(self.url_edit, self.open_button)))
-        layout.addWidget(caption("The course page the Admin slides tab reads the sessions and lecturers from."))
-
         self.appendix_check = QCheckBox("Always add the slide-preview appendix (\\deckappendixtoc)")
         self.appendix_check.setChecked(settings.appendix_toc)
         layout.addWidget(self.appendix_check)
@@ -272,7 +252,7 @@ class DeckSettingsSheet(ModalSheet):
 
     def _values(self) -> tuple:
         return (self.template_combo.currentData(), self.language_combo.currentData(), self.footer_edit.text(),
-                self.url_edit.text(), tuple(edit.text() for edit in self.output_edits.values()),
+                tuple(edit.text() for edit in self.output_edits.values()),
                 self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide(),
                 self.dark_mode_check.isEnabled() and self.dark_mode_check.isChecked())
 
@@ -285,7 +265,6 @@ class DeckSettingsSheet(ModalSheet):
             template=self.template_combo.currentData() or "",
             language=self.language_combo.currentData() or "en",
             footer_text=self.footer_edit.text(),
-            course_url=self.url_edit.text(),
             output_folders={key: edit.text() for key, edit in self.output_edits.items()},
             appendix_toc=self.appendix_check.isChecked(),
             open_pdf=self.open_pdf_combo.currentData() or "instructor",
@@ -306,13 +285,8 @@ class DeckSettingsSheet(ModalSheet):
         self.note.setText(text)
         set_property(self.note, "tone", tone)
 
-    def _on_tab(self, index: int) -> None:
-        if index == ADMIN:
-            self.admin.start()
-        self._sync_footer()
-
     def _sync_footer(self) -> None:
-        admin, dirty = self.current_tab() == ADMIN, self.dirty()
+        dirty = self.dirty()
         plugin_tab, page = self.plugin_tabs.get(self.current_tab(), (None, None))
         action = plugin_tab.footer_action if plugin_tab is not None else None
         self.plugin_button.setVisible(action is not None)
@@ -323,13 +297,8 @@ class DeckSettingsSheet(ModalSheet):
             except Exception:
                 log.exception("enabled() of the footer action %r raised; counted as False", action.label)
                 self.plugin_button.setEnabled(False)
-        self.save_button.setVisible((not admin or dirty) and action is None)
-        self.insert_button.setVisible(admin)
-        self.insert_button.setEnabled(bool(self.admin.slide_specs) and not dirty)
-        if action is not None and dirty:
-            self._say(DIRTY_SHEET_MESSAGE)
-        else:
-            self._say("Save the deck settings first: Insert slides edits the same file." if admin and dirty else "")
+        self.save_button.setVisible(action is None)
+        self._say(DIRTY_SHEET_MESSAGE if action is not None and dirty else "")
 
     def _browse(self, key: str | None) -> None:
         edit = self.output_edits[key]
@@ -339,12 +308,6 @@ class DeckSettingsSheet(ModalSheet):
         chosen = QFileDialog.getExistingDirectory(self, f"Folder for: {OUTPUT_LABELS[key]}", start)
         if chosen:
             edit.setText(chosen.replace("\\", "/"))
-
-    def _on_open_link(self) -> None:
-        try:
-            open_path.open_in_default_app(deck_editor.normalize_course_url(self.url_edit.text()))
-        except (ValueError, OSError) as exc:
-            self._say(str(exc), "error")
 
     def _on_save(self) -> None:
         try:
@@ -374,11 +337,6 @@ class DeckSettingsSheet(ModalSheet):
         else:
             self._sync_footer()
 
-    def _on_insert(self) -> None:
-        self.action = INSERT
-        self.accept()
-
     def done(self, result: int) -> None:
-        self.admin.cancel()
         HOST_UI.unregister_sheet(self)
         super().done(result)

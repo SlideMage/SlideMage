@@ -50,6 +50,7 @@ def main(project_context: ProjectContext) -> None:
     maintenance.schedule_startup_update_check(window)
     maintenance.schedule_plugin_update_check(window)
     maintenance.schedule_plugin_offer(window)
+    maintenance.schedule_course_hint(window)
     maintenance.schedule_compat_check(window)
     maintenance.schedule_bundled_copies_check(window)
     sys.exit(app.exec())

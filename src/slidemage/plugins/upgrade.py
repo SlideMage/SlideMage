@@ -9,13 +9,14 @@ and this project use, as plugin id -> the reason the sheet shows; preselect() tu
 Onboarding and migration are separate: offer_seen() is the first-start sheet's flag and nothing else. A feature
 that a release removes from core is a Migration (feature id + that release) with its own seen flag in
 plugins/migrations_seen.json, so a user who dismissed the first-start sheet long ago is still told, once, about
-the plugin that now replaces a feature they use (migrations_due()). No feature is removed yet: MIGRATIONS is empty.
+the plugin that now replaces a feature they use (migrations_due()). CampusOnline was removed in v9.0.0.
 No Qt: reads files and settings only.
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -31,6 +32,9 @@ from ..version import VERSION_NUMBER
 log = logging.getLogger(__name__)
 
 CLAUDE, OLLAMA, CAMPUSONLINE = "claude", "ollama", "campusonline"
+# The comment CampusOnline decks carry in their preamble. Core no longer parses or writes it (the CampusOnline plugin
+# does); this is only the host recognising a plugin's data, to offer the plugin.
+COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*\S", re.MULTILINE)
 OFFER_SEEN_NAME = "offer_seen"
 MIGRATIONS_SEEN_NAME = "migrations_seen.json"
 
@@ -42,9 +46,7 @@ class Migration:
     release: str
 
 
-# The release that removes a feature from core adds its Migration here, e.g. Migration(CAMPUSONLINE, "v8.70.0").
-# Empty until then: nothing changes for the users of a release that still has every feature built in.
-MIGRATIONS: list[Migration] = []
+MIGRATIONS: list[Migration] = [Migration(CAMPUSONLINE, "v9.0.0")]
 
 
 def _routes_with_models(ctx: ProjectContext) -> set[str]:
@@ -53,6 +55,21 @@ def _routes_with_models(ctx: ProjectContext) -> set[str]:
     if not isinstance(stored, dict):
         return set()
     return {ai_profile.route_id(route) for route, tasks in stored.items() if isinstance(tasks, dict) and any(tasks.values())}
+
+
+def has_course_link(text: str) -> bool:
+    """Whether a deck's preamble has a "%% SlideMage course URL: ..." comment."""
+    begin = deck_scan.DOCUMENT_BEGIN_LINE_RE.search(text)
+    return COURSE_URL_RE.search(text[:begin.start()] if begin else text) is not None
+
+
+def course_linked_decks(ctx: ProjectContext) -> list:
+    """The project's decks with a course link."""
+    try:
+        return [deck for deck in deck_scan.scan_decks(ctx) if has_course_link(deck.text)]
+    except OSError:
+        log.exception("could not scan the decks for course links")
+        return []
 
 
 def used_features(ctx: ProjectContext) -> dict[str, str]:
@@ -67,11 +84,7 @@ def used_features(ctx: ProjectContext) -> dict[str, str]:
         used[CLAUDE] = "You chose Claude models in the AI settings"
     if ai_profile.OLLAMA in routes or str(app_settings.get(ctx, app_settings.OLLAMA_HOST_SETTING_KEY) or "").strip():
         used[OLLAMA] = "You chose Ollama models"
-    try:
-        linked = [deck for deck in deck_scan.scan_decks(ctx) if deck.course_url]
-    except OSError:
-        log.exception("could not scan the decks for course links")
-        linked = []
+    linked = course_linked_decks(ctx)
     if linked:
         used[CAMPUSONLINE] = ("A deck of this project has a CAMPUSonline course link" if len(linked) == 1
                               else f"{len(linked)} decks of this project have CAMPUSonline course links")

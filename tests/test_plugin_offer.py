@@ -49,6 +49,9 @@ def no_real_browser(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def nothing_in_use(monkeypatch):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {})       # the fake windows have no project to read
+@pytest.fixture(autouse=True)
 def cleanup_offer_sheets():
     """A shown modal sheet must not block windows in subsequent tests."""
     app = QApplication.instance()
@@ -118,14 +121,17 @@ def test_show_fetches_on_a_thread_and_emits(monkeypatch, qapp):
     assert got == [CAT]
 
 
-def test_scheduled_only_while_the_flag_is_missing(monkeypatch):
+def test_scheduled_for_onboarding_or_configured_migrations(monkeypatch):
     scheduled = []
     monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda *a: scheduled.append(a))
     maintenance.schedule_plugin_offer(SimpleNamespace())
     assert len(scheduled) == 1 and scheduled[0][0] == maintenance.PLUGIN_OFFER_DELAY_MS
     upgrade.mark_offer_seen()
     maintenance.schedule_plugin_offer(SimpleNamespace())
-    assert len(scheduled) == 1
+    assert len(scheduled) == 2  # migrations may still be due
+    monkeypatch.setattr(upgrade, "MIGRATIONS", [])
+    maintenance.schedule_plugin_offer(SimpleNamespace())
+    assert len(scheduled) == 2
 
 
 def test_shown_on_the_first_start_and_not_again(monkeypatch, qapp):
@@ -439,3 +445,45 @@ def test_the_sheet_does_not_close_while_installing(qapp, monkeypatch, tmp_path):
 def test_help_plugins_still_opens_settings_not_the_sheet():
     from slidemage.ui.workspace.window import WorkspaceWindow
     assert "PluginOfferSheet" not in WorkspaceWindow.open_plugins.__code__.co_names
+
+
+def test_campusonline_migration_suppresses_the_project_hint_until_next_start(monkeypatch, qapp):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"campusonline": "A deck has a course link"})
+    scheduled, opened = [], []
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda delay, callback: scheduled.append(callback))
+    upgrade.mark_offer_seen()
+    window = window_with_log()
+    maintenance.schedule_course_hint(window)
+    assert scheduled == []
+
+    class Sheet:
+        restart_requested = False
+
+        def __init__(self, parent, *, preselected, catalogue_data, onboarding):
+            opened.append((preselected, onboarding))
+
+        def exec(self):
+            upgrade.mark_migrations_seen(["campusonline"])
+
+    monkeypatch.setattr(maintenance, "PluginOfferSheet", Sheet)
+    cat = catalogue.parse(catalogue_json(entry("campusonline")))
+    maintenance.on_plugin_offer_fetched(window, cat)
+    assert opened == [({"campusonline": "A deck has a course link"}, False)]
+    maintenance.schedule_course_hint(window)
+    assert len(scheduled) == 1
+    maintenance.schedule_course_hint(window)
+    assert len(scheduled) == 1
+    maintenance.show_course_hint(window)  # suppressed even if a callback is queued after the sheet
+    next_window = window_with_log()
+    maintenance.schedule_course_hint(next_window)
+    assert len(scheduled) == 2
+
+
+@pytest.mark.parametrize("result", [catalogue.CatalogueError("offline"), CAT])
+def test_unavailable_campusonline_migration_schedules_the_hint(monkeypatch, qapp, result):
+    monkeypatch.setattr(upgrade, "used_features", lambda ctx: {"campusonline": "course link"})
+    upgrade.mark_offer_seen()
+    scheduled = []
+    monkeypatch.setattr(maintenance.QTimer, "singleShot", lambda delay, callback: scheduled.append(callback))
+    maintenance.on_plugin_offer_fetched(window_with_log(), result)
+    assert len(scheduled) == 1 and upgrade.migrations_seen() == set()
