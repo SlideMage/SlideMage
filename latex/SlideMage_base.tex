@@ -1,7 +1,7 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
 % A template \input{}s SlideMage_setup (the theme and every template setting
-% with its default) before this file; a template from before SlideMage v9.0.0
+% with its default) before this file; a template from before SlideMage v10.0.0
 % does not, and SlideMage's Project compatibility update fixes it.
 \ifdefined\SMSetupLoaded\else
 	\PackageError{SlideMage}{The template does not \string\input{SlideMage_setup}}{%
@@ -265,7 +265,7 @@
 % and spacing): needs to go after the template as well.
 \SMApplyLayoutHooks
 
-% Derived from the template's hooks and the font (v9.7.0; they were hand-kept numbers of the catalog
+% Derived from the template's hooks and the font (v10.7.0; they were hand-kept numbers of the catalog
 % and the layout profile before). The setup layer holds a macro under each of these four names that
 % stops with an error when a template or a profile sets one; a name still holding that macro is
 % replaced by the length it stands for, and a name that was redefined is reported.
@@ -282,7 +282,7 @@
 \SM@derivedlength{SMTitleBarBottomAlign}
 \SM@derivedlength{SMFootnoteRightShift}
 \SM@derivedlength{SMFooterRightShift}
-% v9.8.0: the lengths below were numbers of the layout profile (measured once at Fira) or of the
+% v10.8.0: the lengths below were numbers of the layout profile (measured once at Fira) or of the
 % catalog; each is evaluated in the font where it is used. The footer's, the lists' and the section
 % frame's follow with the code that uses them.
 \SM@derivedlength{SMFooterTextDrop}
@@ -297,7 +297,7 @@
 \SM@derivedlength{SMSectionframeBottomGap}
 \SM@derivedlength{SMSectionframeBottomPadCorrection}
 \SM@derivedlength{SMSectionframeHeightCorrection}
-% v9.9.0: the pull-ups of the frames the automatic Top Margin does not correct by their content were
+% v10.9.0: the pull-ups of the frames the automatic Top Margin does not correct by their content were
 % the last three numbers of the layout profiles. \SMContentTopShift is measured (the frame's origin,
 % see AUTOMATIC TOP MARGIN; in a run without \jobname.top, from the first frame that counts on), the two columns
 % corrections are measured where a columns environment starts such a frame.
@@ -318,7 +318,7 @@
 %   from the page's edge, so the footnotes are pushed on by the difference.
 \setlength{\SMFootnoteRightShift}{\dimexpr\SMTextMarginRight-\SMFrametitleRightPadding\relax}
 % (\SMFooterRightShift is derived with the footer, below.)
-% - \SMFootlineVOffset (v9.8.0; the catalog's -0.5ex-0.77pt until then), the space the footline
+% - \SMFootlineVOffset (v10.8.0; the catalog's -0.5ex-0.77pt until then), the space the footline
 %   template puts before the footline box. Beamer sets the frame text area to end where the footline
 %   box begins (its height plus depth, and the offset, are its \footheight) plus a fixed 4pt
 %   (beamerbaseframecomponents.sty, \beamer@calculateheadfoot), and the last footnote line's baseline
@@ -332,13 +332,13 @@
 \xdef\SMPDFInfoFootnoteDescender{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
 \makeatother
 
-% The effective margins, for tools/check_layout.py (SlideMage v9.5.0): custom keys of the PDF's
+% The effective margins, for tools/check_layout.py (SlideMage v10.5.0): custom keys of the PDF's
 % info dictionary, in bp (PDF units, what the tool measures in). SMTopMargin is the Top Margin
 % (\SMTopMargin), SMLeftMargin the frame title text's left edge (\SMFrametitleLeftPadding). A template
-% has set its hooks by now; a slide cannot change them. SMTitleBarBottom (v9.6.0) is the bottom edge of
+% has set its hooks by now; a slide cannot change them. SMTitleBarBottom (v10.6.0) is the bottom edge of
 % the title bar (\SMTitleBarBottomAlign): the tool tells a frame with the ordinary title bar by it.
 % SMFontAscender, the text font's ascender, follows once it is known (below, with the Lua file).
-% v9.8.0: SMFootnoteFooterGap, SMFootnoteDescender (the depth of "gjpqy" in the footnote font) and
+% v10.8.0: SMFootnoteFooterGap, SMFootnoteDescender (the depth of "gjpqy" in the footnote font) and
 % SMFooterBoxHeight, which tools/calibrate_font_profile.py checks the footnotes' position against.
 \ExplSyntaxOn
 \edef\SMPDFInfoTopMargin{\dim_to_decimal_in_bp:n{\SMTopMargin}}
@@ -351,6 +351,32 @@
 	SMTitleBarBottom={\SMPDFInfoTitleBarBottom},
 	SMFootnoteFooterGap={\SMPDFInfoFootnoteGap}, SMFootnoteDescender={\SMPDFInfoFootnoteDescender},
 	SMFooterBoxHeight={\SMPDFInfoFooterBoxHeight}}}
+% v10.10.0: the geometric hooks whose effect the tools and tests look for in the page, each as a key of
+% its own name (tools/check_layout.py checks the title frame's bottom pad against SMTitleframeBottomPad
+% and the box's height, and the right edges against SMFrametitleRightPadding; tests/test_hook_geometry.py
+% every one of them against the PDF). In bp, as the lengths stand after the template (the section frame
+% changes the title padding for itself only inside its own frame). Besides the lengths:
+% SMFrametitleXHeight is the height of an X in the frame title's
+% font, which the top padding is measured against; SMFootlineSidePadding is the footline's left padding in the
+% footline font (a macro in ex, so it is read in that font).
+\ExplSyntaxOn
+\cs_new_protected:Npn \SM_pdfinfo_length:n #1
+	{ \exp_args:Nx \hypersetup { pdfinfo = { #1 = { \dim_to_decimal_in_bp:n { \use:c {#1} } } } } }
+\clist_map_function:nN
+	{ SMLogoHeight, SMTextMarginLeft, SMTextMarginRight, SMFrametitleTopPadding, SMFrametitleBottomPadding,
+	  SMFrametitleRightPadding, SMFrameSubtitleStrutEnd, SMFootnoteSep, SMSideFootnoteHsize, SMSideFootnoteTopSep,
+	  SMSideFootnoteRightInset, SMBlockSideMargin, SMBlockTitleMarkerWidth, SMTitleframeBoxHeight,
+	  SMTitleframeBottomPad, SMSectionframeBoxHeight, SMQuoteBoxHeight, SMQuoteAttributionGap, SMProgressStripHeight }
+	\SM_pdfinfo_length:n
+\ExplSyntaxOff
+\makeatletter
+\begingroup\usebeamerfont{frametitle}\settototalheight{\dimen0}{X}
+\xdef\SMPDFInfoFrametitleXHeight{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\begingroup\usebeamerfont{footline}\dimen0=\SMFootlineSidePadding\relax
+\xdef\SMPDFInfoFootlineSidePadding{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\makeatother
+\hypersetup{pdfinfo={
+	SMFrametitleXHeight={\SMPDFInfoFrametitleXHeight}, SMFootlineSidePadding={\SMPDFInfoFootlineSidePadding}}}
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -1605,7 +1631,7 @@
 \def\SMOldPrefix{gotham}
 \expandafter\def\csname\SMOldPrefix SetOverlays\endcsname{\SMSetOverlays}
 \expandafter\def\csname\SMOldPrefix SetTopCorrection\endcsname{\SMSetTopCorrection}
-% A .aux written before v9.1.0 holds each subsection title (\SMAgendaSubsection)
+% A .aux written before v10.1.0 holds each subsection title (\SMAgendaSubsection)
 % as `\gotham@subsectiontitleformat {Title}`: the Gotham theme wrapped titles
 % in that no-op switch, which the SlideMage theme no longer has.
 \expandafter\let\csname\SMOldPrefix @subsectiontitleformat\endcsname\@empty
@@ -2108,7 +2134,7 @@
 % section started with; kept as two separate historical adjustments below
 % rather than collapsing them into one, so this back-and-forth stays
 % visible rather than silently disappearing.
-% (v9.4.0: the adjustments are one value now, the default of the catalog's
+% (v10.4.0: the adjustments are one value now, the default of the catalog's
 % \SMFootlineVOffset in SlideMage_setup.tex: -0.5ex-1.3pt+1.4pt-0.4pt+0.4pt-0.87pt
 % = -0.5ex-0.77pt.)
 
@@ -2121,7 +2147,7 @@
 % footnotes get pulled further down, per this section's own comment
 % above).
 
-% \SMFooterTextDrop (v9.8.0: derived; it was a number of the layout profile since v9.4.0, -0.49pt for
+% \SMFooterTextDrop (v10.8.0: derived; it was a number of the layout profile since v10.4.0, -0.49pt for
 % Fira Sans, -0.37pt for Latin Modern Sans) centres the ink of the frame number in the footer box. The
 % template below starts the footer line with \vspace*{drop}, which in the footline box's horizontal
 % mode is a \vadjust below the line, as is the \vspace*{0.4ex} that ends it; the box has the declared
@@ -2139,7 +2165,7 @@
 	\setlength{\SMFooterTextDrop}{\dimexpr(\SMFooterBoxHeight-\ht\z@+\dp\z@)/2-\SMFootlineDepth-\SM@footerlinedepth-0.4ex\relax}}
 \makeatother
 %
-% \SMFooterRightShift (v9.7.0: derived; it was a number of the layout profile, 4.6pt for Fira Sans,
+% \SMFooterRightShift (v10.7.0: derived; it was a number of the layout profile, 4.6pt for Fira Sans,
 % -0.33pt for Latin Modern Sans) puts the frame number's right edge on the logo's right edge above
 % it, as the footnotes' lines end there. The footer line is typeset in the footline box, which is
 % \hsize wide and ends its lines \rightskip before that; after the number come, in this order,
@@ -2584,7 +2610,7 @@
 % slides/nt4-Exercise-CAPM-5-current.tex) all land their first line's own
 % top edge at y=41.58pt post-change, not 44.0pt. Re-measure and adjust
 % again if \SMContentTopShift ever changes in the future.
-% (v9.7.0: \SMContentTopAlign is derived from \SMTopMargin, further up; it was a hook of SlideMage_setup.tex, 41.58pt, in v9.4.0-v9.6.0.)
+% (v10.7.0: \SMContentTopAlign is derived from \SMTopMargin, further up; it was a hook of SlideMage_setup.tex, 41.58pt, in v10.4.0-v10.6.0.)
 
 % For a "side filler image" -- a decorative image stuck flush to the page's
 % own right edge (zero margin) with its top edge flush against the title
@@ -2632,7 +2658,7 @@
 % (titleframe/quoteframe/the hook's fixed-position redraw) derive their
 % vertical inset from: visible-bar-bottom minus \SMLogoHeight is
 % exactly the inline logo's own vertically-centered top margin.
-% (v9.7.0: \SMTitleBarBottomAlign is derived from the paddings, the frame title font and the logo height, further up; it was a hook of SlideMage_setup.tex, 25.32pt, in v9.4.0-v9.6.0.)
+% (v10.7.0: \SMTitleBarBottomAlign is derived from the paddings, the frame title font and the logo height, further up; it was a hook of SlideMage_setup.tex, 25.32pt, in v10.4.0-v10.6.0.)
 
 % Note on the [t] default below: it top-aligns content within the frame
 % (beamer's own default is vertical centering, "c"), so slides don't have
@@ -2661,8 +2687,8 @@
 % not portable between slides even for superficially similar content (see
 % slides/zgz-EBIT-Definition-current.tex's own v1-2-0 comment for a case
 % where an earlier, wrong correction was carried over uncritically).
-% (\SMContentTopShift was a number of the layout profile from v9.4.0 to v9.8.0 and is measured
-% since v9.9.0, see AUTOMATIC TOP MARGIN; its history is below.)
+% (\SMContentTopShift was a number of the layout profile from v10.4.0 to v10.8.0 and is measured
+% since v10.9.0, see AUTOMATIC TOP MARGIN; its history is below.)
 % 11.5964pt (2026-07-22, direct instruction: "reduce the Top Margin"
 % generally, tested at 20%/30%/40% smaller against
 % slides/8s8-Unit-Investment-Trusts-current.tex before settling on 40% --
@@ -2685,7 +2711,7 @@
 % (\vbox to 0pt{...}) in front of the columns do not count, so a slide that puts such a
 % picture first needs no special treatment either. (\prevdepth cannot tell: those zero-size
 % boxes already set it.) Checked in LuaTeX by walking the current list.
-% (\SMColumnsTopCorrection was a number of the layout profile from v9.4.0 to v9.8.0.)
+% (\SMColumnsTopCorrection was a number of the layout profile from v10.4.0 to v10.8.0.)
 \SMLuaOnce{
 	slidemage_list_has_no_visible_box = function()
 		local head = tex.nest[tex.nest.ptr].head
@@ -2702,7 +2728,7 @@
 % \SMManualTopMargin, a deck with \SMAutoTopMarginfalse) -- in every
 % other frame the measurement puts a columns-first slide on the margin by
 % itself, so this correction (and the [T] compensation below) stays out.
-% v9.9.0: the two corrections are measured where they are used, not numbers of the layout
+% v10.9.0: the two corrections are measured where they are used, not numbers of the layout
 % profile (10.17pt and 13.76pt, fitted on Fira; with Latin Modern Sans under another title bar a
 % [T] columns landed 5.2pt high). Three reference lists are typeset in boxes at this point -- a
 % top-level itemize, the same itemize in the first column of a columns[t], and of a columns[T]
@@ -2748,8 +2774,8 @@
 % \leavevmode, which clears it, so a list at the top of a [T] column kept its \topsep --
 % zero at normal size, but a smaller list (\shrinklists, \small) loads \@listi's 4pt and
 % started that much below a figure beside it that sat on the Top Margin.
-% (\SMColumnsTTopCompensation was a number of the layout profile from v9.4.0 to v9.8.0; it is
-% measured since v9.9.0, see above, and the figures in this paragraph are history.)
+% (\SMColumnsTTopCompensation was a number of the layout profile from v10.4.0 to v10.8.0; it is
+% measured since v10.9.0, see above, and the figures in this paragraph are history.)
 \makeatletter
 \define@key{beamer@col}{T}[true]{%
 	\def\beamer@colmode{T}\def\beamer@colalign{t}\def\beamer@colheadskip{\vskip-1ex\nointerlineskip\@minipagetrue}%
@@ -2818,7 +2844,7 @@
 % slides/bdh-Working-Capital-Example-current.tex's first content line
 % lands within 0.1pt of slides/jyn-Categorization-current.tex's own
 % (200.917pt vs. 200.871pt/200.980pt in the compiled PDF).
-% v9.4.0: the four corrections below (SMMinipageTopCorrection, SMMinipageWithCornerImageExtraCorrection,
+% v10.4.0: the four corrections below (SMMinipageTopCorrection, SMMinipageWithCornerImageExtraCorrection,
 % SMSideImageFrameMinipageCorrection, SMFlatItemizeTopCorrection) are 0pt. The automatic Top Margin (below) moves
 % every frame it manages onto the Top Margin, so the slides that pass them to \SMReduceContentTopShift or
 % \SMIncreaseContentTopShift land where they did: a copy of a real project's 16 decks (5274 pages, 122 slides
@@ -2840,7 +2866,7 @@
 % this deck's current 41.58pt Top Margin reference -- not slide-specific
 % noise, the same deterministic amount on every one of them. Re-measure
 % and adjust again if \SMContentTopShift ever changes in the future.
-\setlength{\SMMinipageTopCorrection}{0pt}% obsolete since v9.4.0 (9.38pt before): the automatic Top Margin corrects it; slides still read the name
+\setlength{\SMMinipageTopCorrection}{0pt}% obsolete since v10.4.0 (9.38pt before): the automatic Top Margin corrects it; slides still read the name
 
 % A *third* minipage-top correction, on top of \SMMinipageTopCorrection
 % above rather than replacing it, for a minipage whose own first internal
@@ -2872,7 +2898,7 @@
 % actually uses `\pause` itself, so this isn't specific to that -- the
 % image-inside-minipage-as-first-content shape alone is what triggers it.
 \newlength{\SMMinipageWithCornerImageExtraCorrection}
-\setlength{\SMMinipageWithCornerImageExtraCorrection}{0pt}% obsolete since v9.4.0 (10.35pt before), see above
+\setlength{\SMMinipageWithCornerImageExtraCorrection}{0pt}% obsolete since v10.4.0 (10.35pt before), see above
 
 % A *different* minipage-top correction, specifically for a minipage+
 % itemize sitting as the first content of a `sideimageframe` (2026-07-06,
@@ -2921,7 +2947,7 @@
 % (8.2pt - 1.94pt), not an increase -- caught by re-measuring after a
 % first, wrong-direction attempt at 10.14pt drove the four-slide cluster
 % to y=37.70pt, further from target instead of closer.
-\setlength{\SMSideImageFrameMinipageCorrection}{0pt}% obsolete since v9.4.0 (6.26pt before, 8.2pt originally), see above
+\setlength{\SMSideImageFrameMinipageCorrection}{0pt}% obsolete since v10.4.0 (6.26pt before, 8.2pt originally), see above
 
 % Opt-in override: reduces standardframe's \SMContentTopShift pull-up by
 % this amount for the frame currently being opened. Empty-default-style flag
@@ -2972,7 +2998,7 @@
 % itself, so every flat-itemize slide's own
 % `\SMIncreaseContentTopShift{\SMFlatItemizeTopCorrection}` line
 % keeps working unchanged.
-\setlength{\SMFlatItemizeTopCorrection}{0pt}% obsolete since v9.4.0 (0.01pt before, 1.834pt originally), see above
+\setlength{\SMFlatItemizeTopCorrection}{0pt}% obsolete since v10.4.0 (0.01pt before, 1.834pt originally), see above
 
 % Opposite-direction counterpart to \SMReduceContentTopShift: *increases*
 % the pull-up instead of reducing it (needed for \SMFlatItemizeTopCorrection
@@ -3006,7 +3032,7 @@
 %   \SMManualTopMargin
 % which keeps the frame's default position: no correction that depends on what
 % the frame starts with. (A \progressstrip frame is measured since v5.30.5.)
-% The default position (v9.9.0) is \SMContentTopShift, the pull-up that puts the
+% The default position (v10.9.0) is \SMContentTopShift, the pull-up that puts the
 % first line of a top-level list on the Top Margin in a standard frame. It used to
 % be a number of the layout profile (11.5964pt, fitted on Fira under the default
 % title bar: with another title bar or font the frames above landed up to 2.9pt
@@ -3249,7 +3275,7 @@
 % way (render, measure with exact text-position extraction, adjust) if
 % this is ever used at a different font size than this deck's normal
 % itemize `\small`.
-% The two lengths of every list with "a)" / "1." / "1." / "a." labels (v9.8.0: derived; they were
+% The two lengths of every list with "a)" / "1." / "1." / "a." labels (v10.8.0: derived; they were
 % 9.1pt and 4.75pt in the Fira profile and 9.16pt and 5.20pt in the lmsans one). \SMLabelItemWidth
 % is the box that holds the widest label of the first items, a)-c) and 1)-9) with a bracket or a
 % period, in the font in force where the list begins, plus 0.1pt of clearance; \SMLabelItemSep is the
@@ -3632,7 +3658,7 @@
 % itself is kept defined, both for this override to reuse and as a manual
 % escape hatch (e.g. a differently-calibrated width some future slide might
 % need).
-% (v9.8.0: \SMEnumerateTextExtra, 6.3pt, is a hook of the catalog; the four lengths below were numbers of the
+% (v10.8.0: \SMEnumerateTextExtra, 6.3pt, is a hook of the catalog; the four lengths below were numbers of the
 % layout profile: 7.85pt, 13.1pt, 5.25pt and 20.33pt for Fira Sans, 8.18pt, 13.43pt, 5.25pt and 20.33pt for
 % Latin Modern Sans.)
 % The numeral column of a nested enumerate, from the widest numeral of the list's own font (the digits
@@ -3673,7 +3699,7 @@
 		\list
 			{\usebeamertemplate{\beamer@enumtempl}}
 			{\usecounter\@enumctr%
-				\SM@enumeratemetrics% the numeral column from this list's font (v9.8.0)
+				\SM@enumeratemetrics% the numeral column from this list's font (v10.8.0)
 				\ifnum\@itemdepth>1
 					% Nested numerals: same rule as level 1 -- left edge at the left
 					% edge of this level's bullet dot (2026-09-20). The box below is
@@ -4625,23 +4651,23 @@
 % top edge.
 \newlength{\SMTitleframeBoxWidth}
 \setlength{\SMTitleframeBoxWidth}{\dimexpr\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
-% Text inset from the box's own edges: \SMFrametitleLeftPadding, the same
-% length standardframe's own title text uses, plus \SMTitleframeTextSep
-% (2.5ex, matching this command's own former per-band beamercolorbox "sep").
-% Because the leading blank space above the text (further down) is itself
-% computed as "box height minus the content's own natural height", the
-% content's *bottom* padding is the only thing that determines how far the
-% last line sits above the box's bottom edge -- the leading space silently
-% absorbs whatever that padding is, keeping the bottom edge fixed either
-% way. (The relationship is a direct 1:1 offset, checked empirically by
-% comparing two rendered values, but with a nonzero intercept from beamer's
-% own default top-of-frame vskip -- there's no clean closed-form for the
-% right value, hence the empirical calibration here rather than a formula.)
-% Calibrated (against the rendered PDF's own text coordinates, not just
-% visually) to about 1.5 line-heights of the subtitle text's own \Large
-% size (~20.6pt/line here) above the box's bottom edge; re-measure and
-% adjust if the subtitle's font size, or beamer's own default top-of-frame
-% vskip, ever change.
+% Text inset from the box's own edges: the text margin (\SMTextMarginLeft,
+% where the frame body begins), \SMFrametitleLeftPadding, the same length
+% standardframe's own title text uses, plus \SMTitleframeTextSep (2.5ex,
+% matching this command's own former per-band beamercolorbox "sep").
+% The text box is placed from the page's corner against the box's bottom
+% edge (\SMTitleframeBoxHeight below the page's top edge), and the space
+% between the last line and that edge is a hook that means what it says:
+% \SMTitleframeBottomPad, from the bottom of the last line's box (its baseline and its
+% depth: the deeper of the strut's and its deepest glyph's, so the descenders of a line that has
+% any touch it) to the edge. The top of the text is
+% derived (the box's height less what the text needs), so a longer title
+% or subtitle grows upward, away from the edge. Until v10.10.0 the text
+% box went through the frame's flow, and beamer's own offset at the top of
+% a frame body sat between the pad and the edge: the old default, 41pt,
+% was that offset (32.5pt) plus the space under the last line, and a
+% template had to guess the sum. The default now (8.505pt) reproduces the
+% old text positions (8.505pt under the last line's box).
 \newbox\SMTitleframeBox
 \makeatletter
 \newcommand{\titleframe}[2]{%
@@ -4743,10 +4769,21 @@
 		\vskip\SMTitleframeBandGap
 		\vskip\SMTitleframeTextSep
 		\noindent{\Large #2\par}%
+		% \SMTitleframeBottomPad (v10.10.0): the space from the bottom of the last line's box (its baseline
+		% and the depth of its strut, the font's nominal descent, whatever size the last line is set in)
+		% to the box's bottom edge. The vbox ends there, so its bottom is the pad under that line.
 		\vskip\SMTitleframeBottomPad
 	}%
-	\vspace*{\dimexpr\SMTitleframeBoxHeight-\ht\SMTitleframeBox-\dp\SMTitleframeBox\relax}%
-	\box\SMTitleframeBox
+	% The text box is placed against the box's bottom edge from the page's corner, as the colored box is,
+	% not through the frame's flow: beamer's own offset at the top of a frame body (32.5pt here) would
+	% otherwise sit between the pad and the edge. (Until v10.10.0 the box went into the flow after a
+	% \vspace* and the hook was that offset larger than the space it named.)
+	\vbox to 0pt{\vss
+	\begin{tikzpicture}[overlay, remember picture]
+		\node[anchor=south west, inner sep=0pt, outer sep=0pt]
+			at ($(current page.north west)+(\SMTextMarginLeft,-\SMTitleframeBoxHeight)$) {\copy\SMTitleframeBox};
+	\end{tikzpicture}%
+	}%
 	% This command's own \color{\SMTitleTextColor} above (set inside a
 	% stored box register) can leak into the *next* frame's body text --
 	% see standardframe's own opening code ("Forces this frame's own body")
@@ -5080,7 +5117,7 @@
 % every title; the old 89.19pt value only fitted titles without descenders.
 \newlength{\SMSectionframeTrueBoxBottom}
 \setlength{\SMSectionframeTrueBoxBottom}{\SMSectionframeBoxHeight}
-% (v9.8.0: \SM@sectionbarmetrics below places the title now, from the bar's own material; the
+% (v10.8.0: \SM@sectionbarmetrics below places the title now, from the bar's own material; the
 % four profile numbers named in this and the paragraphs above and below, \SMSectionframeRefDepth,
 % \SMSectionframeBottomGap, \SMSectionframeBottomPadCorrection and \SMSectionframeHeightCorrection,
 % are gone, and so is the formula these paragraphs explain. They stay as the record of why it was
@@ -5113,7 +5150,7 @@
 \setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\SMFrametitleLeftPadding-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 \newbox\SMSectionframeTitleBox
 \newlength{\SMSectionframeBarBottom}
-% The title's place in the bar (v9.8.0: from the title's own material, no longer from four numbers
+% The title's place in the bar (v10.8.0: from the title's own material, no longer from four numbers
 % measured at Fira): its last baseline lies the depth of a \strut of the title font plus
 % \SMSectionframeTitleGap above the bar's bottom edge, and the top padding is what makes the bar
 % \SMSectionframeBoxHeight high. The bar's content is typeset once into a box, by the same

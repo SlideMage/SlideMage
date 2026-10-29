@@ -20,7 +20,7 @@ copies, so a project kept an old framework and an old manual forever. Now:
   not in baseline, in bundle     ``add``: new upstream -> added
   in baseline, not in bundle     ``remove``: dropped upstream -> removed (only
                                  if unchanged on disk; changed by the user ->
-                                 ``kept``, e.g. a Gotham theme file after v9.1.0)
+                                 ``kept``, e.g. a Gotham theme file after v10.1.0)
   on disk != baseline != bundle  ``kept``: changed by the user -> left alone
   in baseline, missing on disk   deleted by the user -> stays deleted
   ============================  ==============================================
@@ -243,7 +243,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
                 if file_hash(target / rel) == known:
                     part.remove.append(rel)     # dropped upstream, unchanged here
                 else:
-                    part.kept.append(rel)       # dropped upstream, changed here: left in place (v9.1.0)
+                    part.kept.append(rel)       # dropped upstream, changed here: left in place (v10.1.0)
     return part
 
 

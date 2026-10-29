@@ -79,7 +79,7 @@ def _detect_omitslide(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
+# v10.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
 # template or profile that sets them with an error.
 DERIVED_LAYOUT_NAMES = ("SMContentTopAlign", "SMTitleBarBottomAlign", "SMFooterRightShift", "SMFootnoteRightShift")
 _DERIVED = r"\\(" + "|".join(DERIVED_LAYOUT_NAMES) + r")(?![A-Za-z@])"
@@ -105,8 +105,8 @@ def _detect_derived_layout_names(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
-# layer guards these names like those of v9.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
+# v10.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
+# layer guards these names like those of v10.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
 # a setting is the "is derived, not set" error); \SMFootlineVOffset is derived from the new hook \SMFootnoteFooterGap.
 GUARDED_V98_NAMES = (
     "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
@@ -122,7 +122,7 @@ _DEFINES_TEXT_EXTRA = re.compile(r"\\newlength\s*\{?\s*\\(SMEnumerateTextExtra)(
 
 
 def _detect_font_measurement_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a number v9.8.0 derives."""
+    """Project-root layout profiles, templates and project macros that still define or set a number v10.8.0 derives."""
     findings = []
     paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
              for p in sorted(root.glob(pattern))]
@@ -143,8 +143,8 @@ def _detect_font_measurement_names(root: Path) -> list[Finding]:
     return findings
 
 
-# v9.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
-# correct by their content, are measured on the page. Guarded like v9.8.0's names: a profile's \newlength of one is a
+# v10.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
+# correct by their content, are measured on the page. Guarded like v10.8.0's names: a profile's \newlength of one is a
 # LaTeX error "already defined", a setting the "is derived, not set" error.
 GUARDED_V99_NAMES = ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation")
 _V99 = r"\\(" + "|".join(GUARDED_V99_NAMES) + r")(?![A-Za-z@])"
@@ -155,7 +155,7 @@ _SETS_V99_NAME = re.compile(
 
 
 def _detect_top_pullup_names(root: Path) -> list[Finding]:
-    """Project-root layout profiles, templates and project macros that still define or set a pull-up v9.9.0 measures."""
+    """Project-root layout profiles, templates and project macros that still define or set a pull-up v10.9.0 measures."""
     findings = []
     paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
              for p in sorted(root.glob(pattern))]
@@ -166,6 +166,28 @@ def _detect_top_pullup_names(root: Path) -> list[Finding]:
                 findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
                                         f"\\{match.group(1) or match.group('assigned')} is measured on the page now; "
                                         "remove this line."))
+    return findings
+
+
+# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's last line to the title box's bottom edge (until then it
+# also held beamer's offset at the top of a frame body, 32.5pt with the SlideMage template's fonts). A project template that
+# sets it gets its title slide's text that much lower.
+_SETS_TITLEFRAME_PAD = re.compile(
+    r"\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*\\SMTitleframeBottomPad(?![A-Za-z@])"
+    r"|\\SMTitleframeBottomPad(?![A-Za-z@])\s*=")
+
+
+def _detect_titleframe_bottom_pad(root: Path) -> list[Finding]:
+    """Project-root templates and project macros that set \\SMTitleframeBottomPad, whose value means something else since v10.10.0."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_project_macros.tex") for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_TITLEFRAME_PAD.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        "\\SMTitleframeBottomPad is the space under the subtitle's last line now:"
+                                        "subtract about 32.5pt from this value to keep the title slide's text where it is."))
     return findings
 
 
@@ -216,7 +238,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_omitslide,
 ), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
     id="derived-layout-names",
-    since="v9.7.0",
+    since="v10.7.0",
     severity=BREAKS,
     title="Four layout positions follow the template's settings and can no longer be set",
     description=(
@@ -231,7 +253,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_derived_layout_names,
 ), Change(
     id="font-measurements-derived",
-    since="v9.8.0",
+    since="v10.8.0",
     severity=BREAKS,
     title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
     description=(
@@ -251,7 +273,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_font_measurement_names,
 ), Change(
     id="top-pullups-measured",
-    since="v9.9.0",
+    since="v10.9.0",
     severity=BREAKS,
     title="A layout profile no longer holds the top pull-ups",
     description=(
@@ -265,6 +287,21 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Delete the lines that define or set these three names from the profile or template; no number replaces "
         "them. To move the first line of every frame, change \\SMTopMargin in the template."),
     detect=_detect_top_pullup_names,
+), Change(
+    id="titleframe-bottom-pad",
+    since="v10.10.0",
+    severity=APPEARANCE,
+    title="The title slide's bottom pad is the space under the subtitle",
+    description=(
+        "\\SMTitleframeBottomPad is now the space from the bottom of the subtitle's last line to the title "
+        "box's bottom edge, and the text is placed against that edge from the page's corner. Until now the hook also "
+        "held beamer's offset at the top of a frame body (32.5pt with the SlideMage template's fonts), so a value "
+        "was the space plus that offset. The default went from 41pt to 8.505pt and looks the same. A project "
+        "template that sets the hook gets its title slide's text lower by about 32.5pt."),
+    fix=(
+        "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
+        "take the default; then set the space you want under the subtitle's last line."),
+    detect=_detect_titleframe_bottom_pad,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Check a SlideMage layout profile against a compiled calibration deck.
 
-A layout profile (latex/SlideMage_layout_<name>.tex) holds the font files and the font's metrics, and since v9.9.0
+A layout profile (latex/SlideMage_layout_<name>.tex) holds the font files and the font's metrics, and since v10.9.0
 no length measured against the rendered PDF: everything follows from the font where it is used, from the page, or is
-a hook of the catalog (v9.7.0-v9.9.0): where the title bar ends, the right edges of the frame number and the
+a hook of the catalog (v10.7.0-v10.9.0): where the title bar ends, the right edges of the frame number and the
 footnotes, where the footer number sits in its box, the label and numeral boxes of the lists, the footnotes' offset,
 the section frame's corrections and the pull-up of the frames the automatic Top Margin does not correct by their
 content (\\SMContentTopShift and the two columns corrections, measured from where the frame's body begins). This tool
@@ -262,7 +262,7 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
                                 f"the footer box {box_height:.2f}bp high"))
 
     # -- the top of the frames the automatic Top Margin does not correct by their content -----------------
-    # (v9.9.0: \SMContentTopShift is measured from the frames' body origin, the two columns corrections against a list
+    # (v10.9.0: \SMContentTopShift is measured from the frames' body origin, the two columns corrections against a list
     # where the columns begin; a manual-top frame's first line sits on the Top Margin whatever the font and template)
     top_margin = deck.info["top_margin"]
     for slide_id, what, derived in (("ZCI", "a list", "\\SMContentTopShift"),

@@ -5,7 +5,7 @@ Branch `claude/fw-step1a-names-bee1b7`, two commits on top of `86ce5196`. Nothin
 ## Done
 
 - `a13eeaac`: all renames and the compat change `slidemage-names-and-setup-layer` (`src/slidemage/compat_names.py`,
-  `since="v9.0.0"`, BREAKS). `compat.run_update` deletes files (`None` in the plan) and is all or nothing.
+  `since="v10.0.0"`, BREAKS). `compat.run_update` deletes files (`None` in the plan) and is all or nothing.
   Old env vars are ignored, logged once (stderr and the window log) and listed in the compat sheet and report.
   `preview_equivalence` pins are re-pinned (names and comments only changed); the stock Graz template, as the
   migration leaves it, is pinned too.

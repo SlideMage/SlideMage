@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""compat_setup: the setup-layer rewrites of templates and decks (v9.0.0)."""
+"""compat_setup: the setup-layer rewrites of templates and decks (v10.0.0)."""
 from __future__ import annotations
 
 from slidemage import compat_setup

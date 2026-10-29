@@ -19,6 +19,10 @@ in the slide comments and the preamble uses -- 41.58 Top Margin etc.):
           overfull and pushed it down)
   bleed   table rules (booktabs \\toprule etc.) extend no further than the table's text
   jitter  between overlay pages of one slide nothing that is on both pages moves
+  edge    the frame number and the footnote lines end on the logo's padding edge (the page's width less
+          \\SMFrametitleRightPadding), where the footer and footnote shifts of the base put them
+  titlepad  on a title frame the last subtitle line stands \\SMTitleframeBottomPad above the box's bottom edge,
+          measured from the bottom of its line box (the hook's value comes from the PDF)
 
 A slide can exempt itself from a check -- a deliberate exception, e.g. a figure centred
 between title bar and footer -- with a comment line in its own slide file:
@@ -28,10 +32,12 @@ between title bar and footer -- with a comment line in its own slide file:
 (several checks comma-separated, or "all"). Exempted findings are counted, not listed.
 
 The Top and Left Margin are the deck's own: SlideMage_base.tex writes them into the PDF
-(info keys SMTopMargin, SMLeftMargin, since v9.5.0), and since v9.6.0 also the text font's
+(info keys SMTopMargin, SMLeftMargin, since v10.5.0), and since v10.6.0 also the text font's
 ascender (SMFontAscender) and the title bar's bottom edge (SMTitleBarBottom), so that a template
 with another font, other margins or another title bar is checked against its own values. An
-older PDF is checked against the SlideMage template's 41.58, 12.55, 0.935 and 25.2. Exemptions are read from the slide files of the project the PDF
+older PDF is checked against the SlideMage template's 41.58, 12.55, 0.935 and 25.2. Since v10.10.0 the geometric hooks
+are in the PDF too (one key per hook, in bp; pdf_hooks()); `edge` and `titlepad` need them and are skipped on an older PDF
+(edge falls back to the logo's visible edge). Exemptions are read from the slide files of the project the PDF
 belongs to: --project, else the folder with slide_ids.csv above the PDF, else
 $SLIDEMAGE_PROJECT.
 
@@ -49,11 +55,11 @@ from pathlib import Path
 
 import fitz
 
-CHECKS = ("top", "coltop", "left", "right", "bottom", "bleed", "jitter")
+CHECKS = ("top", "coltop", "left", "right", "bottom", "bleed", "jitter", "edge", "titlepad")
 
 TOP_MARGIN = 41.58       # top of a plain first body line's line box (\SMTopMargin in SlideMage_setup.tex, 41.58bp)
 LEFT_MARGIN = 12.55      # title text's left edge (bullet dots start at 12.75): \SMFrametitleLeftPadding
-# Both are only the fallback for a PDF from before SlideMage v9.5.0: since then the base writes the deck's own
+# Both are only the fallback for a PDF from before SlideMage v10.5.0: since then the base writes the deck's own
 # margins into the PDF's info dictionary (SMTopMargin, SMLeftMargin, in bp), which pdf_margins() reads.
 FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothing pushes it (the fallback: see usual_footnote_top)
 FOOTNOTE_MARKER_ALLOWANCE = 1.5  # a footnote line with its raised marker has a line box this much higher than a \source line
@@ -146,6 +152,26 @@ def pdf_info(doc: fitz.Document) -> dict[str, float]:
             "title_bar_bottom": read("SMTitleBarBottom", TITLE_BAR_BOTTOM)}
 
 
+def pdf_hooks(doc: fitz.Document) -> dict[str, float]:
+    """The geometric hooks SlideMage_base.tex writes into the PDF's info dictionary since v10.10.0 (key = the hook's
+    name without the backslash, value in bp): the ones that are there. An older PDF yields none of them, and the
+    checks that need one are skipped."""
+    out: dict[str, float] = {}
+    try:
+        kind, ref = doc.xref_get_key(-1, "Info")
+        if kind != "xref":
+            return out
+        xref = int(ref.split()[0])
+        for key in doc.xref_get_keys(xref):
+            if key.startswith("SM") and key not in ("SMTopMargin", "SMLeftMargin", "SMFontAscender", "SMTitleBarBottom"):
+                kind, value = doc.xref_get_key(xref, key)
+                if kind in ("string", "real", "int"):
+                    out[key] = float(value)
+    except (ValueError, RuntimeError):
+        pass
+    return out
+
+
 def pdf_margins(doc: fitz.Document) -> tuple[float, float]:
     """The deck's Top and Left Margin (pdf_info's first two numbers)."""
     info = pdf_info(doc)
@@ -156,8 +182,10 @@ class Page:
     """The measurable pieces of one page: frame chrome and body content."""
 
     def __init__(self, page: fitz.Page, top_margin: float = TOP_MARGIN, left_margin: float = LEFT_MARGIN,
-                 ascender: float = FIRA_ASCENDER, title_bar_bottom: float = TITLE_BAR_BOTTOM):
+                 ascender: float = FIRA_ASCENDER, title_bar_bottom: float = TITLE_BAR_BOTTOM,
+                 hooks: dict[str, float] | None = None):
         self.page = page
+        self.hooks = hooks or {}
         self.top_margin, self.left_margin = top_margin, left_margin
         self.ascender, self.title_bar_bottom = ascender, title_bar_bottom
         self.w, self.h = page.rect.width, page.rect.height
@@ -397,6 +425,71 @@ class Page:
                            f"{tx0:.2f}-{tx1:.2f} (left {left:.2f}, right {right:.2f})")
         return out
 
+    def check_edge(self, tol):
+        """The frame number and the footnote lines end on the logo's padding edge: the page's width less
+        \\SMFrametitleRightPadding, the line the base's derived shifts (\\SMFooterRightShift, \\SMFootnoteRightShift) put
+        them on whatever the template's margin, padding and font are. A PDF without that key is checked against the logo's
+        visible right edge, which lies up to a point inside the padding edge (the logo's own margin), with a point of room."""
+        padding = self.hooks.get("SMFrametitleRightPadding")
+        if padding is None and not self.standard:
+            return []                      # no key: the logo's visible edge is the reference, found only under an ordinary title bar
+        edge, room = (self.w - padding, 0.0) if padding is not None else (self.logo_right, 1.0)
+        ends: list[tuple[str, float]] = []
+        numbers = [s["bbox"][2] for block in self.page.get_text("dict")["blocks"] for line in block.get("lines", [])
+                   for s in line["spans"] if s["text"].strip().isdigit() and s["bbox"][1] >= self.footer_top - 1
+                   and abs(line["dir"][1]) < 0.01]
+        if numbers:
+            ends.append(("frame number", max(numbers)))
+        ends += [("footnote line", r.x1) for r in self.footnotes if r.x1 > self.logo_right - 4]
+        return [f"{what} ends at x={x:.2f}, {x - edge:+.2f} from the logo's padding edge ({edge:.2f})"
+                for what, x in ends if abs(x - edge) > tol + room][:3]
+
+    def check_titlepad(self, tol):
+        """On a title frame (\\titleframe: a colored box from the page's corner as high as \\SMTitleframeBoxHeight, narrower
+        than the page) the last line of the subtitle stands \\SMTitleframeBottomPad above the box's bottom edge, measured from
+        the bottom of its line box. TeX's line box reaches down to the deepest glyph of the line when that is deeper than
+        its strut, so for a last line with descenders (g, j, p, q, y: ink more than a point under the baseline) the
+        ink's bottom edge is the line box's; a last line without any is not checked, its depth is the strut's and
+        the PDF does not say what that is. Needs the box height and the pad in the PDF; a quote frame's box (another
+        height) is left alone."""
+        if "SMTitleframeBoxHeight" not in self.hooks or "SMTitleframeBottomPad" not in self.hooks:
+            return []
+        height, pad = self.hooks["SMTitleframeBoxHeight"], self.hooks["SMTitleframeBottomPad"]
+        if abs(height - self.hooks.get("SMQuoteBoxHeight", -1.0)) < 0.2:
+            return []                       # a title frame and a quote frame of one height cannot be told apart
+        boxes = [d["rect"] for d in self.page.get_drawings() if d.get("fill") is not None and not is_white(d["fill"])
+                 and d["rect"].x0 < 0.5 and d["rect"].y0 < 0.5 and d["rect"].width < self.w - 1
+                 and abs(d["rect"].height - height) < 0.2]
+        if not boxes:
+            return []
+        box = boxes[0]
+        lines = [(r, b) for r, b, size, _, _ in self.baselines if size > 8 and r.y1 < box.y1 + 0.5 and r.x1 <= box.x1 + 0.5]
+        if not lines:
+            return []
+        rect, baseline = max(lines, key=lambda t: t[1])
+        clip = fitz.Rect(rect.x0, baseline - 6, min(rect.x1 + 2, box.x1), box.y1 - 0.2)
+        ink_bottom = ink_extent(self.page, clip)
+        if ink_bottom is None or ink_bottom - baseline < 1.0:
+            return []                       # no descenders: the line box is the strut's, which the PDF does not record
+        gap = box.y1 - ink_bottom
+        if abs(gap - pad) > tol:
+            return [f"the last subtitle line's deepest glyph ends {gap:.2f} above the box's bottom edge ({box.y1:.2f}); "
+                    f"the pad says {pad:.2f}"]
+        return []
+
+
+def ink_extent(page: fitz.Page, clip: fitz.Rect, dpi: int = 1152) -> float | None:
+    """The bottom edge (page y, bp) of the lowest ink in `clip`: pixels that differ from the clip's top right corner."""
+    pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=fitz.csRGB, alpha=False)
+    samples, n = pix.samples, pix.n
+    corner = (pix.width - 1) * n
+    background = samples[corner:corner + 3]
+    for y in range(pix.height - 1, -1, -1):
+        row = y * pix.width * n
+        if any(max(abs(samples[row + x * n + k] - background[k]) for k in range(3)) > 60 for x in range(pix.width)):
+            return clip.y0 + (y + 1) * 72 / dpi
+    return None
+
 
 def usual_footnote_top(pages: list[Page]) -> float:
     """Where the last footnote line of a frame sits when nothing pushes it. The footer, the footnote size and
@@ -447,7 +540,8 @@ def main(argv=None) -> int:
         doc = fitz.open(path)
         project = find_project(Path(path), args.project)
         info = pdf_info(doc)
-        pages = [Page(p, info["top_margin"], info["left_margin"], info["ascender"], info["title_bar_bottom"])
+        hooks = pdf_hooks(doc)
+        pages = [Page(p, info["top_margin"], info["left_margin"], info["ascender"], info["title_bar_bottom"], hooks)
                  for p in doc]
         footnote_top = usual_footnote_top(pages)
         # consecutive pages of one slide = its overlay steps

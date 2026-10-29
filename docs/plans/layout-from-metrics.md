@@ -1,6 +1,6 @@
 # Plan: layout that follows the font and the template (steps 8-13 of the framework redesign)
 
-Written 2026-10-28, after step 7 (v9.6.0). Status: **approved by the user on 2026-10-28, with the proposed
+Written 2026-10-28, after step 7 (v10.6.0). Status: **approved by the user on 2026-10-28, with the proposed
 answers to the five decisions at the end.** It extends `docs/plans/template-owned-layout-and-own-theme.md` (the "main plan"); read its section 2
 (the hook catalog), section 4 (layout profiles) and the "Done" notes under steps 5-7 first.
 
@@ -28,11 +28,11 @@ the layout still only works for Fira Sans and the SlideMage template's default v
 6. **Two Fira bugs found on the way.** A `\footnote` inside a `\pause`d item shows its text from the first step; a
    `columns[T]` right after a `columns[t]` starts about 3pt under the list above, almost touching a table's rule.
 
-## Starting point: the user's step 5 answers (v9.4.1)
+## Starting point: the user's step 5 answers (v10.4.1)
 
-On 2026-10-27 the user answered step 5's questions (a)-(e) (implemented as v9.4.1 on branch
+On 2026-10-27 the user answered step 5's questions (a)-(e) (implemented as v10.4.1 on branch
 `fw-redesign-conflict-copy-28170940`, never merged because of the sync incident; see the handover). They are
-requirements of this plan, and step 8 re-implements them on top of v9.6.0 instead of merging that branch:
+requirements of this plan, and step 8 re-implements them on top of v10.6.0 instead of merging that branch:
 
 - `\SMContentTopAlign` derives from `\SMTopMargin` (moves overlays by 0.156pt; approved).
 - `\SMTitleBarBottomAlign` derives from the title padding, the frame title font's cap height and the logo height
@@ -61,17 +61,17 @@ requirements of this plan, and step 8 re-implements them on top of v9.6.0 instea
 
 ## The changes
 
-### A. Geometry from hooks (the user's v9.4.1 answers, re-done on v9.6.0)
+### A. Geometry from hooks (the user's v10.4.1 answers, re-done on v10.6.0)
 
 - `\SMContentTopAlign := \SMTopMargin`; `\SMTitleBarBottomAlign :=` title top padding + frame title strut − half
-  the frame title font's cap height + half the logo height, computed after the template (as v9.4.1 did).
+  the frame title font's cap height + half the logo height, computed after the template (as v10.4.1 did).
 - Footer number and footnotes: their right edge is placed at `\paperwidth − \SMFrametitleRightPadding` (the logo's
   edge) minus the last glyph's right side bearing, read from the font (Lua: the glyph's bounding box) instead of
   `\SMFooterNumberOverhang` (0.23691pt on Fira). `\SMFooterRightShift` and `\SMFootnoteRightShift` stop being
   values; the names stay readable for slides, derived.
 - The stress template loses its `\SMContentTopAlign` and `\SMTitleBarBottomAlign` lines; lmsans then needs no help
   from the template.
-- Visible: v9.4.1's approved shifts; the overhang from the font instead of 0.23691pt must reproduce Fira's number
+- Visible: v10.4.1's approved shifts; the overhang from the font instead of 0.23691pt must reproduce Fira's number
   within 0.005pt or the difference is shown.
 
 ### B. Font measurements instead of stored numbers
@@ -84,7 +84,7 @@ Each becomes an expression evaluated in the font where it is used:
 | `\SMEnumerateNestedMinNumber` 7.85pt, `\SMEnumerateNestedLeftMargin` 13.1pt, `\SMEnumerateNestedLabelSep` 5.25pt, `\SMEnumerateLabelBox` 20.33pt | widest numeral of the list's own font via `\settowidth` (digits are tabular in both profiles); the label gap and the slot's extra width become hooks |
 | `\SMEnumerateTextExtra` 6.3pt | already called a design value: a hook |
 | `\SMFooterTextDrop` −0.49pt (ink of the frame number centred in the box) | from the digits' ink (Lua bounding boxes) and the footer box height |
-| `\SMFootlineVOffset` −0.5ex − 0.77pt | the footnote-to-footer gap measured from the footnote font's descender; the gap itself a hook (v9.4.1 made it a profile value; this plan proposes to go one further, see decision 3) |
+| `\SMFootlineVOffset` −0.5ex − 0.77pt | the footnote-to-footer gap measured from the footnote font's descender; the gap itself a hook (v10.4.1 made it a profile value; this plan proposes to go one further, see decision 3) |
 | `\SMSectionframeRefDepth` / `BottomGap` / `BottomPadCorrection` / `HeightCorrection` | the section title is already set in a box: place it by that box's measured height and depth against the bar (section C) |
 
 Proof per row: the Fira value reproduced exactly (pixel-identical) or within the named tolerance with before/after
@@ -149,12 +149,12 @@ tests, both regression sets, pause for the user. Before step 8: merge develop (v
 
 | Step | Content | Version | Visible on existing decks |
 |---|---|---|---|
-| 8 | A: geometry from hooks (v9.4.1 re-done), overhang from the font, stress template drops its overrides | v9.7.0 | v9.4.1's approved sub-point shifts |
-| 9 | B: font measurements instead of stored numbers; new hooks `\SMLabelItemGap` etc. | v9.8.0 | sub-point, per row, with images |
-| 10 | C: body-origin measurement for unmanaged frames, columns, section frame; pull-up numbers leave the profile | v9.9.0 | goal identical on Fira; any difference with images |
-| 11 | D: `\SMTitleframeBottomPad` placement, hook audit and geometry tests | v9.10.0 | identical by construction (default recomputed) |
-| 12 | E: footnotes in revealed items, `columns[T]` below content | v9.11.0 | yes: bug fixes, affected slides listed |
-| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v9.12.0 | none |
+| 8 | A: geometry from hooks (v10.4.1 re-done), overhang from the font, stress template drops its overrides | v10.7.0 | v10.4.1's approved sub-point shifts |
+| 9 | B: font measurements instead of stored numbers; new hooks `\SMLabelItemGap` etc. | v10.8.0 | sub-point, per row, with images |
+| 10 | C: body-origin measurement for unmanaged frames, columns, section frame; pull-up numbers leave the profile | v10.9.0 | goal identical on Fira; any difference with images |
+| 11 | D: `\SMTitleframeBottomPad` placement, hook audit and geometry tests | v10.10.0 | identical by construction (default recomputed) |
+| 12 | E: footnotes in revealed items, `columns[T]` below content | v10.11.0 | yes: bug fixes, affected slides listed |
+| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v10.12.0 | none |
 
 The main plan's later steps move up: bibliography file 8 → 14, documentation 9 → 15, institution templates out of
 the repository 10 → 16, private institution themes 11 → 17.
@@ -186,10 +186,10 @@ its meaning to "space under the last line" with a recomputed default, so existin
 bug fixes are made now, with the affected slides listed and shown before/after.
 
 1. Approve this plan (and the renumbering of the later steps).
-2. Visible-change rule for steps 8-10: as with v9.4.1, sub-point shifts that come from deriving a value instead of
+2. Visible-change rule for steps 8-10: as with v10.4.1, sub-point shifts that come from deriving a value instead of
    storing it are acceptable once shown with before/after images; or should those steps keep pixel identity where
    possible by keeping a stored number?
-3. `\SMFootlineVOffset`: profile value (v9.4.1, the user's answer) or derived from the font with the gap as a hook
+3. `\SMFootlineVOffset`: profile value (v10.4.1, the user's answer) or derived from the font with the gap as a hook
    (this plan's proposal in B)?
 4. `\SMTitleframeBottomPad`: change its meaning to "space under the last line" with a recomputed default (no visible
    change on existing decks; a project template that sets it would see its title-slide text move), or keep the name
@@ -197,7 +197,7 @@ bug fixes are made now, with the affected slides listed and shown before/after.
 5. Step 12's bug fixes change existing slides of the real project: fix them now, or record them and leave them for
    later?
 
-## Done 2026-10-28 (v9.7.0), notes for the later steps
+## Done 2026-10-28 (v10.7.0), notes for the later steps
 
 Step 8 (section A). `\SMContentTopAlign`, `\SMTitleBarBottomAlign`, `\SMFootnoteRightShift` and `\SMFooterRightShift` are
 derived by `SlideMage_base.tex`; the first two leave the catalog, the last two both profiles.
@@ -218,11 +218,11 @@ derived by `SlideMage_base.tex`; the first two leave the catalog, the last two b
   RSB = `width - boundingbox[3]` in units of 1/1000 em). For Fira Sans Light's digits that is 35-121 units, 0.175pt-0.605pt
   at the footer's 5pt: 0 0.33, 1 0.605, 2 0.265, 3 0.315, 4 0.175, 5 0.255, 6 0.255, 7 0.18, 8 0.265, 9 0.305. None is
   0.23691pt, and the number differs per page, so reading it would move the frame number by 0.0-0.4pt from page to page.
-  The 0.23691pt of v9.4.1 was not a glyph property: it was `TextMarginRight - FrametitleRightPadding` (4.837pt) minus
+  The 0.23691pt of v10.4.1 was not a glyph property: it was `TextMarginRight - FrametitleRightPadding` (4.837pt) minus
   the old 4.6pt. The footer line ends at its box's `\hsize - \rightskip - \SMRightFooterPadding - \SMFootlineHRightOffset
   + 4em + shift`, with `\rightskip` = 3ex *of the footline font at 8pt* (12.552pt for Fira, 10.656pt
   for lmsans), `\SMRightFooterPadding` = 3.5ex of the body font (20.044pt, 17.016pt) and the footer's 4em (20pt): for Fira
-  these sum to 4.632pt, 0.205pt short of the text margin, and v9.4.1's constant absorbed that and 0.032pt more. For lmsans
+  these sum to 4.632pt, 0.205pt short of the text margin, and v10.4.1's constant absorbed that and 0.032pt more. For lmsans
   the sum is different by 5pt, which was the -0.33pt. So the shift is computed from those terms where the footer is
   typeset (`\hspace*{-4em}` and the shift sit in one template), and the frame number's advance box ends where the
   footnotes' lines end, the logo's padding edge. No overhang number is kept anywhere. Consequence: the number moves
@@ -233,9 +233,9 @@ derived by `SlideMage_base.tex`; the first two leave the catalog, the last two b
   footer sets the number, and would move the number by up to 0.5pt between pages.
 - **Things the next steps can use.** (1) `\SMFooterRightShift`'s expression is where the footer's 4em/2em/0.4ex pieces and
   its two paddings meet: step 11's hook audit can turn them into hooks without moving the number. (2) lmsans under the
-  SlideMage template now ends its title bar at 22.09bp (v9.6.0 kept Fira's 25.23bp there): the calibration decks of step 13
+  SlideMage template now ends its title bar at 22.09bp (v10.6.0 kept Fira's 25.23bp there): the calibration decks of step 13
   need no template help for it. (3) The calibration tool reports the derived edges instead of suggesting numbers.
-- **check_layout.py.** Clean on the calibration deck under the stress template (13 exempted findings, as in v9.6.0) and under
+- **check_layout.py.** Clean on the calibration deck under the stress template (13 exempted findings, as in v10.6.0) and under
   the SlideMage template with fira (7) and with lmsans (7).
 - **Visible changes.** In-repo compare: 12 entries, 1084 pages (0 failed compiles): 1054 pages differ in the right edge of the footer or
   footnotes (0.026-0.039bp), 220 in the title bar's bottom edge (0.003bp, the logo's trim patch, the thumbnails and
@@ -252,7 +252,7 @@ derived by `SlideMage_base.tex`; the first two leave the catalog, the last two b
   side of it; nothing visible. No word, drawing or image was added or lost, no text reflowed. Before/after images are in
   `C:/Users/palans/SlideMage/regression/step8-images/`.
 
-## Done 2026-10-28 (v9.8.0), notes for the later steps
+## Done 2026-10-28 (v10.8.0), notes for the later steps
 
 Step 9 (section B). Both profiles hold fonts, metrics and the three pull-ups (`SMContentTopShift`, `SMColumnsTopCorrection`, `SMColumnsTTopCompensation`, for step 10) and nothing else. Twelve names are derived and guarded by the setup layer like step 8's (`SM@guardname`); the design parts are hooks. Per row, Fira / lmsans, old -> new:
 
@@ -270,11 +270,11 @@ Step 9 (section B). Both profiles hold fonts, metrics and the three pull-ups (`S
 
 - **New hooks:** `SMLabelItemGap`, `SMEnumerateNestedSlotExtra`, `SMEnumerateNestedLabelGap`, `SMEnumerateTextExtra`, `SMFootnoteFooterGap`, `SMSectionframeTitleGap`. The stress template sets all of them (and no longer `SMFootlineVOffset`).
 - **Things the next steps can use.** `\SM@sectionbarmetrics` (typeset the bar's material in a box, solve the padding from its height) is the pattern step 10's body-origin measurement can follow; the base writes `SMFootnoteFooterGap`, `SMFootnoteDescender` and `SMFooterBoxHeight` into the PDF info dictionary, which `tools/calibrate_font_profile.py` now checks (it suggests only the three pull-ups). The compat registry gets `font-measurements-derived`.
-- **Check.** `check_layout.py` is clean under the stress template (13 exempted findings) and the SlideMage template with fira (7) and lmsans (7), as in v9.7.0.
+- **Check.** `check_layout.py` is clean under the stress template (13 exempted findings) and the SlideMage template with fira (7) and lmsans (7), as in v10.7.0.
 - **Regression.** In-repo: 12 entries, 1084 pages, 0 failed compiles, fonts identical; 1054 pages differ by 0.04pt (footer number), 12 pages (slide 1w4) by the list text 0.55-1.28pt to the right. Private copy: 48 entries, 5274 pages, 0 failures, fonts identical; 5102 pages differ, almost all by the 0.04pt; 98 pages on 18 slides (1w4, bdh, bzd, cmv, ctu, gfx, ix7, jt8, kfh, kmf, nt4, p5r, raf, rre, seg, u5j, vjy, y3a) by list text shifts of -1.4 to +2.6pt (lists not at 10pt, third-level enumerate at 9pt). No word, drawing or image added, lost or reflowed. Images: `C:/Users/palans/SlideMage/regression/step9-images/`.
-- **Open for the user.** The v9.7.0 and v9.8.0 CHANGELOG entries carry BREAKING with the same major version (release_notes warns); the compat project migration for gothamFootlineVOffset (v9.1.0) now yields a template that sets a derived name.
+- **Open for the user.** The v10.7.0 and v10.8.0 CHANGELOG entries carry BREAKING with the same major version (release_notes warns); the compat project migration for gothamFootlineVOffset (v10.1.0) now yields a template that sets a derived name.
 
-## Done 2026-10-29 (v9.9.0), notes for the later steps
+## Done 2026-10-29 (v10.9.0), notes for the later steps
 
 Step 10 (section C). The profiles hold fonts and font metrics only; `\SMContentTopShift`, `\SMColumnsTopCorrection` and `\SMColumnsTTopCompensation` are guarded by the setup layer (`SM@guardname`) and derived by the base (`SM@derivedlength`), readable by slides. Compat entry `top-pullups-measured`.
 
@@ -287,3 +287,16 @@ Step 10 (section C). The profiles hold fonts and font metrics only; `\SMContentT
 - **check_layout.py** on the calibration deck: clean under the stress template (10 exempted findings, was 13: the three manual-top exemptions are gone) and under the SlideMage template with fira (6, was 7) and lmsans (6, was 7). `tools/calibrate_font_profile.py` suggests nothing any more: it checks that the three manual-top frames start on the Top Margin (fira 0.00 / 0.00 / 0.11pt, lmsans 0.00 / 0.00 / 0.00pt).
 - **Compile counts.** Calibration deck 3 LuaLaTeX runs before and after (fira, lmsans, stress, and with `\SMAutoTopMarginfalse`). In-repo 12 entries: 5 -> 5 each. Private copy 57 entries: identical to the baseline for every entry (6 at 3, 12 at 4, 39 at 5).
 - **Regression** (baselines `.regression/repo-v98`, `private-v98` at `3088c4b9`; PDFs compared word by word, path by path and image by image). In-repo: 12 entries, 1084 pages, 0 failed compiles, fonts identical; 1026 pages differ, 876 by at most 0.01bp (the measured `\SMContentTopShift` and the corrections now landing exactly), 150 by 0.2-0.34bp: the 13 chapter dividers, whose `\SMChapterAgenda` moves up 0.337bp (0.203bp on 1qn), its columns correction measured at the agenda's size instead of 10.17pt. Private copy: 57 entries, 7160 pages, 0 failed compiles, fonts identical; 6170 pages differ, 6086 by at most 0.01bp, 81 by 0.2-0.34bp (the same agenda on the manual's dividers and on bij), 3 flagged over 0.5bp by the path match only (IA2 hck: its drawings move by 0.01bp). No word, drawing or image added, lost or reflowed; no page count changed. On Fira a `columns[T]` first in a manual-top, section or `[c]` frame moves 2.46bp down (calibration slide ZCK; no slide of either regression set has it; it now sits on the Top Margin, the old constant put it 2.4pt high; **approved by the user on 2026-10-29**, merged as `7c97584e`). Images: `D:/uniCLOUD/SlideMage/.regression/step10-images/`.
+
+## Done 2026-10-29 (v10.10.0), notes for the later steps
+
+Step 11 (section D), in two commits. Versions: the redesign's releases v9.0.0-v9.9.0 are v10.0.0-v10.9.0 (user instruction 2026-10-29), so this is v10.10.0; v9.4.1, which never landed on this branch, is v10.4.1 in the plan texts.
+
+- **Renumbering.** 219 version strings in 31 files: the CHANGELOG headers and cross-references, `VERSION_NUMBER`, the `latex/` comments and the theme's `\ProvidesExplPackage` version (10.7.0), the compat entries' `since` values and texts and their tests, the plans, README, tools and tests. develop's 8.x entries are untouched. Preview pins renewed for the six changed TeX/Lua files (the diff of `latex/` is comments only apart from the package version). `release_notes.py --previous v8.61.0 v10.9.0` prints no warning any more: with 8 -> 10 every BREAKING paragraph is on a major bump, but the later 10.x entries (v10.1.0, v10.7.0, v10.8.0, v10.9.0, v10.10.0) still carry BREAKING on a minor bump, which the tool only warns about when a tag keeps its predecessor's major (the user has not ruled on it). The updater test's `v9.0.0` fixture tag and the 8.x-era `v9-0-0` frozen-slide names are unrelated and stay.
+- **The bottom pad.** `\SMTitleframeBottomPad` is the space from the bottom of the last subtitle line's box to the title box's bottom edge. **Convention, and why it is not the glyph descender the plan named:** a first version measured from the descenders (the depth of "gjpqy" in `\Large`); the private harness then showed 30 of 48 entries differing on the title slide by 1.5 and 2.8bp, because the real decks' last subtitle line has no descender glyphs or is set smaller, and TeX's own line box (the deeper of the strut and the deepest glyph) is what the old placement measured from. A hook that is content-independent and a render identical to v10.9.0 exclude each other for these decks; the line box keeps the render identical (user decision 4's goal) and is what the old comment said ("the space under the last line"). Open question for the user: descender-based, with the 1.5-2.8bp shift on the real title slides. The title frame's text box is no longer put through the frame's flow after a `\vspace*`; it is a tikz node, anchored `south west` at the page's corner shifted right by `\SMTextMarginLeft` (where the flow put it) and down by `\SMTitleframeBoxHeight`, as the colored box is, and the vbox ends `\SMTitleframeBottomPad` under its last line. The old value contained beamer's offset at the top of the frame body: 41pt = 8.505pt + 32.495pt. The new default 8.505pt reproduces the SlideMage template's title slide to 0.001bp (baselines 95.242 / 154.411 / 175.034 against 95.243 / 154.411 / 175.034; x 39.571 unchanged). The stress template sets 30pt (it needed 55pt for about 30pt) and gets 30pt: the deepest ink of a "gjpqy" last line stands 29.9bp = 30pt above the box's edge.
+- **Info keys.** The base writes the geometric hooks into the PDF info dictionary, one key per hook name in bp (`SMLogoHeight`, `SMTextMarginLeft/Right`, `SMFrametitle{Top,Bottom,Right}Padding`, `SMFrameSubtitleStrutEnd`, `SMFootnoteSep`, the four `SMSideFootnote` lengths, `SMBlockSideMargin`, `SMBlockTitleMarkerWidth`, `SMTitleframeBoxHeight/BottomPad`, `SMSectionframeBoxHeight`, `SMQuoteBoxHeight`, `SMQuoteAttributionGap`, `SMProgressStripHeight`) plus `SMFrametitleXHeight` (the X height the top padding is measured against) and `SMFootlineSidePadding` (a macro in ex, read in the footline font). `check_layout.py` reads them with `pdf_hooks()`.
+- **check_layout.py.** Two new checks. `edge`: the frame number (its advance box) and the footnote lines end on the logo's padding edge, the page's width less `SMFrametitleRightPadding`, within the tolerance; a PDF without the key is compared with the logo's visible edge plus a point, and only on frames with the ordinary title bar (without that restriction the manual's slide 1xf, a frame without the logo patch, was flagged). `titlepad`: on a title frame (a colored box at the corner as high as `SMTitleframeBoxHeight`, narrower than the page, not a quote box) the deepest ink of the last line stands the pad above the box's edge; a last line without descender glyphs is not checked (its line box is the strut's, which the PDF does not record). Both are exact on the calibration deck under the stress template and under fira and lmsans (0 findings, exempted findings 10 / 6 / 6, as before step 11; the new slides are in a deck of their own so that the count stays). Unit tests with synthetic pages in `tests/test_check_layout_margins.py`.
+- **Geometry tests.** `tests/test_hook_geometry.py` (compiles the calibration deck under the stress template and under SlideMage/fira, and the new `decks/geometry.tex` with slides ZG1 text margins plus subtitle and ZG2 side footnotes in a standard frame; opt-in `SLIDEMAGE_TEX_TESTS=1`; about a minute). A table says for every length of the catalog which test reads it back or why it cannot be; a test keeps the table complete. Read back from the PDF, value against drawn geometry: the text margins (a rule `\linewidth` wide spans margin to margin, lines begin at the left one), the title text's left edge, its baseline (top padding + X height), the title box's bottom (baseline + bottom padding, + the subtitle strut end with a subtitle), the logo's height (the logo file's artwork scaled by `\SMLogoHeight`) and its right padding, the footer box height, the footer text and id sizes, the footline's left padding, the footnote size, the footnote gap above the footer, two footnotes one `\SMFootnoteSep` + descender apart, the side-footnote strip (right inset, top sep from the foot of the title block, longest line <= Hsize and >= 0.9 Hsize), a block's text one `\SMBlockSideMargin` right of the column, the section and quote boxes' heights, the quote attribution's gap (0.5bp: TeX's box of the tallest character, not its ink), the title frame's text (the deepest ink of a "gjpqy" line against the box's edge, 0.12bp), and the default title slide against v10.9.0's positions.
+- **Hook audit** (catalog `SlideMage_setup.tex`; every other geometric hook reads back where its name says). Fixed: `\SMTitleframeBottomPad`. Documented in the catalog, no look changed, and asked about in the report: (1) `\SMFrametitleBottomPadding` is the title box's bottom padding (baseline to the box's bottom, exact in the PDF), but the logo's white patch trims the visible bar to the logo's bottom edge (`\SMTitleBarBottomAlign`, from the top padding, the title font and the logo height), so the bar's bottom edge is not set by it unless it makes the box shorter than the logo's bottom; it fixes where the body begins. (2) `\SMSideFootnoteTopSep` hangs the strip from the foot of the title block (the box's bottom + beamer's 3pt gap), which lies 3-10pt under the visible bar, so the gap seen from the bar is larger than the hook. (3) `\SMFootlineHeight`, `\SMFootlineDepth` and `\SMRightFooterPadding` move nothing on the page (the stress deck with 5ex / 1ex / 9ex is identical on 23 pages): the derived `\SMFootlineVOffset` and `\SMFooterRightShift` cancel them. (4) `\SMFootlineSidePadding` moves the footer text's left end only (9ex instead of 4ex moves it 17.7bp; the right end stays on the logo's edge). (5) `\SMProgressStripHeight` is the room the content below a `\progressstrip` is moved down by, not the strip's drawn height (11.2pt, set by the node's own text height, depth and padding). Not read back, with reasons in the test table: `\SMBlockTitleMarkerWidth` (visible only when a block title wraps), the title/subtitle spacing (`\SMTitleframeTextSep`, `\SMTitleframeBandGap`), `\SMSectionframeContentDrop` (step 10), `\SMSideFootnoteMarkerShift`, and the list and drawing lengths.
+- **Compat.** Entry `titleframe-bottom-pad` (v10.10.0, APPEARANCE, detects project templates and project macros that set the hook; a test). The CHANGELOG entry has `BREAKING:` for the same case; no shipped template and none of the real project's templates sets the hook (checked in the regression copy, 2026-10-29).
+- **Theme.** Unchanged in this step, so no new LPPL change item.

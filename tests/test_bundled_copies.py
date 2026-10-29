@@ -294,7 +294,7 @@ def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
 
 
 def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, bundle):
-    """v9.1.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
+    """v10.1.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
     Gotham files are removed, one the user edited stays where it is (reported as kept), and nothing is pending
     afterwards."""
     latex, _ = bundle
@@ -312,7 +312,7 @@ def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, 
     assert framework.add == ["beamerthemeSlideMage.sty"]
     assert sorted(framework.remove) == ["beamerthemegotham.sty", "gotham.dtx"]
     assert framework.kept == ["beamerouterthemegotham.sty"]
-    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v9.1.0", now=NOW)
+    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v10.1.0", now=NOW)
     assert (copy / "beamerthemeSlideMage.sty").read_text() == "theme\n"
     assert not (copy / "beamerthemegotham.sty").exists() and not (copy / "gotham.dtx").exists()
     assert (copy / "beamerouterthemegotham.sty").read_text() == "my edit\n"
@@ -323,6 +323,6 @@ def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, 
 def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
     names = bundled_copies.framework_files(Path(__file__).resolve().parents[1] / "latex")
     assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
-    assert "SlideMage_layout_fira.tex" in names             # v9.3.0: a new framework file reaches projects
-    assert "SlideMage_layout_lmsans.tex" in names           # v9.6.0: so does the Latin Modern Sans profile
+    assert "SlideMage_layout_fira.tex" in names             # v10.3.0: a new framework file reaches projects
+    assert "SlideMage_layout_lmsans.tex" in names           # v10.6.0: so does the Latin Modern Sans profile
     assert not [n for n in names if "gotham" in n.lower()]

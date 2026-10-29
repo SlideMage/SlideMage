@@ -18,7 +18,7 @@ Rule: an identifier "gotham" + an uppercase letter or "@" (optionally after
 Lowercase continuations are left alone by rename_text: they are the theme's
 (\\gothamset) or this project's environment names (gothamtable,
 gothamfloatinginfoblock, ...), which rename_identifiers renames in a second
-pass (v9.1.0, 2026-10-26, THEME_RENAMES).
+pass (v10.1.0, 2026-10-26, THEME_RENAMES).
 
 Command line, for another project's slides/decks/preambles:
     python -m slidemage.sm_rename <project folder> [--dry-run]
@@ -62,7 +62,7 @@ gothamRightFiligrane gothamRightFooterPadding gothamVposLeftRotFooter
 gothamVposRightRotFooter gothamZerosectionframes
 """.split())
 
-# What the v9.1.0 rename (compat change "own-theme-and-content-names") turns into SlideMage names, by the
+# What the v10.1.0 rename (compat change "own-theme-and-content-names") turns into SlideMage names, by the
 # rule that every SlideMage TeX name starts with an uppercase SM and continues in CamelCase (Lua keeps its
 # lowercase style). Approved by the user on 2026-10-26. Four groups:
 # - the theme's four frametitle paddings (a theme name, renamed with the spelling fixed);
@@ -122,7 +122,7 @@ THEME_RENAMES = {
     "gotham top margin": "slidemage top margin",
     "_GOTHAMTABLE_RE": "_SMTABLE_RE",
 }
-# The theme names that live on in latex/beamerthemeSlideMage.sty (v9.1.0), renamed there. A project can use
+# The theme names that live on in latex/beamerthemeSlideMage.sty (v10.1.0), renamed there. A project can use
 # the first group in a template or a slide; the rest is the theme's own bookkeeping (named for completeness: a
 # macro of a project that reaches into it is migrated too).
 THEME_RENAMES.update({

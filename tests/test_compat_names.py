@@ -62,7 +62,7 @@ def tree(root: Path) -> dict[str, bytes]:
 
 def test_change_is_registered_as_breaking():
     change = next(c for c in compat.CHANGES if c.id == "slidemage-names-and-setup-layer")
-    assert change.severity == compat.BREAKS and change.since == "v9.0.0"
+    assert change.severity == compat.BREAKS and change.since == "v10.0.0"
     assert change.detect is not None and change.migrate is not None
 
 
@@ -180,10 +180,10 @@ def test_command_line_fix_runs_the_rename(tmp_path, capsys):
     root = make_project(tmp_path)
     project.write_project_json(root, {"format": project.PROJECT_FORMAT, "last_app_version": "v8.0.0",
                                       "highest_app_version": "v8.0.0", "compat": {"checked_version": "v8.0.0"}})
-    pending = compat.evaluate(root, "v9.0.0")
+    pending = compat.evaluate(root, "v10.0.0")
     assert [p.change.id for p in pending.loud] == ["slidemage-names-and-setup-layer"]
     assert compat.run_update(root, pending.loud).errors == []
-    assert not compat.evaluate(root, "v9.0.0").loud
+    assert not compat.evaluate(root, "v10.0.0").loud
 
 
 def test_old_environment_variables_are_reported_and_ignored(tmp_path, monkeypatch, capsys):
@@ -195,9 +195,9 @@ def test_old_environment_variables_are_reported_and_ignored(tmp_path, monkeypatc
     monkeypatch.setenv("SLIDEMASTER_LATEX", "D:/fw")
     monkeypatch.setenv("SLIDEMASTER_PROJECT", "D:/p")
     monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))              # the new name wins: nothing to report for it
-    notes = compat.evaluate(root, "v9.0.0").environment_notes
+    notes = compat.evaluate(root, "v10.0.0").environment_notes
     assert len(notes) == 1 and "$SLIDEMASTER_LATEX" in notes[0] and "$SLIDEMAGE_LATEX" in notes[0]
-    assert "$SLIDEMASTER_LATEX" in compat.report_markdown(root, compat.evaluate(root, "v9.0.0"), "v9.0.0")
+    assert "$SLIDEMASTER_LATEX" in compat.report_markdown(root, compat.evaluate(root, "v10.0.0"), "v10.0.0")
     assert project.discover() == root.resolve()
     project.warn_legacy_env_vars()
     project.warn_legacy_env_vars()
