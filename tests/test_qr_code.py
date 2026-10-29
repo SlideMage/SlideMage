@@ -93,6 +93,18 @@ def test_caption_latex():
     assert qr_code.caption_latex(spec, "none") == ""
     assert qr_code.caption_latex(spec, "custom", "QR 1 & 50%") == "QR 1 \\& 50\\%"
     assert qr_code.snippet("media/qr-1.pdf", 0.6, "QR 1") == "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}"
+    assert qr_code.snippet("media/qr-1.pdf", 0.6, "", "https://x.org/a b?q=50%#[1]~") == \
+        "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{}[https://x.org/a\\%20b?q=50\\%\\#\\%5B1\\%5D\\%7E]"
+
+
+def test_a_click_opens_what_a_scan_opens():
+    """The [link] of a call: the link, the mailto: link, the map link; nothing for a contact or an event."""
+    assert qr_code.link_target(QRSpec("url", {"url": "uni-graz.at/x"})) == "https://uni-graz.at/x"
+    assert qr_code.link_target(QRSpec("email", {"to": "a@b.at", "subject": "Hi"})) == "mailto:a@b.at?subject=Hi"
+    assert qr_code.link_target(QRSpec("location", {"place": "47.0777, 15.4495", "map_link": "geo"})) == \
+        "geo:47.0777,15.4495"
+    assert qr_code.link_target(QRSpec("contact", {"name": "A B"})) == ""
+    assert qr_code.link_target(QRSpec("event", {"title": "Exam", "start": "2026-12-14 10:00"})) == ""
 
 
 @pytest.mark.parametrize("fmt", qr_code.FORMATS)
@@ -157,7 +169,7 @@ def test_create_writes_media_file_spec_and_alt_text(tmp_path):
     spec = QRSpec("url", {"url": "https://uni-graz.at/course"})
     first = qr_code.create(ctx, spec, caption_mode="custom", caption="QR 1")
     assert first.image == "media/qr-1.pdf" and first.path.is_file()
-    assert first.snippet == f"\\SMQRCode[0.60\\textheight]{{{first.image}}}{{QR 1}}"
+    assert first.snippet == f"\\SMQRCode[0.60\\textheight]{{{first.image}}}{{QR 1}}[https://uni-graz.at/course]"
     second = qr_code.create(ctx, spec, caption_mode="custom", caption="QR 1")
     assert second.image == "media/qr-1-2.pdf" and first.path.is_file()      # never overwrites
     stored, options = qr_code.load_spec(ctx, first.image)
@@ -181,7 +193,7 @@ def test_smqrcode_is_an_image_reference_everywhere(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     (tmp_path / "media").mkdir()
     (tmp_path / "media" / "qr-1.pdf").write_bytes(b"%PDF-1.4\n")
-    call = "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}"
+    call = "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://uni-graz.at/x]"
     assert "media/qr-1.pdf" in alt_blocks.referenced_images(f"\\begin{{standardframe}}{{T}}\n{call}\n\\end{{standardframe}}\n")
     issues = latex_lint.lint_text(ctx, "\\SMQRCode{media/missing.pdf}{}\n")
     assert [i.message for i in issues if i.code == "image"] == ["image file 'media/missing.pdf' does not exist"]
@@ -191,3 +203,4 @@ def test_smqrcode_is_an_image_reference_everywhere(tmp_path):
     path.write_text(f"\\begin{{standardframe}}{{Scan}}\nSee QR 1.\n\n{call}\n\\end{{standardframe}}\n", encoding="utf-8")
     entry = transcript.render_slide(ctx, transcript.DeckSlide(1, "abc", path, True), "during-course", {})
     assert entry is not None and "QR 1" in entry.body and "qr-1.pdf" not in entry.body
+    assert "uni-graz.at" not in entry.body                                # the [link] is not slide text

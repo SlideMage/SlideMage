@@ -69,7 +69,8 @@ Images, notes and text helpers.
   \\begin{besidefigure}[height=5cm]{media/x.png} text \\end{besidefigure} puts text beside it;
   \\fitfigure{media/x.png} scales an image to the room left in the frame.
 - QR codes (a link, email, contact, calendar event, map location): make_qr_code makes the file and gives
-  \\SMQRCode[0.60\\textheight]{media/qr-x.pdf}{caption}, no caption by default; corner="se" (ne, sw, nw) puts it
+  \\SMQRCode[0.60\\textheight]{media/qr-x.pdf}{caption}[link], no caption by default; [link] makes the code a
+  link to what it encodes (a click opens it) -- keep it right after the caption; corner="se" (ne, sw, nw) puts it
   in \\cornerfigure, a corner of the content area. Several codes on a slide each get a caption
   ('QR 1') the text refers to. Keep at least the recommended height; a code may get a slide of its own.
 - Speaker notes: \\note{...} anywhere inside the frame body. Invisible in every normal compile.
