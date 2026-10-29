@@ -510,13 +510,14 @@ def test_add_bib_entry_validates(box):
 def test_make_qr_code_writes_media_and_returns_the_call(box, root):
     out = box.ok("make_qr_code", kind="url", fields={"url": "uni-graz.at/course"}, caption="QR 1")
     assert (root / "media" / "qr-1.pdf").is_file() and box.ws.changed[-1][0] == root / "media" / "qr-1.pdf"
-    assert out.endswith("\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}") and "Lecture hall ≥" in out
+    assert out.endswith("\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://uni-graz.at/course]")
+    assert "Lecture hall ≥" in out
     out = box.ok("make_qr_code", kind="event", fields={"title": "Exam", "start": "2026-12-14 10:00"}, height=0.8,
                  caption="auto")
-    assert "\\SMQRCode[0.80\\textheight]{media/qr-exam-2026-12-14-10-00.pdf}{Exam, 2026-12-14 10:00}" in out
-    assert box.ok("make_qr_code", kind="url", fields={"url": "a.org"}).endswith("{}")               # no caption
+    assert out.endswith("\\SMQRCode[0.80\\textheight]{media/qr-exam-2026-12-14-10-00.pdf}{Exam, 2026-12-14 10:00}")
+    assert box.ok("make_qr_code", kind="url", fields={"url": "a.org"}).endswith("{}[https://a.org]")   # no caption
     out = box.ok("make_qr_code", kind="url", fields={"url": "b.org"}, corner="se")
-    assert out.endswith("\\cornerfigure[corner=se]{\\SMQRCode[0.60\\textheight]{media/qr-b-org.pdf}{}}")
+    assert out.endswith("\\cornerfigure[corner=se]{\\SMQRCode[0.60\\textheight]{media/qr-b-org.pdf}{}[https://b.org]}")
 
 
 def test_make_qr_code_validates(box):

@@ -22,8 +22,9 @@ CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
 AUDITED_FRAMEWORK = {
     # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); v8.62.0: \SMQRCode, an
-    # image and a caption in a box. No view-dependent rule.
-    "Slidemaster_preamble_base.tex": "b05e6ccc1754953696c80a1f0a86440a0e9c5526c53d3b87dc78807823c58731",
+    # image and a caption in a box; 2026-10-29: \SMQRCode's code is a link ([link], or a \url/\href caption) and
+    # its caption keeps an \href's underline on the line. No view-dependent rule.
+    "Slidemaster_preamble_base.tex": "912ad07b1cbe48e6ade35cb4f2f74f8e6ae4fe3c539c170eab97fd35ad24a862",
     "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",

@@ -6715,19 +6715,56 @@
 % several codes go side by side or in columns, and
 % \cornerfigure{\SMQRCode{...}{...}} puts one in a corner. The caption's
 % look is \SMQRCodeCaptionStyle, which a template may redefine.
+%
+% \SMQRCode[height]{image}{caption}[link] (2026-10-29, direct instruction):
+% the code itself is a link to what it encodes, so a click in the PDF or in
+% the presentation opens what a scan would. [link] (written right after the
+% caption, no space: SlideMage's Insert writes it for a link, an email and a
+% map location) is that address, % and # escaped as \% and \#. Without it,
+% a caption that is exactly \url{address} or \href{address}{text} gives the
+% address, so codes inserted before [link] existed are links too. The link
+% is \SMOrigHref: no underline, and with the deck's colorlinks no border.
+% In the caption, an \href's underline is kept on its text's line: the
+% underline (\SMHrefUnderline) is the text, a negative \hspace and the rule,
+% and when the link text is wider than the code, TeX broke the line at that
+% \hspace and set the rule a whole line lower (found 2026-10-29).
 \newsavebox{\SMQRCodeBox}
 \providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
-\NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m}{%
-	\begingroup
-	\sbox{\SMQRCodeBox}{\includegraphics[height=#1]{#2}}%
-	\begin{minipage}[t]{\wd\SMQRCodeBox}%
-		\centering\usebox{\SMQRCodeBox}%
-		\if\relax\detokenize{#3}\relax\else
-			\par{\SMQRCodeCaptionStyle #3\par}%     the code's own white border is the gap
-		\fi
-	\end{minipage}%
-	\endgroup
-}
+\ExplSyntaxOn
+\tl_new:N \l__smqr_link_tl
+\cs_new_protected:Npn \__smqr_caption_link:n #1
+	{
+		\tl_clear:N \l__smqr_link_tl
+		\tl_if_head_is_N_type:nT {#1}
+			{
+				\bool_lazy_or:nnT
+					{ \bool_lazy_and_p:nn { \tl_if_head_eq_meaning_p:nN {#1} \url }
+						{ \int_compare_p:nNn { \tl_count:n {#1} } = 2 } }
+					{ \bool_lazy_and_p:nn { \tl_if_head_eq_meaning_p:nN {#1} \href }
+						{ \int_compare_p:nNn { \tl_count:n {#1} } = 3 } }
+					{ \tl_set:Nx \l__smqr_link_tl { \tl_item:nn {#1} { 2 } } }
+			}
+	}
+\cs_new_eq:NN \__smqr_underline:n \relax
+\NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m !o}
+	{
+		\group_begin:
+		\IfNoValueTF {#4} { \__smqr_caption_link:n {#3} } { \tl_set:Nn \l__smqr_link_tl {#4} }
+		\sbox \SMQRCodeBox { \includegraphics [height=#1] {#2} }
+		\tl_if_empty:NF \l__smqr_link_tl
+			{ \sbox \SMQRCodeBox { \exp_args:No \SMOrigHref { \l__smqr_link_tl } { \usebox \SMQRCodeBox } } }
+		\begin{minipage}[t]{\wd\SMQRCodeBox}
+			\centering\usebox{\SMQRCodeBox}
+			\tl_if_blank:nF {#3}
+				{
+					\cs_set_eq:NN \__smqr_underline:n \SMHrefUnderline
+					\cs_set_protected:Npn \SMHrefUnderline ##1 { \mbox { \__smqr_underline:n {##1} } }
+					\par{\SMQRCodeCaptionStyle #3\par}%     the code's own white border is the gap
+				}
+		\end{minipage}
+		\group_end:
+	}
+\ExplSyntaxOff
 
 % Navigation for readers (2026-10-04, SlideMage manual: readers must find
 % their way without knowing that the logo is a hidden link). Three opt-in
