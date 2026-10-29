@@ -169,6 +169,28 @@ def _detect_top_pullup_names(root: Path) -> list[Finding]:
     return findings
 
 
+# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's descenders to the title box's bottom edge (until then it
+# also held beamer's offset at the top of a frame body, 32.5pt with the SlideMage template's fonts). A project template that
+# sets it gets its title slide's text that much lower.
+_SETS_TITLEFRAME_PAD = re.compile(
+    r"\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*\\SMTitleframeBottomPad(?![A-Za-z@])"
+    r"|\\SMTitleframeBottomPad(?![A-Za-z@])\s*=")
+
+
+def _detect_titleframe_bottom_pad(root: Path) -> list[Finding]:
+    """Project-root templates and project macros that set \\SMTitleframeBottomPad, whose value means something else since v10.10.0."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_project_macros.tex") for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_TITLEFRAME_PAD.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        "\\SMTitleframeBottomPad is the space under the subtitle's descenders now: "
+                                        "subtract about 32.5pt from this value to keep the title slide's text where it is."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -265,6 +287,21 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "Delete the lines that define or set these three names from the profile or template; no number replaces "
         "them. To move the first line of every frame, change \\SMTopMargin in the template."),
     detect=_detect_top_pullup_names,
+), Change(
+    id="titleframe-bottom-pad",
+    since="v10.10.0",
+    severity=APPEARANCE,
+    title="The title slide's bottom pad is the space under the subtitle",
+    description=(
+        "\\SMTitleframeBottomPad is now the space from the descenders of the subtitle's last line to the title "
+        "box's bottom edge, and the text is placed against that edge from the page's corner. Until now the hook also "
+        "held beamer's offset at the top of a frame body (32.5pt with the SlideMage template's fonts), so a value "
+        "was the space plus that offset. The default went from 41pt to 8.505pt and looks the same. A project "
+        "template that sets the hook gets its title slide's text lower by about 32.5pt."),
+    fix=(
+        "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
+        "take the default; then set the space you want under the subtitle's descenders."),
+    detect=_detect_titleframe_bottom_pad,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

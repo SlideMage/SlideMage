@@ -351,6 +351,35 @@
 	SMTitleBarBottom={\SMPDFInfoTitleBarBottom},
 	SMFootnoteFooterGap={\SMPDFInfoFootnoteGap}, SMFootnoteDescender={\SMPDFInfoFootnoteDescender},
 	SMFooterBoxHeight={\SMPDFInfoFooterBoxHeight}}}
+% v10.10.0: the geometric hooks whose effect the tools and tests look for in the page, each as a key of
+% its own name (tools/check_layout.py checks the title frame's bottom pad against SMTitleframeBottomPad
+% and SMTitleframeDescender, and the right edges against SMFrametitleRightPadding; tests/test_hook_geometry.py
+% every one of them against the PDF). In bp, as the lengths stand after the template (the section frame
+% changes the title padding for itself only inside its own frame). Besides the lengths: SMTitleframeDescender
+% is the depth of "gjpqy" in the subtitle's font, the line the pad is measured from, read where the title
+% frame sets it (the normal text font at \Large); SMFrametitleXHeight is the height of an X in the frame title's
+% font, which the top padding is measured against; SMFootlineSidePadding is the footline's left padding in the
+% footline font (a macro in ex, so it is read in that font).
+\ExplSyntaxOn
+\cs_new_protected:Npn \SM_pdfinfo_length:n #1
+	{ \exp_args:Nx \hypersetup { pdfinfo = { #1 = { \dim_to_decimal_in_bp:n { \use:c {#1} } } } } }
+\clist_map_function:nN
+	{ SMLogoHeight, SMTextMarginLeft, SMTextMarginRight, SMFrametitleTopPadding, SMFrametitleBottomPadding,
+	  SMFrametitleRightPadding, SMFrameSubtitleStrutEnd, SMFootnoteSep, SMSideFootnoteHsize, SMSideFootnoteTopSep,
+	  SMSideFootnoteRightInset, SMBlockSideMargin, SMBlockTitleMarkerWidth, SMTitleframeBoxHeight,
+	  SMTitleframeBottomPad, SMSectionframeBoxHeight, SMQuoteBoxHeight, SMQuoteAttributionGap, SMProgressStripHeight }
+	\SM_pdfinfo_length:n
+\ExplSyntaxOff
+\makeatletter
+\begingroup\usebeamerfont{normal text}\Large\settodepth{\dimen0}{gjpqy}
+\xdef\SMPDFInfoTitleframeDescender{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\begingroup\usebeamerfont{frametitle}\settototalheight{\dimen0}{X}
+\xdef\SMPDFInfoFrametitleXHeight{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\begingroup\usebeamerfont{footline}\dimen0=\SMFootlineSidePadding\relax
+\xdef\SMPDFInfoFootlineSidePadding{\strip@pt\dimexpr\dimen0*7200/7227\relax}\endgroup
+\makeatother
+\hypersetup{pdfinfo={SMTitleframeDescender={\SMPDFInfoTitleframeDescender},
+	SMFrametitleXHeight={\SMPDFInfoFrametitleXHeight}, SMFootlineSidePadding={\SMPDFInfoFootlineSidePadding}}}
 
 % Shared diagram roles: templates set the colors once; slides use these styles.
 \makeatletter
@@ -4625,23 +4654,22 @@
 % top edge.
 \newlength{\SMTitleframeBoxWidth}
 \setlength{\SMTitleframeBoxWidth}{\dimexpr\paperwidth-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
-% Text inset from the box's own edges: \SMFrametitleLeftPadding, the same
-% length standardframe's own title text uses, plus \SMTitleframeTextSep
-% (2.5ex, matching this command's own former per-band beamercolorbox "sep").
-% Because the leading blank space above the text (further down) is itself
-% computed as "box height minus the content's own natural height", the
-% content's *bottom* padding is the only thing that determines how far the
-% last line sits above the box's bottom edge -- the leading space silently
-% absorbs whatever that padding is, keeping the bottom edge fixed either
-% way. (The relationship is a direct 1:1 offset, checked empirically by
-% comparing two rendered values, but with a nonzero intercept from beamer's
-% own default top-of-frame vskip -- there's no clean closed-form for the
-% right value, hence the empirical calibration here rather than a formula.)
-% Calibrated (against the rendered PDF's own text coordinates, not just
-% visually) to about 1.5 line-heights of the subtitle text's own \Large
-% size (~20.6pt/line here) above the box's bottom edge; re-measure and
-% adjust if the subtitle's font size, or beamer's own default top-of-frame
-% vskip, ever change.
+% Text inset from the box's own edges: the text margin (\SMTextMarginLeft,
+% where the frame body begins), \SMFrametitleLeftPadding, the same length
+% standardframe's own title text uses, plus \SMTitleframeTextSep (2.5ex,
+% matching this command's own former per-band beamercolorbox "sep").
+% The text box is placed from the page's corner against the box's bottom
+% edge (\SMTitleframeBoxHeight below the page's top edge), and the space
+% between the last line and that edge is a hook that means what it says:
+% \SMTitleframeBottomPad, from the descenders of the last line (the depth
+% of "gjpqy" in the subtitle's font) to the edge. The top of the text is
+% derived (the box's height less what the text needs), so a longer title
+% or subtitle grows upward, away from the edge. Until v10.10.0 the text
+% box went through the frame's flow, and beamer's own offset at the top of
+% a frame body sat between the pad and the edge: the old default, 41pt,
+% was that offset (32.5pt) plus the space under the last line, and a
+% template had to guess the sum. The default now (8.505pt) reproduces the
+% old text positions (the space under the descenders is 8.505pt).
 \newbox\SMTitleframeBox
 \makeatletter
 \newcommand{\titleframe}[2]{%
@@ -4743,10 +4771,23 @@
 		\vskip\SMTitleframeBandGap
 		\vskip\SMTitleframeTextSep
 		\noindent{\Large #2\par}%
-		\vskip\SMTitleframeBottomPad
+		% \SMTitleframeBottomPad (v10.10.0): the space from the descenders of the last line, the depth of
+		% "gjpqy" in the subtitle's font, to the box's bottom edge. The vbox ends there: the glue
+		% below the last line's own depth (\prevdepth, the strut's) is the descender plus the pad
+		% less that depth, so the vbox's bottom is the pad under the descender line.
+		\setbox\z@\hbox{\Large gjpqy}%
+		\vskip\dimexpr\dp\z@+\SMTitleframeBottomPad-\prevdepth\relax
 	}%
-	\vspace*{\dimexpr\SMTitleframeBoxHeight-\ht\SMTitleframeBox-\dp\SMTitleframeBox\relax}%
-	\box\SMTitleframeBox
+	% The text box is placed against the box's bottom edge from the page's corner, as the colored box is,
+	% not through the frame's flow: beamer's own offset at the top of a frame body (32.5pt here) would
+	% otherwise sit between the pad and the edge. (Until v10.10.0 the box went into the flow after a
+	% \vspace* and the hook was that offset larger than the space it named.)
+	\vbox to 0pt{\vss
+	\begin{tikzpicture}[overlay, remember picture]
+		\node[anchor=south west, inner sep=0pt, outer sep=0pt]
+			at ($(current page.north west)+(\SMTextMarginLeft,-\SMTitleframeBoxHeight)$) {\copy\SMTitleframeBox};
+	\end{tikzpicture}%
+	}%
 	% This command's own \color{\SMTitleTextColor} above (set inside a
 	% stored box register) can leak into the *next* frame's body text --
 	% see standardframe's own opening code ("Forces this frame's own body")

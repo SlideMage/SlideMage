@@ -1,0 +1,29 @@
+% !TeX program = lualatex
+% The geometry deck: slides that only tests/test_hook_geometry.py measures (the text margins, a frame title with a
+% subtitle, side footnotes in a standard frame). They are not in the calibration deck because they do what
+% tools/check_layout.py would flag (a strip beside the text margin) and the calibration deck is held to a count
+% of exempted findings. Same template and chrome as the calibration deck.
+\documentclass[aspectratio=169]{beamer}
+
+\makeatletter
+\def\input@path{{../}}
+\makeatother
+\graphicspath{{../}}
+
+\input{SlideMage_template_stress-test}
+
+\newcommand{\FooterText}{Geometry deck}
+
+\ifdefined\deckversionoverride
+	\deckversion[\deckversionoverride]
+\else
+	\deckversion[instructor]
+\fi
+\decklanguage[en]
+
+\begin{document}
+
+	\slide{ZG1-EN-Text-Margins}
+	\slide{ZG2-EN-Side-Footnotes}
+
+\end{document}

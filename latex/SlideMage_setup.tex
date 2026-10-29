@@ -255,14 +255,17 @@
 \newlength{\SMFrametitleTopPadding}
 \setlength{\SMFrametitleTopPadding}{2.2ex}
 \newlength{\SMFrametitleBottomPadding}
-\setlength{\SMFrametitleBottomPadding}{2.2ex}
+\setlength{\SMFrametitleBottomPadding}{2.2ex}  % the space from the title's baseline to the bottom of the title box. The box is drawn this tall, but the logo's white patch
+                                                % trims it to the logo's bottom edge (\SMTitleBarBottomAlign, derived from the top padding, the title font and the logo
+                                                % height), so the visible bar ends there unless this padding makes the box shorter than that: the bar's bottom edge is
+                                                % not set by this hook. It also fixes where the frame body begins (the automatic Top Margin corrects for it).
 \newlength{\SMFrametitleLeftPadding}
 \setlength{\SMFrametitleLeftPadding}{2.2ex}
 \newlength{\SMFrametitleRightPadding}
 \setlength{\SMFrametitleRightPadding}{0.28cm}
 \newcommand{\SMFrameSubtitleSep}{\ ---\space}   % the text between title and subtitle
 \newlength{\SMFrameSubtitleStrutEnd}
-\setlength{\SMFrameSubtitleStrutEnd}{0pt}       % the space below the subtitle
+\setlength{\SMFrameSubtitleStrutEnd}{0pt}       % the space added under a frame title that has a subtitle (the title box is that much taller)
 
 % ---------------------------------------------------------------------------
 % Footer and footnotes
@@ -272,12 +275,14 @@
 \newcommand{\SMFooterTextSize}{\fontsize{5}{3}\selectfont}   % footer text: {font size}{baseline skip} in pt
 \newcommand{\SMFooterIDSize}{\fontsize{4}{4}\selectfont}     % the slide id in the footer
 \newlength{\SMFootlineHeight}
-\setlength{\SMFootlineHeight}{1.5ex}            % the footline box: height above the baseline
+\setlength{\SMFootlineHeight}{1.5ex}            % the footline box: height above the baseline. Beamer ends the frame text area at the box's top; the footnotes' offset is derived
+                                                % from this and the depth, so changing them changes no position on the page (v10.10.0, checked)
 \newlength{\SMFootlineDepth}
-\setlength{\SMFootlineDepth}{0.1ex}             % and depth below it
-\newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left and right end of the footline (a macro: its ex is the footline font's)
+\setlength{\SMFootlineDepth}{0.1ex}             % and depth below it (see the height)
+\newcommand{\SMFootlineSidePadding}{3ex}        % padding at the left end of the footline, where the footer text begins (a macro: its ex is the footline font's). The right end of the line is
+                                                % pinned to the logo's padding edge by \SMFooterRightShift, so this padding has no effect there
 \newlength{\SMRightFooterPadding}
-\setlength{\SMRightFooterPadding}{3.5ex}        % the gap before the frame number
+\setlength{\SMRightFooterPadding}{3.5ex}        % an allowance in the footline before the frame number; the footer's derived shift cancels it, so the frame number and the slide id stay where they are (v10.10.0, checked)
 \newlength{\SMFootnoteFooterGap}
 % The clear space between the descenders of the last footnote line and the top edge of the
 % footer box. (Until v10.8.0 this was \SMFootlineVOffset, a number of the Fira profile in the
@@ -291,9 +296,10 @@
 \setlength{\SMFootnoteSep}{3pt}                 % the space between two footnotes
 % Side footnotes (\sidefootnotes, \sectionfigure): the strip along the page's right edge.
 \newlength{\SMSideFootnoteHsize}
-\setlength{\SMSideFootnoteHsize}{207pt}         % its length, from the title bar down to the footer
+\setlength{\SMSideFootnoteHsize}{207pt}         % its length: the strip's lines wrap at this width (a line is at most this long)
 \newlength{\SMSideFootnoteTopSep}
-\setlength{\SMSideFootnoteTopSep}{3pt}          % the gap between the title bar and the strip
+\setlength{\SMSideFootnoteTopSep}{3pt}          % the gap between the foot of the title block and the strip. The foot is the bottom of the title box plus beamer's gap under it, which lies below the visible bar
+                                                % when the bar is trimmed to the logo (see \SMFrametitleBottomPadding), so the gap seen from the bar is larger by that
 \newlength{\SMSideFootnoteRightInset}
 \setlength{\SMSideFootnoteRightInset}{2pt}      % the gap to the page's right edge (frames with a side image set their own)
 \newlength{\SMSideFootnoteMarkerShift}
@@ -305,7 +311,7 @@
 \newlength{\SMBlockSideMargin}
 \setlength{\SMBlockSideMargin}{4.20pt}          % the margin on each side of a block
 \newlength{\SMBlockTitleMarkerWidth}
-\setlength{\SMBlockTitleMarkerWidth}{16pt}      % the width of the marker in a block title
+\setlength{\SMBlockTitleMarkerWidth}{16pt}      % the width a block title leaves free at its right end for the marker (the title wraps before it)
 % The block titles' sizes are beamer fonts: \setbeamerfont{block title}{size=\large}
 % (also "block title alerted", "block title info", "block title reference") after
 % this file changes them. The same goes for the frame title ("frametitle", \large),
@@ -322,7 +328,9 @@
 \newlength{\SMTitleframeBandGap}
 \setlength{\SMTitleframeBandGap}{0.8ex}         % the gap above the band
 \newlength{\SMTitleframeBottomPad}
-\setlength{\SMTitleframeBottomPad}{41pt}        % the space under the last line, about 1.5 subtitle lines
+\setlength{\SMTitleframeBottomPad}{8.505pt}     % the space from the descenders of the last subtitle line (the depth of "gjpqy" in its font) to the title box's bottom edge, as it
+                                                % reads. The text box is placed against that edge from the page's corner, not through the frame's flow (until v10.10.0 the
+                                                % hook was the space plus beamer's offset at the top of a frame body, 41pt for what is 8.505pt now)
 \newlength{\SMSectionframeBoxHeight}
 \setlength{\SMSectionframeBoxHeight}{85.34pt}   % \sectionframe: height of the bar (85.02bp, as drawn since v5.28.0)
 \newcommand{\SMSectionframeTitleGap}{0.5436em}  % the space from under the title's last line (its strut's depth) to the bar's bottom edge, in em of the title font
@@ -333,7 +341,7 @@
 \newlength{\SMQuoteAttributionGap}
 \setlength{\SMQuoteAttributionGap}{1.8ex}       % the gap above the attribution
 \newlength{\SMProgressStripHeight}
-\setlength{\SMProgressStripHeight}{11.08pt}     % \progressstrip: height of the strip
+\setlength{\SMProgressStripHeight}{11.08pt}     % \progressstrip: how far the content below the strip is moved down. The strip is drawn at a height of its own (11.2pt); this is the room it is given
 
 % ---------------------------------------------------------------------------
 % Lists

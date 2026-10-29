@@ -243,6 +243,30 @@ def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path
         assert not compat._SETS_V99_NAME.search(profile.read_text(encoding="utf-8")), profile.name
 
 
+def test_titleframe_pad_detector_reports_templates_that_set_the_hook_not_reads(tmp_path):
+    root = make_project(tmp_path, "v10.9.0")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMTitleframeBottomPad}{41pt}\n"
+        "% \\setlength{\\SMTitleframeBottomPad}{50pt}\n"
+        "\\SMTitleframeBottomPad=30pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{\\SMTitleframeBottomPad}}\n", encoding="utf-8")        # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMTitleframeBottomPad}{1pt}\n", encoding="utf-8")                      # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_titleframe_bottom_pad(root)]
+    assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleframeBottomPad"),
+                     ("SlideMage_template_inst.tex", 4, "\\SMTitleframeBottomPad")]
+    change = next(c for c in compat.CHANGES if c.id == "titleframe-bottom-pad")
+    assert change.since == "v10.10.0" and change.severity == compat.APPEARANCE
+    assert change.detect is compat._detect_titleframe_bottom_pad
+    ev = compat.evaluate(root, "v10.10.0")
+    assert change.id in [p.change.id for p in ev.quiet] and change.id not in [p.change.id for p in ev.loud]
+    # the shipped templates leave the hook at its default
+    shipped = Path(compat.__file__).resolve().parents[2]
+    for template in (shipped / "latex" / "SlideMage_template_slidemage.tex", shipped / "example" / "SlideMage_template_uni-graz.tex"):
+        assert not compat._SETS_TITLEFRAME_PAD.search(template.read_text(encoding="utf-8")), template.name
+
+
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
     root = make_project(tmp_path, "v7.0.2")
     (root / "decks" / "course.tex").write_text(
