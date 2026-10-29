@@ -342,9 +342,7 @@ def test_the_title_frame_text_stands_the_bottom_pad_above_the_boxs_edge(decks):
              if line["spans"][0]["size"] > 8]
     assert len(lines) == 3 and "gjpqy" in "".join(s["text"] for s in lines[-1]["spans"])
     baseline = lines[-1]["spans"][0]["origin"][1]
-    # by the descender the base reports ...
-    assert box.y1 - baseline - hooks["SMTitleframeDescender"] == pytest.approx(hooks["SMTitleframeBottomPad"], abs=0.01)
-    # ... and in the page: the deepest ink of the last line (a g, j, p, q or y) is the pad above the edge
+    # the deepest ink of the last line (a g, j, p, q or y: its line box reaches down to it) is the pad above the edge
     clip = pymupdf.Rect(lines[-1]["bbox"][0], baseline - 8, lines[-1]["bbox"][2] + 4, box.y1 - 0.3)
     _, ink_bottom = ink_rows(page, clip)
     assert box.y1 - ink_bottom == pytest.approx(hooks["SMTitleframeBottomPad"], abs=0.12)

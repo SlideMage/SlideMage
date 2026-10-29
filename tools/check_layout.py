@@ -22,7 +22,7 @@ in the slide comments and the preamble uses -- 41.58 Top Margin etc.):
   edge    the frame number and the footnote lines end on the logo's padding edge (the page's width less
           \\SMFrametitleRightPadding), where the footer and footnote shifts of the base put them
   titlepad  on a title frame the last subtitle line stands \\SMTitleframeBottomPad above the box's bottom edge,
-          measured from its descenders (the hook's value and the descender come from the PDF)
+          measured from the bottom of its line box (the hook's value comes from the PDF)
 
 A slide can exempt itself from a check -- a deliberate exception, e.g. a figure centred
 between title bar and footer -- with a comment line in its own slide file:
@@ -446,13 +446,15 @@ class Page:
 
     def check_titlepad(self, tol):
         """On a title frame (\\titleframe: a colored box from the page's corner as high as \\SMTitleframeBoxHeight, narrower
-        than the page) the last line of the subtitle stands \\SMTitleframeBottomPad above the box's bottom edge, measured
-        from its descenders (\\SMTitleframeDescender: the depth of "gjpqy" in the subtitle's font), whatever the box height,
-        the pad and the font. Needs the three keys in the PDF; a quote frame's box (a different height) is left alone."""
-        need = ("SMTitleframeBoxHeight", "SMTitleframeBottomPad", "SMTitleframeDescender")
-        if any(k not in self.hooks for k in need):
+        than the page) the last line of the subtitle stands \\SMTitleframeBottomPad above the box's bottom edge, measured from
+        the bottom of its line box. TeX's line box reaches down to the deepest glyph of the line when that is deeper than
+        its strut, so for a last line with descenders (g, j, p, q, y: ink more than a point under the baseline) the
+        ink's bottom edge is the line box's; a last line without any is not checked, its depth is the strut's and
+        the PDF does not say what that is. Needs the box height and the pad in the PDF; a quote frame's box (another
+        height) is left alone."""
+        if "SMTitleframeBoxHeight" not in self.hooks or "SMTitleframeBottomPad" not in self.hooks:
             return []
-        height, pad, descender = (self.hooks[k] for k in need)
+        height, pad = self.hooks["SMTitleframeBoxHeight"], self.hooks["SMTitleframeBottomPad"]
         if abs(height - self.hooks.get("SMQuoteBoxHeight", -1.0)) < 0.2:
             return []                       # a title frame and a quote frame of one height cannot be told apart
         boxes = [d["rect"] for d in self.page.get_drawings() if d.get("fill") is not None and not is_white(d["fill"])
@@ -461,15 +463,32 @@ class Page:
         if not boxes:
             return []
         box = boxes[0]
-        lines = [(b, size) for r, b, size, _, _ in self.baselines if size > 8 and r.y1 < box.y1 + 0.5 and r.x1 <= box.x1 + 0.5]
+        lines = [(r, b) for r, b, size, _, _ in self.baselines if size > 8 and r.y1 < box.y1 + 0.5 and r.x1 <= box.x1 + 0.5]
         if not lines:
             return []
-        baseline = max(b for b, _ in lines)
-        gap = box.y1 - baseline - descender
+        rect, baseline = max(lines, key=lambda t: t[1])
+        clip = fitz.Rect(rect.x0, baseline - 6, min(rect.x1 + 2, box.x1), box.y1 - 0.2)
+        ink_bottom = ink_extent(self.page, clip)
+        if ink_bottom is None or ink_bottom - baseline < 1.0:
+            return []                       # no descenders: the line box is the strut's, which the PDF does not record
+        gap = box.y1 - ink_bottom
         if abs(gap - pad) > tol:
-            return [f"the last subtitle line stands {gap:.2f} above the box's bottom edge ({box.y1:.2f}), from its "
-                    f"descenders ({descender:.2f} under the baseline {baseline:.2f}); the pad says {pad:.2f}"]
+            return [f"the last subtitle line's deepest glyph ends {gap:.2f} above the box's bottom edge ({box.y1:.2f}); "
+                    f"the pad says {pad:.2f}"]
         return []
+
+
+def ink_extent(page: fitz.Page, clip: fitz.Rect, dpi: int = 1152) -> float | None:
+    """The bottom edge (page y, bp) of the lowest ink in `clip`: pixels that differ from the clip's top right corner."""
+    pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=fitz.csRGB, alpha=False)
+    samples, n = pix.samples, pix.n
+    corner = (pix.width - 1) * n
+    background = samples[corner:corner + 3]
+    for y in range(pix.height - 1, -1, -1):
+        row = y * pix.width * n
+        if any(max(abs(samples[row + x * n + k] - background[k]) for k in range(3)) > 60 for x in range(pix.width)):
+            return clip.y0 + (y + 1) * 72 / dpi
+    return None
 
 
 def usual_footnote_top(pages: list[Page]) -> float:

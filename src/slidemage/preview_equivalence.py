@@ -66,14 +66,14 @@ AUDITED_FRAMEWORK = {
     # Renumbering (before step 11): the redesign's versions v9.0.0-v9.9.0 became v10.0.0-v10.9.0; the pinned files changed in
     # comments only (version names), so the pins were renewed without any change of rule.
     # v10.10.0 (step 11): the title frame's text box is placed against the box's bottom edge from the page's corner (a tikz
-    # node, as the colored box is) and \SMTitleframeBottomPad is measured from the subtitle's descenders; the base writes the
+    # node, as the colored box is) and \SMTitleframeBottomPad is measured from the bottom of the subtitle's last line; the base writes the
     # geometric hooks into the PDF info dictionary; the setup layer's comments say what the hooks do, its one default is
     # new (8.505pt). Re-audited: no version, footer-hide or deck-label rule entered the base or the setup layer; the info
     # keys are lengths of the template, the same in every view, and the frame footer is unchanged.
-    "SlideMage_setup.tex": "f2b685725c5418f246a8eb0d17e19ea41e120d17c175e1c66e258e5b833abc18",
+    "SlideMage_setup.tex": "034594246e378231f504a4f124af4c04867454fa27e32cb5f551b0eb8cf2d927",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "a7b9224a51941ba11c10a1488b4a2ccf57c430f74bb6767585d803499b6a9ddf",
+    "SlideMage_base.tex": "fd967b4170cd6ca6890118247354b931fc34f1cd2c56489dc021cd5b21f77e8f",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "1d7a6ea75bcd6ecfa51b8ace9a8715e74650f1c022ba5d4a6b3eedaa8a8a4638",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",

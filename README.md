@@ -1888,8 +1888,8 @@ wraps onto a second line; the blank space above just shrinks to compensate
 start above the page's top edge — there's no fallback for that case, since
 `titleframe` is normally used once with short, predictable copy). The text
 itself doesn't sit flush with the box's bottom edge either — a further
-length, `\SMTitleframeBottomPad`, is the space from the descenders of the
-last subtitle line (the depth of "gjpqy" in its font) to that edge, as it
+length, `\SMTitleframeBottomPad`, is the space from the bottom of the
+last subtitle line's box (its baseline and its depth, to the deepest glyph) to that edge, as it
 reads (since v10.10.0; the text box is placed against the edge from the
 page's corner, not through the frame's flow, and `tools/check_layout.py`'s
 `titlepad` check measures it in the PDF). Until then the hook also held

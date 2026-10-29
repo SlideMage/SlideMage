@@ -84,9 +84,8 @@ def test_the_usual_last_footnote_line_is_the_decks_own(tmp_path):
 
 def test_the_geometric_hooks_come_from_the_pdf_and_an_older_pdf_has_none(tmp_path):
     doc = pdf(tmp_path, SMTopMargin="50", SMFrametitleRightPadding="14.17322", SMTitleframeBottomPad="8.505",
-              SMTitleframeDescender="2.94096", SMFontAscender="0.806")
-    assert cl.pdf_hooks(doc) == {"SMFrametitleRightPadding": 14.17322, "SMTitleframeBottomPad": 8.505,
-                                 "SMTitleframeDescender": 2.94096}      # the four margin keys have readers of their own
+              SMFontAscender="0.806")
+    assert cl.pdf_hooks(doc) == {"SMFrametitleRightPadding": 14.17322, "SMTitleframeBottomPad": 8.505}      # the four margin keys have readers of their own
     (tmp_path / "old").mkdir()
     assert cl.pdf_hooks(pdf(tmp_path / "old")) == {}
 
@@ -119,21 +118,27 @@ def test_the_frame_number_and_the_footnotes_must_end_on_the_logos_padding_edge()
     assert len(found) == 1 and "footnote line" in found[0] and "+2.00" in found[0]
 
 
-def test_the_title_frame_bottom_pad_is_the_space_from_the_descenders_to_the_boxs_edge():
-    width, box_height, descender, pad = 455.24, 178.0, 2.9, 30.0
+def test_the_title_frame_bottom_pad_is_the_space_from_the_last_lines_bottom_to_the_boxs_edge():
+    box_height, pad = 178.0, 30.0
 
-    def title_frame(baseline):
+    def title_frame(baseline, text="Subtitle gjpqy"):
         def draw(page):
             page.draw_rect(pymupdf.Rect(0, 0, 403.0, box_height), color=None, fill=(0.1, 0.5, 0.2))
             page.insert_text((50, 60), "Title", fontsize=24, color=(1, 1, 1))
-            page.insert_text((50, baseline), "Subtitle", fontsize=14, color=(1, 1, 1))
+            page.insert_text((50, baseline), text, fontsize=14, color=(1, 1, 1))
         return draw
 
-    hooks = {"SMTitleframeBoxHeight": box_height, "SMTitleframeBottomPad": pad, "SMTitleframeDescender": descender}
-    exact = box_height - pad - descender
+    # where the deepest ink of the descender line lies under its baseline in this font
+    probe = page_with(title_frame(100.0), {})
+    depth = cl.ink_extent(probe.page, pymupdf.Rect(40, 94, 200, 120)) - 100.0
+    assert depth > 2.5
+    hooks = {"SMTitleframeBoxHeight": box_height, "SMTitleframeBottomPad": pad}
+    exact = box_height - pad - depth
     assert page_with(title_frame(exact), hooks).check_titlepad(0.3) == []
     found = page_with(title_frame(exact + 4), hooks).check_titlepad(0.3)
     assert len(found) == 1 and "26.00" in found[0] and "pad says 30.00" in found[0]
+    # a last line without descenders has a line box the PDF does not describe: not checked
+    assert page_with(title_frame(exact + 4, "Subtitle"), hooks).check_titlepad(0.3) == []
     # no keys, no check; a quote frame's box (another height, or the same one) is left alone
     assert page_with(title_frame(exact + 4), {}).check_titlepad(0.3) == []
     assert page_with(title_frame(exact + 4), {**hooks, "SMQuoteBoxHeight": box_height}).check_titlepad(0.3) == []

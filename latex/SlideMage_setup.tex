@@ -328,7 +328,7 @@
 \newlength{\SMTitleframeBandGap}
 \setlength{\SMTitleframeBandGap}{0.8ex}         % the gap above the band
 \newlength{\SMTitleframeBottomPad}
-\setlength{\SMTitleframeBottomPad}{8.505pt}     % the space from the descenders of the last subtitle line (the depth of "gjpqy" in its font) to the title box's bottom edge, as it
+\setlength{\SMTitleframeBottomPad}{8.505pt}     % the space from the bottom of the last subtitle line's box (its baseline plus its depth: the strut's, or the deepest glyph's if that reaches lower) to the title box's bottom edge, as it
                                                 % reads. The text box is placed against that edge from the page's corner, not through the frame's flow (until v10.10.0 the
                                                 % hook was the space plus beamer's offset at the top of a frame body, 41pt for what is 8.505pt now)
 \newlength{\SMSectionframeBoxHeight}

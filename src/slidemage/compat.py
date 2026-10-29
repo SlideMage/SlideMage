@@ -169,7 +169,7 @@ def _detect_top_pullup_names(root: Path) -> list[Finding]:
     return findings
 
 
-# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's descenders to the title box's bottom edge (until then it
+# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's last line to the title box's bottom edge (until then it
 # also held beamer's offset at the top of a frame body, 32.5pt with the SlideMage template's fonts). A project template that
 # sets it gets its title slide's text that much lower.
 _SETS_TITLEFRAME_PAD = re.compile(
@@ -186,7 +186,7 @@ def _detect_titleframe_bottom_pad(root: Path) -> list[Finding]:
         for match in _SETS_TITLEFRAME_PAD.finditer(text):
             if not is_commented(text, match.start()):
                 findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
-                                        "\\SMTitleframeBottomPad is the space under the subtitle's descenders now: "
+                                        "\\SMTitleframeBottomPad is the space under the subtitle's last line now:"
                                         "subtract about 32.5pt from this value to keep the title slide's text where it is."))
     return findings
 
@@ -293,14 +293,14 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     severity=APPEARANCE,
     title="The title slide's bottom pad is the space under the subtitle",
     description=(
-        "\\SMTitleframeBottomPad is now the space from the descenders of the subtitle's last line to the title "
+        "\\SMTitleframeBottomPad is now the space from the bottom of the subtitle's last line to the title "
         "box's bottom edge, and the text is placed against that edge from the page's corner. Until now the hook also "
         "held beamer's offset at the top of a frame body (32.5pt with the SlideMage template's fonts), so a value "
         "was the space plus that offset. The default went from 41pt to 8.505pt and looks the same. A project "
         "template that sets the hook gets its title slide's text lower by about 32.5pt."),
     fix=(
         "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
-        "take the default; then set the space you want under the subtitle's descenders."),
+        "take the default; then set the space you want under the subtitle's last line."),
     detect=_detect_titleframe_bottom_pad,
 )]
 
