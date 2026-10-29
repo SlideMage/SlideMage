@@ -175,5 +175,8 @@ def test_the_new_names_are_the_ones_the_theme_defines():
     theme_names = [old for old in renames if old in compat_own_theme.sm_rename.THEME_NAMES
                    or old.startswith("gothamFrametitle")]
     assert len(theme_names) > 25
+    # gone since v10.11.0: the rename still maps them, and the setup layer's error for the new name says it is removed
+    removed = {"gothamFootlineHeight", "gothamFootlineDepth", "gothamRightFooterPadding"}
     for old in theme_names:
-        assert renames[old] in theme, (old, renames[old])
+        if old not in removed:
+            assert renames[old] in theme, (old, renames[old])

@@ -2444,7 +2444,7 @@ shows on *every* overlay slide of its frame in side mode. Like the title-bar
 patches, the strip is positioned via a remembered tikz coordinate, so it too
 needs the usual second compile pass. The strip's geometry (its vertical run,
 top gap, and inset from the page edge) is set by
-`\SMSideFootnoteHsize`/`\SMSideFootnoteTopSep`/`\SMSideFootnoteRightInset`
+`\SMSideFootnoteHsize`/`\SMSideFootnoteTitleBlockSep`/`\SMSideFootnoteRightInset`
 in `SlideMage_base.tex`; the first is calibrated against the measured
 title-bar position and needs re-measuring if the title bar ever changes.
 

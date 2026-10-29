@@ -153,8 +153,9 @@ tests, both regression sets, pause for the user. Before step 8: merge develop (v
 | 9 | B: font measurements instead of stored numbers; new hooks `\SMLabelItemGap` etc. | v10.8.0 | sub-point, per row, with images |
 | 10 | C: body-origin measurement for unmanaged frames, columns, section frame; pull-up numbers leave the profile | v10.9.0 | goal identical on Fira; any difference with images |
 | 11 | D: `\SMTitleframeBottomPad` placement, hook audit and geometry tests | v10.10.0 | identical by construction (default recomputed) |
-| 12 | E: footnotes in revealed items, `columns[T]` below content | v10.11.0 | yes: bug fixes, affected slides listed |
-| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v10.12.0 | none |
+| 11b | Two hooks renamed (`\SMProgressStripRoom`, `\SMSideFootnoteTitleBlockSep`), three inert ones removed (`\SMFootlineHeight`, `\SMFootlineDepth`, `\SMRightFooterPadding`) | v10.11.0 | identical |
+| 12 | E: footnotes in revealed items, `columns[T]` below content | v10.12.0 | yes: bug fixes, affected slides listed |
+| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v10.13.0 | none |
 
 The main plan's later steps move up: bibliography file 8 → 14, documentation 9 → 15, institution templates out of
 the repository 10 → 16, private institution themes 11 → 17.
@@ -310,3 +311,14 @@ Step 11 (section D), in two commits. Versions: the redesign's releases v9.0.0-v9
   documented); `\SMFootlineHeight`, `\SMFootlineDepth`, `\SMRightFooterPadding` are removed (they move
   nothing). With a compat entry that renames or reports them in project templates (none of the real project's
   templates sets any). Proposed place: a small step before step 12, or inside step 13.
+
+### Step 11b: two hooks renamed, three inert ones removed
+
+**Done (v10.11.0).** The user approved the proposal above on 2026-10-29.
+- **Renames**, everywhere (catalog, base, theme, stress template, tests, README, plans): `\SMProgressStripHeight` -> `\SMProgressStripRoom` (the room below the strip) and `\SMSideFootnoteTopSep` -> `\SMSideFootnoteTitleBlockSep` (the distance the strip hangs below the foot of the title block); the catalog comments say so. `\SMFrametitleBottomPadding` keeps its name. The PDF info keys follow the names. `tools/check_layout.py` and `tools/calibrate_font_profile.py` name neither hook.
+- **Removed**, with what replaced each: `\SMRightFooterPadding` is gone from the footline (an `\hspace` before the frame number) and from the term that `\SMFooterRightShift` added back, so nothing is left to cancel. `\SMFootlineHeight` and `\SMFootlineDepth` turned out not to be inert in one place: the footline box's height and depth enter the mini navigation's length (`\SM@temp@PaperheightFrametitle` in the two `mini nav progress` templates) as well as the derived `\SMFootlineVOffset` and `\SMFooterTextDrop` that cancel them. They are kept as the theme's own lengths `\SM@footlineheight` (1.5ex) and `\SM@footlinedepth` (0.1ex), with the catalog's values, so every position stays; they are no hooks any more, so a template that sets 2ex no longer changes the mini navigation (the stress template's 23 pages show nothing else).
+- **Guard.** Like step 8's, in `SlideMage_setup.tex`: `\newcommand` under each of the five old names stops the compile with a package error ("... was renamed ..." or "... is no longer a hook"), checked by compiling the stress template with two old names (both errors reported). `tests/test_template_catalog.py` keeps the catalog, the stress template (sets every hook) and the guards in line.
+- **Compat.** Entry `hook-renames-and-removals` (v10.11.0, BREAKS) in `src/slidemage/compat_hooks.py`: `migrate` renames the two in project templates, layout profiles and the macros file (CRLF kept, idempotent), `detect` lists the renamed ones still there and every use of the removed ones. `sm_rename`'s old `gotham...` mapping for the three removed names stays (it leads to the new error that says they are gone).
+- **Pins** of the setup layer, the base and the theme renewed (`preview_equivalence`, no view-dependent rule entered).
+- **Verification.** Full suite: only the load-flaky GUI tests fail in the parallel run and pass alone; with `SLIDEMAGE_TEX_TESTS=1` also the known `test_deck_snapshot` (3) and `test_a_real_beamer_deck_is_read_slide_by_slide`, plus `test_the_stress_template_deck_is_clean_against_its_own_margins` and a workspace-window test that passed alone. `check_layout.py` on the calibration deck: 0 findings, exempted 10 (stress) / 6 (fira) / 6 (lmsans). Regression: in-repo 12 entries, 1084 pages, all identical (a first run showed 12 entries differing: a stray `\makeatother` in the theme, fixed before this); private: 57 entries, 7160 pages, 0 differences.
+- **Theme.** The theme's behaviour is unchanged (two lengths now internal), so no new LPPL item.
