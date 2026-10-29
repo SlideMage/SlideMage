@@ -213,6 +213,36 @@ def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tm
     assert any(c.id == "font-measurements-derived" and c.since == "v9.8.0" for c in compat.CHANGES)
 
 
+def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v9.8.0")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\newlength{\\SMContentTopShift}\n"
+        "\\setlength{\\SMContentTopShift}{11.5964pt}\n"
+        "% \\newlength{\\SMColumnsTopCorrection}\n"
+        "\\newlength{\\SMColumnsTTopCompensation}\\setlength{\\SMColumnsTTopCompensation}{13.76pt}\n"
+        "\\newlength{\\SMContentTopShiftExtra}\n", encoding="utf-8")                   # another name: fine
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\SMColumnsTopCorrection=10pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{-\\SMContentTopShift}}\n", encoding="utf-8")   # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMContentTopShift}{1pt}\n", encoding="utf-8")                    # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_top_pullup_names(root)]
+    assert found == [("SlideMage_layout_own.tex", 1, "\\SMContentTopShift"),
+                     ("SlideMage_layout_own.tex", 2, "\\SMContentTopShift"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
+                     ("SlideMage_template_inst.tex", 2, "\\SMColumnsTopCorrection")]
+    change = next(c for c in compat.CHANGES if c.id == "top-pullups-measured")
+    assert change.since == "v9.9.0" and change.detect is compat._detect_top_pullup_names
+    ev = compat.evaluate(root, "v9.9.0")
+    assert change.id in [p.change.id for p in ev.loud]
+    # the shipped profiles hold none of them any more
+    shipped = Path(compat.__file__).resolve().parents[2] / "latex"
+    for profile in sorted(shipped.glob("SlideMage_layout_*.tex")):
+        assert not compat._SETS_V99_NAME.search(profile.read_text(encoding="utf-8")), profile.name
+
+
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):
     root = make_project(tmp_path, "v7.0.2")
     (root / "decks" / "course.tex").write_text(

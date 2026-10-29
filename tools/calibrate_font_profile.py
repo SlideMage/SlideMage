@@ -1,27 +1,24 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check a SlideMage layout profile against a compiled calibration deck, and suggest the three numbers it still holds.
+"""Check a SlideMage layout profile against a compiled calibration deck.
 
-A layout profile (latex/SlideMage_layout_<name>.tex) holds the font files, the font's metrics and three
-lengths that were measured against the rendered PDF for one font: the pull-up of a frame the automatic Top
-Margin does not manage (\\SMContentTopShift, \\SMColumnsTopCorrection, \\SMColumnsTTopCompensation; step 10 of
-docs/plans/layout-from-metrics.md derives them as well). Everything else follows from the font where it is used or
-is a hook of the catalog (v9.7.0, v9.8.0): where the title bar ends, the right edges of the frame number and the
-footnotes, where the footer number sits in its box, the label and numeral boxes of the lists, the footnotes'
-offset and the section frame's corrections. This tool compiles the calibration deck
-(tests/fixtures/template_stress/decks/calibration.tex) with the profile under the SlideMage template, whose
-hooks are the catalog's defaults, measures the PDF, prints the three numbers with their current value and the
-value the measurement suggests, and checks each derived value against the geometry its hooks ask for (the footer
-number's ink centred in the box, the label gap, the numeral slot and gap, the footnotes' clearance above the
-footer, the section bar's height). tools/check_layout.py then says whether the profile is clean.
+A layout profile (latex/SlideMage_layout_<name>.tex) holds the font files and the font's metrics, and since v9.9.0
+no length measured against the rendered PDF: everything follows from the font where it is used, from the page, or is
+a hook of the catalog (v9.7.0-v9.9.0): where the title bar ends, the right edges of the frame number and the
+footnotes, where the footer number sits in its box, the label and numeral boxes of the lists, the footnotes' offset,
+the section frame's corrections and the pull-up of the frames the automatic Top Margin does not correct by their
+content (\\SMContentTopShift and the two columns corrections, measured from where the frame's body begins). This tool
+compiles the calibration deck (tests/fixtures/template_stress/decks/calibration.tex) with the profile under the
+SlideMage template, whose hooks are the catalog's defaults, measures the PDF and checks each derived value against
+the geometry its hooks ask for (the footer number's ink centred in the box, the label gap, the numeral slot and gap,
+the footnotes' clearance above the footer, the section bar's height, the first line of the three manual-top frames
+on the Top Margin). tools/check_layout.py then says whether the profile is clean.
 
 Recipe for a new profile (the header of latex/SlideMage_setup.tex has it too):
   1. copy latex/SlideMage_layout_fira.tex to latex/SlideMage_layout_<name>.tex and change the fonts;
   2. python tools/calibrate_font_profile.py --profile <name>
-  3. put the suggested values into the profile's "Calibrations" section and run the tool again: every
-     line should read "ok" (the numbers it prints are within the tolerance of the measurement, 0.3pt), and
-     every check "ok";
-  4. python tools/check_layout.py on the PDF of the deck compiled with a template that picks the profile
+     every check should read "ok" (within the tolerance of the measurement, 0.3pt unless the check says);
+  3. python tools/check_layout.py on the PDF of the deck compiled with a template that picks the profile
      (the project's stress-test template does); then adjust until the report is clean.
 The last section of the output reports what the base derives from the font and the template, read back from
 the PDF: the title bar's bottom edge, the Top Margin, the ascender, and how far the frame number's and the
@@ -30,8 +27,7 @@ footnotes' right edges are from the logo's visible edge.
 usage: python tools/calibrate_font_profile.py --profile NAME [--template slidemage] [--project DIR]
            [--deck decks/calibration.tex] [--framework DIR] [--pdf FILE] [--keep-pdf FILE]
 With --pdf the compile is skipped and FILE is measured (the profile's current values are still read from
---framework). Exit code 0 when every number and every check is ok, 1 when a suggestion differs from the
-current value or a check fails.
+--framework). Exit code 0 when every check is ok, 1 when one fails.
 """
 from __future__ import annotations
 
@@ -56,26 +52,9 @@ DEFAULT_DECK = "decks/calibration.tex"
 PT = 72.27 / 72                  # TeX points per PDF point (bp)
 TOLERANCE = 0.3                  # pt: below this a measurement says "ok"
 SECTION_BOX_HEIGHT = "SMSectionframeBoxHeight"
-# A columns[T] environment that starts a manual-top frame lands 2.36pt above a list in the Fira profile, whose
-# \SMColumnsTTopCompensation was measured on plain frames: that offset is not the font's, so it is taken out.
-T_COLUMNS_OFFSET = 2.36
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_[^}]+\}")
 SET_RE = r"\\setlength\{\\%s\}\{([^}]*)\}"
 COMPILE_TIMEOUT_SECONDS = 600
-
-
-@dataclass
-class Row:
-    name: str            # the profile's name without the backslash
-    current: float | None
-    suggested: float | None
-    note: str
-    advisory: bool = False   # shown, never counted: the measurement is known to disagree with the Fira profile
-
-    @property
-    def ok(self) -> bool:
-        return (self.advisory or self.suggested is None or self.current is None
-                or abs(self.suggested - self.current) <= TOLERANCE)
 
 
 @dataclass
@@ -242,17 +221,12 @@ def label_gap(page: fitz.Page) -> list[tuple[str, float, float]]:
     return out
 
 
-def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[list[Row], list[Check], list[str]]:
-    text = profile_text(framework, profile)
-    cur = lambda name: tex_length(text, name)   # noqa: E731
+def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[list[Check], list[str]]:
+    profile_text(framework, profile)       # the profile exists
     setup = (framework / "SlideMage_setup.tex").read_text(encoding="utf-8")
-    rows: list[Row] = []
     checks: list[Check] = []
     hooks: list[str] = []
     edges: list[str] = []
-
-    def add(name: str, suggested: float | None, note: str, advisory: bool = False) -> None:
-        rows.append(Row(name, cur(name), None if suggested is None else round(suggested, 2), note, advisory))
 
     # -- the footer and the right edge ------------------------------------------------------------
     probe = deck.page("ZC3")
@@ -287,18 +261,18 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
                                 f"the last baseline is {above:.2f}bp above the page's bottom, the descender {descender:.2f}bp, "
                                 f"the footer box {box_height:.2f}bp high"))
 
-    # -- the top of the frames the automatic Top Margin does not manage --------------------------------
+    # -- the top of the frames the automatic Top Margin does not correct by their content -----------------
+    # (v9.9.0: \SMContentTopShift is measured from the frames' body origin, the two columns corrections against a list
+    # where the columns begin; a manual-top frame's first line sits on the Top Margin whatever the font and template)
     top_margin = deck.info["top_margin"]
-    y_list, y_t, y_T = (deck.first_line_top(i) for i in ("ZCI", "ZCJ", "ZCK"))
-    if y_list is not None:
-        add("SMContentTopShift", (cur("SMContentTopShift") or 0.0) + (y_list - top_margin) * PT,
-            f"the first line of a manual-top frame sits at {y_list:.2f}, the Top Margin is {top_margin:.2f}")
-    if y_list is not None and y_t is not None:
-        add("SMColumnsTopCorrection", (cur("SMColumnsTopCorrection") or 0.0) + (y_t - y_list) * PT,
-            f"columns[t] first start {y_t - y_list:+.2f}pt below a list")
-    if y_list is not None and y_T is not None:
-        add("SMColumnsTTopCompensation", (cur("SMColumnsTTopCompensation") or 0.0) + (y_list - y_T) * PT - T_COLUMNS_OFFSET,
-            f"columns[T] first start {y_T - y_list:+.2f}pt below a list, {T_COLUMNS_OFFSET}pt above is the Fira profile's own")
+    for slide_id, what, derived in (("ZCI", "a list", "\\SMContentTopShift"),
+                                    ("ZCJ", "a columns[t]", "\\SMColumnsTopCorrection"),
+                                    ("ZCK", "a columns[T]", "\\SMColumnsTTopCompensation")):
+        y = deck.first_line_top(slide_id)
+        if y is not None:
+            checks.append(Check(f"manual-top frame, {what} first, on the Top Margin ({derived}, derived)",
+                                (y - top_margin) * PT, 0.0,
+                                f"the first line sits at {y:.2f}bp, the Top Margin is {top_margin:.2f}bp"))
 
     # -- the section frame: the bar is as high as the hook says ------------------------------------------------
     section = deck.page("ZC2")
@@ -349,7 +323,7 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
     hooks.extend(edges)
     hooks.append(f"text font ascender read from the font: {section_info['ascender']}em "
                  f"(the profile's \\SMFontAscender is only the fallback)")
-    return rows, checks, hooks
+    return checks, hooks
 
 
 # ---------------------------------------------------------------- main
@@ -373,15 +347,9 @@ def main(argv: list[str] | None = None) -> int:
         compile_deck(project, args.deck, args.template, args.profile, framework, pdf)
         if args.keep_pdf:
             shutil.copy2(pdf, args.keep_pdf)
-    rows, checks, hooks = measure(Deck(pdf), args.profile, framework, args.template)
+    checks, hooks = measure(Deck(pdf), args.profile, framework, args.template)
 
-    print(f"profile {args.profile}, template {args.template}: current value, suggestion (pt)")
-    width = max((len(r.name) for r in rows), default=10)
-    for r in rows:
-        current = "-" if r.current is None else f"{r.current:.2f}"
-        suggested = "-" if r.suggested is None else f"{r.suggested:.2f}"
-        flag = "ok " if r.ok else "SET"
-        print(f"  {flag} \\{r.name:<{width}}  {current:>8} -> {suggested:>8}   {r.note}")
+    print(f"profile {args.profile}, template {args.template}")
     print("derived from the font and the hooks, measured in the PDF against what they ask for (pt):")
     for c in checks:
         measured = "-" if c.measured is None else f"{c.measured:.2f}"
@@ -390,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     print("derived by the base, read back from the PDF:")
     for line in hooks:
         print(f"  {line}")
-    return 0 if all(r.ok for r in rows) and all(c.ok for c in checks) else 1
+    return 0 if all(c.ok for c in checks) else 1
 
 
 if __name__ == "__main__":
