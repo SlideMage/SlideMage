@@ -6732,10 +6732,61 @@
 % An \href in the caption keeps its underline under its text since
 % \SMHrefUnderline is one box (a caption link wider than the code had its
 % rule set a whole line lower, found 2026-10-29).
+%
+% A caption wider than the code (a line TeX cannot break: a long word or
+% link) is centred on the code and overhangs it equally on both sides; it
+% stuck out to the right before (2026-10-29). The caption is set once at the
+% code's width to find its widest line (\__smqr_widest_line:); only when that
+% is wider than the code is it set again at that width, in a box centred
+% under the code. The code's box stays as wide as the code, so its place in
+% columns and corners does not change, and a caption that fits is set as
+% before.
 \newsavebox{\SMQRCodeBox}
 \providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
 \ExplSyntaxOn
 \tl_new:N \l__smqr_link_tl
+\dim_new:N \g__smqr_caption_dim
+\box_new:N \l__smqr_line_box
+\box_new:N \l__smqr_caption_box
+% In the vertical list of a paragraph just ended: take its lines off from the
+% last and keep the natural width of the widest in \g__smqr_caption_dim.
+\cs_new_protected:Npn \__smqr_widest_line:
+	{
+		\unskip \unpenalty \unskip \unkern
+		\box_set_to_last:N \l__smqr_line_box
+		\box_if_empty:NF \l__smqr_line_box
+			{
+				\hbox_set:Nn \l__smqr_line_box { \hbox_unpack:N \l__smqr_line_box }
+				\dim_gset:Nn \g__smqr_caption_dim
+					{ \dim_max:nn { \g__smqr_caption_dim } { \box_wd:N \l__smqr_line_box } }
+				\__smqr_widest_line:
+			}
+	}
+\cs_new_protected:Npn \__smqr_caption:n #1
+	{
+		\dim_gzero:N \g__smqr_caption_dim
+		\hbox_set:Nn \l__smqr_caption_box
+			{
+				\begin{minipage}{\wd\SMQRCodeBox}
+					\centering \SMQRCodeCaptionStyle #1 \par \__smqr_widest_line:
+				\end{minipage}
+			}
+		\dim_compare:nNnTF { \g__smqr_caption_dim } > { \wd\SMQRCodeBox }
+			{
+				\par
+				{
+					\SMQRCodeCaptionStyle
+					\makebox [\linewidth] [c]
+						{
+							\begin{minipage}[t]{\g__smqr_caption_dim}
+								\centering \SMQRCodeCaptionStyle #1 \par
+							\end{minipage}
+						}
+					\par
+				}
+			}
+			{ \par{\SMQRCodeCaptionStyle #1\par} }
+	}
 \cs_new_protected:Npn \__smqr_caption_link:n #1
 	{
 		\tl_clear:N \l__smqr_link_tl
@@ -6758,8 +6809,7 @@
 			{ \sbox \SMQRCodeBox { \exp_args:No \SMOrigHref { \l__smqr_link_tl } { \usebox \SMQRCodeBox } } }
 		\begin{minipage}[t]{\wd\SMQRCodeBox}
 			\centering\usebox{\SMQRCodeBox}
-			\tl_if_blank:nF {#3}
-				{ \par{\SMQRCodeCaptionStyle #3\par} }%     the code's own white border is the gap
+			\tl_if_blank:nF {#3} { \__smqr_caption:n {#3} }%     the code's own white border is the gap
 		\end{minipage}
 		\group_end:
 	}

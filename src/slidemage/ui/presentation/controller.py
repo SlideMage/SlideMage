@@ -31,7 +31,10 @@ from .views import AudienceView, CurrentView, NextView, NotesView
 WHEEL_STEP = 120
 # A tool that is switched on (pen, eraser, black, freeze) is lit, so the state is clear at a glance.
 ACTIVE_STYLE = "QToolButton:checked { background: #1976d2; color: #ffffff; font-weight: bold; }"
-ALLOWED_SCHEMES = ("http", "https", "mailto")
+# The addresses a click on a slide opens (QDesktopServices hands them to the system's handler): web pages, mail and
+# map locations (geo:, the link of a QR code for a place: qr_code.link_target; Windows opens it in Maps). Files,
+# javascript: and other schemes that could start a program or read local data stay closed.
+ALLOWED_SCHEMES = ("http", "https", "mailto", "geo")
 Key = Qt.Key
 NEXT_KEYS = {Key.Key_Right, Key.Key_Down, Key.Key_PageDown, Key.Key_Space, Key.Key_Return, Key.Key_Enter}
 PREVIOUS_KEYS = {Key.Key_Left, Key.Key_Up, Key.Key_PageUp, Key.Key_Backspace}
