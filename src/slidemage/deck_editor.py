@@ -26,11 +26,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlsplit
 
 from .project import ProjectContext
 from .fileio import StaleFileError as StaleFileError, read_text_exact, write_text_exact
-from .deck_scan import COURSE_URL_RE, DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
+from .deck_scan import DOCUMENT_BEGIN_LINE_RE, DOCUMENT_END_RE, Chapter, Deck, parse_chapters, SECTION_RE, find_decktags
 from .slide_language import FROZEN_RE, current_name, frozen_name
 from .tex_source import COMMENT_RE, is_commented
 
@@ -377,50 +376,6 @@ def _cut(text: str, spans: list[tuple[int, int]]) -> str:
     for start, end in sorted(spans, reverse=True):
         text = text[:start] + text[end:]
     return text
-
-
-def normalize_course_url(url: str) -> str:
-    """Accept a browser-safe HTTP(S) URL for a deck's course page."""
-    clean = url.strip()
-    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in clean):
-        raise ValueError("Course link must not contain spaces or control characters.")
-    try:
-        parts = urlsplit(clean)
-        if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
-            raise ValueError("Enter a full http:// or https:// course URL.")
-        _ = parts.port  # Reject malformed ports before storing the URL.
-    except ValueError as exc:
-        raise ValueError(f"Invalid course URL: {exc}") from exc
-    return clean
-
-
-def course_url_text(text: str, url: str, deck_name: str) -> str:
-    """`text` with its course-URL comment set to `url` (removed when empty)."""
-    clean = normalize_course_url(url) if url.strip() else ""
-    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
-    if begin is None and clean:
-        raise ValueError(f"{deck_name} has no \\begin{{document}} to place the course link before.")
-    preamble_end = begin.start() if begin else len(text)
-    for match in reversed(list(COURSE_URL_RE.finditer(text, 0, preamble_end))):
-        line_start, line_end = line_span(text, match.start(), match.end())
-        text = text[:line_start] + text[line_end:]
-    if not clean:
-        return text
-    begin = DOCUMENT_BEGIN_LINE_RE.search(text)
-    newline = "\r\n" if "\r\n" in text else "\n"
-    return (
-        text[:begin.start()]
-        + f"%% SlideMage course URL: {clean}{newline}"
-        + text[begin.start():]
-    )
-
-
-def set_course_url(deck_path: Path, expected_text: str, url: str) -> str:
-    """Store or remove a course URL as a comment in the deck preamble."""
-    if url.strip():
-        normalize_course_url(url)  # a bad URL is refused before anything is read
-
-    return apply(deck_path, expected_text, lambda text: course_url_text(text, url, deck_path.name))
 
 
 def set_deck_tags(deck_path: Path, expected_text: str, tags: list[str]) -> str:

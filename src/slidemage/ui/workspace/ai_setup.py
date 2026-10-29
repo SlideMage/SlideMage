@@ -167,6 +167,10 @@ class AiSetup(Popover):
                 self.conn.setAccessibleName("Cloud connection")
                 self.conn.changed.connect(self._on_conn)
                 self._conn_row.addLayout(self._setting("Cloud connection", "", self.conn))
+                # built after the policy and the link, so Tab would reach it last: put it before the policy again
+                stops = [self.cells[(CLOUD, TASKS[-1])], *self.conn.buttons(), *self.policy.buttons()]
+                for before, after in zip(stops, stops[1:]):
+                    QWidget.setTabOrder(before, after)
         if self.conn is not None:
             self.conn.set_current(cloud)
 

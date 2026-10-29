@@ -170,6 +170,7 @@ class AiPage(Page):
         layout.addWidget(self.language)
 
         self.policy = SegmentedControl(POLICIES, current=ai_profile.policy(self.project))
+        self.policy.setAccessibleName("Project setting")
         self.policy.changed.connect(lambda value: ai_profile.set_policy(self.project, value))
         layout.addWidget(Field("Project setting: where the switch starts when the project opens", self.policy))
         self.cloud_route = SegmentedControl(

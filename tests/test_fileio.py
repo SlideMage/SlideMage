@@ -75,7 +75,9 @@ def test_write_text_exact_replaces_the_file_whole_and_keeps_its_mode(tmp_path, m
     path.write_bytes(b"old\r\ntext\r\n")
     path.chmod(0o640)
     write_text_exact(path, "new\r\nä\n")
-    assert path.read_bytes() == "new\r\nä\n".encode() and path.stat().st_mode & 0o777 == 0o640
+    assert path.read_bytes() == "new\r\nä\n".encode()
+    if os.name != "nt":   # Windows keeps only the read-only bit of a mode
+        assert path.stat().st_mode & 0o777 == 0o640
     assert [p.name for p in tmp_path.iterdir()] == ["deck.tex"]
 
 

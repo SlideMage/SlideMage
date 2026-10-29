@@ -34,13 +34,9 @@ def _parameters(callable_):
     ]
 
 
-def _cached_lazy(name):
-    """A re-export that __getattr__ has loaded into the module (by an earlier test or caller); not in the snapshot."""
-    return name in plugin_api._LAZY and getattr(vars(plugin_api)[name], "__module__", None) != plugin_api.__name__
-
-
 def _contract():
-    names = sorted(name for name in vars(plugin_api) if not name.startswith("_") and not _cached_lazy(name))
+    # The lazy re-exports are public whether or not something has loaded them yet (a load caches them in the module).
+    names = sorted(name for name in {*vars(plugin_api), *plugin_api._LAZY} if not name.startswith("_"))
     classes = {}
     for name in names:
         cls = getattr(plugin_api, name)

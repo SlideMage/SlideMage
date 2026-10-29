@@ -276,16 +276,15 @@ def test_render_priority(pctx, caplog):
     assert plugin_render_priority([loaded("off", lambda d: True, state="disabled")])(deck) is False
 
 
-def test_renderer_combines_core_and_plugin_rules(pctx):
+def test_renderer_uses_the_plugin_rule(pctx):
     deck = deck_scan.read_deck(pctx.decks_dir / "test.tex")
     r = BackgroundRenderer.__new__(BackgroundRenderer)
-    r._core_soon = lambda d: False
     r.plugin_soon = None
     assert r._soon(deck) is False
     r.plugin_soon = lambda d: True
     assert r._soon(deck) is True
-    r._core_soon, r.plugin_soon = (lambda d: True), (lambda d: False)
-    assert r._soon(deck) is True
+    r.plugin_soon = lambda d: False
+    assert r._soon(deck) is False
 
 
 def tex_files(pctx):

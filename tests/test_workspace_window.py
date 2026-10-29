@@ -162,6 +162,7 @@ def test_a_project_without_decks_shows_a_placeholder_and_offers_the_manual_where
 # -- view, language, compile label ----------------------------------------------
 
 @pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
+# The AI switch left the bar in v8.61.0, so the tight bar fits down to 880 px and the tiny one is for less.
 def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window, qapp, theme):
     bar = topbar
     window.state.set_deck(MANUAL)
@@ -169,7 +170,7 @@ def test_top_bar_densities_fit_the_available_width_and_grow_back(topbar, window,
         window.theme.dark = theme
         bar.setStyleSheet(window.theme._build_qss())
     assert not window.assistant.available
-    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (900, "tight"), (2000, "full")):
+    for width, density in ((2000, "full"), (1300, "narrow"), (1050, "tight"), (850, "tiny"), (2000, "full")):
         bar.resize(width, bar.height())
         qapp.processEvents()
         assert bar.width() == width and bar._density == density

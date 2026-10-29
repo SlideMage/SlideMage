@@ -91,6 +91,22 @@ def _detect_ai_settings(root: Path) -> list[Finding]:
     return []
 
 
+# The comment the CampusOnline plugin keeps in a deck's preamble. Core never writes it, but still recognises it.
+_COURSE_URL_RE = re.compile(r"^[ \t]*%% SlideMage course URL:[ \t]*\S", re.MULTILINE)
+
+
+def _detect_course_link(root: Path) -> list[Finding]:
+    findings = []
+    for path in compat_bibliography.decks(root):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        begin = re.search(r"^[ \t]*\\begin\{document\}", text, re.MULTILINE)
+        match = _COURSE_URL_RE.search(text[:begin.start()] if begin else text)
+        if match:
+            findings.append(Finding(path.relative_to(root).as_posix(), text.count("\n", 0, match.start()) + 1,
+                                    "This deck has a CampusOnline course link."))
+    return findings
+
+
 # Newest last. Entries start with v5.29.0's rule that every breaking change
 # registers itself here (the changes before that were announced in
 # version.py's BREAKING paragraphs and are not retrofitted). Entries with real
@@ -137,7 +153,21 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "calls for instructor-only content."),
     detect=_detect_omitslide,
 ), Change(
-    id="ai-plugins", since="v10.0.0", severity=LAYOUT,
+    id="campusonline-plugin",
+    since="v9.0.0",
+    severity=APPEARANCE,
+    title="CampusOnline course links are now a plugin",
+    description=(
+        "Version 9.0 moved the CampusOnline features (the Course page link of Deck settings, the Admin slides "
+        "tab and Deck menu entry, and rendering ahead of a course session) out of SlideMage into the CampusOnline "
+        "plugin. A deck keeps its '%% SlideMage course URL:' comment and compiles as before; without the plugin "
+        "the link is not shown or used."),
+    fix=(
+        "Nothing to change in the project. To use the course link, admin slides and session-aware rendering "
+        "again, install the CampusOnline plugin from Settings > Plugins (or the first-start sheet)."),
+    detect=_detect_course_link,
+), Change(
+    id="ai-plugins", since="v9.1.0", severity=LAYOUT,
     title="AI routes are provided by plugins",
     description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
     fix="Install the Claude or Ollama plugin from Settings → Plugins.", detect=_detect_ai_settings,

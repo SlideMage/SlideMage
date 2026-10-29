@@ -25,7 +25,7 @@ from slidemage.ui.workspace import deck_actions
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"
 DECK = DECK_TEXT.replace("\\begin{document}", "\\input{Slidemaster_preamble_uni-graz}\r\n\\begin{document}", 1)
 MARKER = "%% marker: set\r\n"
-COURSE_URL = "https://online.uni-graz.at/kfu_online/wbLv.wbShowLVDetail?pStpSpNr=1002516"
+FOOTER = "Edited footer"
 
 
 @pytest.fixture(autouse=True)
@@ -194,7 +194,7 @@ def test_a_plugin_edit_then_a_core_save_keeps_both_changes(window, monkeypatch):
         page.save_button.click()
         assert page.error == "", page.error
         assert not sheet.dirty()                                    # the sheet read the new text
-        sheet.url_edit.setText(COURSE_URL)
+        sheet.footer_edit.setText(FOOTER)
         sheet._on_save()
         return True
 
@@ -204,5 +204,5 @@ def test_a_plugin_edit_then_a_core_save_keeps_both_changes(window, monkeypatch):
     deck_actions.on_deck_settings(window, window.state.deck, "Edit")
     assert shown == []
     text = disk(window)
-    assert MARKER in text and COURSE_URL in text
+    assert MARKER in text and FOOTER in text
     assert window.state.deck.text == text
