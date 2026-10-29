@@ -66,11 +66,11 @@ AUDITED_FRAMEWORK = {
     "SlideMage_setup.tex": "a202b75b023ed1305192c99e43d3760c1254332689f811dcdaf5cad4544cb7ce",
     "SlideMage_layout_fira.tex": "0f44c15ff57f6c71def59b1421ca15c8653657a29711e4bace1ba8b36bd8ae67",
     "SlideMage_layout_lmsans.tex": "8266f2aa8bf9f7d69946239f6010b5b4ae850935729ec63760db52f04402ee17",
-    "SlideMage_base.tex": "ea5024a6d47ec78d98ad38061cbb1e5825b4068577a109b831df7ba1c500457b",
+    "SlideMage_base.tex": "4b23149eee02606531a873c0b9f0119535b86ce8610f700c4247e003d5995060",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "0afea7c0abf1f38c52aec6666c67e8b21692c2051e96f3bb7b969b8a945b7e11",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
-    "SlideMage_measure.lua": "0e0d9e7a0d5a6837850178176b2c269413b2f7de784a5086e02f5206ef8db163",
+    "SlideMage_measure.lua": "167e9b3822b009fb488c7d678bfce3ba5d8378323e044d2203dfdbc245ef7e48",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.

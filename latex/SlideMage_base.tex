@@ -299,7 +299,7 @@
 \SM@derivedlength{SMSectionframeHeightCorrection}
 % v9.9.0: the pull-ups of the frames the automatic Top Margin does not correct by their content were
 % the last three numbers of the layout profiles. \SMContentTopShift is measured (the frame's origin,
-% see AUTOMATIC TOP MARGIN; 0pt until the first run has written \jobname.top), the two columns
+% see AUTOMATIC TOP MARGIN; in a run without \jobname.top, from the first frame that counts on), the two columns
 % corrections are measured where a columns environment starts such a frame.
 \SM@derivedlength{SMContentTopShift}
 \SM@derivedlength{SMColumnsTopCorrection}
@@ -3014,7 +3014,10 @@
 % marker) and how far below that a top-level itemize's first line would start
 % (typeset in a box there), and the measurement writes the pull-up most frames
 % share into \jobname.top. The corrections of the measured frames are relative
-% to it. \SMAutoTopMarginfalse in a deck's preamble places every frame like
+% to it. In a run without \jobname.top the first titled frame's own value is used
+% from the next frame on, so the first run already places the deck as the next one
+% will (no deck needs a run more than with the old stored number); a frame that
+% started that run elsewhere (the first one) is corrected from its default position. \SMAutoTopMarginfalse in a deck's preamble places every frame like
 % \SMManualTopMargin does (the default position, measured; no content-dependent
 % correction anywhere in the deck); it does not switch the measurement off.
 \newif\ifSMAutoTopMargin
@@ -3026,7 +3029,8 @@
 \newcount\SM@topindex
 \newwrite\SM@topfile
 \newcommand{\SMSetTopCorrection}[2]{\global\@namedef{SM@topcorr@#1}{#2}}
-\newcommand{\SMSetContentTopShift}[1]{\global\SMContentTopShift=#1\relax}
+\newcommand{\SMSetContentTopShift}[1]{\global\SMContentTopShift=#1\relax
+	\ifluatex\directlua{slidemage_measure.top_shift_read = \strip@pt\SMContentTopShift}\fi}
 \ifluatex
 	\SMLuaOnce{
 		luatexbase.add_to_callback("pre_shipout_filter", function(head)
@@ -3045,6 +3049,10 @@
 % Before \begin{frame} (runs once per frame, not once per overlay page):
 % number the frame and fetch its correction from the previous run.
 \newcommand{\SM@topprepare}{%
+	\ifdefined\SM@topshiftrun% a first run: measured on the first frame that counts
+		\global\SMContentTopShift=\SM@topshiftrun\relax
+		\global\let\SM@topshiftrun\undefined
+	\fi
 	\global\advance\SM@topindex by 1
 	\xdef\SM@topthis{\the\SM@topindex}%
 	\ifcsname SM@topcorr@\SM@topthis\endcsname

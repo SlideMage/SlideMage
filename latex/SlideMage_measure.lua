@@ -281,16 +281,22 @@ slidemage_measure.top_extra_pt = slidemage_measure.top_extra_pt or {}
 
 slidemage_measure.top_pullup = slidemage_measure.top_pullup or {}
 slidemage_measure.top_managed = slidemage_measure.top_managed or {}
-slidemage_measure.top_shift_pt = nil
+-- \SMContentTopShift as \jobname.top gave it (\SMSetContentTopShift), or nil in a
+-- first run; then the first frame that counts sets it for the frames after it
+-- (top_measure_page), so the first run already lays the deck out as the next
+-- one will and no deck needs a run more than with a stored number
+slidemage_measure.top_shift_read = nil
+slidemage_measure.top_shift_run = nil
 
 -- TeX side: this frame (index) got `applied_pt` of automatic correction; its
 -- whole pull-up was `pullup_sp` (\SMContentTopShift, which was `shift_pt` in
 -- this run, less the frame's \SMReduceContentTopShift, plus the correction);
 -- `managed`: the measurement corrects it by its content
+slidemage_measure.top_shift_of = slidemage_measure.top_shift_of or {}
 function slidemage_measure.top_begin(index, applied_pt, pullup_sp, shift_pt, managed)
   slidemage_measure.top_applied[index] = applied_pt
   slidemage_measure.top_pullup[index] = pullup_sp or 0
-  slidemage_measure.top_shift_pt = shift_pt or 0
+  slidemage_measure.top_shift_of[index] = shift_pt or 0
   slidemage_measure.top_managed[index] = managed ~= false
   local n = node.new(WHATSIT, USER_DEFINED)
   n.user_id = MARKER_ID
@@ -669,6 +675,17 @@ local function to_bp(sp)
   return ((sp + tex.voffset) / SP_PER_PT + 72.27) * BP_PER_PT
 end
 
+-- The pull-up (pt) that puts frame `index`'s reference line on its target line,
+-- or nil when the frame does not count or showed no origin.
+local function frame_shift(index)
+  local y = slidemage_measure.top_origin_y[index]
+  if not (y and slidemage_measure.top_counts[index]) then
+    return nil
+  end
+  local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
+  return (to_bp(y + (slidemage_measure.top_ref[index] or 0)) - target) / BP_PER_PT
+end
+
 -- shipout: measure this page. The last page of a frame wins (its final
 -- overlay state).
 function slidemage_measure.top_measure_page(box)
@@ -697,6 +714,15 @@ function slidemage_measure.top_measure_page(box)
         .. "reference line %.3fpt below it", index, to_bp(origin), to_bp(slidemage_measure.top_origin_y[index]),
         (slidemage_measure.top_ref[index] or 0) / SP_PER_PT))
     end
+    -- a first run: the first frame that counts gives \SMContentTopShift to the
+    -- frames after it (\SM@topprepare reads the macro)
+    if not slidemage_measure.top_shift_read and not slidemage_measure.top_shift_run then
+      local pt = frame_shift(index)
+      if pt then
+        slidemage_measure.top_shift_run = tonumber(string.format("%.4f", pt))
+        token.set_macro("SM@topshiftrun", string.format("%.4fpt", slidemage_measure.top_shift_run), "global")
+      end
+    end
   end
   if index and top and slidemage_measure.top_managed[index] then
     local m = { top = to_bp(top) }
@@ -722,10 +748,8 @@ end
 local function origin_shift(keys, current)
   local votes, first, best = {}, {}, nil
   for order, index in ipairs(keys) do
-    local y = slidemage_measure.top_origin_y[index]
-    if y and slidemage_measure.top_counts[index] then
-      local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
-      local pt = (to_bp(y + (slidemage_measure.top_ref[index] or 0)) - target) / BP_PER_PT
+    local pt = frame_shift(index)
+    if pt then
       local key = string.format("%.4f", pt)
       votes[key] = (votes[key] or 0) + 1
       first[key] = first[key] or order
@@ -750,33 +774,46 @@ function slidemage_measure.top_emit()
   table.sort(keys)
   -- the corrections below are relative to \SMContentTopShift: to the one of the
   -- next run, so a frame keeps its place when that value changes
-  local shift = slidemage_measure.top_shift_pt or 0
-  local next_shift = origin_shift(keys, shift) or shift
+  local current = slidemage_measure.top_shift_read or slidemage_measure.top_shift_run or 0
+  local next_shift = origin_shift(keys, current) or current
   if next_shift ~= 0 then
     tex.sprint(string.format(
       "\\immediate\\write\\csname SM@topfile\\endcsname"
       .. "{\\string\\SMSetContentTopShift{%.4fpt}}", next_shift))
   end
   for _, index in ipairs(keys) do
-    local applied = slidemage_measure.top_applied[index] + shift - next_shift
     local measured = slidemage_measure.top_measured[index]
-    local value = applied
+    -- a frame with nothing measurable keeps its correction (0pt: the default
+    -- position, \SMContentTopShift of whichever run)
+    local value = slidemage_measure.top_applied[index]
     if not slidemage_measure.top_managed[index] then
       value = 0
     elseif measured then
+      -- the frame at its default position of the next run (pull-up next_shift,
+      -- no correction) lies `off` lower than now; everything below is relative
+      -- to that position, so the result does not depend on where this run had
+      -- the frame (the first run has \SMContentTopShift 0pt)
+      local start = slidemage_measure.top_shift_of[index] or 0
+      local off = value + start - next_shift
+      -- a frame that started this run from another \SMContentTopShift (the
+      -- frames of a first run before the first one that counts) is measured
+      -- from its default position instead of from where it is
+      local ref = math.abs(start - next_shift) >= 0.01 and off or 0
       local target = TOP_MARGIN_BP + (slidemage_measure.top_extra_pt[index] or 0) * BP_PER_PT
-      local delta_pt = (measured.top - target) / BP_PER_PT
+      local delta_pt = (measured.top - target) / BP_PER_PT + ref
       -- delta < 0: content too high, it moves down -- but never by more
       -- than the room left above the footnotes/footer (minus MIN_ROOM): a
       -- full slide stays where it fits instead of running into the footer
       if delta_pt < 0 and measured.room then
-        local room_pt = measured.room / BP_PER_PT - MIN_ROOM_PT
+        local room_pt = measured.room / BP_PER_PT - ref - MIN_ROOM_PT
         if -delta_pt > room_pt then
           delta_pt = -math.max(room_pt, 0)
         end
       end
-      if math.abs(delta_pt) >= 0.01 then
-        value = applied + delta_pt
+      -- delta_pt - ref: the move from where the frame is now
+      value = off
+      if math.abs(delta_pt - ref) >= 0.01 then
+        value = off + delta_pt - ref
       end
     end
     if math.abs(value) >= 0.0005 then
