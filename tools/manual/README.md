@@ -23,7 +23,7 @@ screen readers would pick that up.
 Compile the manual twice after its slides change (`latexmk` does): the chapter
 agendas and the footer navigation are built from the previous pass's `.aux`.
 
-`make_screenshots.py` works on a copy of `example/` and `latex/` in a temporary folder (with three placeholder decks, one per deck group, so the deck menu shows the grouping), uses a fixed list of Ollama models and no network, and leaves the repository alone. Most footer numbers in the crops
+`make_screenshots.py` works on a copy of `example/` and `latex/` in a temporary folder (with three placeholder decks, one per deck group, so the deck menu shows the grouping; the stored previews of `example/.build/preview-cache` come along), uses a fixed list of Ollama models and no network, and leaves the repository alone. The AI is a plugin since v9.1.0: `--plugins DIR…` names checkouts of `slidemage-plugin-claude` and `slidemage-plugin-ollama` (default: `SLIDEMAGE_PLUGIN_PATH`, else the folders next to this repository), loaded as dev plugins instead of the ones installed on the computer; without them the shots show no AI and the chat shot is left out. The focused slide is rendered for real when no stored preview of it exists (the first time takes a minute or two); the slide list's thumbnails stay empty boxes unless the stored previews cover those slides. Most footer numbers in the crops
 are page numbers of the manual: when slides are added or removed earlier in
 the deck, rerun the crops too.
 
