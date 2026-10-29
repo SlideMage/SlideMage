@@ -6,7 +6,7 @@
 \setSlideVersion{1-0-0+}
 \begin{standardframe}{The AI assistant}
 	\small
-	Below the panels, an assistant reads and changes your slides, unsaved text included. \emph{Local} or \emph{Cloud} at its top decides where AI tasks run; its arrow opens \emph{AI setup}.
+	Below the panels, an assistant reads and changes your slides, unsaved text included. It comes from the \emph{Claude} and \emph{Ollama} plugins (\emph{Settings} $\rightarrow$ \emph{Plugins}); without them SlideMage has none. \emph{Local} or \emph{Cloud} at its top decides where AI tasks run; its arrow opens \emph{AI setup}.
 	\par\smallskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.25\linewidth}
@@ -16,7 +16,7 @@
 			\textbf{Chat}
 			\shrinklists{3}
 			\begin{itemize}
-				\item Scope \emph{This slide} or \emph{Whole deck}; a label names the model and says whether it runs locally (Ollama) or in the cloud (Claude)
+				\item Scope \emph{This slide} (it asks before touching others) or \emph{Whole deck}; a label names the model: local (Ollama plugin) or cloud (Claude plugin)
 				\item It reads, searches and edits project files, lints, renders, adds slides, compiles
 				\item \emph{Ask before edits} shows a diff to \emph{Apply} or \emph{Reject}; \emph{Edit automatically} applies it, with \emph{Undo}
 				\item Header comments, \SMCmd{setSlideVersion} lines, \SMCode{vbox to 0pt} blocks and frozen versions are off limits
@@ -32,7 +32,7 @@
 			\textbf{Cloud models}
 			\shrinklists{3}
 			\begin{itemize}
-				\item Need an API key; \emph{Local AI only} (Settings, Cloud) turns them off; the first request in a project asks what will be sent
+				\item Need an API key; \emph{Local AI only} (\emph{Settings} $\rightarrow$ \emph{AI}) turns them off; the first request in a project asks what will be sent
 			\end{itemize}
 		\end{column}
 	\end{columns}
