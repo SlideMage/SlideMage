@@ -2,7 +2,7 @@
 %%
 
 % SlideMage manual, chapter "Plugins": first start and the Plugins sheet.
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-0-0+}
 \begin{standardframe}{Installing plugins}
 	\small
 	Open \emph{File} $\rightarrow$ \emph{Settings\ldots} $\rightarrow$
@@ -10,10 +10,10 @@
 	\par\medskip
 	\shrinklists{1}
 	\begin{itemize}
-		\item \textbf{First start}: a sheet offers plugins once per computer, if the list has any. Nothing is ticked; recommendations come first. \emph{Not now} closes it
+		\item \textbf{First start}: a sheet offers plugins once per computer; the recommended ones, Claude and Ollama, come first. A plugin for a feature you used before (an API key, a course link) is ticked, with the reason. \emph{Install selected} or \emph{Not now}; \emph{See all plugins} opens \SMCode{slidemage.org/plugins/}
 		\item \textbf{Available}: read the summary, needs and network contacts, then \emph{Install}. \emph{Check for plugins} refreshes the list
 		\item \textbf{Install from file\ldots}: choose a \SMCode{.smplugin} file and confirm its warning sheet. A matching \SMCode{name.smplugin.sha256} file must be beside it
 		\item \textbf{Installed}: version, state, \emph{Enabled}, \emph{Update to\ldots} and \emph{Remove}; \emph{Details\ldots} explains a load failure
-		\item \textbf{Restart SlideMage} after changes: plugins load once, before the window opens
+		\item \textbf{Restart SlideMage} after changes (\emph{Restart now}): plugins load once, before the window opens. A plugin can add Settings tabs; AI services add sections to the AI tab
 	\end{itemize}
 \end{standardframe}
