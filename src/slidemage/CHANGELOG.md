@@ -3065,3 +3065,8 @@ v10.12.0 (2026-10-29, direct instruction: the two Fira bugs fixed - step 12 of d
 NEW: Footnotes and columns on slides with reveals look as they should.
 - A footnote in an item that appears later appears with that item; the image source line stays on every step.
 - Two-column layouts with columns[T] below a list or a table keep the normal gap instead of touching it.
+
+v10.12.1 (2026-10-30, direct request: "Fix the two open items too", the lowercase expl3 names among them): The internal expl3 names of \SMQRCode and of the multi-language text in latex/SlideMage_base.tex move into the SM module like every other SlideMage name: __smqr_ becomes __SM_qr_ and __sm_mlt_ becomes __SM_mlt_. A rename only; every slide renders as before. The preview-equivalence pin of the base is renewed.
+
+NEW: Internal LaTeX names follow SlideMage's naming rule.
+- Slides look exactly as before; only names inside the framework changed.

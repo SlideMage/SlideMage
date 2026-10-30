@@ -83,10 +83,12 @@ AUDITED_FRAMEWORK = {
     # Re-audited: no version, footer-hide or deck-label
     # rule entered the base or the theme; the covering follows beamer's overlay steps, which a handout collapses for the
     # content and its footnotes alike, and the frame footer is unchanged.
+    # v10.12.1: the base's internal expl3 names \SMQRCode and the multi-language text use move to the SM module
+    # (__smqr_ -> __SM_qr_, __sm_mlt_ -> __SM_mlt_). A rename only; no rule changed.
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "b0c22d29131b107e183ace85fba834f093d55f79eca1dab6d8afc0e691c39e29",
+    "SlideMage_base.tex": "c0b2545d67929abce6ef11a33028a26812e5932593724791598b33cefb28788d",
     "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
     "beamerthemeSlideMage.sty": "1110cb29021e4a02f3ae996365ff8d387dfac8b70b0c29e84299ebcd134a3425",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",

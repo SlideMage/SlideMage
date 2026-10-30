@@ -1296,43 +1296,43 @@
 % \decklanguage[fr] (fr, es, ...): \ifSMGerman stays false for it, and the
 % PDF's /Lang is the code itself.
 \ExplSyntaxOn
-\tl_new:N \l__sm_mlt_pick_tl
-\tl_new:N \l__sm_mlt_en_tl
-\tl_new:N \l__sm_mlt_first_tl
-\bool_new:N \l__sm_mlt_pick_bool
-\bool_new:N \l__sm_mlt_en_bool
-\bool_new:N \l__sm_mlt_first_bool
-\cs_new:Npn \__sm_mlt_pair:nn #1#2 { \ifSMGerman #2 \else #1 \fi }
-\cs_new_protected:Npn \__sm_mlt_item:nn #1#2
+\tl_new:N \l__SM_mlt_pick_tl
+\tl_new:N \l__SM_mlt_en_tl
+\tl_new:N \l__SM_mlt_first_tl
+\bool_new:N \l__SM_mlt_pick_bool
+\bool_new:N \l__SM_mlt_en_bool
+\bool_new:N \l__SM_mlt_first_bool
+\cs_new:Npn \__SM_mlt_pair:nn #1#2 { \ifSMGerman #2 \else #1 \fi }
+\cs_new_protected:Npn \__SM_mlt_item:nn #1#2
   {
-    \bool_if:NF \l__sm_mlt_first_bool
-      { \tl_set:Nn \l__sm_mlt_first_tl {#2} \bool_set_true:N \l__sm_mlt_first_bool }
+    \bool_if:NF \l__SM_mlt_first_bool
+      { \tl_set:Nn \l__SM_mlt_first_tl {#2} \bool_set_true:N \l__SM_mlt_first_bool }
     \str_if_eq:eeT { \str_casefold:n {#1} } { en }
-      { \tl_set:Nn \l__sm_mlt_en_tl {#2} \bool_set_true:N \l__sm_mlt_en_bool }
+      { \tl_set:Nn \l__SM_mlt_en_tl {#2} \bool_set_true:N \l__SM_mlt_en_bool }
     \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMDeckLanguage }
-      { \tl_set:Nn \l__sm_mlt_pick_tl {#2} \bool_set_true:N \l__sm_mlt_pick_bool }
+      { \tl_set:Nn \l__SM_mlt_pick_tl {#2} \bool_set_true:N \l__SM_mlt_pick_bool }
   }
-\cs_new_protected:Npn \__sm_mlt_item_bad:n #1
+\cs_new_protected:Npn \__SM_mlt_item_bad:n #1
   { \msg_warning:nnn { slidemage } { multilingual-key-without-value } {#1} }
 \msg_new:nnn { slidemage } { multilingual-key-without-value }
   { \string\multilingualtext*:~"#1"~has~no~=~value;~ignored. }
-\cs_new_protected:Npn \__sm_mlt_keyed:n #1
+\cs_new_protected:Npn \__SM_mlt_keyed:n #1
   {
     \group_begin:
-      \bool_set_false:N \l__sm_mlt_pick_bool
-      \bool_set_false:N \l__sm_mlt_en_bool
-      \bool_set_false:N \l__sm_mlt_first_bool
-      \keyval_parse:NNn \__sm_mlt_item_bad:n \__sm_mlt_item:nn {#1}
-      \bool_if:NTF \l__sm_mlt_pick_bool
-        { \exp_last_unbraced:NV \group_end: \l__sm_mlt_pick_tl }
+      \bool_set_false:N \l__SM_mlt_pick_bool
+      \bool_set_false:N \l__SM_mlt_en_bool
+      \bool_set_false:N \l__SM_mlt_first_bool
+      \keyval_parse:NNn \__SM_mlt_item_bad:n \__SM_mlt_item:nn {#1}
+      \bool_if:NTF \l__SM_mlt_pick_bool
+        { \exp_last_unbraced:NV \group_end: \l__SM_mlt_pick_tl }
         {
-          \bool_if:NTF \l__sm_mlt_en_bool
-            { \exp_last_unbraced:NV \group_end: \l__sm_mlt_en_tl }
-            { \exp_last_unbraced:NV \group_end: \l__sm_mlt_first_tl }
+          \bool_if:NTF \l__SM_mlt_en_bool
+            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_en_tl }
+            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_first_tl }
         }
   }
 \NewDocumentCommand{\multilingualtext}{s m}
-  { \IfBooleanTF {#1} { \__sm_mlt_keyed:n {#2} } { \__sm_mlt_pair:nn {#2} } }
+  { \IfBooleanTF {#1} { \__SM_mlt_keyed:n {#2} } { \__SM_mlt_pair:nn {#2} } }
 \ExplSyntaxOff
 
 \newif\ifSMOmittedSlide
@@ -5701,7 +5701,7 @@
 % A caption wider than the code (a line TeX cannot break: a long word or
 % link) is centred on the code and overhangs it equally on both sides; it
 % stuck out to the right before (2026-10-29). The caption is set once at the
-% code's width to find its widest line (\__smqr_widest_line:); only when that
+% code's width to find its widest line (\__SM_qr_widest_line:); only when that
 % is wider than the code is it set again at that width, in a box centred
 % under the code. The code's box stays as wide as the code, so its place in
 % columns and corners does not change, and a caption that fits is set as
@@ -5709,41 +5709,41 @@
 \newsavebox{\SMQRCodeBox}
 \providecommand{\SMQRCodeCaptionStyle}{\scriptsize}
 \ExplSyntaxOn
-\tl_new:N \l__smqr_link_tl
-\dim_new:N \g__smqr_caption_dim
-\box_new:N \l__smqr_line_box
-\box_new:N \l__smqr_caption_box
+\tl_new:N \l__SM_qr_link_tl
+\dim_new:N \g__SM_qr_caption_dim
+\box_new:N \l__SM_qr_line_box
+\box_new:N \l__SM_qr_caption_box
 % In the vertical list of a paragraph just ended: take its lines off from the
-% last and keep the natural width of the widest in \g__smqr_caption_dim.
-\cs_new_protected:Npn \__smqr_widest_line:
+% last and keep the natural width of the widest in \g__SM_qr_caption_dim.
+\cs_new_protected:Npn \__SM_qr_widest_line:
 	{
 		\unskip \unpenalty \unskip \unkern
-		\box_set_to_last:N \l__smqr_line_box
-		\box_if_empty:NF \l__smqr_line_box
+		\box_set_to_last:N \l__SM_qr_line_box
+		\box_if_empty:NF \l__SM_qr_line_box
 			{
-				\hbox_set:Nn \l__smqr_line_box { \hbox_unpack:N \l__smqr_line_box }
-				\dim_gset:Nn \g__smqr_caption_dim
-					{ \dim_max:nn { \g__smqr_caption_dim } { \box_wd:N \l__smqr_line_box } }
-				\__smqr_widest_line:
+				\hbox_set:Nn \l__SM_qr_line_box { \hbox_unpack:N \l__SM_qr_line_box }
+				\dim_gset:Nn \g__SM_qr_caption_dim
+					{ \dim_max:nn { \g__SM_qr_caption_dim } { \box_wd:N \l__SM_qr_line_box } }
+				\__SM_qr_widest_line:
 			}
 	}
-\cs_new_protected:Npn \__smqr_caption:n #1
+\cs_new_protected:Npn \__SM_qr_caption:n #1
 	{
-		\dim_gzero:N \g__smqr_caption_dim
-		\hbox_set:Nn \l__smqr_caption_box
+		\dim_gzero:N \g__SM_qr_caption_dim
+		\hbox_set:Nn \l__SM_qr_caption_box
 			{
 				\begin{minipage}{\wd\SMQRCodeBox}
-					\centering \SMQRCodeCaptionStyle #1 \par \__smqr_widest_line:
+					\centering \SMQRCodeCaptionStyle #1 \par \__SM_qr_widest_line:
 				\end{minipage}
 			}
-		\dim_compare:nNnTF { \g__smqr_caption_dim } > { \wd\SMQRCodeBox }
+		\dim_compare:nNnTF { \g__SM_qr_caption_dim } > { \wd\SMQRCodeBox }
 			{
 				\par
 				{
 					\SMQRCodeCaptionStyle
 					\makebox [\linewidth] [c]
 						{
-							\begin{minipage}[t]{\g__smqr_caption_dim}
+							\begin{minipage}[t]{\g__SM_qr_caption_dim}
 								\centering \SMQRCodeCaptionStyle #1 \par
 							\end{minipage}
 						}
@@ -5752,9 +5752,9 @@
 			}
 			{ \par{\SMQRCodeCaptionStyle #1\par} }
 	}
-\cs_new_protected:Npn \__smqr_caption_link:n #1
+\cs_new_protected:Npn \__SM_qr_caption_link:n #1
 	{
-		\tl_clear:N \l__smqr_link_tl
+		\tl_clear:N \l__SM_qr_link_tl
 		\tl_if_head_is_N_type:nT {#1}
 			{
 				\bool_lazy_or:nnT
@@ -5762,19 +5762,19 @@
 						{ \int_compare_p:nNn { \tl_count:n {#1} } = 2 } }
 					{ \bool_lazy_and_p:nn { \tl_if_head_eq_meaning_p:nN {#1} \href }
 						{ \int_compare_p:nNn { \tl_count:n {#1} } = 3 } }
-					{ \tl_set:Nx \l__smqr_link_tl { \tl_item:nn {#1} { 2 } } }
+					{ \tl_set:Nx \l__SM_qr_link_tl { \tl_item:nn {#1} { 2 } } }
 			}
 	}
 \NewDocumentCommand{\SMQRCode}{O{0.6\textheight} m m !o}
 	{
 		\group_begin:
-		\IfNoValueTF {#4} { \__smqr_caption_link:n {#3} } { \tl_set:Nn \l__smqr_link_tl {#4} }
+		\IfNoValueTF {#4} { \__SM_qr_caption_link:n {#3} } { \tl_set:Nn \l__SM_qr_link_tl {#4} }
 		\sbox \SMQRCodeBox { \includegraphics [height=#1] {#2} }
-		\tl_if_empty:NF \l__smqr_link_tl
-			{ \sbox \SMQRCodeBox { \exp_args:No \SMOrigHref { \l__smqr_link_tl } { \usebox \SMQRCodeBox } } }
+		\tl_if_empty:NF \l__SM_qr_link_tl
+			{ \sbox \SMQRCodeBox { \exp_args:No \SMOrigHref { \l__SM_qr_link_tl } { \usebox \SMQRCodeBox } } }
 		\begin{minipage}[t]{\wd\SMQRCodeBox}
 			\centering\usebox{\SMQRCodeBox}
-			\tl_if_blank:nF {#3} { \__smqr_caption:n {#3} }%     the code's own white border is the gap
+			\tl_if_blank:nF {#3} { \__SM_qr_caption:n {#3} }%     the code's own white border is the gap
 		\end{minipage}
 		\group_end:
 	}
