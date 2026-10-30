@@ -219,7 +219,7 @@ def test_translation_links_and_marks_both_slides_from_current_buffer(env):
 
 def test_translation_protected_regions_and_same_language_are_refused(env):
     source = env.root / "slides/abc-EN-Hello-current.tex"
-    source.write_text(source.read_text() + "\n\\vbox to 0pt{Protected}\n")
+    source.write_text(source.read_text() + "\n\\setSlideVersion{Protected}\n")
     result = create(env, language="DE", translation_of="abc", body=slide_ids.slide_body(source).replace("Protected", "Changed"))
     assert result.is_error and "protected" in result.text and not new_slides(env)
     assert "already EN" in create(env, translation_of="abc").text

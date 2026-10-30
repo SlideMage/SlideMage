@@ -110,9 +110,8 @@ def test_every_bad_edit_is_reported(ctx):
 
 @pytest.mark.parametrize("old, new", [
     ("\\setSlideVersion{1-0-0}", "\\setSlideVersion{9-9-9}"),
-    ("\t\\vbox to 0pt{\\vss\\hbox{overlay}}\n", ""),
     ("%% Included in decks: test\n%%\n", ""),
-], ids=["version-line", "overlay-block", "deck-header"])
+], ids=["version-line", "deck-header"])
 def test_protected_parts_must_not_change(ctx, old, new):
     for task, answer in ((FIX_LATEX, edits((old, new))), (TRANSLATE, {"body": LF.replace(old, new)})):
         text, problems = check(ctx, task, LF, answer)
@@ -280,7 +279,7 @@ def test_a_relaid_out_slide_is_checked_like_any_body(ctx):
         .replace("\\end{itemize}", "\\end{itemize}\\end{columns}", 1)
     assert check(ctx, ai_tasks.READABLE, LF, {"body": bigger, "note": "Split it."}) == (bigger, [])
     assert "protected part" in check(ctx, ai_tasks.READABLE, LF, {"body": LF.replace("1-0-0", "2-0-0")})[1][0]
-    assert "protected part" in check(ctx, ai_tasks.READABLE, LF, {"body": LF.replace("{overlay}", "{moved}")})[1][0]
+    assert check(ctx, ai_tasks.READABLE, LF, {"body": LF.replace("{overlay}", "{moved}")})[1] == []
     new, problems = check(ctx, ai_tasks.READABLE, LF, {"body": LF.replace("{Hello}", "{Hello")})
     assert new == LF and "LaTeX error" in problems[0]
     assert check(ctx, ai_tasks.READABLE, LF, {"body": " "})[1] and check(ctx, ai_tasks.READABLE, LF, {})[1]

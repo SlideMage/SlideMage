@@ -41,7 +41,7 @@ def test_nothing_or_blanks_selected_is_no_selection(start, end):
         selection.capture("x.tex", LF, start, end)
 
 
-@pytest.mark.parametrize("piece", ["%% Included in decks: test", "\\setSlideVersion{1-0-0}", "\\vbox to 0pt{\\vss\\hbox{overlay}}"])
+@pytest.mark.parametrize("piece", ["%% Included in decks: test", "\\setSlideVersion{1-0-0}"])
 def test_a_selection_that_touches_a_protected_part_is_refused(piece):
     first = LF.index(piece)
     for start, end in ((first, first + len(piece)), (first + 2, first + 6), (FIRST, first + 3 if first > FIRST else first + 8)):
@@ -53,7 +53,13 @@ def test_a_selection_that_touches_a_protected_part_is_refused(piece):
 
 def test_a_selection_next_to_a_protected_part_is_fine():
     (start, end), = protected_regions.protected_spans(LF)[-1:]
-    assert selection.capture("x.tex", LF, end, end + len("\n\\end{standardframe}")).selected.endswith("\\end{standardframe}")
+    assert selection.capture("x.tex", LF, end, end + len("\n\\begin{standardframe}")).selected.endswith("\\begin{standardframe}")
+
+
+def test_a_selection_in_an_overlay_block_is_fine():       # (2026-10-30, direct request, after slide tjn)
+    piece = "\\vbox to 0pt{\\vss\\hbox{overlay}}"
+    first = LF.index(piece)
+    assert selection.capture("x.tex", LF, first, first + len(piece)).selected == piece
 
 
 # -- the requests -----------------------------------------------------------------------------------

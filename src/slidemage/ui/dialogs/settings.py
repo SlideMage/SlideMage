@@ -35,7 +35,7 @@ from collections.abc import Callable
 from functools import partial
 
 import shiboken6
-from PySide6.QtCore import QThread, QTimer, Signal
+from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
 from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
@@ -236,7 +236,9 @@ class GeneralTab(Page):
     def _background_size(self) -> None:
         controller = self._background_controller()
         store = getattr(controller, "store", None)
-        self.bg_caption.setText("" if store is None else f"{store.count()} renders stored, {store.total_bytes() / 1024 ** 2:.0f} MB.")
+        renderer = getattr(controller, "renderer", None)
+        counting = " Counting…" if getattr(renderer, "rescanning", False) else ""       # the store's rescan is still at work
+        self.bg_caption.setText("" if store is None else f"{store.count()} renders stored, {store.total_bytes() / 1024 ** 2:.0f} MB.{counting}")
 
     def _clear_background(self) -> None:
         controller = self._background_controller()

@@ -266,6 +266,8 @@ class WorkspaceWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(self.palette.toggle)
 
         self.background = BackgroundPreviews(self, central)     # idle-time rendering of every deck's slides
+        # A deck compile's pages reach the store after the compile ended: the thumbnails take them then.
+        self.background.ingested.connect(self.slide_list._refresh_all_preview_rows)
         self.reload_decks()
         self._restore_window_geometry()
 

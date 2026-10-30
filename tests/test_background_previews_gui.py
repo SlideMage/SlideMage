@@ -503,3 +503,57 @@ def test_the_chip_says_the_renders_wait_as_soon_as_the_user_is_back_not_a_planne
     assert not renderer.sweeping() and renderer.waiting_because() == idle_gate.IN_USE
     assert controller.summary() == ("Preview rendering waits while you use SlideMage · 6 left", "muted")
     assert controller.dial_state() == "waiting"
+
+
+def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_background_rendering_switched_off(
+        qapp, monkeypatch, tmp_path):
+    # 2026-10-30, direct request: a full Instructor render still left 'Shared Instructor reference' on the slides.
+    import os
+    import shutil
+    import time
+
+    from conftest import EXAMPLE, build_window
+    from slidemage import compile_records, deck_outline, deck_scan, preview_target, preview_thumbnails
+    from slidemage.compiler import CompileJob
+    from slidemage.preview_raster_client import RasterClient
+    from slidemage.project import ProjectContext
+    from test_background_renders import _compiled_pdf, _record
+
+    root = tmp_path / "proj"
+    shutil.copytree(EXAMPLE, root)
+    old = time.time() - 3600
+    for path in root.rglob("*"):
+        if path.is_file():
+            os.utime(path, (old, old))
+    ctx = ProjectContext.at(root)
+    window = build_window(monkeypatch, ctx)
+    controller = window.background
+    renderer = controller.renderer
+    raster = renderer._raster = RasterClient()
+    try:
+        app_settings.set(ctx, background_renders.ENABLED_KEY, False)
+        assert not renderer.enabled
+        deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "slidemage-manual")
+        units = background_renders.deck_units(ctx, deck, "instructor", "EN")[:6]
+        pdf = _compiled_pdf(tmp_path, units)
+        job = CompileJob(deck, "instructor", None)
+        monkeypatch.setattr(compile_records, "read_record", lambda *args: _record(pdf, deck, units, ctx))
+        told = []
+        controller.ingested.connect(lambda: told.append(True))
+        controller._on_compiled(ctx, job, pdf)                  # ingest happens although the feature is off
+        assert told and not renderer.scheduler._threads         # ... and nothing started rendering
+        outline = deck_outline.build_outline(ctx, deck, "instructor", "EN")
+        row = next(r for s in outline for r in s.rows if r.call.source_filename == units[0].source_path.name)
+        target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number)
+        assert controller.stored_page(target, "instructor", "EN", deck.name)     # the Preview's page
+        assert controller.stored_pages(target, "instructor", "EN", deck.name) is None      # not a list of steps
+        result = preview_thumbnails.for_outline(ctx, deck, outline, "instructor", "EN",
+                                                stored_page=controller.stored_page_path)
+        shown = next(r for s in result for r in s.rows if r.key == row.key)
+        assert shown.thumbnail_verified and shown.thumbnail.is_file()
+        assert "reference" not in shown.thumbnail_note.lower()
+        # what the slide depends on changing takes the page away again
+        units[0].source_path.write_text(units[0].source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+        assert controller.stored_page(target, "instructor", "EN", deck.name) is None
+    finally:
+        raster.close()

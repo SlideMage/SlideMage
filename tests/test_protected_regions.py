@@ -6,14 +6,15 @@ from __future__ import annotations
 from conftest import SLIDE_TEXT
 
 from slidemage.slide_protection import PROTECTED_MESSAGE, protected_problem
-from slidemage.protected_regions import mask_protected_regions
+from slidemage.protected_regions import mask_protected_regions, protected_spans
 
 TEXT = SLIDE_TEXT.replace("\r\n", "\n")
 
 
-def test_the_masked_parts_are_header_version_and_overlay():
+def test_the_masked_parts_are_header_and_version_line_only():
     parts = list(mask_protected_regions(TEXT).placeholders.values())
-    assert [p[:8] for p in parts] == ["%% Inclu", "\\setSlid", "\\vbox to"]
+    assert [p[:8] for p in parts] == ["%% Inclu", "\\setSlid"]
+    assert "\\vbox to 0pt" in TEXT and "\\vbox to 0pt" in mask_protected_regions(TEXT).masked_text
 
 
 def test_a_byte_order_mark_does_not_hide_the_header_comment():
@@ -22,15 +23,14 @@ def test_a_byte_order_mark_does_not_hide_the_header_comment():
     assert "%% Included in decks" in masked.placeholders["%%%PROTECTED_0%%%"]
 
 
-def test_a_comment_in_an_overlay_block_does_not_end_it_early():
+def test_overlay_blocks_are_editable_since_2026_10_30():
     text = "\\begin{x}\n\\vbox to 0pt{\\vss % a { brace in a comment\n\\hbox{a}\\hbox{b}}\n\\end{x}\n"
-    (part,) = mask_protected_regions(text).placeholders.values()
-    assert part.endswith("\\hbox{b}}") and part.count("{") == 4
-    escaped = "\\vbox to 0pt{\\vss \\{ \\% \\hbox{c}}\n"
-    assert list(mask_protected_regions(escaped).placeholders.values()) == [escaped.strip()]
+    assert not mask_protected_regions(text).placeholders and protected_spans(text) == []
+    assert protected_problem(TEXT, TEXT.replace("{overlay}", "{moved}")) is None
+    assert protected_problem(TEXT, TEXT.replace("\t\\vbox to 0pt{\\vss\\hbox{overlay}}\n", "")) is None
 
 
-def test_moving_the_header_or_a_protected_block_is_refused():
+def test_moving_the_header_or_the_version_line_is_refused():
     assert protected_problem(TEXT, TEXT.replace("First", "1st")) is None
     assert protected_problem(TEXT, "\\documentclass{x}\n" + TEXT) == PROTECTED_MESSAGE      # header no longer first
     swapped = "\\begin{standardframe}{Hello}\n" + TEXT.replace("\\begin{standardframe}{Hello}\n", "", 1)

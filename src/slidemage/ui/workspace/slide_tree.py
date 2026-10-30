@@ -102,14 +102,15 @@ class SlideDelegate(QStyledItemDelegate):
         self._tree = tree
         self._theme = theme
         self._state = state
-        self._pixmaps: dict[Path, QPixmap] = {}
+        self._pixmaps: dict[tuple[Path, float], Optional[QPixmap]] = {}    # by file and device pixel ratio
 
     def forget_pixmaps(self, paths=None) -> None:
         if paths is None:
             self._pixmaps.clear()
         else:
-            for path in paths:
-                self._pixmaps.pop(path, None)
+            gone = set(paths)
+            for key in [key for key in self._pixmaps if key[0] in gone]:
+                del self._pixmaps[key]
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
         row = index.data(DATA)
@@ -239,7 +240,7 @@ class SlideDelegate(QStyledItemDelegate):
 
         # thumbnail, white like a slide, with a red dot when the source has an error
         thumb = QRectF(rect.left() + 6, rect.center().y() - THUMB_H / 2, THUMB_W, THUMB_H)
-        pixmap = self._thumbnail(row.thumbnail)
+        pixmap = self._thumbnail(row.thumbnail, painter.device().devicePixelRatioF())
         painter.setPen(QPen(QColor(0, 0, 0, 20), 1))
         painter.setBrush(QColor(t.paper) if pixmap is not None else QColor(t.line))
         painter.drawRoundedRect(thumb, 3, 3)
@@ -302,14 +303,22 @@ class SlideDelegate(QStyledItemDelegate):
         title = QFontMetrics(title_font).elidedText(row.title, Qt.TextElideMode.ElideRight, int(right - left))
         painter.drawText(QRectF(left, rect.center().y() - 1, right - left, 17), Qt.AlignmentFlag.AlignVCenter, title)
 
-    def _thumbnail(self, path: Optional[Path]) -> Optional[QPixmap]:
+    def _thumbnail(self, path: Optional[Path], ratio: float = 1.0) -> Optional[QPixmap]:
+        """The thumbnail at the screen's own pixel size (THUMB_W x the device pixel ratio), reduced once and drawn
+        1:1 (2026-10-30, direct request: it was always scaled to 112 px, soft above 200 % display scaling and
+        scaled again on every paint below it). A smaller file is used as it is, never enlarged here."""
         if path is None:
             return None
-        if path not in self._pixmaps:
+        key = (path, ratio)
+        if key not in self._pixmaps:
             pixmap = QPixmap(str(path))
-            self._pixmaps[path] = None if pixmap.isNull() else pixmap.scaledToWidth(
-                2 * THUMB_W, Qt.TransformationMode.SmoothTransformation)
-        return self._pixmaps[path]
+            if not pixmap.isNull():
+                width = round(THUMB_W * ratio)
+                if pixmap.width() > width:
+                    pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+                pixmap.setDevicePixelRatio(pixmap.width() / THUMB_W)
+            self._pixmaps[key] = None if pixmap.isNull() else pixmap
+        return self._pixmaps[key]
 
 
 class SlideTree(QTreeWidget):

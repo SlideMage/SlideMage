@@ -95,7 +95,7 @@ def test_dirty_buffer_is_the_reported_base_and_disk_is_untouched(env):
     assert env.renders[0][1] == env.ws.buffer_text(env.path)
 
 
-@pytest.mark.parametrize("old", ["Included in decks: test", "setSlideVersion{1-0-0}", "hbox{overlay}"])
+@pytest.mark.parametrize("old", ["Included in decks: test", "setSlideVersion{1-0-0}"])
 def test_protected_changes_are_refused(env, old):
     original = env.path.read_bytes()
     result = modify(env, edits=[{"old": old, "new": old + "changed"}])

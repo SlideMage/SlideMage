@@ -277,13 +277,17 @@ def test_old_text_must_occur_exactly_once(box, root):
     ("%%\n\n% A note", "%%\n%\n\n% A note"),
     ("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-1-0}"),
     ("\\setSlideVersion{1-0-0}\n", ""),
-    ("\\hbox{overlay}", "\\hbox{changed}"),                                  # inside \vbox to 0pt{...}
-    ("\t\\vbox to 0pt{\\vss\\hbox{overlay}}\n", ""),
 ])
 def test_protected_parts_of_a_slide_are_refused(box, root, old, new):
     box.box.ctx.mode = EDIT_AUTO
     assert "protected part" in box.error("edit_file", path=SLIDE, old_text=old, new_text=new)
     assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT and not box.of_type(EditProposed)
+
+
+def test_overlay_blocks_of_a_slide_can_be_edited(box, root):      # (2026-10-30, direct request, after slide tjn)
+    box.box.ctx.mode = EDIT_AUTO
+    box.ok("edit_file", path=SLIDE, old_text="\\hbox{overlay}", new_text="\\hbox{changed}")
+    assert "\\hbox{changed}" in (root / SLIDE).read_bytes().decode()
 
 
 def test_frozen_versions_and_non_text_files_cannot_be_changed(box, root):

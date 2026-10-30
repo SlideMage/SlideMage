@@ -220,10 +220,14 @@ class SlideList(QWidget):
         buffer = reader(path) if reader is not None else None
         return buffer[0] if buffer is not None else None
 
+    def _stored_page_path(self):
+        """The background previews' reader of the render store (a whole-deck compile's pages are in it), or None."""
+        return getattr(getattr(self.app, 'background', None), 'stored_page_path', None)
+
     def _preview_images(self, outline, *, paths=None):
         return preview_thumbnails.for_outline(
             self.app.project, self.deck, outline, self.state.view, self.state.language,
-            read_source=self._thumbnail_source, paths=paths)
+            read_source=self._thumbnail_source, paths=paths, stored_page=self._stored_page_path())
 
     def _queue_preview_images(self, outline, *, paths=None):
         deck = self.deck
@@ -243,6 +247,7 @@ class SlideList(QWidget):
                                              time.perf_counter() - dispatched))
         ctx, view, language = self.app.project, self.state.view, self.state.language
         selected_paths = None if paths is None else frozenset(path.resolve() for path in paths)
+        stored_page = self._stored_page_path()
         self._thumbnail_pending_paths = selected_paths
         self._thumbnail_full_requested = False
         buffers = {}
@@ -260,7 +265,7 @@ class SlideList(QWidget):
             started = time.perf_counter()
             updated = preview_thumbnails.for_outline(
                 ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                paths=selected_paths, validation=validation, revision_sink=revisions)
+                paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
             stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,

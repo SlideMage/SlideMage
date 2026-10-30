@@ -3,7 +3,7 @@
 """A selection of a slide's text, captured for an AI task (Claude Code reviews plan, step R1): the file, its whole text
 at that moment and the range that was selected. The task works on the range only and the proposal goes back into
 exactly it, so a selection that touches a protected part of the slide (protected_regions: the header comment, the
-\\setSlideVersion line, a \\vbox to 0pt block) is refused here, before anything is sent. Pure: no Qt."""
+\\setSlideVersion line) is refused here, before anything is sent. Pure: no Qt."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,7 +14,7 @@ from .protected_regions import protected_spans
 CONTEXT_CHARS = 800      # what a request carries of the text on either side of a selection
 NO_SELECTION = "Select some text of the slide in the Source view first."
 PROTECTED = ("The selection touches a protected part of the slide (the comment block at the top, the \\setSlideVersion "
-             "line or a \\vbox to 0pt{...} block). Select ordinary text only.")
+             "line). Select ordinary text only.")
 
 
 class SelectionError(ValueError):
