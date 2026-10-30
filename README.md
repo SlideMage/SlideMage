@@ -3378,3 +3378,7 @@ The full texts are in `LICENSES/`, the overview in `LICENSE`, the licences of th
 (AGPL-3.0) and Qt for Python (LGPL-3.0); the complete source of every release is attached to it as a source archive.
 Slides and PDFs made with SlideMage are not covered by these licences. Releases up to v8.30.0 were published under
 CC BY-SA 4.0 and stay available under it.
+
+SlideMage comes with no warranty: to the extent permitted by applicable law, it is provided "as is", without warranty
+of any kind, and the copyright holders are not liable for any damage arising from its use (see `LICENSE` and the
+licence texts).
