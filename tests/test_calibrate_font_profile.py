@@ -72,6 +72,23 @@ def test_a_catalog_default_in_em_is_read_from_the_setup_file():
         assert cal.em_default(shipped, name) is not None, name
 
 
+def test_a_templates_renewcommand_overrides_the_catalogs_newcommand():
+    # a template's own \renewcommand (the stress template overrides every hook this way) reads the same as
+    # the catalog's \newcommand, so a check against it follows the template actually compiled, not the default
+    tmpl = BS + "renewcommand{" + BS + "SMLabelItemGap}{0.6em}" + chr(10)
+    assert cal.em_default(tmpl, "SMLabelItemGap") == 0.6
+    stress = (STRESS / "SlideMage_template_stress-test.tex").read_text(encoding="utf-8")
+    assert cal.em_default(stress, "SMLabelItemGap") == 0.6
+    assert cal.em_default(stress, "SMEnumerateNestedSlotExtra") == 0.08
+    assert cal.em_default(stress, "SMEnumerateNestedLabelGap") == 0.7
+
+
+def test_a_templates_own_file_is_found_in_its_project_else_among_the_shipped_ones():
+    assert "SMLabelItemGap" in cal.template_text(STRESS, ROOT / "latex", "stress-test")
+    assert cal.template_text(STRESS, ROOT / "latex", "slidemage") != ""   # the shipped default, not the project's
+    assert cal.template_text(STRESS, ROOT / "latex", "no-such-template") == ""
+
+
 def test_the_template_input_of_a_deck_is_swapped_for_a_template_under_a_profile():
     deck = (STRESS / "decks" / "calibration.tex").read_text(encoding="utf-8")
     assert len(cal.TEMPLATE_INPUT_RE.findall(deck)) == 1

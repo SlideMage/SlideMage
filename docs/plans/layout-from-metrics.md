@@ -155,7 +155,7 @@ tests, both regression sets, pause for the user. Before step 8: merge develop (v
 | 11 | D: `\SMTitleframeBottomPad` placement, hook audit and geometry tests | v10.10.0 | identical by construction (default recomputed) |
 | 11b | Two hooks renamed (`\SMProgressStripRoom`, `\SMSideFootnoteTitleBlockSep`), three inert ones removed (`\SMFootlineHeight`, `\SMFootlineDepth`, `\SMRightFooterPadding`) | v10.11.0 | identical |
 | 12 | E: footnotes in revealed items, `columns[T]` below content | v10.12.0 | yes: bug fixes, affected slides listed |
-| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v10.13.0 | none |
+| 13 | F: calibration tool as a check, stress/calibration decks clean with both profiles, profile-content test | v10.13.0 | yes: slide 1ub's image-source line was below the page |
 
 The main plan's later steps move up: bibliography file 8 → 14, documentation 9 → 15, institution templates out of
 the repository 10 → 16, private institution themes 11 → 17.
@@ -336,3 +336,87 @@ Step 12 (section E). User decisions (2026-10-29/30): `columns[T]` below content 
 - **Parallel compiles.** `tools/calibrate_font_profile.py` writes its deck wrapper under a name of its own per call (the job name stays): with `pytest -n 8` two tests compiling the same deck used to share it (PermissionError, compiles cut short), which the larger decks of this step made frequent.
 - **Compat.** No entry: nothing a project carries must be acted on (no `\footnote<...>` in the real project; a hand-made space before a `columns[T]` only makes a gap larger), and the plan names no APPEARANCE entry for this step.
 - **Regression** (baselines `.regression/repo-v1011`, `private-v1011` at `fcd2b65b`; every differing page classified by a script: all text of the page kept, and either footnote-size lines hidden or everything below a `columns[T]` moved by one shift). In-repo: 12 entries, 1126 pages, 0 failed compiles, no page count or font list changed; 532 pages on 39 slides differ, all of them slides with a `columns[T]` below content: on 30 (1az 1b2 1cb 1cx 1d8 1dk 1gu 1hi 1je 1jv 1kg 1mu 1n6 1nk 1nt 1pn 1r8 1sv 1t2 1th 1ti 1u4 1un 1us 1w4 1wa 1y8 des dkf neg) everything from the columns down moves by one shift (net of the removed space, mostly +3.3bp, 0.1-6.2bp, 1kg +10.7bp: below a table, where the head was drawn into the rule), on 9 (1an 1b6 1be 1fg 1pf 1rv 1vd 1wk hd5) the same plus the fit edits above. No slide of the manual has a footnote in revealed content (1uw and 2v9 have reveals and footnotes, but the footnotes are outside the revealed parts). Private copy (the real project): 57 entries, 7160 pages, 0 failed compiles, no page count or font list changed; 368 pages on 14 entries differ. (1) 34 course slides hide footnote lines on the steps before their content -- footnotes in revealed content, the intended fix: a7b am5 azy ccz cqh d56 ds4 dsk gv2 hnr jww k5w m9i pvm qvm ren sas uuh vj7 wcb yhe yvt; a `\source{}` after a `\pause`, now with the last step: crc d5j ez4 gym knt raf sn8; both: bzy m36 qk2 tuw y5z. No "Image source(s)" line is hidden any more (a first run hid it on 17 slides, which led to `\ifSM@FootnoteShown`). (2) The project's own copy of the manual (35 slides, 1an ... 1y8 as in-repo): the `columns[T]` shift on its unedited slides, so there its full slides overflow as the in-repo ones did before the fit edits (on 1be a footnote line goes below the page) until the project gets the edited manual slides. Nothing else differs (pages the script left unclassified are hidden footnotes whose `\href` underline is a drawing that moves with them, or one drawing moved by 0.01bp). Images (baseline | current | difference): `D:/uniCLOUD/SlideMage/.regression/step12-images/`.
+
+## Done 2026-10-30 (v10.13.0), notes for the later steps
+
+Step 13 (section F). The acceptance bar is the 2x2 matrix read literally: the calibration deck and the stress
+deck (`decks/calibration.tex`, `decks/stress.tex` of `tests/fixtures/template_stress/`) pass `check_layout.py`
+cleanly under fira and under lmsans, under the SlideMage template and under the stress-test template.
+
+- **`tools/calibrate_font_profile.py` is a check, and checks what actually compiled.** It already reported
+  pass/fail per metric (step 9/10 had already removed the Fira-specific offsets and the "numbers to copy"
+  framing); what step 13 found and fixed: (1) the section bar height, a list's label gap and a nested
+  enumerate's slot and gap were checked against the catalog's own default (`SlideMage_setup.tex`), not against
+  what the compiled template actually set -- invisible as long as nothing was ever checked under a template
+  that overrides them, which the stress-test template does for all three. The section bar height now reads the
+  base's own PDF key (`SMSectionframeBoxHeight`, as `check_layout.py` already does for its own checks); the
+  label gap and the nested enumerate's two em hooks read the template's own text first (`\renewcommand`), the
+  catalog's `\newcommand` only as the fallback for an older PDF or an unmodified hook. (2) The label-gap check
+  itself mismatched a frame's own title text as a list label when its running text happened to split into a
+  span that reads like one (the calibration deck's own title, "Lists with a), 1), 1. and a. labels" -- "1."
+  followed by "and"), in the title's own font and size; picked as the "worst" label this skewed the check
+  against a value with nothing to do with `\SMLabelItemGap`. `label_gap()` now excludes anything above the
+  title bar's bottom edge. Found and fixed from a peer session's review of this step, which ran the full 2x2
+  matrix and caught the stress-test template combinations nobody had run calibrate_font_profile.py against
+  before.
+- **`tools/check_layout.py` sees text in and below the footer box** (the gap step 12 found). The `bottom`
+  check's `low` detection only ever saw body content inside `area` (the page above the footer box); a small,
+  left-aligned line that is not a footnote's own continuation (not right-aligned, no existing footnote block to
+  join) was kept only when it still fell inside that area -- dropped silently otherwise, including when an
+  overfull frame pushed it into or under the footer box itself. It is now kept as an item regardless of where
+  it landed, the same as a real footnote continuation already was. New unit test
+  `test_bottom_sees_a_small_line_an_overfull_frame_pushed_into_or_under_the_footer_box`.
+- **`check_layout.py`'s logo detection also missed a tall logo.** `logo_visible_right()`'s scan window, used on
+  a title or quote frame (no ordinary title bar to bound it by), was a flat 20pt guess that fits the shipped
+  templates' own small logo (`\SMLogoHeight` 3ex, about 13pt) but not the stress-test template's taller
+  three-square calibration logo (about 22pt), which under Fira sits a few points lower than under Latin Modern
+  Sans and fell outside the window entirely -- found from the peer review's own 2x2 matrix run (fira +
+  stress-test: two unexempted `right` findings on ZC1 and ZC9, the title and quote frames, each a logo mark
+  the checker itself was blind to, not slide content). The window now reads `\SMLogoHeight` from the PDF (a
+  hook since v10.10.0) for real headroom instead of another guessed constant. New unit test
+  `test_the_logo_detection_window_covers_a_tall_logo_a_title_frame_draws_low`.
+- **Slide 1ub's "Image source(s)" line below the page** (the other gap step 12 found, older than that step).
+  The cause, found once `check_layout.py` could see it (above): the slide's own column split, a 12-item list at
+  0.38 of the frame's width in `\scriptsize`, wrapped two items onto a second line, 9.3pt more than the frame
+  had room for (`Overfull \vbox (9.29388pt too high)`), which pushed the automatic footnote below the page
+  along with it. The columns are now 0.52/0.45 (a narrower image, a wider list column) instead of 0.59/0.38,
+  which stops the wrap at 0 overfull boxes; no text, callout or image changed, no slide version bump (the same
+  convention as step 12's eleven fit edits). Before/after images:
+  `D:/uniCLOUD/SlideMage/.regression/step13-images/repo-slidemage-manual-instructor-p25-1ub/`.
+- **The 2x2 matrix, with both fixes above.** Calibration deck: 0 findings under every combination, exemptions
+  6 (fira+slidemage) / 6 (lmsans+slidemage) / 10 (lmsans+stress-test) / 10 (fira+stress-test), each for content
+  meant to break a margin by design (the three exemption comments in `ZC2`, `ZCA`, `ZCB`, unchanged and still
+  accurate). Stress deck (`decks/stress.tex`, the optional-features deck: mini frames, progress bar, divider
+  frames, watermark): clean under both profiles with the SlideMage template (these features stay off there, so
+  it renders as an ordinary deck); under the stress-test template, where the features are actually on,
+  `check_layout.py` finds real findings on its own three slides (left/right/bottom, plus one jitter) that this
+  step did **not** chase down -- the footer text sits noticeably higher than the footer box's own background in
+  that configuration (diagnosis: the progress-bar-in-foot template is appended after the ordinary footline
+  content, which grows the footline's own measured height and, since the footline box is anchored to the
+  bottom of the page, pushes the earlier footer text up, while the footer's background box is drawn as a
+  separate, independently fixed-height overlay that was never resized to match). `\SMFooterBoxHeight` is read
+  by several other placements elsewhere in the base (content bottom align, side-image/section-figure height,
+  the footer text's own vertical centring), so a quick fix risks moving other things; these optional features
+  are off by default and not used by the real project, so the blast radius of leaving this open is zero outside
+  the stress deck itself. **Open for the next step or the user:** either give the footer's background box the
+  progress bar's own height when `\SMProgressBarPosition` is `foot`, or decide the stress deck's own findings
+  are acceptable and add the usual `%% layout-check: skip ...` exemptions to its three slides once that
+  decision is made (not added here, since the cause is a layout bug, not content meant to break a margin).
+- **`tests/test_template_catalog.py`** gains three checks (`test_profiles_define_only_an_allowed_list_of_font_names`,
+  `test_no_template_sets_a_name_the_profile_computes`, `test_every_geometric_hook_has_a_check_in_test_hook_geometry`):
+  a profile may declare only `\SMCodeFont`/`\SMInlineCodeFont` as a font family of its own; no template sets one
+  of the profile's own metrics or code fonts (`\SMCardHeadingFont` stays the one documented exception, a
+  template redefining it to pick one of its own card-heading looks); every geometric hook of the catalog has an
+  entry in `tests/test_hook_geometry.py`'s own table, cross-checked from this file too.
+- **Verification.** Full suite: 3806 passed, 69 skipped (opt-in TeX tests), 0 failed, one parallel run, no GUI
+  flakes this time. Opt-in TeX tests (`SLIDEMAGE_TEX_TESTS=1`): only the four known pre-existing failures
+  (`test_deck_snapshot` x3, `test_a_real_beamer_deck_is_read_slide_by_slide`). In-repo regression: 12 entries,
+  1126 pages, 0 failed compiles; 1 page differs per entry (page 25 of the plain manual decks, 31 of the
+  manual-copy decks -- slide 1ub, confirmed by text), no `FLAKY` on retry. Private copy (the real project): 57
+  entries, 7160 pages, 0 failed compiles, 0 differences, all identical -- expected, since the project's own
+  copy of the manual's slide 1ub is a separate file this step never touched (see step 12's note on that copy).
+- **Compat.** No entry: nothing a project carries must be acted on (no catalog hook renamed or removed, no
+  derived name added; the tool/test changes affect only `tools/` and `tests/`, not anything a project ships).
+- **No pins renewed.** No `latex/` framework file changed this step (`tools/calibrate_font_profile.py` and
+  `tools/check_layout.py` are not framework files, and `example/slides/1ub-...tex` is a project slide, not
+  pinned).
