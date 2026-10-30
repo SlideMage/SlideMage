@@ -3070,3 +3070,8 @@ v10.12.1 (2026-10-30, direct request: "Fix the two open items too", the lowercas
 
 NEW: Internal LaTeX names follow SlideMage's naming rule.
 - Slides look exactly as before; only names inside the framework changed.
+
+v10.12.2 (2026-10-30, direct request: the CampusOnline plugin's checks failed on its SMTable fix): The plugin API names the framework's table environment: slidemage.plugin_api.TABLE_ENVIRONMENT is "SMTable". A plugin that writes slide text, such as CampusOnline's course-sessions table, reads it there instead of importing SlideMage's internal modules, which a plugin's checks forbid; with an older SlideMage the name is missing and the plugin falls back to gothamtable. A compatible addition to plugin API 1; the API snapshot is updated.
+
+NEW: Plugins can ask SlideMage for its table style.
+- Slides that plugins write, such as CampusOnline's session table, use the table style of the SlideMage they run in.
