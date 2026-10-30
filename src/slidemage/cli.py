@@ -74,6 +74,7 @@ def check_project_format(root: Path, app_version: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> None:
+    splash.release_topmost()  # the splash must not cover other windows while the app loads
     if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
         # A frozen executable has no python -m; dispatch before project/GUI setup.
         from .preview_raster import serve

@@ -133,7 +133,7 @@ def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_p
     original_id = hashlib.sha256(pixels.getvalue()).hexdigest()
     assert thumb is not None and thumb != cache.root / 'images' / (original_id + '.png')
     with Image.open(thumb) as image:
-        assert image.size == (320, 180)
+        assert image.width == preview_cache.THUMBNAIL_MAX[0] and image.height <= preview_cache.THUMBNAIL_MAX[1]
     assert cache.canonical_image_id(thumb) == original_id
     thumb_bytes = thumb.read_bytes()
     thumb.write_bytes(b'broken thumbnail')
@@ -216,9 +216,14 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
                        display_png=sequence['images'][-1], raster_sequence=sequence,
                        dependencies=(str(source), str(package)), before=cache.begin(env)))
     assert all(entries)
-    assert len(list((cache.root / 'images').glob('*.png'))) == 2
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(sequence['images'][-1])) as last:
+        small = last.width <= preview_cache.THUMBNAIL_MAX[0] and last.height <= preview_cache.THUMBNAIL_MAX[1]
+    # Two page images; the final-page thumbnail shares the last one's blob when that is already small enough.
+    assert len(list((cache.root / 'images').glob('*.png'))) == (2 if small else 3)
     assert [entry.pdf.read_bytes() for entry in entries] == [b'instructor', b'during-course', b'after-course']
-    assert entries[-1].deduplicated_images == 4  # final-page thumbnail shares this already-small blob
+    assert entries[-1].deduplicated_images == 4  # its pages and thumbnail are all blobs stored for the first view
     assert cache.equivalent_views(identity, env) == ('instructor', 'during-course', 'after-course')
     assert cache.lookup(identity, env).raster_sequence['signature'] == sequence['signature']
     # An unrelated reveal corruption cannot change the final image shown by

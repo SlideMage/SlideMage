@@ -35,7 +35,10 @@ PRUNE_INTERVAL = 600
 # Per cache root, in this process: [monotonic time of the last prune(), bytes the cache holds by estimate].
 _PRUNED = {}
 _PRUNED_LOCK = threading.Lock()
-THUMBNAIL_MAX = (320, 180)
+# The slide list's thumbnail is 56x31.5 logical pixels (ui/workspace/slide_tree.THUMB_W): this is enough for a
+# device pixel ratio of 3 (300 % display scaling); the list reduces it once to the screen's own ratio
+# (2026-10-30, direct request; was 320x180, three times what any screen used).
+THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
 
 

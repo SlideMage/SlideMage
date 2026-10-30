@@ -176,6 +176,24 @@ def test_long_slide_titles_and_meta_elide_and_thumbnails_keep_their_size(make_li
     assert (thumb.width(), thumb.height()) == (THUMB_W, THUMB_H)
 
 
+def test_a_thumbnail_is_reduced_once_to_the_screens_own_pixel_size_and_never_enlarged(make_list, tmp_path):
+    """2026-10-30: it was always scaled to 112 px (soft above 200 % display scaling, scaled again on every paint
+    below it); now it is THUMB_W times the device pixel ratio, marked with that ratio so Qt draws it 1:1."""
+    from PySide6.QtGui import QImage
+    slide_list, _window, _path = make_list("\\slide{aaa-EN-One}\n")
+    delegate = slide_list.tree.delegate
+    big, small = tmp_path / "big.png", tmp_path / "small.png"
+    QImage(168, 95, QImage.Format.Format_RGB32).save(str(big))
+    QImage(60, 34, QImage.Format.Format_RGB32).save(str(small))
+    for ratio, width in ((1.0, 56), (1.25, 70), (2.0, 112), (3.0, 168)):
+        pixmap = delegate._thumbnail(big, ratio)
+        assert pixmap.width() == width and pixmap.deviceIndependentSize().width() == pytest.approx(THUMB_W)
+    pixmap = delegate._thumbnail(small, 3.0)                                     # too small for 3x: kept as it is
+    assert pixmap.width() == 60 and pixmap.deviceIndependentSize().width() == pytest.approx(THUMB_W)
+    delegate.forget_pixmaps([big])
+    assert not [key for key in delegate._pixmaps if key[0] == big] and (small, 3.0) in delegate._pixmaps
+
+
 def test_sections_and_slides_are_listed_in_deck_order(make_list):
     slide_list, _window, _path = make_list(FRONT_AND_SECTIONS)
     assert [(slide_list.tree.data_of(h).title, h.childCount()) for h in slide_list.tree.section_items()] == [

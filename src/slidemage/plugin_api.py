@@ -873,7 +873,7 @@ class AiRoute(Protocol):
 #                  ToolFinished, EditProposed, EditApplied, EditRejected, Done, AgentEvent), EDIT_ASK, EDIT_AUTO
 #   ai.tools       ToolBox
 #   protected_regions  protected_spans(text) -> [[start, end], ...]: the parts of a slide that tools and hooks
-#                  refuse to change (header comment, \setSlideVersion, \vbox to 0pt blocks); read-only use.
+#                  refuse to change (header comment, \setSlideVersion); read-only use.
 _LAZY = {
     **{name: "slidemage.ai.providers" for name in
        ("ChatProvider", "ChatReply", "ProviderError", "Cancelled", "parse_json_object")},

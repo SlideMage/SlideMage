@@ -90,10 +90,12 @@ AUDITED_FRAMEWORK = {
     # format itself. Re-audited: the moved text is the same renewcommand-based format the template already
     # carried, unaudited (bibliography commands and citation consumers are always unknown, see the contract); no
     # version, footer-hide or deck-label rule entered or left the template.
+    # Merged from develop (2026-10-30, v9.4.0 there): \href leaves a linked picture (\includegraphics in its text)
+    # without underline (\SMHrefContent). No view-dependent rule.
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "c0b2545d67929abce6ef11a33028a26812e5932593724791598b33cefb28788d",
+    "SlideMage_base.tex": "2ea63e893b354b5b6ab8d10ab956cda11471ab4fa4dd190e6fe99364ddd3c4b3",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "beamerthemeSlideMage.sty": "1110cb29021e4a02f3ae996365ff8d387dfac8b70b0c29e84299ebcd134a3425",

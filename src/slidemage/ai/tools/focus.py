@@ -103,7 +103,7 @@ def read_buffer(ctx: ToolContext, args: dict) -> str:
       "file, the selected range (characters and lines) and the exact selected text, with some text before and after "
       "it. The selection is taken at the moment you call, from the editor's buffer (unsaved edits included). Fails "
       "when nothing is selected, the slide is a frozen version or the selection reaches into a protected part of the "
-      "slide (the comment block at the top, the \\setSlideVersion line, a \\vbox to 0pt{...} block). It changes nothing; "
+      "slide (the comment block at the top, the \\setSlideVersion line). It changes nothing; "
       "to change the selected text, use modify_slide on that slide.",
       {})
 def read_selection(ctx: ToolContext, args: dict) -> str:

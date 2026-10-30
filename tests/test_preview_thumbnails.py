@@ -202,3 +202,32 @@ def test_invalidated_thumbnail_preserves_own_view_instead_of_instructor_referenc
     assert not row.thumbnail_verified and row.stale_preview
     assert row.thumbnail.read_bytes() == expected.display_png
     assert 'Previous render for during-course' in row.thumbnail_note
+
+
+def test_a_stored_deck_compile_page_is_a_verified_thumbnail_without_the_reference_note(project, tmp_path):
+    # 2026-10-30, direct request: a full Instructor render still left 'Shared Instructor reference' on the slides.
+    ctx = project[0]
+    selected = deck(ctx)
+    page = tmp_path / 'p001.png'
+    page.write_bytes(png('green'))
+    reference = slide_snapshot.snapshot_path(ctx, 'aaa', slide_snapshot.detect_template(selected.preamble_text),
+                                             slide_snapshot.FULL_SIZE, 'aaa-EN-One')
+    reference.parent.mkdir(parents=True, exist_ok=True)
+    reference.write_bytes(png('red'))
+    outline = deck_outline.build_outline(ctx, selected, 'instructor', 'EN')
+    asked = []
+
+    def stored_page(target, view, language, deck_name):
+        asked.append((view, language, deck_name))
+        return page
+
+    without, = rows(preview_thumbnails.for_outline(ctx, selected, outline, 'instructor', 'EN'))
+    assert not without.thumbnail_verified and 'Shared Instructor reference' in without.thumbnail_note
+    row, = rows(preview_thumbnails.for_outline(ctx, selected, outline, 'instructor', 'EN', stored_page=stored_page))
+    assert row.thumbnail == page and row.thumbnail_verified and not row.stale_preview
+    assert 'reference' not in row.thumbnail_note.lower() and 'whole slide' in row.thumbnail_note
+    assert asked == [('instructor', 'EN', 'course')]
+    # a saved single-slide render of the preview cache still goes first
+    _, entry = store(project, selected, color='blue')
+    first, = rows(preview_thumbnails.for_outline(ctx, selected, outline, 'instructor', 'EN', stored_page=stored_page))
+    assert first.thumbnail.read_bytes() == entry.display_png

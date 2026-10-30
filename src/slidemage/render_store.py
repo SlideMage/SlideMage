@@ -7,7 +7,9 @@ never in the project: projects live in cloud-synced folders and the renders can 
 hash of the project's folder, so two projects (or two copies of one) never share a store.
 
 **Objects** are write-once folders, `objects/<ab>/<name>/`, holding `slide.pdf`, one `pNNN.png` per page (every
-reveal step) and `meta.json`, written last, with the sizes of the other files. `<name>` is the render's key, or
+reveal step) and `meta.json`, written last, with the sizes of the other files. `thumb.png` is the last page
+at preview_cache.THUMBNAIL_MAX (168x95, the size of the preview cache's own small copy), so the slide list does not
+decode a 1920 px PNG for a 112 px thumbnail; an object stored before it existed gets it from thumbnail_path(). `<name>` is the render's key, or
 `<key>.bg` for a render made by the background sweep (the reveal slider's own render of the same key is the
 provisional `<key>`, which the `.bg` one replaces). An object without a complete `meta.json` is ignored.
 
@@ -30,6 +32,7 @@ from typing import Callable, Iterable, Optional
 
 from . import project
 from .fileio import write_json
+from .preview_cache import thumbnail_png
 
 STORE_FORMAT = 1
 ORIGIN_BACKGROUND = "background"
@@ -38,6 +41,7 @@ ORIGIN_COMPILE = "compile"      # the last page of a slide, taken from a deck co
 BG_SUFFIX = ".bg"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30
+THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS renders (
@@ -126,6 +130,10 @@ class RenderStore:
                 for number, data in enumerate(pages, start=1):
                     (tmp / f"p{number:03d}.png").write_bytes(data)
                     sizes[f"p{number:03d}.png"] = len(data)
+                small = thumbnail_png(pages[-1]) if pages else None      # from the bytes in memory: no new raster
+                if small is not None:
+                    (tmp / THUMB_NAME).write_bytes(small)
+                    sizes[THUMB_NAME] = len(small)
                 tex_files = meta.pop("tex_files", None)      # kept in the local index only, not in the shared object
                 meta = dict(meta, format=STORE_FORMAT, key=key, origin=origin, pages=len(pages), files=sizes,
                             bytes=sum(sizes.values()), decks=sorted(set(decks)))
@@ -197,6 +205,41 @@ class RenderStore:
         self.touch(record["name"])
         return data
 
+    def thumbnail_path(self, record: dict) -> Optional[Path]:
+        """The small copy of the last page of a record (THUMB_NAME), made now from the last page's PNG if the object
+        has none (stored before thumbnails existed, or its page was too odd to scale), else None: then the caller takes
+        the full page. Runs on the thumbnail worker, never the GUI thread.
+
+        (2026-10-30, direct request: a lazily made thumb is not listed in meta.json and the index's meta stays as it
+        was, so the rescan's size check, which covers the listed files only, and concurrent readers see nothing
+        change; it is written beside the others by a temporary name and os.replace, so a reader sees all of it or
+        none. Only the index's byte count grows by its size, under the lock, for the disk limit.)"""
+        folder = Path(record["dir"])
+        thumb = folder / THUMB_NAME
+        if thumb.is_file():
+            return thumb
+        try:
+            data = (folder / f"p{int(record['pages']):03d}.png").read_bytes()
+            small = thumbnail_png(data)
+            if small is None:
+                return None
+            tmp = folder / f".{uuid.uuid4().hex}.tmp"
+            with self._lock:
+                if not self._exists(record["name"]):        # deleted or evicted meanwhile: do not write into it
+                    return None
+                if thumb.is_file():
+                    return thumb
+                try:
+                    tmp.write_bytes(small)
+                    os.replace(tmp, thumb)
+                finally:
+                    tmp.unlink(missing_ok=True)
+                self.db.execute("UPDATE renders SET bytes=bytes+? WHERE name=?", (len(small), record["name"]))
+                self.db.commit()
+            return thumb
+        except Exception:  # noqa: BLE001 -- the thumbnail is a help; the full page serves
+            return None
+
     def pdf_path(self, record: dict) -> Path:
         return Path(record["dir"]) / "slide.pdf"
 
@@ -263,34 +306,89 @@ class RenderStore:
         with self._lock:
             return self.db.execute("SELECT COUNT(*) FROM renders").fetchone()[0]
 
-    def rescan(self) -> int:
+    def rescan(self, should_stop: Callable[[], bool] = lambda: False) -> int:
         """Bring the index in line with the objects on disk: adopt complete objects it does not know (arrived
         by sync, or the index was lost), forget those that are gone, clear unfinished writes. Returns how
-        many objects were adopted."""
-        shutil.rmtree(self.root / "tmp", ignore_errors=True)
+        many objects were adopted.
+
+        Made to run on a thread of its own while the app uses the store (2026-10-29, direct request: SlideMage took
+        about a minute to open): the lock is held per shard, not for the whole walk, and every change to the index is
+        checked again under it, so a render stored meanwhile is never lost and an object deleted meanwhile is not
+        brought back. `should_stop()` is asked between two shards; a walk that was stopped forgets nothing, because it
+        did not see every object. Of an object the index knows, meta.json is not read again: the index holds what it
+        said, and the sizes it lists are compared with the folder's listing (os.scandir gives them without one stat
+        call per file)."""
+        with self._lock:
+            shutil.rmtree(self.root / "tmp", ignore_errors=True)       # under the lock: put() writes there
+            indexed = dict(self.db.execute("SELECT name, meta FROM renders").fetchall())
         known = set()
         adopted = 0
         objects = self.root / "objects"
-        with self._lock:
-            indexed = {row[0] for row in self.db.execute("SELECT name FROM renders")}
+        shards = []
         if objects.is_dir():
-            for shard in objects.iterdir():
-                if not shard.is_dir():
+            with os.scandir(objects) as listing:
+                shards = [e.path for e in listing if e.is_dir()]
+        for shard in shards:
+            if should_stop():
+                return adopted
+            fresh: list[tuple[str, dict]] = []
+            try:
+                with os.scandir(shard) as listing:
+                    folders = [e for e in listing if e.is_dir()]
+            except OSError:
+                continue
+            for folder in folders:
+                meta = self._checked_meta(folder.path, indexed.get(folder.name))
+                if meta is None:
                     continue
-                for folder in shard.iterdir():
-                    meta = self._read_meta(folder)
-                    if meta is None:
-                        continue
-                    known.add(folder.name)
-                    if folder.name not in indexed:
-                        with self._lock:
-                            self._index(folder.name, meta)
-                        adopted += 1
-        with self._lock:
-            for name in indexed - known:
-                self.db.execute("DELETE FROM renders WHERE name=?", (name,))
-            self.db.commit()
+                known.add(folder.name)
+                if folder.name not in indexed:
+                    fresh.append((folder.name, meta))
+            if fresh:
+                with self._lock:
+                    for name, meta in fresh:
+                        if self.db.execute("SELECT 1 FROM renders WHERE name=?", (name,)).fetchone() is None and self._exists(name):
+                            self._index(name, meta)
+                            adopted += 1
+        gone = [name for name in indexed if name not in known]
+        for start in range(0, len(gone), 500):
+            if should_stop():
+                return adopted
+            with self._lock:
+                for name in gone[start:start + 500]:
+                    if not self._exists(name):              # not stored again since the walk began
+                        self.db.execute("DELETE FROM renders WHERE name=?", (name,))
+                self.db.commit()
         return adopted
+
+    @staticmethod
+    def _checked_meta(folder: str, indexed: Optional[str]) -> Optional[dict]:
+        """The meta of the complete object in `folder`, else None. `indexed` is the index's copy of it, if any: then
+        meta.json is not opened, only the folder's listing is compared with the sizes in it."""
+        try:
+            sizes = {}
+            with os.scandir(folder) as listing:
+                for entry in listing:
+                    if entry.is_file():
+                        sizes[entry.name] = entry.stat().st_size
+            if "meta.json" not in sizes:
+                return None
+            meta = None
+            if indexed is not None:
+                try:
+                    meta = json.loads(indexed)
+                except ValueError:
+                    meta = None
+            if not isinstance(meta, dict):
+                meta = json.loads(Path(folder, "meta.json").read_text(encoding="utf-8"))
+            if meta.get("format") != STORE_FORMAT:
+                return None
+            for filename, size in meta["files"].items():
+                if sizes.get(filename) != size:
+                    return None
+            return meta
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
 
     @staticmethod
     def _read_meta(folder: Path) -> Optional[dict]:

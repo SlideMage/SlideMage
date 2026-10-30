@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """tex_source.py: the one place that knows where a comment starts and where a braced argument ends."""
-from slidemage.protected_regions import mask_protected_regions
 from slidemage.tex_source import blanked_verbatim, braced_argument, comment_start, masked_same_length
 
 
@@ -29,7 +28,8 @@ def test_braced_argument_skips_escaped_braces_and_reports_unbalanced_groups():
     assert braced_argument("no brace", 0) == ("", 0)
 
 
-def test_a_vbox_group_ends_at_its_real_brace_not_one_inside_a_comment():
+def test_a_group_ends_at_its_real_brace_not_one_inside_a_comment():
     text = "\\vbox to 0pt {\n% a stray } in a comment\nx}\nafter"
-    result = mask_protected_regions(text)
-    assert result.masked_text.endswith("\nafter") and "x}" not in result.masked_text
+    start = text.index("{")
+    body, end = braced_argument(masked_same_length(text), start)
+    assert text[end:] == "\nafter" and "x" in body

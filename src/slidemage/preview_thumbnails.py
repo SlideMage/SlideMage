@@ -5,6 +5,10 @@
 The old flat snapshots are Instructor references shared by decks, versions and
 occurrences. Keep them useful as clearly labelled fallbacks, never as evidence
 that the selected view was rendered. No compile or raster process starts here.
+
+A whole-deck compile's page of a slide is a verified render too (2026-10-30, direct request: a full Instructor
+render still left 'Shared Instructor reference' on every slide). Those pages live in the background previews' render
+store, which the caller reads through `stored_page`; that only looks up the index and names a PNG file.
 """
 from __future__ import annotations
 
@@ -12,11 +16,14 @@ from dataclasses import replace
 
 from . import compiler, deck_outline, preview_cache, preview_target, slide_snapshot
 from .preview_requests import PreviewRequest, RenderOptions, SourceRevision
-from .preview_selection import legacy_reference, select_image
+from .preview_selection import SelectedImage, legacy_reference, select_image
 
 
 def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=None,
-                validation=None, revision_sink=None):
+                validation=None, revision_sink=None, stored_page=None):
+    """`stored_page(target, view, language, deck_name) -> Path | None` names the render store's PNG of the slide if a
+    current one is there (background_previews.stored_page_path, which works with background rendering switched off).
+    A store page ranks after the saved single-slide render of the preview cache and before any older image."""
     cache = preview_cache.PreviewCache(ctx.root)
     validation = validation or preview_cache.ValidationPass()
     env = None
@@ -59,6 +66,12 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
                 revision_sink[source] = revision.content_hash
             specs = (PreviewRequest(target, revision, view, language, RenderOptions(saved=True)),)
             selected = select_image(cache, specs, env, thumbnail=True, validation=validation, reference=reference)
+            if not selected.fresh and stored_page is not None:
+                page = stored_page(target, view, language, deck.name)
+                if page is not None:
+                    selected = SelectedImage('verified', page, specs[0], None, view, None,
+                                             f'{view}, {language}: whole slide, last included reveal step.',
+                                             None, None, revision.content_hash)
             if selected.image is not None:
                 note = selected.note + (' Region, element and individual-step previews can differ.'
                                         if selected.fresh else '')

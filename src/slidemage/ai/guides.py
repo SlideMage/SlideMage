@@ -21,7 +21,7 @@ Slides, files and decks.
   Save asks "major/minor/patch/overwrite" and freezes the outgoing content itself. Never edit them.
 - The first lines of a slide file are a comment block ("%% Included in decks: ...") that SlideMage
   maintains, and a tracked slide has a \\setSlideVersion{X-Y-Z} line. Both are protected: edits that
-  touch them are refused. So are \\vbox to 0pt{...} overlay blocks.
+  touch them are refused.
 - A slide file holds one frame (a begin/end of a frame environment), plus optional comments above it.
   Indent with tabs, like the existing slides.
 - Decks are decks/<name>.tex. A deck calls slides: \\slide{id-slug} (follows -current.tex),
@@ -46,7 +46,9 @@ Reveal steps (overlays) and deck versions.
 - \\SMFinalStateForStudents right before a frame makes every student version show only the frame's
   last overlay page.
 - An absolute overlay (\\vbox to 0pt{...}, tikz) placed after a \\pause is invisible on earlier steps
-  unless \\onslide<1->\\relax comes right before it. Those blocks are protected; do not edit them."""
+  unless \\onslide<1->\\relax comes right before it.
+- Overlay blocks may be edited, but they hold measured page coordinates (annotation arrows, labels, boxes
+  on a screenshot): change coordinates only when asked, then check the result with render_preview."""
 
 _CITATIONS = """\
 Citations and the bibliography.

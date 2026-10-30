@@ -809,3 +809,59 @@ def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(pr
     if other.label != unit.label:
         with pytest.raises(RuntimeError, match="no compile"):
             r.render_unit(other, background_renders.ORIGIN_BACKGROUND, CancelToken())
+
+
+def test_start_does_not_rescan_the_store_on_the_calling_thread_and_the_rescan_can_be_stopped(project, store, raster, monkeypatch):
+    # 2026-10-29: the rescan of 6000 folders ran before the window opened; it runs on the planner's thread now.
+    import threading
+    r = make(project, store, raster)
+    seen = []
+    entered, release = threading.Event(), threading.Event()
+    original = store.rescan
+
+    def slow_rescan(should_stop=lambda: False):
+        seen.append(threading.current_thread().name)
+        entered.set()
+        release.wait(5)
+        return original(should_stop)
+
+    monkeypatch.setattr(store, "rescan", slow_rescan)
+    r.start()
+    try:
+        assert entered.wait(5) and r.rescanning                  # start() came back while the rescan was running
+        assert seen == ["background-planner"]
+    finally:
+        release.set()
+        r.stop()
+    assert not r.rescanning and seen == ["background-planner"]
+
+
+def test_a_lookup_during_the_rescan_finds_an_indexed_record_and_a_render_stored_meanwhile_is_kept(project, store, raster):
+    import threading
+    r = make(project, store, raster)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    meta_key = r.resolver.fast_key(unit)
+    store.put(meta_key, "background", None, [b"\x89PNG1"], dict(unit=unit.label, manifest=[], rendered_at=1.0), decks=["d"])
+    results, errors = [], []
+    stop = threading.Event()
+
+    def lookups():
+        try:
+            while not stop.is_set():
+                results.append(bool(store.find(meta_key)))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    reader = threading.Thread(target=lookups)
+    reader.start()
+    later = []
+    try:
+        for i in range(30):
+            later.append(store.put(f"{i:02x}" + "e" * 62, "background", None, [b"\x89PNG1"], dict(unit=f"u{i}", manifest=[], rendered_at=1.0)))
+            store.rescan()
+    finally:
+        stop.set()
+        reader.join()
+    assert not errors and results and all(results)             # always found, never half-way
+    assert store.count() == 31 and all(store._exists(name) for name in later)
+    assert store.rescan(lambda: True) == 0 and store.count() == 31      # a stopped rescan forgets nothing

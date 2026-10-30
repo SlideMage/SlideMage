@@ -18,6 +18,14 @@ every file is also given in its header or in REUSE.toml.
 * LPPL-1.3c          LICENSES/LPPL-1.3c.txt          https://www.latex-project.org/lppl/lppl-1-3c/
 * CC-BY-SA-4.0       LICENSES/CC-BY-SA-4.0.txt       https://creativecommons.org/licenses/by-sa/4.0/legalcode
 
+NO WARRANTY. To the extent permitted by applicable law, SlideMage, the
+SlideMage framework, the documentation and the example project are provided
+"as is", without warranty of any kind, express or implied, including the
+implied warranties of merchantability and fitness for a particular purpose,
+and the copyright holders are not liable for any damage arising from their
+use. The licence texts state this in full: GPL-3.0 sections 15 and 16, the
+LPPL 1.3c's "No Warranty" section and CC BY-SA 4.0 section 5.
+
 The slides and PDFs that people make with SlideMage are not covered by any of
 these licences.
 

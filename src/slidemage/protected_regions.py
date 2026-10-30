@@ -5,12 +5,15 @@ moved here from ai_draft.py when the whole-slide rewrite dialog was replaced by 
 
 An open rewrite has no ground truth to check against, so a model must not be able to touch what it
 cannot understand: mask_protected_regions() replaces the file's own leading header-comment block, its
-\\setSlideVersion{} line, and every \\vbox to 0pt{...} block (SlideMage_base.tex's own
-absolute-overlay idiom -- see README.md's "Available layouts" section, "the same \\vbox to 0pt{\\vss ...}
-technique the footer/logo/title bar use") with opaque `%%%PROTECTED_N%%%` placeholder tokens, and says
-where they were. That is calibrated positioning math and version-tracking metadata -- deliberately *not*
-all tikz/overlay content, since an ordinary tikz chart or diagram is exactly the kind of thing a request
-might legitimately need to touch.
+\\setSlideVersion{} line with opaque `%%%PROTECTED_N%%%` placeholder tokens, and says where they were.
+That is version-tracking metadata SlideMage maintains itself.
+
+(2026-10-30, direct request, after slide tjn: \\vbox to 0pt{...} blocks -- SlideMage_base.tex's
+own absolute-overlay idiom, see README.md's "Available layouts" section -- used to be protected too, as
+calibrated positioning math. On tjn the model refused to turn annotation lines into arrows or move a label
+and a box, because they all sat in such a block. They are ordinary slide content the user wants the AI to
+edit, so they are no longer protected; the model is told they hold measured page coordinates, to change
+those only when asked and to check the result with render_preview.)
 
 The chat's edit tools (ai/tools/edits.py) use mask_protected_regions() to refuse an edit that
 touches those regions.
@@ -21,13 +24,9 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from .tex_source import braced_argument, masked_same_length
 
 _HEADER_COMMENT_LINE_RE = re.compile(r"^\s*%")
 _SET_SLIDE_VERSION_RE = re.compile(r"^\\setSlideVersion\{[^}]*\}[ \t]*$", re.MULTILINE)
-# Not a generic tikzpicture/overlay match -- deliberately anchored to this
-# one specific wrapper (see this module's own docstring for why).
-_VBOX_OPEN_RE = re.compile(r"\\vbox\s+to\s+0pt\s*\{")
 
 
 def _header_comment_span(text: str) -> Optional[tuple[int, int]]:
@@ -58,12 +57,6 @@ def protected_spans(text: str) -> list[list[int]]:
 
     for m in _SET_SLIDE_VERSION_RE.finditer(text):
         spans.append([m.start(), m.end()])
-
-    uncommented = masked_same_length(text)  # a "%" comment may hold braces
-    for m in _VBOX_OPEN_RE.finditer(text):
-        after = braced_argument(uncommented, m.end() - 1)[1]
-        if after != m.end() - 1:
-            spans.append([m.start(), after])
 
     # Merge overlapping/adjacent spans (e.g. the header block butting
     # straight up against a \setSlideVersion line right after it) into
