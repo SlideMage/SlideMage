@@ -325,4 +325,5 @@ def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
     assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
     assert "SlideMage_layout_fira.tex" in names             # v10.3.0: a new framework file reaches projects
     assert "SlideMage_layout_lmsans.tex" in names           # v10.6.0: so does the Latin Modern Sans profile
+    assert "SlideMage_bibliography_default.tex" in names    # v10.14.0: and the bibliography default file
     assert not [n for n in names if "gotham" in n.lower()]

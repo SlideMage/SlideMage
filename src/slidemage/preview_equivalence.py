@@ -85,11 +85,17 @@ AUDITED_FRAMEWORK = {
     # content and its footnotes alike, and the frame footer is unchanged.
     # v10.12.1: the base's internal expl3 names \SMQRCode and the multi-language text use move to the SM module
     # (__smqr_ -> __SM_qr_, __sm_mlt_ -> __SM_mlt_). A rename only; no rule changed.
+    # v10.14.0 (step 14): the house citation format moves out of the SlideMage template into the new
+    # latex/SlideMage_bibliography_default.tex (new, pinned), which the template inputs instead of carrying the
+    # format itself. Re-audited: the moved text is the same renewcommand-based format the template already
+    # carried, unaudited (bibliography commands and citation consumers are always unknown, see the contract); no
+    # version, footer-hide or deck-label rule entered or left the template.
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     "SlideMage_base.tex": "c0b2545d67929abce6ef11a33028a26812e5932593724791598b33cefb28788d",
-    "SlideMage_template_slidemage.tex": "bedc4688cefb15bee860c792937422a8d3f97d02b30002e97e723e1078c9800e",
+    "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
+    "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "beamerthemeSlideMage.sty": "1110cb29021e4a02f3ae996365ff8d387dfac8b70b0c29e84299ebcd134a3425",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",

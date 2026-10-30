@@ -352,7 +352,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
         "take the default; then set the space you want under the subtitle's last line."),
     detect=_detect_titleframe_bottom_pad,
-), compat_hooks.CHANGE]
+), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).

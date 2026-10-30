@@ -1,16 +1,29 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The house citation format (v5.32.0, 2026-10-07): the one block of LaTeX that
-the institution templates carry (latex/SlideMage_template_slidemage.tex, a
-project's own institution template, ...) and that every course deck
-used to copy. compat_bibliography.py compares decks against it and writes it
-into a template; tests/test_bibliography_template.py keeps the shipped
-templates equal to it."""
+"""The house citation format (v5.32.0, 2026-10-07; moved into its own framework
+file in v10.14.0): the citation format an institution template can offer
+without carrying the text itself.
+
+FULL_TEXT is the historical block of LaTeX (comments, then the two
+renewcommands) that a template carried literally before v10.14.0, and that
+every course deck used to copy before that -- compat_bibliography.py still
+needs it in full to recognize an old-style deck copy or an old-style
+template, and to build one for a new template that has no citation format
+yet (that case gets BLOCK instead, see below). It is the content of
+latex/SlideMage_bibliography_default.tex now (minus that file's SPDX header).
+
+BLOCK is what a template says since v10.14.0 instead of carrying FULL_TEXT:
+the one line that inputs the framework's shared file. compat_bibliography.py
+inserts it into a template that is gaining the house format for the first time,
+and its optional "shorten" change offers to replace an old template's FULL_TEXT
+copy with it. tests/test_bibliography_template.py checks the shipped template
+and the default file against this module."""
 from __future__ import annotations
 
-# The block as it stands in a template file: comments, then the two
-# renewcommands (## is # inside a macro body).
-BLOCK = r"""% Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): the house
+# The historical block as it stood inside a template file: comments, then the
+# two renewcommands (## is # inside a macro body). Kept for detection; see the
+# module docstring.
+FULL_TEXT = r"""% Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): the house
 % citation format lives here, in the template, instead of being copied into
 % every deck. A deck just calls \SMUseBibliography after \input{} of this file;
 % it can redefine \SMBiblatexOptions / \SMBibliographyStyle before that call for a
@@ -176,3 +189,7 @@ BLOCK = r"""% Bibliography (SlideMage v5.32.0, 2026-10-07, direct instruction): 
 	\finentry}
 }
 """
+
+# What a template says since v10.14.0 instead of carrying FULL_TEXT: an
+# \input of the framework's shared file (latex/SlideMage_bibliography_default.tex).
+BLOCK = "\\input{SlideMage_bibliography_default}\n"

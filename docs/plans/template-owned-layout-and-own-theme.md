@@ -854,6 +854,27 @@ mix it in.
      It is steps 8-13 (v10.7.0-v10.13.0, with a step 11b); the steps below moved to 14-17 (renumbered 2026-10-28).
 8.-13. **Layout from metrics**: see `docs/plans/layout-from-metrics.md`.
 14. **Bibliography file** (section 7). Can go any time after step 1.
+   - **Done 2026-10-30 (v10.14.0):** the house format moved out of `latex/SlideMage_template_slidemage.tex`
+     into the new, pinned `latex/SlideMage_bibliography_default.tex` (the content unchanged, SPDX
+     `LPPL-1.3c+` like the base and the layout profiles); the template now says
+     `\input{SlideMage_bibliography_default}` after its `\input{SlideMage_base}`, instead of carrying the
+     ~165 lines itself. `bibliography_house.BLOCK` is that one line now; the full historical text moved to
+     `bibliography_house.FULL_TEXT`, which `compat_bibliography.py` still needs to recognize a deck's or a
+     template's pre-v10.14.0 literal copy. The "bibliography-in-template" change's `_template_state` accepts
+     either form as "ready", and its `migrate` writes the one line (not the full copy) into a project
+     template that is gaining the format for the first time. A new, separate compat change,
+     "bibliography-default-file" (optional, LAYOUT, its own dialog entry), finds a project's own institution
+     template still carrying the full copy and offers to replace it with the one line; nothing forces this,
+     and `example/SlideMage_template_uni-graz.tex` is deliberately left on the full copy, as a live example
+     of exactly the kind of template this new change is for. `bundled_copies.framework_files()` picks up the
+     new file by its glob, no code change (a test). `preview_equivalence` renews the template's pin and adds
+     one for the new file (re-audited: still only renewcommands, no view-dependent rule, like the layout
+     profiles); the contract document names it next to the generic template. Base keeps its stock
+     `\SMBiblatexOptions`/`\SMBibliographyStyle` defaults, unchanged. Not breaking: a deck or a template with
+     its own copy keeps compiling exactly as before. Verified: full suite 3813 passed, 69 skipped, 0 failed;
+     in-repo regression 12 entries / 1126 pages and private regression (ms, 57 entries / 7160 pages) both 0
+     differences against `repo-v1013`/`private-v1013` -- expected, since this step only moves where the
+     format's text lives, nothing any deck renders.
 15. **Documentation.**
    - README's directory layout and institution-layer sections, PROJECT_OVERVIEW.md ("Gotham theme")
    - the manual's slides 1ym (framework box: "the Gotham theme"), 1pf (one look, several institutions: a
