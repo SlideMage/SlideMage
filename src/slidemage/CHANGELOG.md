@@ -2978,3 +2978,8 @@ NEW: SlideMage opens much faster, and a whole-deck render counts as an up-to-dat
 - Overlay commands such as \only<2->{...} no longer show up in slide titles in the slide list.
 - The splash screen no longer stays in front of other windows while SlideMage starts.
 - The AI may now change arrows, labels and boxes placed over a picture, such as annotations on a screenshot.
+
+v9.4.1 (2026-10-30, direct request: "Do it", adding a no-warranty clause): LICENSE, the overview the About sheet shows first under License, says that SlideMage, the Slidemaster framework, the documentation and the example project come "as is", without warranty, and that the copyright holders are not liable for damage from their use, to the extent permitted by applicable law, and names the sections of the GPL-3.0, LPPL 1.3c and CC BY-SA 4.0 that say so in full. Until now only those licence texts, further down the License tab, said it. The README's Licence section says the same in one sentence.
+
+NEW: SlideMage says plainly that it comes without warranty.
+- Info → About → License now starts with a short no-warranty notice.
