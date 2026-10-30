@@ -496,8 +496,11 @@ def usual_footnote_top(pages: list[Page]) -> float:
     the footnote offset are the template's, so the number is the deck's own: the highest last line of any
     frame (an overfull frame pushes it lower, never higher), plus FOOTNOTE_MARKER_ALLOWANCE for the frames
     whose last line is a source line, which has no raised marker to lift its line box. A deck without a
-    footnote keeps the SlideMage template's."""
-    tops = [max(r.y0 for r in p.footnotes) for p in pages if p.standard and p.footnotes]
+    footnote keeps the SlideMage template's. Only the last step of a slide counts: on an earlier one a footnote
+    of revealed content is hidden (v10.12.0), and the visible lines above it end higher than the block does."""
+    last_steps = [p for i, p in enumerate(pages)
+                  if not p.slide_id or i + 1 == len(pages) or pages[i + 1].slide_id != p.slide_id]
+    tops = [max(r.y0 for r in p.footnotes) for p in last_steps if p.standard and p.footnotes]
     return min(tops) + FOOTNOTE_MARKER_ALLOWANCE if tops else FOOTNOTE_LAST_TOP
 
 

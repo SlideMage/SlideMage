@@ -105,9 +105,16 @@
 %%    paddings, the frame title font and the logo height, and from the text margin and the
 %%    logo's right padding) and are no longer set by a template or a layout profile.
 %%    Comments only; the code of this file did not change.
+%% 10. (v10.12.0) A footnote in revealed content (an item after \pause, \item<2->,
+%%    \onslide, \uncover, \visible) is covered on the steps that hide its content, as
+%%    beamer covers a \footnote<...>: beamer's \beamer@framefootnotetext and \@mpfootnotetext
+%%    are redefined with \SM@FootnoteCover in place of their \uncover, and \beamer@begininvisible
+%%    and \beamer@endinvisible count the depth of \visible content. Side footnotes are
+%%    covered inside their strip as well, so a \footnote<2-> there no longer shows on every step.
+%%    A footnote of the whole frame sets \ifSM@FootnoteShown and is shown on every step.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/28}{10.7.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/29}{10.12.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -1833,10 +1840,10 @@ fg=normal~text.fg
 % drawing hook guards on \ifvoid: the measurement pass must not consume, or
 % try to draw, a box that doesn't exist yet.)
 %
-% Known quirk: a footnote with an overlay spec (\footnote<2->{...}) is
-% collected -- and therefore shown -- on *every* overlay slide of its frame in
-% side mode. Beamer implements covered footnotes by typesetting them invisibly
-% in place, which relocating the text into a box register defeats.
+% A covered footnote (\footnote<2->{...}, or one in revealed content, see
+% \SM@FootnoteCover below) is covered again inside the strip: beamer covers it
+% in its own footnote box, which relocating the text into a box register leaves
+% behind (until v10.12.0 such a footnote showed on every step in side mode).
 \newif\ifSMSideFootnotes
 \newcommand{\sidefootnotes}{\global\SMSideFootnotestrue}
 \newbox\SMSideFootnotesBox
@@ -1921,9 +1928,9 @@ fg=normal~text.fg
 			% space (2026-07-12, direct instruction: "the first line seems
 			% indented compared to the second, which it shouldn't be").
 			\ifx\@thefnmark\@empty
-				\insertfootnotetext\par%
+				\SM@SideFootnoteCover{\insertfootnotetext}\par%
 			\else
-				\hspace*{\SMSideFootnoteMarkerShift}\insertfootnotemark\,\insertfootnotetext\par%
+				\SM@SideFootnoteCover{\hspace*{\SMSideFootnoteMarkerShift}\insertfootnotemark\,\insertfootnotetext}\par%
 			\fi
 		}%
 	\else
@@ -1957,6 +1964,74 @@ fg=normal~text.fg
 	\fi
 }
 \setbeamertemplate{footnote}[SMFootnote]
+% A footnote in revealed content (v10.12.0): an item after \pause, \item<2->, \onslide<2->,
+% \uncover<2->{...}, \visible<2->{...}. Beamer builds the footnote's text where \footnote is
+% called, into the frame's footnote box (\beamer@footins), and covers it only by the footnote's
+% own overlay specification (\footnote<2->{...}); the box is set at the bottom of the frame,
+% outside the content's covering, so the text showed from the first step on. Beamer's covering
+% depth tells whether the content is covered on the step being typeset: \uncover, \onslide,
+% \pause and \item<...> raise it on the steps that hide their content; \visible and \onslide+
+% hide without it, so \SM@InvisibleDepth counts those. A footnote without a specification of
+% its own, called in covered content, is covered the way that content is: invisible as beamer
+% covers a hidden \footnote<...> (the default, \setbeamercovered{invisible}, and \visible), or
+% in the colour mix of \setbeamercovered{transparent} and the like, which is still in force
+% when the box is built, applied to the footnote's colour. It keeps its space on every step, so
+% nothing moves between steps. A footnote with its own specification keeps it; one outside
+% revealed content is built as before (\uncover without a specification).
+\newcount\SM@InvisibleDepth
+\let\SM@BeamerBeginInvisible\beamer@begininvisible
+\let\SM@BeamerEndInvisible\beamer@endinvisible
+\def\beamer@begininvisible{\global\advance\SM@InvisibleDepth\@ne\SM@BeamerBeginInvisible}
+\def\beamer@endinvisible{\global\advance\SM@InvisibleDepth\m@ne\SM@BeamerEndInvisible}
+% A footnote that belongs to the whole frame sets \SM@FootnoteShowntrue around its \footnote and is
+% shown on every step (the base's "Image source(s)" line, emitted at the frame's end).
+\newif\ifSM@FootnoteShown
+% #1: what to do when the content is not covered on this step.
+\newcommand{\SM@CoverAsContent}[1]{%
+	\let\SM@FootnoteCoverNext#1%
+	\ifSM@FootnoteShown\else
+	\ifnum\beamer@coveringdepth>\z@
+		\ifx\beamer@colorhook\@empty
+			\let\SM@FootnoteCoverNext\beamer@reallymakeinvisible
+		\else
+			\usebeamercolor[fg]{footnote}%
+		\fi
+	\fi
+	\ifnum\SM@InvisibleDepth>\z@\let\SM@FootnoteCoverNext\beamer@reallymakeinvisible\fi
+	\fi
+	\SM@FootnoteCoverNext}
+% #1: the footnote's own overlay specification (with its brackets) or empty.
+\newcommand{\SM@FootnoteCover}[1]{\ifblank{#1}{\SM@CoverAsContent\uncover}{\uncover#1}}
+\newcommand{\SM@SideFootnoteCover}{\SM@CoverAsContent\@firstofone}
+% beamer's own two definitions (beamerbaseframecomponents.sty), with \SM@FootnoteCover in
+% place of their \uncover#2.
+\renewcommand<>\beamer@framefootnotetext[1]{%
+	\global\setbox\beamer@footins\vbox{%
+		\hsize\framewidth
+		\textwidth\hsize
+		\columnwidth\hsize
+		\unvbox\beamer@footins
+		\reset@font\footnotesize
+		\@parboxrestore
+		\protected@edef\@currentlabel
+			{\csname p@footnote\endcsname\@thefnmark}%
+		\color@begingroup
+			\SM@FootnoteCover{#2}{\@makefntext{%
+				\rule\z@\footnotesep\ignorespaces#1\@finalstrut\strutbox}}%
+		\color@endgroup}}
+\renewcommand<>\@mpfootnotetext[1]{%
+	\global\setbox\@mpfootins\vbox{%
+		\unvbox\@mpfootins
+		\reset@font\footnotesize
+		\hsize\columnwidth
+		\@parboxrestore
+		\protected@edef\@currentlabel
+			{\csname p@mpfootnote\endcsname\@thefnmark}%
+		\color@begingroup
+			\SM@FootnoteCover{#2}{\@makefntext{%
+				\rule\z@\footnotesep\ignorespaces#1\@finalstrut\strutbox}}%
+		\color@endgroup}}
+\let\@footnotetext\beamer@framefootnotetext
 
 % Draws the side-footnote strip (see \sidefootnotes above). Lives in the
 % footline template because that is typeset at page shipout, after the frame
