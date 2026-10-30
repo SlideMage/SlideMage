@@ -8,7 +8,7 @@
 \providecommand{\callout}[2]{\node[circle, fill=c_primary_highlight, text=white, inner sep=1pt, minimum size=9pt, font=\tiny\bfseries] at (#1) {#2};}
 \begin{standardframe}{The workspace}
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.59\linewidth}
+		\begin{column}{0.52\linewidth}
 			\begin{tikzpicture}
 				\node[anchor=south west, inner sep=0pt] (shot) at (0,0) {\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr\linewidth-0.8pt\relax]{media/screenshot-slidemage-main-window.png}}};
 				\begin{scope}[x={(shot.south east)}, y={(shot.north west)}]
@@ -30,7 +30,7 @@
 				\end{scope}
 			\end{tikzpicture}
 		\end{column}
-		\begin{column}{0.38\linewidth}
+		\begin{column}{0.45\linewidth}
 			\footnotesize
 			One window shows one deck. \SMCode{Ctrl+K} finds anything.
 			\par\smallskip

@@ -111,14 +111,20 @@ def is_white(color) -> bool:
 LOGO_DPI = 288
 
 
-def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float) -> float:
+def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float, logo_height: float | None = None) -> float:
     """The institute logo's visible right edge: the rightmost rendered pixel
     in the top-right corner that differs from the page's corner colour.
     Measured on pixels, not on the PDF's drawing list: a logo's outermost
     shape can be a white card with a dark outline (SlideMage's own logo) or
     a small text mark (MCI's "®"), and the drawing-list version skipped
-    both and put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left."""
-    top = max(bar_bottom, 20.0)
+    both and put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left.
+    A title or quote frame has no ordinary title bar (bar_bottom stays 0): the 20pt fallback below fits the
+    shipped templates' own small logos (\\SMLogoHeight 3ex, about 13pt), but a template with a taller one (the
+    stress-test template's calibration logo is about 22pt tall) can draw it low enough that a flat 20pt misses
+    its lower, often widest, part -- step 13, found via calibrate_font_profile.py --profile fira --template
+    stress-test, where the logo sits a few points lower than under lmsans. \\SMLogoHeight (a hook the base
+    writes into the PDF since v10.10.0) gives the window real headroom instead of another guessed constant."""
+    top = max(bar_bottom, (logo_height or 0.0) + 25.0, 20.0)
     clip = fitz.Rect(width - 60, 0, width, top)
     pix = page.get_pixmap(dpi=LOGO_DPI, clip=clip, colorspace=fitz.csRGB, alpha=False)
     samples, n = pix.samples, pix.n
@@ -210,7 +216,7 @@ class Page:
         self.standard = self.slide_id is not None and abs(self.bar_bottom - self.title_bar_bottom) < TITLE_BAR_TOLERANCE
 
         # logo: its visible right edge, the Right Margin
-        self.logo_right = logo_visible_right(page, self.w, self.bar_bottom)
+        self.logo_right = logo_visible_right(page, self.w, self.bar_bottom, self.hooks.get("SMLogoHeight"))
 
         self.items: list[tuple[str, fitz.Rect, str]] = []   # (kind, rect, label)
         self.footnotes: list[fitz.Rect] = []
@@ -266,7 +272,10 @@ class Page:
         for r, lab in rest:
             if self.footnotes and r.y1 >= min(f.y0 for f in self.footnotes) - 2:
                 self.footnotes.append(r)
-            elif area.contains(fitz.Point(r.x0 + 0.1, (r.y0 + r.y1) / 2)):
+            else:
+                # Not a footnote continuation: still a candidate for `bottom` (an overfull frame can push
+                # it into or under the footer box, past `area`'s own bottom edge) and for `left`/`right`,
+                # so it must reach self.items regardless of where on the page it landed.
                 self.items.append(("text", r, lab))
         for info in page.get_image_info(xrefs=True):
             r = fitz.Rect(info["bbox"])

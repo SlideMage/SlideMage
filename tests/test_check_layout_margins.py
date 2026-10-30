@@ -102,6 +102,24 @@ def page_with(draw, hooks):
     return cl.Page(page, 41.58, 12.55, 0.935, 25.2, hooks)
 
 
+def test_the_logo_detection_window_covers_a_tall_logo_a_title_frame_draws_low():
+    width = 455.24
+
+    def draw(y0, y1, x1):
+        def inner(page):
+            # no full-width bar: bar_bottom stays 0, as on a title or quote frame
+            page.draw_rect(pymupdf.Rect(x1 - 10, y0, x1, y1), color=None, fill=(0.1, 0.1, 0.1))
+        return inner
+
+    # a logo entirely below the old flat 20pt window (step 13, found on the stress-test template under fira):
+    # \SMLogoHeight tells logo_visible_right how far down to look instead of guessing
+    low = page_with(draw(22.0, 34.0, 438.9), {"SMLogoHeight": 22.0})
+    assert abs(low.logo_right - 438.9) < 0.5
+    # no hook (an older PDF): the generous 20pt fallback still finds an ordinary, higher logo
+    ordinary = page_with(draw(5.0, 15.0, 432.5), {})
+    assert abs(ordinary.logo_right - 432.5) < 0.5
+
+
 def test_the_frame_number_and_the_footnotes_must_end_on_the_logos_padding_edge():
     width = 455.24
 
@@ -120,6 +138,32 @@ def test_the_frame_number_and_the_footnotes_must_end_on_the_logos_padding_edge()
     assert len(found) == 1 and "frame number" in found[0] and "-3.00" in found[0]
     found = page_with(footer(edge, edge + 2), hooks).check_edge(0.3)
     assert len(found) == 1 and "footnote line" in found[0] and "+2.00" in found[0]
+
+
+def test_bottom_sees_a_small_line_an_overfull_frame_pushed_into_or_under_the_footer_box():
+    width, h = 455.24, 256.07
+    footer_top = 246.0
+
+    def draw(baseline, x0=20.0):
+        def inner(page):
+            page.draw_rect(pymupdf.Rect(0, footer_top, width, h), color=None, fill=(0.3, 0.3, 0.3))
+            page.insert_text((x0, baseline), "Oops", fontsize=3.4, color=(1, 1, 1))
+        return inner
+
+    # a small, left-aligned line (not a footnote: too far from the logo's edge to be
+    # one, and the page has no other footnote for it to continue) that an overfull
+    # frame pushed into the footer box: still reported, not silently dropped
+    inside = page_with(draw(footer_top + 4), {})
+    assert any(k == "text" and "Oops" in lab for k, r, lab in inside.items)
+    found = inside.check_bottom(0.6)
+    assert found and "Oops" in found[0]
+
+    # pushed further down, its line box crossing the page's own bottom edge: still
+    # seen (PyMuPDF already drops text entirely past the page, so this is as low as
+    # a line can go and still be in the PDF's own text at all)
+    low = page_with(draw(h - 1), {})
+    assert any(k == "text" and "Oops" in lab for k, r, lab in low.items)
+    assert low.check_bottom(0.6)
 
 
 def test_the_title_frame_bottom_pad_is_the_space_from_the_last_lines_bottom_to_the_boxs_edge():

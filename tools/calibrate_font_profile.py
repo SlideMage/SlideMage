@@ -205,28 +205,50 @@ def info_bp(doc: fitz.Document, key: str) -> float | None:
         return None
 
 
-def em_default(setup: str, name: str) -> float | None:
-    """The catalog's default of `\\newcommand{\\name}{<number>em}`, in em."""
-    found = re.findall(r"\\newcommand\{\\%s\}\{(-?[\d.]+)em\}" % re.escape(name), setup)
+def em_default(text: str, name: str) -> float | None:
+    """`\\name`'s value in em, from `\\newcommand{\\name}{<number>em}` (the catalog's default) or
+    `\\renewcommand{\\name}{<number>em}` (a template's override of it, e.g. the stress template's)."""
+    found = re.findall(r"\\(?:re)?newcommand\{\\%s\}\{(-?[\d.]+)em\}" % re.escape(name), text)
     return float(found[-1]) if found else None
 
 
-def label_gap(page: fitz.Page) -> list[tuple[str, float, float]]:
-    """(label, gap in pt, label size in pt) for each list label that has the item's text in a span of its own after it."""
+def template_text(project: Path, framework: Path, template: str) -> str:
+    """The named template's own file (the project's, else a shipped one), empty if there is none: a template
+    can override a catalog hook (`\\renewcommand`/`\\setlength`), which the expected geometry must then follow
+    instead of the catalog's default -- the stress template changes every hook this tool checks (plan section F)."""
+    name = f"SlideMage_template_{template}.tex"
+    for base in (project, framework):
+        path = base / name
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    return ""
+
+
+def label_gap(page: fitz.Page, body_top: float = 0.0) -> list[tuple[str, float, float]]:
+    """(label, gap in pt, label size in pt) for each list label that has the item's text in a span of its own after it.
+    `body_top` excludes the title bar: its running text can coincidentally split into a span that reads as a label
+    (e.g. a title ending "...1. and a. labels" split by justification spacing) -- a false match in a different font
+    at a different size, nothing to do with \\SMLabelItemGap, which skewed a profile's "worst" label picked below."""
     out = []
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
             sp = [s for s in line["spans"] if s["text"].strip()]
             for first, second in zip(sp, sp[1:]):
+                if first["bbox"][1] < body_top:
+                    continue
                 if re.fullmatch(r"[a-z0-9][).]", first["text"].strip()):
                     out.append((first["text"].strip(), (second["bbox"][0] - first["bbox"][2]) * PT, first["size"] * PT))
                     break
     return out
 
 
-def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[list[Check], list[str]]:
+def measure(deck: Deck, profile: str, framework: Path, template: str, project: Path = DEFAULT_PROJECT
+            ) -> tuple[list[Check], list[str]]:
     profile_text(framework, profile)       # the profile exists
     setup = (framework / "SlideMage_setup.tex").read_text(encoding="utf-8")
+    tmpl = template_text(project, framework, template)
+    pdf_hooks = cl.pdf_hooks(deck.doc)     # the base's own derived values, where it writes them (preferred: they
+                                            # reflect what actually compiled, a template's override included)
     checks: list[Check] = []
     hooks: list[str] = []
     edges: list[str] = []
@@ -279,7 +301,13 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
 
     # -- the section frame: the bar is as high as the hook says ------------------------------------------------
     section = deck.page("ZC2")
-    target = tex_length(setup, SECTION_BOX_HEIGHT)
+    # the PDF's own key, the hook as it actually compiled (a template's \setlength overrides the catalog's
+    # default); only a PDF from before v10.10.0 lacks it, where the template's own text (then the catalog's) stands in
+    if SECTION_BOX_HEIGHT in pdf_hooks:
+        target = pdf_hooks[SECTION_BOX_HEIGHT] * PT
+    else:
+        tmpl_value = tex_length(tmpl, SECTION_BOX_HEIGHT)
+        target = tmpl_value if tmpl_value is not None else tex_length(setup, SECTION_BOX_HEIGHT)
     if section is not None and target is not None:
         bar = deck.chrome(section).bar_bottom
         checks.append(Check(f"section bar height (\\{SECTION_BOX_HEIGHT})", bar * PT, target,
@@ -288,9 +316,11 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
 
     # -- lists with labels: the gap between a label and the item's text (\SMLabelItemGap) --------------------------
     labelled = deck.page("ZC5")
-    gap_em = em_default(setup, "SMLabelItemGap")
+    gap_em = em_default(tmpl, "SMLabelItemGap")
+    if gap_em is None:
+        gap_em = em_default(setup, "SMLabelItemGap")
     if labelled is not None and gap_em is not None:
-        found = label_gap(labelled)
+        found = label_gap(labelled, deck.chrome(labelled).bar_bottom)
         if found:
             worst = max(found, key=lambda f: abs(f[1] - gap_em * f[2]))
             checks.append(Check("label to item text (\\SMLabelItemGap)", worst[1], gap_em * worst[2],
@@ -298,7 +328,12 @@ def measure(deck: Deck, profile: str, framework: Path, template: str) -> tuple[l
 
     # -- numerals of a nested enumerate: slot and gap (\SMEnumerateNestedSlotExtra, \SMEnumerateNestedLabelGap) ----
     nested = deck.page("ZCL")
-    extra_em, label_em = em_default(setup, "SMEnumerateNestedSlotExtra"), em_default(setup, "SMEnumerateNestedLabelGap")
+    extra_em = em_default(tmpl, "SMEnumerateNestedSlotExtra")
+    if extra_em is None:
+        extra_em = em_default(setup, "SMEnumerateNestedSlotExtra")
+    label_em = em_default(tmpl, "SMEnumerateNestedLabelGap")
+    if label_em is None:
+        label_em = em_default(setup, "SMEnumerateNestedLabelGap")
     if nested is not None and extra_em is not None and label_em is not None:
         ws = words(nested)
         numerals = [w for w in ws if re.fullmatch(r"\d\.", w[4]) and w[0] > 20]
@@ -350,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         compile_deck(project, args.deck, args.template, args.profile, framework, pdf)
         if args.keep_pdf:
             shutil.copy2(pdf, args.keep_pdf)
-    checks, hooks = measure(Deck(pdf), args.profile, framework, args.template)
+    checks, hooks = measure(Deck(pdf), args.profile, framework, args.template, project)
 
     print(f"profile {args.profile}, template {args.template}")
     print("derived from the font and the hooks, measured in the PDF against what they ask for (pt):")

@@ -37,6 +37,14 @@ PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingF
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
 PALETTE_FOR_SLIDES = {"c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
                       "c_tertiary_orange", "c_tertiary_red", "c_tertiary_violet"}
+# \newfontfamily names a profile may define (v10.9.0: a profile holds the code fonts besides its macros and
+# the font files themselves -- nothing else is a font of the profile's own).
+ALLOWED_PROFILE_FONT_NAMES = {"SMCodeFont", "SMInlineCodeFont"}
+# The profile's own metrics and font macros a template never overrides (step 13): \SMCardHeadingFont is the one
+# documented exception (the catalog's own comment shows a template redefining it, e.g. to \SMCardMediumFont), so
+# it is left out here -- the others are read only where the base/theme needs a fallback or a typographic choice
+# the font made, never something a template has a reason to pick for itself.
+PROFILE_OWNED_NOT_FOR_TEMPLATES = (PROFILE_MACROS | ALLOWED_PROFILE_FONT_NAMES) - {"SMCardHeadingFont"}
 
 
 def read(path: Path) -> str:
@@ -156,6 +164,16 @@ def test_every_layout_profile_defines_what_the_fira_profile_defines():
             assert BS + command in text, f"{path.name}: no {command}"
 
 
+def test_profiles_define_only_an_allowed_list_of_font_names():
+    """A profile's own `\\newfontfamily`-declared names (step 13): only the code fonts the catalog reads
+    (\\SMCodeFont, \\SMInlineCodeFont) -- a profile is fonts and the font's metrics, nothing a future profile
+    might add a font family under its own name for."""
+    for path in sorted(LATEX.glob("SlideMage_layout_*.tex")):
+        fonts = set(re.findall(r"\\newfontfamily\s*\\([A-Za-z]+)", code(read(path))))
+        extra = fonts - ALLOWED_PROFILE_FONT_NAMES
+        assert not extra, f"{path.name} defines font names outside the allowed list: {sorted(extra)}"
+
+
 def test_the_setup_header_says_a_profile_holds_no_measured_length_and_names_the_derived_ones():
     header = read(LATEX / "SlideMage_setup.tex").split(BS + "newcommand{" + BS + "SMSetupLoaded}")[0]
     fira = read(LATEX / "SlideMage_layout_fira.tex")
@@ -175,6 +193,18 @@ def test_no_template_or_profile_sets_a_derived_name():
     for profile in sorted(LATEX.glob("SlideMage_layout_*.tex")):
         touched = defined(read(profile), ("setlength", "addtolength", "renewcommand", "newlength", "newcommand"))
         assert not touched & DERIVED, f"{profile.name} sets {sorted(touched & DERIVED)}"
+
+
+def test_no_template_sets_a_name_the_profile_computes():
+    """A template only picks a layout profile; it never overrides a single profile value (user decision, see the
+    handover): the profile's own metrics (\\SMFontAscender, \\SMLinespread, \\SMParskip) and its code fonts are
+    computed from the loaded font, not hook-settable, like the base's own derived names above -- the one documented
+    exception is \\SMCardHeadingFont (the catalog itself shows a template redefining it)."""
+    for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
+        touched = defined(settings_before_base(template),
+                          ("setlength", "addtolength", "renewcommand", "newlength", "newcommand", "providecommand"))
+        assert not touched & PROFILE_OWNED_NOT_FOR_TEMPLATES, \
+            f"{template.name} sets {sorted(touched & PROFILE_OWNED_NOT_FOR_TEMPLATES)}"
 
 
 def test_the_base_derives_each_derived_name_and_the_setup_layer_guards_it():
@@ -206,6 +236,18 @@ def test_a_template_that_sets_a_derived_name_gets_an_error_that_names_it(setting
     log = (tmp_path / "deck.log").read_text(encoding="utf-8", errors="replace").replace("\n", "")
     name = re.search(r"(SM[A-Za-z]+)\}", setting).group(1)
     assert "is derived, not set" in log and BS + name + " is derived" in log
+
+
+def test_every_geometric_hook_has_a_check_in_test_hook_geometry():
+    """tests/test_hook_geometry.py measures each length hook of the catalog against the compiled PDF, or says why
+    it cannot be read back (its own MEASURED/NOT_READ_BACK table, checked there against its own reading of the
+    catalog); cross-referenced here too (step 13), against this file's own catalog() -- so a hook added without
+    being added to either table is caught from this file as well, not only from that one."""
+    from test_hook_geometry import MEASURED, NOT_READ_BACK
+    lengths = catalog()["lengths"]
+    covered = set(MEASURED) | set(NOT_READ_BACK)
+    missing = sorted(lengths - covered)
+    assert not missing, f"catalog hooks with no entry in test_hook_geometry.py: {missing}"
 
 
 def test_the_removed_and_renamed_names_are_errors_in_the_setup_layer_and_no_template_sets_them():
