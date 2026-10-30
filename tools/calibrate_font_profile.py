@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,7 +104,9 @@ def compile_deck(project: Path, deck: str, template: str, profile: str | None, f
     if n != 1:
         raise SystemExit(f"{deck}: no \\input{{SlideMage_template_<key>}} line to swap")
     jobname = f"calibrate-{profile or 'own'}-{template}"
-    wrapper = deck_path.parent / f"_{jobname}.tex"
+    # The wrapper sits beside the deck (its \input paths are the deck's); a name of its own per call, so that two
+    # compiles of the same deck at once (the tests run in parallel) do not share it. The job name stays.
+    wrapper = deck_path.parent / f"_{jobname}-{uuid.uuid4().hex[:8]}.tex"
     wrapper.write_text(swapped, encoding="utf-8", newline="")
     build = Path(tempfile.mkdtemp(prefix="calibrate-"))
     env = dict(os.environ, SLIDEMAGE_LATEX=str(framework), SOURCE_DATE_EPOCH="1700000000")

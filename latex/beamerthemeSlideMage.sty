@@ -111,6 +111,7 @@
 %%    are redefined with \SM@FootnoteCover in place of their \uncover, and \beamer@begininvisible
 %%    and \beamer@endinvisible count the depth of \visible content. Side footnotes are
 %%    covered inside their strip as well, so a \footnote<2-> there no longer shows on every step.
+%%    A footnote of the whole frame sets \ifSM@FootnoteShown and is shown on every step.
 %% ---------------------------------------------------------------------------
 %%
 \ProvidesExplPackage{beamerthemeSlideMage}{2026/10/29}{10.12.0}
@@ -1982,9 +1983,13 @@ fg=normal~text.fg
 \let\SM@BeamerEndInvisible\beamer@endinvisible
 \def\beamer@begininvisible{\global\advance\SM@InvisibleDepth\@ne\SM@BeamerBeginInvisible}
 \def\beamer@endinvisible{\global\advance\SM@InvisibleDepth\m@ne\SM@BeamerEndInvisible}
+% A footnote that belongs to the whole frame sets \SM@FootnoteShowntrue around its \footnote and is
+% shown on every step (the base's "Image source(s)" line, emitted at the frame's end).
+\newif\ifSM@FootnoteShown
 % #1: what to do when the content is not covered on this step.
 \newcommand{\SM@CoverAsContent}[1]{%
 	\let\SM@FootnoteCoverNext#1%
+	\ifSM@FootnoteShown\else
 	\ifnum\beamer@coveringdepth>\z@
 		\ifx\beamer@colorhook\@empty
 			\let\SM@FootnoteCoverNext\beamer@reallymakeinvisible
@@ -1993,6 +1998,7 @@ fg=normal~text.fg
 		\fi
 	\fi
 	\ifnum\SM@InvisibleDepth>\z@\let\SM@FootnoteCoverNext\beamer@reallymakeinvisible\fi
+	\fi
 	\SM@FootnoteCoverNext}
 % #1: the footnote's own overlay specification (with its brackets) or empty.
 \newcommand{\SM@FootnoteCover}[1]{\ifblank{#1}{\SM@CoverAsContent\uncover}{\uncover#1}}

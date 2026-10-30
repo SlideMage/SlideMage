@@ -154,3 +154,11 @@ def test_a_T_columns_below_content_keeps_the_gap_of_a_list(decks, deck):
     gap_T = shown(T, "Coltb")[0] - table_bottom(T)
     gap_plain = shown(plain, "Coltb")[0] - table_bottom(plain)
     assert gap_T > 2 and abs(gap_T - gap_plain) < 0.3, (gap_T, gap_plain)
+
+@needs_tex
+def test_the_image_source_line_is_shown_on_every_step(decks):
+    """It lists every image of the frame (here one on the first step), although it is emitted after the \\pause."""
+    steps = decks["geo"].pages["ZG4"]
+    assert len(steps) == 2
+    assert [bool(shown(page, "Imgsrc")) for page in steps] == [True, True]
+    assert len({shown(page, "Imgsrc")[0] for page in steps}) == 1

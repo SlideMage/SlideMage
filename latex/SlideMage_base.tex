@@ -1806,15 +1806,23 @@
 % \decklanguage) rather than hardcoded, so a German deck's auto-footnote
 % reads naturally instead of showing an English label on German content.
 \newcommand{\SMImageSourceLabel}{\ifSMGerman Bildquelle(n)\else Image source(s)\fi}
+% The line lists every image of the frame, also those shown on its first step, so it is shown on
+% every step (v10.12.0): it is emitted at the frame's end, where a \pause earlier in the frame still
+% covers what follows, and a footnote in covered content would be covered with it
+% (\SM@FootnoteCover in the theme).
+\makeatletter
 \newcommand{\SMEmitImageSourceFootnote}{%
 	\ifluatex
 	\SMImageSourcesHasTextfalse
 	\directlua{slidemage_alt.emitSourceFootnote()}%
 	\ifSMImageSourcesHasText
+		\SM@FootnoteShowntrue
 		\source{\SMImageSourceLabel: \SMImageSourcesText}%
+		\SM@FootnoteShownfalse
 	\fi
 	\fi
 }
+\makeatother
 
 % Invisible slide-id stamp for footer-less frame types. \titleframe and
 % \fullbleedframe (both defined further down) render via beamer's "plain"

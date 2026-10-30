@@ -7,17 +7,17 @@
 \begin{standardframe}{The AI assistant}
 	\small
 	Below the panels, an assistant reads and changes your slides, unsaved text included. It comes from the \emph{Claude} and \emph{Ollama} plugins (\emph{Settings} $\rightarrow$ \emph{Plugins}); without them SlideMage has none. \emph{Local} or \emph{Cloud} at its top decides where AI tasks run; its arrow opens \emph{AI setup}.
-	\par\smallskip
+	\par
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.25\linewidth}
-			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.85\linewidth-0.8pt\relax]{media/screenshot-slidemage-chat.png}}}
+			{\setlength{\fboxsep}{0pt}\fcolorbox{c_primary_gray}{white}{\includegraphics[width=\dimexpr0.8\linewidth-0.8pt\relax]{media/screenshot-slidemage-chat.png}}}
 		\end{column}
 		\begin{column}{0.37\linewidth}
 			\textbf{Chat}
 			\shrinklists{3}
 			\begin{itemize}
-				\item Scope \emph{This slide} (it asks before touching others) or \emph{Whole deck}; a label names the model: local (Ollama plugin) or cloud (Claude plugin)
-				\item It reads, searches and edits project files, lints, renders, adds slides, compiles
+				\item Scope \emph{This slide} (it asks before touching others) or \emph{Whole deck}; a label names the model, local or cloud
+				\item Reads, searches and edits files, lints, renders, adds slides, compiles
 				\item \emph{Ask before edits} shows a diff to \emph{Apply} or \emph{Reject}; \emph{Edit automatically} applies it, with \emph{Undo}
 				\item Header comments, \SMCmd{setSlideVersion} lines, \SMCode{vbox to 0pt} blocks and frozen versions are off limits
 			\end{itemize}
@@ -32,7 +32,7 @@
 			\textbf{Cloud models}
 			\shrinklists{3}
 			\begin{itemize}
-				\item Need an API key; \emph{Local AI only} (\emph{Settings} $\rightarrow$ \emph{AI}) turns them off; the first request in a project asks what will be sent
+				\item Need an API key; \emph{Local AI only} (\emph{Settings} $\rightarrow$ \emph{AI}) turns them off; a project asks first what will be sent
 			\end{itemize}
 		\end{column}
 	\end{columns}
