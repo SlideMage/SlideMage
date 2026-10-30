@@ -7,7 +7,8 @@ Before: every deck that used references carried the same ~90 lines (biblatex
 with the house options, the .bib lookup, name format, field formats and four
 bibliography drivers). Now a deck says SMUseBibliography and its template
 (an institution template, the SlideMage template, ...) defines the
-format once (bibliography_house.BLOCK).
+format once (bibliography_house.FULL_TEXT, or, since v10.14.0,
+bibliography_house.BLOCK -- see below).
 
 Not breaking -- a deck with its own copy still compiles -- but it is the
 reference case for the compatibility check's migrations, so it asks (severity
@@ -20,11 +21,20 @@ purpose, an older driver) is left alone and not reported.
 migrate(root): for each such deck, replaces the copied block (and the comment
 directly above it, if that is about the bibliography) by SMUseBibliography,
 and makes sure the deck's template defines the house format: a template file
-of the project that has no SMBibliographyStyle yet gets BLOCK inserted after
-its input of the base preamble; a framework template (the SlideMage one) must
-already have it, else the deck is skipped (update the framework first). A
+of the project that has no SMBibliographyStyle yet gets bibliography_house.BLOCK
+(the one line that inputs latex/SlideMage_bibliography_default.tex) inserted
+after its input of the base preamble; a framework template (the SlideMage one)
+must already have it, else the deck is skipped (update the framework first). A
 deck whose template defines a different SMBibliographyStyle is skipped too --
 moving the deck would change its format.
+
+CHANGE_SHORTEN, "bibliography-default-file" (v10.14.0): a separate, optional
+change for a project's own institution template that still carries the full
+~165-line copy from before v10.14.0 (a template written, or last updated,
+before the format moved into latex/SlideMage_bibliography_default.tex) --
+offers to replace it with the one-line bibliography_house.BLOCK. Kept apart
+from the main change above (whose job is moving a deck's copy, not shrinking
+a template that already works) so it is its own, dismissible entry.
 """
 from __future__ import annotations
 
@@ -36,12 +46,15 @@ from .compat_types import LAYOUT, Change, Finding
 
 BS = chr(92)
 CHANGE_ID = "bibliography-in-template"
+CHANGE_SHORTEN_ID = "bibliography-default-file"
 
 _PACKAGE = BS + "usepackage[style=authoryear"
 _FINENTRY = BS + "finentry}"
 _INPUT_TEMPLATE = re.compile(re.escape(BS + "input{SlideMage_template_") + r"([A-Za-z0-9_-]+)\}")
 _INPUT_LINE = re.compile(r"^" + re.escape(BS + "input{") + r"SlideMage_(?:base|project_macros)\}")
+_OPTIONS_MACRO = BS + "renewcommand{" + BS + "SMBiblatexOptions}"
 _STYLE_MACRO = BS + "renewcommand{" + BS + "SMBibliographyStyle}"
+_DEFAULT_INPUT = BS + "input{SlideMage_bibliography_default}"
 
 DECK_CALL = (
     "% Bibliography (biblatex + biber, opt-in per deck): the .bib lookup and the house\n"
@@ -56,8 +69,8 @@ def _code(lines) -> list[str]:
     return [ln.strip() for ln in lines if ln.strip() and not ln.lstrip().startswith("%")]
 
 
-def _block_lines() -> list[str]:
-    return bibliography_house.BLOCK.rstrip("\n").split("\n")
+def _full_text_lines() -> list[str]:
+    return bibliography_house.FULL_TEXT.rstrip("\n").split("\n")
 
 
 def _style_lines(lines: list[str]) -> list[str]:
@@ -76,7 +89,7 @@ def _style_lines(lines: list[str]) -> list[str]:
 
 def _house_deck_code() -> list[str]:
     """The code lines a deck carries when it has an unmodified copy."""
-    block = _block_lines()
+    block = _full_text_lines()
     options_line = next(ln for ln in block if ln.startswith(BS + "renewcommand{" + BS + "SMBiblatexOptions}"))
     options = options_line[options_line.index("}{") + 2:-1]
     lookup = [
@@ -108,6 +121,24 @@ def _deck_region(lines: list[str]):
     if not any("ibliograph" in ln or "biblatex" in ln for ln in lines[first:use]):
         first = use
     return first, use, last
+
+
+def _full_copy_region(lines: list[str]):
+    """(first, last) of a template's own full-text copy of the house format --
+    the comment directly above \\renewcommand{\\SMBiblatexOptions} (if any)
+    through the end of \\renewcommand{\\SMBibliographyStyle}'s block -- or
+    (None, None) when the template has no such copy."""
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(_OPTIONS_MACRO)), None)
+    style_start = next((i for i, ln in enumerate(lines) if ln.startswith(_STYLE_MACRO)), None)
+    if start is None or style_start is None:
+        return None, None
+    last = next((i for i in range(style_start + 1, len(lines)) if lines[i] == "}"), None)
+    if last is None:
+        return None, None
+    first = start
+    while first > 0 and lines[first - 1].startswith("%"):
+        first -= 1
+    return first, last
 
 
 def _read(path: Path) -> tuple[str, str]:
@@ -148,8 +179,10 @@ def _template_state(root: Path, deck_text: str):
     text, _ = _read(path)
     inside = root.resolve() in path.resolve().parents
     if _STYLE_MACRO in text:
-        same = _code(_style_lines(text.split("\n"))) == _code(_style_lines(_block_lines()))
+        same = _code(_style_lines(text.split("\n"))) == _code(_style_lines(_full_text_lines()))
         return path, "ready" if same else "its template defines another citation format"
+    if _DEFAULT_INPUT in text:
+        return path, "ready"
     if not inside:
         return path, "the framework's template has no citation format yet -- update the framework first"
     return path, "add"
@@ -203,7 +236,7 @@ def migrate(root: Path) -> dict[Path, bytes]:
             if _INPUT_LINE.match(lines[j]):
                 at = j
             j += 1
-        lines[at + 1:at + 1] = ["", *_block_lines()]
+        lines[at + 1:at + 1] = ["", bibliography_house.BLOCK.rstrip("\n")]
         plan[tpl.relative_to(root)] = eol.join(lines).encode("utf-8")
     return plan
 
@@ -223,10 +256,77 @@ CHANGE = Change(
     fix=(
         "In each deck, replace everything from " + BS + "usepackage[style=authoryear, "
         "...]{biblatex} to the end of the last " + BS + "DeclareBibliographyDriver "
-        "by the single line " + BS + "SMUseBibliography, and copy the block that "
-        "begins with \"% Bibliography (SlideMage v5.32.0\" from SlideMage's "
-        "latex/SlideMage_template_slidemage.tex into your template file, after "
+        "by the single line " + BS + "SMUseBibliography, and add the line "
+        + BS + "input{SlideMage_bibliography_default} to your template file, after "
         "its " + BS + "input{SlideMage_base}."),
     detect=detect,
     migrate=migrate,
+)
+
+
+def _shortenable_templates(root: Path) -> list[Path]:
+    """The project's own institution templates (SlideMage_template_<key>.tex at
+    the project root; the framework's own copy, already SlideMage_bibliography_default.tex
+    since v10.14.0, is never one) that still carry the full-text copy of the
+    house format, line for line."""
+    want = _code(_style_lines(_full_text_lines()))
+    out = []
+    for path in sorted(root.glob(slide_snapshot.TEMPLATE_PREFIX + "*.tex")):
+        try:
+            text, _eol = _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if _STYLE_MACRO not in text or _code(_style_lines(text.split("\n"))) != want:
+            continue
+        first, _last = _full_copy_region(text.split("\n"))
+        if first is not None:
+            out.append(path)
+    return out
+
+
+def detect_shorten(root: Path) -> list[Finding]:
+    """One finding per project template that still carries the full house-format
+    copy and could say bibliography_house.BLOCK instead."""
+    out = []
+    for path in _shortenable_templates(root):
+        lines = _read(path)[0].split("\n")
+        first, _last = _full_copy_region(lines)
+        rel = path.relative_to(root).as_posix()
+        out.append(Finding(rel, first + 1, "carries the full house citation format -- it can say "
+                            + _DEFAULT_INPUT + " instead"))
+    return out
+
+
+def migrate_shorten(root: Path) -> dict[Path, bytes]:
+    """{file: new bytes} replacing each shortenable template's full copy by
+    bibliography_house.BLOCK."""
+    plan: dict[Path, bytes] = {}
+    for path in _shortenable_templates(root):
+        text, eol = _read(path)
+        lines = text.split("\n")
+        first, last = _full_copy_region(lines)
+        new = lines[:first] + [bibliography_house.BLOCK.rstrip("\n")] + lines[last + 1:]
+        plan[path.relative_to(root)] = eol.join(new).encode("utf-8")
+    return plan
+
+
+CHANGE_SHORTEN = Change(
+    id=CHANGE_SHORTEN_ID,
+    since="v10.14.0",
+    severity=LAYOUT,
+    title="A project template's citation format can become one line",
+    description=(
+        "The house citation format also lives in the framework file "
+        "latex/SlideMage_bibliography_default.tex now. A project template written, or "
+        "last updated, before v10.14.0 may still carry the full copy (the renewcommand of "
+        + BS + "SMBiblatexOptions and the " + BS + "SMBibliographyStyle block that follows it) "
+        "itself; it can say " + BS + "input{SlideMage_bibliography_default} instead, with no "
+        "change to how any deck compiles or looks. Optional: the full copy keeps working."),
+    fix=(
+        "In the template, replace everything from the " + BS + "renewcommand of "
+        + BS + "SMBiblatexOptions through the end of the " + BS + "SMBibliographyStyle "
+        "block (and the comment directly above it, if that is about the bibliography) by "
+        "the single line " + BS + "input{SlideMage_bibliography_default}."),
+    detect=detect_shorten,
+    migrate=migrate_shorten,
 )

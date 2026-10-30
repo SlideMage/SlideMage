@@ -233,7 +233,10 @@ def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_r
     # every layout profile the framework ships is pinned too, and holds no view-dependent rule either
     profiles = sorted(latex.glob("SlideMage_layout_*.tex"))
     assert profiles and {path.name for path in profiles} <= set(AUDITED_FRAMEWORK)
-    for path in [latex / "beamerthemeSlideMage.sty", *profiles]:
+    # nor does the bundled bibliography default (v10.14.0): a template inputs it instead of carrying
+    # the format itself, so it has to be pinned too, but it is still only renewcommands, no view-dependent rule
+    assert "SlideMage_bibliography_default.tex" in AUDITED_FRAMEWORK
+    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex", *profiles]:
         text = path.read_text(encoding="utf-8")
         assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode",
                              text), path.name
