@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -444,3 +445,100 @@ def test_a_render_depends_only_on_the_alt_texts_of_the_pictures_it_read(ctx, res
     write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\n", OLD + 30)
     write(json_path, json.dumps({"version": 2, "images": {"MEDIA/A.PNG": {"short": "A, longer"}}}), OLD + 30)
     assert not resolver.manifest_current(entries)             # matched by file name, whatever the case and folder
+
+
+def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, ctx, unit, [unit.source_path])
+    store_render(store, key, meta)
+    [folder] = [path for path in (store.root / "objects").glob("*/*") if path.is_dir()]
+    shutil.rmtree(folder)                                           # gone on disk, still in the index
+    assert store.rescan(lambda: True) == 0 and store.count() == 1
+    assert store.rescan() == 0 and store.count() == 0
+
+
+# -- the small copy of the last page (2026-10-30, direct request) -------------------------
+
+def real_png(width=1920, height=1080, color=(200, 30, 30)) -> bytes:
+    from io import BytesIO
+    from PIL import Image
+    out = BytesIO()
+    Image.new("RGB", (width, height), color).save(out, format="PNG")
+    return out.getvalue()
+
+
+def put_real(store, ctx, resolver, pages=2):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, ctx, unit, [unit.source_path])
+    name = store.put(key, "background", None, [real_png() for _ in range(pages)], meta, decks=["deck1"])
+    return unit, key, name
+
+
+def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_and_lists_it(ctx, resolver, store):
+    from PIL import Image
+    from slidemage.preview_cache import THUMBNAIL_MAX
+    _unit, key, name = put_real(store, ctx, resolver)
+    folder = render_store.object_dir(store.root, name)
+    with Image.open(folder / "thumb.png") as im:
+        assert im.width <= THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1] and im.size == (320, 180)
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    assert meta["files"]["thumb.png"] == (folder / "thumb.png").stat().st_size
+    assert meta["pages"] == 2 and store.total_bytes() == meta["bytes"] == sum(meta["files"].values())
+
+
+def test_thumbnail_path_returns_the_stored_thumbnail(ctx, resolver, store):
+    _unit, key, name = put_real(store, ctx, resolver)
+    record = store.find(key)[0]
+    assert store.thumbnail_path(record) == render_store.object_dir(store.root, name) / "thumb.png"
+
+
+def strip_thumbnail(store, name):
+    """Make the object look like one stored before thumbnails: no thumb.png, not listed, not in the index's meta."""
+    folder = render_store.object_dir(store.root, name)
+    (folder / "thumb.png").unlink()
+    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    meta["files"].pop("thumb.png")
+    meta["bytes"] = sum(meta["files"].values())
+    (folder / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    with store._lock:
+        store.db.execute("UPDATE renders SET meta=?, bytes=? WHERE name=?", (json.dumps(meta), meta["bytes"], name))
+        store.db.commit()
+    return folder
+
+
+def test_an_object_stored_before_thumbnails_gets_one_when_it_is_first_shown(ctx, resolver, store):
+    _unit, key, name = put_real(store, ctx, resolver)
+    folder = strip_thumbnail(store, name)
+    before = store.total_bytes()
+    path = store.thumbnail_path(store.find(key)[0])
+    assert path == folder / "thumb.png" and path.is_file()
+    assert store.total_bytes() == before + path.stat().st_size                   # counted once, for the disk limit
+    assert store.thumbnail_path(store.find(key)[0]) == path and store.total_bytes() == before + path.stat().st_size
+    assert not [p for p in folder.iterdir() if p.name not in ("meta.json", "p001.png", "p002.png", "thumb.png")]
+
+
+def test_a_rescan_keeps_objects_with_and_without_a_listed_thumbnail(ctx, resolver, store):
+    _unit, key, name = put_real(store, ctx, resolver)
+    folder = strip_thumbnail(store, name)
+    store.thumbnail_path(store.find(key)[0])              # made lazily, not listed in meta.json
+    assert (folder / "thumb.png").is_file()
+    assert store.rescan() == 0 and store.count() == 1 and store.find(key)
+    local = store.local_dir
+    store.close()
+    (local / "index.sqlite").unlink()
+    again = render_store.RenderStore(ctx, local)
+    try:
+        assert again.rescan() == 1 and again.count() == 1       # the unlisted file does not disturb the size check
+    finally:
+        again.close()
+
+
+def test_a_page_that_cannot_be_scaled_has_no_thumbnail_and_nothing_breaks(ctx, resolver, store):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, ctx, unit, [unit.source_path])
+    store_render(store, key, meta)                         # fake PNG bytes
+    record = store.find(key)[0]
+    assert not (Path(record["dir"]) / "thumb.png").exists() and store.thumbnail_path(record) is None

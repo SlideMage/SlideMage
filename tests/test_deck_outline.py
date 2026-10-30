@@ -274,3 +274,26 @@ def test_commented_out_section_is_not_a_chapter():
     # ordinary content -- offsets must stay into the *original* text.
     expected = text[text.index("\\section{Intro}"):text.index("\\end{document}")]
     assert text[chapters[0].start:chapters[0].end] == expected
+
+
+@pytest.mark.parametrize("raw, expected", [
+    (r"Be kind\ldots\only<2->{ but clear}", "Be kind… but clear"),
+    (r"A\uncover<2-3>{ B}\visible<4>{ C}", "A B C"),
+    (r"\alt<2>{Shown}{Other} title", "Shown title"),
+    (r"Step\onslide<2-> one\pause", "Step one"),
+    (r"Plan\conditionalpause[2] done\deckonly{ A}\deckuncover<3->{ B}\deckvisible{ C}", "Plan done A B C"),
+    (r"Risk\textbf<2->{ now}", "Risk now"),
+    (r"Wait\ldots now", "Wait… now"),
+    (r"Risk \& Return", r"Risk \& Return"),
+    (r"a<b and c>d", "a<b and c>d"),
+])
+def test_a_title_drops_overlay_markup_and_keeps_the_visible_text(raw, expected):
+    from slidemage import alt_blocks
+    assert alt_blocks.clean_frame_title(raw) == expected
+
+
+def test_a_slides_title_with_an_overlay_reads_as_its_visible_text():
+    from pathlib import Path
+    from slidemage import alt_blocks
+    source = r"\begin{standardframe}{Be kind\ldots\only<2->{ but clear}}x\end{standardframe}" + "\n"
+    assert alt_blocks.slide_title(source, Path("sn8-EN-Be-Kind-but-Clear-current.tex")) == ("sn8", "Be kind… but clear")

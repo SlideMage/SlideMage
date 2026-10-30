@@ -284,6 +284,40 @@ def frame_type(source: str) -> Optional[str]:
     return "titleframe" if TITLEFRAME_RE.search(stripped) else None
 
 
+_OVERLAY_SPEC = r"<[0-9a-z+,\-.:()|\s]*>"
+# A command that shows (or hides) its argument on some steps only: the title
+# keeps the argument, it drops the overlay specification (`\only<2->{ but clear}`).
+_OVERLAY_WRAPPER_RE = re.compile(
+    r"\\(?:only|uncover|visible|onslide|alt|deckonly|deckuncover|deckvisible)\b\*?\s*"
+    rf"(?:{_OVERLAY_SPEC})?\s*(?:\[[^\]]*\])?\s*(?=\{{)"
+)
+_PAUSE_RE = re.compile(r"\\(?:pause|conditionalpause)\b(?:\s*\[[^\]]*\])?(?:\s*<[^>]*>)?")
+_COMMAND_OVERLAY_RE = re.compile(rf"(\\[a-zA-Z]+\*?)\s*{_OVERLAY_SPEC}")
+_TITLE_SYMBOLS = (("\\ldots", "…"), ("\\dots", "…"), ("\\textellipsis", "…"))
+
+
+def clean_frame_title(raw_title: str) -> str:
+    """A frame title as plain text: beamer overlay markup dropped but its
+    visible text kept (`Be kind\\ldots\\only<2->{ but clear}` -> "Be kind… but
+    clear"; `\\alt<2>{a}{b}` -> "a"), remaining commands and braces removed.
+    (2026-10-29, direct request: the slide list showed the raw `\\only<2->{...}`.)"""
+    title = _PAUSE_RE.sub("", raw_title)
+    while True:
+        match = _OVERLAY_WRAPPER_RE.search(title)
+        if not match:
+            break
+        content, after = braced_argument(title, match.end())
+        if match.group(0).startswith("\\alt"):
+            _alternative, after = braced_argument(title, after)  # the second choice is not shown first
+        title = title[:match.start()] + content + title[after:]
+    title = _COMMAND_OVERLAY_RE.sub(r"\1", title)
+    for command, symbol in _TITLE_SYMBOLS:
+        title = re.sub(re.escape(command) + r"(?![a-zA-Z])", symbol, title)
+    title = title.replace("~", " ")
+    title = re.sub(r"\\[a-zA-Z]+\*?", "", title).replace("{", "").replace("}", "")
+    return " ".join(title.split()).strip(" *")
+
+
 def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
     """(slide id, human title). Frame title if parseable, else the filename.
 
@@ -312,9 +346,7 @@ def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
     if match:
         raw_title, _ = braced_argument(stripped, match.end() - 1)
         raw_title, _footnotes = extract_macro_calls(raw_title, "footnote")
-        title = " ".join(raw_title.split())
-        title = re.sub(r"\\[a-zA-Z]+\*?", "", title).replace("{", "").replace("}", "")
-        title = " ".join(title.split()).strip(" *")
+        title = clean_frame_title(" ".join(raw_title.split()))
         if title:
             return slide_id, title
     # the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")

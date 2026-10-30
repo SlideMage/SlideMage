@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
-from ... import pptx_export, slide_language, slide_snapshot, slide_versioning, update_all_previews
+from ... import slide_language, slide_snapshot, slide_versioning, update_all_previews
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
@@ -460,6 +460,7 @@ def _export_pptx(context: ProjectContext, job: CompileJob, log: Callable[[str], 
         log(f"*** FAIL: PowerPoint export of {deck.name} -- couldn't move the compiled PDF into place, see above ***")
         return
     out_path = context.pdf_dir / f"{job.jobname}.pptx"
+    from ... import pptx_export         # here, not at the top: python-pptx took 1 to 2 s of every start (2026-10-29)
     try:
         pptx_export.export_deck_to_pptx(outcome["dest_pdf"], out_path, log=log)
     except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed

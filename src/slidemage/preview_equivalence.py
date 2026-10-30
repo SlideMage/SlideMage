@@ -24,8 +24,9 @@ AUDITED_FRAMEWORK = {
     # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); v8.62.0: \SMQRCode, an
     # image and a caption in a box; 2026-10-29: \SMQRCode's code is a link ([link], or a \url/\href caption) and
     # every \href's underline (\SMHrefUnderline) is one box, so it stays on its text's line; then \SMQRCode's
-    # caption wider than the code is centred under it (overhanging on both sides). No view-dependent rule.
-    "Slidemaster_preamble_base.tex": "8ba92f688c5602b8cc89864026c39dcb068f4f618e04a9e191e3c2b883b2af24",
+    # caption wider than the code is centred under it (overhanging on both sides); then \href leaves a linked
+    # picture (\includegraphics in its text) without underline (\SMHrefContent). No view-dependent rule.
+    "Slidemaster_preamble_base.tex": "af5185d7cb265931db98417d87c88624b0c4ac2715f58559f3449b581f7f993f",
     "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
     "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
     "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",

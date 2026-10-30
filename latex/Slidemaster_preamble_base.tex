@@ -280,7 +280,13 @@
 		\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
 	}%
 }
-\renewcommand{\href}[2]{\SMOrigHref{#1}{\SMHrefUnderline{#2}}}
+% Underline only text links (2026-10-29, direct instruction): a link whose content contains an
+% \includegraphics (a linked picture) gets the plain link, no rule under the picture.
+\ExplSyntaxOn
+\cs_new_protected:Npn \SMHrefContent #1
+	{ \tl_if_in:nnTF {#1} { \includegraphics } {#1} { \SMHrefUnderline {#1} } }
+\ExplSyntaxOff
+\renewcommand{\href}[2]{\SMOrigHref{#1}{\SMHrefContent{#2}}}
 % \url{} (the `url` package hyperref depends on/patches) defaults to a
 % monospace-ish "tt" style regardless of the above -- used deliberately in
 % only one place in this deck,

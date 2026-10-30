@@ -57,9 +57,10 @@ write something you are not sure of.
 
 ## Protected parts
 SlideMage manages these and your edits to them are refused: the comment block at the top of a slide \
-("%% Included in decks: ..."), the \\setSlideVersion{{...}} line, and \\vbox to 0pt{{...}} overlay blocks. \
-Work around them. Do not rename slides, change deck calls or touch other tool-managed lines unless the \
-user asked for exactly that.
+("%% Included in decks: ..."), and the \\setSlideVersion{{...}} line. \
+Work around them. Overlay blocks (\\vbox to 0pt{{...}}) may be edited, but they hold measured page \
+coordinates: change those only when asked and check the result with render_preview. \
+Do not rename slides, change deck calls or touch other tool-managed lines unless the user asked for exactly that.
 
 ## How to work
 - Read before you change: read_file the slide (the context block has the focused slide's text only for \

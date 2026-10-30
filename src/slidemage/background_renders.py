@@ -231,6 +231,7 @@ class BackgroundRenderer:
         self._replan = threading.Event()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self.rescanning = False                 # the store's rescan runs (start() .. the planner's first step)
         self._working: list[str] = []
         self._working_lock = threading.Lock()
         self._outstanding: dict[str, tuple] = {}
@@ -263,9 +264,13 @@ class BackgroundRenderer:
     # -- life ------------------------------------------------------------------------------
 
     def start(self) -> None:
-        self.store.rescan()
+        # The store's rescan (6000 folders: seconds warm, most of a minute with a cold file cache) runs first on the
+        # planner's thread, not here: the window opened only after it (2026-10-29, direct request: SlideMage took
+        # about a minute to open). Until it ends the index holds what it held at the last run, which is what the
+        # readers use; `rescanning` lets the status say so.
         self.scheduler.start()
         self._stop.clear()
+        self.rescanning = True
         self._thread = threading.Thread(target=self._plan_loop, daemon=True, name="background-planner")
         self._thread.start()
 
@@ -471,6 +476,12 @@ class BackgroundRenderer:
     # -- planner thread --------------------------------------------------------------------
 
     def _plan_loop(self) -> None:
+        try:
+            self.store.rescan(self._stop.is_set)
+        except Exception:  # noqa: BLE001 -- a store closed under it, or one that cannot be read: the index stays as it is
+            pass
+        self.rescanning = False
+        self._changed()
         while not self._stop.is_set():
             self._replan.wait(2.0)
             if self._stop.is_set():

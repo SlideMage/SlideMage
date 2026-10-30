@@ -57,7 +57,7 @@ _EDITS = _schema("edits", {"type": "array", "items": {
     "required": ["before", "after"], "additionalProperties": False}})
 
 _PROTECT = (
-    "Never change a comment line (starting with %), a \\setSlideVersion line or a \\vbox to 0pt{...} block. "
+    "Never change a comment line (starting with %), or a \\setSlideVersion line. "
     "Keep the file's line breaks, tabs and indentation. Answer with the JSON result only.")
 _KEEP = "The request puts the source between <slide> tags; the tags are not part of it. " + _PROTECT
 # What no task may change: everything of a slide that is not text the audience reads.
