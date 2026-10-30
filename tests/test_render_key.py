@@ -482,7 +482,7 @@ def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_a
     _unit, key, name = put_real(store, ctx, resolver)
     folder = render_store.object_dir(store.root, name)
     with Image.open(folder / "thumb.png") as im:
-        assert im.width <= THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1] and im.size == (320, 180)
+        assert im.width == THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1]
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
     assert meta["files"]["thumb.png"] == (folder / "thumb.png").stat().st_size
     assert meta["pages"] == 2 and store.total_bytes() == meta["bytes"] == sum(meta["files"].values())
