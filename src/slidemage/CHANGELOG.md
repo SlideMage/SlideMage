@@ -3142,3 +3142,8 @@ NEW: A second built-in template, Greyscale.
 - Pick it in a deck's settings: Latin Modern Roman, greys only, dashes as bullets and numbered footnotes, a calm look for print and for copying as your own template.
 - A template can now choose the bullet, the footnote markers and the colours of alerts, highlight and standout frames and the progress bar.
 - Footnote markers no longer go missing in decks set in Latin Modern.
+
+v10.18.1 (2026-10-31, direct request: reduce the greyscale template's default font size to fix the overflows for the time being): The greyscale template sets its body text one size smaller, beamer's 10pt sizes instead of the 11pt ones a deck's documentclass gives: it redefines \normalsize, \small, \footnotesize and \scriptsize after SlideMage_base. Titles and the footer keep their sizes. The catalog has no setting for the body size yet, so this is a stopgap the template comments as such. The SlideMage manual under the greyscale template now has 14 layout-check findings in the instructor version instead of 79; the rest are slides with drawings of a fixed width or position, or that are still too full. Decks under the SlideMage template are unchanged. The template's preview-equivalence pin is renewed.
+
+NEW: The greyscale template uses a smaller body text.
+- Slides written for the SlideMage template mostly fit the greyscale template's smaller text area now.

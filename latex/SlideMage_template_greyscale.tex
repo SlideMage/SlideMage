@@ -109,6 +109,19 @@
 
 \input{SlideMage_base}
 
+% Body text one size smaller (temporary, 2026-10-31, direct instruction): beamer's 10pt sizes
+% instead of the 11pt ones the decks' \documentclass gives, so that slides written for the
+% SlideMage template fit the smaller text area. The catalog has no setting for the body size
+% yet, so this redefines LaTeX's size commands directly, which a template should not have to
+% do; it goes once the catalog gets a setting for it. Titles and the footer keep their sizes.
+\makeatletter
+\renewcommand{\normalsize}{\@setfontsize\normalsize\@xpt{12}}
+\renewcommand{\small}{\@setfontsize\small\@ixpt{11}}
+\renewcommand{\footnotesize}{\@setfontsize\footnotesize\@viiipt{9.5}}
+\renewcommand{\scriptsize}{\@setfontsize\scriptsize\@viipt{8}}
+\makeatother
+\normalsize
+
 % The house citation format, as in the SlideMage template (a deck then says
 % \SMUseBibliography).
 \input{SlideMage_bibliography_default}

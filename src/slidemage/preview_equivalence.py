@@ -116,7 +116,10 @@ AUDITED_FRAMEWORK = {
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
-    "SlideMage_template_greyscale.tex": "6e337956f70d61ac27a8c9e135e5455d85526bf1579478c54cd87893a18dcf27",
+    # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,
+    # \scriptsize redefined after the base). Re-audited: no version, footer-hide or deck-label rule; the sizes are the
+    # same in every view.
+    "SlideMage_template_greyscale.tex": "bec1149b307c9a6e9234045e048cc7bfc2744011df7b991844a810790e10ea34",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.
