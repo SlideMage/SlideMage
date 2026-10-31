@@ -33,7 +33,7 @@ def _prepare_gui(project_root: Path | None) -> None:
 def _ask_for_project() -> Path | None:
     from .ui.dialogs.open_project import OpenProjectSheet
 
-    from .ui.presentation.launch import present_pdf_file
+    from .ui.presentation.standalone import present_pdf_file
 
     _prepare_gui(None)
     while True:

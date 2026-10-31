@@ -328,7 +328,7 @@ NAV = "\n".join([r"\headcommand {\slideentry {0}{0}{1}{1/1}{}{0}}"] + [
 
 
 def test_the_nav_file_groups_pages_into_slides_with_steps():
-    from slidemage.presentation.frames import parse_nav
+    from slidemage.presentation.frame_map import parse_nav
     frames = parse_nav(NAV, 6)
     assert frames.count == 4 and frames.frames == ((0, 0), (1, 3), (4, 4), (5, 5))
     assert frames.frame_of(0) == (1, 1, 1) and frames.frame_of(2) == (2, 2, 3) and frames.frame_of(5) == (4, 1, 1)
@@ -337,7 +337,7 @@ def test_the_nav_file_groups_pages_into_slides_with_steps():
 
 
 def test_a_nav_file_that_does_not_fit_the_pdf_is_not_used():
-    from slidemage.presentation.frames import parse_nav
+    from slidemage.presentation.frame_map import parse_nav
     assert parse_nav(NAV, 7) is None and parse_nav(NAV, 5) is None and parse_nav("", 6) is None
     assert parse_nav(r"\beamer@framepages {1}{3}" + "\n" + r"\beamer@framepages {2}{6}", 6) is None   # overlapping frames
     assert parse_nav(r"\beamer@framepages {2}{6}", 6) is None                                       # not from page 1

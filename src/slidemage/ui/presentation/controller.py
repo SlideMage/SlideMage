@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessag
                                QToolButton, QWidget, QWidgetAction)
 
 from ...presentation import layout
-from ...presentation.frames import FrameMap
+from ...presentation.frame_map import FrameMap
 from ...presentation.keep_awake import KeepAwake
 from ...presentation.pdf_source import NOTES, SLIDE, PresentationDeck
 from ...presentation.screens import ScreenInfo, choose_screens

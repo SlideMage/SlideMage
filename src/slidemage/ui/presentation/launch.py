@@ -4,7 +4,6 @@
 then start the presentation."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import QMessageBox
@@ -67,25 +66,6 @@ def _compile_then_present(window, deck: Deck) -> None:
         window.compile.settled.disconnect(settled)
         on_present(window, deck, after_compile=True)
     window.compile.settled.connect(settled)
-
-
-def present_pdf_file(path: Path) -> bool:
-    """Present a PDF without a project (the start screen's "Present a PDF…"): a presenter PDF with its notes, or a
-    plain one. Returns when the presentation has ended; False when the PDF could not be opened."""
-    from PySide6.QtCore import QEventLoop
-
-    try:
-        deck = PresentationDeck(path)
-    except (ValueError, RuntimeError, OSError) as exc:
-        QMessageBox.warning(None, "Present", f"{path.name} could not be opened: {exc}")
-        return False
-    controller = PresentationController(deck, PresentationSettings.load(), save_settings=lambda changed: changed.save())
-    loop = QEventLoop()
-    controller.finished.connect(loop.quit)
-    controller.start()
-    if not controller.ended:
-        loop.exec()
-    return True
 
 
 def start(window, pdf: DeckPdf, deck: Optional[Deck] = None) -> Optional[PresentationController]:
