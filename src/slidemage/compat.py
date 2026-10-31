@@ -228,7 +228,7 @@ def _detect_course_link(root: Path) -> list[Finding]:
 # work (detect/migrate) live in modules of their own, e.g. compat_bibliography.
 CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     id="workspace-redesign",
-    since="v6.0.0",
+    since="v0.6.0.0",
     severity=APPEARANCE,
     title="SlideMage's window was rebuilt as one workspace per deck",
     description=(
@@ -241,7 +241,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "(they were the deck table's checkboxes), and use the chat instead of AI drafting."),
 ), Change(
     id="language-switch-translations",
-    since="v7.0.0",
+    since="v0.7.0.0",
     severity=APPEARANCE,
     title="EN / DE follows linked translations",
     description=(
@@ -256,7 +256,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "compiles outside SlideMage keep the literal deck calls."),
 ), Change(
     id="omitslide-instructor-only",
-    since="v8.0.0",
+    since="v0.8.0.0",
     severity=APPEARANCE,
     title="Omitted slides are instructor-only",
     description=(
@@ -269,7 +269,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_omitslide,
 ), Change(
     id="campusonline-plugin",
-    since="v9.0.0",
+    since="v0.9.0.0",
     severity=APPEARANCE,
     title="CampusOnline course links are now a plugin",
     description=(
@@ -282,13 +282,13 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "again, install the CampusOnline plugin from Settings > Plugins (or the first-start sheet)."),
     detect=_detect_course_link,
 ), Change(
-    id="ai-plugins", since="v9.1.0", severity=LAYOUT,
+    id="ai-plugins", since="v0.9.1.0", severity=LAYOUT,
     title="AI routes are provided by plugins",
     description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
     fix="Install the Claude or Ollama plugin from Settings → Plugins.", detect=_detect_ai_settings,
 ), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
     id="derived-layout-names",
-    since="v10.7.0",
+    since="v0.10.7.0",
     severity=BREAKS,
     title="Four layout positions follow the template's settings and can no longer be set",
     description=(
@@ -303,7 +303,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_derived_layout_names,
 ), Change(
     id="font-measurements-derived",
-    since="v10.8.0",
+    since="v0.10.8.0",
     severity=BREAKS,
     title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
     description=(
@@ -323,7 +323,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_font_measurement_names,
 ), Change(
     id="top-pullups-measured",
-    since="v10.9.0",
+    since="v0.10.9.0",
     severity=BREAKS,
     title="A layout profile no longer holds the top pull-ups",
     description=(
@@ -339,7 +339,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=_detect_top_pullup_names,
 ), Change(
     id="titleframe-bottom-pad",
-    since="v10.10.0",
+    since="v0.10.10.0",
     severity=APPEARANCE,
     title="The title slide's bottom pad is the space under the subtitle",
     description=(
@@ -356,7 +356,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
-REGISTRY_FROM = (5, 29, 0)
+REGISTRY_FROM = (0, 5, 29, 0)
 
 
 @dataclass

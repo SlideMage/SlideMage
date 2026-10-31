@@ -101,3 +101,11 @@ def test_matches_rejects_malformed():
 def test_host_storage_ids_are_refused(tmp_path, plugin_id):
     with pytest.raises(ManifestError, match="id"):
         read_manifest(write(tmp_path, id=f'"{plugin_id}"'))
+
+
+def test_requirements_written_in_the_old_scheme_mean_0_x():
+    from slidemage.plugins.manifest import matches
+    assert matches(">=10.17", "v0.11.0") and matches(">=10.17", "v10.19.0")
+    assert matches(">=8.0", "v0.10.19.0") and not matches(">=0.12", "v0.11.0")
+    assert not matches(">=10.16, <11", "v0.11.0") and matches(">=10.16, <11", "v0.10.19.0")
+    assert not matches(">=99", "v0.11.0")

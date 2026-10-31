@@ -38,7 +38,7 @@ id = "selftest"
 name = "Self-test"
 version = "1.0.0"
 api_version = 1
-requires_slidemage = ">=1.0"
+requires_slidemage = ">=0.8"
 summary = "Loaded by slidemage --self-test --plugins."
 author = "SlideMage"
 homepage = "https://example.invalid/selftest"

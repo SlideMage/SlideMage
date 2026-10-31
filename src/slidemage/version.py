@@ -12,13 +12,24 @@ from pathlib import Path
 
 from .processes import command_output
 
-VERSION_NUMBER = "v10.19.0"
+VERSION_NUMBER = "v0.11.0"
 
-# Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md,
+# Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10; the history, the tags and the files projects
+# and plugins hold under that scheme are read as 0.X.Y.Z (v10.19.0 is v0.10.19.0). A first part of 2 or more can only
+# be the old scheme: the new one stays in 0.x until a stable v1.0.0.
+LEGACY_FIRST_MAJOR = 2
+
+
+def to_zero_x(parts: tuple[int, ...]) -> tuple[int, ...]:
+    """`parts` of an old-scheme version with the leading 0 (10, 19, 0 -> 0, 10, 19, 0); any other unchanged."""
+    return (0, *parts) if parts and parts[0] >= LEGACY_FIRST_MAJOR else parts
+
+
+# Matches each "vX.Y.Z (...): description..." entry in CHANGELOG.md (four parts up to v0.10.19.0),
 # skipping the introduction.
 _HISTORY_ENTRY_RE = re.compile(
-    r"^(v\d+\.\d+\.\d+) \(([^)]*)\):\s*(.*?)"
-    r"(?=\n\nv\d+\.\d+\.\d+ \(|\n\nThe displayed string|\Z)",
+    r"^(v\d+(?:\.\d+){2,3}) \(([^)]*)\):\s*(.*?)"
+    r"(?=\n\nv\d+(?:\.\d+){2,3} \(|\n\nThe displayed string|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 

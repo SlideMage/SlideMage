@@ -67,7 +67,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v10.11.0",
+    since="v0.10.11.0",
     severity=BREAKS,
     title="Two hooks were renamed and three that moved nothing were removed",
     description=(

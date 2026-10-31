@@ -12,7 +12,11 @@ from slidemage import updater
 
 
 def test_version_comparison():
-    assert updater.parse_version("v3.29.5") == (3, 29, 5)
+    assert updater.parse_version("v3.29.5") == (0, 3, 29, 5)   # old scheme reads as 0.<old>
+    assert updater.parse_version("v0.11.2") == (0, 11, 2)
+    assert updater.is_newer("v0.11.0", "v10.19.0") and not updater.is_newer("v10.19.0", "v0.11.0")
+    assert updater.is_newer("v1.0.0", "v0.12.0") and updater.is_newer("v0.12.0", "v0.11.1")
+    assert updater.is_breaking(_release("v0.12.0"), "v0.11.1") and not updater.is_breaking(_release("v0.11.2"), "v0.11.1")
     assert updater.parse_version("v3.29.5-beta") is None
     assert updater.is_newer("v3.30.0", "v3.29.5")
     assert updater.is_newer("v3.29.10", "v3.29.9")

@@ -62,7 +62,7 @@ def tree(root: Path) -> dict[str, bytes]:
 
 def test_change_is_registered_as_breaking():
     change = next(c for c in compat.CHANGES if c.id == "slidemage-names-and-setup-layer")
-    assert change.severity == compat.BREAKS and change.since == "v10.0.0"
+    assert change.severity == compat.BREAKS and change.since == "v0.10.0.0"
     assert change.detect is not None and change.migrate is not None
 
 

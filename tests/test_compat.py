@@ -185,7 +185,7 @@ def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
     assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleBarBottomAlign"),
                      ("SlideMage_template_inst.tex", 4, "\\SMFooterRightShift"),
                      ("SlideMage_layout_own.tex", 1, "\\SMFootnoteRightShift")]
-    assert any(c.id == "derived-layout-names" and c.since == "v10.7.0" for c in compat.CHANGES)
+    assert any(c.id == "derived-layout-names" and c.since == "v0.10.7.0" for c in compat.CHANGES)
 
 
 def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tmp_path):
@@ -210,7 +210,7 @@ def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tm
                      ("SlideMage_layout_own.tex", 4, "\\SMEnumerateTextExtra"),
                      ("SlideMage_layout_own.tex", 6, "\\SMSectionframeHeightCorrection"),
                      ("SlideMage_template_inst.tex", 3, "\\SMFootlineVOffset")]
-    assert any(c.id == "font-measurements-derived" and c.since == "v10.8.0" for c in compat.CHANGES)
+    assert any(c.id == "font-measurements-derived" and c.since == "v0.10.8.0" for c in compat.CHANGES)
 
 
 def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path):
@@ -234,7 +234,7 @@ def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path
                      ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
                      ("SlideMage_template_inst.tex", 2, "\\SMColumnsTopCorrection")]
     change = next(c for c in compat.CHANGES if c.id == "top-pullups-measured")
-    assert change.since == "v10.9.0" and change.detect is compat._detect_top_pullup_names
+    assert change.since == "v0.10.9.0" and change.detect is compat._detect_top_pullup_names
     ev = compat.evaluate(root, "v10.9.0")
     assert change.id in [p.change.id for p in ev.loud]
     # the shipped profiles hold none of them any more
@@ -257,7 +257,7 @@ def test_titleframe_pad_detector_reports_templates_that_set_the_hook_not_reads(t
     assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleframeBottomPad"),
                      ("SlideMage_template_inst.tex", 4, "\\SMTitleframeBottomPad")]
     change = next(c for c in compat.CHANGES if c.id == "titleframe-bottom-pad")
-    assert change.since == "v10.10.0" and change.severity == compat.APPEARANCE
+    assert change.since == "v0.10.10.0" and change.severity == compat.APPEARANCE
     assert change.detect is compat._detect_titleframe_bottom_pad
     ev = compat.evaluate(root, "v10.10.0")
     assert change.id in [p.change.id for p in ev.quiet] and change.id not in [p.change.id for p in ev.loud]
@@ -280,7 +280,7 @@ def test_hook_renames_migrate_in_project_files_and_the_removed_names_are_reporte
         b"\\setlength{\\SMRightFooterPadding}{4ex}\r\n")
     (root / "slides" / "a-EN-A-current.tex").write_text("\\SMProgressStripHeight\n", encoding="utf-8")   # slides are not scanned
     change = next(c for c in compat.CHANGES if c.id == "hook-renames-and-removals")
-    assert change.since == "v10.11.0" and change.severity == compat.BREAKS
+    assert change.since == "v0.10.11.0" and change.severity == compat.BREAKS
     found = [(f.line, f.message.split(" ")[0]) for f in change.detect(root)]
     assert found == [(2, "\\SMProgressStripHeight"), (4, "\\SMSideFootnoteTopSep"), (5, "\\SMFootlineHeight"),
                      (6, "\\SMFootlineDepth"), (7, "\\SMRightFooterPadding")]
@@ -334,6 +334,27 @@ def test_campusonline_plugin_change_is_noted_for_decks_with_a_course_link(tmp_pa
     (root / "decks" / "plain.tex").write_text(
         "\\begin{document}\n%% SlideMage course URL: https://campus.example/c/2\n", encoding="utf-8")
     change = next(c for c in compat.CHANGES if c.id == "campusonline-plugin")
-    assert change.since == "v9.0.0" and change.migrate is None and "plugin" in change.fix
+    assert change.since == "v0.9.0.0" and change.migrate is None and "plugin" in change.fix
     assert [(f.file, f.line) for f in change.detect(root)] == [("decks/course.tex", 2)]
     assert [p.change.id for p in compat.evaluate(root, "v9.0.0").quiet] == ["campusonline-plugin"]
+
+
+def test_old_scheme_versions_in_project_json_read_as_zero_x(tmp_path):
+    # A project used with v10.19.0, last checked at v5.28.1, opened by v0.11.0 (the renumbering).
+    root = make_project(tmp_path, "v10.19.0", checked_version="v5.28.1")
+    assert project.project_status(root, "v0.11.0").newer is False
+    ev = compat.evaluate(root, "v0.11.0", [BREAKING, LOOK])
+    assert [p.change.id for p in ev.loud] == ["old-to-new"]        # since v5.30.0 > checked v5.28.1
+    assert [p.change.id for p in ev.quiet] == ["looks"]
+    assert ev.newer_notice == ""
+    # A project last used with v0.12.0 is newer than v0.11.0.
+    assert project.project_status(make_project(tmp_path / "n", "v0.12.0"), "v0.11.0").newer is True
+    # Changes up to the old checked version stay dealt with
+    root = make_project(tmp_path / "m", "v10.19.0", checked_version="v10.19.0")
+    assert not compat.evaluate(root, "v0.11.0", [BREAKING]).everything
+
+
+def test_version_order_across_the_renumbering():
+    from slidemage.updater import parse_version as p
+    assert p("v0.10.19.0") < p("v0.11.0") < p("v0.11.1") < p("v0.12.0") < p("v1.0.0")
+    assert p("v10.19.0") == p("v0.10.19.0") and p("v0.9.4.0") > p("v8.69.0")

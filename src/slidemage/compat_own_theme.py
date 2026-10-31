@@ -186,7 +186,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v10.1.0",
+    since="v0.10.1.0",
     severity=BREAKS,
     title="SlideMage has its own beamer theme, and its names no longer carry Gotham's",
     description=(
