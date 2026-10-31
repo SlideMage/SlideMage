@@ -32,11 +32,7 @@
 
 \input{SlideMage_base}
 
-% Bibliography (SlideMage v10.14.0, 2026-10-30, step 14 of the framework
-% redesign): the house citation format moved out of this file into
-% latex/SlideMage_bibliography_default.tex, so every template that wants it
-% says this one line, instead of carrying its ~165 lines itself. A deck just
-% calls \SMUseBibliography after \input{} of this file; it can redefine
-% \SMBiblatexOptions / \SMBibliographyStyle before that call for a format of
-% its own.
-\input{SlideMage_bibliography_default}
+% Bibliography (SlideMage v0.13.0, step 18c): the citation format is the catalog's \SMCitationFormat
+% (default: the house format, latex/SlideMage_citation_default.tex), which the base loads; this template
+% needs no line for it. A deck calls \SMUseBibliography; it can set another \SMCitationFormat or redefine
+% \SMBiblatexOptions / \SMBibliographyStyle before that call.

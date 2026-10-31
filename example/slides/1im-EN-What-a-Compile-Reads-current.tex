@@ -6,8 +6,8 @@
 % latex/SlideMage_template_slidemage.tex, SlideMage_setup.tex (the profile,
 % then the theme, then the catalog) and SlideMage_base.tex (the two Lua files,
 % by dofile). The base then loads the project's macros itself (v0.12.0), if
-% the project has the file; the compatibility change puts the citation format
-% after them. Gray: framework files in latex/; white: the project's files;
+% the project has the file, and the template's citation format (v0.13.0: the
+% catalog's \SMCitationFormat, default the house format) after them. Gray: framework files in latex/; white: the project's files;
 % the template's settings override the catalog's defaults (box 7).
 \setSlideVersion{1-0-0}
 \providecommand{\SMLoadName}[1]{{\SMCardHeadingFont #1}\\}% a box's heading
@@ -49,8 +49,8 @@
 			Top Margin, \SMCmd{SMFit}; alt text};
 		\node[pj] (mac) at (\imp pt,-104pt) {\SMLoadName{10 Project macros}\SMLoadFile{SlideMage\_project\_macros}
 			your commands, loaded by 8 if the project has the file};
-		\node[fw] (bib) at (\impb pt,-104pt) {\SMLoadName{11 Citation format}\SMLoadFile{SlideMage\_bibliography\_\allowbreak default}
-			if the template loads it};
+		\node[fw] (bib) at (\impb pt,-104pt) {\SMLoadName{11 Citation format}\SMLoadFile{SlideMage\_citation\_\allowbreak <key>}
+			the format \SMCode{SMCitationFormat} names, loaded by 8};
 		\node[pj] (sl) at (\impc pt,-104pt) {\SMLoadName{12 The slides}\SMLoadFile{slides/<id>-current.tex}
 			after the deck's settings and \SMCmd{begin}\SMCode{\{document\}}};
 		% the reading order

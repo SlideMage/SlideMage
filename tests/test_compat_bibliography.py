@@ -83,7 +83,7 @@ def test_it_is_a_dialog_change_that_updates_automatically(tmp_path):
     assert not compat.evaluate(root, "v5.32.0").everything
 
 
-def test_update_replaces_the_copy_adds_the_format_to_the_template_and_backs_up(tmp_path):
+def test_update_replaces_the_copy_and_backs_up_and_the_template_needs_no_line(tmp_path):
     root = make(tmp_path)
     before_b = (root / "decks" / "b.tex").read_bytes()
     before_a = (root / "decks" / "a.tex").read_bytes()
@@ -92,19 +92,15 @@ def test_update_replaces_the_copy_adds_the_format_to_the_template_and_backs_up(t
 
     done = compat.run_update(root, pending, now=NOW)
     assert not done.errors
-    assert sorted(done.changed) == ["SlideMage_template_acme.tex", "decks/a.tex", "decks/c.tex"]
+    assert sorted(done.changed) == ["decks/a.tex", "decks/c.tex"]       # since v0.13.0 the base loads the format
 
     a = (root / "decks" / "a.tex").read_bytes().decode()
     assert a.count(BS + "SMUseBibliography") == 2            # once in the comment, once as the call
     assert "DeclareBibliographyDriver" not in a and BS + "usepackage[style" not in a
     assert "\r\n" in a and "\n" not in a.replace("\r\n", "")  # line endings kept
     assert (root / "decks" / "b.tex").read_bytes() == before_b          # the variant is left alone
-    tpl = (root / "SlideMage_template_acme.tex").read_bytes().decode()
-    assert tpl.index("SlideMage_project_macros") < tpl.index(BS + "input{SlideMage_bibliography_default}") < tpl.index("more")
-    assert "\r\n" in tpl and BLOCK.rstrip("\n") in tpl
-    assert "DeclareBibliographyDriver" not in tpl           # the one line, not the full copy
     assert (done.backup / "decks" / "a.tex").read_bytes() == before_a
-    assert (done.backup / "SlideMage_template_acme.tex").is_file()
+    assert not (done.backup / "SlideMage_template_acme.tex").exists()
     assert not (done.backup / "decks" / "b.tex").exists()
 
     # idempotent, and nothing is pending any more
@@ -119,6 +115,20 @@ def test_nothing_is_changed_while_the_framework_lacks_the_command(tmp_path, monk
     findings = compat_bibliography.detect(root)
     assert findings and "update it first" in findings[0].message
     assert compat_bibliography.migrate(root) == {}
+
+
+def test_a_framework_before_v0_13_0_still_gets_the_line_in_a_project_template(tmp_path, monkeypatch):
+    monkeypatch.setattr(compat_bibliography, "_framework_loads_format", lambda root: False)
+    root = make(tmp_path)
+    deck_text = (root / "decks" / "a.tex").read_text(encoding="utf-8")
+    assert compat_bibliography._template_state(root, deck_text)[1] == "add"
+
+
+def test_a_framework_that_loads_the_format_itself_needs_no_line_in_the_template(tmp_path):
+    root = make(tmp_path)           # the real framework here has the base that loads the citation format (v0.13.0)
+    plan = compat_bibliography.migrate(root)
+    assert sorted(str(p) for p in plan) == sorted([str(Path("decks/a.tex")), str(Path("decks/c.tex"))])
+    assert "SMBibliographyStyle" not in (root / "SlideMage_template_acme.tex").read_text(encoding="utf-8")
 
 
 def test_a_template_with_another_format_keeps_its_decks(tmp_path):
@@ -142,8 +152,8 @@ def test_a_framework_template_using_the_default_input_line_is_also_ready(tmp_pat
     findings = compat_bibliography.detect(root)
     assert [f.file for f in findings] == ["decks/a.tex", "decks/c.tex"]
     plan = compat_bibliography.migrate(root)
-    assert sorted(str(p) for p in plan) == sorted(
-        ["SlideMage_template_acme.tex", str(Path("decks/a.tex")), str(Path("decks/c.tex"))])
+    assert sorted(str(p) for p in plan) == sorted([str(Path("decks/a.tex")), str(Path("decks/c.tex"))])
+    assert Path("SlideMage_template_acme.tex") not in plan      # the framework loads the format itself since v0.13.0
     assert BS + "SMUseBibliography" in plan[Path("decks/c.tex")].decode()
 
 
@@ -206,8 +216,11 @@ def test_shorten_is_registered_as_its_own_dialog_change(tmp_path):
     assert not compat.run_update(root, pending, now=NOW).changed    # idempotent
 
 
-def test_the_shipped_templates_carry_the_house_format_one_way_or_the_other():
-    slidemage = (ROOT / "latex" / "SlideMage_template_slidemage.tex").read_bytes().decode("utf-8").replace("\r\n", "\n")
-    assert BLOCK.rstrip("\n") in slidemage and "DeclareBibliographyDriver" not in slidemage
-    default_file = (ROOT / "latex" / "SlideMage_bibliography_default.tex").read_bytes().decode("utf-8").replace("\r\n", "\n")
-    assert FULL_TEXT in default_file
+def test_the_shipped_templates_get_the_house_format_from_the_framework():
+    def read(name):
+        return (ROOT / "latex" / name).read_bytes().decode("utf-8").replace("\r\n", "\n")
+    slidemage = read("SlideMage_template_slidemage.tex")
+    assert BLOCK.rstrip("\n") not in slidemage and "DeclareBibliographyDriver" not in slidemage
+    assert FULL_TEXT in read("SlideMage_citation_default.tex")
+    old_name = read("SlideMage_bibliography_default.tex")
+    assert BS + "input{SlideMage_citation_default}" in old_name and "DeclareBibliographyDriver" not in old_name

@@ -62,7 +62,9 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
 - `requires_slidemage` must accept the running SlideMage, or the theme is not installed.
 - The template file `SlideMage_template_<id>.tex`, `README.md`, `CHANGELOG.md` and `LICENSE` must be there, and
   the scheme folder, if any, must be `schemes/scheme_<id with _>/`.
-- A `layout` other than `fira`, `lmsans` or `lmroman` needs the package's own `SlideMage_layout_<layout>.tex`.
+- A `layout` other than `fira`, `lmsans` or `lmroman` needs the package's own `SlideMage_layout_<layout>.tex`; a
+  package with one of those three names must **not** ship that file (it would replace SlideMage's profile for every
+  deck, since installed themes are on TEXINPUTS ahead of the framework), and is refused.
 - Optional in the template: a `% SlideMage template name: <label>` line in its first 30 lines names it in the
   dialogs (as for any template).
 

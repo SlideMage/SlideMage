@@ -141,7 +141,7 @@ step 3 must bundle QtSvg and its iconengines/imageformats plugins.
 - Measure size and start time; record them here. If still too large, look at PyMuPDF (the largest remaining part)
   and UPX for the Qt libraries.
 
-Done in v0.12.6: `packaging/slidemage_presenter.spec` and `packaging/launch_presenter.py`, icons from
+Done in v0.13.2: `packaging/slidemage_presenter.spec` and `packaging/launch_presenter.py`, icons from
 `tools/make_presenter_icons.py`. A folder build only, no one-file exe and no splash.
 
 **Building SlideMage Presenter**

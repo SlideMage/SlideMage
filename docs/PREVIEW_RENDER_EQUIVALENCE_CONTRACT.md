@@ -32,7 +32,7 @@ never equated with a different file. Hidden views are resolved before any
 source analysis.
 
 Only the pinned framework files (the setup layer, the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, the base preamble, the generic
-template, the greyscale template `SlideMage_template_greyscale.tex` (since v10.18.0) and the bundled bibliography default `SlideMage_bibliography_default.tex`, the SlideMage theme `beamerthemeSlideMage.sty` and the Lua files) and
+template, the greyscale template `SlideMage_template_greyscale.tex` (since v10.18.0) and the bundled citation format `SlideMage_citation_default.tex` and its old-name loader `SlideMage_bibliography_default.tex`, the SlideMage theme `beamerthemeSlideMage.sty` and the Lua files) and
 the institution templates whose digests were audited (`AUDITED_PROJECT_TEMPLATES`: a project's own copy, or an installed theme package's, docs/THEME_PACKAGE.md) are trusted. The theme and the layout
 profiles (fonts and font metrics) contain no view-dependent rule (no version, footer-hide or
 deck-label condition; a test checks that), so pinning their text is the whole audit. A layout

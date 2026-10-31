@@ -119,6 +119,7 @@ class WorkspaceWindow(QMainWindow):
     plugin_offer_fetched = Signal(object)   # the catalogue for the first-start sheet, or the Exception
     plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
+    citation_updates_done = Signal(object)  # citation_sources.check_updates's (offers, errors), or the Exception
     theme_updates_done = Signal(object)  # theme_sources.check_updates's (offers, errors), or the Exception
     deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
@@ -220,6 +221,7 @@ class WorkspaceWindow(QMainWindow):
         self.plugin_offer_fetched.connect(lambda result: maintenance.on_plugin_offer_fetched(self, result))
         self.plugin_updates_done.connect(lambda result: maintenance.on_plugin_updates_done(self, result))
         self.theme_updates_done.connect(lambda result: maintenance.on_theme_updates_done(self, result))
+        self.citation_updates_done.connect(lambda result: maintenance.on_citation_updates_done(self, result))
         self.toast.action_triggered.connect(lambda key: maintenance.on_plugin_toast_action(self, key))
 
         self.palette = CommandPalette(self)
@@ -632,6 +634,10 @@ class WorkspaceWindow(QMainWindow):
     def theme_installed(self, key: str) -> None:
         """A theme package was installed or updated: re-render the previews of the decks that use its key."""
         maintenance.on_theme_installed(self, key)
+
+    def citation_installed(self, key: str) -> None:
+        """A citation package was installed or updated: re-render the previews."""
+        maintenance.on_citation_installed(self, key)
 
     def open_plugins(self) -> None:
         """Help → Plugins…: Settings on its Plugins tab."""

@@ -35,15 +35,16 @@ def test_manual_deck_uses_the_template_not_its_own_copy():
     assert cs("usepackage[style=authoryear") not in deck
 
 
-def test_the_slidemage_template_inputs_the_default_file_instead_of_carrying_the_format():
+def test_the_slidemage_template_needs_no_line_for_the_house_format():
+    # since v0.13.0 the base loads the catalog's SMCitationFormat (default: the house format)
     text = read("latex", "SlideMage_template_slidemage.tex")
-    assert cs("input{SlideMage_bibliography_default}") in text
+    assert cs("input{SlideMage_bibliography_default}") not in text and cs("input{SlideMage_citation") not in text
     assert "DeclareBibliographyDriver" not in text
     assert cs("renewcommand{") + cs("SMBibliographyStyle}") not in text
 
 
 def test_the_default_bibliography_file_has_the_spdx_header_and_the_stock_house_format():
-    text = read("latex", "SlideMage_bibliography_default.tex").replace("\r\n", "\n")
+    text = read("latex", "SlideMage_citation_default.tex").replace("\r\n", "\n")
     lines = text.split("\n")
     assert lines[0] == "% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß"
     assert lines[1] == "% SPDX-License-Identifier: LPPL-1.3c+"

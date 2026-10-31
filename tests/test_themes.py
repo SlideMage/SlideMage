@@ -393,3 +393,12 @@ def test_a_deck_compiles_with_an_installed_theme_and_its_scheme_logo(package, tm
     assert (ctx.root / "decks" / "themed.pdf").is_file(), run.stdout[-3000:]
     fls = next((ctx.root / ".build").glob("themed.fls")).read_text(encoding="utf-8", errors="replace")
     assert "sample-logo.pdf" in fls and "themes" in fls.replace("\\", "/")
+
+
+@pytest.mark.parametrize("profile", ["fira", "lmsans", "lmroman"])
+def test_a_theme_may_not_ship_a_copy_of_a_bundled_layout_profile(theme_folder, profile):
+    # installed themes sit on TEXINPUTS ahead of the framework: the copy would replace the profile for every deck
+    edit_toml(theme_folder, 'layout = "fira"', f'layout = "{profile}"')
+    (theme_folder / f"SlideMage_layout_{profile}.tex").write_text("% profile\n", encoding="utf-8")
+    with pytest.raises(themes.ThemeError, match=f"own copy of SlideMage's layout profile {profile}"):
+        themes.check_folder(theme_folder)

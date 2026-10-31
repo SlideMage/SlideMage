@@ -234,15 +234,16 @@ def _download(url: str, dest: Path, repo: str, max_bytes: int, timeout: float) -
         raise SourceError(f"Download failed: {exc}") from exc
 
 
-def _candidate(item: dict, repo: str, key: str | None) -> ThemeRelease | None:
-    """The release `item` of the list, when it is published and carries <key>-<version>.smtheme and its .sha256."""
+def _candidate(item: dict, repo: str, key: str | None, asset_re: re.Pattern = ASSET_RE) -> ThemeRelease | None:
+    """The release `item` of the list, when it is published and carries <key>-<version>.smtheme (or what `asset_re`
+    matches: citation_sources passes .smcite) and its .sha256."""
     if not isinstance(item, dict) or item.get("draft") or item.get("prerelease"):
         return None
     tag = str(item.get("tag_name") or "")
     version = tag.removeprefix("v")
     assets = {a.get("name"): a for a in item.get("assets") or [] if isinstance(a, dict)}
     for name, asset in assets.items():
-        match = ASSET_RE.match(name or "")
+        match = asset_re.match(name or "")
         if not match or match["version"] != version or (key is not None and match["key"] != key):
             continue
         sha = assets.get(name + ".sha256")
@@ -255,12 +256,13 @@ def _candidate(item: dict, repo: str, key: str | None) -> ThemeRelease | None:
     return None
 
 
-def list_releases(repo: str, key: str | None = None, timeout: float = 10) -> list[ThemeRelease]:
+def list_releases(repo: str, key: str | None = None, timeout: float = 10,
+                  asset_re: re.Pattern = ASSET_RE) -> list[ThemeRelease]:
     """The repository's releases that may be eligible (published, with the two files), newest version first."""
     data = _get_json(f"{API}/repos/{repo}/releases?per_page=100", repo, timeout)
     if not isinstance(data, list):
         raise SourceError("GitHub sent an unexpected answer for the release list.")
-    found = [r for r in (_candidate(item, repo, key) for item in data) if r is not None]
+    found = [r for r in (_candidate(item, repo, key, asset_re) for item in data) if r is not None]
     return sorted(found, key=lambda r: r.number, reverse=True)
 
 
