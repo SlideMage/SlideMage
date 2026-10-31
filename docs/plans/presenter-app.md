@@ -141,6 +141,38 @@ step 3 must bundle QtSvg and its iconengines/imageformats plugins.
 - Measure size and start time; record them here. If still too large, look at PyMuPDF (the largest remaining part)
   and UPX for the Qt libraries.
 
+Done in v0.12.6: `packaging/slidemage_presenter.spec` and `packaging/launch_presenter.py`, icons from
+`tools/make_presenter_icons.py`. A folder build only, no one-file exe and no splash.
+
+**Building SlideMage Presenter**
+
+    pyinstaller --noconfirm packaging/slidemage_presenter.spec      # from the repo root, about 1 minute
+
+Output: `dist/SlideMagePresenter/` with `SlideMagePresenter.exe` and `_internal/`. `SlideMagePresenter.exe --self-test`
+prints its result and exits 0 (also from a windowed exe). `python tools/make_presenter_icons.py` renders
+`assets/presenter-icon.svg` into `presenter-icon.ico`, `.icns` and `-256.png` (committed; re-run after the SVG
+changes). With `SLIDEMAGE_PRESENTER_TIMING=1` (and `SLIDEMAGE_PRESENTER_TIMING_FILE=<path>`) the program shows the
+start window, writes the seconds since the process was created and quits, without writing any settings.
+
+Measured on Windows 11, Python 3.13, PySide6 and PyMuPDF as pinned:
+
+| Build | Unpacked |
+|---|---|
+| Entry point only, no strip | 148 MiB |
+| Without Qt Quick/Qml/Pdf/Network/OpenGL/DBus libraries, Pillow (11 MB), ssl, Direct2D and minimal platform plugins | 111 MiB |
+| Without 28 of 37 font files (9 MB) and `_hashlib` with libcrypto (5 MB) | **99 MiB**, 139 files |
+
+Zipped: 44 MiB. Largest files: `mupdfcpp64.dll` 25 MiB, `_mupdf.pyd` 12.5 MiB, `Qt6Core.dll` 9.9 MiB, `Qt6Gui.dll` 9.1 MiB,
+`Qt6Widgets.dll` 6.2 MiB; PyMuPDF is 37 MiB of the total and PySide6 41 MiB. Start window shown, counted from the
+process's creation: 0.58 s on the first run, 0.36 to 0.38 s on three warm runs (targets: under 2 s and under 1 s).
+Qt's translations, `opengl32sw.dll` and `d3dcompiler_47.dll` were not collected in the first place (PySide6's hook only
+adds them for QML/OpenGL modules); the spec still filters them for other platforms and PySide6 versions. The further
+saving, if wanted: PyMuPDF's DLLs are about 38 MiB and not strippable; UPX on the Qt libraries was not tried.
+
+Note for step 4: the step 3 build excludes `ssl`/`_ssl` (and `_hashlib`) to stay under 100 MB. The Presenter's
+self-update downloads from GitHub over HTTPS, so step 4 must put `ssl` back (about 6 MB) and test an update
+from the frozen build.
+
 ### 4. Release and updates
 
 - `release.yml`: build the Presenter in the same matrix, run its `--self-test`, attach
