@@ -89,8 +89,10 @@ Each step is one PR into `develop`, small enough to review alone. Stop after eac
   The controller imports only `frame_map`.
 - `ui/presentation/launch.py`: move `present_pdf_file` into `ui/presentation/standalone.py`, which imports only
   `presentation.*` and `ui.presentation.controller`. `launch.py` and `cli.py` import it from there.
-- `ui/kit/theme.py`: make the project optional at import time (import `ProjectContext` only under
-  `TYPE_CHECKING` or inside the function), and check that `app_settings` imports nothing heavy.
+- `ui/kit/theme.py`: needed no change. `project` and `app_settings`, which it imports, use only the standard
+  library (checked in step 1).
+- Done in v0.11.1: the standalone path loads 32 SlideMage modules, none of them heavy (52 before, with the
+  compiler and the plugins).
 - **Import-boundary test** `tests/test_presenter_imports.py`: in a fresh subprocess, import
   `slidemage.ui.presentation.standalone` and fail if any of a deny list (`slidemage.compiler`, `slidemage.ui.app`,
   `slidemage.ui.workspace`, `slidemage.ai`, `slidemage.plugins`, `PySide6.QtWebEngineCore`, `lxml`, `pptx`, `odf`,

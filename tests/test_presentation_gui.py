@@ -310,7 +310,7 @@ def test_a_drawing_lands_on_the_same_spot_of_the_slide_on_screens_of_different_s
 
 
 def test_a_typed_number_is_the_slide_number_when_the_nav_data_fits_else_the_page(make):
-    from slidemage.presentation.frames import FrameMap
+    from slidemage.presentation.frame_map import FrameMap
     controller = make(frames=FrameMap(((0, 0), (1, 3), (4, 4), (5, 5))))
     session = controller.session
     counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Slide")][0]
