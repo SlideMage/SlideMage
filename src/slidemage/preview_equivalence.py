@@ -109,7 +109,12 @@ AUDITED_FRAMEWORK = {
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
     # changed), re-audited.
-    "SlideMage_base.tex": "01f9d3c53766b846accaebbbd8910e316edd584fec2860470813ea1d5929db1c",
+    # v0.12.0 (step 18b): the end of the base loads the project's SlideMage_project_macros.tex when the project has one
+    # (templates used to input it themselves) and wraps \input until \begin{document} so an old template's own
+    # \input of it is skipped. Re-audited: the macros file is the project's, unknown content as before, and loads at
+    # the same place in the preamble; the wrapper only drops that one \input and passes every other through; no
+    # version, footer-hide or deck-label rule entered the base.
+    "SlideMage_base.tex": "c6fe0fa4131eff0c1244471aa41db025b1fa1bb599798d609b23c06d6c66def5",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",

@@ -221,7 +221,7 @@ Notes:
 \renewcommand{\SMTitleBoxColor}{c_secondary_blue}
 \setlength{\SMTitleframeBoxHeight}{170pt} % any hook from the catalog
 \input{SlideMage_base}                    % derives, then defines everything else
-\input{SlideMage_project_macros}          % optional, as today
+% the project's SlideMage_project_macros.tex: loaded by the base itself since v0.12.0 (step 18b)
 ```
 
 The rules a template author follows:
@@ -1128,6 +1128,17 @@ mix it in.
      v0.12.0 ...), until the user calls a version stable; only then v1.0.0, the public repository and
      `SlideMage_pre_v1`. Order: the redesign is merged into develop first (Project compatibility list shown and
      approved), then the renumbering happens on develop.
+   - **To retire before v2.0.0:** the old-scheme version reading (`version.to_zero_x`: a first part of 2 or more
+     means old, so `v10.19.0` is read as `v0.10.19.0`) must be retired or capped when v1.0.0 comes, before any
+     v2.0.0 exists; from v2.0.0 on a first part of 2 would be read as an old version.
+18b. **The framework loads the project's macros** (user decision 2026-10-31; done, v0.12.0). So that institution
+   templates shipped as theme packages (no `\input` line of their own) work in any project,
+   `SlideMage_base.tex` loads the project's `SlideMage_project_macros.tex` when it is on the TeX path (the
+   framework's `latex/` ships none), at the place the templates loaded it: after the base's definitions, before
+   a template's citation format. A template that still has `\input{SlideMage_project_macros}` keeps working:
+   the base wraps `\input` until `\begin{document}` and drops that one repeat, so the file is read once and
+   its `\newcommand`s do not stop with "already defined". The compat entry `project-macros-by-the-framework`
+   (module `compat_project_macros`, not breaking) removes the now redundant line from a project's templates.
 19. **Clean up everything no longer needed** (user request 2026-10-29; the very last step, after everything else is
     merged and verified). List what will go and get the user's OK before deleting anything that cannot be
     recreated:

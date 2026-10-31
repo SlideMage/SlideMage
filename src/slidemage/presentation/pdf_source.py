@@ -133,7 +133,7 @@ class PresentationDeck:
 
     def page_labels(self) -> Optional[list[str]]:
         """Every page's label, or None when the PDF has none or they cannot be trusted: a presenter PDF compiled
-        before SlideMage v0.11.2 has one label rule for the slide and one for the note page of every page, so more
+        before SlideMage v0.12.1 has one label rule for the slide and one for the note page of every page, so more
         rules start than there are pages, and every other label is wrong."""
         rules = self._doc.get_page_labels()
         if not rules or any(rule.get("startpage", 0) >= self.page_count for rule in rules):
