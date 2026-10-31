@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 100 392 310" width="392" height="310">
+  <style>
+    .back { fill: #FDD400 }
+    .mid { fill: #D6D3CA }
+    .front { fill: #141414 }
+    .bar { fill: #FFFFFF }
+    .bar2 { fill: #FFFFFF; fill-opacity: 0.55 }
+    @media (prefers-color-scheme: dark) {
+      .mid { fill: #5A5852 }
+      .front { fill: #F4F3EF }
+      .bar { fill: #141414 }
+      .bar2 { fill: #141414; fill-opacity: 0.45 }
+    }
+  </style>
+  <rect class="back" x="136" y="118" width="300" height="210" rx="48"/>
+  <rect class="mid" x="106" y="150" width="300" height="210" rx="48"/>
+  <rect class="front" x="76" y="182" width="300" height="210" rx="48"/>
+  <circle cx="300" cy="256" r="50" fill="#FDD400" fill-opacity="0.28"/>
+  <circle cx="300" cy="256" r="26" fill="#FDD400"/>
+  <rect class="bar" x="116" y="294" width="150" height="20" rx="10"/>
+  <rect class="bar2" x="116" y="334" width="96" height="20" rx="10"/>
+</svg>
