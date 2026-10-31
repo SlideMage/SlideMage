@@ -967,6 +967,33 @@ mix it in.
    - **Website side:** nothing to list, since private themes are never in the catalogue. Tell them that the theme
      package's first real users install from a private repository, so a theme repository should follow the same
      release rules whether or not it is listed.
+17b. **Final test: a template unlike SlideMage's** (user request 2026-10-31; after step 17, before step 18). Draft a
+   template that differs from the SlideMage template in every respect the catalog and the layout profiles are meant
+   to cover, then render the whole manual deck in it to find what still assumes Fira or SlideMage's own look.
+   - **Font: LaTeX's default, Computer Modern.** LaTeX's default text font is Computer Modern Roman (beamer's own
+     default is Computer Modern Sans); today one uses Latin Modern, its scalable successor, and the `lmsans`
+     profile already covers the sans face. So this template uses the serif face, Latin Modern Roman, through a new
+     layout profile (`SlideMage_layout_lmroman.tex`, key `lmroman`) made with `tools/calibrate_font_profile.py`:
+     the first profile for a serif font and the first made only with the tool, which tests the tool as much as the
+     profile.
+   - **Look:** a taller title box; en dashes as bullet points; arabic numbers as footnote symbols (instead of the
+     theme's currency signs, `\g_SM_footnote_symbols_seq`); a taller footer box; a wider logo area (SlideMage's own
+     logo, with more space around it); wider left and right margins; a greyscale colour scheme (palette and role
+     colours in greys only).
+   - **Everything through the catalog.** The template sets only catalog settings and picks its profile, like any
+     template. Where one of these wishes has no catalog setting (likely the bullet glyph or the footnote symbols),
+     that is a finding: add the hook to `SlideMage_setup.tex` with the SlideMage template's value as default, so the
+     SlideMage render stays identical (regression), rather than patching the theme from the template.
+   - **Test:** render the manual deck (`example/decks/slidemage-manual.tex`, all three versions) under it, run
+     `tools/check_layout.py` on the PDFs and look at every page. Each problem is either fixed in the framework (a
+     value that assumed Fira or SlideMage's sizes, a margin a slide or the base ignores) or, when it is the manual's
+     own content that does not fit, listed for the user. Report the findings, and the before/after images of any
+     framework fix, to the user.
+   - **Keep it:** the template ships with SlideMage for others to use and modify, as an example of a template built
+     from the catalog alone (contrast to the SlideMage template): `latex/SlideMage_template_<key>.tex` (key decided
+     at the step, e.g. `classic` or `greyscale`), with its scheme folder if it needs one, no institution content.
+     Manual slide 1vw "Making a template" and 1pf/hd5 can point at it; the regression's in-repo config gets entries
+     for the manual under it, so later framework changes are tested against a second, very different template.
 18. **Version re-designation and the public repository** (user plan 2026-10-29; once the redesign is done and a
     version is stable). Every version so far gets a leading 0 (e.g. v10.1.12 becomes v0.10.1.12, v8.69.0 becomes
     v0.8.69.0); the public repository starts with a fresh initial commit (no history), and versions go on from
