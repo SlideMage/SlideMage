@@ -3147,3 +3147,9 @@ v10.18.1 (2026-10-31, direct request: reduce the greyscale template's default fo
 
 NEW: The greyscale template uses a smaller body text.
 - Slides written for the SlideMage template mostly fit the greyscale template's smaller text area now.
+
+v10.19.0 (2026-10-31, direct request: make the manual fit any template): The catalog gets the body text size \SMBodyFontSize, 11pt by default. SlideMage_base derives \normalsize, \small, \footnotesize, \scriptsize and \tiny from it, with beamer's own sizes and baseline skips at 10pt, 11pt and 12pt and proportional ones otherwise, so lists and \shrinklists follow the body text. The greyscale template sets it to 10pt instead of v10.18.1's stopgap, which is gone; every deck renders exactly as before. The manual fits every shipped template: 1ym, 1im, 1rv and 1td size their drawings and screenshots from the line width, 1nt's footer arrows and 1gr's drawing take their places and colours from the template, 1w4 and 1uw are shorter or rebalanced, and 1nz and 2rg say the currency-sign footnote markers are a default a template may replace with numbers. A new opt-in test checks that the manual has no layout-check finding under each template in latex/. The preview-equivalence pins of the base, the setup and the greyscale template are renewed.
+
+NEW: Templates choose the body text size, and the manual fits every template.
+- A template sets \SMBodyFontSize; lists, smaller text and \shrinklists follow it.
+- The SlideMage manual has no layout problems under the greyscale template.
