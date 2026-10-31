@@ -119,6 +119,7 @@ class WorkspaceWindow(QMainWindow):
     plugin_offer_fetched = Signal(object)   # the catalogue for the first-start sheet, or the Exception
     plugin_updates_done = Signal(object)   # maintenance.PluginUpdates, or the Exception that ended the check
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
+    theme_updates_done = Signal(object)  # theme_sources.check_updates's (offers, errors), or the Exception
     deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
     def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
@@ -218,6 +219,7 @@ class WorkspaceWindow(QMainWindow):
             lambda result: maintenance.on_startup_update_check_done(self, result))
         self.plugin_offer_fetched.connect(lambda result: maintenance.on_plugin_offer_fetched(self, result))
         self.plugin_updates_done.connect(lambda result: maintenance.on_plugin_updates_done(self, result))
+        self.theme_updates_done.connect(lambda result: maintenance.on_theme_updates_done(self, result))
         self.toast.action_triggered.connect(lambda key: maintenance.on_plugin_toast_action(self, key))
 
         self.palette = CommandPalette(self)
@@ -626,6 +628,10 @@ class WorkspaceWindow(QMainWindow):
     def open_deck_groups(self) -> None:
         """Settings → Project at the project's deck groups (Deck → Tags… links here)."""
         self.open_settings(PROJECT, focus=DECK_GROUPS)
+
+    def theme_installed(self, key: str) -> None:
+        """A theme package was installed or updated: re-render the previews of the decks that use its key."""
+        maintenance.on_theme_installed(self, key)
 
     def open_plugins(self) -> None:
         """Help → Plugins…: Settings on its Plugins tab."""

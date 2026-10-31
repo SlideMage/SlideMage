@@ -123,8 +123,8 @@
 % `` as typed, not as an en dash and a curly quote (fontspec's default for
 % \newfontfamily).
 \newfontfamily\SMInlineCodeFont{FiraMono-Regular.otf}[Scale=0.9, Ligatures=TeXOff]
-% The heading of a card in a diagram (\SMCard): a template with a medium weight
-% redefines it, e.g. \renewcommand{\SMCardHeadingFont}{\SMCardMediumFont}.
+% The heading of a card in a diagram (\SMCard). A template never redefines it; one with
+% another weight sets the catalog's \SMCardHeadingStyle (SlideMage_setup.tex, 'Card headings').
 \newcommand{\SMCardHeadingFont}{\bfseries}
 
 % Math ------------------------------------------------------------------------------

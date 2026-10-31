@@ -313,7 +313,14 @@ Everything else is in **File → Settings… → Plugins** (also **Help → Plug
   warns that it is not from the SlideMage plugin list and runs with your rights,
   and shows its name, version and network lines. Nothing is installed until you
   confirm. A `.sha256` file named after the plugin (`name.smplugin.sha256`) beside
-  it must match.
+  it must match. The same button takes a theme package (`.smtheme`).
+- **Themes**: the theme packages installed on this computer (a slide template
+  packaged on its own, `docs/THEME_PACKAGE.md`), each with **Remove**; no restart
+  needed. **Add theme from GitHub…** takes `owner/name` and installs the newest
+  release of a (private) theme repository with the GitHub token of Settings →
+  General; such a theme's updates are offered at start (*Install now*, *Not now*,
+  *Skip this version*, under the update setting) and its row has **Check for
+  update** and says why the last check failed.
 
 Changes take effect after a restart: plugins load once, before the window opens. A plugin can add Settings
 tabs; AI services add sections to the AI tab.

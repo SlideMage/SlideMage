@@ -94,3 +94,21 @@ def test_config_paths_and_entries(tmp_path):
     assert [e.key for e in entries] == [f"{n}-{v}" for n in ("a", "b@other") for v in fr.DEFAULT_VERSIONS]
     assert [e.group for e in fr.entries_of(cfg, cfg["project"], {"b@other"})] == ["b@other"] * 3
     assert {e.group for e in fr.entries_of(cfg, cfg["project"], {"a"})} == {"a"}
+
+
+def test_extra_dirs_go_on_texinputs_before_what_the_environment_had(tmp_path):
+    """An installed theme package (step 17): the config's folders, then the entry's, then the environment's TEXINPUTS
+    (or nothing: the trailing separator keeps TeX's own path); an entry without any leaves TEXINPUTS alone."""
+    (tmp_path / "c.json").write_text(json.dumps(
+        {"project": "p", "framework": "f", "extra_dirs": ["themes/one"],
+         "decks": [{"deck": "decks/a.tex", "template": "one"},
+                   {"deck": "decks/a.tex", "template": "two", "extra_dirs": ["../elsewhere/two"]}]}))
+    cfg = fr.load_config(tmp_path / "c.json")
+    first, *_, last = fr.entries_of(cfg, cfg["project"], None)
+    assert first.extra_dirs == ((tmp_path / "themes" / "one").resolve(),)
+    assert last.extra_dirs == ((tmp_path / "themes" / "one").resolve(), (tmp_path.parent / "elsewhere" / "two").resolve())
+    sep = fr.os.pathsep
+    assert fr.texinputs(first, {}) == f"{(tmp_path / 'themes' / 'one').resolve()}{sep}"
+    assert fr.texinputs(last, {"TEXINPUTS": "x"}).endswith(f"{(tmp_path.parent / 'elsewhere' / 'two').resolve()}{sep}x")
+    assert last.key == "a@two-after-course"
+    assert fr.texinputs(fr.Entry(tmp_path / "a.tex", None, "instructor"), {"TEXINPUTS": "x"}) is None

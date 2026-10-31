@@ -40,11 +40,9 @@ PALETTE_FOR_SLIDES = {"c_custom_brown", "c_custom_green", "c_secondary_yellow", 
 # \newfontfamily names a profile may define (v10.9.0: a profile holds the code fonts besides its macros and
 # the font files themselves -- nothing else is a font of the profile's own).
 ALLOWED_PROFILE_FONT_NAMES = {"SMCodeFont", "SMInlineCodeFont"}
-# The profile's own metrics and font macros a template never overrides (step 13): \SMCardHeadingFont is the one
-# documented exception (the catalog's own comment shows a template redefining it, e.g. to \SMCardMediumFont), so
-# it is left out here -- the others are read only where the base/theme needs a fallback or a typographic choice
-# the font made, never something a template has a reason to pick for itself.
-PROFILE_OWNED_NOT_FOR_TEMPLATES = (PROFILE_MACROS | ALLOWED_PROFILE_FONT_NAMES) - {"SMCardHeadingFont"}
+# The profile's own metrics and font macros a template never overrides (step 13). Since v10.17.0 that includes
+# \SMCardHeadingFont: a template with another card heading weight sets the catalog's \SMCardHeadingStyle.
+PROFILE_OWNED_NOT_FOR_TEMPLATES = PROFILE_MACROS | ALLOWED_PROFILE_FONT_NAMES
 
 
 def read(path: Path) -> str:
@@ -198,10 +196,11 @@ def test_no_template_or_profile_sets_a_derived_name():
 def test_no_template_sets_a_name_the_profile_computes():
     """A template only picks a layout profile; it never overrides a single profile value (user decision, see the
     handover): the profile's own metrics (\\SMFontAscender, \\SMLinespread, \\SMParskip) and its code fonts are
-    computed from the loaded font, not hook-settable, like the base's own derived names above -- the one documented
-    exception is \\SMCardHeadingFont (the catalog itself shows a template redefining it)."""
+    computed from the loaded font, not hook-settable, like the base's own derived names above, and so is its
+    \\SMCardHeadingFont since v10.17.0 (the catalog's \\SMCardHeadingStyle picks another weight). Checked in the whole
+    template: a renewal after \\input{SlideMage_base} would override the profile just the same."""
     for template in SHIPPED_TEMPLATES + [STRESS / "SlideMage_template_stress-test.tex"]:
-        touched = defined(settings_before_base(template),
+        touched = defined(code(read(template)),
                           ("setlength", "addtolength", "renewcommand", "newlength", "newcommand", "providecommand"))
         assert not touched & PROFILE_OWNED_NOT_FOR_TEMPLATES, \
             f"{template.name} sets {sorted(touched & PROFILE_OWNED_NOT_FOR_TEMPLATES)}"
