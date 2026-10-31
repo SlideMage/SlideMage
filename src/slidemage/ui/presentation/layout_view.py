@@ -10,7 +10,11 @@ from PySide6.QtWidgets import QBoxLayout, QHBoxLayout, QSplitter, QVBoxLayout, Q
 
 from ...presentation.layout import Leaf, Node, Profile
 
-STRIP_HEIGHT = 46
+STRIP_HEIGHT = 58
+# Larger than the window's default text: the presenter reads the counter, the clock and the timer, and hits the
+# buttons, from a step or two away. Children with their own sheet (the lit buttons, the timer's colours) keep it.
+STRIP_STYLE = ("QLabel, QToolButton, QPushButton { font-size: 16px; }"
+               " QToolButton, QPushButton { padding: 6px 12px; }")
 
 
 def build_layout(profile: Profile, factory: Callable[[str], QWidget]) -> QWidget:
@@ -21,6 +25,7 @@ def build_layout(profile: Profile, factory: Callable[[str], QWidget]) -> QWidget
 def _strip(leaf: Leaf, factory: Callable[[str], QWidget]) -> QWidget:
     strip = QWidget()
     strip.setFixedHeight(STRIP_HEIGHT)
+    strip.setStyleSheet(STRIP_STYLE)
     row = QHBoxLayout(strip)
     row.setContentsMargins(8, 2, 8, 2)
     for position, name in enumerate(leaf.elements):

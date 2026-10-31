@@ -3234,3 +3234,8 @@ NEW: Presentation settings show in full, and the presenter screen names the curr
 - The presentation settings no longer cut off text on the right; the timer options now stand one under the other.
 - On the presenter screen, a small “Current” and “Next” label in the corner tells the two slides apart. The audience never sees them.
 - The clock on the presenter screen now reads “Current time: 14:05”.
+
+v0.13.4 (2026-11-01, direct request: make the footer bar of the presenter window a bit bigger, text and buttons): The info strip at the bottom of the presenter window, with the slide counter, the clock, the timer and the buttons, is 58 px tall instead of 46, and its labels and buttons use 16 px text with 6 by 12 px padding on the buttons, from layout_view.STRIP_STYLE; widgets with their own style sheet, the lit buttons and the timer’s warning colours, keep theirs. With Windows’ own fonts the bar needs about 994 px of width instead of 686, so it still fits a 1280 px laptop screen. Shared presentation code: SlideMage’s presentation mode gets the same bar.
+
+NEW: The presenter screen’s bottom bar is larger and easier to read.
+- The slide counter, the clock, the timer and the buttons at the bottom of the presenter screen are bigger, in SlideMage Presenter and in SlideMage.

@@ -393,3 +393,12 @@ def test_the_clock_says_it_is_the_current_time(make):
     controller = make(settings=PresentationSettings(clock_format="24"))
     clocks = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Current time: ")]
     assert len(clocks) == 1 and clocks[0].text()[len("Current time: "):].count(":") == 1
+
+
+def test_the_footer_bar_is_taller_with_larger_text(make):
+    from PySide6.QtWidgets import QWidget
+    from slidemage.ui.presentation import layout_view
+    controller = make()
+    strips = [w for w in controller.presenter.findChildren(QWidget) if w.styleSheet() == layout_view.STRIP_STYLE]
+    assert strips and all(strip.height() == layout_view.STRIP_HEIGHT == 58 for strip in strips)
+    assert "font-size: 16px" in layout_view.STRIP_STYLE
