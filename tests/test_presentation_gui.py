@@ -375,3 +375,15 @@ def test_the_laser_menu_changes_colour_and_size_for_this_presentation_only(make)
     canvases = controller.audience.findChildren(SlideCanvas) + controller.presenter.findChildren(SlideCanvas)
     assert canvases and all(canvas.settings is controller.settings for canvas in canvases)   # drawn from it live
     assert PresentationSettings.load().laser_size == PresentationSettings().laser_size       # nothing saved
+
+
+def test_the_presenter_names_its_current_and_next_slide_but_the_projector_shows_no_name(make):
+    controller = make()
+    names = sorted(canvas.name for canvas in controller.presenter.findChildren(SlideCanvas) if canvas.name)
+    assert names == ["Current", "Next"]
+    assert all(not canvas.name for canvas in controller.audience.findChildren(SlideCanvas))
+
+
+def test_the_presentation_settings_fit_a_sheet_of_the_settings_width(qapp):
+    from slidemage.ui.presentation.settings_page import PresentationTab
+    assert PresentationTab().minimumSizeHint().width() <= 700      # the sheet is 760 wide; nothing is cut off

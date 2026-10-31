@@ -5,12 +5,12 @@ other tabs, a control applies and is saved when it changes."""
 from __future__ import annotations
 
 from PySide6.QtGui import QColor, QGuiApplication
-from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QPushButton, QSpinBox
+from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QPushButton, QSpinBox, QVBoxLayout
 
 from ...presentation import layout
 from ...presentation.screens import ScreenInfo
 from ...presentation.settings import TIMER_DURATION, TIMER_END, PresentationSettings
-from ..kit.widgets import Field, Page, caption, columns, row
+from ..kit.widgets import Field, Page, Surface, caption, columns
 
 TIMER_MODES = ((TIMER_END, "End time of day"), (TIMER_DURATION, "Duration"))
 CLOCK_FORMATS = (("system", "System setting"), ("24", "24 hours"), ("12", "12 hours"))
@@ -87,7 +87,14 @@ class PresentationTab(Page):
                            (self.timer_warn, "timer_warn")):
             check.setChecked(getattr(values, key))
             check.toggled.connect(lambda on, k=key: self._set(k, bool(on)))
-        body.addWidget(Field("Timer behaviour", row(self.timer_start, self.timer_flash, self.timer_warn)))
+        # one under the other: side by side, the three made the page wider than its sheet and cut off its right edge
+        checks = Surface()
+        stack = QVBoxLayout(checks)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(4)
+        for check in (self.timer_start, self.timer_flash, self.timer_warn):
+            stack.addWidget(check)
+        body.addWidget(Field("Timer behaviour", checks))
         body.addWidget(caption(
             "The timer is optional: click it in the presenter window to set an end time or a duration. T starts or "
             "pauses it, Shift+T resets it."))

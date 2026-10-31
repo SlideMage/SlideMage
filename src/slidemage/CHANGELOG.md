@@ -3220,3 +3220,9 @@ NEW: SlideMage Presenter now has its own small, fast program build.
 - SlideMage Presenter has its own icon and a build of about 99 MB (44 MB zipped), against more than 600 MB for SlideMage.
 - The window opens in well under a second on a normal PC.
 - The download itself comes with the next step, so for now this is for the developer only.
+
+v0.12.7 (2026-10-31, direct request: the presentation settings cut off text, and the presenter window should name the current and next slide): The presentation settings page put its three timer options side by side, which made the page wider than its sheet, so the right edge of every row and caption was cut off, in SlideMage Presenter’s settings sheet and in SlideMage’s own Settings alike; they now stand one under the other, the page needs less than 700 px, and the Presenter’s settings sheet is 760 px wide like SlideMage’s. The presenter window’s current and next slide views carry a small “Current” and “Next” tag in their top-left corner, beside the status badge when the projector is black or frozen; SlideCanvas takes it as `name`, and the projector shows none.
+
+NEW: Presentation settings show in full, and the presenter screen names the current and the next slide.
+- The presentation settings no longer cut off text on the right; the timer options now stand one under the other.
+- On the presenter screen, a small “Current” and “Next” label in the corner tells the two slides apart. The audience never sees them.

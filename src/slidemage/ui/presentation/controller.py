@@ -129,10 +129,10 @@ class PresentationController(QObject):
     # -- the widgets ------------------------------------------------------------------
 
     def _canvas(self, view, part: str, *, interactive: bool = False, background: str = "#000000",
-                empty_text: str = "", top: bool = False) -> SlideCanvas:
+                empty_text: str = "", top: bool = False, name: str = "") -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
         canvas = SlideCanvas(self.deck, view, part=part, laser_color=self.settings.laser_color,
-                             laser_size=self.settings.laser_size, settings=self.settings, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
+                             laser_size=self.settings.laser_size, settings=self.settings, name=name, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
         self.session.changed.connect(canvas.update)
         return canvas
 
@@ -158,9 +158,10 @@ class PresentationController(QObject):
     def _element(self, name: str) -> QWidget:
         session = self.session
         if name == "current":
-            return self._canvas(CurrentView(session), SLIDE, interactive=True, background="#101010")
+            return self._canvas(CurrentView(session), SLIDE, interactive=True, background="#101010", name="Current")
         if name == "next":
-            return self._canvas(NextView(session), SLIDE, background="#101010", empty_text="End of presentation")
+            return self._canvas(NextView(session), SLIDE, background="#101010", empty_text="End of presentation",
+                                name="Next")
         if name == "notes":
             return self._canvas(NotesView(session), NOTES, background="#ffffff", top=True,
                                 empty_text="" if self.deck.has_notes else "No notes in this PDF.\nCompile the Presenter version to see notes.")
