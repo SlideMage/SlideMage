@@ -132,9 +132,25 @@ class PresentationController(QObject):
                 empty_text: str = "", top: bool = False) -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
         canvas = SlideCanvas(self.deck, view, part=part, laser_color=self.settings.laser_color,
-                             laser_size=self.settings.laser_size, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
+                             laser_size=self.settings.laser_size, settings=self.settings, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
         self.session.changed.connect(canvas.update)
         return canvas
+
+    @staticmethod
+    def _while_alive(widget: QWidget, update: Callable[[], None], *signals) -> None:
+        """Run `update` on `signals` for as long as `widget` exists. A layout change (P) replaces the presenter's
+        widgets, and a plain lambda stays connected after its widget is gone: every slide change then printed
+        "Internal C++ object already deleted" (up to v0.12.4)."""
+        for signal in signals:
+            signal.connect(update)
+
+        def gone(*_args) -> None:
+            for signal in signals:
+                try:
+                    signal.disconnect(update)
+                except (RuntimeError, TypeError):
+                    pass                # already disconnected, or the sender is gone too
+        widget.destroyed.connect(gone)
 
     def _build_profile(self, profile: layout.Profile) -> QWidget:
         return build_layout(profile, self._element)
@@ -150,8 +166,7 @@ class PresentationController(QObject):
                                 empty_text="" if self.deck.has_notes else "No notes in this PDF.\nCompile the Presenter version to see notes.")
         if name == "counter":
             label = QLabel()
-            session.changed.connect(lambda: label.setText(self.counter_text()))
-            self.typing_changed.connect(lambda: label.setText(self.counter_text()))
+            self._while_alive(label, lambda: label.setText(self.counter_text()), session.changed, self.typing_changed)
             label.setText(self.counter_text())
             return label
         if name == "clock":
@@ -213,7 +228,7 @@ class PresentationController(QObject):
             if checked is not None:
                 tool.setCheckable(True)
                 tool.setChecked(checked())
-                session.changed.connect(lambda: tool.setChecked(checked()))
+                self._while_alive(tool, lambda: tool.setChecked(checked()), session.changed)
             row.addWidget(tool)
             return tool
 
@@ -223,6 +238,11 @@ class PresentationController(QObject):
 
         pen = button("Pen", "Draw (D); opens the pen's colour and width for this presentation",
                      pen_clicked, lambda: session.tool == TOOL_PEN)
+        def laser_clicked() -> None:
+            self._laser_menu(laser).popup(laser.mapToGlobal(laser.rect().bottomLeft()))
+
+        laser = button("Laser", "The laser pointer shows while you hold Ctrl and the left mouse button on the current "
+                       "slide; this opens its colour and size for this presentation", laser_clicked)
         button("Eraser", "Erase strokes (E)", lambda: session.set_tool(TOOL_ERASER), lambda: session.tool == TOOL_ERASER)
         button("Clear", "Clear the drawings of this page (Delete; Shift: all pages)", self.clear_drawings)
         button("Black", "Black out the projector (B)", session.toggle_black, lambda: session.black)
@@ -232,34 +252,45 @@ class PresentationController(QObject):
         return bar
 
     def _pen_menu(self, parent: QWidget) -> QMenu:
-        """Colour and width of the pen. They change the settings of this presentation only; the saved ones (the
-        Settings sheet) are not touched."""
+        """Colour and width of the pen, for this presentation only; the saved ones (the Settings sheet) stay."""
+        return self._colour_menu(parent, "Pen", "pen_color", "pen_width", (2, 50), alpha=True)
+
+    def _laser_menu(self, parent: QWidget) -> QMenu:
+        """Colour and size of the laser pointer, for this presentation only, like the pen's."""
+        return self._colour_menu(parent, "Laser", "laser_color", "laser_size", (5, 60), alpha=False)
+
+    def _colour_menu(self, parent: QWidget, name: str, color_key: str, size_key: str, steps: tuple[int, int], *,
+                     alpha: bool) -> QMenu:
+        """A colour button and a size slider (tenths of a percent of the slide height) that change
+        self.settings, which the canvases read as they draw."""
         menu = QMenu(parent)
         panel = QWidget()
         column = QHBoxLayout(panel)
-        column.addWidget(QLabel("Pen"))
+        column.addWidget(QLabel(name))
         swatch = QPushButton("Colour")
         slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setRange(2, 50)                                     # tenths of a percent of the slide height
-        slider.setValue(round(self.settings.pen_width * 1000))
+        slider.setRange(*steps)
+        slider.setValue(round(getattr(self.settings, size_key) * 1000))
         slider.setFixedWidth(140)
         size = QLabel()
 
         def paint() -> None:
-            color = QColor(self.settings.pen_color)
+            color = QColor(getattr(self.settings, color_key))
             swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
             size.setText(f"{slider.value() / 10:g} %")
 
         def pick() -> None:
-            color = QColorDialog.getColor(QColor(self.settings.pen_color), panel, "Pen colour",
-                                          QColorDialog.ColorDialogOption.ShowAlphaChannel)
+            options = QColorDialog.ColorDialogOption.ShowAlphaChannel if alpha else QColorDialog.ColorDialogOption(0)
+            color = QColorDialog.getColor(QColor(getattr(self.settings, color_key)), panel, f"{name} colour", options)
             if color.isValid():
-                self.settings.pen_color = color.name(QColor.NameFormat.HexArgb)
+                setattr(self.settings, color_key, color.name(QColor.NameFormat.HexArgb if alpha else QColor.NameFormat.HexRgb))
                 paint()
+                self.session.changed.emit()
 
         def resize(value: int) -> None:
-            self.settings.pen_width = value / 1000
+            setattr(self.settings, size_key, value / 1000)
             paint()
+            self.session.changed.emit()
         swatch.clicked.connect(pick)
         slider.valueChanged.connect(resize)
         for widget in (swatch, slider, size):
@@ -269,7 +300,7 @@ class PresentationController(QObject):
         action.setDefaultWidget(panel)
         menu.addAction(action)
         menu.setToolTipsVisible(True)
-        menu.setToolTip("For this presentation only; the Settings sheet keeps its own pen.")
+        menu.setToolTip(f"For this presentation only; the Settings sheet keeps its own {name.lower()}.")
         return menu
 
     # -- actions ----------------------------------------------------------------------

@@ -3206,3 +3206,10 @@ NEW: SlideMage Presenter, a small program for presenting a PDF, is in the making
 - It presents a presenter PDF (slides and notes) or any plain PDF without a project, and remembers the last ten.
 - You can drop a PDF on its window, or give it the PDF to present when you start it.
 - It is not downloadable yet: the build and the download come in the next steps, so for now only a source checkout runs it.
+
+v0.12.5 (2026-10-31, direct request: errors in the terminal after trying SlideMage Presenter, and no way to set the laser pointer during a talk): A presentation printed “Internal C++ object already deleted” on every slide change after the layout had been changed with P or the Profile button. The slide counter and the toolbar's lit buttons were updated by lambdas connected to the session, which stayed connected after a layout change had replaced those widgets; PresentationController._while_alive now disconnects such an update when its widget is destroyed. This was in the shared presentation code, so SlideMage's own presentation mode had it too. The toolbar gets a Laser button next to the Pen: it opens the laser pointer's colour and size for this presentation, as the Pen button does for the pen, through the shared _colour_menu; SlideCanvas now reads the laser's colour and size from the presentation's settings as it draws, so a change shows at once on both screens. The saved laser settings stay on the presentation settings page.
+
+NEW: A Laser button during a talk, and no more error messages after changing the layout.
+- The toolbar of the presenter screen has a Laser button: it sets the laser pointer’s colour and size for the current talk, as the Pen button does for the pen.
+- Changing the layout of the presenter screen no longer fills the terminal with error messages.
+- The colour and size you start every talk with are under Presentation settings.

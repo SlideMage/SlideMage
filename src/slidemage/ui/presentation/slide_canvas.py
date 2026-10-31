@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QWidget
 
 from ...presentation.pdf_source import SLIDE, PresentationDeck
 from ...presentation.session import Point, Stroke
+from ...presentation.settings import PresentationSettings
 from .slide_input import SlideInput
 
 BADGE_COLORS = {"black": "#d32f2f", "frozen": "#ef9a1a", "both": "#d32f2f"}
@@ -27,11 +28,13 @@ class View(Protocol):
 class SlideCanvas(QWidget):
     def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff2020",
                  laser_size: float = 0.02, background: str = "#000000", empty_text: str = "", top: bool = False,
-                 slide_input: Optional[SlideInput] = None, parent: Optional[QWidget] = None) -> None:
+                 slide_input: Optional[SlideInput] = None, settings: Optional[PresentationSettings] = None,
+                 parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.deck, self.view, self.part, self.laser_size = deck, view, part, laser_size
         self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
         self.input = slide_input
+        self.settings = settings     # when given, the laser's colour and size are read from it as it is drawn
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumSize(40, 30)
         if slide_input is not None:
@@ -100,8 +103,10 @@ class SlideCanvas(QWidget):
 
     def _laser(self, painter: QPainter, rect: QRect, pointer: Point) -> None:
         centre = QPointF(rect.x() + pointer[0] * rect.width(), rect.y() + pointer[1] * rect.height())
-        radius = max(3.0, self.laser_size * rect.height())
-        color = QColor(self.laser_color)
+        size, color = ((self.settings.laser_size, self.settings.laser_color) if self.settings is not None
+                       else (self.laser_size, self.laser_color))
+        radius = max(3.0, size * rect.height())
+        color = QColor(color)
         halo = QColor(color)
         halo.setAlpha(0)
         glow = QColor(color)
