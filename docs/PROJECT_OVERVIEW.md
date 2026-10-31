@@ -2,8 +2,11 @@
 
 SlideMage is a LaTeX/beamer framework for research and teaching slides,
 built on its own beamer theme (a modified fork of the
-[Gotham theme](https://gitlab.com/RomainNOEL/beamertheme-gotham)) with an
-institution-specific color/logo layer (Uni Graz, in this copy). SlideMage
+[Gotham theme](https://gitlab.com/RomainNOEL/beamertheme-gotham)) and
+templates, one per institution (Uni Graz, in this copy, besides SlideMage's
+own): a template sets colors and logo, picks a layout profile (the fonts
+and their metrics) and changes whatever layout settings it wants from the
+catalog in `latex/SlideMage_setup.tex`. SlideMage
 is a PySide6 (Qt) desktop app that sits on top of it: compiling decks,
 managing slide IDs and versions, drafting/reviewing image descriptions via
 a local Ollama model (or a Claude model, if you allow cloud use), generating
@@ -20,8 +23,12 @@ verified against an actual working copy while preparing it, not just
 described.
 
 **One repo, three parts.** `latex/` is the institution-independent
-framework (SlideMage beamer theme, `SlideMage_setup.tex`, `SlideMage_base.tex`,
-`SlideMage_alt.lua`); `example/` is a complete SlideMage *project* —
+framework (SlideMage beamer theme, `SlideMage_setup.tex` with the catalog
+of template settings, the layout profiles `SlideMage_layout_fira.tex` and
+`SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, the SlideMage template
+`SlideMage_template_slidemage.tex`, `SlideMage_bibliography_default.tex`,
+`SlideMage_alt.lua`, `SlideMage_measure.lua`; the manual's slide "What a
+compile reads, in order" shows how they fit together); `example/` is a complete SlideMage *project* —
 slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,
 which marks a project's root; `src/slidemage/` is SlideMage, the app. Paths like
 `decks/…`, `slides/…` or `media/…` in these docs are relative to the
@@ -172,7 +179,7 @@ See `docs/SlideMage.md` for the details and the manual (`example/`) for screensh
    ```
 2. **A LaTeX distribution with LuaLaTeX.** TeX Live is the natural choice
    on Linux/macOS; MiKTeX on Windows. `lualatex` is the *only* supported
-   engine — the SlideMage theme loads Fira Sans via `fontspec`, which plain
+   engine — the default layout profile loads Fira Sans via `fontspec`, which plain
    `pdflatex` silently mis-renders instead of erroring, and slide content
    uses Unicode math comparison characters `xelatex` doesn't handle out of
    the box. Let your distribution auto-install missing packages on first

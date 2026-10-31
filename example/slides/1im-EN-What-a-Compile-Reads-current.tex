@@ -1,0 +1,63 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, appendix: the load order of a compile (SlideMage v10.15.0,
+% step 15 of the framework redesign), checked against the \input lines of
+% latex/SlideMage_template_slidemage.tex, SlideMage_setup.tex (the profile,
+% then the theme, then the catalog) and SlideMage_base.tex (the two Lua files,
+% by dofile). The project macros come after the base where a project's
+% template \input{}s them; the compatibility change puts the citation format
+% after them. Gray: framework files in latex/; white: the project's files;
+% the template's settings override the catalog's defaults (box 7).
+\setSlideVersion{1-0-0}
+\providecommand{\SMLoadName}[1]{{\SMCardHeadingFont #1}\\}% a box's heading
+\providecommand{\SMLoadFile}[1]{{\SMCodeFont\fontsize{5.4}{6.6}\selectfont #1}\\[1pt]}% a file name
+\begin{standardframe}{What a compile reads, in order}
+	\begin{tikzillustration}[
+			file/.style={line width=0.4pt, rounded corners=2pt, text width=90pt, minimum height=38pt,
+				align=left, inner sep=3pt, anchor=north west, font=\fontsize{6.4}{7.4}\selectfont,
+				execute at begin node={\hyphenpenalty=10000\exhyphenpenalty=10000}},
+			fw/.style={file, SMProcess},
+			pj/.style={file, SMCard},
+			flow/.style={SMArrow, c_primary_dark, line width=0.5pt},
+			back/.style={SMArrow, c_primary_dark, line width=0.5pt, rounded corners=3pt},
+		]{1im-tikz}
+		% row 1
+		\node[pj] (deck) at (0,0) {\SMLoadName{1 The deck}\SMLoadFile{decks/<deck>.tex}
+			\SMCmd{input}s its template, nothing else};
+		\node[pj] (tpl) at (105pt,0) {\SMLoadName{2 Its template}\SMLoadFile{SlideMage\_template\_<key>}
+			picks the layout profile, then loads 3};
+		\node[fw] (setup) at (210pt,0) {\SMLoadName{3 Setup layer}\SMLoadFile{SlideMage\_setup}
+			loads 4 and 5, then defines 6};
+		\node[fw] (prof) at (315pt,0) {\SMLoadName{4 Layout profile}\SMLoadFile{SlideMage\_layout\_fira}
+			fonts and their metrics};
+		% row 2
+		\node[fw] (theme) at (0,-52pt) {\SMLoadName{5 Theme}\SMLoadFile{beamerthemeSlideMage.sty}
+			the look: title bar, footer, blocks, bullets};
+		\node[fw] (cat) at (105pt,-52pt) {\SMLoadName{6 The catalog}\SMLoadFile{in SlideMage\_setup}
+			every template setting, with its default};
+		\node[pj] (set) at (210pt,-52pt) {\SMLoadName{7 Template's settings}\SMLoadFile{in the template}
+			\textcolor{c_primary_highlight}{\textbf{override 6}}: colors, logo, any catalog setting};
+		\node[fw] (base) at (315pt,-52pt) {\SMLoadName{8 Base}\SMLoadFile{SlideMage\_base}
+			derives the values; frames, commands, layout rules};
+		% row 3
+		\node[fw] (lua) at (0,-104pt) {\SMLoadName{9 Lua, loaded by 8}\SMLoadFile{SlideMage\_measure.lua}\SMLoadFile{SlideMage\_alt.lua}
+			Top Margin, \SMCmd{SMFit}; alt text};
+		\node[pj] (mac) at (105pt,-104pt) {\SMLoadName{10 Project macros}\SMLoadFile{SlideMage\_project\_macros}
+			your commands, if the template loads them};
+		\node[fw] (bib) at (210pt,-104pt) {\SMLoadName{11 Citation format}\SMLoadFile{SlideMage\_bibliography\_\allowbreak default}
+			if the template loads it};
+		\node[pj] (sl) at (315pt,-104pt) {\SMLoadName{12 The slides}\SMLoadFile{slides/<id>-current.tex}
+			after the deck's settings and \SMCmd{begin}\SMCode{\{document\}}};
+		% the reading order
+		\foreach \a/\b in {deck/tpl, tpl/setup, setup/prof, theme/cat, cat/set, set/base, lua/mac, mac/bib, bib/sl}
+			\draw[flow] (\a.east) -- (\b.west);
+		\draw[back] (prof.south) -- ++(0,-5pt) -| (theme.north);
+		\draw[back] (base.south) -- ++(0,-5pt) -| (lua.north);
+		% legend
+		\node[SMProcess, line width=0.4pt, rounded corners=2pt, inner sep=2pt, anchor=north west, font=\fontsize{6.4}{7.4}\selectfont] (lfw) at (0,-160pt) {SlideMage's files, in \SMCode{latex/}};
+		\node[SMCard, line width=0.4pt, rounded corners=2pt, inner sep=2pt, anchor=west, font=\fontsize{6.4}{7.4}\selectfont] (lpj) at ([xshift=8pt]lfw.east) {your project's files};
+		\node[anchor=west, inner sep=0pt, text width=226pt, align=left, font=\fontsize{6.4}{7.4}\selectfont] at ([xshift=10pt]lpj.east)
+			{\textcolor{c_primary_highlight}{\textbf{A project file wins}} over one of the same name in \SMCode{latex/}: your own template, layout profile, even your copy of the SlideMage template.};
+	\end{tikzillustration}
+\end{standardframe}

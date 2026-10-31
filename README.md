@@ -31,7 +31,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex`, the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the house citation format `SlideMage_bibliography_default.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -429,7 +429,7 @@ idempotent, and written all or nothing, with line endings kept.
 The framework's old name was "Slidemaster". The change `slidemage-names-and-setup-layer`
 (`src/slidemage/compat_names.py`) renames the project's `Slidemaster_preamble_<key>.tex`
 to `SlideMage_template_<key>.tex`, `Slidemaster_project_macros.tex` to
-`SlideMage_project_macros.tex` and `SlideMage.bib` to `SlideMage.bib`, and rewrites the
+`SlideMage_project_macros.tex` and `Slidemaster.bib` to `SlideMage.bib`, and rewrites the
 names inside decks, templates and `.latexmkrc` files. The environment variables are now
 `$SLIDEMAGE_LATEX` and `$SLIDEMAGE_PROJECT`; the old names are no longer read, and a
 variable still set under its old name is reported once in the log and in this sheet.
@@ -511,6 +511,33 @@ copied package files in `texmf/` record the exact originals.
 
 ## Directory layout
 
+**What a compile reads, in order** (since v10.14.0; the manual's slide 1im draws it). A deck
+`\input`s one template, `SlideMage_template_<key>.tex`, and nothing else of the framework. The
+template `\input`s `SlideMage_setup.tex`, which loads the layout profile
+`SlideMage_layout_<profile>.tex` (fonts and their metrics; `fira` unless the template says
+`\newcommand{\SMLayoutProfile}{...}` before the setup layer), then the beamer theme
+`beamerthemeSlideMage.sty` (the look), then defines the **catalog**: every setting a template may
+change, with its default. The template then changes what it wants (colors, logo, any catalog
+length or macro with `\setlength`/`\renewcommand`) and `\input`s `SlideMage_base.tex`, which
+derives every computed value from those settings, defines the frames, the slide commands and the
+layout rules, and loads `SlideMage_alt.lua` (image descriptions) and `SlideMage_measure.lua` (the
+automatic Top Margin, `\SMFit`). After the base the template only adds: the house citation format
+(`\input{SlideMage_bibliography_default}`) and, in a project that has one, its
+`SlideMage_project_macros.tex`. Back in the deck come its own settings (`\FooterText`, the deck
+version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, each `\slide{}`
+reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
+framework file's name wins over the framework's (the project folder comes first on the TeX
+search path): a project can ship its own template, layout profile or even its own copy of the
+SlideMage template. **To make a template**, copy `latex/SlideMage_template_slidemage.tex` into
+the project as `SlideMage_template_<key>.tex`, add a `% SlideMage template name: ...` line, and
+set between `\input{SlideMage_setup}` and `\input{SlideMage_base}` what you change from the
+catalog (read `SlideMage_setup.tex`: each setting has a one-line comment). Pick a layout profile
+or ship your own, but never set one of a profile's values in a template; for a new font, see the
+recipe under `SlideMage_layout_lmsans.tex` below. The optional theme features (mini frames,
+progress bar, divider frames, watermark) are switched on in the template too; the end of
+`SlideMage_setup.tex` lists their commands, and `tests/fixtures/template_stress/decks/stress.tex`
+shows them all on.
+
 - `beamerthemeSlideMage.sty` — the beamer theme (since v10.1.0): a pruned and
   renamed fork of Romain Noël's Gotham theme v1.2.5.a (LPPL 1.3c; the file's header
   states the changes and points to the unmodified original). `SlideMage_setup.tex`
@@ -582,20 +609,28 @@ copied package files in `texmf/` record the exact originals.
   other design value: text margins, footer and footnote sizes and spacing, block margins, title,
   section, quote and progress-strip frame sizes, list spacing ratios, image border width, code size.
   It also inputs the layout profile. The one file a template author reads.
-- `SlideMage_base.tex` — the project's shared customization
-  layer: the footer (course name + slide ID + frame number), the
+- `SlideMage_base.tex` — the framework's shared layer, loaded by every
+  template after its settings: it derives the computed values from the catalog
+  (the title-frame box width, the logo width, the content bottom, ...; it never
+  sets a catalog setting itself), and defines the footer (course name + slide ID + frame number), the
   `\slide{}`/`\slideversion{}` loading commands (and their student-version-
   excludable counterparts, `\omitslide{}`/`\omitslideversion{}`), the
   `standardframe` layout, and the special-purpose frame types built on
   top of it (title slide, section overview, quote, figure-only,
   presenter-attention — see "Special frame types" below). Institution-
-  agnostic: everything here refers to colors/logos only through the names
-  the institution layer below defines.
+  agnostic: everything here refers to colors, logos and layout values only
+  through the catalog's names, which the template below may have changed.
+- `SlideMage_bibliography_default.tex` — the house citation format (since
+  v10.14.0): biblatex options and the bibliography's look. A template that wants it
+  says `\input{SlideMage_bibliography_default}` after `\input{SlideMage_base}`; a deck
+  turns it on with `\SMUseBibliography`.
 - `SlideMage_template_uni-graz.tex` — a thin institution layer:
   `\input{SlideMage_setup}`, then the settings it changes from the catalog
   (the `c_*` color palette, `\renewcommand{\SMInstituteLogoPath}{...}`, the
-  per-logo calibration lengths with `\setlength`), followed by
-  `\input{SlideMage_base}`. A deck picks its institution by `\input{}`ing
+  logo height and title-bar paddings with `\setlength`), followed by
+  `\input{SlideMage_base}` and its citation format. A template is colors, a logo, a
+  layout profile (the default `fira` here) and whatever catalog settings it changes;
+  nothing else. A deck picks its institution by `\input{}`ing
   this file (never the base file directly). The original project has two
   more of these (for two other institutions), each following exactly this
   same pattern with its own colors/logo and nothing else different — not

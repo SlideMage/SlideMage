@@ -888,6 +888,41 @@ mix it in.
      a default. Make it after steps 4-7, so it shows the order as it ends up; next to "Making a template".
    - German translations where they exist (hd5)
    - Regenerate the manual's screenshots or crops only if something visible changed.
+   - **Done 2026-10-31 (v10.15.0):**
+     - **Load order, verified against the `\input`s** (not the order this step's list gave): deck ->
+       `SlideMage_template_<key>` -> `SlideMage_setup` -> `SlideMage_layout_<profile>` (setup:164) ->
+       `\usetheme{SlideMage}` (setup:172) -> the catalog (rest of setup) -> the template's settings ->
+       `SlideMage_base` (which `dofile`s `SlideMage_alt.lua` and `SlideMage_measure.lua`) -> after the base, the
+       template's additions: `SlideMage_project_macros` where a project's template inputs it, then
+       `SlideMage_bibliography_default` (the shipped SlideMage template has only the latter; the
+       "bibliography-in-template" migration inserts the format after the last of base/project macros, so this is the
+       order in a project) -> back in the deck its settings, `\SMUseBibliography`, `\begin{document}`, the slides.
+     - **Manual:** new slides `1im-EN-What-a-Compile-Reads` (a TikZ diagram of the twelve steps, framework files
+       gray and project files white, "override 6" on the template's settings, "a project file wins" under it; alt
+       text in `media/alt-text.json`) and `1vw-EN-Making-a-Template` (a minimal template as a code panel,
+       `snippets/1vw-1.tex`; the rules; profile and `tools/calibrate_font_profile.py`; the four optional theme
+       features with their switches), after 1uw in "Appendix: Reference" of both manual decks, in `slide_ids.csv`.
+       Changed: 1ym (framework box and its alt text), 1pf and hd5 (what a template is, link to 1vw), 1gr and 1d7
+       (`\SMAutoTopMarginfalse` places frames like `\SMManualTopMargin`; a link to 1vw did not fit on 1gr), 1uw (link to 1vw),
+       1dt (the divider's sentence), the 1y5 snippet (a deck says `\SMUseBibliography`, it no longer loads biblatex
+       itself), comments of 1xf and 2v9. Edited slides carry `+` on their version line; no frozen file was touched or
+       added. No screenshot shows anything that changed (1pf/hd5's crops are step 16's business).
+     - **Docs:** README (repository table, a load-order and making-a-template paragraph at the top of "Directory
+       layout", the base and Uni Graz entries, a bibliography-file entry, the `Slidemaster.bib` rename typo),
+       `docs/PROJECT_OVERVIEW.md`. `docs/SlideMageCommands.md` lists no template settings, so it is unchanged; plans
+       and CHANGELOG history stay as they are. `latex/` is unchanged.
+     - **Checks:** `check_layout.py` on both manual decks: no new findings (manual 0, copy the 1 `coltop` on dkf that
+       the v10.14.0 baseline has too; the same with uni-graz). `check_layout.py` did not see a fourth bullet on 1gr
+       that a first draft pushed under the footer box (the footer covers it, so its text is not "below the
+       footer"); the renders did. Worth a check in the tool some day.
+     - **Regression** (in-repo, against `repo-v1014`, pages aligned by slide id): 12 entries, 1150 pages; the
+       differing pages are exactly the changed slides (1ym, 1pf, hd5 in the copy, 1y5, 1gr, 1dt, 1d7, 1uw), the two
+       new ones, and after them 1r8, 2rg, 2v9 (the frame number, +2) and tks (a divider whose live chapter agenda
+       lists the two new slides). No private regression: `latex/` is unchanged. Tests: 3831 passed, 69 skipped, 2
+       GUI tests failed under load and passed alone.
+     - **Open:** `example/SlideMage_template_uni-graz.tex` renews `\SMCardHeadingFont` (a profile name) after the
+       base for its dark mode; the new slides say a template never sets a profile value. Harmless today; step 16
+       moves the template out anyway.
 16. **No institution templates in the repository** (needed before the repository goes public).
    - Move `example/SlideMage_template_uni-graz.tex` and `example/schemes/scheme_uni_graz/` to the real project
      (`D:\uniCLOUD\Slidemaster`), next to its mci and uni-ibk templates. SlideMage's own template is the only
