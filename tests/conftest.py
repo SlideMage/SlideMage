@@ -113,6 +113,15 @@ def _isolated_config_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _diagnostics_reset():
+    """A test that runs cli.main() sets up the error log and the exception hooks; the next test starts without."""
+    yield
+    from slidemage import diagnostics
+
+    diagnostics.reset()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_cache_dir(monkeypatch, tmp_path_factory):
     """The render store's index lives in the user's cache folder; a test gets one of its own."""
     from slidemage import project

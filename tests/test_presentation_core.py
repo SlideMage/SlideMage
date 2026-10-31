@@ -355,3 +355,56 @@ def test_the_kept_nav_of_the_presenter_compile_is_found_and_checked_against_the_
     (kept / "talk-presenter.nav").write_text(NAV, encoding="utf-8")
     assert frames_mod.load_for(ctx, deck, pdf, 6).count == 4
     assert frames_mod.load_for(ctx, deck, pdf, 9) is None                  # another PDF: fall back to page numbers
+
+
+# -- slide numbers from the page labels (plan docs/plans/presenter-app.md, step 5b) -------
+
+def test_page_labels_group_the_reveal_steps_of_a_slide():
+    from slidemage.presentation.frame_map import FrameMap, from_labels
+    assert from_labels(["1", "2", "2", "2", "3", "4"]) == FrameMap(((0, 0), (1, 3), (4, 4), (5, 5)))
+    assert from_labels(["1", "2", "3"]) is None            # one page per slide: page numbers say as much
+    assert from_labels(["A", "A", "A"]) is None            # one label for every page tells nothing
+    assert from_labels(["1", "", "2"]) is None and from_labels([]) is None and from_labels(None) is None
+
+
+def test_beamer_labels_written_as_hex_strings_are_decoded():
+    from slidemage.presentation.pdf_source import decode_label
+    assert decode_label("<FEFF0032>") == "2" and decode_label("<FEFF00310030>") == "10"
+    assert decode_label("A-<FEFF0031>7") == "A-17" and decode_label("12") == "12" and decode_label("") == ""
+
+
+def test_a_presenter_compile_labels_its_pages_with_slide_numbers_from_the_nav(tmp_path, qapp):
+    from slidemage.compiler import label_presenter_pages
+    from slidemage.presentation.frame_map import parse_nav
+    pdf, nav, log = make_pdf(tmp_path / "p.pdf"), tmp_path / "p.nav", []
+    nav.write_text(NAV, encoding="utf-8")
+    assert label_presenter_pages(pdf, nav, log.append) and not log
+    deck = PresentationDeck(pdf)
+    try:
+        assert deck.page_labels() == ["1", "2", "2", "2", "3", "4"]
+        assert deck.frame_map() == parse_nav(NAV, 6)
+    finally:
+        deck.close()
+
+
+def test_a_nav_that_does_not_fit_leaves_the_presenter_pdf_as_it_was(tmp_path, qapp):
+    from slidemage.compiler import label_presenter_pages
+    pdf, nav = make_pdf(tmp_path / "p.pdf"), tmp_path / "p.nav"
+    before = pdf.read_bytes()
+    nav.write_text(r"\beamer@framepages {1}{3}", encoding="utf-8")
+    assert not label_presenter_pages(pdf, nav, lambda _line: None)
+    assert not label_presenter_pages(pdf, tmp_path / "missing.nav", lambda _line: None)
+    assert pdf.read_bytes() == before
+
+
+def test_the_doubled_labels_of_an_older_presenter_pdf_are_not_used(tmp_path, qapp):
+    import pymupdf
+    pdf = make_pdf(tmp_path / "p.pdf")
+    with pymupdf.open(pdf) as doc:        # as LaTeX made them: one rule for the slide, one for the note page
+        doc.set_page_labels([{"startpage": i, "prefix": str(i // 2 + 1), "firstpagenum": 1} for i in range(12)])
+        doc.saveIncr()
+    deck = PresentationDeck(pdf)
+    try:
+        assert deck.page_labels() is None and deck.frame_map() is None
+    finally:
+        deck.close()

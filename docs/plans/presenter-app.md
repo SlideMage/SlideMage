@@ -74,9 +74,10 @@ The handover's section 5 checks, after the framework redesign was merged:
     slide and its note page each get one, and only the slide's rule is right. The result alternates: page 0 gets
     the slide label of frame 1, page 1 gets the note page's plain counter, and so on.
   - So for 5b: reading labels works for plain PDFs, including most beamer PDFs from other people. For presenter
-    PDFs, fix the compile: the presenter override in `latex/` must write one label per physical page (the slide's)
-    and none for the note half. That is a small TeX change with an `SM…` name if a macro is needed. The embedded
-    frame list stays the fallback if the TeX fix proves fragile.
+    PDFs, the labels must be fixed. Done in v0.12.1 without touching `latex/`: after every presenter compile,
+    `compiler.label_presenter_pages` rewrites the labels from beamer's `.nav` (one slide number per page)
+    before the PDF is published. Patching hyperref's labels inside pgfpages in TeX would have been more
+    fragile. Older presenter PDFs, with more label rules than pages, are recognised and ignored.
 
 ## Steps
 
@@ -112,6 +113,13 @@ Each step is one PR into `develop`, small enough to review alone. Stop after eac
   timer set up in one apply in the other. Recent PDFs go under their own key.
 - Add `slidemage-presenter = "slidemage.presenter_app:main"` to `[project.gui-scripts]` so it runs from the dev
   venv too.
+
+Done in v0.12.4: `presenter_app.py` (entry point, `--self-test`, macOS `QFileOpenEvent` filter),
+`ui/presentation/presenter_window.py` (start window), `presentation/recent.py` (recent PDFs, key
+`presenter_recent`), icon A as `assets/presenter-icon.svg`. Runs from the source as `python -m
+slidemage.presenter_app`. Measured: `import slidemage.presenter_app` 82 ms (2 SlideMage modules),
+`--self-test` 401 ms with everything imported (39 SlideMage modules, PyMuPDF). The SVG icon needs QtSvg, so
+step 3 must bundle QtSvg and its iconengines/imageformats plugins.
 
 ### 3. The build
 
@@ -205,6 +213,10 @@ with "Continue" and "Start from the beginning". For a lecture continued after a 
   settings page turns the question off ("Always start at the beginning").
 - *Stored* per user and machine with the other presentation settings, at most the last 50 decks; never in the PDF
   or the project, so it does not travel through the sync.
+
+Done in v0.12.2 (`presentation/resume.py`, `ui/presentation/resume_ui.py`). The place is worked out whenever
+the slide changes, because the controller closes the PDF before `finished` fires; it is written after 1.5 s on a
+slide and when the talk ends.
 
 This is not Presenter-only: it can be done in SlideMage first (it needs no part of steps 1–4) and comes to the
 Presenter with the shared code.

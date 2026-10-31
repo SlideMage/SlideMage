@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Which PDF pages are the reveal steps of one slide (frame): the map itself and beamer's .nav format.
+"""Which PDF pages are the reveal steps of one slide (frame): the map itself, beamer's .nav format, and the
+PDF's page labels (beamer gives every reveal step of a frame the frame's number as its label).
 
 Kept apart from frames.py, which finds the .nav in a project's compile records, so that presenting a PDF without
 a project (SlideMage Presenter, docs/plans/presenter-app.md) needs no project or compiler code.
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Optional
 
 FRAMEPAGES_RE = re.compile(r"\\beamer@framepages\s*\{(\d+)\}\{(\d+)\}")
@@ -44,3 +46,27 @@ def parse_nav(text: str, page_count: int) -> Optional[FrameMap]:
     if any(first > last or (position and first <= frames[position - 1][1]) for position, (first, last) in enumerate(frames)):
         return None
     return FrameMap(tuple(frames))
+
+
+def from_labels(labels: Optional[Sequence[str]]) -> Optional[FrameMap]:
+    """The frames of a PDF whose page labels are beamer's frame numbers: neighbouring pages with the same label
+    are the reveal steps of one frame. None when that tells nothing: no labels, an empty one, every page its
+    own frame (the page numbers say as much), or a single label for a PDF of several pages."""
+    if not labels or any(not label for label in labels):
+        return None
+    frames: list[tuple[int, int]] = []
+    for page, label in enumerate(labels):
+        if page and label == labels[page - 1]:
+            frames[-1] = (frames[-1][0], page)
+        else:
+            frames.append((page, page))
+    if len(frames) == len(labels) or len(frames) == 1:
+        return None
+    return FrameMap(tuple(frames))
+
+
+def label_rules(frames: FrameMap) -> list[dict]:
+    """PyMuPDF page-label rules (Document.set_page_labels) that give every page its slide number: one rule per
+    frame, the number as a fixed prefix with no numbering style, so all reveal steps share it."""
+    return [{"startpage": first, "prefix": str(number), "style": "", "firstpagenum": 1}
+            for number, (first, _last) in enumerate(frames.frames, start=1)]

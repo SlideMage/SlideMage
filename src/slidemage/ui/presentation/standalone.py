@@ -11,7 +11,9 @@ from PySide6.QtWidgets import QMessageBox
 
 from ...presentation.pdf_source import PresentationDeck
 from ...presentation.settings import PresentationSettings
+from ...presentation import resume
 from .controller import PresentationController
+from . import resume_ui
 
 
 def present_pdf_file(path: Path) -> bool:
@@ -24,7 +26,11 @@ def present_pdf_file(path: Path) -> bool:
     except (ValueError, RuntimeError, OSError) as exc:
         QMessageBox.warning(None, "Present", f"{path.name} could not be opened: {exc}")
         return False
-    controller = PresentationController(deck, PresentationSettings.load(), save_settings=lambda changed: changed.save())
+    settings, frames, key = PresentationSettings.load(), deck.frame_map(), resume.deck_key_for_pdf(path)
+    start = resume_ui.start_page(None, deck, frames, key, settings)
+    controller = PresentationController(deck, settings, frames=frames, start_page=start,
+                                        save_settings=lambda changed: changed.save())
+    resume_ui.remember(controller, deck, frames, key)
     loop = QEventLoop()
     controller.finished.connect(loop.quit)
     controller.start()

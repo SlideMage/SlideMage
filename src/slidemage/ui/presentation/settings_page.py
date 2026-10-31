@@ -64,6 +64,11 @@ class PresentationTab(Page):
         self.confirm_links.toggled.connect(lambda on: self._set("confirm_links", bool(on)))
         body.addWidget(Field("Links in slides", self.confirm_links))
 
+        self.offer_resume = QCheckBox("Offer to continue where the last talk stopped")
+        self.offer_resume.setChecked(values.offer_resume)
+        self.offer_resume.toggled.connect(lambda on: self._set("offer_resume", bool(on)))
+        body.addWidget(Field("Continuing a talk", self.offer_resume))
+
         self.timer_mode = QComboBox()
         for key, label in TIMER_MODES:
             self.timer_mode.addItem(label, key)
@@ -131,6 +136,7 @@ class PresentationTab(Page):
         self.pen_width.setValue(defaults.pen_width * 100)
         self.laser_size.setValue(defaults.laser_size * 100)
         self.confirm_links.setChecked(defaults.confirm_links)
+        self.offer_resume.setChecked(defaults.offer_resume)
         self.timer_mode.setCurrentIndex(self.timer_mode.findData(defaults.timer_mode))
         self.timer_minutes.setValue(defaults.timer_duration_minutes)
         for check, key in ((self.timer_start, "timer_start_on_navigation"), (self.timer_flash, "timer_flash"),

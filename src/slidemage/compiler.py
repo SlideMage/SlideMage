@@ -702,6 +702,29 @@ def _release_build_dir_after_attempts(
         threading.Thread(target=release, daemon=True).start()
 
 
+def label_presenter_pages(pdf: Path, nav: Path, log: LogCallback) -> bool:
+    """Give a presenter PDF's pages their slide numbers as page labels, from beamer's .nav, before it is
+    published. pgfpages puts the slide and its note page on one page, but hyperref labels both, so the PDF
+    comes out of LaTeX with two label rules per page and every other label wrong; with the labels right, a
+    presenter PDF shows slide numbers and reveal steps without its project (presentation/pdf_source.py,
+    docs/plans/presenter-app.md step 5b). False, and the PDF as LaTeX made it, when the .nav is missing or
+    does not fit; a presenter PDF without labels still presents, by page number."""
+    import pymupdf as fitz
+
+    from .presentation.frame_map import label_rules, parse_nav
+    try:
+        with fitz.open(pdf) as doc:
+            frames = parse_nav(nav.read_text(encoding="utf-8", errors="replace"), doc.page_count)
+            if frames is None:
+                return False
+            doc.set_page_labels(label_rules(frames))
+            doc.saveIncr()
+    except Exception as exc:  # noqa: BLE001 -- the labels are a convenience; the compile stands without them
+        log(f"    (could not set the slide numbers in {pdf.name}: {exc})")
+        return False
+    return True
+
+
 def _relocate_pdf_and_finish(
     ctx: project.ProjectContext, pdf_source: Path, dest_pdf: Path, jobname: str, job: CompileJob,
     log: LogCallback, cancel: Optional["CancelToken"] = None,
@@ -894,6 +917,8 @@ def run_job(
                 on_relocated(False, pdf_source)
             return False
         compile_passes.remember(ctx, job, passes)   # the next progress estimate
+        if job.presenter:
+            label_presenter_pages(pdf_source, build_dir / f"{jobname}.nav", log)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         if not _mark_output_success(destination_key, generation):

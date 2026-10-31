@@ -339,3 +339,10 @@ def test_without_nav_data_the_typed_number_is_a_page_and_the_indicator_says_so(m
     press_key(controller, Qt.Key.Key_5)
     press_key(controller, Qt.Key.Key_Escape)                                # anything else drops the typed number
     assert controller.ended
+
+
+def test_a_presentation_continued_at_a_slide_opens_there_on_both_screens(make):
+    from slidemage.presentation.frame_map import FrameMap
+    controller = make(frames=FrameMap(((0, 0), (1, 3), (4, 4), (5, 5))), start_page=4)
+    counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Slide")][0]
+    assert controller.session.page == 4 and counter.text() == "Slide 3 / 4 · step 1 / 1"
