@@ -49,6 +49,8 @@ Nothing else. In particular:
 
 - TeX code is only the format file and files named `SlideMage_citation_<key>_*`. An installed package sits on TeX's
   search path, so any other `.sty`, `.bbx`, `.cbx`, `.bst` or `.lua` could replace a stock file for every deck.
+- No file named like one of SlideMage's own framework files (anything in `latex/`, `SlideMage_citation_default.tex`
+  included): installed packages sit on TEXINPUTS ahead of the framework and would replace it for every deck.
 - No compiled files (`.pyc .pyo .so .pyd .dll .dylib .exe`), no symbolic links, no paths outside the package
   (absolute paths, drive letters, `..`, backslashes), no other folder than `LICENSES/`.
 - Files and folders starting with a dot (`.git/`, `.github/`, `.gitignore`) are not packed.

@@ -465,3 +465,11 @@ def test_a_decks_own_redefinition_still_wins_over_the_templates_format(tmp_path)
     log = _compile(tmp_path, DECK % (BS + "renewcommand{" + BS + "SMBibliographyStyle}{" + BS
                                        + "typeout{SM-DECK-STYLE}}\n"), [])
     assert "SM-DECK-STYLE" in log and not compiler.FATAL_ERROR_RE.search(log), log[-1500:]
+
+
+@pytest.mark.parametrize("name", ["SlideMage_citation_default.tex", "SlideMage_base.tex", "SlideMage_layout_fira.tex",
+                                  "SlideMage_bibliography_default.tex"])
+def test_a_package_may_not_ship_a_file_named_like_a_framework_file(folder, name):
+    (folder / name).write_text("% mine\n", encoding="utf-8")
+    with pytest.raises(citations.CitationError, match="named like one of SlideMage's own framework files"):
+        citations.check_folder(folder)

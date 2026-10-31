@@ -34,19 +34,33 @@ the two release files); the website can run the same checks on a submitted repos
 
 ## How the catalogue lists it
 
-Beside `"plugins"` and `"themes"`, a third list, `"citations"`:
+Following the website's schema for themes (`Handover_2026-10-31-Website-To-App-Theme-Checks.md`, section 2): a
+top-level `"citations"` key beside `"plugins"` and `"themes"`, `schema` stays 1, and the key is only present once a
+citation format is listed (today's catalogue is unchanged). An entry has:
 
-| catalogue entry field | taken from |
-|---|---|
-| `id` | the key (`citation.toml` `id`; also the asset prefix) |
-| `name`, `summary`, `author`, `license`, `homepage`, `requires_slidemage` | `citation.toml` |
-| `version`, release notes | the newest eligible release: tag `v<version>`, `CHANGELOG.md` at that tag |
-| download, checksum | `<key>-<version>.smcite` and its `.sha256` |
-| icon / image | `preview.png`, if present |
+- `id` (the key, also the asset prefix), `name`, `summary`, `homepage` (`https://slidemage.org/citations/<id>/`),
+  `source`, `license`, `maintainer`, `recommended`;
+- optional `preview` (the package's `preview.png`, copied to the site);
+- `releases`, each with `version`, `requires_slidemage`, `url`, `sha256`, `size`, `published` and optional
+  `notes_url`. (No `layout`: a citation format has none.)
 
-Release rules are the plugins' and themes': published (not draft, not pre-release), both assets present with
-`<version>` equal to the tag without `v`, the zip's `citation.toml` carrying that version, the download matching the
-hash. A page for the category can say "A citation format changes how references look; it contains a TeX file and no
+`name`, `summary`, `license`, `requires_slidemage` come from `citation.toml`; release notes from `CHANGELOG.md` at
+the tag. Release rules are the plugins' and themes': published (not draft, not pre-release), both assets present
+with `<version>` equal to the tag without `v`, the zip's `citation.toml` carrying that version, the download
+matching the hash.
+
+**Reserved ids:** at least `default` (the built-in house format). The app's `citations.bundled_keys()` reads every
+`SlideMage_citation_*.tex` in `latex/`, the builder's list is fixed: **whenever SlideMage ships another bundled
+template or citation format, its key must be reported to the website side** so the builder reserves it too.
+
+**Checks the builder should apply**, the app's: `citation.toml` fields as above (refuse `api_version`, `needs`,
+`network` and `layout`; the app tolerates any other unknown key); the file list of `docs/CITATION_PACKAGE.md`; and, new in v0.13.0, refuse a package that
+contains a file named like one of SlideMage's own framework files (`latex/`: `SlideMage_citation_default.tex`,
+`SlideMage_base.tex`, a bundled layout profile...), because installed packages sit on TEXINPUTS ahead of the
+framework. The same rule was added for themes in the same release: a theme with `layout` fira, lmsans or lmroman may
+not ship `SlideMage_layout_<layout>.tex`.
+
+A page for the category can say "A citation format changes how references look; it contains a TeX file and no
 program", and how to use one: install from the catalogue or from a file in Settings → Plugins → Citation formats,
 then in a template `\renewcommand{\SMCitationFormat}{<key>}` (before `\input{SlideMage_base}`) or in a deck the same
 before `\SMUseBibliography`.
@@ -54,5 +68,5 @@ before `\SMUseBibliography`.
 ## What the app does not do (yet)
 
 The app installs from a file and from a GitHub repository (with update offers) like for themes. It does not read the
-catalogue's `"citations"` list yet: that comes with the website side, mirroring how `"themes"` is meant to work, and
-needs a decision on the catalogue's schema version (the app reads a catalogue it does not know as too new).
+catalogue's `"citations"` list yet (the schema stays 1, so no version decision is needed): that comes once the website
+lists one, as for `"themes"`.

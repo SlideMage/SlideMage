@@ -155,6 +155,14 @@ def check_names(names: list[str], manifest: CitationManifest) -> None:
     """The package's file names (POSIX, relative to its top, folders ending in /) hold the format file and the
     required files and nothing that is not the package's own. Raises CitationError."""
     files = {n for n in names if not n.endswith("/")}
+    latex = project.template_dir("latex")
+    shipped = ({p.name for p in latex.iterdir() if p.is_file()} - set(REQUIRED_FILES)
+               if latex is not None else set())
+    for name in sorted(files):
+        if name in shipped or (name == format_file("default")):
+            # Installed packages are on TEXINPUTS ahead of the framework: such a file would replace SlideMage's own.
+            raise CitationError(f"The package contains a file named like one of SlideMage's own framework files, "
+                                f"which it would replace for every deck: {name!r}.")
     allowed_top = {MANIFEST_NAME, manifest.format_file, *REQUIRED_FILES, *OPTIONAL_FILES}
     for name in names:
         path = PurePosixPath(name.rstrip("/"))
