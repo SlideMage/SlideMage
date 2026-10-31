@@ -90,8 +90,69 @@ against another SlideMage than the checkout's.
 - **Where:** unpacked in `config_dir()/themes/<key>/` (Windows `%APPDATA%\SlideMage\themes\<key>\`). Installing a
   key that is installed replaces it. A theme takes effect at once, no restart.
 - **Removing:** Settings → Plugins → Themes → Remove. Decks using the key then need a project copy of the template.
-- **Not yet (step 17 of the plan):** installing from a theme's GitHub repository with the user's token, update
-  checks and offers, and `source.json` (where a theme came from). A theme installed from a file is never updated.
+- **From GitHub:** Settings → Plugins → Themes → **Add theme from GitHub…** (below), since v10.17.0. A theme
+  installed from a file is never updated.
+
+## From a (private) GitHub repository
+
+Since v10.17.0 (step 17 of the plan; `src/slidemage/theme_sources.py`). **Add theme from GitHub…** takes the
+repository as `owner/name` (a `https://github.com/owner/name` address works too) and reads it with the GitHub token
+SlideMage keeps for its own updates: Settings → General → Updates, stored as `github_token` in `config_dir()`, never
+in a project; `$SLIDEMAGE_GITHUB_TOKEN` wins. There is no second token setting: one token covers SlideMage and every
+theme repository it can read.
+
+- **Which release:** SlideMage lists `/repos/{owner}/{name}/releases`, never `/releases/latest` (GitHub can mark a
+  broken or withdrawn release "Latest"), and installs the newest **eligible** one. Eligible: published (not a draft,
+  not a pre-release), carrying `<key>-<version>.smtheme` and `<key>-<version>.smtheme.sha256` with `<version>` its
+  tag without the `v`, the download matching the hash, the `theme.toml` version equal to the tag, and its
+  `requires_slidemage` accepting the running SlideMage. A release failing one of these is passed over for the next
+  older one (the message says which and why). A release its owner withdraws (deletes, or turns into a pre-release)
+  is no longer eligible. The SHA-256 only guards against a damaged download; trust comes from choosing the
+  repository. Before installing, SlideMage shows the theme's name, version, key, author, licence and repository.
+- **Downloads** use the API address of each asset with `Accept: application/octet-stream` (a private repository's
+  files are not on the public download address); GitHub answers with a redirect to the file.
+- **Where it came from:** `config_dir()/themes/<key>/source.json` records the repository, version, release id and
+  install time (and the last update check's time and failure, and a version you skipped). A package cannot contain
+  a `source.json`, so installing from a file over it drops it: that theme is then never updated.
+- **Updates:** at every start, as the app's own update check, and only when the update setting (Settings → General →
+  Updates) is not "Don't check": then nothing goes to the network. Each theme from GitHub is checked for a newer
+  eligible release, which is offered with its release notes: **Install now** / **Not now** (asked again next start) /
+  **Skip this version** (a later version is offered). It is never installed silently, also not in the automatic
+  update mode. A higher major version says it may change how slides look. **Check for update** on the theme's row
+  asks at once.
+- **After an install,** only the previews of decks using that key are rendered again: their renders read the
+  theme's files, which changed, so the background previews do them again; the open deck's slide renders at once.
+- **Failures are quiet and harmless.** No token, an expired token, lost access or no network leave the installed
+  version working; the log gets a line and the theme's row in Settings says why the last check failed. GitHub's
+  404 means no access or no release (a private repository is invisible without access); 401 or 403 means the token
+  was refused, and the message names the permission it needs.
+- **A project's own copy** of the template still wins, so a project can freeze a version.
+
+### The token a private theme needs
+
+From GitHub's documentation (checked 2026-10-31: "Managing your personal access tokens", "Setting a personal access
+token policy for your organization", "Permissions required for fine-grained personal access tokens", "REST API
+endpoints for releases"):
+
+- A **fine-grained token** reaches the resources of **one resource owner**, a user or an organization, chosen when
+  the token is made. A repository of another user where you are only a collaborator cannot be selected, so private
+  theme repositories live in a GitHub **organization** (the Uni Graz theme: `SlideMage/slidemage-theme-uni-graz`).
+- Make it at GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens:
+  **Resource owner** = the repository's owner (e.g. `SlideMage`); **Repository access** = Only select repositories,
+  with the theme repository (and `SlideMage/SlideMage` if SlideMage's own updates need it); **Repository
+  permissions → Contents: Read-only** (GitHub lists `GET /repos/{owner}/{repo}/releases` and
+  `GET /repos/{owner}/{repo}/releases/assets/{asset_id}` under Contents: read; Metadata: Read-only comes with it).
+  Nothing else. Fine-grained tokens expire (366 days at most by default): renew it when the row says the token
+  was refused.
+- You must be able to read the repository yourself: a member of the organization whose base permission is read,
+  or someone given read access to that repository.
+- **The organization decides whether such tokens work.** An organization can block fine-grained tokens altogether,
+  and by default it **requires an administrator's approval** for each fine-grained token that reaches it ("Require
+  administrator approval" is the default; tokens of organization owners are approved at once). Until an owner
+  approves it, the token is *pending* and reads only public resources: SlideMage then gets a 404 and says no access.
+  The owner approves it under the organization's Settings → Personal access tokens → Pending requests.
+- A **classic token** with the `repo` scope also works, but grants write access to every repository you can reach;
+  prefer the fine-grained token.
 
 ## Where TeX finds it, and who wins
 
@@ -122,7 +183,9 @@ A theme carrying a university's logo and corporate design is not ours to publish
 never listed in the catalogue (not even `hidden: true`, which would publish its URL in the test catalogue), and the
 SlideMage repository ships no institution template (since v10.16.0). Its `LICENSE` and `README.md` say that the logo
 files are the institution's, used with its permission, and must not be passed on; the TeX file can still be
-LPPL-1.3c+. Such a theme is installed from a file today and from its private repository once step 17 exists.
+LPPL-1.3c+. Such a theme is installed from its private repository with the user's own token (above), or from a file.
+Changes to it come as pull requests from a fork; on GitHub's free plan a private repository has no branch protection,
+so readers get read access and the organization allows forking of private repositories.
 
 ## For the website side
 

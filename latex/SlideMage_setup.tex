@@ -234,6 +234,22 @@
 %   SMCodeTextColor        \SMCodeFile text                  (c_primary_dark)
 
 % ---------------------------------------------------------------------------
+% Card headings (SlideMage v10.17.0)
+% ---------------------------------------------------------------------------
+% The font switch of a card's heading in a diagram (a slide writes {\SMCardHeadingFont
+% Heading}): the layout profile's \SMCardHeadingFont (its bold) unless the template names
+% another one here, for instance a medium weight for its dark mode, with a font family of
+% its own:
+%   \newfontfamily\SMCardMediumFont{FiraSans-Medium.otf}
+%   \renewcommand{\SMCardHeadingStyle}{\SMCardMediumFont}
+% A template never redefines \SMCardHeadingFont itself, a value of the profile;
+% SlideMage_base.tex points it at this setting.
+\makeatletter
+\let\SM@profilecardheadingfont\SMCardHeadingFont
+\newcommand{\SMCardHeadingStyle}{\SM@profilecardheadingfont}
+\makeatother
+
+% ---------------------------------------------------------------------------
 % Logo
 % ---------------------------------------------------------------------------
 % A vector PDF cropped to its ink, found on the TeX search path (a project

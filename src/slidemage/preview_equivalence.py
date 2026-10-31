@@ -93,12 +93,15 @@ AUDITED_FRAMEWORK = {
     # version, footer-hide or deck-label rule entered or left the template.
     # Merged from develop (2026-10-30, v9.4.0 there): \href leaves a linked picture (\includegraphics in its text)
     # without underline (\SMHrefContent). No view-dependent rule.
-    "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
-    "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
+    # v10.17.0 (step 17): the catalog's \SMCardHeadingStyle (the setup layer, default the profile's
+    # \SMCardHeadingFont, which the base points at it; the Fira profile's comment says so). A font switch, the same in
+    # every view; no rule changed.
+    "SlideMage_setup.tex": "c1765f2aa92bee3357e52e104bc05eda186fbaf33242a7dbbf14680f88fc5278",
+    "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
     # changed), re-audited.
-    "SlideMage_base.tex": "3766784904628c34966eaa96ef7872f1c97dce186954fdc8a872e4292d1dd69d",
+    "SlideMage_base.tex": "a4134a916acb52f66a86ca0d58ecca222adce67d925d7dced0856c089499b078",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "beamerthemeSlideMage.sty": "175a142a3a0a8c5becc21209ddb0266864cbee6c26771dd80b3cd48aa2d0099d",

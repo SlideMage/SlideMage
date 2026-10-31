@@ -27,11 +27,18 @@ CONFIG.json (relative paths are relative to the config file):
       "copy_exclude": ["pdf", ".git"],  top-level names left out of the copy
       "versions":  ["instructor", "during-course", "after-course"],
       "dpi":       72,
+      "extra_dirs": ["themes/acme"],    optional: folders put on TEXINPUTS for every compile, as SlideMage puts
+                                        an installed theme package there (docs/THEME_PACKAGE.md); an entry may
+                                        have "extra_dirs" of its own, which come after these
       "decks": [
         {"deck": "decks/slidemage-manual.tex"},                          compiled under its own template
         {"deck": "decks/slidemage-manual.tex", "template": "acme"}   \\input{SlideMage_template_<key>} swapped
       ]
     }
+
+TEXINPUTS is then those folders followed by what the environment had (or nothing: the trailing separator keeps the
+TeX distribution's own path), as compiler.build_env does; the project's .latexmkrc puts the project root and the
+framework in front, so a project's own copy of a template still wins. The entry key does not change.
 
 In-repo set (tools/framework_regression_repo.json: the manual and its sibling deck, each under its own template):
 
@@ -125,8 +132,8 @@ def differing_pages(old_pages: list[str], new_pages: list[str]) -> list[int]:
 # ---------------------------------------------------------------- configuration
 
 class Entry:
-    def __init__(self, deck: Path, template: str | None, version: str):
-        self.deck, self.template, self.version = deck, template, version
+    def __init__(self, deck: Path, template: str | None, version: str, extra_dirs: tuple[Path, ...] = ()):
+        self.deck, self.template, self.version, self.extra_dirs = deck, template, version, tuple(extra_dirs)
         self.group = f"{deck.stem}@{template}" if template else deck.stem
         self.key = f"{self.group}-{version}"
 
@@ -143,6 +150,9 @@ def load_config(path: Path) -> dict:
     cfg.setdefault("copy_exclude", [])
     cfg.setdefault("versions", list(DEFAULT_VERSIONS))
     cfg.setdefault("dpi", DEFAULT_DPI)
+    cfg["extra_dirs"] = [(base / d).resolve() for d in cfg.get("extra_dirs", [])]
+    for item in cfg["decks"]:
+        item["extra_dirs"] = [(base / d).resolve() for d in item.get("extra_dirs", [])]
     return cfg
 
 
@@ -150,7 +160,8 @@ def entries_of(cfg: dict, project: Path, only: set[str] | None) -> list[Entry]:
     out = []
     for item in cfg["decks"]:
         for version in cfg["versions"]:
-            entry = Entry(project / item["deck"], item.get("template"), version)
+            entry = Entry(project / item["deck"], item.get("template"), version,
+                          (*cfg.get("extra_dirs", []), *item.get("extra_dirs", [])))
             if entry.matches(only):
                 out.append(entry)
     return out
@@ -197,6 +208,13 @@ def swapped_deck_text(entry: Entry) -> str | None:
     raise ValueError(f"{entry.deck.name}: no \\input{{SlideMage_template_<template>}} to swap")
 
 
+def texinputs(entry: Entry, env: dict) -> str | None:
+    """The TEXINPUTS of `entry`'s compile: its extra folders, then what `env` had; None when it has none."""
+    if not entry.extra_dirs:
+        return None
+    return os.pathsep.join([*(str(d) for d in entry.extra_dirs), env.get("TEXINPUTS", "")])
+
+
 def compile_entry(entry: Entry, project: Path, framework: Path, run_dir: Path) -> dict:
     """Compile one deck/version; leave the PDF as run_dir/<key>.pdf. Returns {"ok", "seconds", ...}."""
     started = time.time()
@@ -213,6 +231,9 @@ def compile_entry(entry: Entry, project: Path, framework: Path, run_dir: Path) -
     env = dict(os.environ, SLIDEMAGE_LATEX=str(framework), SLIDEMASTER_LATEX=str(framework),
                SOURCE_DATE_EPOCH=SOURCE_DATE_EPOCH,
                FORCE_SOURCE_DATE="1")
+    search = texinputs(entry, env)
+    if search is not None:
+        env["TEXINPUTS"] = search
     out = build.as_posix()
     cmd = ["latexmk", "-f", f"-jobname={jobname}", f"-outdir={out}", f"-auxdir={out}",
            wrapper.relative_to(project).as_posix()]

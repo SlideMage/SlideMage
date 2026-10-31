@@ -988,6 +988,12 @@ mix it in.
    - **Website side:** nothing to list, since private themes are never in the catalogue. Tell them that the theme
      package's first real users install from a private repository, so a theme repository should follow the same
      release rules whether or not it is listed.
+   - **Done 2026-10-31 (v10.17.0):** install and updates from a private GitHub repository (`theme_sources.py`,
+     Settings → Plugins → Themes), `source.json`, the start-up offer, failures worded like the updater's; GitHub's
+     token rules in `docs/THEME_PACKAGE.md` (one resource owner, Contents: Read-only, org approval required by
+     default). The catalog's `\SMCardHeadingStyle` replaces the Graz template's renewal of the profile's
+     `\SMCardHeadingFont`. The Graz theme is prepared locally in `D:/uniCLOUD/slidemage-theme-uni-graz/` (no remote);
+     `framework_regression.py` has `extra_dirs`. Details and pending checks: `docs/plans/step17-status.md`.
 17b. **Final test: a template unlike SlideMage's** (user request 2026-10-31; after step 17, before step 18). Draft a
    template that differs from the SlideMage template in every respect the catalog and the layout profiles are meant
    to cover, then render the whole manual deck in it to find what still assumes Fira or SlideMage's own look.

@@ -5682,6 +5682,11 @@
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont\SMInlineCodeStyle #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\SMInlineCodeStyle\textbackslash #1}}
 
+% A card's heading (v10.17.0): slides write {\SMCardHeadingFont ...}; it follows the
+% catalog's \SMCardHeadingStyle, which is the layout profile's own heading font unless
+% the template names another (SlideMage_setup.tex, 'Card headings').
+\renewcommand{\SMCardHeadingFont}{\SMCardHeadingStyle}
+
 % \SMQRCode[height]{image}{caption} -- a QR code SlideMage made (2026-10-25,
 % direct instruction: the Source view's Insert QR, the assistant's
 % make_qr_code; src/slidemage/qr_code.py), the code at [height] (default
