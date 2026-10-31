@@ -74,9 +74,10 @@ The handover's section 5 checks, after the framework redesign was merged:
     slide and its note page each get one, and only the slide's rule is right. The result alternates: page 0 gets
     the slide label of frame 1, page 1 gets the note page's plain counter, and so on.
   - So for 5b: reading labels works for plain PDFs, including most beamer PDFs from other people. For presenter
-    PDFs, fix the compile: the presenter override in `latex/` must write one label per physical page (the slide's)
-    and none for the note half. That is a small TeX change with an `SM…` name if a macro is needed. The embedded
-    frame list stays the fallback if the TeX fix proves fragile.
+    PDFs, the labels must be fixed. Done in v0.11.2 without touching `latex/`: after every presenter compile,
+    `compiler.label_presenter_pages` rewrites the labels from beamer's `.nav` (one slide number per page)
+    before the PDF is published. Patching hyperref's labels inside pgfpages in TeX would have been more
+    fragile. Older presenter PDFs, with more label rules than pages, are recognised and ignored.
 
 ## Steps
 

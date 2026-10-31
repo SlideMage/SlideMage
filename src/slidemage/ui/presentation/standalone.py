@@ -24,7 +24,8 @@ def present_pdf_file(path: Path) -> bool:
     except (ValueError, RuntimeError, OSError) as exc:
         QMessageBox.warning(None, "Present", f"{path.name} could not be opened: {exc}")
         return False
-    controller = PresentationController(deck, PresentationSettings.load(), save_settings=lambda changed: changed.save())
+    controller = PresentationController(deck, PresentationSettings.load(), frames=deck.frame_map(),
+                                        save_settings=lambda changed: changed.save())
     loop = QEventLoop()
     controller.finished.connect(loop.quit)
     controller.start()
