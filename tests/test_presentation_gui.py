@@ -387,3 +387,9 @@ def test_the_presenter_names_its_current_and_next_slide_but_the_projector_shows_
 def test_the_presentation_settings_fit_a_sheet_of_the_settings_width(qapp):
     from slidemage.ui.presentation.settings_page import PresentationTab
     assert PresentationTab().minimumSizeHint().width() <= 700      # the sheet is 760 wide; nothing is cut off
+
+
+def test_the_clock_says_it_is_the_current_time(make):
+    controller = make(settings=PresentationSettings(clock_format="24"))
+    clocks = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Current time: ")]
+    assert len(clocks) == 1 and clocks[0].text()[len("Current time: "):].count(":") == 1

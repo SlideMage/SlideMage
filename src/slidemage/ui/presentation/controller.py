@@ -201,10 +201,13 @@ class PresentationController(QObject):
             self.typing_changed.emit()
 
     def _clock_text(self) -> str:
+        """"Current time: 14:05", so the clock is not mistaken for the timer beside it."""
         fmt = self.settings.clock_format
         if fmt == "system":
-            return QLocale().toString(QTime.currentTime(), QLocale.FormatType.ShortFormat)
-        return datetime.now().strftime("%I:%M %p").lstrip("0") if fmt == "12" else datetime.now().strftime("%H:%M")
+            now = QLocale().toString(QTime.currentTime(), QLocale.FormatType.ShortFormat)
+        else:
+            now = datetime.now().strftime("%I:%M %p").lstrip("0") if fmt == "12" else datetime.now().strftime("%H:%M")
+        return f"Current time: {now}"
 
     def _toolbar(self) -> QWidget:
         session = self.session
