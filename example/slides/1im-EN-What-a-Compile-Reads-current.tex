@@ -5,8 +5,8 @@
 % step 15 of the framework redesign), checked against the \input lines of
 % latex/SlideMage_template_slidemage.tex, SlideMage_setup.tex (the profile,
 % then the theme, then the catalog) and SlideMage_base.tex (the two Lua files,
-% by dofile). The project macros come after the base where a project's
-% template \input{}s them; the compatibility change puts the citation format
+% by dofile). The base then loads the project's macros itself (v0.12.0), if
+% the project has the file; the compatibility change puts the citation format
 % after them. Gray: framework files in latex/; white: the project's files;
 % the template's settings override the catalog's defaults (box 7).
 \setSlideVersion{1-0-0}
@@ -48,7 +48,7 @@
 		\node[fw] (lua) at (0,-104pt) {\SMLoadName{9 Lua, loaded by 8}\SMLoadFile{SlideMage\_measure.lua}\SMLoadFile{SlideMage\_alt.lua}
 			Top Margin, \SMCmd{SMFit}; alt text};
 		\node[pj] (mac) at (\imp pt,-104pt) {\SMLoadName{10 Project macros}\SMLoadFile{SlideMage\_project\_macros}
-			your commands, if the template loads them};
+			your commands, loaded by 8 if the project has the file};
 		\node[fw] (bib) at (\impb pt,-104pt) {\SMLoadName{11 Citation format}\SMLoadFile{SlideMage\_bibliography\_\allowbreak default}
 			if the template loads it};
 		\node[pj] (sl) at (\impc pt,-104pt) {\SMLoadName{12 The slides}\SMLoadFile{slides/<id>-current.tex}

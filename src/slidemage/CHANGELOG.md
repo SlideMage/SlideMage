@@ -3174,3 +3174,9 @@ v0.11.1 (2026-10-31, direct request: SlideMage Presenter, step 1 of docs/plans/p
 
 NEW: Presenting a PDF from the start screen loads less of SlideMage.
 - "Present a PDF…" no longer loads the parts of SlideMage that compile decks, which prepares a separate, small SlideMage Presenter program.
+
+v0.12.0 (2026-10-31, direct request: the framework loads project macros itself): SlideMage_base.tex loads the project's SlideMage_project_macros.tex when the project folder has one (the framework's latex/ ships none), at the place project templates used to load it: after the base's definitions, before a template's citation format. A template no longer needs the line \input{SlideMage_project_macros}, so an institution template from a theme package, which has none, gets a project's macros like any other. An old template that still has the line keeps compiling and the macros are read once: the base wraps \input until \begin{document} and drops that one repeat, so the \newcommand lines of the macros file do not stop with "already defined", and the macros file needs no change. The new compatibility entry project-macros-by-the-framework (module compat_project_macros, not breaking) removes the now redundant line, and a comment line directly above it that only introduces it, from a project's templates. The manual's load-order slide 1im (box 10 and its alt text) says the base loads the macros, the README says so, and the plan's step 18b and a note for step 18 (retire or cap the old-scheme version reading before v2.0.0) are added. The preview-equivalence pin of the base is renewed.
+
+NEW: A template no longer needs a line to load the project's macros.
+- Put your commands in SlideMage_project_macros.tex in the project folder; every template, a theme package's included, loads it.
+- Templates that still have the line keep working, and Project compatibility offers to remove it.

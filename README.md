@@ -528,9 +528,10 @@ change, with its default. The template then changes what it wants (colors, logo,
 length or macro with `\setlength`/`\renewcommand`) and `\input`s `SlideMage_base.tex`, which
 derives every computed value from those settings, defines the frames, the slide commands and the
 layout rules, and loads `SlideMage_alt.lua` (image descriptions) and `SlideMage_measure.lua` (the
-automatic Top Margin, `\SMFit`). After the base the template only adds: the house citation format
-(`\input{SlideMage_bibliography_default}`) and, in a project that has one, its
-`SlideMage_project_macros.tex`. Back in the deck come its own settings (`\FooterText`, the deck
+automatic Top Margin, `\SMFit`), then loads the project's own `SlideMage_project_macros.tex` when the project has one (a template
+needs no line for it; since v0.12.0 an old `\input{SlideMage_project_macros}` in a template is skipped, the
+file is read once). After the base the template only adds the house citation format
+(`\input{SlideMage_bibliography_default}`). Back in the deck come its own settings (`\FooterText`, the deck
 version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, each `\slide{}`
 reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
 framework file's name wins over the framework's (the project folder comes first on the TeX

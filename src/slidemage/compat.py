@@ -49,7 +49,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, compat_hooks, compat_names, compat_own_theme, project
+from . import compat_bibliography, compat_hooks, compat_names, compat_own_theme, compat_project_macros, project
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -352,7 +352,8 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
         "take the default; then set the space you want under the subtitle's last line."),
     detect=_detect_titleframe_bottom_pad,
-), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN]
+), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN,
+   compat_project_macros.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).

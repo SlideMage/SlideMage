@@ -6134,3 +6134,29 @@
 \renewcommand{\tiny}{\@setfontsize\tiny\SM@bs@t\SM@bl@t}
 \makeatother
 \normalsize
+
+% The project's own macros (SlideMage_project_macros.tex, a file of the project folder, which comes first on the
+% TeX search path; the framework ships none): loaded here, after everything above and before a template's
+% additions such as the citation format, so a template -- an institution's theme package included -- needs no
+% line for it. Before SlideMage v0.12.0 each project template had `\input{SlideMage_project_macros}` after its
+% `\input{SlideMage_base}`. That line is still honored but loads nothing a second time (the macros file is
+% written with \newcommand, which stops with "already defined" on a repeat): \input is wrapped until the
+% document begins, and the wrapper drops an `\input{SlideMage_project_macros}` -- with or without `.tex` --
+% because the file was read here already. Any other \input, and the unbraced form `\input file`, go to the
+% kernel's \input unchanged.
+\makeatletter
+\let\SMKernelInput\input
+\def\SM@inputProjectMacros#1{%
+	\def\SM@inputName{#1}%
+	\ifx\SM@inputName\SM@projectMacrosName\else
+	\ifx\SM@inputName\SM@projectMacrosFile\else
+		\SMKernelInput{#1}%
+	\fi\fi}
+\def\SM@projectMacrosName{SlideMage_project_macros}
+\def\SM@projectMacrosFile{SlideMage_project_macros.tex}
+\IfFileExists{SlideMage_project_macros.tex}{%
+	\SMKernelInput{SlideMage_project_macros}%
+	\def\input{\@ifnextchar\bgroup\SM@inputProjectMacros\SMKernelInput}%
+	\AtBeginDocument{\let\input\SMKernelInput}%
+}{}
+\makeatother
