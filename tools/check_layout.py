@@ -65,6 +65,7 @@ FOOTNOTE_LAST_TOP = 242.64  # line-box top of the last footnote line when nothin
 FOOTNOTE_MARKER_ALLOWANCE = 1.5  # a footnote line with its raised marker has a line box this much higher than a \source line
 FOOTER_GAP = 1.0         # minimum clearance above footnotes / footer box
 FOOTER_TEXT_MIN_SIZE = 3.6  # footer text is 3.99 pt and up; footnote/source lines 3.19 pt
+FOOTER_TEXT_MAX_SIZE = 6.5  # a footer's text without a frame number to measure: no template sets it larger
 FIRA_ASCENDER = 0.935    # Fira Sans ascender / em: a text line's top is baseline - this x size (the fallback: SMFontAscender)
 TITLE_BAR_BOTTOM = 25.23    # the visible bottom edge of the SlideMage template's title bar, bp (the fallback: SMTitleBarBottom)
 TITLE_BAR_TOLERANCE = 5.0   # a frame whose title bar ends this far from it has a title bar of another kind
@@ -235,14 +236,18 @@ class Page:
                      if s.get("type") == 3 or s.get("opacity", 1) == 0
                      for c in s.get("chars", ())}
         small: list[tuple[fitz.Rect, str]] = []
-        for block in page.get_text("dict")["blocks"]:
+        blocks = page.get_text("dict")["blocks"]
+        footer_size = footer_text_size(blocks, self.footer_top)
+        for block in blocks:
             for line in block.get("lines", []):
                 spans = [s for s in line["spans"] if s["text"].strip()
                          and (round(s["origin"][0], 1), round(s["origin"][1], 1)) not in invisible]
                 if not spans:
                     continue
                 r = fitz.Rect(line["bbox"])
-                if not r.intersects(page.rect) or r.is_empty:
+                # a line an overfull frame pushed past the page's bottom edge is kept (v10.18.0): it is the
+                # clearest overflow of all, and it used to be dropped here unseen
+                if r.is_empty or not (r.intersects(page.rect) or r.y0 >= self.h - 0.5):
                     continue
                 # top = baseline - the text font's ascender, from the non-superscript
                 # spans only: a footnote marker or a math font's taller ascender
@@ -264,6 +269,13 @@ class Page:
                         and abs(line["dir"][1]) < 0.01):
                     small.append((r, label))
                 elif area.contains(fitz.Point(r.x0 + 0.1, (r.y0 + r.y1) / 2)):
+                    self.items.append(("text", r, label))
+                elif (r.y0 + r.y1) / 2 >= self.footer_top - 0.3 and size > footer_size + 0.3 \
+                        and self.footer_top > self.h / 2 and abs(line["dir"][1]) < 0.01:
+                    # (a footer in the lower half: a standout frame's full-page fill also touches the bottom edge)
+                    # body text an overfull frame pushed into or under the footer box, or off the page (v10.18.0;
+                    # step 15 found a bullet of slide 1gr that the footer box covered, and this check did not see
+                    # it): larger than the footer's own text, so it is not the footer's
                     self.items.append(("text", r, label))
         # footnote / \source lines: the right-aligned small lines at the bottom,
         # plus the lines of the same (wrapped) block directly above them
@@ -376,7 +388,14 @@ class Page:
 
     def check_right(self, tol):
         out = []
+        # a side image's panel, flush with the page's right edge from the title bar down: what is drawn inside it is
+        # the picture's own (v10.18.0: a vector side image's strokes were judged against the Right Margin, which a
+        # template with a wider logo padding moves left of them)
+        panels = [r for k, r, _ in self.items if k in ("drawing", "image") and r.x1 >= self.w - 0.5
+                  and r.height > 0.5 * (self.footer_top - self.bar_bottom)]
         for k, r, lab in self.items:
+            if any(p.contains(r) for p in panels):
+                continue
             if r.x1 > self.logo_right + tol and r.x1 < self.w - 0.5:
                 out.append(f"{k} ends at x={r.x1:.2f}, {r.x1 - self.logo_right:.2f} past the "
                            f"Right Margin ({self.logo_right:.2f}): {lab[:40]!r}")
@@ -498,6 +517,15 @@ def ink_extent(page: fitz.Page, clip: fitz.Rect, dpi: int = 1152) -> float | Non
         if any(max(abs(samples[row + x * n + k] - background[k]) for k in range(3)) > 60 for x in range(pix.width)):
             return clip.y0 + (y + 1) * 72 / dpi
     return None
+
+
+def footer_text_size(blocks: list[dict], footer_top: float) -> float:
+    """The size of the footer's own text: the frame number's (the rightmost digits inside the footer box, set in the
+    footer text size, the largest text the footer has), else FOOTER_TEXT_MAX_SIZE. Body text larger than this inside
+    or under the footer box is not the footer's."""
+    numbers = [s for b in blocks for line in b.get("lines", []) for s in line["spans"]
+               if s["text"].strip().isdigit() and s["bbox"][1] >= footer_top - 1]
+    return max(numbers, key=lambda s: s["bbox"][2])["size"] if numbers else FOOTER_TEXT_MAX_SIZE
 
 
 def usual_footnote_top(pages: list[Page]) -> float:

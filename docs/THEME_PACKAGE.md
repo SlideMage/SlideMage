@@ -49,7 +49,7 @@ author = "Jane Doe"
 homepage = "https://github.com/jdoe/slidemage-theme-sample"             # http(s)
 license = "LPPL-1.3c-or-later"            # what LICENSE says; see "Private themes" for logos
 layout = "fira"                           # the layout profile the template sets with \SMLayoutProfile:
-                                          # fira or lmsans (SlideMage's), or <name> with SlideMage_layout_<name>.tex
+                                          # fira, lmsans or lmroman (SlideMage's), or <name> with SlideMage_layout_<name>.tex
 ```
 
 Rules (the app and the packing tool apply the same ones; a broken rule is refused with a sentence saying which):
@@ -57,12 +57,12 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
 - Every field is required and text. `api_version`, `needs` and `network` are refused: they belong to `plugin.toml`,
   and a theme runs no Python.
 - The `id` is the template key, hyphens and all (`uni-graz`), unlike a plugin's package folder.
-- The `id` may not be the key of a template SlideMage ships (today `slidemage`): a theme cannot replace a bundled
-  template.
+- The `id` may not be the key of a template SlideMage ships (today `slidemage` and, since v10.18.0, `greyscale`): a
+  theme cannot replace a bundled template.
 - `requires_slidemage` must accept the running SlideMage, or the theme is not installed.
 - The template file `SlideMage_template_<id>.tex`, `README.md`, `CHANGELOG.md` and `LICENSE` must be there, and
   the scheme folder, if any, must be `schemes/scheme_<id with _>/`.
-- A `layout` other than `fira` or `lmsans` needs the package's own `SlideMage_layout_<layout>.tex`.
+- A `layout` other than `fira`, `lmsans` or `lmroman` needs the package's own `SlideMage_layout_<layout>.tex`.
 - Optional in the template: a `% SlideMage template name: <label>` line in its first 30 lines names it in the
   dialogs (as for any template).
 

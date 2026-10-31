@@ -1,0 +1,114 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage template name: Greyscale (Latin Modern Roman)
+%
+% A second look that ships with SlideMage (v10.18.0): LaTeX's own serif text face, Latin
+% Modern Roman, in greys only, with en dashes as bullets, numbered footnotes, a taller title
+% bar and footer, more room around the logo and wider margins. It differs from the SlideMage
+% template (SlideMage_template_slidemage.tex) in nearly everything a template can choose,
+% and it does so with catalog settings alone: the layout profile below, then \setlength,
+% \renewcommand and \definecolor on names of SlideMage_setup.tex's catalog. No line patches
+% the theme or the base, and no line sets a value of the layout profile.
+%
+% Use it as a starting point for a template of your own: copy this file into your project as
+% SlideMage_template_<key>.tex, change the name line above, and change what you like. The
+% comments say what each setting does; SlideMage_setup.tex has every setting with its default.
+% A setting this file leaves out keeps the SlideMage template's value.
+%
+% Like the SlideMage template it is part of the framework (latex/), so every project finds it
+% on the TeX search path; a project's own SlideMage_template_greyscale.tex, if it has one, wins.
+
+% The layout profile: fonts and font metrics (SlideMage_layout_lmroman.tex). Chosen before
+% SlideMage_setup, because the catalog's lengths in ex and em are read in its font.
+\newcommand{\SMLayoutProfile}{lmroman}
+\input{SlideMage_setup}
+
+% ---------------------------------------------------------------------------
+% Palette: greys only. Each colour keeps its role's contrast (SlideMage_setup.tex, 'Palette'):
+% dark text on every c_secondary_* block title >= 4.5:1, so none is darker than #898989;
+% the link underline c_secondary_blue on white >= 3:1, so it is no lighter than #949494.
+% The c_tertiary_* colours are the 50% blends with white, as in the SlideMage template.
+% ---------------------------------------------------------------------------
+\definecolor{c_primary_dark}{HTML}{222222}      % body text, footer box
+\definecolor{c_primary_highlight}{HTML}{555555} % accent: bullets, highlights, code commands
+\definecolor{c_primary_gray}{HTML}{6b6b6b}      % highlightframe, progress bar (white text on it: 5.3:1)
+\definecolor{c_primary_white}{HTML}{FFFFFF}
+\definecolor{c_secondary_violet}{HTML}{bdbdbd}  % block titles
+\definecolor{c_tertiary_violet}{HTML}{dedede}
+\definecolor{c_secondary_blue}{HTML}{8f8f8f}    % infoblock titles, link underline
+\definecolor{c_tertiary_blue}{HTML}{c7c7c7}
+\definecolor{c_secondary_green}{HTML}{d0d0d0}   % exampleblock titles
+\definecolor{c_tertiary_green}{HTML}{e8e8e8}
+\definecolor{c_secondary_red}{HTML}{9e9e9e}     % alertblock titles
+\definecolor{c_tertiary_red}{HTML}{cfcfcf}
+\definecolor{c_secondary_orange}{HTML}{b0b0b0}  % reference block titles
+\definecolor{c_tertiary_orange}{HTML}{d8d8d8}
+\definecolor{c_secondary_yellow}{HTML}{e0e0e0}
+\definecolor{c_tertiary_yellow}{HTML}{f0f0f0}
+\definecolor{c_tertiary_gray}{HTML}{ebebeb}     % block bodies, process boxes, code panels
+\definecolor{c_custom_gray}{HTML}{2d2d2d}       % hyperlink text, buttons, quote attribution
+\definecolor{c_custom_red}{HTML}{3c3c3c}
+\definecolor{c_custom_green}{HTML}{4a4a4a}
+\definecolor{c_custom_brown}{HTML}{5a5a5a}
+% Code comments: a little darker than c_primary_gray, for 4.5:1 on the code panel.
+\definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+
+% ---------------------------------------------------------------------------
+% Roles: a light title bar with dark text (the SlideMage template's is dark with white
+% text), a dark footer with white text, bullets in the accent grey. A highlightframe turns
+% title bar and footer c_primary_gray, so its title text is white; a standout frame is the
+% title bar's light grey with dark text; \alert{} is the accent grey.
+% ---------------------------------------------------------------------------
+\renewcommand{\SMTitleBoxColor}{c_tertiary_gray}
+\renewcommand{\SMTitleTextColor}{c_primary_dark}
+\renewcommand{\SMFooterBoxColorDefault}{c_primary_dark}
+\renewcommand{\SMFooterTextColor}{c_primary_white}
+\renewcommand{\SMBulletColor}{c_primary_highlight}
+\renewcommand{\SMHighlightTitleTextColor}{c_primary_white}
+\renewcommand{\SMStandoutTextColor}{c_primary_dark}
+\renewcommand{\SMAlertTextColor}{c_primary_highlight}
+\renewcommand{\SMProgressBarColor}{c_primary_gray}
+
+% Bullets: an en dash on every level instead of the filled circle. The list indents follow
+% the glyph's width by themselves.
+\renewcommand{\SMBulletSymbol}[1]{\textcolor{#1}{\textendash}}
+
+% Footnotes: numbered 1, 2, 3 ... instead of the currency signs.
+\renewcommand{\SMFootnoteMark}[1]{\number#1}
+
+% ---------------------------------------------------------------------------
+% Logo: SlideMage's own (the catalog's default file), a little larger, with more room
+% around it: the right padding is the white space on either side of the logo, and the
+% frame number and the footnotes end at its inner edge.
+% ---------------------------------------------------------------------------
+\setlength{\SMLogoHeight}{3.6ex}
+\setlength{\SMFrametitleRightPadding}{0.6cm}
+
+% ---------------------------------------------------------------------------
+% Title bar: taller. The bar ends at the logo's lower edge (derived from the top padding,
+% the title font and the logo height); the bottom padding is where the frame body begins.
+% ---------------------------------------------------------------------------
+\setlength{\SMFrametitleTopPadding}{3.4ex}
+\setlength{\SMFrametitleBottomPadding}{3.4ex}
+\setlength{\SMFrametitleLeftPadding}{1cm}       % the title starts where the text does
+
+% The Top Margin, below the taller bar (the SlideMage template's is 41.58bp).
+\renewcommand{\SMTopMargin}{52bp}
+
+% Text margins: wider on both sides (0.45cm in the SlideMage template).
+\setlength{\SMTextMarginLeft}{1cm}
+\setlength{\SMTextMarginRight}{1cm}
+
+% ---------------------------------------------------------------------------
+% Footer: a taller box with slightly larger text. The footnote text must stay smaller than
+% the footer's (the layout checker tells them apart by size).
+% ---------------------------------------------------------------------------
+\setlength{\SMFooterBoxHeight}{11pt}
+\renewcommand{\SMFooterTextSize}{\fontsize{6}{4}\selectfont}
+\renewcommand{\SMFooterIDSize}{\fontsize{4.5}{4.5}\selectfont}
+
+\input{SlideMage_base}
+
+% The house citation format, as in the SlideMage template (a deck then says
+% \SMUseBibliography).
+\input{SlideMage_bibliography_default}

@@ -166,6 +166,51 @@ def test_bottom_sees_a_small_line_an_overfull_frame_pushed_into_or_under_the_foo
     assert low.check_bottom(0.6)
 
 
+def test_bottom_sees_a_body_line_the_footer_box_covers_and_not_the_footers_own_text():
+    """v10.18.0, the gap step 15 found (a bullet of slide 1gr under the footer box went unreported): a body-size line
+    an overfull frame pushed wholly into the footer box is an item, while the footer's own text (no larger than its
+    frame number) is not."""
+    width, h = 455.24, 256.07
+    footer_top = 244.0
+
+    def draw(body_baseline):
+        def inner(page):
+            page.draw_rect(pymupdf.Rect(0, footer_top, width, h), color=None, fill=(0.13, 0.13, 0.13))
+            page.insert_text((20, 252), "Course title | chapter", fontsize=6, color=(1, 1, 1))
+            page.insert_text((440, 252), "12", fontsize=6, color=(1, 1, 1))
+            if body_baseline:
+                page.insert_text((30, body_baseline), "A bullet pushed down", fontsize=10.95)
+        return inner
+
+    clean = page_with(draw(None), {})
+    assert not clean.check_bottom(0.6)
+    covered = page_with(draw(footer_top + 9), {})
+    assert any(k == "text" and "pushed" in lab for k, r, lab in covered.items)
+    found = covered.check_bottom(0.6)
+    assert found and "pushed" in found[0]
+
+
+def test_drawings_inside_a_side_image_panel_are_not_judged_against_the_right_margin():
+    """v10.18.0: a vector side image's own strokes lie inside its panel, flush with the page's right edge; a template
+    with a wide logo padding puts the Right Margin left of them. A drawing outside such a panel still is judged."""
+    width, h = 455.24, 256.07
+
+    def draw(with_panel):
+        def inner(page):
+            page.draw_rect(pymupdf.Rect(0, 0, 390, 25.2), color=None, fill=(0.1, 0.1, 0.1))
+            page.draw_rect(pymupdf.Rect(400, 4, 436, 20), color=None, fill=(0.1, 0.1, 0.1))   # the logo
+            page.draw_rect(pymupdf.Rect(0, 244, width, h), color=None, fill=(0.1, 0.1, 0.1))
+            if with_panel:
+                page.draw_rect(pymupdf.Rect(310, 25.4, width, 243.9), color=None, fill=(0.9, 0.9, 0.9))
+            page.draw_rect(pymupdf.Rect(320, 60, 451, 120), color=(0.4, 0.4, 0.4), fill=(1, 1, 1), width=0.5)
+        return inner
+
+    inside = page_with(draw(True), {"SMFrametitleRightPadding": 17.0})
+    assert not inside.check_right(0.6)
+    alone = page_with(draw(False), {"SMFrametitleRightPadding": 17.0})
+    assert alone.check_right(0.6)
+
+
 def test_the_title_frame_bottom_pad_is_the_space_from_the_last_lines_bottom_to_the_boxs_edge():
     box_height, pad = 178.0, 30.0
 

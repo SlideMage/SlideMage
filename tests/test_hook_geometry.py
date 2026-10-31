@@ -374,3 +374,36 @@ def test_the_frame_number_and_the_footnotes_end_on_the_logos_padding_edge(decks)
         wrong = deck.chrome(deck.page("ZC8"))
         wrong.hooks = {**hooks, "SMFrametitleRightPadding": hooks["SMFrametitleRightPadding"] + 3}
         assert wrong.check_edge(0.2)                       # an edge 3bp off is reported
+
+
+# The macro hooks of v10.18.0 (step 17b) are not lengths; these read them back. \SMAlertTextColor and
+# \SMProgressBarColor are only colour names handed to beamer (the calibration deck has no \alert and no progress bar);
+# test_template_catalog.py checks that the theme reads them.
+def span_colours(page, pattern):
+    return {s["color"] for b in page.get_text("dict")["blocks"] for line in b.get("lines", []) for s in line["spans"]
+            if re.search(pattern, s["text"])}
+
+
+@needs_tex
+def test_the_bullet_footnote_mark_and_frame_colour_hooks_show_in_the_pdf(decks):
+    stress, fira = decks["cal"], decks["fira"]
+    # \SMFootnoteMark: "(1)" under the stress template, the theme's currency signs by default
+    marks = lambda deck: "".join(w[4] for w in deck.page("ZC8").get_text("words") if w[3] < deck.chrome(deck.page("ZC8")).footer_top)
+    assert "(1)" in marks(stress) and "(2)" in marks(stress)
+    assert "£" in marks(fira) and "¥" in marks(fira)
+    # \SMBulletSymbol: a 4.5pt square in the bullet colour (stress) against the 3.4pt circle
+    def bullets(deck):        # small square-boxed fills in the body's left half (not the logo's shapes)
+        page = deck.page("ZC3")
+        return [d for d in page.get_drawings() if d.get("fill") and d["rect"].width < 6
+                and abs(d["rect"].width - d["rect"].height) < 0.05
+                and d["rect"].y0 > deck.chrome(page).bar_bottom and d["rect"].x1 < page.rect.width / 2]
+    squares = bullets(stress)
+    assert squares and all(abs(d["rect"].width * PT - 4.5) < 0.05 for d in squares)
+    assert all(tuple(round(c * 255) for c in d["fill"]) == (0x15, 0x80, 0x3d) for d in squares)   # c_custom_green
+    dots = bullets(fira)
+    assert dots and all(abs(d["rect"].width * PT - 3.4) < 0.05 for d in dots)
+    # \SMHighlightTitleTextColor and \SMStandoutTextColor
+    assert span_colours(stress.page("ZCC"), r"highlight") == {0xfef08a}       # c_tertiary_yellow
+    assert span_colours(fira.page("ZCC"), r"highlight") == {0xffffff}         # the title text colour
+    assert span_colours(stress.page("ZCD"), r"statement") == {0xfde047}       # c_secondary_yellow
+    assert span_colours(fira.page("ZCD"), r"statement") == {0xfffff0}         # the theme's pale yellow

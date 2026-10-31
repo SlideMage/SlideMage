@@ -96,17 +96,27 @@ AUDITED_FRAMEWORK = {
     # v10.17.0 (step 17): the catalog's \SMCardHeadingStyle (the setup layer, default the profile's
     # \SMCardHeadingFont, which the base points at it; the Fira profile's comment says so). A font switch, the same in
     # every view; no rule changed.
-    "SlideMage_setup.tex": "c1765f2aa92bee3357e52e104bc05eda186fbaf33242a7dbbf14680f88fc5278",
+    # v10.18.0 (step 17b): new catalog hooks in the setup layer (the bullet's drawing \SMBulletSymbol, the footnote
+    # marker \SMFootnoteMark, the colour roles \SMHighlightTitleTextColor, \SMStandoutTextColor, \SMAlertTextColor,
+    # \SMProgressBarColor), which the theme and the base read, each with the value it replaced as default; the theme
+    # keeps only the footnote symbols the text font has (decided once per document, from the font, the same in every
+    # view). New, pinned: the layout profile SlideMage_layout_lmroman.tex (fonts and metrics only, written by
+    # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
+    # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
+    # its deck-version text are unchanged.
+    "SlideMage_setup.tex": "05f45536d0a604972d636e7eeeb628009d8a4b7a3799b5ea6923703dd8867128",
     "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
     # changed), re-audited.
-    "SlideMage_base.tex": "a4134a916acb52f66a86ca0d58ecca222adce67d925d7dced0856c089499b078",
+    "SlideMage_base.tex": "9b92a2fec582e4ee05e1bdff4b2e8330a3a44b94351ce461e76c961b1566db26",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
-    "beamerthemeSlideMage.sty": "175a142a3a0a8c5becc21209ddb0266864cbee6c26771dd80b3cd48aa2d0099d",
+    "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
+    "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
+    "SlideMage_template_greyscale.tex": "6e337956f70d61ac27a8c9e135e5455d85526bf1579478c54cd87893a18dcf27",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.
@@ -404,7 +414,9 @@ def _preamble(spec, dependencies: dict[str, str]):
             framework_imports.append(name)
             if _brace_depth(reduced, match.start()) != 0:
                 return deck_hidden, "scoped or delayed framework import"
-            if name != "SlideMage_template_slidemage":
+            # A template the framework ships and pins (the SlideMage template, since v10.18.0 also the greyscale
+            # one) is audited with the framework files above; any other is a project's or an installed theme's.
+            if f"{name}.tex" not in AUDITED_FRAMEWORK:
                 # The project's own copy, else an installed theme's (slide_snapshot.template_dirs: TeX's order).
                 path = slide_snapshot.preamble_file(name[len("SlideMage_template_"):], root)
                 if (root / "decks" / path.name).exists():

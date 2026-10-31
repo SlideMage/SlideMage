@@ -112,9 +112,16 @@
 %%    and \beamer@endinvisible count the depth of \visible content. Side footnotes are
 %%    covered inside their strip as well, so a \footnote<2-> there no longer shows on every step.
 %%    A footnote of the whole frame sets \ifSM@FootnoteShown and is shown on every step.
+%% 11. (v10.18.0) The bullet's drawing and the footnote marker are hooks of the catalog in
+%%    SlideMage_setup.tex: \SMBulletDot and \SMBulletDotBlack draw \SMBulletSymbol with their
+%%    colour, \thefootnote and \thempfootnote print \SMFootnoteMark of their counter. The
+%%    catalog's defaults are this file's former circle and \SMFnSymbol: nothing changes by default.
+%%    The alert and progress bar colours (SMColorD, SMColorC) follow the catalog's roles
+%%    \SMAlertTextColor and \SMProgressBarColor, whose defaults are the Gotham colours they had, and
+%%    a standout frame's text takes \SMStandoutTextColor when a template names one.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/29}{10.12.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/31}{10.18.0}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -207,6 +214,8 @@
   {
     \colorlet{SMColorDark}{c_primary_dark}
     \colorlet{SMColorA}{\SMTitleBoxColor}
+    \colorlet{SMColorC}{\SMProgressBarColor}
+    \colorlet{SMColorD}{\SMAlertTextColor}
     \@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}
     \__SM_apply_color_roles:
   }
@@ -327,6 +336,8 @@
   }
   \setbeamercolor{local~structure}{fg=primary~palette.bg}
   \usebeamercolor[fg]{primary~palette}
+  % the catalog's \SMStandoutTextColor (v10.18.0), when the template names one
+  \tl_if_empty:NF \SMStandoutTextColor { \color{\SMStandoutTextColor} }
 }
 \newenvironment{SMStandoutFrame}{
   \usebeamertemplate{standout}
@@ -1741,18 +1752,49 @@ fg=normal~text.fg
 % set): a currency-sign sequence, in this specific order. All 14 were
 % confirmed against slides/ZZU-Footnote-symbol-options-current.tex to
 % actually exist in Fira Sans.
+%
+% Only the symbols the text font has are used (v10.18.0): Latin Modern, the font of the lmsans and
+% lmroman profiles, lacks five of the fourteen (₹ ₽ ₺ ₴ ₪), whose footnotes had no visible marker.
+% \g__SM_footnote_symbols_shown_seq is the list less the single characters the sans font (the
+% text font of every profile) has no glyph for; it is made when the document begins and whenever
+% \setfootnotesymbols changes the list. Fira Sans has all fourteen, so its decks number as before.
 \ExplSyntaxOn
 \seq_new:N \g_SM_footnote_symbols_seq
+\seq_new:N \g__SM_footnote_symbols_shown_seq
 \seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { £,¥,₹,₽,₺,₴,₪,₫,₦,₡,₩,ƒ,¢,€ }
+\cs_new_protected:Npn \__SM_footnote_symbols_filter:
+	{
+		\group_begin:
+		\normalfont \sffamily
+		\seq_gclear:N \g__SM_footnote_symbols_shown_seq
+		\seq_map_inline:Nn \g_SM_footnote_symbols_seq
+			{
+				\tl_if_single_token:nTF {##1}
+					{
+						\iffontchar \font `##1 \scan_stop:
+							\seq_gput_right:Nn \g__SM_footnote_symbols_shown_seq {##1}
+						\fi
+					}
+					{ \seq_gput_right:Nn \g__SM_footnote_symbols_shown_seq {##1} }
+			}
+		\seq_if_empty:NT \g__SM_footnote_symbols_shown_seq
+			{ \seq_gset_eq:NN \g__SM_footnote_symbols_shown_seq \g_SM_footnote_symbols_seq }
+		\group_end:
+	}
+\seq_gset_eq:NN \g__SM_footnote_symbols_shown_seq \g_SM_footnote_symbols_seq
+\AtBeginDocument { \__SM_footnote_symbols_filter: }
 \newcommand{\setfootnotesymbols}[1]{%
 	\seq_gset_from_clist:Nn \g_SM_footnote_symbols_seq { #1 }
+	\__SM_footnote_symbols_filter:
 }
 \newcommand{\SMFnSymbol}[1]{%
-	\seq_item:Nn \g_SM_footnote_symbols_seq
-		{ \int_eval:n { \int_mod:nn { #1 - 1 } { \seq_count:N \g_SM_footnote_symbols_seq } + 1 } }
+	\seq_item:Nn \g__SM_footnote_symbols_shown_seq
+		{ \int_eval:n { \int_mod:nn { #1 - 1 } { \seq_count:N \g__SM_footnote_symbols_shown_seq } + 1 } }
 }
 \ExplSyntaxOff
-\renewcommand{\thefootnote}{\SMFnSymbol{\value{footnote}}}
+% The marker a footnote shows is the catalog's \SMFootnoteMark (SlideMage_setup.tex, v10.18.0),
+% \SMFnSymbol by default; a template that numbers its footnotes renews that hook.
+\renewcommand{\thefootnote}{\SMFootnoteMark{\value{footnote}}}
 % A \footnote{} called inside a minipage doesn't use \thefootnote/\c@footnote
 % at all -- LaTeX's own minipage machinery silently switches to a separate
 % counter/display command, \c@mpfootnote/\thempfootnote, normally displayed
@@ -1769,7 +1811,7 @@ fg=normal~text.fg
 % \c@footnote, which needs standardframe's own explicit per-frame reset
 % below), which happens to already match this deck's "restart every slide"
 % footnote convention for the common case of one minipage per frame.
-\renewcommand{\thempfootnote}{\SMFnSymbol{\value{mpfootnote}}}
+\renewcommand{\thempfootnote}{\SMFootnoteMark{\value{mpfootnote}}}
 % Every footnote goes to the frame's own footnote block, also from inside a
 % minipage/column (beamer's class option "framefootnotes", i.e. \footnote
 % defaults to [frame]) -- 2026-10-01, direct instruction ("one footnote is
@@ -2122,7 +2164,9 @@ fg=normal~text.fg
 % highlight color or to another color (2026-07-16, direct instruction)
 % -- see each institution's own
 % SlideMage_template_*.tex for its \SMBulletColor setting.
-\newcommand{\SMBulletDot}{\tikz[baseline=-0.65ex]{\fill[\SMBulletColor] circle (1.7pt);}}
+% (v10.18.0) The drawing is the catalog's \SMBulletSymbol{<color>} (SlideMage_setup.tex), this
+% circle by default; a template with another bullet renews that hook, not these two macros.
+\newcommand{\SMBulletDot}{\SMBulletSymbol{\SMBulletColor}}
 
 % ---- Table of contents ----------------------------------------------------
 % A \tableofcontents-driven agenda slide (see
@@ -2205,7 +2249,7 @@ fg=normal~text.fg
 % the frame's ordinary itemize bullets outside the block), so calling this
 % once per block-begin template is enough -- no matching "reset" call is
 % needed at block-end.
-\newcommand{\SMBulletDotBlack}{\tikz[baseline=-0.65ex]{\fill[c_primary_dark] circle (1.7pt);}}
+\newcommand{\SMBulletDotBlack}{\SMBulletSymbol{c_primary_dark}}
 \newcommand{\SMSetBlockBullets}{%
 	\setbeamertemplate{itemize item}{\SMBulletDotBlack}%
 	\setbeamertemplate{itemize subitem}{\SMBulletDotBlack}%

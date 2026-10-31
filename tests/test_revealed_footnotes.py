@@ -117,8 +117,11 @@ def test_a_footnote_in_revealed_content_appears_with_it(decks, deck):
         seen = [bool(shown(page, word)) for page in steps]
         assert seen == [n >= first for n in range(1, 7)], (word, seen)
     # a footnote keeps its place on every step it shows on, and the block does not move between steps
+    # (within 0.02bp: tops rounded to 0.01 can straddle a rounding boundary, as the stress template's "(n)" markers
+    # of v10.18.0 showed with 221.07 against 221.08)
     for word, first in ZCM.items():
-        assert len({shown(page, word)[0] for page in steps[first - 1:]}) == 1, word
+        tops = [shown(page, word)[0] for page in steps[first - 1:]]
+        assert max(tops) - min(tops) <= 0.02, (word, tops)
 
 
 @needs_tex

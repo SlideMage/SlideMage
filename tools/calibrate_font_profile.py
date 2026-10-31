@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,7 @@ DEFAULT_PROJECT = REPO / "tests" / "fixtures" / "template_stress"
 DEFAULT_DECK = "decks/calibration.tex"
 PT = 72.27 / 72                  # TeX points per PDF point (bp)
 TOLERANCE = 0.3                  # pt: below this a measurement says "ok"
+EDGE_INSET = 0.15                # bp: the footer number's pixel scan keeps this far inside the box's edges
 SECTION_BOX_HEIGHT = "SMSectionframeBoxHeight"
 TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_[^}]+\}")
 SET_RE = r"\\setlength\{\\%s\}\{([^}]*)\}"
@@ -90,6 +92,181 @@ def profile_text(framework: Path, profile: str) -> str:
     if not path.is_file():
         raise SystemExit(f"no layout profile {path}")
     return path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- writing a new profile (--new, v10.18.0)
+
+ASCENDER_RE = re.compile(r"(\\newcommand\{\\SMFontAscender\}\{)([^}]*)(\})")
+
+
+@dataclass
+class ProfileFonts:
+    """The font files of a new profile: the text font's four faces and the mono font's three."""
+    regular: str
+    italic: str
+    bold: str
+    bold_italic: str
+    mono: str = "lmmono10-regular.otf"
+    mono_italic: str = "lmmono10-italic.otf"
+    mono_bold: str = "lmmonolt10-bold.otf"
+    inline_code_scale: str = "0.95"
+
+
+def font_on_path(name: str) -> bool:
+    """Whether `name` is a font file TeX finds (kpsewhich), so a typo stops here, not in a compile's log."""
+    try:
+        found = subprocess.run(["kpsewhich", name], capture_output=True, text=True, timeout=60).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return True                    # no kpsewhich to ask: the compile's own font check reports it
+    return bool(found)
+
+
+def new_profile_text(name: str, fonts: ProfileFonts, description: str, linespread: str, parskip: str,
+                     ascender: str = "0.8") -> str:
+    """The text of a new layout profile with these fonts, structured like the shipped ones. The text font is
+    beamer's sans family whatever its design: beamer typesets frames in \\sffamily, so a serif font goes there too
+    (and to \\rmfamily, for \\textrm). \\SMFontAscender starts as a placeholder that `--new` replaces with the value
+    the base reads from the loaded font."""
+    faces = ", ".join((fonts.regular, fonts.italic, fonts.bold, fonts.bold_italic))
+    mono_faces = ", ".join((fonts.mono, fonts.mono_italic, fonts.mono_bold))
+    header = "\n".join(textwrap.wrap(f'SlideMage layout profile "{name}": {description}'.rstrip(": "), 96,
+                                     initial_indent="% ", subsequent_indent="% "))
+    family = (f"[\n            ItalicFont = {{ {fonts.italic} }},\n            BoldFont = {{ {fonts.bold} }},\n"
+              f"            BoldItalicFont = {{ {fonts.bold_italic} }}\n          ]\n          {{ {fonts.regular} }}")
+    return f"""% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+{header}
+%
+% Written by tools/calibrate_font_profile.py --new, which also read \\SMFontAscender from
+% the compiled font and checked the profile against the calibration deck. A template picks it with
+%
+%   \\newcommand{{\\SMLayoutProfile}}{{{name}}}   % before \\input{{SlideMage_setup}}
+%
+% See SlideMage_layout_fira.tex for what a profile is and what it has to define; the
+% header of SlideMage_setup.tex has the recipe for a new one.
+
+\\RequirePackage{{etoolbox}}
+
+\\ExplSyntaxOn
+\\makeatletter
+
+\\msg_new:nnn {{ SlideMage }} {{ font-not-found }}
+  {{ Could~not~find~font~'#1'.\\c_space_tl }}
+\\msg_new:nnn {{ SlideMage }} {{ fonts-not-available }}
+  {{ No~suitable~fonts~found.~Using~fallback~fonts. }}
+\\msg_new:nnn {{ SlideMage }} {{ requires-lualatex }}
+  {{ The~SlideMage~layout~profile~needs~LuaLaTeX~(OpenType~fonts~and~Lua~code). }}
+
+\\int_new:N \\g__SM_fonts_not_found_int
+
+\\cs_new_protected:Nn \\__SM_check_font:n
+  {{
+    \\fontspec_font_if_exist:nF {{ #1 }}
+      {{
+        \\fontspec_font_if_exist:nF {{ #1~Regular }}
+          {{
+            \\int_incr:N \\g__SM_fonts_not_found_int
+            \\msg_warning:nnn {{ SlideMage }} {{ font-not-found }} {{ #1 }}
+          }}
+      }}
+  }}
+
+\\cs_new_protected:Nn \\__SM_if_fonts_available:nnn
+  {{
+    \\int_zero:N \\g__SM_fonts_not_found_int
+    \\clist_map_function:nN {{ #1 }} \\__SM_check_font:n
+    \\int_compare:nTF {{ \\g__SM_fonts_not_found_int = 0 }} {{ #2 }} {{ #3 }}
+  }}
+
+% Text and code fonts. fontspec loads with no-math, so that the text font is in charge of
+% text only; the math fonts are restored further down. Beamer typesets a frame in its sans
+% family, so the text font is \\setsansfont whatever its design, and \\setmainfont as well, so
+% that \\textrm and \\rmfamily give the same face.
+\\sys_if_engine_luatex:TF
+  {{
+    \\@ifpackageloaded {{ fontspec }}
+      {{ \\PassOptionsToPackage {{ no-math }} {{ fontspec }} }}
+      {{ \\RequirePackage [ no-math ] {{ fontspec }} }}
+    \\__SM_if_fonts_available:nnn
+      {{ {faces} }}
+      {{
+        \\setsansfont
+          {family}
+        \\setmainfont
+          {family}
+        \\renewcommand {{ \\ttdefault }} {{ lmtt }}
+      }}
+      {{ \\msg_warning:nn {{ SlideMage }} {{ fonts-not-available }} }}
+    \\__SM_if_fonts_available:nnn
+      {{ {mono_faces} }}
+      {{
+        \\setmonofont
+          [
+            ItalicFont = {{ {fonts.mono_italic} }},
+            BoldFont = {{ {fonts.mono_bold} }}
+          ]
+          {{ {fonts.mono} }}
+      }}
+      {{ \\msg_warning:nn {{ SlideMage }} {{ fonts-not-available }} }}
+  }}
+  {{ \\msg_warning:nn {{ SlideMage }} {{ requires-lualatex }} }}
+
+\\makeatother
+\\ExplSyntaxOff
+
+% Metrics -----------------------------------------------------------------------
+% The ascender of the text font in em. SlideMage_base.tex reads it from the loaded font
+% (luaotfload's OpenType metrics) and keeps this number only where the font gives none;
+% calibrate_font_profile.py --new wrote the value the base read.
+\\newcommand{{\\SMFontAscender}}{{{ascender}}}
+% Running text: \\linespread and \\parskip. The theme applies them where it is loaded, with
+% the normal font in force, so the em is this font's.
+\\newcommand{{\\SMLinespread}}{{{linespread}}}
+\\newcommand{{\\SMParskip}}{{{parskip}}}
+
+% Code fonts ----------------------------------------------------------------------
+% \\SMCodeFile (listings) and the like; the theme's \\ttfamily is the same font.
+\\newfontfamily\\SMCodeFont{{{fonts.mono}}}[BoldFont={fonts.mono_bold}]
+% Code in running text (\\SMCode, \\SMCmd), Ligatures=TeXOff so that -- and `` show as typed
+% (see the Fira profile).
+\\newfontfamily\\SMInlineCodeFont{{{fonts.mono}}}[Scale={fonts.inline_code_scale}, Ligatures=TeXOff]
+% The heading of a card in a diagram (\\SMCard).
+\\newcommand{{\\SMCardHeadingFont}}{{\\bfseries}}
+
+% Math ------------------------------------------------------------------------------
+% Genuine Computer Modern math next to the text, and \\text{{}} upright in Computer Modern,
+% as in the Fira profile (SlideMage_layout_fira.tex has the reasons).
+\\usefonttheme[onlymath]{{serif}}
+\\let\\SMOrigText\\text
+\\renewcommand{{\\text}}[1]{{\\SMOrigText{{\\usefont{{OT1}}{{cmr}}{{m}}{{n}}#1}}}}
+"""
+
+
+def write_new_profile(args: argparse.Namespace, framework: Path, project: Path) -> Path:
+    """`--new`: write latex/SlideMage_layout_<name>.tex from the font files given, compile the calibration deck with
+    it once to read the ascender the base takes from the font, and write that into the profile."""
+    fonts = ProfileFonts(args.text_regular, args.text_italic, args.text_bold, args.text_bold_italic,
+                         args.mono, args.mono_italic, args.mono_bold, args.inline_code_scale)
+    missing = [f for f in (fonts.regular, fonts.italic, fonts.bold, fonts.bold_italic, fonts.mono,
+                           fonts.mono_italic, fonts.mono_bold) if not font_on_path(f)]
+    if missing:
+        raise SystemExit(f"TeX finds no font file {', '.join(missing)} (kpsewhich)")
+    path = framework / f"SlideMage_layout_{args.profile}.tex"
+    if path.exists() and not args.force:
+        raise SystemExit(f"{path} exists; --force overwrites it")
+    text = new_profile_text(args.profile, fonts, args.description, args.linespread, args.parskip)
+    path.write_text(text, encoding="utf-8", newline="\r\n")   # CRLF, as the shipped profiles
+    probe = Path(tempfile.mkdtemp(prefix="calibrate-new-")) / "ascender.pdf"
+    compile_deck(project, args.deck, args.template, args.profile, framework, probe)
+    doc = fitz.open(probe)
+    ascender = info_bp(doc, "SMFontAscender")
+    doc.close()
+    if ascender is None:
+        raise SystemExit("the compiled deck has no SMFontAscender key; the profile keeps the placeholder 0.8")
+    path.write_text(ASCENDER_RE.sub(lambda m: f"{m.group(1)}{ascender:g}{m.group(3)}", text, count=1),
+                    encoding="utf-8", newline="\r\n")
+    print(f"wrote {path} (ascender {ascender:g}em, read from {fonts.regular})")
+    return path
 
 
 # ---------------------------------------------------------------- compiling
@@ -179,7 +356,10 @@ def footer_text_gaps(page: fitz.Page, chrome: cl.Page, number: dict) -> tuple[fl
     """The gap (bp) above and below the ink of the frame number inside the footer box, from pixels."""
     dpi = 1152
     x0, x1 = number["bbox"][0] - 0.3, min(number["bbox"][2] + 0.3, chrome.w - 0.3)
-    clip = fitz.Rect(x0, chrome.footer_top, x1, chrome.h - 0.05)
+    # The clip stays EDGE_INSET inside the box: its edge rows are antialiased against the canvas, and with a
+    # mid-grey box (the greyscale template's, v10.18.0) they differ from the box colour by more than the threshold,
+    # which put "ink" on the box's edges and made the check pass whatever the number did.
+    clip = fitz.Rect(x0, chrome.footer_top + EDGE_INSET, x1, chrome.h - EDGE_INSET)
     pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=fitz.csRGB, alpha=False)
     samples, n = pix.samples, pix.n
     background = samples[0:3]
@@ -240,6 +420,29 @@ def label_gap(page: fitz.Page, body_top: float = 0.0) -> list[tuple[str, float, 
                     out.append((first["text"].strip(), (second["bbox"][0] - first["bbox"][2]) * PT, first["size"] * PT))
                     break
     return out
+
+
+FONT_FILE_RE = re.compile(r"([\w-]+)\.(?:otf|ttf)\b")
+# TeX's math fonts; LM Roman italic is the math letters' font under some profiles (E, R in $E[R]$), and Times-Roman an
+# empty font entry of the SlideMage logo's PDF
+MATH_FONT_RE = re.compile(r"^(?:CM|LMMath|LMRoman\d+-Italic$|MSAM|MSBM|EUSM|EUFM|EUEX|LASY|Times-Roman$|Symbol$)")
+
+
+def fonts_outside_profile(doc: fitz.Document, framework: Path, profile: str) -> list[str]:
+    """The fonts the pages themselves use (not those inside an included PDF figure, which brings its own) that are
+    neither a font file the profile names nor TeX's math fonts: a text font that still comes from somewhere else, e.g.
+    a Fira name left in the framework, shows here (v10.18.0)."""
+    named = {m.lower().replace("-", "") for m in FONT_FILE_RE.findall(profile_text(framework, profile))}
+    seen: set[str] = set()
+    for page in doc:
+        for _xref, _ext, _type, basefont, _name, _enc, referencer in page.get_fonts(full=True):
+            if referencer:             # used by a form XObject: an included figure's own font
+                continue
+            font = basefont.split("+", 1)[-1]
+            if MATH_FONT_RE.match(font) or font.lower().replace("-", "") in named:
+                continue
+            seen.add(font)
+    return sorted(seen)
 
 
 def measure(deck: Deck, profile: str, framework: Path, template: str, project: Path = DEFAULT_PROJECT
@@ -359,6 +562,9 @@ def measure(deck: Deck, profile: str, framework: Path, template: str, project: P
                      f"{section_info['title_bar_bottom']:.2f}bp, the title bar is drawn to {bars[0]:.2f}bp")
     hooks.append(f"\\SMTopMargin = {section_info['top_margin']:.2f}bp; \\SMContentTopAlign (derived) is that distance in pt")
     hooks.extend(edges)
+    foreign = fonts_outside_profile(deck.doc, framework, profile)
+    hooks.append("fonts on the pages that are not the profile's or TeX's math fonts (a figure's own fonts are not "
+                 "counted): " + (", ".join(foreign) if foreign else "none"))
     hooks.append(f"text font ascender read from the font: {section_info['ascender']}em "
                  f"(the profile's \\SMFontAscender is only the fallback)")
     return checks, hooks
@@ -376,8 +582,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--framework", default=str(REPO / "latex"), help="the framework's latex/ folder")
     ap.add_argument("--pdf", help="measure this PDF instead of compiling")
     ap.add_argument("--keep-pdf", help="also copy the compiled PDF here")
+    new = ap.add_argument_group("a new profile (--new): write latex/SlideMage_layout_<profile>.tex, then check it")
+    new.add_argument("--new", action="store_true", help="write the profile from the font files below first")
+    new.add_argument("--force", action="store_true", help="with --new: overwrite an existing profile")
+    new.add_argument("--text-regular", help="the text font's regular face, e.g. lmroman10-regular.otf")
+    new.add_argument("--text-italic", help="its italic face")
+    new.add_argument("--text-bold", help="its bold face")
+    new.add_argument("--text-bold-italic", help="its bold italic face")
+    new.add_argument("--mono", default="lmmono10-regular.otf", help="the code font (Latin Modern Mono unless given)")
+    new.add_argument("--mono-italic", default="lmmono10-italic.otf")
+    new.add_argument("--mono-bold", default="lmmonolt10-bold.otf")
+    new.add_argument("--inline-code-scale", default="0.95", help="the inline code font's scale (0.95)")
+    new.add_argument("--linespread", default="1.15", help="the profile's line spread (1.15, the shipped profiles')")
+    new.add_argument("--parskip", default="0.5em", help="the profile's paragraph gap (0.5em)")
+    new.add_argument("--description", default="", help="the profile's one-line description for its header")
     args = ap.parse_args(argv)
     project, framework = Path(args.project).resolve(), Path(args.framework).resolve()
+    if args.new:
+        faces = (args.text_regular, args.text_italic, args.text_bold, args.text_bold_italic)
+        if not all(faces) or args.pdf:
+            ap.error("--new needs --text-regular, --text-italic, --text-bold and --text-bold-italic, and no --pdf")
+        write_new_profile(args, framework, project)
     if args.pdf:
         pdf = Path(args.pdf)
     else:

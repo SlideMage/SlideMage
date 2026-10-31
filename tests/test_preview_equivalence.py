@@ -51,6 +51,16 @@ def test_plain_slide_shares_when_deck_label_is_hidden(tmp_path):
     assert classified.evidence and classified.dependencies
 
 
+def test_the_shipped_greyscale_template_is_audited_with_the_framework(tmp_path):
+    """v10.18.0: the framework ships and pins a second template; a deck that inputs it shares like one on the
+    SlideMage template (pinned with its layout profile in AUDITED_FRAMEWORK)."""
+    preamble = PREAMBLE.replace("SlideMage_template_slidemage", "SlideMage_template_greyscale")
+    shared = classify_views(specs(tmp_path, r"\begin{standardframe}{Plain}Text\end{standardframe}", preamble=preamble))
+    assert all(d.certain for d in shared.decisions) and len(set(groups(shared))) == 1
+    assert "SlideMage_template_greyscale.tex" in AUDITED_FRAMEWORK
+    assert "SlideMage_layout_lmroman.tex" in AUDITED_FRAMEWORK
+
+
 def test_footer_label_and_frame_numbers_split(tmp_path):
     labeled = classify_views(specs(tmp_path, "Text", preamble=PREAMBLE.replace(r"\def\SMFooterHide{deck}", "")))
     assert len(set(groups(labeled))) == 3
@@ -236,7 +246,11 @@ def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_r
     # nor does the bundled bibliography default (v10.14.0): a template inputs it instead of carrying
     # the format itself, so it has to be pinned too, but it is still only renewcommands, no view-dependent rule
     assert "SlideMage_bibliography_default.tex" in AUDITED_FRAMEWORK
-    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex", *profiles]:
+    # nor do the templates the framework ships (since v10.18.0 two, both pinned)
+    templates = sorted(latex.glob("SlideMage_template_*.tex"))
+    assert {path.name for path in templates} <= set(AUDITED_FRAMEWORK)
+    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex", *profiles,
+                 *templates]:
         text = path.read_text(encoding="utf-8")
         assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode",
                              text), path.name
