@@ -31,7 +31,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
-from ... import slide_snapshot, theme_sources, themes
+from ... import citation_sources, citations, slide_snapshot, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
@@ -42,7 +42,7 @@ from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, Ho
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
-from ..dialogs.settings_plugins import ask_theme_update, download_release, install_downloaded
+from ..dialogs.settings_plugins import ask_citation_update, ask_theme_update, download_release, install_downloaded
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -796,6 +796,81 @@ def offer_theme_update(window, offer: theme_sources.Offer) -> None:
         window.log(f"Theme {offer.name} {release.version} skipped; a later version is offered")
     else:
         window.log(f"Theme {offer.name} {release.version} is available; not installed for now")
+
+
+def schedule_citation_update_check(window) -> None:
+    """Citation formats installed from GitHub (citation_sources.py) are checked like the themes: at every start, under
+    the update setting (off checks nothing)."""
+    if updater.get_update_mode() != updater.UPDATE_MODE_OFF and citation_sources.github_citations():
+        QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(citation_update_check, window))
+
+
+def citation_update_check(window) -> None:
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
+        return
+
+    def work() -> None:
+        try:
+            result = citation_sources.check_updates()
+        except Exception as exc:        # quiet: only logged
+            result = exc
+        window.citation_updates_done.emit(result)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def on_citation_updates_done(window, result) -> None:
+    """A failed check is only logged (Settings → Plugins says why); a newer release is offered, never installed
+    silently, whatever the update mode."""
+    if isinstance(result, Exception):
+        window.log(f"Citation format update check failed: {result}")
+        return
+    offers, errors = result
+    for key, error in errors.items():
+        window.log(f"Citation format update check failed for {key}: {error}")
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
+        for offer in offers:
+            offer.fetched.discard()
+        return
+    for offer in offers:
+        offer_citation_update(window, offer)
+
+
+def offer_citation_update(window, offer: theme_sources.Offer) -> None:
+    """Install now / Not now / Skip this version."""
+    release = offer.fetched.release
+    choice = ask_citation_update(window, offer)
+    if choice == "install":
+        try:
+            manifest = citation_sources.install(offer.fetched)
+        except citations.CitationError as exc:
+            window.log(f"Citation format update failed: {exc}")
+            window.toast.show_message(f"The citation format {offer.name} could not be updated: {exc}", error=True,
+                                      timeout_ms=10000)
+            return
+        window.log(f"Citation format {manifest.name} updated to {manifest.version} (from {release.repository})")
+        window.citation_installed(manifest.id)
+        return
+    offer.fetched.discard()
+    if choice == "skip":
+        try:
+            citation_sources.skip_version(offer.key, release.version)
+        except OSError as exc:
+            window.log(f"Couldn't save the skipped citation format version: {exc}")
+        window.log(f"Citation format {offer.name} {release.version} skipped; a later version is offered")
+    else:
+        window.log(f"Citation format {offer.name} {release.version} is available; not installed for now")
+
+
+def on_citation_installed(window, key: str) -> None:
+    """A citation format changed: the previews are stale (their bibliographies read its file), so the background
+    renderer plans them again and the open slide renders now."""
+    background = getattr(window, "background", None)
+    renderer = getattr(background, "renderer", None)
+    if renderer is not None:
+        renderer.replan()
+    if window.state.deck is not None:
+        window.centre.preview.render_after_save()
 
 
 def on_theme_installed(window, key: str) -> None:

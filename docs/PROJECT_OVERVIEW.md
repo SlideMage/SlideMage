@@ -26,7 +26,8 @@ described.
 framework (SlideMage beamer theme, `SlideMage_setup.tex` with the catalog
 of template settings, the layout profiles `SlideMage_layout_fira.tex` and
 `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, the SlideMage template
-`SlideMage_template_slidemage.tex`, `SlideMage_bibliography_default.tex`,
+`SlideMage_template_slidemage.tex`, `SlideMage_citation_default.tex` (the house citation format; the catalog's
+`\SMCitationFormat` picks one, other formats come as citation packages, `docs/CITATION_PACKAGE.md`),
 `SlideMage_alt.lua`, `SlideMage_measure.lua`; the manual's slide "What a
 compile reads, in order" shows how they fit together); `example/` is a complete SlideMage *project* —
 slides, decks, media, the Uni Graz institution layer and `slide_ids.csv`,

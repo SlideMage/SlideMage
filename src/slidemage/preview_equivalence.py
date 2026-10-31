@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 
-from . import compiler, slide_preview, slide_snapshot, themes
+from . import citations, compiler, slide_preview, slide_snapshot, themes
 
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59cb4d818b7249"
@@ -104,7 +104,7 @@ AUDITED_FRAMEWORK = {
     # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
     # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
     # its deck-version text are unchanged.
-    "SlideMage_setup.tex": "b33a95cabbe911dcdee2a9d1bf9e3568faac33f6742a33386926aa36ba033a8f",
+    "SlideMage_setup.tex": "8c9d131f5e005b7e7796995b9a2d77f13f5cb7f82df3ca762484e3fcd32ce1ba",
     "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
@@ -114,9 +114,18 @@ AUDITED_FRAMEWORK = {
     # \input of it is skipped. Re-audited: the macros file is the project's, unknown content as before, and loads at
     # the same place in the preamble; the wrapper only drops that one \input and passes every other through; no
     # version, footer-hide or deck-label rule entered the base.
-    "SlideMage_base.tex": "c6fe0fa4131eff0c1244471aa41db025b1fa1bb599798d609b23c06d6c66def5",
-    "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
-    "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
+    "SlideMage_base.tex": "9b1d01b18f440c6bad56cbb86ff9432cde3c8d56223c2560051c1f4df9bd4035",
+    "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
+    # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
+    # (the old file renamed, byte for byte, so its pin is the old one), the old name
+    # SlideMage_bibliography_default.tex is a one-line loader of it, the setup catalog has \SMCitationFormat (default
+    # "default"), and the end of the base loads SlideMage_citation_\SMCitationFormat (a format file only redefines
+    # \SMBiblatexOptions and \SMBibliographyStyle) where the templates used to input the house file; \SMUseBibliography
+    # loads a format a deck chose instead. The two shipped templates lose that input line. Re-audited: bibliography
+    # commands and citation consumers are always unknown (see the contract), nothing here defines a version,
+    # footer-hide or deck-label rule, and the loading order is the old one (after the base, before the deck).
+    "SlideMage_citation_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
+    "SlideMage_bibliography_default.tex": "d46cc2911724240bedc7d7f49391dfc9ce3c100e4a4a710897a970040c1aa076",
     "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
@@ -128,7 +137,7 @@ AUDITED_FRAMEWORK = {
     # base derives \normalsize, \small, \footnotesize, \scriptsize and \tiny; the greyscale template sets 10pt through it
     # instead of redefining the size commands. Re-audited: font sizes only, the same in every view; no version,
     # footer-hide or deck-label rule entered the setup layer, the base or the template.
-    "SlideMage_template_greyscale.tex": "aa1d67cfa4aa28f83f5504c93cccb4b9634b173aefb329e8a5d2e20ec54929a1",
+    "SlideMage_template_greyscale.tex": "d28338c312f83767910e867d6415c018e1767d7b8c7c50c152e284baa16ac3cf",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.
@@ -325,7 +334,7 @@ def _framework(ctx, dependencies: dict[str, str]):
     env = compiler.build_env(ctx)
     # The installed theme folders build_env puts on TEXINPUTS come after the project root and the framework, and
     # the same for every view; anything else on it is a custom search path. (A snapshot's env has no TEXINPUTS.)
-    theme_dirs = themes.installed_dirs()
+    theme_dirs = [*citations.citation_dirs(), *themes.installed_dirs()]
     if env.get("TEXINPUTS") and env["TEXINPUTS"] != os.pathsep.join([*(str(d) for d in theme_dirs), ""]):
         return "custom TEXINPUTS search path"
     if env.get("LATEXMKRCSYS"):

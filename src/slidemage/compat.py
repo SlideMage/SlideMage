@@ -49,7 +49,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, compat_hooks, compat_names, compat_own_theme, compat_project_macros, project
+from . import (compat_bibliography, compat_citation_format, compat_hooks, compat_names, compat_own_theme,
+               compat_project_macros, project)
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -353,7 +354,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "take the default; then set the space you want under the subtitle's last line."),
     detect=_detect_titleframe_bottom_pad,
 ), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN,
-   compat_project_macros.CHANGE]
+   compat_project_macros.CHANGE, compat_citation_format.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
