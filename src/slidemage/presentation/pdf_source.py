@@ -149,6 +149,10 @@ class PresentationDeck:
         text = self._doc[page].get_text(clip=self.slide_rect(page)).strip()
         return text.split("\n", 1)[0] if text else ""
 
+    def slide_text(self, page: int) -> str:
+        """The text of the slide half only (not the notes), for recognising a slide again."""
+        return self._doc[page].get_text(clip=self.slide_rect(page)).strip()
+
     def close(self) -> None:
         self._images.clear()
         self._doc.close()

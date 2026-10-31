@@ -21,6 +21,7 @@ class PresentationSettings:
     pen_color: str = "#c0ffd400"       # a translucent yellow: a highlighter
     pen_width: float = 0.012           # fraction of the slide height
     confirm_links: bool = True
+    offer_resume: bool = True          # ask to continue where the last talk on this deck stopped
     audience_screen: str = ""          # ScreenInfo.key; "" is automatic
     timer_mode: str = TIMER_END
     timer_duration_minutes: int = 45
