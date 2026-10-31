@@ -1119,8 +1119,14 @@ mix it in.
      website keep pointing to `SlideMage/SlideMage`.
    - **Fresh initial commit:** the public repository holds the tree as it is then, minus the institution templates
      (step 16) and anything private; the CHANGELOG keeps the history as text (under the 0.x numbers).
-   - Open with the user then: whether the history CHANGELOG ships in full or is cut; the order of moving
-     the current repository to `SlideMage_pre_v1` and cutting the public one.
+   - Open with the user then: the order of moving the current repository to `SlideMage_pre_v1` and cutting the
+     public one.
+   - **Decided by the user on 2026-10-31:** the CHANGELOG keeps the full history under the 0.x numbers
+     (v10.19.0 becomes v0.10.19.0). Versions do **not** move to 1.x yet: after the renumbering, releases stay in 0.x
+     with three parts, the old majors becoming the minor (the next feature release is v0.11.0, then v0.11.1,
+     v0.12.0 ...), until the user calls a version stable; only then v1.0.0, the public repository and
+     `SlideMage_pre_v1`. Order: the redesign is merged into develop first (Project compatibility list shown and
+     approved), then the renumbering happens on develop.
 19. **Clean up everything no longer needed** (user request 2026-10-29; the very last step, after everything else is
     merged and verified). List what will go and get the user's OK before deleting anything that cannot be
     recreated:
