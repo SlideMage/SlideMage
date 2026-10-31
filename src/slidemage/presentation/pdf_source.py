@@ -10,6 +10,7 @@ of rendered images and no worker thread keep MuPDF in one thread.
 """
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +19,24 @@ from typing import Optional
 import pymupdf
 from PySide6.QtGui import QImage
 
+from .frame_map import FrameMap, from_labels
+
 # A slide is 16:9 or 4:3 (at most 1.78 wide); two of them side by side are at least 2.67 wide.
 TWO_UP_MIN_RATIO = 2.2
 CACHE_IMAGES = 24
 
 SLIDE, NOTES = "slide", "notes"
+
+# PyMuPDF returns a label written as a PDF hex string as it stands, "<FEFF0032>" for "2" (beamer's labels are).
+HEX_STRING_RE = re.compile(r"<([0-9A-Fa-f]*)>")
+UTF16_BOM = b"\xfe\xff"
+
+
+def decode_label(label: str) -> str:
+    def text(match: re.Match) -> str:
+        raw = bytes.fromhex(match.group(1) + "0" * (len(match.group(1)) % 2))
+        return raw.decode("utf-16", errors="replace") if raw.startswith(UTF16_BOM) else raw.decode("latin-1")
+    return HEX_STRING_RE.sub(text, label)
 
 
 @dataclass(frozen=True)
@@ -116,6 +130,19 @@ class PresentationDeck:
 
     def link_at(self, page: int, x: float, y: float) -> Optional[Link]:
         return next((link for link in self.links(page) if link.contains(x, y)), None)
+
+    def page_labels(self) -> Optional[list[str]]:
+        """Every page's label, or None when the PDF has none or they cannot be trusted: a presenter PDF compiled
+        before SlideMage v0.12.1 has one label rule for the slide and one for the note page of every page, so more
+        rules start than there are pages, and every other label is wrong."""
+        rules = self._doc.get_page_labels()
+        if not rules or any(rule.get("startpage", 0) >= self.page_count for rule in rules):
+            return None
+        return [decode_label(self._doc[page].get_label()) for page in range(self.page_count)]
+
+    def frame_map(self) -> Optional[FrameMap]:
+        """Which pages are the reveal steps of one slide, from the page labels; None for page numbers only."""
+        return from_labels(self.page_labels())
 
     def title(self, page: int) -> str:
         """The first text line of a slide (for the jump list)."""

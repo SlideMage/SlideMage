@@ -76,6 +76,8 @@ def start(window, pdf: DeckPdf, deck: Optional[Deck] = None) -> Optional[Present
         return None
     settings = PresentationSettings.load()
     frames = frames_mod.load_for(window.project, deck, pdf.path, presentation_deck.page_count) if deck is not None else None
+    if frames is None:
+        frames = presentation_deck.frame_map()      # no .nav kept: the page labels, if the PDF has usable ones
     controller = PresentationController(
         presentation_deck, settings, main_screen=window.screen(), frames=frames,
         save_settings=lambda changed: changed.save())

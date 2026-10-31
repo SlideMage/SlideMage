@@ -3180,3 +3180,9 @@ v0.12.0 (2026-10-31, direct request: the framework loads project macros itself):
 NEW: A template no longer needs a line to load the project's macros.
 - Put your commands in SlideMage_project_macros.tex in the project folder; every template, a theme package's included, loads it.
 - Templates that still have the line keep working, and Project compatibility offers to remove it.
+
+v0.12.1 (2026-10-31, direct request: SlideMage Presenter, step 5b of docs/plans/presenter-app.md): A presented PDF shows slide numbers and reveal steps even without its project, read from the PDF's page labels. Beamer gives every reveal step of a frame the frame's number as its page label; presentation/frame_map.from_labels groups neighbouring pages with the same label into one slide, and PresentationDeck.page_labels decodes the labels, which PyMuPDF returns as PDF hex strings for beamer's. The start screen's "Present a PDF…" now uses them, and "Present deck" falls back to them when no .nav of the compile is kept. A presenter PDF came out of LaTeX with wrong labels: pgfpages puts the slide and its note page on one page and hyperref labels both, so every other label was the note page's. compiler.label_presenter_pages now rewrites the labels of every presenter compile from beamer's .nav before the PDF is published, one slide number per page; when the .nav is missing or does not fit, the PDF stays as LaTeX made it. Presenter PDFs compiled before this version keep their doubled labels, which are recognised and ignored, so they still present by page number until they are compiled again. latex/ is unchanged.
+
+NEW: Slide numbers and reveal steps when presenting a PDF on its own.
+- "Present a PDF…" shows "Slide 5 / 20 · step 2 / 3" and "Go to slide" takes a slide number, for PDFs made with beamer, not just for decks of the open project.
+- Presenter PDFs now carry the right slide numbers as page labels, also in other PDF viewers. Compile a presenter PDF again to get them.
