@@ -410,8 +410,8 @@ def ask_breaking_update(window, plan: updater.UpdatePlan) -> str:
     install = box.addButton(f"Install {latest.tag} anyway", QMessageBox.ButtonRole.AcceptRole)
     stay = None
     if plan.safe is not None:
-        major = (updater.parse_version(current) or (0,))[0]
-        stay = box.addButton(f"Stay on v{major}.x", QMessageBox.ButtonRole.ActionRole)
+        line = ".".join(str(n) for n in updater.major_key(updater.parse_version(current) or (0,)))
+        stay = box.addButton(f"Stay on v{line}.x", QMessageBox.ButtonRole.ActionRole)
     later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(later)
     box.setEscapeButton(later)

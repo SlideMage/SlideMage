@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .project import config_dir
+from .version import to_zero_x
 
 REPO = "SlideMage/SlideMage"
 LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -106,11 +107,17 @@ class UpdatePlan:
 
 
 def parse_version(tag: str) -> Optional[tuple[int, ...]]:
-    """(3, 29, 5) for "v3.29.5" or "3.29.5"; None for anything else."""
+    """(0, 11, 2) for "v0.11.2" or "0.11.2"; None for anything else. An old-scheme version reads as 0.<old>:
+    "v10.19.0" is (0, 10, 19, 0), below (0, 11, 0) (version.to_zero_x)."""
     parts = tag.strip().lstrip("vV").split(".")
     if not parts or not all(part.isdigit() for part in parts):
         return None
-    return tuple(int(part) for part in parts)
+    return to_zero_x(tuple(int(part) for part in parts))
+
+
+def major_key(number: tuple[int, ...]) -> tuple[int, ...]:
+    """What a "major" bump compares: the first part, or in 0.x the second (the old majors became the minors)."""
+    return number[:2] if number[:1] == (0,) else number[:1]
 
 
 def is_newer(latest_tag: str, current_tag: str) -> bool:
@@ -200,7 +207,7 @@ def is_breaking(release: Release, current_tag: str) -> bool:
            for line in release.body.splitlines()):
         return True
     new, current = parse_version(release.tag), parse_version(current_tag)
-    return new is not None and current is not None and new[0] > current[0]
+    return new is not None and current is not None and major_key(new) > major_key(current)
 
 
 def plan_update(releases: list[Release], current_tag: str, *, need_asset: bool = False) -> UpdatePlan:

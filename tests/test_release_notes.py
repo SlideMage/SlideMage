@@ -19,10 +19,15 @@ def test_major_bump_needs_a_breaking_paragraph():
     assert release_notes.check("v5.0.0", "v4.3.1", marked) == []
     assert release_notes.check("v4.4.0", "v4.3.1", plain) == []
     assert release_notes.check("v4.4.0", None, plain) == []  # first release
+    # 0.x: the minor is what a major was; the renumbering release itself is exempt
+    assert release_notes.check("v0.12.0", "v0.11.1", plain)
+    assert release_notes.check("v0.12.0", "v0.11.1", marked) == []
+    assert release_notes.check("v0.11.2", "v0.11.1", plain) == []
+    assert release_notes.check("v0.11.0", "v0.10.19.0", plain) == []
 
 
 def test_notes_come_from_the_version_history(capsys):
-    assert release_notes.main(["v3.41.1", "--previous", "v3.41.0"]) == 0
+    assert release_notes.main(["v0.3.41.1", "--previous", "v0.3.41.0"]) == 0
     assert "BANNED_WORDS" in capsys.readouterr().out
     assert release_notes.main(["v0.0.1", "--previous", "v0.0.0"]) == 1
 
@@ -30,11 +35,11 @@ def test_notes_come_from_the_version_history(capsys):
 def test_bundled_versions_are_all_listed_and_checked(capsys):
     # v5.4.0 is the first release after v4.1.0: v5.0.0 .. v5.4.0 all go into
     # the notes, and their BREAKING: paragraphs satisfy the major-bump check
-    entries = release_notes.entries_since("v5.4.0", "v4.1.0")
-    assert [v for v, _ in entries] == ["v5.4.0", "v5.3.0", "v5.2.0", "v5.1.0", "v5.0.0"]
-    assert release_notes.main(["v5.4.0", "--previous", "v4.1.0"]) == 0
+    entries = release_notes.entries_since("v0.5.4.0", "v0.4.1.0")
+    assert [v for v, _ in entries] == ["v0.5.4.0", "v0.5.3.0", "v0.5.2.0", "v0.5.1.0", "v0.5.0.0"]
+    assert release_notes.main(["v0.5.4.0", "--previous", "v0.4.1.0"]) == 0
     out = capsys.readouterr().out
-    assert "## v5.0.0" in out and "## v5.4.0" in out and "BREAKING:" in out
+    assert "## v0.5.0.0" in out and "## v0.5.4.0" in out and "BREAKING:" in out
 
 
 def _entry(v, paragraphs, summary="", news=()):

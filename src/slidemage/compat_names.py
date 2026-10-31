@@ -253,7 +253,7 @@ def migrate(root: Path) -> dict[Path, Optional[bytes]]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v10.0.0",
+    since="v0.10.0.0",
     severity=BREAKS,
     title="The framework's files are named SlideMage, and templates load SlideMage_setup",
     description=(

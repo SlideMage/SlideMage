@@ -243,7 +243,7 @@ def migrate(root: Path) -> dict[Path, bytes]:
 
 CHANGE = Change(
     id=CHANGE_ID,
-    since="v5.32.0",
+    since="v0.5.32.0",
     severity=LAYOUT,
     title="The citation format moved from the decks into the template",
     description=(
@@ -312,7 +312,7 @@ def migrate_shorten(root: Path) -> dict[Path, bytes]:
 
 CHANGE_SHORTEN = Change(
     id=CHANGE_SHORTEN_ID,
-    since="v10.14.0",
+    since="v0.10.14.0",
     severity=LAYOUT,
     title="A project template's citation format can become one line",
     description=(

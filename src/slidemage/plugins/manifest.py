@@ -12,6 +12,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..version import to_zero_x
+
 MANIFEST_NAME = "plugin.toml"
 
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
@@ -65,13 +67,24 @@ def parse_version(text: str) -> tuple[int, int, int]:
     return major, minor, patch
 
 
+def parse_app_version(text: str) -> tuple[int, ...]:
+    """SlideMage's own version ("v0.11.0", or "v0.10.19.0" from the history) as numbers; an old-scheme one
+    ("v10.19.0", ">=10.17" in a requirement) reads as 0.<old>. ValueError for anything else."""
+    m = re.fullmatch(r"v?(\d+(?:\.\d+){0,3})", text.strip())
+    if not m:
+        raise ValueError(f"not a version: {text!r}")
+    parts = tuple(int(g) for g in m.group(1).split("."))
+    parts = to_zero_x(parts + (0,) * (3 - len(parts)))
+    return parts + (0,) * (4 - len(parts))
+
+
 def matches(requirement: str, version: str) -> bool:
     """Whether `version` satisfies every comparison of `requirement` (">=9.0, <10"). ValueError if malformed."""
     if not REQUIRES_RE.match(requirement.strip()):
         raise ValueError(f"not a version requirement: {requirement!r}")
-    have = parse_version(version)
+    have = parse_app_version(version)
     for op, number in _COMPARISON_PARTS_RE.findall(requirement):
-        want = parse_version(number)
+        want = parse_app_version(number)
         ok = {">=": have >= want, "<=": have <= want, "==": have == want, "<": have < want, ">": have > want}[op]
         if not ok:
             return False
@@ -121,7 +134,7 @@ def read_manifest(folder: Path) -> Manifest:
         raise ManifestError("api_version must be a whole number, 1 or more")
     requires = _text(data, "requires_slidemage", 1)
     if not REQUIRES_RE.match(requires):
-        raise ManifestError('requires_slidemage must look like ">=9.0" or ">=9.0, <10"')
+        raise ManifestError('requires_slidemage must look like ">=0.9" or ">=0.9, <0.12"')
     homepage = _text(data, "homepage", 1)
     if not re.match(r"^https?://\S+$", homepage):
         raise ManifestError("homepage must be an http(s) address")

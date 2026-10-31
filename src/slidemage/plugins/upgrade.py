@@ -27,7 +27,7 @@ from . import session
 from .migrate import legacy_anthropic_key
 from .catalogue import Catalogue, CataloguePlugin, best_release
 from .loader import discover, plugins_dir
-from .manifest import parse_version
+from .manifest import parse_app_version
 from ..version import VERSION_NUMBER
 
 log = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ def migrations_due(ctx: ProjectContext, app_version: str = VERSION_NUMBER) -> di
     pending = []
     for migration in MIGRATIONS:
         try:
-            if migration.feature not in seen and parse_version(migration.release) <= parse_version(app_version):
+            if migration.feature not in seen and parse_app_version(migration.release) <= parse_app_version(app_version):
                 pending.append(migration.feature)
         except ValueError:
             log.error("bad migration release %r", migration.release)

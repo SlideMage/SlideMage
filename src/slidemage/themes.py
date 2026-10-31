@@ -125,7 +125,7 @@ def parse_manifest(text: str) -> ThemeManifest:
             raise ManifestError("version must look like 1.2.3")
         requires = _text(data, "requires_slidemage", 1)
         if not REQUIRES_RE.match(requires):
-            raise ManifestError('requires_slidemage must look like ">=10.16" or ">=10.16, <11"')
+            raise ManifestError('requires_slidemage must look like ">=0.10.16" or ">=0.10.16, <0.12"')
         homepage = _text(data, "homepage", 1)
         if not re.match(r"^https?://\S+$", homepage):
             raise ManifestError("homepage must be an http(s) address")

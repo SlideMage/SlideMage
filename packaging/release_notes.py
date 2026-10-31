@@ -43,7 +43,10 @@ from slidemage import updater, version  # noqa: E402
 BREAKING_PREFIX = updater.BREAKING_PREFIX
 # v8.3.0 (direct decision): versions up to and including v8.2.1 are exempt;
 # the 6.x-8.x entries were written without a NEW: paragraph.
-NEWS_REQUIRED_AFTER = "v8.2.1"
+NEWS_REQUIRED_AFTER = "v0.8.2.1"
+# The release that renumbered every version (0.x from here on): it raises the first minor, but nothing in a project
+# breaks, so it needs no BREAKING: paragraph.
+RENUMBERING_RELEASE = "v0.11.0"
 
 
 def previous_tag(tag: str) -> str | None:
@@ -89,7 +92,8 @@ def check(tag: str, previous: str | None, paragraphs: list[str]) -> list[str]:
     """Problems that must stop the release (empty = fine)."""
     new, old = updater.parse_version(tag), updater.parse_version(previous or "")
     marked = any(p.startswith(BREAKING_PREFIX) for p in paragraphs)
-    if new is not None and old is not None and new[0] > old[0] and not marked:
+    if new is not None and old is not None and tag != RENUMBERING_RELEASE \
+            and updater.major_key(new) > updater.major_key(old) and not marked:
         return [
             f"{tag} raises the major version (previous release {previous}) but its "
             f"history entry in CHANGELOG.md has no paragraph starting {BREAKING_PREFIX!r}. "
@@ -167,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         return 3
     marked = any(p.startswith(BREAKING_PREFIX) for p in paragraphs)
     new, old = updater.parse_version(args.tag), updater.parse_version(previous or "")
-    if marked and new is not None and old is not None and new[0] == old[0]:
+    if marked and new is not None and old is not None and updater.major_key(new) == updater.major_key(old):
         print(f"warning: {args.tag} has a {BREAKING_PREFIX} paragraph but keeps the "
               f"major version of {previous}", file=sys.stderr)
     sys.stdout.write(render(args.tag, previous, entries))
