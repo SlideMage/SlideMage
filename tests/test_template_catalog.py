@@ -262,3 +262,29 @@ def test_the_removed_and_renamed_names_are_errors_in_the_setup_layer_and_no_temp
     for name in sorted(REMOVED | set(RENAMED)):
         for part in (read(LATEX / "SlideMage_base.tex"), read(LATEX / "beamerthemeSlideMage.sty")):
             assert not re.search(re.escape(BS + name) + r"(?![A-Za-z@])", code(part)), name
+
+
+def test_the_body_size_table_matches_beamers_size_files():
+    """\\SMBodyFontSize (v10.19.0): at 10pt, 11pt and 12pt the base's sizes and baseline skips are those of
+    size10/11/12.clo (what beamer loads for its class option), except \\tiny at 10pt, which stays the 11pt option's
+    (v10.18.1's greyscale stopgap left it there). The other values follow the rule the setup file documents."""
+    base = read(LATEX / "SlideMage_base.tex")
+    blocks = re.findall(
+        r"\\ifdim\\SMBodyFontSize=(\d+)pt\s*((?:\\def\\SM@b[sl]@[nsfct]\{[\d.]+\}%?\s*)+)", base)
+    assert [pt for pt, _ in blocks] == ["10", "11", "12"]
+    names = {"n": "normalsize", "s": "small", "f": "footnotesize", "c": "scriptsize", "t": "tiny"}
+    for pt, body in blocks:
+        values = {(kind, step): value for kind, step, value in re.findall(r"\\def\\SM@b([sl])@([nsfct])\{([\d.]+)\}", body)}
+        clo = shutil.which("kpsewhich") and subprocess.run(["kpsewhich", f"size{pt}.clo"], capture_output=True, text=True).stdout.strip()
+        if not clo:
+            pytest.skip("no TeX distribution")
+        text = Path(clo).read_text(encoding="utf-8")
+        roman = {"vpt": 5, "vipt": 6, "viipt": 7, "viiipt": 8, "ixpt": 9, "xpt": 10, "xipt": 10.95, "xiipt": 12}
+        for step, name in names.items():
+            found = re.search(r"\\@setfontsize\\%s\\@(\w+)\s*(?:\{([\d.]+)\}|\\@(\w+))" % name, text)
+            size = roman[found.group(1)]
+            skip = found.group(2) or roman[found.group(3)]
+            if pt == "10" and step == "t":
+                assert (values[("s", step)], values[("l", step)]) == ("6", "7")
+                continue
+            assert (values[("s", step)], values[("l", step)]) == (f"{size:g}", f"{skip:g}" if isinstance(skip, float) else str(skip)), f"{pt}pt {name}"

@@ -69,6 +69,7 @@ MEASURED = {
 # Lengths with no clean reading in the PDF, each with the reason. Everything here is still read by the base or the theme
 # (tests/test_template_catalog.py) and set by the stress-test template.
 NOT_READ_BACK = {
+    "SMBodyFontSize": "the size of \\normalsize and the steps below it; their table is held by test_the_body_size_table_matches_beamers_size_files in test_template_catalog.py and the regression harness",
     "SMBlockTitleMarkerWidth": "the width a block title leaves for its marker; visible only when a title wraps (the marker sits at the right edge)",
     "SMTitleframeTextSep": "the title/subtitle spacing in the title frame; the default look is held by the regression harness",
     "SMTitleframeBandGap": "the title/subtitle spacing in the title frame; the default look is held by the regression harness",
