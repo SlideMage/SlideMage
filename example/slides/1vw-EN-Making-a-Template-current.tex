@@ -6,7 +6,8 @@
 % (snippets/1vw-1.tex); every name in it is a catalog name of
 % latex/SlideMage_setup.tex. The four optional theme features are listed at
 % the end of that file; tests/fixtures/template_stress/ shows them on.
-\setSlideVersion{1-0-0}
+% v10.18.0: the first item names the greyscale template, a second one to copy.
+\setSlideVersion{1-0-0+}
 \begin{standardframe}{Making a template}
 	\small
 	A template is one file of your project. All it may change is in the \emph{catalog},
@@ -23,7 +24,7 @@
 		\begin{column}{0.42\linewidth}
 			\shrinklists{2}
 			\begin{itemize}
-				\item Copy the SlideMage template (in \SMCode{latex/}) into the project as \SMCode{SlideMage\_template\_<key>.tex}
+				\item Copy a template of \SMCode{latex/} into the project as \SMCode{SlideMage\_template\_<key>.tex}: SlideMage's, or the greyscale one, which comments every setting it makes
 				\item Between setup and base, change catalog names only; a misspelt one is an error
 				\item Fonts: pick a layout profile or ship your own, made with \SMCode{tools/calibrate\_font\_profile.py}; never set one of its values in a template
 			\end{itemize}

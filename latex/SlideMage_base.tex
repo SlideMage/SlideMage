@@ -5558,7 +5558,7 @@
 \colorlet{SMHighlightColor}{c_primary_gray}
 \newenvironment{highlightframe}[2][t]{%
 	\begingroup
-	\setbeamercolor{frametitle}{bg=SMHighlightColor}
+	\setbeamercolor{frametitle}{bg=SMHighlightColor, fg=\SMHighlightTitleTextColor}% the catalog's role (v10.18.0)
 	\global\def\SMFooterBoxColor{SMHighlightColor}%
 	\begin{standardframe}[#1]{#2}%
 }{%

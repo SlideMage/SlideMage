@@ -49,7 +49,7 @@ OPTIONAL_FILES = ("preview.png",)
 OPTIONAL_DIRS = ("LICENSES",)       # REUSE-style licence texts
 # TeX finds these on TEXINPUTS; only the template and the layout profile may be one.
 TEX_CODE_SUFFIXES = frozenset({".tex", ".sty", ".cls", ".lua", ".def", ".cfg", ".fd", ".clo", ".ltx", ".dtx", ".ins"})
-BUNDLED_PROFILES = ("fira", "lmsans")
+BUNDLED_PROFILES = ("fira", "lmsans", "lmroman")
 
 
 class ThemeError(Exception):

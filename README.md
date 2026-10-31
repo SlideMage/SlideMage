@@ -31,7 +31,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the house citation format `SlideMage_bibliography_default.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the greyscale template `SlideMage_template_greyscale.tex`, the house citation format `SlideMage_bibliography_default.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -535,8 +535,9 @@ version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, 
 reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
 framework file's name wins over the framework's (the project folder comes first on the TeX
 search path): a project can ship its own template, layout profile or even its own copy of the
-SlideMage template. **To make a template**, copy `latex/SlideMage_template_slidemage.tex` into
-the project as `SlideMage_template_<key>.tex`, add a `% SlideMage template name: ...` line, and
+SlideMage template. **To make a template**, copy `latex/SlideMage_template_greyscale.tex` (a
+template that sets many catalog settings, each with a comment) or `latex/SlideMage_template_slidemage.tex`
+(which sets almost none) into the project as `SlideMage_template_<key>.tex`, add a `% SlideMage template name: ...` line, and
 set between `\input{SlideMage_setup}` and `\input{SlideMage_base}` what you change from the
 catalog (read `SlideMage_setup.tex`: each setting has a one-line comment). Pick a layout profile
 or ship your own, but never set one of a profile's values in a template; for a new font, see the
@@ -590,15 +591,23 @@ shows them all on.
   (since v10.7.0); a template or a profile that sets one of those four names gets an error, as it does for
   the names of v10.8.0 (\SMFooterTextDrop, \SMFootlineVOffset, the label and numeral boxes, the section
   frame's corrections).
-  *Recipe for a new profile:* (1) copy `SlideMage_layout_fira.tex` and change the
-  fonts, (2) run `python tools/calibrate_font_profile.py --profile <name>`: it compiles
-  the calibration deck of `tests/fixtures/template_stress/` with the profile under the
-  SlideMage template, measures the PDF, prints the three pull-ups with their current value
-  and the suggested one and checks each derived value against the geometry its hook asks for,
-  (3) put the suggestions into the profile and run it again until every line says `ok`, (4) compile the calibration deck with a template that picks
-  the profile and run `tools/check_layout.py` on the PDF (it reads the margins, the
-  ascender and the title bar's bottom edge from the PDF, so a template with other margins
-  is checked against its own), adjust until the report is clean.
+  *Recipe for a new profile:* (1) run `python tools/calibrate_font_profile.py --profile <name>
+  --new --text-regular <file> --text-italic <file> --text-bold <file> --text-bold-italic <file>`
+  (and `--mono ...` for a code font other than Latin Modern Mono): it writes
+  `latex/SlideMage_layout_<name>.tex` with those fonts and the ascender it reads from them
+  (or copy `SlideMage_layout_fira.tex` by hand and change the fonts), (2) it then compiles the
+  calibration deck of `tests/fixtures/template_stress/` with the profile under the SlideMage
+  template, measures the PDF and checks each derived value against the geometry its hook asks
+  for, and lists any text font on the pages that is not the profile's; run it again without
+  `--new` after a change until every line says `ok`, (3) compile the calibration deck with a
+  template that picks the profile (`--template <key>`) and run `tools/check_layout.py` on the PDF
+  (it reads the margins, the ascender and the title bar's bottom edge from the PDF, so a template
+  with other margins is checked against its own), adjust until the report is clean.
+- `SlideMage_layout_lmroman.tex` — the third **layout profile** (since v10.18.0): Latin
+  Modern Roman, LaTeX's own serif text face (Computer Modern in its OpenType form), with Latin
+  Modern Mono for code. The first serif profile and the first written by the tool alone
+  (`calibrate_font_profile.py --new`). Beamer sets a frame in its sans family, so a serif
+  profile names its font as `\setsansfont` (and `\setmainfont`). The greyscale template uses it.
 - `tests/fixtures/template_stress/` — a **test project**, never offered by the app (it
   is neither in `example/` nor in `latex/`): the template `SlideMage_template_stress-test.tex`,
   which picks `lmsans` and sets every hook of the catalog to a clearly different value,
@@ -662,6 +671,12 @@ shows them all on.
   project's own copy would win). SlideMage keeps its previews apart from
   the institutions' (template name "SlideMage"); the manual,
   `decks/slidemage-manual.tex`, is the demo deck in it.
+- `latex/SlideMage_template_greyscale.tex` — the **greyscale template** (since v10.18.0),
+  a second look that ships with SlideMage and the starting point to copy for a template of your
+  own: Latin Modern Roman (the `lmroman` profile), greys only, en dashes as bullets, numbered
+  footnotes, a taller title bar and footer, more room around the SlideMage logo and wider
+  margins, all of it through catalog settings with a comment each. The regression harness
+  compiles the manual under it too (`tools/framework_regression_repo.json`).
   **Default render template** (since v5.8.0): a slide rendered outside a
   deck -- the Source view's Render menu and the Preview, tikz
   illustration renders -- uses the template chosen under Settings → General

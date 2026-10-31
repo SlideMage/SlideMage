@@ -114,9 +114,55 @@ def test_the_calibration_deck_has_a_slide_for_each_measurement():
     assert text.count("\\begin{itemize}") >= 8
 
 
+def test_new_writes_a_profile_like_the_shipped_ones(tmp_path):
+    """--new (v10.18.0) writes the profile from the font files: every name the Fira profile defines, the text font as
+    beamer's sans family (and the main one), the mono font, and the ascender placeholder --new then replaces."""
+    fonts = cal.ProfileFonts("a-regular.otf", "a-italic.otf", "a-bold.otf", "a-bolditalic.otf")
+    text = cal.new_profile_text("serif", fonts, "A test font for text.", "1.2", "0.6em")
+    for name in ("SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"):
+        assert BS + "newcommand{" + BS + name + "}" in text, name
+    for family in ("SMCodeFont", "SMInlineCodeFont"):
+        assert BS + "newfontfamily" + BS + family + "{lmmono10-regular.otf}" in text, family
+    for command in ("setsansfont", "setmainfont", "setmonofont", "usefonttheme[onlymath]{serif}"):
+        assert BS + command in text, command
+    assert "{ a-regular.otf }" in text and "BoldItalicFont = { a-bolditalic.otf }" in text
+    assert BS + "newcommand{" + BS + "SMLinespread}{1.2}" in text and '"serif": A test font for text.' in text
+    replaced = cal.ASCENDER_RE.sub(lambda m: f"{m.group(1)}0.806{m.group(3)}", text, count=1)
+    assert BS + "newcommand{" + BS + "SMFontAscender}{0.806}" in replaced
+    assert all(len(line) <= 100 for line in text.splitlines()[:6])
+
+
+def test_new_needs_all_four_faces():
+    with pytest.raises(SystemExit):
+        cal.main(["--profile", "x", "--new", "--text-regular", "a.otf"])
+
+
+def test_the_font_report_names_a_text_font_the_profile_does_not_load(tmp_path):
+    doc = pymupdf.open()
+    page = doc.new_page(width=455.24, height=256.07)
+    page.insert_text((20, 100), "Body text in another font", fontsize=10, fontname="helv")
+    path = tmp_path / "foreign.pdf"
+    doc.save(path)
+    assert cal.fonts_outside_profile(pymupdf.open(path), ROOT / "latex", "lmroman") == ["Helvetica"]
+
+
 @pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
                     reason="compiles the calibration deck: SLIDEMAGE_TEX_TESTS=1 and latexmk")
-@pytest.mark.parametrize("profile", ["fira", "lmsans"])
+def test_the_greyscale_template_deck_is_clean_and_uses_its_profiles_fonts_only(tmp_path):
+    out = tmp_path / "greyscale.pdf"
+    proc = subprocess.run([sys.executable, str(ROOT / "tools" / "calibrate_font_profile.py"), "--profile", "lmroman",
+                           "--template", "greyscale", "--keep-pdf", str(out)], capture_output=True, text=True,
+                          errors="replace")
+    assert proc.returncode == 0 and "FAIL" not in proc.stdout, proc.stdout + proc.stderr
+    assert "counted): none" in proc.stdout
+    proc = subprocess.run([sys.executable, str(ROOT / "tools" / "check_layout.py"), "--project", str(STRESS), str(out)],
+                          capture_output=True, text=True, errors="replace")
+    assert proc.returncode == 0, proc.stdout
+
+
+@pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
+                    reason="compiles the calibration deck: SLIDEMAGE_TEX_TESTS=1 and latexmk")
+@pytest.mark.parametrize("profile", ["fira", "lmsans", "lmroman"])
 def test_a_shipped_profile_meets_its_hooks(profile, tmp_path):
     out = tmp_path / "cal.pdf"
     proc = subprocess.run([sys.executable, str(ROOT / "tools" / "calibrate_font_profile.py"), "--profile", profile,

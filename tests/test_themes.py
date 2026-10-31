@@ -135,6 +135,13 @@ def test_preview_and_licence_texts_and_an_own_layout_profile_are_allowed(theme_f
         themes.check_folder(theme_folder)
 
 
+def test_the_greyscale_template_and_its_profile_are_bundled():
+    """v10.18.0: latex/ ships a second template and a third layout profile; a theme may not take the key, and a theme
+    on that profile needs no profile file of its own."""
+    assert "greyscale" in themes.bundled_keys()
+    assert "lmroman" in themes.BUNDLED_PROFILES
+
+
 def test_a_key_of_a_bundled_template_is_refused(theme_folder):
     assert "slidemage" in themes.bundled_keys()
     edit_toml(theme_folder, 'id = "sample-theme"', 'id = "slidemage"')

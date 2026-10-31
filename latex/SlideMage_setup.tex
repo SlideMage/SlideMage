@@ -37,12 +37,15 @@
 %
 %   \newcommand{\SMLayoutProfile}{myfont}      % before \input{SlideMage_setup}; fira is the default
 %
-% SlideMage ships two profiles:
+% SlideMage ships three profiles:
 %   fira    SlideMage_layout_fira.tex: Fira Sans Light and Fira Mono, today's look and
 %           the default (the fonts come with SlideMage's installer, not with TeX).
 %   lmsans  SlideMage_layout_lmsans.tex: Latin Modern Sans and Latin Modern Mono, which
 %           every TeX distribution has. A template uses it with
 %             \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
+%   lmroman SlideMage_layout_lmroman.tex (v10.18.0): Latin Modern Roman, LaTeX's own serif
+%           text face, and Latin Modern Mono; written by tools/calibrate_font_profile.py --new.
+%           The greyscale template (SlideMage_template_greyscale.tex) uses it.
 % A project may keep its own profile next to its templates: the TeX search path finds
 % SlideMage_layout_<name>.tex there. A template does not change a profile's numbers; it
 % picks a profile or ships its own.
@@ -59,8 +62,10 @@
 % catalog below (see 'Derived, not set').
 %
 % Recipe for a new profile:
-%   1. Copy SlideMage_layout_fira.tex to SlideMage_layout_<name>.tex and change the
-%      fonts (and \SMFontAscender, \SMLinespread, \SMParskip).
+%   1. python tools/calibrate_font_profile.py --profile <name> --new --text-regular <file>
+%        --text-italic <file> --text-bold <file> --text-bold-italic <file> [--mono <file> ...]
+%      writes SlideMage_layout_<name>.tex with those fonts and the ascender read from them,
+%      then does step 2 (or copy SlideMage_layout_fira.tex by hand and change the fonts).
 %   2. python tools/calibrate_font_profile.py --profile <name>
 %      It compiles the calibration deck of tests/fixtures/template_stress/ with the
 %      profile under the SlideMage template (the catalog's defaults) and reports, for
@@ -221,6 +226,12 @@
 \newcommand{\SMTitleTextColor}{c_primary_white}        % frame title text
 \newcommand{\SMFooterBoxColorDefault}{c_primary_dark}  % footer box
 \newcommand{\SMFooterTextColor}{c_primary_white}       % footer text, slide id
+% (v10.18.0) Four more, whose defaults are what the theme always used, so a template that does not
+% name them looks as before:
+\newcommand{\SMHighlightTitleTextColor}{\SMTitleTextColor}  % title text of a highlightframe (on SMHighlightColor, c_primary_gray)
+\newcommand{\SMStandoutTextColor}{}                    % text of a [standout] frame (on \SMTitleBoxColor); empty: the theme's pale yellow fffff0
+\newcommand{\SMAlertTextColor}{SMLightOrange}          % \alert{} text; the theme's orange EB811B
+\newcommand{\SMProgressBarColor}{SMDeepYellowOrange}   % the optional progress bar (below); the theme's yellow FFCC00
 
 % Optional colors a template may define; SlideMage_base derives each one from
 % the palette when the template leaves it undefined:
@@ -322,6 +333,12 @@
 % footnotes down by half of that after two earlier nudges.)
 \setlength{\SMFootnoteFooterGap}{1.6136pt}
 \newcommand{\SMFootnoteSize}{\fontsize{3.2}{1.9}\selectfont}  % footnote text, as the footer's
+% The marker of footnote number #1 (a TeX counter's value), in the text and before the note
+% (v10.18.0): the theme's sequence of currency signs by default, which a deck can replace with
+% \setfootnotesymbols{...}. A template that numbers its footnotes says
+%   \renewcommand{\SMFootnoteMark}[1]{\number#1}
+% (\setfootnotesymbols then has nothing to change).
+\newcommand{\SMFootnoteMark}[1]{\SMFnSymbol{#1}}
 \newlength{\SMFootnoteSep}
 \setlength{\SMFootnoteSep}{3pt}                 % the space between two footnotes
 % Side footnotes (\sidefootnotes, \sectionfigure): the strip along the page's right edge.
@@ -376,6 +393,11 @@
 % ---------------------------------------------------------------------------
 % Lists
 % ---------------------------------------------------------------------------
+% The bullet of every itemize level, drawn in colour #1 (\SMBulletColor, or c_primary_dark
+% inside a block) (v10.18.0): a filled circle by default. The list's indent follows its
+% width (SlideMage_base measures it), so another glyph needs nothing else, e.g. an en dash:
+%   \renewcommand{\SMBulletSymbol}[1]{\textcolor{#1}{\textendash}}
+\newcommand{\SMBulletSymbol}[1]{\tikz[baseline=-0.65ex]{\fill[#1] circle (1.7pt);}}
 % Gaps in units of the em of the list's font, so they follow \shrinklists and
 % \small. I-IV are the nesting levels.
 \newcommand{\SMItemsepRatioI}{0.4}              % between two items of level I-IV

@@ -124,7 +124,8 @@ def test_the_render_template_offers_the_project_templates_and_saves_the_choice(t
     app = FakeApp(context)
     sheet = open_sheet(qapp, app)
     combo = sheet.general.template_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "acme", "beta", "gamma"]
+    # the framework the tests run against ships the greyscale template too (v10.18.0)
+    assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "acme", "beta", "gamma", "greyscale"]
     assert combo.currentData() == "slidemage"           # out of the box
     combo.setCurrentIndex(combo.findData("acme"))
     assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "acme"

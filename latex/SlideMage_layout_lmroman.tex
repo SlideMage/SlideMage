@@ -1,0 +1,118 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage layout profile "lmroman": Latin Modern Roman for text, Latin Modern Mono for code
+% (SlideMage v10.18.0): LaTeX's default text face, Computer Modern Roman, in its scalable
+% OpenType form; the first serif profile.
+%
+% Written by tools/calibrate_font_profile.py --new, which also read \SMFontAscender from
+% the compiled font and checked the profile against the calibration deck. A template picks it with
+%
+%   \newcommand{\SMLayoutProfile}{lmroman}   % before \input{SlideMage_setup}
+%
+% See SlideMage_layout_fira.tex for what a profile is and what it has to define; the
+% header of SlideMage_setup.tex has the recipe for a new one.
+
+\RequirePackage{etoolbox}
+
+\ExplSyntaxOn
+\makeatletter
+
+\msg_new:nnn { SlideMage } { font-not-found }
+  { Could~not~find~font~'#1'.\c_space_tl }
+\msg_new:nnn { SlideMage } { fonts-not-available }
+  { No~suitable~fonts~found.~Using~fallback~fonts. }
+\msg_new:nnn { SlideMage } { requires-lualatex }
+  { The~SlideMage~layout~profile~needs~LuaLaTeX~(OpenType~fonts~and~Lua~code). }
+
+\int_new:N \g__SM_fonts_not_found_int
+
+\cs_new_protected:Nn \__SM_check_font:n
+  {
+    \fontspec_font_if_exist:nF { #1 }
+      {
+        \fontspec_font_if_exist:nF { #1~Regular }
+          {
+            \int_incr:N \g__SM_fonts_not_found_int
+            \msg_warning:nnn { SlideMage } { font-not-found } { #1 }
+          }
+      }
+  }
+
+\cs_new_protected:Nn \__SM_if_fonts_available:nnn
+  {
+    \int_zero:N \g__SM_fonts_not_found_int
+    \clist_map_function:nN { #1 } \__SM_check_font:n
+    \int_compare:nTF { \g__SM_fonts_not_found_int = 0 } { #2 } { #3 }
+  }
+
+% Text and code fonts. fontspec loads with no-math, so that the text font is in charge of
+% text only; the math fonts are restored further down. Beamer typesets a frame in its sans
+% family, so the text font is \setsansfont whatever its design, and \setmainfont as well, so
+% that \textrm and \rmfamily give the same face.
+\sys_if_engine_luatex:TF
+  {
+    \@ifpackageloaded { fontspec }
+      { \PassOptionsToPackage { no-math } { fontspec } }
+      { \RequirePackage [ no-math ] { fontspec } }
+    \__SM_if_fonts_available:nnn
+      { lmroman10-regular.otf, lmroman10-italic.otf, lmroman10-bold.otf, lmroman10-bolditalic.otf }
+      {
+        \setsansfont
+          [
+            ItalicFont = { lmroman10-italic.otf },
+            BoldFont = { lmroman10-bold.otf },
+            BoldItalicFont = { lmroman10-bolditalic.otf }
+          ]
+          { lmroman10-regular.otf }
+        \setmainfont
+          [
+            ItalicFont = { lmroman10-italic.otf },
+            BoldFont = { lmroman10-bold.otf },
+            BoldItalicFont = { lmroman10-bolditalic.otf }
+          ]
+          { lmroman10-regular.otf }
+        \renewcommand { \ttdefault } { lmtt }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    \__SM_if_fonts_available:nnn
+      { lmmono10-regular.otf, lmmono10-italic.otf, lmmonolt10-bold.otf }
+      {
+        \setmonofont
+          [
+            ItalicFont = { lmmono10-italic.otf },
+            BoldFont = { lmmonolt10-bold.otf }
+          ]
+          { lmmono10-regular.otf }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+  }
+  { \msg_warning:nn { SlideMage } { requires-lualatex } }
+
+\makeatother
+\ExplSyntaxOff
+
+% Metrics -----------------------------------------------------------------------
+% The ascender of the text font in em. SlideMage_base.tex reads it from the loaded font
+% (luaotfload's OpenType metrics) and keeps this number only where the font gives none;
+% calibrate_font_profile.py --new wrote the value the base read.
+\newcommand{\SMFontAscender}{0.806}
+% Running text: \linespread and \parskip. The theme applies them where it is loaded, with
+% the normal font in force, so the em is this font's.
+\newcommand{\SMLinespread}{1.15}
+\newcommand{\SMParskip}{0.5em}
+
+% Code fonts ----------------------------------------------------------------------
+% \SMCodeFile (listings) and the like; the theme's \ttfamily is the same font.
+\newfontfamily\SMCodeFont{lmmono10-regular.otf}[BoldFont=lmmonolt10-bold.otf]
+% Code in running text (\SMCode, \SMCmd), Ligatures=TeXOff so that -- and `` show as typed
+% (see the Fira profile).
+\newfontfamily\SMInlineCodeFont{lmmono10-regular.otf}[Scale=0.95, Ligatures=TeXOff]
+% The heading of a card in a diagram (\SMCard).
+\newcommand{\SMCardHeadingFont}{\bfseries}
+
+% Math ------------------------------------------------------------------------------
+% Genuine Computer Modern math next to the text, and \text{} upright in Computer Modern,
+% as in the Fira profile (SlideMage_layout_fira.tex has the reasons).
+\usefonttheme[onlymath]{serif}
+\let\SMOrigText\text
+\renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}

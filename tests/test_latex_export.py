@@ -135,6 +135,17 @@ def test_the_shipped_lmsans_profile_comes_along_for_a_template_that_picks_it(pro
     assert (result.folder / "SlideMage_layout_lmsans.tex").read_bytes() == shipped
 
 
+def test_a_deck_on_the_shipped_greyscale_template_gets_it_its_profile_and_the_logo(project):
+    """v10.18.0: the second bundled template picks the lmroman profile and keeps the catalog's logo."""
+    root = project.root
+    (root / "decks" / "grey.tex").write_text(HEAD.format(template="greyscale", calls="\\slide{zz1-EN-One}"),
+                                             encoding="utf-8")
+    result = export(ProjectContext.at(root), "grey")
+    files = set(result.files)
+    assert {"SlideMage_template_greyscale.tex", "SlideMage_layout_lmroman.tex", "slidemage-logo.pdf"} <= files
+    assert "SlideMage_layout_fira.tex" not in files and result.missing == []
+
+
 def test_a_template_without_a_profile_line_gets_the_default_profile(project):
     assert "SlideMage_layout_fira.tex" in set(export(project, "plain").files)
 

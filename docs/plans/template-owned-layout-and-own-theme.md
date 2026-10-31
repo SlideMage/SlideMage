@@ -1021,6 +1021,61 @@ mix it in.
      at the step, e.g. `classic` or `greyscale`), with its scheme folder if it needs one, no institution content.
      Manual slide 1vw "Making a template" and 1pf/hd5 can point at it; the regression's in-repo config gets entries
      for the manual under it, so later framework changes are tested against a second, very different template.
+   - **Done 2026-10-31 (v10.18.0):**
+     - **Template** `latex/SlideMage_template_greyscale.tex`, key `greyscale` (it names the one trait every page shows;
+       `classic` says nothing a user could check, and no template, theme, profile or test uses either key). Catalog
+       settings and the profile choice only, each with a comment, so it is the template to copy: profile `lmroman`;
+       palette and roles in greys (each `c_secondary_*` no darker than #898989 for dark text at 4.5:1, the link grey
+       no lighter than #949494 for 3:1 on white); light title bar with dark text, dark footer with white text; en dash
+       bullets, arabic footnote marks; logo 3.6ex with 0.6cm right padding; title paddings 3.4ex, title left padding
+       1cm; Top Margin 52bp; text margins 1cm; footer box 11pt, footer text 6pt, id 4.5pt. The SlideMage logo stays
+       coloured (the user's wish).
+     - **Profile** `latex/SlideMage_layout_lmroman.tex`, written by `tools/calibrate_font_profile.py --new` (fonts as
+       `\setsansfont` and `\setmainfont`: beamer sets frames in the sans family). All checks ok under the SlideMage
+       template and under greyscale. **Where the tool fell short, and what changed:** (1) it could not make a profile,
+       the recipe said "copy fira by hand": `--new` writes one from the font files and the ascender the base reads;
+       (2) the footer-number centring check read the antialiased edge rows of a mid-grey footer box as ink and passed
+       whatever the number did (0.06/0.02pt "gaps"): it now scans 0.15bp inside the box (3.53/3.31pt); (3) nothing said
+       whether a font other than the profile's reached the page: it lists text fonts outside the profile (figures'
+       own fonts and math fonts excepted). Not changed: `\SMLinespread`/`\SMParskip` are copied defaults, a design
+       choice the tool cannot measure; the profile header's description is free text.
+     - **Findings (a), framework, fixed** (each a catalog hook with today's value as default, so SlideMage renders
+       identically): no bullet setting (`\SMBulletSymbol{<colour>}`), no footnote marker setting (`\SMFootnoteMark`,
+       default `\SMFnSymbol`); the standout frame's text was Gotham's pale yellow fffff0 whatever the title bar colour,
+       unreadable on a light bar (`\SMStandoutTextColor`, empty = as before); a highlightframe kept the title text
+       colour on its signal colour, dark on dark grey here (`\SMHighlightTitleTextColor`, default `\SMTitleTextColor`);
+       `\alert` and the optional progress bar used Gotham's orange and yellow with no setting (`\SMAlertTextColor`,
+       `\SMProgressBarColor`); the default footnote signs assumed Fira: Latin Modern (lmsans since v10.6.0, lmroman)
+       lacks ₹ ₽ ₺ ₴ ₪, so footnotes 3-7 had no visible marker -- the theme now uses only the signs the sans font has
+       (Fira has all 14). No length or position assumed Fira or SlideMage's sizes: the calibration deck is clean under
+       greyscale, and every top/bottom finding below is a full slide the room rule keeps where it fits. Images:
+       `.regression/step17b-images/a-framework-fixes/`.
+     - **Findings (c), checker, fixed:** `check_layout.py` dropped a body line wholly inside or under the footer box or
+       past the page (step 15's 1gr gap): such a line, larger than the footer's frame number, is now an item (on the
+       greyscale manual 18 more full slides reported, e.g. 1hi, 1cx); a side image's own drawings were judged
+       against the Right Margin (1vh, visible only with a wider logo padding): drawings inside a flush-right panel are
+       not. Images: `.regression/step17b-images/c-checker/`.
+     - **Findings (b), the manual's content, for the user** (not changed; one image per slide and the findings in
+       `.regression/step17b-images/b-manual-content/`): the greyscale text area is smaller (taller bar and footer,
+       1cm margins), so 43 full slides overflow: top+bottom (room rule) 1jv 1us 1nk 1hi 1cx 1vn 1kp 1tb 1n6 1iz 1pn 1y3
+       1w4 1un 1th 1u4 1x7 1uw 1vw 1r8 2rg 2v9 1wa; bottom 1an 1rv 1d8 1qn 1ub 1ti 1b6 1b2 1cb 1fg 1wk 1gu 1kg 1vd 1ih
+       1be 1az 1c9 1a4 1nz 1gr 1td (its "Image source(s)" line under the footer). Fixed-width drawings or tables past
+       the margin: 1ym, 1bb, 1im; 1nt's arrows point at Fira footer positions. Not flagged but seen: 1nz says
+       footnote markers are currency signs and 2rg lists symbols "confirmed in this deck's font" (LM lacks some);
+       1gr draws the title bar dark whatever the template; 1td and 1pf show screenshots of the SlideMage look.
+     - **check_layout, manual:** SlideMage template 0 findings in all six in-repo PDFs (copy: the known coltop on dkf);
+       greyscale instructor top 23, left 1, right 9, bottom 46, edge 1 (during/after course: bottom 44), all (b).
+       Calibration deck: 0 findings under greyscale, under stress-test (lmsans) and under SlideMage/lmroman.
+     - **Regression:** in-repo (`repo-v1016`, the two old entries): 6 entries, 575 pages, all identical (no
+       2v9/1vn shift this time). Private (`private-v1014`): 57 entries, 7160 pages, all identical. After the 1vw edit the in-repo run differs on exactly 1vw
+       in each of the six PDFs, and `check_layout.py` stays at the known findings. `tools/framework_regression_repo.json`
+       has `slidemage-manual@greyscale`. Manual slide 1vw names the greyscale template (`1-0-0+`); 1pf/hd5 not
+       changed (they show screenshots; pointing them at it needs a new screenshot).
+     - **Tests:** full suite 3938 passed, 73 skipped, 1 failed (`test_settings_gui`'s template list now also holds
+       the bundled `greyscale`; expectation updated, passes). With `SLIDEMAGE_TEX_TESTS=1`: test_hook_geometry,
+       test_calibrate_font_profile (lmroman added, greyscale deck clean), test_template_catalog, test_revealed_footnotes
+       pass (the last compares footnote tops within 0.02bp now: the stress template's "(n)" markers put two steps'
+       rounded tops at 221.07 and 221.08).
 18. **Version re-designation and the public repository** (user plan 2026-10-29; once the redesign is done and a
     version is stable). Every version so far gets a leading 0 (e.g. v10.1.12 becomes v0.10.1.12, v8.69.0 becomes
     v0.8.69.0); the public repository starts with a fresh initial commit (no history), and versions go on from

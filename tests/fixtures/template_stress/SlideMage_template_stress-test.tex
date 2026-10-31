@@ -51,6 +51,11 @@
 \renewcommand{\SMFooterBoxColorDefault}{c_primary_gray}
 \renewcommand{\SMFooterTextColor}{c_primary_white}
 
+\renewcommand{\SMHighlightTitleTextColor}{c_tertiary_yellow}
+\renewcommand{\SMStandoutTextColor}{c_secondary_yellow}
+\renewcommand{\SMAlertTextColor}{c_custom_red}
+\renewcommand{\SMProgressBarColor}{c_custom_brown}
+
 % Card headings: the profile's bold, slanted (any profile has both).
 \renewcommand{\SMCardHeadingStyle}{\bfseries\itshape}
 
@@ -90,6 +95,7 @@
 \renewcommand{\SMFootlineSidePadding}{4ex}
 \setlength{\SMFootnoteFooterGap}{3pt}
 \renewcommand{\SMFootnoteSize}{\fontsize{3.4}{2.1}\selectfont}
+\renewcommand{\SMFootnoteMark}[1]{(\number#1)}
 \setlength{\SMFootnoteSep}{4pt}
 \setlength{\SMSideFootnoteHsize}{190pt}
 \setlength{\SMSideFootnoteTitleBlockSep}{5pt}
@@ -116,6 +122,7 @@
 \setlength{\SMProgressStripRoom}{13pt}
 
 % Lists.
+\renewcommand{\SMBulletSymbol}[1]{\tikz[baseline=-0.1ex]{\fill[#1] (0,0) rectangle (4.5pt,4.5pt);}}
 \renewcommand{\SMItemsepRatioI}{0.5}
 \renewcommand{\SMItemsepRatioII}{0.3}
 \renewcommand{\SMItemsepRatioIII}{0.2}
