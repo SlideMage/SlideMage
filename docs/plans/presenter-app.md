@@ -207,6 +207,10 @@ with "Continue" and "Start from the beginning". For a lecture continued after a 
 - *Stored* per user and machine with the other presentation settings, at most the last 50 decks; never in the PDF
   or the project, so it does not travel through the sync.
 
+Done in v0.12.2 (`presentation/resume.py`, `ui/presentation/resume_ui.py`). The place is worked out whenever
+the slide changes, because the controller closes the PDF before `finished` fires; it is written after 1.5 s on a
+slide and when the talk ends.
+
 This is not Presenter-only: it can be done in SlideMage first (it needs no part of steps 1–4) and comes to the
 Presenter with the shared code.
 

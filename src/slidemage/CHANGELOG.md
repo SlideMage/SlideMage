@@ -3186,3 +3186,10 @@ v0.12.1 (2026-10-31, direct request: SlideMage Presenter, step 5b of docs/plans/
 NEW: Slide numbers and reveal steps when presenting a PDF on its own.
 - "Present a PDF…" shows "Slide 5 / 20 · step 2 / 3" and "Go to slide" takes a slide number, for PDFs made with beamer, not just for decks of the open project.
 - Presenter PDFs now carry the right slide numbers as page labels, also in other PDF viewers. Compile a presenter PDF again to get them.
+
+v0.12.2 (2026-10-31, direct request: SlideMage Presenter, step 5c of docs/plans/presenter-app.md): Presenting a deck again asks whether to continue where the last talk stopped, from “Present deck” and from “Present a PDF…” alike, and later in SlideMage Presenter. presentation/resume.py stores per deck, in the layout store outside the project, the slide number, the slide count and a fingerprint of the slide, which is its title and text with digits removed so shifting slide numbers and dates do not change it; the 50 most recent places are kept and places older than 30 days are ignored. On the next start the slide at the stored number is offered when its fingerprint still matches, else the nearest slide with that fingerprint, saying the number changed, else the stored number, saying the slide changed; nothing is offered for the first slide or when the talk reached its last slide. The Presenter keys by the PDF path, SlideMage by the deck file, so it does not matter which PDF of the deck is shown. ui/presentation/resume_ui.py asks the question and saves the place after the presenter rests 1.5 seconds on a slide and when the talk ends, never raising into the presentation. PresentationDeck.slide_text reads the slide half of a page, and the new option offer_resume in the presentation settings switches the question off. latex/ is unchanged.
+
+NEW: SlideMage offers to continue where your last talk stopped.
+- When you present a deck again, it asks "Continue at slide 23 (Results)?" with a button to start from the beginning instead.
+- It finds the slide again even when slides were added or removed in between.
+- You can switch the question off under Presentation settings, "Continuing a talk".
