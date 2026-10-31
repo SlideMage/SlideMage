@@ -3199,3 +3199,10 @@ v0.12.3 (2026-10-31, direct request: an on-demand debug log, step 1 of docs/plan
 NEW: SlideMage keeps a small error log.
 - Warnings and errors, for example a plugin that fails, now go to logs/slidemage.log in SlideMage's cache folder, which helps when you report a problem.
 - It holds no slide text and no API keys, and stays below 4 MB.
+
+v0.12.4 (2026-10-31, direct request: SlideMage Presenter, step 2 of docs/plans/presenter-app.md): the entry point of SlideMage Presenter, a small separate program that presents a PDF without a project. presenter_app.py (python -m slidemage.presenter_app, or the new slidemage-presenter script) presents a PDF given as an argument at once, and shows a start window (ui/presentation/presenter_window.py) with Open PDF, the ten PDFs presented last (presentation/recent.py, stored in layout.json under presenter_recent), drop a PDF on the window, and the presentation settings page in a sheet. On macOS a file opened from Finder arrives as a QFileOpenEvent, which an event filter presents the same way. --self-test imports every module the Presenter uses and exits 0 without a window, as SlideMage's does. It carries its own icon (assets/presenter-icon.svg, the card stack with a play mark) and is checked by tests/test_presenter_imports.py. Not downloadable yet: the PyInstaller build is step 3 and the release is step 4, so for now it runs from the source.
+
+NEW: SlideMage Presenter, a small program for presenting a PDF, is in the making.
+- It presents a presenter PDF (slides and notes) or any plain PDF without a project, and remembers the last ten.
+- You can drop a PDF on its window, or give it the PDF to present when you start it.
+- It is not downloadable yet: the build and the download come in the next steps, so for now only a source checkout runs it.

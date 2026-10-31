@@ -114,6 +114,13 @@ Each step is one PR into `develop`, small enough to review alone. Stop after eac
 - Add `slidemage-presenter = "slidemage.presenter_app:main"` to `[project.gui-scripts]` so it runs from the dev
   venv too.
 
+Done in v0.12.4: `presenter_app.py` (entry point, `--self-test`, macOS `QFileOpenEvent` filter),
+`ui/presentation/presenter_window.py` (start window), `presentation/recent.py` (recent PDFs, key
+`presenter_recent`), icon A as `assets/presenter-icon.svg`. Runs from the source as `python -m
+slidemage.presenter_app`. Measured: `import slidemage.presenter_app` 82 ms (2 SlideMage modules),
+`--self-test` 401 ms with everything imported (39 SlideMage modules, PyMuPDF). The SVG icon needs QtSvg, so
+step 3 must bundle QtSvg and its iconengines/imageformats plugins.
+
 ### 3. The build
 
 `packaging/slidemage_presenter.spec`:
