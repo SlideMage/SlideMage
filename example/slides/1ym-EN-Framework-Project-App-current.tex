@@ -4,7 +4,7 @@
 % SlideMage manual, chapter "The big picture": the three parts and the
 % workflow, as a described diagram (\tikzillustration; also the example on
 % slide 1pn, "Describing diagrams").
-\setSlideVersion{1-1-0}
+\setSlideVersion{1-1-0+}
 \begin{standardframe}{Framework, project and app}
 	\small
 	SlideMage keeps every slide in a small LaTeX file of its own and builds decks
@@ -19,7 +19,7 @@
 			wstep/.style={SMProcess, line width=0.4pt, rounded corners=2pt, inner sep=3pt, font=\footnotesize},
 		]{1ym-tikz}
 		\node[part] (fw) at (0,0) {{\SMCardHeadingFont LaTeX framework}\\[2pt]
-			\SMCode{latex/}: the Gotham theme, the base preamble, the templates};
+			\SMCode{latex/}: the SlideMage theme, the layout rules, the fonts, the templates};
 		\node[part] (pj) at (150pt,0) {{\SMCardHeadingFont Your project}\\[2pt]
 			any folder with a \SMCode{slide\_ids.csv}: slides, decks, images};
 		\node[part] (app) at (300pt,0) {{\SMCardHeadingFont SlideMage}\\[2pt]

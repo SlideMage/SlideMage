@@ -1,0 +1,32 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, appendix: how to make a template (SlideMage v10.15.0,
+% step 15 of the framework redesign). The code panel is a minimal template
+% (snippets/1vw-1.tex); every name in it is a catalog name of
+% latex/SlideMage_setup.tex. The four optional theme features are listed at
+% the end of that file; tests/fixtures/template_stress/ shows them on.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Making a template}
+	\small
+	A template is one file of your project. All it may change is in the \emph{catalog},
+	\SMCode{latex/SlideMage\_setup.tex}: each setting with its default and a comment.
+	\par
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.55\linewidth}
+			\SMCodeFile{snippets/1vw-1.tex}
+			\par\smallskip
+			{\footnotesize\textcolor{c_primary_highlight}{\textbf{Optional, all off}} (end of the catalog):
+			mini frames, progress bar, divider frames, watermark -- \SMCmd{SMMiniFramesPosition},
+			\SMCmd{SMProgressBarPosition}, \SMCmd{SMDividerFrames} and \SMCmd{SMDividerLook}, \SMCmd{SMWatermarkDefault}\par}
+		\end{column}
+		\begin{column}{0.42\linewidth}
+			\shrinklists{2}
+			\begin{itemize}
+				\item Copy the SlideMage template (in \SMCode{latex/}) into the project as \SMCode{SlideMage\_template\_<key>.tex}
+				\item Between setup and base, change catalog names only; a misspelt one is an error
+				\item Fonts: pick a layout profile or ship your own, made with \SMCode{tools/calibrate\_font\_profile.py}; never set one of its values in a template
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}
