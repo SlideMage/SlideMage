@@ -7,7 +7,7 @@ entry point, the preview rasteriser. It gives the `slidemage` logger the error l
 exceptions of every process, in `logs/slidemage.log` in SlideMage's cache folder (not roaming), kept below
 MAX_BYTES with BACKUPS older files (.1 is the newest). SLIDEMAGE_LOG_DIR names another folder. While the process
 has a console, the same lines also go to stderr, as Python's last-resort handler did before. The windowed build
-has none, which is why nothing logged reached anyone before v0.12.2.
+has none, which is why nothing logged reached anyone before v0.12.3.
 
 One line per record, in fixed columns: time, seconds since the process started, level, area (the logger name
 without `slidemage.`), role:pid, thread, message. A traceback follows, indented. API keys and tokens are masked

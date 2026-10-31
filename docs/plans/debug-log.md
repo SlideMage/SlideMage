@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: decisions made 2026-10-31 (section 7). Step 1 done (v0.12.2); step 2 next, after the go.
+Status: decisions made 2026-10-31 (section 7). Step 1 done (v0.12.3); step 2 next, after the go.
 
 ## 1. Review: what SlideMage writes today
 
@@ -181,7 +181,7 @@ These are the points that would have spared us the ad-hoc traces:
 
 ## 6. Steps (one PR each, stop after each)
 
-1. **Base (done, v0.12.2):** `diagnostics.py`, the always-on error log, the excepthooks and the Qt
+1. **Base (done, v0.12.3):** `diagnostics.py`, the always-on error log, the excepthooks and the Qt
    message handler, called from `cli.main()` and the subprocess paths. Tests for rotation,
    cleanup, redaction and the format. This alone makes the lost exceptions from 1.3 visible.
 2. **The debug switch:** `--debug`, `SLIDEMAGE_DEBUG`, the persisted setting, the session
