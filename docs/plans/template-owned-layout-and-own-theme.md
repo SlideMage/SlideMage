@@ -1076,6 +1076,23 @@ mix it in.
        test_calibrate_font_profile (lmroman added, greyscale deck clean), test_template_catalog, test_revealed_footnotes
        pass (the last compares footnote tops within 0.02bp now: the stress template's "(n)" markers put two steps'
        rounded tops at 221.07 and 221.08).
+17c. **The manual fits every shipped template** (user request 2026-10-31; after 17b and v10.18.1, before step 18).
+   v10.18.1 set the greyscale template's body text to 10pt as a stopgap (it redefines LaTeX's size commands); with it,
+   7 manual slides still overflow under greyscale, and some describe or draw the SlideMage look as if it were fixed.
+   Three parts, in parallel sessions on separate files; one CHANGELOG entry v10.19.0 at the end.
+   - **A. A catalog setting for the body text size** (`\SMBodyFontSize` or similar in `SlideMage_setup.tex`, default
+     11pt): the base derives `\normalsize` and the size steps below it (`\small`, `\footnotesize`, `\scriptsize`,
+     `\tiny`) from it, so lists, `\shrinklists` and everything set with those commands follow. The greyscale template
+     sets 10pt through it instead of redefining the size commands. Render identical everywhere (SlideMage at 11pt,
+     greyscale at 10pt as in v10.18.1).
+   - **B. Manual slides that assume the SlideMage look:** fixed-width drawings and tables sized relative to
+     `\linewidth` (1ym, 1im, 1bb), drawings of the template placed and coloured from catalog values (1nt's footer
+     arrows, 1gr's title bar), too-full slides shortened or split (1rv, 1td, 1w4, 1uw, and any others found), with
+     German partners. Rule: a manual slide fits every template the framework ships.
+   - **C. Text that states defaults as facts:** 1nz and 2rg describe the currency-sign footnote markers; they say
+     "by default" or show the live marker (`\SMFootnoteMark`).
+   - **Check:** the manual decks under every shipped template are 0-finding in `tools/check_layout.py` (a test or a
+     regression rule), so a slide that fits only one template shows up at once.
 18. **Version re-designation and the public repository** (user plan 2026-10-29; once the redesign is done and a
     version is stable). Every version so far gets a leading 0 (e.g. v10.1.12 becomes v0.10.1.12, v8.69.0 becomes
     v0.8.69.0); the public repository starts with a fresh initial commit (no history), and versions go on from
