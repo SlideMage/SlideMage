@@ -7,12 +7,43 @@ window comes first. It imports only the presentation modules and the kit, never 
 workspace (tests/test_presenter_imports.py), so the frozen build stays small and starts fast."""
 from __future__ import annotations
 
+import os
 import sys
+import time
 from pathlib import Path
 
 # First argument: import everything the Presenter needs, then exit 0, with no window (as cli.SELF_TEST_FLAG).
 SELF_TEST_FLAG = "--self-test"
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "presenter-icon.svg"
+# Opt-in start-time measurement (docs/plans/presenter-app.md, step 3): with SLIDEMAGE_PRESENTER_TIMING=1 the start
+# window is shown, the time since the process was created goes to SLIDEMAGE_PRESENTER_TIMING_FILE (or stdout), and
+# the program quits; nothing is written to the settings. packaging/launch_presenter.py sets PROCESS_START.
+TIMING_ENV = "SLIDEMAGE_PRESENTER_TIMING"
+TIMING_FILE_ENV = "SLIDEMAGE_PRESENTER_TIMING_FILE"
+_IMPORTED_AT = time.perf_counter()
+PROCESS_START: float | None = None      # time.perf_counter() at the first line of the launcher, if it set it
+
+
+def _seconds_since_process_start() -> float:
+    """Seconds since this process was created: from the operating system on Windows (so the bootloader's time counts),
+    else since the launcher's first line, else since this module was imported."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            created, _exit, _kernel, _user = (wintypes.FILETIME() for _ in range(4))
+            if kernel32.GetProcessTimes(kernel32.GetCurrentProcess(), ctypes.byref(created), ctypes.byref(_exit),
+                                        ctypes.byref(_kernel), ctypes.byref(_user)):
+                ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime      # 100 ns since 1601
+                now = wintypes.FILETIME()
+                kernel32.GetSystemTimeAsFileTime(ctypes.byref(now))
+                return (((now.dwHighDateTime << 32) | now.dwLowDateTime) - ticks) / 1e7
+        except Exception:
+            pass
+    return time.perf_counter() - (PROCESS_START if PROCESS_START is not None else _IMPORTED_AT)
 
 
 def _self_test() -> int:
@@ -69,12 +100,24 @@ def make_filter(app):
     return flt
 
 
+def _report_timing(app) -> None:
+    """Write the start time (the window has been shown) and quit; see TIMING_ENV."""
+    text = f"{_seconds_since_process_start():.3f}\n"
+    target = os.environ.get(TIMING_FILE_ENV)
+    if target:
+        Path(target).write_text(text, encoding="utf-8")
+    else:
+        print(text, end="")
+    app.quit()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
     if args[:1] == [SELF_TEST_FLAG]:
         return _self_test()
 
     from PySide6 import QtSvg  # noqa: F401 -- Qt's SVG support: without it QIcon draws the .svg icon empty
+    from PySide6.QtCore import QTimer
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
@@ -96,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
     opened.pending.clear()
     if queue:
         window.present(queue[0])      # shows the start window when the talk is over
+    elif os.environ.get(TIMING_ENV):
+        window.show()
+        QTimer.singleShot(0, lambda: _report_timing(app))
     else:
         window.show()
     for later in queue[1:]:           # a second file is presented after the first

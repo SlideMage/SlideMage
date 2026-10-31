@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
 from ...presentation.pdf_source import SLIDE, PresentationDeck
 from ...presentation.session import Point, Stroke
+from ...presentation.settings import PresentationSettings
 from .slide_input import SlideInput
 
 BADGE_COLORS = {"black": "#d32f2f", "frozen": "#ef9a1a", "both": "#d32f2f"}
@@ -27,11 +28,15 @@ class View(Protocol):
 class SlideCanvas(QWidget):
     def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff2020",
                  laser_size: float = 0.02, background: str = "#000000", empty_text: str = "", top: bool = False,
-                 slide_input: Optional[SlideInput] = None, parent: Optional[QWidget] = None) -> None:
+                 slide_input: Optional[SlideInput] = None, settings: Optional[PresentationSettings] = None,
+                 name: str = "",
+                 parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.deck, self.view, self.part, self.laser_size = deck, view, part, laser_size
         self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
         self.input = slide_input
+        self.settings = settings     # when given, the laser's colour and size are read from it as it is drawn
+        self.name = name             # "Current" or "Next" in the presenter window's top-left corner
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumSize(40, 30)
         if slide_input is not None:
@@ -72,7 +77,7 @@ class SlideCanvas(QWidget):
             elif page is None and self.empty_text:
                 painter.setPen(QColor("#9e9e9e"))
                 painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.empty_text)
-            self._badge(painter)
+            self._name_tag(painter, self._badge(painter))
             return
         painter.drawImage(QRectF(rect), image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -81,7 +86,7 @@ class SlideCanvas(QWidget):
         pointer = self.view.pointer()
         if pointer is not None:
             self._laser(painter, rect, pointer)
-        self._badge(painter)
+        self._name_tag(painter, self._badge(painter))
 
     def _stroke(self, painter: QPainter, rect: QRect, stroke: Stroke) -> None:
         pen = QPen(QColor(stroke.color), max(2.0, stroke.width * rect.height()))
@@ -100,8 +105,10 @@ class SlideCanvas(QWidget):
 
     def _laser(self, painter: QPainter, rect: QRect, pointer: Point) -> None:
         centre = QPointF(rect.x() + pointer[0] * rect.width(), rect.y() + pointer[1] * rect.height())
-        radius = max(3.0, self.laser_size * rect.height())
-        color = QColor(self.laser_color)
+        size, color = ((self.settings.laser_size, self.settings.laser_color) if self.settings is not None
+                       else (self.laser_size, self.laser_color))
+        radius = max(3.0, size * rect.height())
+        color = QColor(color)
         halo = QColor(color)
         halo.setAlpha(0)
         glow = QColor(color)
@@ -115,10 +122,11 @@ class SlideCanvas(QWidget):
         painter.setBrush(color)
         painter.drawEllipse(centre, radius, radius)
 
-    def _badge(self, painter: QPainter) -> None:
+    def _badge(self, painter: QPainter) -> Optional[QRect]:
+        """What the projector shows, when it is not the slide; the box it took, for the name tag beside it."""
         status = self.view.status()
         if status is None:
-            return
+            return None
         text, kind = status
         color = QColor(BADGE_COLORS[kind])
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
@@ -134,6 +142,25 @@ class SlideCanvas(QWidget):
         painter.fillRect(box, color)
         painter.setPen(QColor("#ffffff"))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        return box
+
+    def _name_tag(self, painter: QPainter, beside: Optional[QRect]) -> None:
+        """The view's name, small and quiet in the top-left corner (right of the status badge when there is one),
+        so the presenter tells the current slide from the next one at a glance."""
+        if not self.name:
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        font = painter.font()
+        font.setBold(False)
+        font.setPointSize(max(12, font.pointSize() + 3))
+        painter.setFont(font)
+        box = painter.fontMetrics().boundingRect(self.name).adjusted(-9, -4, 9, 4)
+        box.moveTopLeft(QPoint(beside.right() + 8, beside.top()) if beside is not None else self.rect().topLeft() + QPoint(6, 6))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 150))
+        painter.drawRoundedRect(QRectF(box), 4, 4)
+        painter.setPen(QColor("#e0e0e0"))
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self.name)
 
     # -- mouse ------------------------------------------------------------------------
 

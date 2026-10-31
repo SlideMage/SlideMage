@@ -119,7 +119,7 @@ class PresenterStartWindow(QWidget):
             QTimer.singleShot(0, lambda: self.present(self.waiting.pop(0)))
 
     def open_settings(self) -> None:
-        sheet = ModalSheet("Presentation settings", self, width=560)
+        sheet = ModalSheet("Presentation settings", self, width=760)      # as wide as SlideMage's Settings
         sheet.add_tab("", PresentationTab(), scroll=True)
         sheet.add_button("Close", kind="primary", role="accept")
         sheet.exec()
