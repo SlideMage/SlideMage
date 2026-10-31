@@ -10,7 +10,7 @@ every course deck used to copy before that -- compat_bibliography.py still
 needs it in full to recognize an old-style deck copy or an old-style
 template, and to build one for a new template that has no citation format
 yet (that case gets BLOCK instead, see below). It is the content of
-latex/SlideMage_bibliography_default.tex now (minus that file's SPDX header).
+latex/SlideMage_citation_default.tex now (minus that file's SPDX header).
 
 BLOCK is what a template says since v10.14.0 instead of carrying FULL_TEXT:
 the one line that inputs the framework's shared file. compat_bibliography.py
@@ -191,5 +191,5 @@ FULL_TEXT = r"""% Bibliography (SlideMage v5.32.0, 2026-10-07, direct instructio
 """
 
 # What a template says since v10.14.0 instead of carrying FULL_TEXT: an
-# \input of the framework's shared file (latex/SlideMage_bibliography_default.tex).
+# \input of the framework's shared file (latex/SlideMage_bibliography_default.tex, a loader of SlideMage_citation_default.tex since v0.13.0).
 BLOCK = "\\input{SlideMage_bibliography_default}\n"

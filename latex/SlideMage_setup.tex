@@ -297,6 +297,12 @@
 % points, \scriptsize 0.73 times and \tiny 0.55 times the body size below it. It wins over
 % the deck's \documentclass option. \large and up (the frame title and the like), the
 % footer and the footnotes keep their own sizes (\SMFooterTextSize, \SMFootnoteSize).
+% Citation format (v0.13.0): the key of the citation format \SMUseBibliography loads, the file
+% SlideMage_citation_<key>.tex ("default" is the house format, latex/SlideMage_citation_default.tex;
+% other formats come as citation packages, docs/CITATION_PACKAGE.md). A template sets it between this
+% file and SlideMage_base, a deck may set it again before \SMUseBibliography.
+\newcommand{\SMCitationFormat}{default}
+
 \newlength{\SMBodyFontSize}
 \setlength{\SMBodyFontSize}{11pt}               % body text size, beamer's 11pt option
 

@@ -23,8 +23,10 @@ directly above it, if that is about the bibliography) by SMUseBibliography,
 and makes sure the deck's template defines the house format: a template file
 of the project that has no SMBibliographyStyle yet gets bibliography_house.BLOCK
 (the one line that inputs latex/SlideMage_bibliography_default.tex) inserted
-after its input of the base preamble; a framework template (the SlideMage one)
-must already have it, else the deck is skipped (update the framework first). A
+after its input of the base preamble -- unless the framework's base loads the
+citation format itself (since v0.13.0, \\SMCitationFormat: then the template is
+ready as it is); a framework template (the SlideMage one) must already have it,
+else the deck is skipped (update the framework first). A
 deck whose template defines a different SMBibliographyStyle is skipped too --
 moving the deck would change its format.
 
@@ -183,6 +185,8 @@ def _template_state(root: Path, deck_text: str):
         return path, "ready" if same else "its template defines another citation format"
     if _DEFAULT_INPUT in text:
         return path, "ready"
+    if _framework_loads_format(root):
+        return path, "ready"        # since v0.13.0 the base loads the template's \SMCitationFormat (default: the house format)
     if not inside:
         return path, "the framework's template has no citation format yet -- update the framework first"
     return path, "add"
@@ -193,6 +197,18 @@ def _framework_ready(root: Path) -> bool:
         base = folder / "SlideMage_base.tex"
         if "SMUseBibliography" in base.read_text(encoding="utf-8", errors="replace"):
             return True
+    return False
+
+
+def _framework_loads_format(root: Path) -> bool:
+    """Whether the framework's base loads the citation format itself (v0.13.0), so a template needs no line."""
+    for folder in slide_snapshot.framework_dirs(root):
+        base = folder / "SlideMage_base.tex"
+        try:
+            if "SM@LoadCitationFormat" in base.read_text(encoding="utf-8", errors="replace"):
+                return True
+        except OSError:
+            continue
     return False
 
 

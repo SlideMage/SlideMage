@@ -246,10 +246,12 @@ def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_r
     # nor does the bundled bibliography default (v10.14.0): a template inputs it instead of carrying
     # the format itself, so it has to be pinned too, but it is still only renewcommands, no view-dependent rule
     assert "SlideMage_bibliography_default.tex" in AUDITED_FRAMEWORK
+    assert "SlideMage_citation_default.tex" in AUDITED_FRAMEWORK        # v0.13.0: the house format's new name
     # nor do the templates the framework ships (since v10.18.0 two, both pinned)
     templates = sorted(latex.glob("SlideMage_template_*.tex"))
     assert {path.name for path in templates} <= set(AUDITED_FRAMEWORK)
-    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex", *profiles,
+    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex",
+                 latex / "SlideMage_citation_default.tex", *profiles,
                  *templates]:
         text = path.read_text(encoding="utf-8")
         assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode",

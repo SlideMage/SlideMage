@@ -13,6 +13,10 @@
   "Add theme from GitHub…" takes owner/name and installs the repository's newest eligible release with the GitHub
   token of Settings → General (theme_sources.py); such a theme's row names its repository, says why its last update
   check failed, and has "Check for update".
+* Citation formats: the citation format packages installed on this computer (citations.py,
+  docs/CITATION_PACKAGE.md: a format for \\SMCitationFormat, packaged on its own), the third category, with the
+  same rows and buttons as the themes (Remove, Check for update, "Add citation format from GitHub…"; the file button
+  takes a .smcite; citation_sources.py). Also at once, no restart.
 * Install from file…: a .smplugin that is not from the catalogue. It is read first (installer.peek) and the user is
   asked, with the plugin's name, version and network lines, because the plugin runs with their rights. The same
   button takes a .smtheme (install_theme_file): its theme.toml is shown first, then themes.install_file checks it.
@@ -35,7 +39,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QVBoxLayout, QWidget)
 
-from ... import theme_sources, themes
+from ... import citation_sources, citations, theme_sources, themes
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import Catalogue, CataloguePlugin, CatalogueError, CatalogueTooNew, Release
 from ...plugins.loader import LoadedPlugin
@@ -108,6 +112,8 @@ def install_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) 
     the user. Whether it was installed."""
     if path.suffix.lower() == themes.PACKAGE_SUFFIX:
         return install_theme_file(parent, path, say)
+    if path.suffix.lower() == citations.PACKAGE_SUFFIX:
+        return install_citation_file(parent, path, say)
     try:
         manifest = installer.peek(path)
         expected = _sidecar_sha256(path)
@@ -180,6 +186,46 @@ def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
     return QMessageBox.question(parent, "Install theme from file", text) == QMessageBox.StandardButton.Yes
 
 
+def install_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
+    """Install the citation package `path` (a .smcite) after the user has seen its citation.toml. Whether it was
+    installed."""
+    try:
+        manifest = citations.peek(path)
+        expected = _sidecar_sha256(path)
+    except (citations.CitationError, installer.InstallError, OSError) as exc:
+        say(str(exc), True)
+        return False
+    if not _confirm_citation(parent, manifest):
+        say("", False)
+        return False
+    try:
+        citations.install_file(path, expected_sha256=expected)
+    except citations.CitationError as exc:
+        say(str(exc), True)
+        return False
+    say(_citation_installed(manifest), False)
+    return True
+
+
+def _citation_installed(manifest: citations.CitationManifest, repository: str = "") -> str:
+    origin = f" from {repository}" if repository else ""
+    return (f"The citation format {manifest.name} {manifest.version} is installed{origin}. A template or deck uses it "
+            f"with \\renewcommand{{\\SMCitationFormat}}{{{manifest.id}}}.")
+
+
+def _confirm_citation(parent: QWidget, manifest: citations.CitationManifest, repository: str = "") -> bool:
+    current = next((c for c in citations.installed() if c.key == manifest.id), None)
+    replaces = (f"\n\nIt replaces the installed version {current.manifest.version}." if current and current.manifest
+                else "\n\nIt replaces the installed citation format of that key." if current else "")
+    origin = f" from {repository}" if repository else ""
+    updates = "SlideMage offers its updates from that repository. " if repository else ""
+    text = (f"Install the citation format {manifest.name} {manifest.version}{origin}?\n{manifest.summary}\n\n"
+            f"Key: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
+            f"{updates}A citation format is a TeX file that sets how references look; it runs no program. A "
+            "project's own copy of the same file still wins.")
+    return QMessageBox.question(parent, "Install citation format", text) == QMessageBox.StandardButton.Yes
+
+
 NOTES_LIMIT = 1500       # characters of a release's notes in the update offer
 
 
@@ -206,6 +252,30 @@ def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
     return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
 
 
+def ask_citation_update(parent: QWidget, offer: theme_sources.Offer) -> str:
+    """"install", "later" or "skip": the offer of a newer release of a citation format from GitHub, with its notes."""
+    release = offer.fetched.release
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Citation format update available")
+    box.setText(f"The citation format {offer.name} {release.version} is available (you have "
+                f"{offer.installed_version}).")
+    notes = release.body.strip() or "The release has no notes."
+    if len(notes) > NOTES_LIMIT:
+        notes = notes[:NOTES_LIMIT].rstrip() + f"…\n\nThe full notes: {release.page_url}"
+    major = ("This is a new major version: the author marks it as a change that may alter how your references "
+             "look.\n\n" if offer.major else "")
+    box.setInformativeText(f"{major}{notes}\n\nFrom {release.repository}. Decks using the format {offer.key!r} "
+                           "get the new version; a project's own copy of the file still wins.")
+    install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
+    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+    skip = box.addButton("Skip this version", QMessageBox.ButtonRole.ActionRole)
+    box.setDefaultButton(install)
+    box.setEscapeButton(later)
+    box.exec()
+    return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
 def _confirm_github_theme(parent: QWidget, fetched: theme_sources.Fetched) -> bool:
     manifest, release = fetched.manifest, fetched.release
     current = next((t for t in themes.installed() if t.key == manifest.id), None)
@@ -219,9 +289,9 @@ def _confirm_github_theme(parent: QWidget, fetched: theme_sources.Fetched) -> bo
 
 def pick_plugin_file(parent: QWidget) -> Path | None:
     path, _ = QFileDialog.getOpenFileName(
-        parent, "Install a plugin or theme", "",
-        "SlideMage plugins and themes (*.smplugin *.smtheme);;SlideMage plugins (*.smplugin);;"
-        "SlideMage themes (*.smtheme)")
+        parent, "Install a plugin, theme or citation format", "",
+        "SlideMage plugins, themes and citation formats (*.smplugin *.smtheme *.smcite);;"
+        "SlideMage plugins (*.smplugin);;SlideMage themes (*.smtheme);;SlideMage citation formats (*.smcite)")
     return Path(path) if path else None
 
 
@@ -381,6 +451,47 @@ class ThemeRow(Card):
         layout.addWidget(row(Surface(), *buttons))
 
 
+class CitationRow(Card):
+    """One installed citation package: its name, version, key and summary, and Remove (ThemeRow's twin)."""
+
+    def __init__(self, tab: PluginsTab, item: citations.InstalledCitation) -> None:
+        super().__init__()
+        self.key = item.key
+        layout = self.layout()
+        manifest = item.manifest
+        self.source = citation_sources.read_source(item.key)
+        title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else item.key)
+        title.setObjectName(q.ROW_NAME)
+        layout.addWidget(row(title, caption(f"format {item.key}"), stretch=0))
+        if manifest is not None:
+            layout.addWidget(caption(manifest.summary))
+            layout.addWidget(caption(f"{manifest.author}, {manifest.license}"))
+        self.source_label: QLabel | None = None
+        self.check_error_label: QLabel | None = None
+        self.update_button: Button | None = None
+        if self.source is not None:
+            self.source_label = caption(f"From GitHub: {self.source.repository}; updates are offered from there")
+            layout.addWidget(self.source_label)
+            if self.source.check_error:
+                self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
+                                                 "The installed version keeps working.", "error")
+                layout.addWidget(self.check_error_label)
+        else:
+            layout.addWidget(caption("Installed from a file; never updated"))
+        if item.problem:
+            layout.addWidget(caption(_sentence(f"not usable: {item.problem}"), "error"))
+        buttons: list[QWidget] = []
+        if self.source is not None and manifest is not None and not item.problem:
+            self.update_button = Button("Check for update", compact=True)
+            self.update_button.clicked.connect(partial(tab.check_citation_update, item.key))
+            buttons.append(self.update_button)
+        self.remove_button = Button("Remove", compact=True)
+        self.remove_button.clicked.connect(partial(tab.remove_citation, item.key,
+                                                   manifest.name if manifest else item.key))
+        buttons.append(self.remove_button)
+        layout.addWidget(row(Surface(), *buttons))
+
+
 class PluginsTab(Page):
     """`app` is the window (its project and relaunch_with_project); `leave(action)` closes the sheet and then runs
     `action` (SettingsSheet.close_then), which is how "Restart now" gets the modal sheet out of the way first."""
@@ -394,6 +505,7 @@ class PluginsTab(Page):
         self.rows: dict[str, InstalledRow] = {}
         self.available: dict[str, AvailableRow] = {}
         self.theme_rows: dict[str, ThemeRow] = {}
+        self.citation_rows: dict[str, CitationRow] = {}
         layout = self.body
 
         self.banner = Card()
@@ -425,6 +537,14 @@ class PluginsTab(Page):
         self.github_button = Button("Add theme from GitHub…", compact=True)
         self.github_button.clicked.connect(self.add_theme_from_dialog)
         layout.addWidget(row(Surface(), self.github_button))
+
+        layout.addWidget(self._heading("Citation formats"))
+        self._citations_box = QVBoxLayout()
+        self._citations_box.setSpacing(8)
+        layout.addLayout(self._citations_box)
+        self.citation_github_button = Button("Add citation format from GitHub…", compact=True)
+        self.citation_github_button.clicked.connect(self.add_citation_from_dialog)
+        layout.addWidget(row(Surface(), self.citation_github_button))
 
         self.check_button = Button("Check for plugins", compact=True)
         self.check_button.clicked.connect(self.check_catalogue)
@@ -476,6 +596,7 @@ class PluginsTab(Page):
         if not self.rows:
             self._installed_box.addWidget(caption("No plugins are installed."))
         self.refresh_themes()
+        self.refresh_citations()
         self.banner.setVisible(installer.pending_restart())
         self._set_busy(self._job is not None)
 
@@ -584,6 +705,114 @@ class PluginsTab(Page):
     def _theme_failed(self, error: Exception) -> None:
         if not isinstance(error, (theme_sources.SourceError, themes.ThemeError)):
             log.error("theme job failed", exc_info=error)
+        self._say(str(error), error=True)
+
+    # -- citation formats
+
+    def refresh_citations(self) -> None:
+        clear_layout(self._citations_box)
+        self.citation_rows.clear()
+        for item in citations.installed():
+            self.citation_rows[item.key] = CitationRow(self, item)
+            self._citations_box.addWidget(self.citation_rows[item.key])
+        if not self.citation_rows:
+            self._citations_box.addWidget(caption(
+                "No citation formats are installed; the house format is built in. A citation format is a way "
+                "references look, packaged on its own (.smcite); install one from a file or add one from GitHub."))
+
+    def remove_citation(self, key: str, name: str) -> None:
+        if QMessageBox.question(self, "Remove citation format", f"Remove the citation format {name}? Decks that "
+                                f"choose {key!r} need a copy of its file in their project to compile."
+                                ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            citations.remove(key)
+        except citations.CitationError as exc:
+            self._say(str(exc), error=True)
+            return
+        self._say(f"The citation format {name} is removed.")
+        self.refresh_citations()
+
+    def add_citation_from_dialog(self) -> None:
+        text, accepted = QInputDialog.getText(
+            self, "Add citation format from GitHub", "The citation format's repository (owner/name), read with the "
+            "GitHub token of Settings → General:", QLineEdit.EchoMode.Normal, "")
+        if accepted and text.strip():
+            self.add_citation_from_github(text)
+
+    def add_citation_from_github(self, text: str) -> None:
+        """Install the newest eligible release of the repository `text` (owner/name) after the user has seen it."""
+        try:
+            repo = citation_sources.parse_repository(text)
+        except citation_sources.SourceError as exc:
+            self._say(str(exc), error=True)
+            return
+
+        def done(result, error: Exception | None) -> None:
+            if error is not None:
+                return self._citation_failed(error)
+            fetched, passed = result
+            if fetched is None:
+                why = (" Passed over: " + "; ".join(passed) + ".") if passed else ""
+                return self._say(f"{repo} has no release SlideMage can install: a published release with "
+                                 f"<key>-<version>.smcite and its .sha256.{why}", error=True)
+            if not _confirm_citation(self, fetched.manifest, fetched.release.repository):
+                fetched.discard()
+                return self._say("")
+            self._install_citation_fetched(fetched)
+
+        self._start(partial(citation_sources.newest_eligible, repo), done, f"Reading the releases of {repo}…")
+
+    def check_citation_update(self, key: str) -> None:
+        """Look for a newer eligible release of the GitHub citation format `key` now, and offer it."""
+        source = citation_sources.read_source(key)
+        item = next((c for c in citations.installed() if c.key == key and c.manifest is not None), None)
+        if source is None or item is None:
+            return
+
+        def work():
+            try:
+                found = citation_sources.newest_eligible(source.repository, key=key,
+                                                         newer_than=item.manifest.version)
+            except citation_sources.SourceError as exc:
+                citation_sources.record_check(key, str(exc))
+                raise
+            citation_sources.record_check(key, "")
+            return found
+
+        def done(result, error: Exception | None) -> None:
+            self.refresh_citations()
+            if error is not None:
+                return self._citation_failed(error)
+            fetched, _passed = result
+            if fetched is None:
+                return self._say(f"The citation format {item.manifest.name} {item.manifest.version} is up to date.")
+            offer = citation_sources.Offer(key, item.manifest.name, item.manifest.version, fetched)
+            choice = ask_citation_update(self, offer)
+            if choice == "install":
+                return self._install_citation_fetched(fetched)
+            fetched.discard()
+            if choice == "skip":
+                citation_sources.skip_version(key, fetched.release.version)
+            self._say("")
+
+        self._start(work, done, f"Checking {source.repository} for a newer release…")
+
+    def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> None:
+        try:
+            manifest = citation_sources.install(fetched)
+        except citations.CitationError as exc:
+            self._say(str(exc), error=True)
+            return
+        self._say(_citation_installed(manifest, fetched.release.repository))
+        self.refresh_citations()
+        installed = getattr(self.app, "citation_installed", None)
+        if installed is not None:
+            installed(manifest.id)
+
+    def _citation_failed(self, error: Exception) -> None:
+        if not isinstance(error, (citation_sources.SourceError, citations.CitationError)):
+            log.error("citation job failed", exc_info=error)
         self._say(str(error), error=True)
 
     def _add_installed(self, installed_row: InstalledRow, plugin_id: str) -> None:

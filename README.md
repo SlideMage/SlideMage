@@ -31,7 +31,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the greyscale template `SlideMage_template_greyscale.tex`, the house citation format `SlideMage_bibliography_default.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the greyscale template `SlideMage_template_greyscale.tex`, the house citation format `SlideMage_citation_default.tex` (and `SlideMage_bibliography_default.tex`, its old name, a one-line loader), `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -313,7 +313,8 @@ Everything else is in **File → Settings… → Plugins** (also **Help → Plug
   warns that it is not from the SlideMage plugin list and runs with your rights,
   and shows its name, version and network lines. Nothing is installed until you
   confirm. A `.sha256` file named after the plugin (`name.smplugin.sha256`) beside
-  it must match. The same button takes a theme package (`.smtheme`).
+  it must match. The same button takes a theme package (`.smtheme`) and a citation
+  format package (`.smcite`).
 - **Themes**: the theme packages installed on this computer (a slide template
   packaged on its own, `docs/THEME_PACKAGE.md`), each with **Remove**; no restart
   needed. **Add theme from GitHub…** takes `owner/name` and installs the newest
@@ -321,6 +322,11 @@ Everything else is in **File → Settings… → Plugins** (also **Help → Plug
   General; such a theme's updates are offered at start (*Install now*, *Not now*,
   *Skip this version*, under the update setting) and its row has **Check for
   update** and says why the last check failed.
+- **Citation formats**: the citation format packages installed on this computer (the
+  way references look, packaged on its own: `SlideMage_citation_<key>.tex` with a
+  `citation.toml`, `docs/CITATION_PACKAGE.md`), with the same buttons as the themes:
+  **Remove**, **Add citation format from GitHub…**, update offers at start, **Check
+  for update**. A template or deck chooses one with `\SMCitationFormat`.
 
 Changes take effect after a restart: plugins load once, before the window opens. A plugin can add Settings
 tabs; AI services add sections to the AI tab.
@@ -530,8 +536,9 @@ derives every computed value from those settings, defines the frames, the slide 
 layout rules, and loads `SlideMage_alt.lua` (image descriptions) and `SlideMage_measure.lua` (the
 automatic Top Margin, `\SMFit`), then loads the project's own `SlideMage_project_macros.tex` when the project has one (a template
 needs no line for it; since v0.12.0 an old `\input{SlideMage_project_macros}` in a template is skipped, the
-file is read once). After the base the template only adds the house citation format
-(`\input{SlideMage_bibliography_default}`). Back in the deck come its own settings (`\FooterText`, the deck
+file is read once). The base then loads the citation format the catalog's `\SMCitationFormat` names (since v0.13.0;
+`default`, the house format, unless a template sets another), so a template needs no line for it; an old
+`\input{SlideMage_bibliography_default}` in a template still works. Back in the deck come its own settings (`\FooterText`, the deck
 version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, each `\slide{}`
 reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
 framework file's name wins over the framework's (the project folder comes first on the TeX
@@ -637,10 +644,13 @@ shows them all on.
   presenter-attention — see "Special frame types" below). Institution-
   agnostic: everything here refers to colors, logos and layout values only
   through the catalog's names, which the template below may have changed.
-- `SlideMage_bibliography_default.tex` — the house citation format (since
-  v10.14.0): biblatex options and the bibliography's look. A template that wants it
-  says `\input{SlideMage_bibliography_default}` after `\input{SlideMage_base}`; a deck
-  turns it on with `\SMUseBibliography`.
+- `SlideMage_citation_default.tex` — the house citation format (a file of its own since
+  v10.14.0, renamed from `SlideMage_bibliography_default.tex` in v0.13.0): biblatex options
+  and the bibliography's look. A citation format is a file `SlideMage_citation_<key>.tex`;
+  the catalog's `\SMCitationFormat` (default `default`) names the one the base loads, a
+  template or a deck may set another (an installed citation package,
+  `docs/CITATION_PACKAGE.md`), and a deck turns citations on with `\SMUseBibliography`.
+  `SlideMage_bibliography_default.tex` stays as a one-line file that loads it.
 - `SlideMage_template_<name>.tex` — a template, a thin institution layer (SlideMage's own is
   `latex/SlideMage_template_slidemage.tex`, below):
   `\input{SlideMage_setup}`, then the settings it changes from the catalog
@@ -1095,10 +1105,13 @@ the SlideMage template
 (`latex/SlideMage_template_slidemage.tex`) carries the author's house format,
 `Markowitz, H., 1952. "Portfolio Selection", Journal of Finance 7(1), 77--91.`
 (every author as "Family, Initials.", year unparenthesized, title in quotes,
-type-specific tail for books, articles, online sources and reports). A
-template that sets nothing gets biblatex's stock authoryear style. A deck
-that wants a format of its own redefines the two macros before
-`\SMUseBibliography`, or skips the command and loads biblatex itself.
+type-specific tail for books, articles, online sources and reports). Since
+v0.13.0 the format is the catalog's `\SMCitationFormat` (`default`: that house format, loaded
+by the base, so the templates need no line for it); another one comes as an installed
+citation package (Settings → Plugins → Citation formats). A template sets it before
+`\input{SlideMage_base}`, a deck before `\SMUseBibliography`. A deck that wants a format of its
+own can also redefine the two macros before `\SMUseBibliography`, or skip the command and
+load biblatex itself.
 `decks/slidemage-manual.tex` is this copy's own live example, enough to
 resolve the manual's one `\fullcite{markowitz1952}` (slide `1nz`) against this
 copy's trimmed `SlideMage.bib` (a single entry -- see that file's own header
