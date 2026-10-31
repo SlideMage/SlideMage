@@ -14,6 +14,8 @@ from ...presentation import frames as frames_mod
 from ...presentation.locate import find_presenter_pdf
 from ...presentation.pdf_source import PresentationDeck
 from ...presentation.settings import PresentationSettings
+from ...presentation import resume
+from . import resume_ui
 from .controller import PresentationController
 
 
@@ -78,9 +80,12 @@ def start(window, pdf: DeckPdf, deck: Optional[Deck] = None) -> Optional[Present
     frames = frames_mod.load_for(window.project, deck, pdf.path, presentation_deck.page_count) if deck is not None else None
     if frames is None:
         frames = presentation_deck.frame_map()      # no .nav kept: the page labels, if the PDF has usable ones
+    key = resume.deck_key_for_deck(deck.path) if deck is not None else resume.deck_key_for_pdf(pdf.path)
     controller = PresentationController(
         presentation_deck, settings, main_screen=window.screen(), frames=frames,
+        start_page=resume_ui.start_page(window, presentation_deck, frames, key, settings),
         save_settings=lambda changed: changed.save())
+    resume_ui.remember(controller, presentation_deck, frames, key)
     window.presentation = controller
     controller.finished.connect(lambda: setattr(window, "presentation", None))
     renderer = getattr(getattr(window, "background", None), "renderer", None)
