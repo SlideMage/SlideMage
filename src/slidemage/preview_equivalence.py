@@ -104,12 +104,12 @@ AUDITED_FRAMEWORK = {
     # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
     # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
     # its deck-version text are unchanged.
-    "SlideMage_setup.tex": "05f45536d0a604972d636e7eeeb628009d8a4b7a3799b5ea6923703dd8867128",
+    "SlideMage_setup.tex": "b33a95cabbe911dcdee2a9d1bf9e3568faac33f6742a33386926aa36ba033a8f",
     "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
     # changed), re-audited.
-    "SlideMage_base.tex": "9b92a2fec582e4ee05e1bdff4b2e8330a3a44b94351ce461e76c961b1566db26",
+    "SlideMage_base.tex": "01f9d3c53766b846accaebbbd8910e316edd584fec2860470813ea1d5929db1c",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",
@@ -119,7 +119,11 @@ AUDITED_FRAMEWORK = {
     # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,
     # \scriptsize redefined after the base). Re-audited: no version, footer-hide or deck-label rule; the sizes are the
     # same in every view.
-    "SlideMage_template_greyscale.tex": "bec1149b307c9a6e9234045e048cc7bfc2744011df7b991844a810790e10ea34",
+    # v10.19.0 (step 17c): the catalog's \SMBodyFontSize (the setup layer, default 11pt), from which the end of the
+    # base derives \normalsize, \small, \footnotesize, \scriptsize and \tiny; the greyscale template sets 10pt through it
+    # instead of redefining the size commands. Re-audited: font sizes only, the same in every view; no version,
+    # footer-hide or deck-label rule entered the setup layer, the base or the template.
+    "SlideMage_template_greyscale.tex": "aa1d67cfa4aa28f83f5504c93cccb4b9634b173aefb329e8a5d2e20ec54929a1",
 }
 # SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.

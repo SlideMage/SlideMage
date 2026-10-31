@@ -76,6 +76,12 @@
 % Footnotes: numbered 1, 2, 3 ... instead of the currency signs.
 \renewcommand{\SMFootnoteMark}[1]{\number#1}
 
+% Body text one size smaller: beamer's 10pt sizes instead of the 11pt ones the decks'
+% \documentclass gives, so that slides written for the SlideMage template fit the smaller text
+% area. The base derives \small, \footnotesize and the rest from it; titles and the footer keep
+% their sizes.
+\setlength{\SMBodyFontSize}{10pt}
+
 % ---------------------------------------------------------------------------
 % Logo: SlideMage's own (the catalog's default file), a little larger, with more room
 % around it: the right padding is the white space on either side of the logo, and the
@@ -108,19 +114,6 @@
 \renewcommand{\SMFooterIDSize}{\fontsize{4.5}{4.5}\selectfont}
 
 \input{SlideMage_base}
-
-% Body text one size smaller (temporary, 2026-10-31, direct instruction): beamer's 10pt sizes
-% instead of the 11pt ones the decks' \documentclass gives, so that slides written for the
-% SlideMage template fit the smaller text area. The catalog has no setting for the body size
-% yet, so this redefines LaTeX's size commands directly, which a template should not have to
-% do; it goes once the catalog gets a setting for it. Titles and the footer keep their sizes.
-\makeatletter
-\renewcommand{\normalsize}{\@setfontsize\normalsize\@xpt{12}}
-\renewcommand{\small}{\@setfontsize\small\@ixpt{11}}
-\renewcommand{\footnotesize}{\@setfontsize\footnotesize\@viiipt{9.5}}
-\renewcommand{\scriptsize}{\@setfontsize\scriptsize\@viipt{8}}
-\makeatother
-\normalsize
 
 % The house citation format, as in the SlideMage template (a deck then says
 % \SMUseBibliography).

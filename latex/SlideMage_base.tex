@@ -6075,3 +6075,62 @@
 	\let\input@path\SM@SavedInputPath
 	\SMBibliographyStyle}
 \makeatother
+
+% The body text size (SlideMage v10.19.0): \normalsize and the steps below it, derived from the
+% catalog's \SMBodyFontSize. Placed last, so that the template's setting is read and nothing
+% above measured a size of its own.
+%
+% The class's own commands (size11.clo for the decks' 11pt, say) set the display skips and the
+% list parameters of their size; when the body size is the class's own, each is called first and
+% then its font size replaced, so the skips are those of the class; for another body size only the
+% font sizes change and the skips stay as the class's \normalsize left them. The pairs (size and
+% baseline skip, in pt) are beamer's for its 10pt, 11pt and 12pt options (size10/11/12.clo):
+%               normalsize  small    footnotesize  scriptsize  tiny
+%   10pt        10/12       9/11     8/9.5         7/8         6/7 (see below)
+%   11pt        10.95/13.6  10/12    9/11          8/9.5       6/7
+%   12pt        12/14.5     10.95/13.6  10/12      8/9.5       6/7
+% Other values: baseline skip 1.2 times the size; \small one point and \footnotesize two points
+% smaller than the body; \scriptsize 0.73 and \tiny 0.55 times the body size. \tiny at 10pt is
+% 6/7 and not beamer's 5/6: v10.18.1's stopgap left it at the 11pt option's value, and the
+% callouts and the mugshot's curved text are set in it. \large and up are not derived: the frame
+% title and the block titles are catalog sizes of their own (beamer fonts), and a headline
+% size should not move with the text.
+\makeatletter
+\let\SM@classnormalsize\normalsize
+\let\SM@classsmall\small
+\let\SM@classfootnotesize\footnotesize
+\newcommand{\SM@bodysizenumber}[1]{\strip@pt\dimexpr#1\relax}
+\ifdim\SMBodyFontSize=10pt
+	\def\SM@bs@n{10}\def\SM@bl@n{12}\def\SM@bs@s{9}\def\SM@bl@s{11}%
+	\def\SM@bs@f{8}\def\SM@bl@f{9.5}\def\SM@bs@c{7}\def\SM@bl@c{8}\def\SM@bs@t{6}\def\SM@bl@t{7}%
+\else\ifdim\SMBodyFontSize=11pt
+	\def\SM@bs@n{10.95}\def\SM@bl@n{13.6}\def\SM@bs@s{10}\def\SM@bl@s{12}%
+	\def\SM@bs@f{9}\def\SM@bl@f{11}\def\SM@bs@c{8}\def\SM@bl@c{9.5}\def\SM@bs@t{6}\def\SM@bl@t{7}%
+\else\ifdim\SMBodyFontSize=12pt
+	\def\SM@bs@n{12}\def\SM@bl@n{14.5}\def\SM@bs@s{10.95}\def\SM@bl@s{13.6}%
+	\def\SM@bs@f{10}\def\SM@bl@f{12}\def\SM@bs@c{8}\def\SM@bl@c{9.5}\def\SM@bs@t{6}\def\SM@bl@t{7}%
+\else
+	\edef\SM@bs@n{\SM@bodysizenumber{\SMBodyFontSize}}%
+	\edef\SM@bl@n{\SM@bodysizenumber{1.2\SMBodyFontSize}}%
+	\edef\SM@bs@s{\SM@bodysizenumber{\SMBodyFontSize-1pt}}%
+	\edef\SM@bl@s{\SM@bodysizenumber{1.2\dimexpr\SMBodyFontSize-1pt\relax}}%
+	\edef\SM@bs@f{\SM@bodysizenumber{\SMBodyFontSize-2pt}}%
+	\edef\SM@bl@f{\SM@bodysizenumber{1.2\dimexpr\SMBodyFontSize-2pt\relax}}%
+	\edef\SM@bs@c{\SM@bodysizenumber{0.73\SMBodyFontSize}}%
+	\edef\SM@bl@c{\SM@bodysizenumber{0.876\SMBodyFontSize}}%
+	\edef\SM@bs@t{\SM@bodysizenumber{0.55\SMBodyFontSize}}%
+	\edef\SM@bl@t{\SM@bodysizenumber{0.66\SMBodyFontSize}}%
+\fi\fi\fi
+% The class's skips go with the class's own size only: for another size the font sizes change and the
+% skips and list parameters stay as they are (v10.18.1's greyscale stopgap did exactly that).
+\begingroup\SM@classnormalsize\xdef\SM@classbodysize{\f@size}\endgroup
+\ifdim\SM@bs@n pt=\SM@classbodysize pt\else
+	\let\SM@classnormalsize\@empty\let\SM@classsmall\@empty\let\SM@classfootnotesize\@empty
+\fi
+\renewcommand{\normalsize}{\SM@classnormalsize\@setfontsize\normalsize\SM@bs@n\SM@bl@n}
+\renewcommand{\small}{\SM@classsmall\@setfontsize\small\SM@bs@s\SM@bl@s}
+\renewcommand{\footnotesize}{\SM@classfootnotesize\@setfontsize\footnotesize\SM@bs@f\SM@bl@f}
+\renewcommand{\scriptsize}{\@setfontsize\scriptsize\SM@bs@c\SM@bl@c}
+\renewcommand{\tiny}{\@setfontsize\tiny\SM@bs@t\SM@bl@t}
+\makeatother
+\normalsize

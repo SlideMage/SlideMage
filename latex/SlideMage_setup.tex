@@ -287,6 +287,20 @@
 \newcommand{\SMTopMargin}{41.58bp}
 
 % ---------------------------------------------------------------------------
+% Body text size (SlideMage v10.19.0)
+% ---------------------------------------------------------------------------
+% The size of \normalsize, the text of a frame. SlideMage_base.tex derives \small,
+% \footnotesize, \scriptsize and \tiny from it, so lists, \shrinklists and everything set
+% with those commands follow. At 10pt, 11pt and 12pt the sizes and baseline skips are
+% beamer's own for that class option (11pt: 10.95/13.6, 10/12, 9/11, 8/9.5, 6/7); any other
+% value gets 1.2 times the size as baseline skip and \small one point, \footnotesize two
+% points, \scriptsize 0.73 times and \tiny 0.55 times the body size below it. It wins over
+% the deck's \documentclass option. \large and up (the frame title and the like), the
+% footer and the footnotes keep their own sizes (\SMFooterTextSize, \SMFootnoteSize).
+\newlength{\SMBodyFontSize}
+\setlength{\SMBodyFontSize}{11pt}               % body text size, beamer's 11pt option
+
+% ---------------------------------------------------------------------------
 % Text margins
 % ---------------------------------------------------------------------------
 \newlength{\SMTextMarginLeft}
