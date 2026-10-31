@@ -3169,3 +3169,8 @@ NEW: Versions are numbered 0.x from here on, and builds installed before this re
 - SlideMage versions now start with 0 (this one is v0.11.0); the next stable version will be v1.0.0.
 - Builds installed before this release do not offer this update by themselves: download v0.11.0 once and replace your copy; from then on updates are offered as before.
 - Your projects need nothing: they are read as before.
+
+v0.11.1 (2026-10-31, direct request: SlideMage Presenter, step 1 of docs/plans/presenter-app.md): Presenting a PDF without a project no longer loads the compiler, the plugins or the deck scan, as a first step towards SlideMage Presenter, a small program built from the same code. FrameMap and parse_nav moved from presentation/frames.py into presentation/frame_map.py, which imports no project code; frames.py keeps finding the .nav in the compile records. present_pdf_file moved from ui/presentation/launch.py into ui/presentation/standalone.py, which the start screen now uses. A new test, tests/test_presenter_imports.py, fails when the Presenter's modules start importing the compiler, the workspace, the AI code, QtWebEngine or the other heavy parts. Importing the presenter code for a PDF now loads 32 SlideMage modules instead of 52. Nothing changes in how presenting works.
+
+NEW: Presenting a PDF from the start screen loads less of SlideMage.
+- "Present a PDF…" no longer loads the parts of SlideMage that compile decks, which prepares a separate, small SlideMage Presenter program.

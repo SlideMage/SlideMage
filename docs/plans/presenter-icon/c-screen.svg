@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 100 392 310" width="392" height="310">
+  <style>
+    .back { fill: #FDD400 }
+    .mid { fill: #D6D3CA }
+    .front { fill: #141414 }
+    .bar { fill: #FFFFFF }
+    .bar2 { fill: #FFFFFF; fill-opacity: 0.55 }
+    .play { fill: #FDD400 }
+    @media (prefers-color-scheme: dark) {
+      .mid { fill: #5A5852 }
+      .front { fill: #F4F3EF }
+      .bar { fill: #141414 }
+      .bar2 { fill: #141414; fill-opacity: 0.45 }
+      .play { fill: #141414 }
+    }
+  </style>
+  <rect class="back" x="126" y="110" width="310" height="200" rx="44"/>
+  <rect class="front" x="76" y="150" width="330" height="214" rx="44"/>
+  <rect class="mid" x="226" y="364" width="30" height="26"/>
+  <rect class="mid" x="176" y="384" width="130" height="20" rx="10"/>
+  <path d="M208 208 L208 306 Q208 320 220 313 L294 267 Q306 257 294 249 L220 201 Q208 194 208 208 Z" class="play"/>
+</svg>
