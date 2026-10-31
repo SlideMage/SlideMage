@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import project, splash
+from . import diagnostics, project, splash
 
 CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook instead of the app (ai/claude_launch.py)
 # First argument: import everything the window needs, then exit 0, with no window. The release workflow runs
@@ -73,8 +73,15 @@ def check_project_format(root: Path, app_version: str) -> bool:
     return True
 
 
+def _role(first: list[str]) -> str:
+    """What this process is, for every line it logs (diagnostics.setup)."""
+    return {"--preview-raster": "raster", CLAUDE_HOOK_FLAG: "hook", PLUGIN_FLAG: "plugin",
+            SELF_TEST_FLAG: "selftest"}.get(first[0] if first else "", "app")
+
+
 def main(argv: list[str] | None = None) -> None:
     splash.release_topmost()  # the splash must not cover other windows while the app loads
+    diagnostics.setup(_role((sys.argv[1:] if argv is None else argv)[:1]))
     if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
         # A frozen executable has no python -m; dispatch before project/GUI setup.
         from .preview_raster import serve
@@ -150,6 +157,7 @@ def main(argv: list[str] | None = None) -> None:
     # Qt WebEngine (the Claude Code terminal) needs this before the QApplication exists.
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])  # noqa: F841 -- keep QApplication alive
+    diagnostics.install_qt_message_handler()
 
     if args.project is not None:
         root = args.project.resolve()
