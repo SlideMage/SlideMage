@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The presenter PDF as slides and notes.
 
-SlideMage's "Presenter" compile (latex/Slidemaster_preamble_base.tex, \\SMPresenterModeOverride) makes one
+SlideMage's "Presenter" compile (latex/SlideMage_base.tex, \\SMPresenterModeOverride) makes one
 double-width page per beamer overlay: the slide in the left half, its note page in the right half. A plain
 PDF has single-width pages and no notes; it is shown the same way, just without a notes half.
 Rendering is synchronous: a 1920 px slide takes about 13 ms (M0 measurement in the plan), so a small cache

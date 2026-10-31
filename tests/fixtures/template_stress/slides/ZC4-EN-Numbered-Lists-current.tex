@@ -1,0 +1,48 @@
+%% Calibration deck: enumerate, nested enumerate (numerals 1. to 9.), enumerate in itemize, itemize in enumerate.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Numbered lists and nesting}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\begin{enumerate}
+				\item First numbered item
+				\item Second numbered item
+				\begin{enumerate}
+					\item One
+					\item Two
+					\item Three
+					\item Four
+					\item Five
+					\item Six
+					\item Seven
+					\item Eight
+					\item Nine
+				\end{enumerate}
+				\item Third numbered item
+			\end{enumerate}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\begin{enumerate}
+				\item Numbered, with a bullet list
+				\begin{itemize}
+					\item A bullet in an enumerate
+					\begin{itemize}
+						\item And one level deeper
+					\end{itemize}
+				\end{itemize}
+			\end{enumerate}
+			\begin{itemize}
+				\item A bullet item to compare the text start
+				\begin{itemize}
+					\item Nested bullet
+				\end{itemize}
+				\item Another bullet item
+				\begin{enumerate}
+					\item Numbered in a bullet
+					\begin{enumerate}
+						\item Third level numbered
+					\end{enumerate}
+				\end{enumerate}
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}

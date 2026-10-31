@@ -1,0 +1,14 @@
+%% Calibration deck: the side image frame with a footnote strip.
+%% layout-check: skip top, right, bottom -- the side figure is flush with the page edge, the title bar and the footer by design (direct instruction)
+\setSlideVersion{1-0-0}
+\begin{sideimageframe}{Side image frame}{media/illustration-slide-stack-portrait.pdf}
+	\begin{minipage}[t]{0.62\linewidth}
+		\small
+		\SMLineTop A picture beside the text, from the title bar down to the footer.
+		\par\smallskip
+		\begin{itemize}
+			\item A list beside the picture\footnote{The footnote moves into the strip left of the picture.}
+			\item Second item
+		\end{itemize}
+	\end{minipage}
+\end{sideimageframe}

@@ -39,7 +39,7 @@ def project(tmp_path, monkeypatch):
         "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n", encoding="utf-8")
     (tmp_path / "snippets").mkdir()
     (tmp_path / "snippets" / "abc-1.tex").write_text("\\slide{x}", encoding="utf-8")
-    bib = tmp_path / "Slidemaster.bib"
+    bib = tmp_path / "SlideMage.bib"
     bib.write_text(
         "@article{markowitz1952,\n  author = {Markowitz, H.},\n  title = {Portfolio Selection},\n"
         "  year = {1952},\n  journaltitle = {Journal of Finance}}\n\n"

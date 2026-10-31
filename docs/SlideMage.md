@@ -39,7 +39,7 @@ doesn't embed an icon into a Linux binary the way it does on
 Windows/macOS, so a desktop entry needs its own icon file alongside it).
 
 It opens the project given by `--project`,
-`$SLIDEMASTER_PROJECT`, the nearest folder above the current directory
+`$SLIDEMAGE_PROJECT`, the nearest folder above the current directory
 that holds `slide_ids.csv`, or the last project opened, else it asks.
 The window is one workspace for the deck that is open (the last one used, else the
 deck switcher offers the rest). From top to bottom and left to right:
@@ -73,7 +73,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   on a `SourceEditor`, today the `LatexPlainTextEdit` of `source_editor.py`, with the lint
   line, Insert, Cite, QR (the "Insert QR code" sheet of `ui/dialogs/qr_code.py`, which makes `\SMQRCode` calls; v8.62),
   Tools and the conflict bar when a file changes on disk under edits
-  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56 (a deck's source and `Slidemaster.bib` then have a **Save** button beside the "x", v8.68), `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
+  that are not yet written; edits are autosaved, 1.5 s after the last keystroke, unless AutoSave is off -- v8.56 (a deck's source and `SlideMage.bib` then have a **Save** button beside the "x", v8.68), `source_file.autosave_on`: the On|Off switch after the menu bar's Help since v8.58 (`autosave_switch.py`), Settings -> General, File; then Ctrl+S saves), **Split**, **Details** (`details_view.py`), and the **Images page**
   (`ui/pages/images.py`) as a sibling that replaces the columns.
 - **Right, upper:** one **side panel** (`side_panels.py`, `panels/`): Used in decks, Slide
   versions, Visibility, Citations, Language, Image descriptions, Transcript entry, Speaker
@@ -366,7 +366,7 @@ What matters when touching *this code*:
   panel's pending edit when the page opens (`ensure_loaded()` reads the store
   again) and refreshes the panel when the page is left.
 - **A hand-drawn tikz illustration (`\tikzillustration{ID}`,
-  Slidemaster_preamble_base.tex) shows up in this same per-slide list as a
+  SlideMage_base.tex) shows up in this same per-slide list as a
   synthetic `tikz:ID` reference (2026-09-07)** -- see ALT_TEXT_NOTES.md's
   own "Phase 9" section for the full design. It has no file on disk at
   all, so the page's own preview panel and the drafting pipeline's image
@@ -454,7 +454,7 @@ What matters when touching *this code*:
   (image, slide) uses turned up on the very next `sync_store()` after it.
   `TIKZ_PREFIX`/`referenced_tikz_illustrations()`/`find_tikz_illustration()`
   (2026-09-07) extend the same "what does this slide reference" job to
-  `\tikzillustration{ID}` calls (`Slidemaster_preamble_base.tex`) --
+  `\tikzillustration{ID}` calls (`SlideMage_base.tex`) --
   defined here rather than in `alt_images.py` since this is the lower
   module in the import order (`alt_images.py` already imports
   `alt_blocks`, not the reverse), so both share the one `"tikz:"` literal.
@@ -505,7 +505,7 @@ What matters when touching *this code*:
   all for `alt_blocks.resolve_image()` to find, so it has to be
   special-cased before that call rather than after it.
 - [`tikz_render.py`](../src/slidemage/tikz_render.py) -- renders a `\tikzillustration{ID}`
-  (Slidemaster_preamble_base.tex) to a cached PNG for the drafting pipeline
+  (SlideMage_base.tex) to a cached PNG for the drafting pipeline
   above, since there is no `media/` file behind one of these at all
   (ALT_TEXT_NOTES.md's "Phase 9"). Compiles the illustration's own
   *current* tikz body (`alt_blocks.find_tikz_illustration()`, always
@@ -540,7 +540,7 @@ What matters when touching *this code*:
   sees the missing part.
 - [`slide_language.py`](../src/slidemage/slide_language.py) -- multi-language parsing
   primitives (2026-08-24), the Python-side twin of
-  `Slidemaster_preamble_base.tex`'s `\setSlideLanguageFromSlug`: a slide's
+  `SlideMage_base.tex`'s `\setSlideLanguageFromSlug`: a slide's
   language lives in its own id-slug's *second* hyphen segment
   (`<id>-<LANG>-<slug>`, `LANG` one of `EN`/`DE`/`mult`), so `own_language()`
   is pure string parsing, no file I/O. `cross_referenced_language()` reads
@@ -725,8 +725,8 @@ What matters when touching *this code*:
   cache so a review UI can show *something current-ish* without paying a
   LaTeX compile to do it, never a guaranteed-fresh source of truth.
   `detect_template(preamble_text)` regexes a preamble's own
-  `\input{Slidemaster_preamble_(uni-graz|uni-ibk|mci)}` line (falling back
-  to `uni-graz`), so a Uni Graz and a Uni Innsbruck compile of the same
+  `\input{SlideMage_template_<key>}` line (falling back
+  to the default template), so compiles with two different templates of the same
   slide id keep separate caches -- computed once by the caller
   (`compiler.py`/`slide_preview.py`) from `Deck.preamble_text`/the render's
   own preamble and threaded through, not re-detected per snapshot call.
@@ -750,7 +750,7 @@ What matters when touching *this code*:
   pixel size after rounding but this always does. `bare_id(id_slug)` --
   everything up to the first `-` -- is what every snapshot is actually
   keyed under, because that's what `\setSlideID`
-  (Slidemaster_preamble_base.tex) itself derives from the full `id_slug` a
+  (SlideMage_base.tex) itself derives from the full `id_slug` a
   `\slide{}`/`\slideversion{}` call takes; a caller with only the full
   slug (a deck/slide-editor row, which needs it whole to `\input{}` the
   right file) has to convert. Missing this conversion once already shipped
@@ -776,7 +776,7 @@ What matters when touching *this code*:
   original single-template version always used, just scoped to that
   template's own needed slides instead of every slide in the project),
   skipping a template with an empty set entirely rather than wasting a
-  compile on nothing (this project's own `test-ibk.tex`/`test-mci.tex`
+  compile on nothing (this project's own `test-alt2.tex`/`test-alt.tex`
   hit exactly that: they `\input{}` a shared fragment rather than calling
   `\slide{}` directly, so their own template detects with nothing of its
   own -- confirmed directly, not assumed, when it first showed up as a
@@ -907,7 +907,7 @@ What matters when touching *this code*:
   (added late -- see that section's own entry for the false-positive batch
   this caused before it was), and `MEDIA_NEVER_UNUSED` excludes
   `media/alt-text.json`/`.csv` outright: they're read directly by
-  `Slidemaster_alt.lua`, never `\includegraphics{}`-ed, so the media scan
+  `SlideMage_alt.lua`, never `\includegraphics{}`-ed, so the media scan
   could never see them as "used." **Housekeeping → Archive unused slides
   and media files** (`ui/dialogs/housekeeping.py`) now runs both scans up front and shows
   every file in a sheet before moving anything -- Cancel
@@ -990,12 +990,12 @@ from the repo root and run `slidemage` (or `python -m slidemage`).
 **Archiving and biblatex don't mix the way you'd first guess.** The
 original two-location support (`decks/foo.tex` compiles correctly whether
 invoked from the project root or from inside `decks/`) works via
-`\IfFileExists{Slidemaster.bib}{...}{\addbibresource{../Slidemaster.bib}}`.
+`\IfFileExists{SlideMage.bib}{...}{\addbibresource{../SlideMage.bib}}`.
 The obvious extension for a third location (`decks/archive/`, one level
 deeper again) is a third `\IfFileExists` branch trying
-`../../Slidemaster.bib`. **This was tried and empirically confirmed
-broken**: biber recorded `../Slidemaster.bib` (one level short) as the
-resolved path even though `decks/Slidemaster.bib` doesn't exist, and
+`../../SlideMage.bib`. **This was tried and empirically confirmed
+broken**: biber recorded `../SlideMage.bib` (one level short) as the
+resolved path even though `decks/SlideMage.bib` doesn't exist, and
 latexmk then silently *vetoed* running biber at all (not a fatal error --
 just `Latexmk: Veto of running of 'biber ...'` in the log, plus every
 citation showing as an undefined-citation warning instead of a real
@@ -1005,21 +1005,21 @@ tool *always* compiles an archived deck through latexmk with `$do_cd` (cwd
 is always `decks/archive/` -- there's no second "compiled from a different
 depth" case to support, unlike `decks/` itself), the correct path is
 knowable up front. `archive.py` replaces the whole `\IfFileExists` cascade
-with a single unconditional `\addbibresource{../../Slidemaster.bib}`.
+with a single unconditional `\addbibresource{../../SlideMage.bib}`.
 Confirmed working end-to-end (citations resolved, biber ran, no veto) on a
 throwaway duplicate of `t-Uni-IA2-2026w-preview.tex`.
 
 **Archiving refuses decks with a sibling `\input{}`.** `test.tex`/
-`test-mci.tex`/`test-ibk.tex`/`test-student.tex` all `\input{test-slides}`
+`test-alt.tex`/`test-alt2.tex`/`test-student.tex` all `\input{test-slides}`
 -- a fragment living in `decks/` itself, not the project root. Archiving
 moves *only* the requested deck's own `.tex` (that's how the feature was
 scoped), so a deck depending on such a same-directory sibling would
 silently break once it's one directory deeper than that sibling. This was
-hit directly while testing (a duplicate of `test-mci.tex` failed to compile
+hit directly while testing (a duplicate of `test-alt.tex` failed to compile
 after archiving with `! LaTeX Error: File 'test-slides.tex' not found`).
 `archive.py`'s `_sibling_dependencies()` detects this pattern (a bare
 `\input{X}` where `X.tex` exists next to the deck, excluding the
-`Slidemaster_preamble_uni-*` institution input) and raises before moving
+`SlideMage_template_uni-*` institution input) and raises before moving
 anything, rather than silently producing a broken archived file. The real
 course decks (`t-Uni-FM2-2027s*`, `t-Uni-IA2-2026w*`) are self-contained and
 never hit this.
@@ -1249,7 +1249,7 @@ wasn't re-verified against this exact file after that change.)
 That function only returns files containing `\documentclass` (the "real
 deck" heuristic) -- but `decks/test-slides.tex` is a shared `\input{}`-ed
 fragment with real `\slide{}`/`\omitslide{}` calls of its own
-(`test.tex`/`test-mci.tex`/`test-ibk.tex`/`test-student.tex` all `\input{}`
+(`test.tex`/`test-alt.tex`/`test-alt2.tex`/`test-student.tex` all `\input{}`
 it rather than listing their own slides), so excluding it would make every
 slide it lists (the `ZZ*`-prefixed test/demo slides) look unused and get
 archived. `unused_content._deck_texts()` instead reads every `*.tex` file
@@ -1285,7 +1285,7 @@ directly inside `decks/`/`decks/archive/` (skipping only SlideMage's own
 ## What was actually tested
 
 Every check below ran against real repo state but only ever compiled
-`test.tex`, duplicates of `test-mci.tex`, and duplicates of
+`test.tex`, duplicates of `test-alt.tex`, and duplicates of
 `t-Uni-IA2-2026w-preview.tex` (a per-deck preview file retired since,
 when `decks/#workdeck.tex` took over that role -- don't go looking for
 it) -- never the real course decks
@@ -1321,7 +1321,7 @@ it) -- never the real course decks
   PASS, resulting PDF opens starting directly with the section-divider
   slide (no front matter), footer/logo/colors all correct, biblatex
   citation rendered correctly on page 2.
-- Archive-refusal path: a duplicate of `test-mci.tex` correctly raises
+- Archive-refusal path: a duplicate of `test-alt.tex` correctly raises
   (sibling dependency).
 - Archive-success path: a duplicate of `t-Uni-IA2-2026w-preview.tex`
   (self-contained, uses biblatex + version override) archived cleanly,

@@ -47,8 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(folder)
         project = root / "example"
         shutil.copytree(repo / "example", project, ignore=_ignore_template_build_output)
-        os.environ["SLIDEMASTER_PROJECT"] = str(project)
-        os.environ["SLIDEMASTER_LATEX"] = str(repo / "latex")
+        os.environ["SLIDEMAGE_PROJECT"] = str(project)
+        os.environ["SLIDEMAGE_LATEX"] = str(repo / "latex")
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         os.environ["QT_SCALE_FACTOR"] = "1"
 

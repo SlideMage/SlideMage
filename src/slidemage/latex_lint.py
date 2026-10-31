@@ -27,7 +27,7 @@ listing shown in the GUI and in README.md):
     math-delims   \\[ \\] and \\( \\) not paired, \\left without \\right
     ampersand     unescaped & outside a table/alignment/matrix/tikz context
     hash          unescaped # outside a macro definition or URL
-    citation      \\fullcite/\\cite/... key that is not in Slidemaster.bib
+    citation      \\fullcite/\\cite/... key that is not in SlideMage.bib
     image         \\includegraphics/\\chapterlogo file that does not exist
     code-file     \\SMCodeFile{path} whose file does not exist
     slide-file    a \\slide{}-family call whose slides/*.tex file is missing
@@ -37,7 +37,7 @@ listing shown in the GUI and in README.md):
     percent       "5% growth": the % starts a comment and swallows the rest
     overlay       \\only<2-> style overlay specification whose > is missing
     optional-arg  \\item[ label never closed on its line
-    table-edges   gothamtable with neither [gap=...] nor @{} edges: its rules
+    table-edges   SMTable with neither [gap=...] nor @{} edges: its rules
                   run past the text on both sides
     heading-text  frame opens with a bare \\textbf{...} line above its list
 
@@ -71,7 +71,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("math-delims", ERROR, "Unpaired \\[ ... \\] or \\( ... \\), or a different number of \\left and \\right."),
     ("ampersand", ERROR, "Unescaped & in running text (outside tabular/array/align/matrix/tikz contexts) -- \"Misplaced alignment tab character &\"."),
     ("hash", ERROR, "Unescaped # outside a macro definition or a URL -- \"You can't use macro parameter character #\"."),
-    ("citation", ERROR, "\\fullcite/\\cite/\\textcite/\\parencite/... with a key that is not in Slidemaster.bib."),
+    ("citation", ERROR, "\\fullcite/\\cite/\\textcite/\\parencite/... with a key that is not in SlideMage.bib."),
     ("image", ERROR, "\\includegraphics, \\chapterlogo, \\fullbleedframe or sideimageframe pointing at a file that does not exist (the extension may be omitted)."),
     ("code-file", ERROR, "\\SMCodeFile{path} pointing at a file that does not exist (the path is relative to the project root, extension included)."),
     ("slide-file", ERROR, "A deck's \\slide/\\slidefinal/\\slidestep/\\conditionalslide/\\slideversion/... call whose slides/<id>-current.tex (or -vX-Y-Z.tex) file does not exist."),
@@ -81,7 +81,7 @@ CHECKS: list[tuple[str, str, str]] = [
     ("overlay", WARNING, "Overlay specification whose closing > is missing, e.g. \\only<2-{...}."),
     ("optional-arg", WARNING, "\\item[ ... whose closing ] is missing on that line."),
     ("heading-text", WARNING, "A content frame that opens with a bare \\textbf{...} line directly above its list: the heading reads as a detached label -- make it the list's first \\item."),
-    ("table-edges", WARNING, "\\begin{gothamtable}{...} with neither a [gap=...] option nor @{} at the edges of its column spec: the table rules run \\tabcolsep past the text on both sides. Write \\begin{gothamtable}[gap=12pt]{lcc}."),
+    ("table-edges", WARNING, "\\begin{SMTable}{...} with neither a [gap=...] option nor @{} at the edges of its column spec: the table rules run \\tabcolsep past the text on both sides. Write \\begin{SMTable}[gap=12pt]{lcc}."),
 ]
 _SEVERITY = {code: sev for code, sev, _ in CHECKS}
 
@@ -112,7 +112,7 @@ _COLUMN_ENVS = {
     "matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "smallmatrix",
     "align", "align*", "alignat", "alignat*", "flalign", "flalign*", "aligned",
     "alignedat", "split", "cases", "dcases", "eqnarray", "eqnarray*", "xalignat",
-    "gothamtable", "subarray", "IEEEeqnarray",
+    "SMTable", "subarray", "IEEEeqnarray",
 }
 # Contexts that contain TikZ/PGF code: & (matrix), _ in node names, etc. are
 # not checked inside them.
@@ -440,8 +440,8 @@ _IMAGE_RES = (
 )
 _CODE_FILE_RE = re.compile(r"\\SMCodeFile(?:\[[^\]]*\])?\{([^{}]+)\}")
 _IMAGE_SUFFIXES = ("", ".png", ".jpg", ".jpeg", ".pdf", ".eps", ".svg", ".gif")
-# \begin{gothamtable}{spec} without an option (an option is [gap=...])
-_GOTHAMTABLE_RE = re.compile(r"\\begin\{gothamtable\}\s*\{")
+# \begin{SMTable}{spec} without an option (an option is [gap=...])
+_SMTABLE_RE = re.compile(r"\\begin\{SMTable\}\s*\{")
 # A content frame whose first line is a bare \textbf{...} with a list right
 # below it ("fix the itemization (first line should be an item)", given 14
 # times on converted slides, 2026-07-15)
@@ -454,7 +454,7 @@ _bib_cache: tuple[tuple[Path, float, int], frozenset[str]] | None = None
 
 
 def bib_keys(ctx: ProjectContext) -> frozenset[str]:
-    """Every citation key in Slidemaster.bib, cached until the file changes."""
+    """Every citation key in SlideMage.bib, cached until the file changes."""
     global _bib_cache
     try:
         st = ctx.bibliography_path.stat()
@@ -492,7 +492,7 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
     if keys:
         for key, position in _citations(masked):
             if key not in keys and "\\" not in key and "#" not in key:
-                issues.append(LintIssue("citation", f"citation key '{key}' is not in Slidemaster.bib", line_of(position)))
+                issues.append(LintIssue("citation", f"citation key '{key}' is not in SlideMage.bib", line_of(position)))
     for regex in _IMAGE_RES:
         for m in regex.finditer(masked):
             # \fullbleedframe takes a comma-separated list (one image per reveal step)
@@ -505,11 +505,11 @@ def _external(ctx: ProjectContext, text: str) -> list[LintIssue]:
         ref = m.group(1).strip()
         if ref and "\\" not in ref and "#" not in ref and not (ctx.root / ref).is_file():
             issues.append(LintIssue("code-file", f"code file '{ref}' does not exist", line_of(m.start(1))))
-    for m in _GOTHAMTABLE_RE.finditer(masked):
+    for m in _SMTABLE_RE.finditer(masked):
         if not masked[m.end():].lstrip().startswith("@{}"):
             issues.append(LintIssue(
-                "table-edges", "gothamtable rules will run past the text: "
-                "use \\begin{gothamtable}[gap=12pt]{...} (or @{} at both edges)", line_of(m.start())))
+                "table-edges", "SMTable rules will run past the text: "
+                "use \\begin{SMTable}[gap=12pt]{...} (or @{} at both edges)", line_of(m.start())))
     for m in _HEADING_TEXT_RE.finditer(masked):
         issues.append(LintIssue(
             "heading-text", "the slide opens with bold text above its list: "

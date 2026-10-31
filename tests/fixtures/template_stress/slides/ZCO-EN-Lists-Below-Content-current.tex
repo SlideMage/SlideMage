@@ -1,0 +1,21 @@
+%% Calibration deck: the twin of ZCN with plain lists in place of its columns[T], the reference for the gap a [T]
+%% columns keeps below content (v10.12.0): the first line of each list is where ZCN's columns start theirs.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Lists below content}
+	\begin{itemize}
+		\item A list first
+	\end{itemize}
+	\begin{itemize}
+		\item Colta: a list below a list
+	\end{itemize}
+	\begin{SMTable}[gap=12pt]{lcc}
+		\toprule
+		Frame & Title bar & Footer \\
+		\midrule
+		\SMCode{standardframe} & yes & yes \\
+		\bottomrule
+	\end{SMTable}
+	\begin{itemize}
+		\item Coltb: a list below a table
+	\end{itemize}
+\end{standardframe}

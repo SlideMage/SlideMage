@@ -1,0 +1,15 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage template name: Acme (test only)
+%
+% A tiny TEST template standing in for "an institution's template" in the tests: its own colour,
+% its own logo (schemes/acme/logo.pdf, a copy of SlideMage's logo) and the house citation format.
+% The repository ships no real institution's template; tests that need a second template in a
+% project use this file or the stress-test template (tests/fixtures/template_stress/).
+\input{SlideMage_setup}
+
+\definecolor{c_primary_highlight}{HTML}{b45309}
+\renewcommand{\SMInstituteLogoPath}{schemes/acme/logo.pdf}
+
+\input{SlideMage_base}
+\input{SlideMage_bibliography_default}

@@ -109,8 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     (work / "translations").mkdir()
     if args.ui:
         unlink_partners(project)
-    os.environ["SLIDEMASTER_PROJECT"] = str(project)
-    os.environ["SLIDEMASTER_LATEX"] = str(REPO / "latex")
+    os.environ["SLIDEMAGE_PROJECT"] = str(project)
+    os.environ["SLIDEMAGE_LATEX"] = str(REPO / "latex")
 
     from slidemage import latex_lint, slide_ids, slide_source
     from slidemage.ai import claude_launch, claude_runner, claude_tasks

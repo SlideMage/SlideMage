@@ -669,7 +669,7 @@ def test_a_saved_deck_source_goes_through_the_deck_edit_pipeline(window, tmp_pat
 def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_path, monkeypatch):
     from slidemage import bibliography
 
-    bib = tmp_path / "Slidemaster.bib"
+    bib = tmp_path / "SlideMage.bib"
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
     window.project = ProjectContext.at(tmp_path)
     sorted_ = []

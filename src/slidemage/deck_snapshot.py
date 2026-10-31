@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import app_settings, compile_log, compile_records, compiler, project
+from . import app_settings, compile_log, compile_records, compiler, project, themes
 from .compiler import CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -76,7 +76,7 @@ MANIFEST_NAME = project.SNAPSHOT_MANIFEST
 PARTIAL_PREFIX = ".partial-"
 WRAPPER_PREFIX = "_snapshot_"
 REFERENCE_PDF_DIR = "reference-pdf"
-FRAMEWORK_MARKER = "Slidemaster_preamble_base.tex"
+FRAMEWORK_MARKER = "SlideMage_base.tex"
 NAME_TIME_FORMAT = "%Y-%m-%d_%H-%M"
 # <deck>_<YYYY-MM-DD>_<HH-MM>, optionally _2, _3, ... for a second snapshot of
 # the same form within one minute.
@@ -407,7 +407,7 @@ def _isolated_env(ctx: project.ProjectContext, epoch: int, framework_dir: Option
     for name in ISOLATING_ENV_VARS:
         env.pop(name, None)
     if framework_dir is not None:
-        env["SLIDEMASTER_LATEX"] = str(framework_dir)
+        env["SLIDEMAGE_LATEX"] = str(framework_dir)
     env["SOURCE_DATE_EPOCH"] = str(epoch)
     env["FORCE_SOURCE_DATE"] = "1"
     return env
@@ -511,7 +511,14 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
             if path.is_file():
                 tex_files.setdefault(_norm(path), path)
         elif kind == "external":
-            external.setdefault(_norm(path), path)
+            theme = themes.theme_of(path)
+            if theme is not None and path.is_file():
+                # An installed theme package's file goes where a project's own template would be (the project
+                # root): a snapshot compiles with its own copies only, and a project copy wins anyway.
+                rel = _rel(path.resolve(), theme.resolve())
+                project_files.setdefault(rel.lower(), (rel, path.resolve()))
+            else:
+                external.setdefault(_norm(path), path)
     for out in outputs:
         for bib in out.bib_sources:
             if is_within(bib, project_root):
@@ -523,7 +530,7 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
         if candidate.is_file():
             add_project(candidate)
     if framework_dir is None:
-        warnings.append("No LaTeX framework (Slidemaster_preamble_base.tex) among the files "
+        warnings.append("No LaTeX framework (SlideMage_base.tex) among the files "
                         "the compile read -- the snapshot has no framework copy.")
     for path in external.values():
         warnings.append(f"Uses a file outside the project, the framework and the TeX "
@@ -578,10 +585,10 @@ def copy_job_previews(out: "_JobOutput", jobname: str, project_root: Path,
 
 def framework_relpath(project_root: Path, framework_dir: Path) -> str:
     """Where the framework goes inside a snapshot: its path relative to the
-    project's parent folder (SlideMage/latex for SlideMaster, latex for a
+    project's parent folder (SlideMage/latex for SlideMage, latex for a
     project inside a SlideMage checkout), so the project's .latexmkrc finds it
-    exactly as before. A framework elsewhere (via $SLIDEMASTER_LATEX) goes to
-    SlideMage/latex; render scripts always point $SLIDEMASTER_LATEX at it."""
+    exactly as before. A framework elsewhere (via $SLIDEMAGE_LATEX) goes to
+    SlideMage/latex; render scripts always point $SLIDEMAGE_LATEX at it."""
     rel = _rel(framework_dir.resolve(), project_root.resolve().parent)
     if rel.startswith("../") or rel == ".." or os.path.isabs(rel) or ":" in rel:
         return "SlideMage/latex"
@@ -794,7 +801,7 @@ def _render_bat(project_dir: str, framework_rel: str, jobs: list[tuple[str, str,
         "rem latexmk and perl; see README.txt.",
         "setlocal",
         f'cd /d "%~dp0{project_dir}"',
-        f'set "SLIDEMASTER_LATEX=%~dp0{fw}"',
+        f'set "SLIDEMAGE_LATEX=%~dp0{fw}"',
         "set TEXINPUTS=",
         "set BIBINPUTS=",
         "set LUAINPUTS=",
@@ -831,7 +838,7 @@ def _render_sh(project_dir: str, framework_rel: str, jobs: list[tuple[str, str, 
         f"# PDFs land in {project_dir}/pdf/. Needs a TeX distribution with latexmk; see README.txt.",
         'here=$(cd "$(dirname "$0")" && pwd)',
         f'cd "$here/{project_dir}" || exit 1',
-        f'SLIDEMASTER_LATEX="$here/{framework_rel}"; export SLIDEMASTER_LATEX',
+        f'SLIDEMAGE_LATEX="$here/{framework_rel}"; export SLIDEMAGE_LATEX',
         "unset TEXINPUTS BIBINPUTS LUAINPUTS",
         "FORCE_SOURCE_DATE=1; export FORCE_SOURCE_DATE",
         "mkdir -p pdf",
@@ -1097,8 +1104,8 @@ def create_snapshot(
         outputs: list[_JobOutput] = []
         wrapper_texts: list[str] = []
         env = _isolated_env(ctx, epoch)
-        if os.environ.get("SLIDEMASTER_LATEX"):
-            env["SLIDEMASTER_LATEX"] = os.environ["SLIDEMASTER_LATEX"]
+        if os.environ.get("SLIDEMAGE_LATEX"):
+            env["SLIDEMAGE_LATEX"] = os.environ["SLIDEMAGE_LATEX"]
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)

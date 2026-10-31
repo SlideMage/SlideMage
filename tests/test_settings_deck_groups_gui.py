@@ -21,7 +21,7 @@ from slidemage.ui.dialogs.settings_deck_groups import LEAVE, MOVE, TAKE_OFF, Gro
 from slidemage.ui.workspace import menus
 from conftest import build_window, make_project
 
-PREAMBLE = "\\documentclass{beamer}\n\\input{Slidemaster_preamble}\n"
+PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template}\n"
 
 
 def deck_text(tags: str | None) -> str:

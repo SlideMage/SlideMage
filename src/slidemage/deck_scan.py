@@ -38,13 +38,13 @@ ADDBIBRESOURCE_RE = re.compile(r"\\addbibresource")
 # to "instructor" then the bare form; "transcript" falls back to the bare
 # form directly, skipping any version-specific PDF folder, since those
 # are a different axis). A real, inert macro (defined as a no-op in
-# Slidemaster_preamble_base.tex) rather than a "%"-comment convention,
+# SlideMage_base.tex) rather than a "%"-comment convention,
 # matching every other deck-authored,
 # Python-parsed directive in this project (\deckversion, \decklanguage,
 # \deckversionoverride -- none of them are comments).
 OUTPUT_FOLDER_RE = re.compile(r"\\deckoutputfolder(?:\[([^\]]*)\])?\{([^}]*)\}")
 
-# \decktags{tag1,tag2} -- a deck's own tags (see Slidemaster_preamble_base.tex's
+# \decktags{tag1,tag2} -- a deck's own tags (see SlideMage_base.tex's
 # inert \decktags). The tags that name one of the project's deck groups
 # (deck_groups.py) put the deck into those groups; a deck naming none is in
 # the fallback group.

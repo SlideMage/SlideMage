@@ -19,7 +19,7 @@ and example/ lacks are adopted with the slide.
 
     python tools/manual/adopt_user_edits.py [--project DIR] [--apply]
 
-Without --apply it only reports. --project defaults to $SLIDEMASTER_PROJECT.
+Without --apply it only reports. --project defaults to $SLIDEMAGE_PROJECT.
 Run it after a user edited manual slides, before the next SlideMage version.
 """
 from __future__ import annotations
@@ -53,11 +53,11 @@ def sha(data: bytes) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--project", type=Path, default=os.environ.get("SLIDEMASTER_PROJECT"))
+    parser.add_argument("--project", type=Path, default=os.environ.get("SLIDEMAGE_PROJECT"))
     parser.add_argument("--apply", action="store_true", help="copy the adoptable files into example/")
     args = parser.parse_args()
     if not args.project:
-        parser.error("--project (or $SLIDEMASTER_PROJECT) is required")
+        parser.error("--project (or $SLIDEMAGE_PROJECT) is required")
     project = Path(args.project)
     manifest = bundled_copies.read_manifest(project).get(bundled_copies.MANUAL)
     if not manifest:

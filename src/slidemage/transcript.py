@@ -11,7 +11,7 @@ Three requirements from the design, each of which is a correctness trap:
 1. **Resolve the deck version exactly as the PDF compile does.** A transcript
    that lists a slide the student's PDF doesn't have -- or omits one it does --
    is worse than no transcript. The rules are mirrored from
-   Slidemaster_preamble_base.tex and spelled out in `_VERSION_RULES` below.
+   SlideMage_base.tex and spelled out in `_VERSION_RULES` below.
 2. **Never emit `\\note{}` content.** Those are instructor notes.
 3. **during-course and after-course only.** The instructor deck's multi-page
    `\\pause` builds are a separate, unsolved problem (see README.md's
@@ -65,7 +65,7 @@ _VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE}
 # reveal steps. Its [vs] follows the id, so it has its own alternative. Unlike every
 # other command it does NOT advance the frame counter when the version is not in [vs]:
 # two \slidestep calls at one position are alternatives, exactly one of which exists
-# in any given deck version (see \slidestep in Slidemaster_preamble_base.tex).
+# in any given deck version (see \slidestep in SlideMage_base.tex).
 _SECTION_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
 _SUBSECTION_RE = re.compile(r"\\subsection\*?\s*(?:\[[^\]]*\])?\s*\{")
 _DECK_LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
@@ -389,7 +389,7 @@ def resolve_deck(ctx: ProjectContext, deck_path: Path, version: str) -> list[Dec
 
 
 def _resolve_version_ifs(text: str, version: str) -> str:
-    """Keep the branch of \\ifgotham<X>Version ... [\\else ...] \\fi that
+    """Keep the branch of \\ifSM<X>Version ... [\\else ...] \\fi that
     `version` compiles, drop the other one. Nested \\if...\\fi pairs are
     counted so an inner \\else/\\fi doesn't end the outer conditional.
     Before this (2026-09-30) both branches reached the transcript, so a
@@ -514,7 +514,7 @@ _DIMENSION_RE = re.compile(
     r"(?<![\w.])[-+]?\d*\.?\d+\s*(?:pt|cm|mm|em|ex|in|bp|sp)\b")
 
 # \conditionalpause[versions] -- \pause, gated to specific deck versions
-# (Slidemaster_preamble_base.tex's own doc comment: "Usage:
+# (SlideMage_base.tex's own doc comment: "Usage:
 # \conditionalpause[instructor,during-course]"). Its optional argument has no
 # dedicated consumer the way \includegraphics's does, so the generic
 # backslash-command strip below removes only "\conditionalpause" and leaves
@@ -541,12 +541,12 @@ _CONTROL_SPACE_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\ ")
 _UNWRAP_ENVIRONMENTS = ("minipage", "center", "column", "columns", "figure",
                         "table", "adjustbox", "besidefigure")
 # Beamer-style blocks: rendered as a titled quote so the label survives.
-_BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "gothamfloatinginfoblock",
-                       "gothamfloatingexampleblock", "gothamfloatingblock",
+_BLOCK_ENVIRONMENTS = ("definitionblock", "infoblock", "SMFloatingInfoBlock",
+                       "SMFloatingExampleBlock", "SMFloatingBlock",
                        "alertblock", "exampleblock", "referenceblock", "block")
 _LIST_ENVIRONMENTS = {
     "itemize": "-",
-    "gothamalphaitemize": "-",
+    "SMAlphaItemize": "-",
     "enumerate": "1.",
 }
 
@@ -669,8 +669,8 @@ def _render_list(body: str, marker: str, depth: int, bib: dict) -> str:
 
 
 def _skip_optional_argument(body: str) -> str:
-    """Drop a leading [...] option (\\begin{gothamtable}[gap=12pt]{...},
-    \\begin{gothamfloatinginfoblock}[top=0pt]{...}{...})."""
+    """Drop a leading [...] option (\\begin{SMTable}[gap=12pt]{...},
+    \\begin{SMFloatingInfoBlock}[top=0pt]{...}{...})."""
     stripped = body.lstrip()
     if stripped.startswith("["):
         close = stripped.find("]")
@@ -683,7 +683,7 @@ def _render_block(body: str, label: str, bib: dict) -> str:
     """A beamer block becomes a titled Markdown quote."""
     title = ""
     stripped = _skip_optional_argument(body).lstrip()
-    if label.startswith("gothamfloating") and stripped.startswith("{"):
+    if label.startswith("SMFloating") and stripped.startswith("{"):
         # the floating variants take the block's width first: {6cm}{Title}
         _width, after = braced_argument(stripped, 0)
         if after > 0:
@@ -705,7 +705,7 @@ def _render_block(body: str, label: str, bib: dict) -> str:
 # a spec may contain macros (`{@{}l<{\hspace{12pt}}c@{}}` on slide btg), and
 # any character-class pattern that admits those also admits a real first
 # table cell. The signature is known, so use it.
-_TABLE_SPEC_ARGS = {"gothamtable": 1, "tabular": 1, "tabularx": 2}
+_TABLE_SPEC_ARGS = {"SMTable": 1, "tabular": 1, "tabularx": 2}
 
 
 def _strip_column_spec(body: str, count: int) -> str:
@@ -990,7 +990,7 @@ def _inline_markdown(text: str, bib: dict) -> str:
     text = _ELLIPSIS_RE.sub("…", text)
     # Footnotes are inlined: a transcript reader has nothing to hover over.
     text = _apply_wrapped(text, _FOOTNOTE_RE, " (", ")", bib)
-    # Citation keys are resolved against Slidemaster.bib, so a source line
+    # Citation keys are resolved against SlideMage.bib, so a source line
     # reads "Loughran, Ritter & Rydqvist (1995), ..." rather than the bare
     # key. An unknown key renders as "[key]" rather than disappearing.
     text = _CITE_RE.sub(lambda m: _render_citation(m, bib), text)
@@ -1069,7 +1069,7 @@ _LAYOUT_COMMAND_RE = re.compile(
 # agenda slides' "\ifnum\value{enumi}=0 \item[] \fi"); the condition cannot
 # be evaluated here and the branch holds no slide text.
 _IFNUM_RE = re.compile(r"\\ifnum(?![a-zA-Z]).*?\\fi(?![a-zA-Z])", re.DOTALL)
-# Figure helpers (Slidemaster_preamble_base.tex): the argument is an image
+# Figure helpers (SlideMage_base.tex): the argument is an image
 # path (described in its own section) or, for \cornerfigure[block], content
 # that stays.
 _FIGURE_COMMAND_RE = re.compile(
@@ -1240,7 +1240,7 @@ def _park_code_files(ctx: ProjectContext, text: str) -> tuple[str, list[str]]:
     return _CODE_FILE_RE.sub(park, text), blocks
 
 
-# Navigation (Slidemaster_preamble_base.tex, "Navigation for readers"):
+# Navigation (SlideMage_base.tex, "Navigation for readers"):
 # \SMChapterAgenda becomes the list of the chapter's slides (filled in by
 # generate(), which knows the deck); \SMDeckAgenda is a link target only;
 # \SMAgendaTitle{text} names the slide in agendas.
@@ -1325,7 +1325,7 @@ _MULTILINGUAL_NEEDLE = "\\multilingualtext{"
 def _resolve_multilingual_text(text: str, language: str) -> str:
     """Replaces every \\multilingualtext{EN}{DE} call with just its EN or
     DE argument, mirroring \\ifSMGerman's own choice at compile time
-    (Slidemaster_preamble_base.tex) -- brace-matched
+    (SlideMage_base.tex) -- brace-matched
     (braced_argument), not a naive regex, since either argument
     can itself contain a braced macro (e.g. \\textbf{...}).
 

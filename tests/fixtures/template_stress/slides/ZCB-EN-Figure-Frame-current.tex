@@ -1,0 +1,8 @@
+%% Calibration deck: the figure frame with a corner figure.
+%% layout-check: skip coltop -- the chart's own axis label starts the column, not text of the frame (direct instruction)
+\setSlideVersion{1-0-0}
+\begin{figureframe}{Figure only}
+	\includegraphics[height=0.6\textheight]{media/illustration-bar-chart.pdf}
+	\cornerfigure[corner=ne]{\begin{minipage}{0.4\linewidth}\small\raggedright\SMLineTop
+		A corner figure holds text or an image in a corner of the slide.\end{minipage}}
+\end{figureframe}

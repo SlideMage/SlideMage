@@ -6,7 +6,7 @@ button, as popovers under their button (docs/UI_REDESIGN_PLAN.md, step 5):
 * `LinkPopover`: the visible text and the URL of a hyperlink;
 * `CodeFilePopover`: a file from the project's snippets/ folder, or a new one,
   and listings options, for \\SMCodeFile;
-* `CitationPopover`: a search over Slidemaster.bib and the citation style;
+* `CitationPopover`: a search over SlideMage.bib and the citation style;
 * `InstructionPopover`: what "Rewrite selection · Custom…" should do (not an insert: its `chosen` is the instruction).
 
 Each reports the LaTeX to insert through `chosen(text)`; what the text looks
@@ -152,7 +152,7 @@ class CodeFilePopover(_FormPopover):
 
 
 class CitationPopover(Popover):
-    """Search Slidemaster.bib and insert a citation of the entry chosen: Up/Down move, Enter
+    """Search SlideMage.bib and insert a citation of the entry chosen: Up/Down move, Enter
     inserts, Esc closes. The footer opens "Add reference to .bib…" for a new entry."""
 
     chosen = Signal(str)

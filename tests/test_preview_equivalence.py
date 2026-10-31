@@ -3,19 +3,19 @@
 """The classifier proves only the audited framework rules it understands."""
 from dataclasses import replace
 from pathlib import Path
+import re
 import shutil
 
 import pytest
 
-from slidemage.preview_equivalence import classify_views
+from slidemage.preview_equivalence import AUDITED_FRAMEWORK, _digest, classify_views
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.preview_target import PreviewTarget
 from slidemage.project import ProjectContext
 
 
 PREAMBLE = r"""\documentclass{beamer}
-\usetheme{gotham}
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Equivalence probe}
 \def\SMFooterHide{deck}
 \begin{document}
@@ -49,6 +49,16 @@ def test_plain_slide_shares_when_deck_label_is_hidden(tmp_path):
     assert len(set(groups(classified))) == 1
     assert all(d.certain for d in classified.decisions)
     assert classified.evidence and classified.dependencies
+
+
+def test_the_shipped_greyscale_template_is_audited_with_the_framework(tmp_path):
+    """v10.18.0: the framework ships and pins a second template; a deck that inputs it shares like one on the
+    SlideMage template (pinned with its layout profile in AUDITED_FRAMEWORK)."""
+    preamble = PREAMBLE.replace("SlideMage_template_slidemage", "SlideMage_template_greyscale")
+    shared = classify_views(specs(tmp_path, r"\begin{standardframe}{Plain}Text\end{standardframe}", preamble=preamble))
+    assert all(d.certain for d in shared.decisions) and len(set(groups(shared))) == 1
+    assert "SlideMage_template_greyscale.tex" in AUDITED_FRAMEWORK
+    assert "SlideMage_layout_lmroman.tex" in AUDITED_FRAMEWORK
 
 
 def test_footer_label_and_frame_numbers_split(tmp_path):
@@ -110,8 +120,10 @@ def test_project_macro_override_and_framework_change_fail_closed(tmp_path, monke
     assert all(not d.certain for d in custom.decisions)
     framework = tmp_path / "framework"
     framework.mkdir()
-    (framework / "Slidemaster_preamble_base.tex").write_text("changed")
-    monkeypatch.setenv("SLIDEMASTER_LATEX", str(framework))
+    for audited in ("SlideMage_setup.tex", "SlideMage_layout_fira.tex", "SlideMage_layout_lmsans.tex"):
+        shutil.copy2(REPO / "latex" / audited, framework)    # audited; the next file is not
+    (framework / "SlideMage_base.tex").write_text("changed")
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
     changed = classify_views(specs(tmp_path / "changed", "Text"))
     assert all(not d.certain and "unaudited framework" in d.reasons[0] for d in changed.decisions)
 
@@ -121,8 +133,11 @@ def test_footer_body_class_theme_and_conditional_preamble_are_not_proofs(tmp_pat
                               r"\newcommand{\FooterText}{\SMDeckVersion}")
     custom = classify_views(specs(tmp_path, "Text", preamble=footer))
     assert all(not d.certain for d in custom.decisions)
-    theme = PREAMBLE.replace(r"\usetheme{gotham}", r"\usetheme{mytheme}")
-    assert all(not d.certain for d in classify_views(specs(tmp_path / "theme", "Text", preamble=theme)).decisions)
+    # Since v10.0.0 the template loads the theme; a deck that loads one itself (even the stock one) is unaudited.
+    for name in ("SlideMage", "mytheme"):
+        theme = PREAMBLE.replace(r"\documentclass{beamer}", r"\documentclass{beamer}" + "\n" + rf"\usetheme{{{name}}}")
+        decisions = classify_views(specs(tmp_path / name, "Text", preamble=theme)).decisions
+        assert all(not d.certain and "loads a theme" in d.reasons[0] for d in decisions)
     conditional = PREAMBLE.replace(r"\def\SMFooterHide{deck}",
                                    r"\ifdefined\FLAG\def\SMFooterHide{deck}\fi")
     assert all(not d.certain for d in classify_views(specs(tmp_path / "conditional", "Text", preamble=conditional)).decisions)
@@ -143,35 +158,35 @@ def test_fullbleed_image_list_changes_instructor_sequence(tmp_path):
 def test_default_template_and_stock_framework_fallback(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
-    shutil.copy2(REPO / "example" / "Slidemaster_preamble_uni-graz.tex",
-                 root / "Slidemaster_preamble_uni-graz.tex")
+    shutil.copy2(REPO / "tests" / "fixtures" / "template_acme" / "SlideMage_template_acme.tex",
+                 root / "SlideMage_template_acme.tex")
     try:
         (tmp_path / "latex").symlink_to(REPO / "latex", target_is_directory=True)
     except OSError as exc:      # Windows lets only privileged users (or Developer Mode) create symlinks
         pytest.skip(f"cannot create a symlink here: {exc}")
-    monkeypatch.delenv("SLIDEMASTER_LATEX")
+    monkeypatch.delenv("SLIDEMAGE_LATEX")
     classified = classify_views(specs(tmp_path, "Plain", preamble=None))
     assert all(d.certain for d in classified.decisions)
     assert len(set(groups(classified))) == 3  # the default footer shows deck labels
-    assert any("Slidemaster_preamble_slidemage.tex" in path for path, _ in classified.dependencies)
+    assert any("SlideMage_template_slidemage.tex" in path for path, _ in classified.dependencies)
 
 
 def test_actual_institution_shadow_and_non_top_level_imports_fail_closed(tmp_path):
     root = tmp_path / "shadow" / "project"
     root.mkdir(parents=True)
-    shutil.copy2(REPO / "example" / "Slidemaster_preamble_uni-graz.tex",
-                 root / "Slidemaster_preamble_uni-graz.tex")
-    requests = specs(tmp_path / "shadow", "Plain", preamble=PREAMBLE.replace("slidemage", "uni-graz"))
+    shutil.copy2(REPO / "tests" / "fixtures" / "template_acme" / "SlideMage_template_acme.tex",
+                 root / "SlideMage_template_acme.tex")
+    requests = specs(tmp_path / "shadow", "Plain", preamble=PREAMBLE.replace("slidemage", "acme"))
     (root / "decks").mkdir(exist_ok=True)
-    (root / "decks" / "Slidemaster_preamble_uni-graz.tex").write_text("custom")
+    (root / "decks" / "SlideMage_template_acme.tex").write_text("custom")
     shadow = classify_views(requests)
     assert all(not d.certain and "shadows institution" in d.reasons[0] for d in shadow.decisions)
-    grouped = PREAMBLE.replace(r"\input{Slidemaster_preamble_slidemage}",
-                               r"{\input{Slidemaster_preamble_slidemage}}")
+    grouped = PREAMBLE.replace(r"\input{SlideMage_template_slidemage}",
+                               r"{\input{SlideMage_template_slidemage}}")
     result = classify_views(specs(tmp_path / "grouped", "Plain", preamble=grouped))
     assert all(not d.certain and "framework import" in d.reasons[0] for d in result.decisions)
-    delayed = PREAMBLE.replace(r"\input{Slidemaster_preamble_slidemage}",
-                               r"\AtBeginDocument{\input{Slidemaster_preamble_slidemage}}")
+    delayed = PREAMBLE.replace(r"\input{SlideMage_template_slidemage}",
+                               r"\AtBeginDocument{\input{SlideMage_template_slidemage}}")
     result = classify_views(specs(tmp_path / "delayed", "Plain", preamble=delayed))
     assert all(not d.certain for d in result.decisions)
 
@@ -215,3 +230,58 @@ def test_custom_bibliography_and_citation_inputs_fail_closed(tmp_path):
     assert all(not d.certain and "package" in d.reasons[0] for d in configured.decisions)
     cited = classify_views(specs(tmp_path / "cited", r"\fullcite{example}"))
     assert all(not d.certain and "fullcite" in d.reasons[0] for d in cited.decisions)
+
+
+def test_the_pins_are_the_frameworks_files_and_the_theme_has_no_view_dependent_rule():
+    latex = REPO / "latex"
+    assert "beamerthemeSlideMage.sty" in AUDITED_FRAMEWORK
+    assert not any("gotham" in name.lower() for name in AUDITED_FRAMEWORK)
+    # every package the framework ships is pinned, so the custom-package rule never trips on our own files
+    assert {path.name for path in latex.glob("*.sty")} <= set(AUDITED_FRAMEWORK)
+    for name, digest in AUDITED_FRAMEWORK.items():
+        assert _digest((latex / name).read_bytes()) == digest, name
+    # every layout profile the framework ships is pinned too, and holds no view-dependent rule either
+    profiles = sorted(latex.glob("SlideMage_layout_*.tex"))
+    assert profiles and {path.name for path in profiles} <= set(AUDITED_FRAMEWORK)
+    # nor does the bundled bibliography default (v10.14.0): a template inputs it instead of carrying
+    # the format itself, so it has to be pinned too, but it is still only renewcommands, no view-dependent rule
+    assert "SlideMage_bibliography_default.tex" in AUDITED_FRAMEWORK
+    # nor do the templates the framework ships (since v10.18.0 two, both pinned)
+    templates = sorted(latex.glob("SlideMage_template_*.tex"))
+    assert {path.name for path in templates} <= set(AUDITED_FRAMEWORK)
+    for path in [latex / "beamerthemeSlideMage.sty", latex / "SlideMage_bibliography_default.tex", *profiles,
+                 *templates]:
+        text = path.read_text(encoding="utf-8")
+        assert not re.search(r"deckversion|ifSM\w*Version|SMDeckVersion|studentversion|SMFooterHide|beamer@currentmode",
+                             text), path.name
+
+
+def test_another_package_next_to_the_theme_is_a_custom_package(tmp_path, monkeypatch):
+    framework = tmp_path / "framework"
+    shutil.copytree(REPO / "latex", framework)
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
+    same = classify_views(specs(tmp_path / "same", "Text"))     # a copy of the framework is the audited framework
+    assert all(d.certain for d in same.decisions)
+    (framework / "beamerthemeother.sty").write_text("\\ProvidesPackage{beamerthemeother}\n", encoding="utf-8")
+    other = classify_views(specs(tmp_path / "other", "Text"))
+    assert all(not d.certain and "custom package/class" in d.reasons[0] for d in other.decisions)
+    (framework / "beamerthemeother.sty").unlink()
+    (framework / "beamerthemeSlideMage.sty").write_text("% changed\n", encoding="utf-8")
+    changed = classify_views(specs(tmp_path / "changed", "Text"))
+    assert all(not d.certain and "unaudited framework file: beamerthemeSlideMage.sty" in d.reasons[0]
+               for d in changed.decisions)
+
+
+def test_a_changed_or_shadowed_layout_profile_is_unaudited(tmp_path, monkeypatch):
+    framework = tmp_path / "framework"
+    shutil.copytree(REPO / "latex", framework)
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(framework))
+    shadow = specs(tmp_path / "shadow", "Text")
+    root = shadow[0].target.context.root
+    (root / "SlideMage_layout_fira.tex").write_text("% the project's own fira\n", encoding="utf-8")
+    shadowed = classify_views(shadow)
+    assert all(not d.certain and "project shadows SlideMage_layout_fira.tex" in d.reasons[0] for d in shadowed.decisions)
+    (framework / "SlideMage_layout_fira.tex").write_text("% changed\n", encoding="utf-8")
+    changed = classify_views(specs(tmp_path / "changed", "Text"))
+    assert all(not d.certain and "unaudited framework file: SlideMage_layout_fira.tex" in d.reasons[0]
+               for d in changed.decisions)

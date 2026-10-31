@@ -1,0 +1,20 @@
+%% Calibration deck: bullet lists, depth 1 to 4, wrapped lines, a tall item, a footnote.
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Bullet lists, four levels deep}
+	\begin{itemize}
+		\item Level one, a long item that wraps onto a second line so that the gap between wrapped lines can be compared with the gap between items\footnote{A footnote below the lists.}
+		\begin{itemize}
+			\item Level two, also long enough to wrap onto a second line when the column is narrow enough for it
+			\begin{itemize}
+				\item Level three
+				\begin{itemize}
+					\item Level four, long enough to wrap onto a second line when the text is longer than one line
+					\item Level four again
+				\end{itemize}
+				\item Level three again
+			\end{itemize}
+		\end{itemize}
+		\tallitem A tall item: $S=\dfrac{E[R]-r_f}{\sigma}$
+		\tallitem The item after it
+	\end{itemize}
+\end{standardframe}

@@ -11,7 +11,6 @@
 % so SlideMage always adds the appendix with the slide previews.
 % Code panels: \SMCodeFile{snippets/<slide id>-<n>.tex}.
 \documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 
 % Compile from the project root or from decks/ (see README.md, "Directory layout").
 \makeatletter
@@ -19,12 +18,12 @@
 \makeatother
 \graphicspath{{../}}
 
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 \usepackage{fontawesome5}          % operating-system icons on the "Installing LaTeX" slides
 
 % Bibliography (biblatex + biber, opt-in per deck): the .bib lookup and the house
 % citation format come from the institution template (\SMUseBibliography,
-% defined in Slidemaster_preamble_base.tex; the format in this deck's template
+% defined in SlideMage_base.tex; the format in this deck's template
 % file). To use another format in this deck, redefine \SMBiblatexOptions /
 % \SMBibliographyStyle before the call.
 \SMUseBibliography
@@ -161,6 +160,8 @@
 	\slide{1dt-EN-Chapter-Appendix}
 	\slide{1d7-EN-Quick-Reference-Deck-Commands}
 	\slide{1uw-EN-Quick-Reference-Slide-Commands}
+	\slide{1im-EN-What-a-Compile-Reads}
+	\slide{1vw-EN-Making-a-Template}
 	\slide{1r8-EN-More-Tools}
 	\slide{2rg-EN-Footnote-symbol-options}
 	\slide{2v9-EN-Itemize-Spacing-Reference}

@@ -4,7 +4,7 @@
 
 * checks that run shortly after start -- project compatibility (compat.py),
   the project's copies of the framework and the manual (bundled_copies.py)
-  and the update check (updater.py);
+  and the update checks (updater.py; plugins; themes from GitHub, theme_sources.py);
 * the Info menu actions that repeat them on demand;
 * the Housekeeping actions (empty pdf/, remove temp files, archive unused
   content, reestablish translation links), which the Housekeeping sheet
@@ -31,6 +31,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
+from ... import slide_snapshot, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
@@ -41,7 +42,7 @@ from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, Ho
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.plugin_offer import PluginOfferSheet
 from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
-from ..dialogs.settings_plugins import download_release, install_downloaded
+from ..dialogs.settings_plugins import ask_theme_update, download_release, install_downloaded
 from . import compile_actions
 
 STARTUP_UPDATE_CHECK_DELAY_MS = 3000
@@ -77,6 +78,8 @@ def check_project_compat(window) -> None:
     except Exception as exc:  # noqa: BLE001 -- a broken detector must not stop the app
         window.log(f"Couldn't check the project's compatibility: {exc}")
         return
+    for note in evaluation.environment_notes:
+        window.log(note)
     if evaluation.newer_notice:
         compat_newer_notice(window, evaluation.newer_notice, app_version)
     if evaluation.loud:
@@ -729,6 +732,82 @@ def on_plugin_updates_done(window, result) -> None:
     text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
                      for plugin_id, _have, release in result.updates)
     window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Plugins")], timeout_ms=12000)
+
+
+def schedule_theme_update_check(window) -> None:
+    """Themes installed from GitHub (theme_sources.py) are checked at every start, as the app is, and under its
+    update setting: off checks nothing (no network)."""
+    if updater.get_update_mode() != updater.UPDATE_MODE_OFF and theme_sources.github_themes():
+        QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(theme_update_check, window))
+
+
+def theme_update_check(window) -> None:
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
+        return
+
+    def work() -> None:
+        try:
+            result = theme_sources.check_updates()
+        except Exception as exc:        # quiet: only logged
+            result = exc
+        window.theme_updates_done.emit(result)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def on_theme_updates_done(window, result) -> None:
+    """A failed check is only logged (Settings → Plugins → Themes says why); a newer release is offered, never
+    installed silently, whatever the update mode."""
+    if isinstance(result, Exception):
+        window.log(f"Theme update check failed: {result}")
+        return
+    offers, errors = result
+    for key, error in errors.items():
+        window.log(f"Theme update check failed for {key}: {error}")
+    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
+        for offer in offers:
+            offer.fetched.discard()
+        return
+    for offer in offers:
+        offer_theme_update(window, offer)
+
+
+def offer_theme_update(window, offer: theme_sources.Offer) -> None:
+    """Install now / Not now / Skip this version."""
+    release = offer.fetched.release
+    choice = ask_theme_update(window, offer)
+    if choice == "install":
+        try:
+            manifest = theme_sources.install(offer.fetched)
+        except themes.ThemeError as exc:
+            window.log(f"Theme update failed: {exc}")
+            window.toast.show_message(f"The theme {offer.name} could not be updated: {exc}", error=True,
+                                      timeout_ms=10000)
+            return
+        window.log(f"Theme {manifest.name} updated to {manifest.version} (from {release.repository})")
+        window.theme_installed(manifest.id)
+        return
+    offer.fetched.discard()
+    if choice == "skip":
+        try:
+            theme_sources.skip_version(offer.key, release.version)
+        except OSError as exc:
+            window.log(f"Couldn't save the skipped theme version: {exc}")
+        window.log(f"Theme {offer.name} {release.version} skipped; a later version is offered")
+    else:
+        window.log(f"Theme {offer.name} {release.version} is available; not installed for now")
+
+
+def on_theme_installed(window, key: str) -> None:
+    """Previews of the decks using `key`: their renders read the theme's files, which changed, so they are stale and
+    the background renderer does them again; no other deck's are touched. The open deck's slide renders now."""
+    background = getattr(window, "background", None)
+    renderer = getattr(background, "renderer", None)
+    if renderer is not None:
+        renderer.replan()
+    deck = window.state.deck
+    if deck is not None and slide_snapshot.detect_template(deck.preamble_text) == key:
+        window.centre.preview.render_after_save()
 
 
 def on_plugin_toast_action(window, key: str) -> None:

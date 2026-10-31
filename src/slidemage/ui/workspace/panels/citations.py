@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Citations: the keys the focused slide cites, resolved against Slidemaster.bib.
+"""Citations: the keys the focused slide cites, resolved against SlideMage.bib.
 
 A key the file has shows its author, year and title; a missing one is marked in the error color
 and can be added: "Add to .bib…" opens the Source view's "Add reference to .bib" form with the
 key filled in (the chat of step 10 will offer to draft the entry). Clicking a key shows its entry
-in Slidemaster.bib."""
+in SlideMage.bib."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout
@@ -22,7 +22,7 @@ class Citations(SidePanel):
     title = "Citations"
 
     def suffix(self) -> str:
-        return "from Slidemaster.bib"
+        return "from SlideMage.bib"
 
     def meta(self) -> str:
         keys = cited_keys(self.slide_text())
@@ -39,12 +39,12 @@ class Citations(SidePanel):
             known = key in entries
             if known:
                 row.make_clickable(lambda k=key: self._show(k))
-                row.setToolTip("Show this entry in Slidemaster.bib")
+                row.setToolTip("Show this entry in SlideMage.bib")
             row.add_text(key, q.PANEL_MONO)
             if known:
                 row.add_text(bibliography.format_citation(key, entries, "full"), q.DETAILS_VALUE)
             else:
-                row.add_text("Not in Slidemaster.bib", q.PANEL_MISSING)
+                row.add_text("Not in SlideMage.bib", q.PANEL_MISSING)
                 add = Button("Add to .bib…", "primary", compact=True)
                 add.clicked.connect(lambda _=False, k=key: self._add(k))
                 line = QHBoxLayout()

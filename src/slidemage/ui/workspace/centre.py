@@ -9,7 +9,7 @@ class decides *what* each view shows and keeps them in step:
 
 * the Source view shows the file of the focused slide (the one the deck calls,
   so a pinned version opens as the frozen snapshot it is), or a file opened on
-  purpose -- a deck's own source, Slidemaster.bib, a frozen version -- until
+  purpose -- a deck's own source, SlideMage.bib, a frozen version -- until
   another slide is focused;
 * the Preview shows the focused slide as the deck typesets it, or a frozen
   version alone; saving re-renders it while it is visible. Its language chip
@@ -542,11 +542,11 @@ class CentreColumn(QFrame):
         self.refresh()
 
     def _showing_explicit_file(self) -> bool:
-        """A deck's own source or Slidemaster.bib (no slide's file) is the Source view's file."""
+        """A deck's own source or SlideMage.bib (no slide's file) is the Source view's file."""
         return self._path is not None and not _is_slide_file(self._path)
 
     def close_explicit_file(self, *, keep_mode: bool = False) -> bool:
-        """Close a deck's source or Slidemaster.bib (its "x", or a switch to Preview or Details) and go back to the
+        """Close a deck's source or SlideMage.bib (its "x", or a switch to Preview or Details) and go back to the
         focused slide, in the mode before it was opened unless `keep_mode`. Edits that would be lost are asked
         about: Save, Discard or Cancel (False: it stays open)."""
         if not self._showing_explicit_file():

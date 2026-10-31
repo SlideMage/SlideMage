@@ -128,7 +128,7 @@ def test_deck_setting_chooses_the_preferred_pdf(ctx, deck_with_pdfs):
 def test_open_pdf_setting_round_trip():
     from slidemage import deck_settings, deck_scan as scan
 
-    text = "\\documentclass{beamer}\r\n\\input{Slidemaster_preamble_uni-graz}\r\n\\begin{document}\r\n"
+    text = "\\documentclass{beamer}\r\n\\input{SlideMage_template_acme}\r\n\\begin{document}\r\n"
     text2 = deck_settings.set_open_pdf(text, "during-course")
     assert "%% SlideMage open PDF: during-course\r\n\\begin{document}" in text2
     assert scan.parse_open_pdf(text2) == "during-course"

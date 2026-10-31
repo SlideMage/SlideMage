@@ -4,12 +4,12 @@
 %% DE translation: hd5-DE-Ein-Blick-Mehrere-Institutionen
 %%
 
-% SlideMage manual, chapter "The big picture": templates. The four crops are
-% the same slide (1wa) compiled under each template (the MCI and Innsbruck
-% templates are not part of SlideMage; the crops were made once in a project
-% that has them). The color strip is live: it shows the palette of the
-% template this deck uses.
-\setSlideVersion{1-1-1}
+% SlideMage manual, chapter "The big picture": templates. The two crops are
+% the same slide (1wa) compiled under SlideMage's own template and under the
+% stress-test template (tests/fixtures/template_stress/, a test template that
+% changes every layout setting); see tools/manual/README.md. The color strip is
+% live: it shows the palette of the template this deck uses.
+\setSlideVersion{1-1-1+}
 \providecommand{\templatecrop}[2]{% image, caption
 	\begin{tabular}[t]{@{}c@{}}
 		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
@@ -21,20 +21,18 @@
 	How a slide looks -- colors, logo, title bar, footer -- is set by a
 	\emph{template}, not by the slide. A deck names its template once, so one slide
 	appears in a different design in each deck -- below, one slide of this manual
-	under four templates.
-	\par\medskip
+	under two templates.
+	\par
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.53\linewidth}
-			\templatecrop{\includegraphics[width=103pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
-			\templatecrop{\includegraphics[width=103pt]{media/screenshot-slide-template-uni-graz.png}}{University of Graz}\\[3pt]
-			\templatecrop{\includegraphics[width=103pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
-			\templatecrop{\includegraphics[width=103pt]{media/screenshot-slide-template-uni-ibk.png}}{University of Innsbruck}
+		\begin{column}{0.57\linewidth}
+			\templatecrop{\includegraphics[width=98pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage template} \hspace{4pt}
+			\templatecrop{\includegraphics[width=98pt]{media/screenshot-slide-template-stress.png}}{Stress-test template}
 		\end{column}
-		\begin{column}{0.44\linewidth}
+		\begin{column}{0.40\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
-				\item A template is one small file, \SMCode{Slidemaster\_preamble\_<name>.tex}
-				\item SlideMage brings its own; for your institution, copy it and change colors and logo
+				\item A template is one small file, \SMCode{SlideMage\_template\_<name>.tex}: colors, a logo, a layout profile for the fonts, and any layout setting it changes
+				\item SlideMage brings its own; for your institution, copy it -- see \SMLink{1vw}{\emph{Making a template}}
 			\end{itemize}
 %			\smallskip
 %			\begin{tikzpicture}[x=9.5pt, y=9.5pt]

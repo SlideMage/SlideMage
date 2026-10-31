@@ -306,7 +306,7 @@ __pycache__/
 ## from a second PC pointed at a python.exe that doesn't exist here and
 ## failed outright; the sync clients also locked/indexed its files badly
 ## enough that even deleting it repeatedly timed out). The venv now lives
-## machine-locally at `%USERPROFILE%\SlideMaster\venv` (not
+## machine-locally at `%USERPROFILE%\SlideMage\venv` (not
 ## `%LOCALAPPDATA%` -- that's virtualized per-app on a machine whose
 ## system Python is the Microsoft Store package, which silently broke venv
 ## isolation entirely; confirmed directly, 2026-08-11), outside any synced

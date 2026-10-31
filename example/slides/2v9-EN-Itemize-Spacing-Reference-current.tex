@@ -24,7 +24,7 @@
 % 4 terms, and level 4's chain is 3 terms (close > same > wrap, no
 % "opening" term since nothing nests below it).
 % All these spacings scale with whatever font size is active (2026-07-21,
-% direct instruction) -- see Slidemaster_preamble_base.tex's own
+% direct instruction) -- see SlideMage_base.tex's own
 % \SMItemsepRatioI/II/III/IV, \SMItemizeLevelDropSpaceRatioI/II/III/IV
 % and \SMItemizeLevelOpenSpaceRatioI/II/III comments for the
 % implementation (ratios of the currently active font's own "em", not
@@ -55,7 +55,7 @@
 	% \small, subbody: \footnotesize, subsubbody: \scriptsize -- level 4's
 	% own "subsubsubbody" isn't set anywhere in this project, confirmed via
 	% grep, so it inherits subsubbody's own size automatically and shrinks
-	% along with it), reset back to gotham's own defaults afterward so
+	% along with it), reset back to the theme's own defaults afterward so
 	% nothing leaks into later slides. That alone got this from ~26pt
 	% overfull down to ~1.5pt; a small residual \vspace closes the rest.
 	% Shrinking the ratios under test isn't the point of this slide --

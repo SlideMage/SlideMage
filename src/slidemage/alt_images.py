@@ -426,7 +426,7 @@ def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None
     }
     # No _write_compile_csv() call here, unlike save_store() -- the
     # compile-time CSV mirror only ever holds image role/short_alt columns
-    # (Slidemaster_alt.lua doesn't know slide summaries exist), so a
+    # (SlideMage_alt.lua doesn't know slide summaries exist), so a
     # slides-only change has nothing in it worth regenerating.
     write_json(_store_path(ctx), raw, sort_keys=False)
 
@@ -453,7 +453,7 @@ def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
 # `media/alt-text.csv` used to be the store itself (alt_manifest.py); it is
 # now a generated compile-time projection of it, in the same "derived,
 # gitignored, regenerated on demand" category as transcripts/. Kept because
-# Slidemaster_alt.lua reads it directly at compile time with a hand-rolled
+# SlideMage_alt.lua reads it directly at compile time with a hand-rolled
 # CSV parser, and LuaTeX has no JSON library to switch it to one -- rewriting
 # the compile-time side was a much larger change than just keeping the one
 # file format it already reads working. Same header/column shape the old
@@ -464,7 +464,7 @@ def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> N
     import csv as _csv
 
     def _clean(text: str) -> str:
-        # Slidemaster_alt.lua reads one CSV row per handle:lines() call; an
+        # SlideMage_alt.lua reads one CSV row per handle:lines() call; an
         # embedded newline would split one logical row across two lines
         # its parser never rejoins. `short`/`short_de` are meant to be one
         # sentence anyway (see alt_draft.py's SYSTEM_PROMPT) -- this is
@@ -477,7 +477,7 @@ def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> N
         writer = _csv.writer(handle)
         # Widened 2026-08-24 (was image,role,status,short_alt,source) to
         # carry both languages in one file rather than a second CSV/second
-        # Lua load() call -- Slidemaster_alt.lua picks the *_en/*_de pair
+        # Lua load() call -- SlideMage_alt.lua picks the *_en/*_de pair
         # to actually use per-image based on the compiling deck's own
         # \SMDeckLanguage. `role` stays a single shared column: it's
         # language-independent (decorative/informative is a property of

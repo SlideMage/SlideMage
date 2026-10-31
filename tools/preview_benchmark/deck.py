@@ -29,7 +29,7 @@ class MeasuredService(RenderService):
 
 def run(root, framework, output):
     output.mkdir(parents=True, exist_ok=False)
-    os.environ['SLIDEMASTER_LATEX'] = str(framework)
+    os.environ['SLIDEMAGE_LATEX'] = str(framework)
     ctx = ProjectContext.at(root)
     original = deck_scan.read_deck(ctx.decks_dir / 'probe.tex')
     path = ctx.decks_dir / 'refresh.tex'

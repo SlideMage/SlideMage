@@ -90,7 +90,7 @@ def implementation_identity(package, options, environment):
         tools={tool: command_output([tool, "--version"]) for tool in ("latexmk", "lualatex", "biber")},
         search={name: value for name, value in environment.items()
                 if name.startswith(("TEX", "LUA", "BIB", "FONTCONFIG", "LATEXMK", "MIKTEX"))
-                or name in {"PATH", "SLIDEMASTER_LATEX", "SOURCE_DATE_EPOCH", "OSFONTDIR", "VARTEXFONTS"}},
+                or name in {"PATH", "SLIDEMAGE_LATEX", "SOURCE_DATE_EPOCH", "OSFONTDIR", "VARTEXFONTS"}},
         rc={str(path): hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
             for path in rc_paths},
         options=options, edit_version=EDIT_VERSION,

@@ -16,9 +16,9 @@ from slidemage.ui.dialogs.deck_settings import GENERAL, OUTPUT, SAVE, DeckSettin
 from slidemage.ui.workspace import deck_actions
 from conftest import EXAMPLE_PROJECT
 
-TEMPLATES = [("slidemage", "SlideMage"), ("uni-graz", "University of Graz")]
+TEMPLATES = [("slidemage", "SlideMage"), ("acme", "Acme University")]
 DECK_TEXT = (
-    "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-graz}\n"
+    "\\documentclass{beamer}\n\\input{SlideMage_template_acme}\n"
     "\\deckoutputfolder{D:/Out}\n\\newcommand{\\FooterText}{Course | 2027s}\n"
     "\\decklanguage[en]\n\\begin{document}\n"
 )
@@ -35,13 +35,13 @@ def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
 
 
 def make_sheet(tmp_path, monkeypatch, text=DECK_TEXT, tab=GENERAL, **fields):
-    (tmp_path / "Slidemaster_preamble_uni-graz.tex").write_text("% SlideMage dark mode: true\n")
+    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage dark mode: true\n")
     return DeckSettingsSheet(None, make_deck(tmp_path, text=text, **fields), TEMPLATES, tab=tab)
 
 
 def test_the_sheet_shows_the_deck_settings(tmp_path, monkeypatch, qapp):
     sheet = make_sheet(tmp_path, monkeypatch)
-    assert sheet.template_combo.currentData() == "uni-graz"
+    assert sheet.template_combo.currentData() == "acme"
     assert sheet.language_combo.currentData() == "en"
     assert sheet.footer_edit.text() == "Course | 2027s"
     assert sheet.output_edits[None].text() == "D:/Out"
@@ -76,7 +76,7 @@ def test_cancel_changes_nothing(tmp_path, monkeypatch, qapp):
 
 
 def test_an_unknown_template_and_language_stay_selectable(tmp_path, monkeypatch, qapp):
-    text = DECK_TEXT.replace("uni-graz", "my-uni").replace("decklanguage[en]", "decklanguage[fr]")
+    text = DECK_TEXT.replace("acme", "my-uni").replace("decklanguage[en]", "decklanguage[fr]")
     sheet = make_sheet(tmp_path, monkeypatch, text=text)
     assert sheet.template_combo.currentData() == "my-uni"
     assert sheet.language_combo.currentData() == "fr"
@@ -127,7 +127,7 @@ def test_settings_action_saves_all_changes(tmp_path, monkeypatch, qapp):
     deck_actions.on_deck_settings(window, deck)
 
     written = deck.path.read_text(encoding="utf-8")
-    assert "\\input{Slidemaster_preamble_slidemage}" in written
+    assert "\\input{SlideMage_template_slidemage}" in written
     assert "%% SlideMage open PDF: presenter" in written
     assert refreshed == [True] and reloaded == [True]
     assert "template" in logged[0] and "open pdf" in logged[0]
@@ -214,8 +214,8 @@ def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_
 
 
 def test_dark_slides_work_for_a_renamed_template(tmp_path, monkeypatch, qapp):
-    (tmp_path / "Slidemaster_preamble_custom-college.tex").write_text("% SlideMage dark mode: true\n")
-    sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("uni-graz", "custom-college"))
+    (tmp_path / "SlideMage_template_custom-college.tex").write_text("% SlideMage dark mode: true\n")
+    sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("acme", "custom-college"))
     assert sheet.dark_mode_check.isEnabled()
     sheet.dark_mode_check.setChecked(True)
     sheet.save_button.click()

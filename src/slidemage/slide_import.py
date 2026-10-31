@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Import a PowerPoint (.pptx) or OpenDocument Presentation (.odp) file as
-new Slidemaster slides, with real, editable LaTeX text -- not a rendered
+new SlideMage slides, with real, editable LaTeX text -- not a rendered
 image of each source slide. Direct instruction, 2026-09-23.
 
 Per-slide content is mapped onto the two existing layouts that fit it
@@ -67,7 +67,7 @@ def escape_latex(text: str) -> str:
 @dataclass
 class Bullet:
     text: str
-    level: int = 0  # 0 = top level, matching Slidemaster's own itemize nesting
+    level: int = 0  # 0 = top level, matching SlideMage's own itemize nesting
 
 
 @dataclass
@@ -267,7 +267,7 @@ def extract_odp(path: Path) -> list[SlideContent]:
 # -- LaTeX generation ---------------------------------------------------
 
 _TAB = "\t"
-_MAX_ITEMIZE_LEVEL = 3  # Slidemaster_preamble_base.tex supports four itemize levels.
+_MAX_ITEMIZE_LEVEL = 3  # SlideMage_base.tex supports four itemize levels.
 
 
 def _bullets_to_itemize(bullets: list[Bullet]) -> str:
@@ -309,9 +309,9 @@ def _bullets_to_itemize(bullets: list[Bullet]) -> str:
     return "\n".join(lines)
 
 
-# gothamtable's [gap=12pt] option writes the flush-edge column spec (zero
+# SMTable's [gap=12pt] option writes the flush-edge column spec (zero
 # \tabcolsep, @{} outer edges, this gap after each column -- the rule-bleed
-# convention in Slidemaster_preamble_base.tex); a \multicolumn cell still
+# convention in SlideMage_base.tex); a \multicolumn cell still
 # spells its own spec out, so it needs the same gap by hand.
 _TABLE_GAP = r"<{\hspace{12pt}}"
 
@@ -324,12 +324,12 @@ def _cell_to_tex(cell: TableCell) -> str:
 
 
 def _table_block(rows: list[list[TableCell]]) -> str:
-    """A gothamtable for one extracted table, shrunk (never enlarged) to
+    """A SMTable for one extracted table, shrunk (never enlarged) to
     fit the frame's width and 0.8\\textheight."""
     ncols = max(sum(cell.colspan for cell in row) for row in rows)
     lines = [
         r"\sbox0{%",
-        r"\begin{gothamtable}[gap=12pt]{" + "l" * ncols + "}",
+        r"\begin{SMTable}[gap=12pt]{" + "l" * ncols + "}",
         _TAB + r"\toprule",
     ]
     for index, row in enumerate(rows):
@@ -349,7 +349,7 @@ def _table_block(rows: list[list[TableCell]]) -> str:
             lines.append(_TAB + r"\midrule")
     lines += [
         _TAB + r"\bottomrule",
-        r"\end{gothamtable}}",
+        r"\end{SMTable}}",
         r"\ifdim\wd0>\linewidth\sbox0{\resizebox{\linewidth}{!}{\usebox0}}\fi",
         r"\ifdim\dimexpr\ht0+\dp0\relax>0.8\textheight"
         r"\sbox0{\resizebox*{!}{0.8\textheight}{\usebox0}}\fi",
@@ -459,7 +459,7 @@ def media_filename(id_slug: str, index: int, ext: str) -> str:
 
 def import_presentation(ctx: ProjectContext, source_path: Path, deck, language: str, log=None) -> ImportSummary:
     """Extracts every slide from `source_path` (.pptx or .odp) and appends
-    one new Slidemaster slide per non-blank source slide to the end of
+    one new SlideMage slide per non-blank source slide to the end of
     `deck` -- new slide files under slides/, their images (if any) under
     media/, a fresh \\slide{} call for each appended to `deck` in source
     order, and each new id registered in slide_ids.csv, same conventions

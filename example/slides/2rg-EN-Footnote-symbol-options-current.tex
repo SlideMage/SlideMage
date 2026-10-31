@@ -1,5 +1,5 @@
 % Demo/reference slide: candidate Unicode symbols for \setfootnotesymbols{}
-% (see Slidemaster_preamble_uni-graz.tex). Every symbol below was checked to actually
+% (see beamerthemeSlideMage.sty). Every symbol below was checked to actually
 % exist in Fira Sans (the deck's body font) -- glyphs that LuaTeX reported as
 % "Missing character" for this font (card suits, star/dingbat glyphs,
 % geometric shapes, checkmarks, most arrows, roman numerals, circled
@@ -19,13 +19,13 @@
 %% Included in decks: slidemage-manual, slidemage-manual-copy
 %%
 
-\setSlideVersion{1-0-0}
+\setSlideVersion{1-0-0+}
 \begin{standardframe}{Footnote symbol options}
 \footnotesize
-Confirmed to render in this deck's font. Pass any subset, in any order, to
-\texttt{\textbackslash setfootnotesymbols\{...\}} (comma-separated) to
+Confirmed to render in Fira Sans; other fonts may lack some signs. Pass any subset, in any order, to
+\texttt{\textbackslash setfootnotesymbols\{...\}} to
 override the default \emph{£, ¥, ₹, ₽, ₺, ₴, ₪, ₫, ₦, ₡, ₩, ƒ, ¢, €} sequence
-for the rest of the deck.
+for the rest of the deck, or number them with a template's \texttt{\textbackslash SMFootnoteMark}.
 
 \vspace{0.4em}
 {\renewcommand{\arraystretch}{1.7}\setlength{\tabcolsep}{4pt}

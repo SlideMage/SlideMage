@@ -9,11 +9,11 @@
 	LaTeX's error messages are hard to read, and a compile takes time. So
 	before every compile SlideMage checks the slides for the most common
 	mistakes, and names the slide and the line.
-	\par\medskip
+	\par
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.47\linewidth}
 			\scriptsize
-			\begin{gothamtable}[gap=8pt]{ll}
+			\begin{SMTable}[gap=8pt]{ll}
 				\toprule
 				Before every compile: & finds \\
 				\midrule
@@ -25,7 +25,7 @@
 				\SMCode{slide-file} & missing slide \\
 				\SMCode{underscore}, \ldots & warnings \\
 				\bottomrule
-			\end{gothamtable}
+			\end{SMTable}
 		\end{column}
 		\begin{column}{0.5\linewidth}
 			\shrinklists{2}

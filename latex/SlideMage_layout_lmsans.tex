@@ -1,0 +1,124 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage layout profile "lmsans": Latin Modern Sans for text, Latin Modern Mono for
+% code (SlideMage v10.8.0).
+%
+% Latin Modern comes with every TeX distribution, so this profile works on a machine
+% that has no Fira fonts, and it is the proof that a profile for another font is only a
+% file like this one. A template picks it with
+%
+%   \newcommand{\SMLayoutProfile}{lmsans}   % before \input{SlideMage_setup}
+%
+% See SlideMage_layout_fira.tex for what a profile is and what it has to define; the
+% header of SlideMage_setup.tex has the recipe for a new one. The three numbers
+% under "Calibrations" were set with tools/calibrate_font_profile.py and the calibration deck
+% of tests/fixtures/template_stress/ (see the note above that section).
+
+\RequirePackage{etoolbox}
+
+\ExplSyntaxOn
+\makeatletter
+
+\msg_new:nnn { SlideMage } { font-not-found }
+  { Could~not~find~font~'#1'.\c_space_tl }
+\msg_new:nnn { SlideMage } { fonts-not-available }
+  { No~suitable~fonts~found.~Using~fallback~fonts. }
+\msg_new:nnn { SlideMage } { requires-lualatex }
+  { The~SlideMage~layout~profile~needs~LuaLaTeX~(Latin~Modern~fonts~and~Lua~code). }
+
+\int_new:N \g__SM_fonts_not_found_int
+
+\cs_new_protected:Nn \__SM_check_font:n
+  {
+    \fontspec_font_if_exist:nF { #1 }
+      {
+        \fontspec_font_if_exist:nF { #1~Regular }
+          {
+            \int_incr:N \g__SM_fonts_not_found_int
+            \msg_warning:nnn { SlideMage } { font-not-found } { #1 }
+          }
+      }
+  }
+
+\cs_new_protected:Nn \__SM_if_fonts_available:nnn
+  {
+    \int_zero:N \g__SM_fonts_not_found_int
+    \clist_map_function:nN { #1 } \__SM_check_font:n
+    \int_compare:nTF { \g__SM_fonts_not_found_int = 0 } { #2 } { #3 }
+  }
+
+% Text and code fonts. fontspec loads with no-math, so that the sans font is in
+% charge of text only; the math fonts are restored further down. Regular is the
+% regular weight and Bold the bold one (Fira's profile maps Light and Regular).
+\sys_if_engine_luatex:TF
+  {
+    \@ifpackageloaded { fontspec }
+      { \PassOptionsToPackage { no-math } { fontspec } }
+      { \RequirePackage [ no-math ] { fontspec } }
+    \__SM_if_fonts_available:nnn
+      {
+        lmsans10-regular.otf, lmsans10-oblique.otf,
+        lmsans10-bold.otf, lmsans10-boldoblique.otf
+      }
+      {
+        \setsansfont
+          [
+            ItalicFont = { lmsans10-oblique.otf },
+            BoldFont = { lmsans10-bold.otf },
+            BoldItalicFont = { lmsans10-boldoblique.otf }
+          ]
+          { lmsans10-regular.otf }
+        \renewcommand { \ttdefault } { lmtt }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+    \__SM_if_fonts_available:nnn
+      { lmmono10-regular.otf, lmmono10-italic.otf, lmmonolt10-bold.otf }
+      {
+        \setmonofont
+          [
+            ItalicFont = { lmmono10-italic.otf },
+            BoldFont = { lmmonolt10-bold.otf }
+          ]
+          { lmmono10-regular.otf }
+      }
+      { \msg_warning:nn { SlideMage } { fonts-not-available } }
+  }
+  { \msg_warning:nn { SlideMage } { requires-lualatex } }
+
+\makeatother
+\ExplSyntaxOff
+
+% Metrics -----------------------------------------------------------------------
+% The ascender of the text font in em, as in the Fira profile. SlideMage_base.tex
+% reads it from the loaded font (luaotfload's OpenType metrics, the font's ascender
+% over its units per em, rounded to four digits) and keeps this number only where
+% the font gives none. Latin Modern Sans gives 0.806.
+\newcommand{\SMFontAscender}{0.806}
+% Running text: \linespread and \parskip. The theme applies them where it is
+% loaded, with the normal font in force, so the em is this font's. Latin Modern
+% Sans sets looser than Fira Sans Light (its x-height is smaller), so the
+% line spacing is Fira's less a little, with the paragraph gap as before.
+\newcommand{\SMLinespread}{1.15}
+\newcommand{\SMParskip}{0.5em}
+
+% Since v10.9.0 this profile holds no length measured against the rendered PDF (as the Fira
+% profile, whose comment has the list): \SMContentTopShift (11.17pt here before) and the two
+% columns corrections (10.17pt, 13.55pt) are measured on the page, the other former calibrations
+% are read from the font (v10.8.0).
+
+% Code fonts ----------------------------------------------------------------------
+% \SMCodeFile (listings) and the like use Latin Modern Mono Regular; the theme's
+% \ttfamily is the same font.
+\newfontfamily\SMCodeFont{lmmono10-regular.otf}[BoldFont=lmmonolt10-bold.otf]
+% Code in running text (\SMCode, \SMCmd): Latin Modern Mono at 95%, Ligatures=TeXOff
+% so that -- and `` show as typed (see the Fira profile).
+\newfontfamily\SMInlineCodeFont{lmmono10-regular.otf}[Scale=0.95, Ligatures=TeXOff]
+% The heading of a card in a diagram (\SMCard).
+\newcommand{\SMCardHeadingFont}{\bfseries}
+
+% Math ------------------------------------------------------------------------------
+% Genuine Computer Modern math next to the sans text, and \text{} upright in Computer
+% Modern, as in the Fira profile (SlideMage_layout_fira.tex has the reasons).
+\usefonttheme[onlymath]{serif}
+\let\SMOrigText\text
+\renewcommand{\text}[1]{\SMOrigText{\usefont{OT1}{cmr}{m}{n}#1}}

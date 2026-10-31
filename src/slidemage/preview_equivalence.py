@@ -13,39 +13,133 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
-from . import compiler, slide_preview
+from . import compiler, slide_preview, slide_snapshot, themes
 
 CONTRACT = 2
-AUDITED_GENERIC_PREAMBLE = "e6a63eb5fc24a367d29feb7b74410fe609e685e8f5f49f24b030e42174f2a995"
+AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59cb4d818b7249"
 AUDITED_FRAMEWORK = {
-    # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); v8.62.0: \SMQRCode, an
-    # image and a caption in a box; 2026-10-29: \SMQRCode's code is a link ([link], or a \url/\href caption) and
-    # every \href's underline (\SMHrefUnderline) is one box, so it stays on its text's line; then \SMQRCode's
-    # caption wider than the code is centred under it (overhanging on both sides); then \href leaves a linked
-    # picture (\includegraphics in its text) without underline (\SMHrefContent). No view-dependent rule.
-    "Slidemaster_preamble_base.tex": "af5185d7cb265931db98417d87c88624b0c4ac2715f58559f3449b581f7f993f",
-    "Slidemaster_preamble_slidemage.tex": "dd0632013b5bcadcfcb4e215e6e2ef69cd3bb35fc08328d3cafe981e3a4d10e6",
-    "beamerthemegotham.sty": "d4ad281be914848d5c6d5ea3a1b8c33e9f168645882744d30c18135150058567",
-    "beamerouterthemegotham.sty": "28c17173e1c039721a4369f07b0458a2859d3435e95acb131353a88258450bb0",
-    "beamerinnerthemegotham.sty": "9a2c86be77ba4e322a6c868f7d23d0136870a9c2fa6734ca7df4738d962ab8fc",
-    "beamercolorthemegotham.sty": "2479108c0ff99173a036d326cab8338fd33f44a94fc8000885a64b8bc36446a5",
-    "beamerfontthemegotham.sty": "08065ad8fd5767ac036e5c53cc1e0c428962c9bdad6afa3f9fa9199ef64a6824",
-    "Slidemaster_alt.lua": "653ffc1ea0292eb01c33f2b050925e051dbbfb4f08e49fbb92819de02117e2a2",
-    "Slidemaster_layout.lua": "80b3e57240e08353b4d7e0d1e9b642c876b39508fd3f0e8ba685e9c5d2860277",
+    # v8.40.0: the slide canvas, card and code colors a template may set (dark mode); no view-dependent rule.
+    # v8.62.0 (merged from develop): \SMQRCode in the base, an image and a caption in a box; no view-dependent rule.
+    # v10.0.0: the setup layer (theme, palette and template settings with their defaults); no view-dependent rule.
+    # v10.1.0 (step 2a): base, the Lua files and the example template only rename gotham... content names to SM...;
+    # no rule, argument or view-dependent branch changed.
+    # v10.1.0 (step 2b): the five Gotham theme files are replaced by beamerthemeSlideMage.sty, a pruned and renamed fork;
+    # it holds no version, footer-hide or deck-label rule (checked by test_the_pins_are_the_frameworks_files...).
+    # v10.2.0 (step 3): the parts of the theme that the base replaced move into the theme (colors, margins, bullets,
+    # logo macro and frame title hook, footer box, footnote and block templates); the frame footer, which carries the
+    # deck label, stays in the base. Re-audited: no version, footer-hide or deck-label rule left the base or entered
+    # the theme (the theme test above still passes), the patches are the same, in the same order, and the setup file
+    # only names the new theme version.
+    # v10.3.0 (step 4): the font loading, the math-font handling and the font metrics move from the theme and the base into
+    # the layout profile SlideMage_layout_fira.tex (new, pinned); the setup layer inputs it before the theme and gains
+    # the Top Margin setting; the base hands the ascender and the Top Margin to SlideMage_measure.lua. Re-audited: no
+    # version, footer-hide or deck-label rule entered the profile (test_the_pins_are_the_frameworks_files... checks it
+    # for the theme and the profile), and the base lost only font code.
+    # v10.4.0 (step 5): the design values become catalog hooks in the setup layer (lengths, ratios, text sizes, margins;
+    # the theme and the base lose their definitions), the font calibrations move into the profile, four obsolete
+    # corrections are 0pt. Re-audited: no version, footer-hide or deck-label rule entered the setup layer, the theme or
+    # the profile (the theme test checks the last two); the base kept the frame footer and its deck-version text.
+    # v10.6.0 (step 7): the layout profile SlideMage_layout_lmsans.tex (new, pinned: Latin Modern Sans, offered to users);
+    # the base writes two more keys into the PDF info dictionary (the ascender and the title bar's bottom edge, for
+    # tools/check_layout.py); the setup file only documents the profiles and the calibration recipe, the fira profile
+    # only a comment. Re-audited: no version, footer-hide or deck-label rule entered either profile (the profile test
+    # checks every profile the framework ships), and the base gained two \hypersetup lines.
+    # v10.7.0 (step 8): the overlay coordinate, the title bar's bottom edge and the footnotes' and the footer number's right
+    # edges are derived in the base (the setup layer guards the four names with an error, both profiles lose the two right
+    # shifts, the theme changes in comments and its version only). Re-audited: no version, footer-hide or deck-label rule
+    # entered or moved; the frame footer gained one \setlength before its \hspace*, the deck-version text is untouched.
+    # v10.8.0 (step 9): the font measurements the profiles held (footer text drop, list label and numeral boxes, footnote
+    # offset, section frame corrections) are evaluated in the font where they are used, in the base, with design hooks in the
+    # setup layer; both profiles keep fonts, metrics and the three top pull-ups; the setup layer guards twelve more names. Re-audited: no
+    # version, footer-hide or deck-label rule entered the base, the setup layer or the profiles; the frame footer gained one call
+    # (the text drop) before its first \vspace*, the deck-version text is untouched, and the theme is unchanged.
+    # v10.9.0 (step 10): the top pull-ups leave both profiles; the base measures where each top-aligned frame's body
+    # begins (a second marker for SlideMage_measure.lua and a reference list typeset in a box that never reaches the
+    # page) and reads \SMContentTopShift back from \jobname.top; a columns environment at the top of a frame the
+    # measurement does not correct measures its correction the same way; the setup layer guards three more names.
+    # Re-audited: no version, footer-hide or deck-label rule entered the base, the Lua file, the setup layer or the
+    # profiles; the .top mechanism adds none (the value is the one most frames of the deck share, and a page compile
+    # keeps the deck's while one of its frames agrees), the frame footer and the theme are unchanged.
+    # Renumbering (before step 11): the redesign's versions v9.0.0-v9.9.0 became v10.0.0-v10.9.0; the pinned files changed in
+    # comments only (version names), so the pins were renewed without any change of rule.
+    # v10.10.0 (step 11): the title frame's text box is placed against the box's bottom edge from the page's corner (a tikz
+    # node, as the colored box is) and \SMTitleframeBottomPad is measured from the bottom of the subtitle's last line; the base writes the
+    # geometric hooks into the PDF info dictionary; the setup layer's comments say what the hooks do, its one default is
+    # new (8.505pt). Re-audited: no version, footer-hide or deck-label rule entered the base or the setup layer; the info
+    # keys are lengths of the template, the same in every view, and the frame footer is unchanged.
+    # v10.11.0 (step 11b): two hooks are renamed and three that moved nothing are removed; the setup layer holds an error macro
+    # under each old name, and the theme keeps the footline box's height and depth as lengths of its own. Re-audited: no version,
+    # footer-hide or deck-label rule entered the setup layer, the base or the theme; the footer line lost an allowance its shift
+    # cancelled, and the regression harness shows every page identical.
+    # Merged from develop (2026-10-29, v9.x there): \SMQRCode's code is a link ([link], or a \url/\href caption),
+    # every \href's underline (\SMHrefUnderline) is one box, so it stays on its text's line, and a caption wider
+    # than the code is centred under it. No view-dependent rule.
+    # v10.12.0 (step 12): a footnote in revealed content is covered on the steps that hide that content (the theme replaces
+    # beamer's two footnote-box definitions, with a cover for an uncovered one), and a columns[T] below other content gets
+    # back its head's pull-up, measured at that point (the base's T key); the "Image source(s)" line is shown on every step.
+    # Re-audited: no version, footer-hide or deck-label
+    # rule entered the base or the theme; the covering follows beamer's overlay steps, which a handout collapses for the
+    # content and its footnotes alike, and the frame footer is unchanged.
+    # v10.12.1: the base's internal expl3 names \SMQRCode and the multi-language text use move to the SM module
+    # (__smqr_ -> __SM_qr_, __sm_mlt_ -> __SM_mlt_). A rename only; no rule changed.
+    # v10.14.0 (step 14): the house citation format moves out of the SlideMage template into the new
+    # latex/SlideMage_bibliography_default.tex (new, pinned), which the template inputs instead of carrying the
+    # format itself. Re-audited: the moved text is the same renewcommand-based format the template already
+    # carried, unaudited (bibliography commands and citation consumers are always unknown, see the contract); no
+    # version, footer-hide or deck-label rule entered or left the template.
+    # Merged from develop (2026-10-30, v9.4.0 there): \href leaves a linked picture (\includegraphics in its text)
+    # without underline (\SMHrefContent). No view-dependent rule.
+    # v10.17.0 (step 17): the catalog's \SMCardHeadingStyle (the setup layer, default the profile's
+    # \SMCardHeadingFont, which the base points at it; the Fira profile's comment says so). A font switch, the same in
+    # every view; no rule changed.
+    # v10.18.0 (step 17b): new catalog hooks in the setup layer (the bullet's drawing \SMBulletSymbol, the footnote
+    # marker \SMFootnoteMark, the colour roles \SMHighlightTitleTextColor, \SMStandoutTextColor, \SMAlertTextColor,
+    # \SMProgressBarColor), which the theme and the base read, each with the value it replaced as default; the theme
+    # keeps only the footnote symbols the text font has (decided once per document, from the font, the same in every
+    # view). New, pinned: the layout profile SlideMage_layout_lmroman.tex (fonts and metrics only, written by
+    # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
+    # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
+    # its deck-version text are unchanged.
+    "SlideMage_setup.tex": "b33a95cabbe911dcdee2a9d1bf9e3568faac33f6742a33386926aa36ba033a8f",
+    "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
+    "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
+    # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
+    # changed), re-audited.
+    "SlideMage_base.tex": "01f9d3c53766b846accaebbbd8910e316edd584fec2860470813ea1d5929db1c",
+    "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
+    "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
+    "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",
+    "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
+    "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
+    "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
+    # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,
+    # \scriptsize redefined after the base). Re-audited: no version, footer-hide or deck-label rule; the sizes are the
+    # same in every view.
+    # v10.19.0 (step 17c): the catalog's \SMBodyFontSize (the setup layer, default 11pt), from which the end of the
+    # base derives \normalsize, \small, \footnotesize, \scriptsize and \tiny; the greyscale template sets 10pt through it
+    # instead of redefining the size commands. Re-audited: font sizes only, the same in every view; no version,
+    # footer-hide or deck-label rule entered the setup layer, the base or the template.
+    "SlideMage_template_greyscale.tex": "aa1d67cfa4aa28f83f5504c93cccb4b9634b173aefb329e8a5d2e20ec54929a1",
 }
-# SHA-256 of the project-root institution templates (Slidemaster_preamble_<key>.tex) whose rules were audited; a
+# SHA-256 of the project-root institution templates (SlideMage_template_<key>.tex) whose rules were audited; a
 # template with another digest is isolated (rendered on its own), never shared between views.
 AUDITED_PROJECT_TEMPLATES = frozenset({
     "fb8bcd1fea2a69ec2086dc8df7843ec336e5801f5ccc467e291095643f578338",
     "13c039dcf2d7e9bdc38363ee782ccd5a34e14fc6786322950bd0cb22f6e11ff8",   # the same with its "template name" line
     "527fa4a6337be2226e7f2badfa3040b9982d95f9c1e5ba760acb6febbf06fafa",   # v8.40.0: \SMDarkMode colors, per deck, not per view
+    "aac9269f3197775e95ffb081672a637f07aae8128b10acd4500d90d94e9b1a66",   # v10.0.0: the same, renamed to SlideMage (names and comments only)
+    "8472abb845208dd1946034ce0dcc7acb160dae3626f0a4bd1483802e56fad20e",   # v10.0.0: that template as the project compatibility update leaves it
+    "f11225e2236aafe1e426ead9eb73572c1fd2d4bb4fbc2a3fc61b17aafe52b38d",   # v10.0.0: the same on the setup layer (settings only, no view-dependent rule)
+    "74e4d515f70f97274875457274acc7746894d40ba245a9e8ce2494f3db9712ff",   # v10.0.0: the v8.40.0 one as the project compatibility update leaves it
+    "2952cf64c3057cfcc7e35c2f00e4398e5e96c032603aecf0945c8f22aaf60549",   # v10.1.0: the same with a comment that names \SMFrametitleRightPadding
 })
 AUDITED_LATEXMKRC = {
-    ".latexmkrc": "b1a1ce4d46229a854d936d870af6e849af21708642c62f7e3c0242fd4625f8e4",
-    "decks/.latexmkrc": "d0588c58f270e748a4eb36576ca122b2801da7da075a3449890b58b92457bd15",
+    ".latexmkrc": "8273d5f38c719ab1e1064fe07ea27a73de7d423ee7d70b2e7e82312b302a73bc",
+    "decks/.latexmkrc": "03c0f5a0a7a825fd3802aeffbdbbd7be90a0bea52e3a1e38d2c127fa488cc0f7",
 }
 
 _VIEWS = ("instructor", "during-course", "after-course")
@@ -91,12 +185,12 @@ _SOURCE_SAFE_ENVIRONMENTS = {
     "frame", "standardframe", "sideimageframe", "figureframe", "quoteframe",
     "sectionframe", "chapterframe", "fullbleedframe", "itemize", "enumerate",
     "columns", "column", "minipage", "center", "flushleft", "flushright",
-    "tabular", "tabularx", "gothamtable", "tikzillustration", "gothamnumitemize",
+    "tabular", "tabularx", "SMTable", "tikzillustration", "SMNumItemize",
     "infoblock", "table", "figure", "tikzpicture", "equation",
     "align", "align*", "block", "alertblock", "exampleblock", "overlayarea",
 }
 _PREAMBLE_SAFE = {
-    "documentclass", "usetheme", "input", "begin", "usepackage", "addbibresource",
+    "documentclass", "input", "begin", "usepackage", "addbibresource",
     "FooterText", "SMFooterHide", "makeatletter", "makeatother", "graphicspath",
     "deckversion", "decklanguage", "hypersetup",
     "SMUseBibliography", "SMBiblatexOptions", "SMBibliographyStyle", "setlength",
@@ -224,7 +318,10 @@ def _source_tree(text: str, root: Path, origin: Path, dependencies: dict[str, st
 def _framework(ctx, dependencies: dict[str, str]):
     root = ctx.root.resolve()
     env = compiler.build_env(ctx)
-    if env.get("TEXINPUTS"):
+    # The installed theme folders build_env puts on TEXINPUTS come after the project root and the framework, and
+    # the same for every view; anything else on it is a custom search path. (A snapshot's env has no TEXINPUTS.)
+    theme_dirs = themes.installed_dirs()
+    if env.get("TEXINPUTS") and env["TEXINPUTS"] != os.pathsep.join([*(str(d) for d in theme_dirs), ""]):
         return "custom TEXINPUTS search path"
     if env.get("LATEXMKRCSYS"):
         return "custom system latexmk configuration"
@@ -257,7 +354,7 @@ def _framework(ctx, dependencies: dict[str, str]):
             return "unaudited deck latexmk search configuration"
     # The pinned stock .latexmkrc uses this exact fallback when the variable
     # is absent. Path('') would instead inspect the process CWD.
-    framework = Path(env["SLIDEMASTER_LATEX"]) if env.get("SLIDEMASTER_LATEX") else root.parent / "latex"
+    framework = Path(env["SLIDEMAGE_LATEX"]) if env.get("SLIDEMAGE_LATEX") else root.parent / "latex"
     if not framework.is_dir():
         return "audited framework directory unavailable"
     for name, expected in AUDITED_FRAMEWORK.items():
@@ -273,7 +370,7 @@ def _framework(ctx, dependencies: dict[str, str]):
         if actual != expected:
             return f"unaudited framework file: {name}"
     try:
-        for base in (root / "decks", root, framework):
+        for base in (root / "decks", root, framework, *(theme_dirs if env.get("TEXINPUTS") else ())):
             for path in (*base.glob("*.sty"), *base.glob("*.cls")):
                 if path.name not in AUDITED_FRAMEWORK:
                     return f"custom package/class in TeX search path: {path.name}"
@@ -297,14 +394,12 @@ def _preamble(spec, dependencies: dict[str, str]):
         return False, "unaudited bundled generic preamble"
     if len(re.findall(r"\\documentclass\b", clean)) != 1:
         return False, "ambiguous document class"
-    if len(re.findall(r"\\usetheme\b", clean)) != 1:
-        return False, "ambiguous theme"
+    # Since v10.0.0 the template loads the theme (SlideMage_setup); a deck that loads one itself is unaudited.
+    if re.search(r"\\use(?:theme|colortheme|fonttheme|innertheme|outertheme)\b", clean):
+        return False, "deck loads a theme itself"
     class_match = re.search(r"\\documentclass(?:\[(?:aspectratio=169)?\])?\s*\{beamer\}", clean)
     if not class_match or _brace_depth(clean, class_match.start()) != 0:
         return False, "unclassified document class"
-    theme_match = re.search(r"\\usetheme\s*\{gotham\}", clean)
-    if not theme_match or _brace_depth(clean, theme_match.start()) != 0:
-        return False, "unclassified theme"
     hide = list(_FOOTER_HIDE.finditer(clean))
     if len(hide) > 1:
         return False, "multiple footer hide definitions"
@@ -319,16 +414,18 @@ def _preamble(spec, dependencies: dict[str, str]):
     reduced = _SAFE_VERSION_GUARD.sub("", reduced)
     reduced = _SAFE_LANGUAGE_GUARD.sub("", reduced)
     reduced = re.sub(r"\\documentclass(?:\[(?:aspectratio=169)?\])?\s*\{beamer\}", "", reduced)
-    reduced = re.sub(r"\\usetheme\s*\{gotham\}", "", reduced)
     framework_imports = []
     for match in _INPUT.finditer(reduced):
         name = match[1] or match[2]
-        if name.startswith("Slidemaster_preamble_"):
+        if name.startswith("SlideMage_template_"):
             framework_imports.append(name)
             if _brace_depth(reduced, match.start()) != 0:
                 return deck_hidden, "scoped or delayed framework import"
-            if name != "Slidemaster_preamble_slidemage":
-                path = root / f"{name}.tex"
+            # A template the framework ships and pins (the SlideMage template, since v10.18.0 also the greyscale
+            # one) is audited with the framework files above; any other is a project's or an installed theme's.
+            if f"{name}.tex" not in AUDITED_FRAMEWORK:
+                # The project's own copy, else an installed theme's (slide_snapshot.template_dirs: TeX's order).
+                path = slide_snapshot.preamble_file(name[len("SlideMage_template_"):], root)
                 if (root / "decks" / path.name).exists():
                     return deck_hidden, "deck shadows institution preamble"
                 try:

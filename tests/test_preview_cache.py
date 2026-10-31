@@ -23,7 +23,7 @@ def fixture(tmp_path):
     package.write_text('THEME ONE')
     pdf = tmp_path / 'render.pdf'
     pdf.write_bytes(b'PDF')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     cache = PreviewCache(root)
     identity = {'source': 'content-hash', 'view': 'instructor', 'options': [False]}
     return cache, identity, env, pdf, source, package

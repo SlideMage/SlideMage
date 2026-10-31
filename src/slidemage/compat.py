@@ -15,8 +15,11 @@ one :class:`Change` in :data:`CHANGES`, added in the same commit as the change
   pending only while it finds something; without one, until it is dealt with;
 - ``migrate(root)``: optional, returns ``{file: new bytes}`` for the files to
   rewrite -- pure planning, :func:`run_update` backs every file up first
-  (.slidemage/backups/<time>/compat/) and writes it atomically. It must be
-  idempotent. decks/#workdeck.tex is not exempt;
+  (.slidemage/backups/<time>/compat/) and writes it atomically. A file to
+  delete maps to ``None``, so a rename is the new name with the bytes plus the
+  old name with ``None``. The update is all or nothing: if a file cannot be
+  written, everything already written is put back. It must be idempotent.
+  decks/#workdeck.tex is not exempt;
 - ``fix``: how to fix it by hand (before/after), for the report.
 
 State lives in the project's .slidemage/project.json, key "compat":
@@ -46,7 +49,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import compat_bibliography, project
+from . import compat_bibliography, compat_hooks, compat_names, compat_own_theme, project
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -73,6 +76,118 @@ def _detect_omitslide(root: Path) -> list[Finding]:
                 findings.append(Finding(path.relative_to(root).as_posix(),
                                         text.count("\n", 0, match.start()) + 1,
                                         "Instructor-only slide is skipped in student deck versions."))
+    return findings
+
+
+# v10.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
+# template or profile that sets them with an error.
+DERIVED_LAYOUT_NAMES = ("SMContentTopAlign", "SMTitleBarBottomAlign", "SMFooterRightShift", "SMFootnoteRightShift")
+_DERIVED = r"\\(" + "|".join(DERIVED_LAYOUT_NAMES) + r")(?![A-Za-z@])"
+# A setting command in front of the name, or a direct assignment after it; reading the name is fine.
+_SETS_DERIVED_NAME = re.compile(
+    r"(?:\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _DERIVED
+    + r"|" + _DERIVED.replace("(", "(?P<assigned>", 1) + r"\s*=")
+
+
+def _detect_derived_layout_names(root: Path) -> list[Finding]:
+    """Project-root templates, layout profiles and project macros that still set a derived name."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_layout_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_DERIVED_NAME.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        f"\\{match.group(1) or match.group('assigned')} is derived now; "
+                                        "remove this line."))
+    return findings
+
+
+# v10.8.0: the font measurements the layout profiles held are evaluated in the font where they are used. The setup
+# layer guards these names like those of v10.7.0 (a profile's \newlength of one is a LaTeX error "already defined",
+# a setting is the "is derived, not set" error); \SMFootlineVOffset is derived from the new hook \SMFootnoteFooterGap.
+GUARDED_V98_NAMES = (
+    "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
+    "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
+    "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection")
+_V98 = r"\\(" + "|".join(GUARDED_V98_NAMES) + r")(?![A-Za-z@])"
+_SETS_V98_NAME = re.compile(
+    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V98
+    + r"|" + _V98.replace("(", "(?P<assigned>", 1) + r"\s*=")
+# \SMEnumerateTextExtra is a hook of the catalog now: setting it is fine, defining it (a profile's \newlength) is not.
+_DEFINES_TEXT_EXTRA = re.compile(r"\\newlength\s*\{?\s*\\(SMEnumerateTextExtra)(?![A-Za-z@])")
+
+
+def _detect_font_measurement_names(root: Path) -> list[Finding]:
+    """Project-root layout profiles, templates and project macros that still define or set a number v10.8.0 derives."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        matches = list(_SETS_V98_NAME.finditer(text))
+        if path.name.startswith("SlideMage_layout_"):
+            matches += list(_DEFINES_TEXT_EXTRA.finditer(text))
+        for match in sorted(matches, key=lambda m: m.start()):
+            if is_commented(text, match.start()):
+                continue
+            name = match.group(1) or match.groupdict().get("assigned")
+            hint = ("set \\SMFootnoteFooterGap instead" if name == "SMFootlineVOffset"
+                    else "it is a hook of the catalog now, remove the \\newlength" if name == "SMEnumerateTextExtra"
+                    else "remove this line")
+            findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                    f"\\{name} is derived from the font now; {hint}."))
+    return findings
+
+
+# v10.9.0: the last three numbers of the layout profiles, the pull-ups of the frames the automatic Top Margin does not
+# correct by their content, are measured on the page. Guarded like v10.8.0's names: a profile's \newlength of one is a
+# LaTeX error "already defined", a setting the "is derived, not set" error.
+GUARDED_V99_NAMES = ("SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation")
+_V99 = r"\\(" + "|".join(GUARDED_V99_NAMES) + r")(?![A-Za-z@])"
+_SETS_V99_NAME = re.compile(
+    r"(?:\\(?:newlength|setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*"
+    r"|\\(?:global\s*)?\\?(?:[egx]?def|let)\s*)" + _V99
+    + r"|" + _V99.replace("(", "(?P<assigned>", 1) + r"\s*=")
+
+
+def _detect_top_pullup_names(root: Path) -> list[Finding]:
+    """Project-root layout profiles, templates and project macros that still define or set a pull-up v10.9.0 measures."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_layout_*.tex", "SlideMage_template_*.tex", "SlideMage_project_macros.tex")
+             for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_V99_NAME.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        f"\\{match.group(1) or match.group('assigned')} is measured on the page now; "
+                                        "remove this line."))
+    return findings
+
+
+# v10.10.0: \SMTitleframeBottomPad is the space from the subtitle's last line to the title box's bottom edge (until then it
+# also held beamer's offset at the top of a frame body, 32.5pt with the SlideMage template's fonts). A project template that
+# sets it gets its title slide's text that much lower.
+_SETS_TITLEFRAME_PAD = re.compile(
+    r"\\(?:setlength|addtolength|(?:re)?newcommand\*?|providecommand\*?)\s*\{?\s*\\SMTitleframeBottomPad(?![A-Za-z@])"
+    r"|\\SMTitleframeBottomPad(?![A-Za-z@])\s*=")
+
+
+def _detect_titleframe_bottom_pad(root: Path) -> list[Finding]:
+    """Project-root templates and project macros that set \\SMTitleframeBottomPad, whose value means something else since v10.10.0."""
+    findings = []
+    paths = [p for pattern in ("SlideMage_template_*.tex", "SlideMage_project_macros.tex") for p in sorted(root.glob(pattern))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in _SETS_TITLEFRAME_PAD.finditer(text):
+            if not is_commented(text, match.start()):
+                findings.append(Finding(path.name, text.count("\n", 0, match.start()) + 1,
+                                        "\\SMTitleframeBottomPad is the space under the subtitle's last line now:"
+                                        "subtract about 32.5pt from this value to keep the title slide's text where it is."))
     return findings
 
 
@@ -171,7 +286,73 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     title="AI routes are provided by plugins",
     description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
     fix="Install the Claude or Ollama plugin from Settings → Plugins.", detect=_detect_ai_settings,
-)]
+), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
+    id="derived-layout-names",
+    since="v10.7.0",
+    severity=BREAKS,
+    title="Four layout positions follow the template's settings and can no longer be set",
+    description=(
+        "\\SMContentTopAlign follows \\SMTopMargin, \\SMTitleBarBottomAlign follows the frame title's "
+        "padding, font and the logo height, and \\SMFooterRightShift and \\SMFootnoteRightShift follow the "
+        "text margin and the logo's right padding. Slides may still read them; a template, layout profile "
+        "or project macros file that sets one stops the compile with an error that names it."),
+    fix=(
+        "Delete the line that sets the name, e.g. \\setlength{\\SMTitleBarBottomAlign}{25.32pt}. To move "
+        "the position, change the setting it follows (\\SMTopMargin, the \\SMFrametitle...Padding lengths, "
+        "\\SMLogoHeight, \\SMTextMarginRight)."),
+    detect=_detect_derived_layout_names,
+), Change(
+    id="font-measurements-derived",
+    since="v10.8.0",
+    severity=BREAKS,
+    title="A layout profile no longer holds the footer, list, footnote and section-frame numbers",
+    description=(
+        "The footer text's drop, the label and numeral boxes of lettered and numbered lists, the footnotes' offset "
+        "and the section frame's corrections are read from the font where they are used, with design hooks in the "
+        "catalog (\\SMLabelItemGap, \\SMEnumerateNestedSlotExtra, \\SMEnumerateNestedLabelGap, \\SMEnumerateTextExtra, "
+        "\\SMFootnoteFooterGap, \\SMSectionframeTitleGap). A project layout profile that still defines "
+        "\\SMFooterTextDrop, \\SMEnumerateLabelBox, \\SMEnumerateNestedLabelSep, \\SMEnumerateNestedLeftMargin, "
+        "\\SMEnumerateNestedMinNumber, \\SMEnumerateTextExtra, \\SMLabelItemWidth, \\SMLabelItemSep or one of the four "
+        "\\SMSectionframe corrections stops the compile with a LaTeX error at its \\newlength; a template or profile "
+        "that sets one of them or \\SMFootlineVOffset gets the error that names the name."),
+    fix=(
+        "Delete the lines that define or set these names from the profile or template; the framework derives them "
+        "from the font. To move the footnotes, set \\SMFootnoteFooterGap (the clear space between the last "
+        "footnote line's descenders and the footer box) instead of \\SMFootlineVOffset; to change a list's gaps, "
+        "set \\SMLabelItemGap, \\SMEnumerateNestedLabelGap or \\SMEnumerateNestedSlotExtra."),
+    detect=_detect_font_measurement_names,
+), Change(
+    id="top-pullups-measured",
+    since="v10.9.0",
+    severity=BREAKS,
+    title="A layout profile no longer holds the top pull-ups",
+    description=(
+        "\\SMContentTopShift (where a frame with \\SMManualTopMargin, a section frame or a deck with "
+        "\\SMAutoTopMarginfalse starts its body) and \\SMColumnsTopCorrection and \\SMColumnsTTopCompensation (a "
+        "columns environment that starts such a frame) are measured on the page, so they follow the template's "
+        "title bar and Top Margin and the profile's font. A project layout profile that still defines one stops "
+        "the compile with a LaTeX error at its \\newlength; a template or profile that sets one gets the error that "
+        "names it. Slides may still read them."),
+    fix=(
+        "Delete the lines that define or set these three names from the profile or template; no number replaces "
+        "them. To move the first line of every frame, change \\SMTopMargin in the template."),
+    detect=_detect_top_pullup_names,
+), Change(
+    id="titleframe-bottom-pad",
+    since="v10.10.0",
+    severity=APPEARANCE,
+    title="The title slide's bottom pad is the space under the subtitle",
+    description=(
+        "\\SMTitleframeBottomPad is now the space from the bottom of the subtitle's last line to the title "
+        "box's bottom edge, and the text is placed against that edge from the page's corner. Until now the hook also "
+        "held beamer's offset at the top of a frame body (32.5pt with the SlideMage template's fonts), so a value "
+        "was the space plus that offset. The default went from 41pt to 8.505pt and looks the same. A project "
+        "template that sets the hook gets its title slide's text lower by about 32.5pt."),
+    fix=(
+        "In the template, subtract about 32.5pt from the value of \\SMTitleframeBottomPad, or delete the line to "
+        "take the default; then set the space you want under the subtitle's last line."),
+    detect=_detect_titleframe_bottom_pad,
+), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
@@ -189,6 +370,7 @@ class Evaluation:
     loud: list[Pending] = field(default_factory=list)      # shown in the dialog
     quiet: list[Pending] = field(default_factory=list)     # appearance only
     newer_notice: str = ""     # "vX": the project was used by a newer SlideMage
+    environment_notes: list[str] = field(default_factory=list)   # old environment variables still set
 
     @property
     def everything(self) -> list[Pending]:
@@ -252,7 +434,7 @@ def _tuple(version: str) -> Optional[tuple[int, ...]]:
 def evaluate(root: Path, app_version: str, changes: Optional[list[Change]] = None) -> Evaluation:
     """What is pending for `root` when it is opened with `app_version`."""
     changes = CHANGES if changes is None else changes
-    result = Evaluation()
+    result = Evaluation(environment_notes=project.legacy_env_notes())
     base, current = _tuple(checked_version(root)), _tuple(app_version)
     skipped = dismissed_ids(root)
     for change in changes:
@@ -294,7 +476,7 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
     if project.is_snapshot(root) and not dry_run:
         result.errors.append("This project is a deck snapshot; snapshots are never updated.")
         return result
-    plan: dict[Path, bytes] = {}
+    plan: dict[Path, Optional[bytes]] = {}
     for item in pending:
         if item.change.migrate is None:
             continue
@@ -305,21 +487,45 @@ def run_update(root: Path, pending: list[Pending], *, dry_run: bool = False,
             result.errors.append(f"{item.change.id}: {exc}")
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
     backup = root / BACKUP_DIR / stamp / "compat"
+    todo: list[tuple[Path, str, Optional[bytes]]] = []
     for path, data in sorted(plan.items()):
-        rel = path.relative_to(root).as_posix()
-        if path.is_file() and path.read_bytes() == data:
+        if (data is None and not path.is_file()) or (data is not None and path.is_file() and path.read_bytes() == data):
             continue
-        result.changed.append(rel)
-        if dry_run:
-            continue
-        try:
+        todo.append((path, path.relative_to(root).as_posix(), data))
+    result.changed = [rel for _path, rel, _data in todo]
+    if dry_run or not todo:
+        return result
+    # Back everything up before the first change, so a failure leaves the project as it was.
+    try:
+        for path, rel, _data in todo:
             if path.is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
                 (backup / rel).write_bytes(path.read_bytes())
                 result.backup = backup
-            atomic_write(path, data)
-        except OSError as exc:
-            result.errors.append(f"{rel}: {exc}")
+    except OSError as exc:
+        result.errors.append(f"backup failed, nothing was changed: {exc}")
+        result.changed = []
+        return result
+    done: list[tuple[Path, Optional[bytes]]] = []        # (file, what it held before; None = it did not exist)
+    try:
+        for path, _rel, data in sorted(todo, key=lambda item: item[2] is None):    # writes first, removals last
+            before = path.read_bytes() if path.is_file() else None
+            if data is None:
+                path.unlink()
+            else:
+                atomic_write(path, data)
+            done.append((path, before))
+    except OSError as exc:
+        result.errors.append(f"{path.relative_to(root).as_posix()}: {exc}; the project was put back as it was")
+        for undone, before in reversed(done):
+            try:
+                if before is None:
+                    undone.unlink(missing_ok=True)
+                else:
+                    atomic_write(undone, before)
+            except OSError as undo_exc:
+                result.errors.append(f"{undone.relative_to(root).as_posix()}: could not be put back: {undo_exc}")
+        result.changed = []
     return result
 
 
@@ -339,6 +545,8 @@ def report_markdown(root: Path, evaluation: Evaluation, app_version: str) -> str
     if evaluation.newer_notice:
         lines += [f"> This project was last used with SlideMage {evaluation.newer_notice}, "
                   f"which is newer than {app_version}; features of that version may not work here.", ""]
+    if evaluation.environment_notes:
+        lines += ["## Environment variables", "", *[f"- {note}" for note in evaluation.environment_notes], ""]
     if not evaluation.everything:
         lines += ["Nothing to report.", ""]
     else:
@@ -362,6 +570,7 @@ def report_data(evaluation: Evaluation, app_version: str) -> dict:
     return {
         "app_version": app_version,
         "newer_notice": evaluation.newer_notice,
+        "environment_notes": evaluation.environment_notes,
         "changes": [{
             "id": p.change.id, "since": p.change.since, "severity": p.change.severity,
             "title": p.change.title, "description": p.change.description, "fix": p.change.fix,
@@ -404,7 +613,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         for error in done.errors:
             print("error:", error, file=sys.stderr)
         evaluation = evaluate(root, VERSION_NUMBER)
-    if evaluation.everything:      # files only when there is something to hand on
+    if evaluation.everything or evaluation.environment_notes:      # files only when there is something to hand on
         write_report(root, evaluation, VERSION_NUMBER)
     if args.json:
         print(json.dumps(report_data(evaluation, VERSION_NUMBER), indent=2))

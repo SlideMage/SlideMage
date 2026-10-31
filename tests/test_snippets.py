@@ -35,7 +35,7 @@ def test_the_next_snippet_of_a_slide_takes_the_lowest_free_number(ctx, folder):
 
 def test_a_snippet_must_lie_inside_the_folder_and_is_created_once(ctx, folder):
     with pytest.raises(ValueError):
-        snippets.resolve(ctx, "snippets/../Slidemaster.bib")
+        snippets.resolve(ctx, "snippets/../SlideMage.bib")
     with pytest.raises(ValueError):
         snippets.resolve(ctx, "slides/x.tex")
     for folder_itself in ("snippets", "snippets/", "snippets/."):

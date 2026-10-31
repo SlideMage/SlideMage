@@ -30,7 +30,7 @@ WHEN = datetime(2026, 10, 7, 14, 12, 30)
 
 DECK = r"""\documentclass{beamer}
 \def\input@path{{../}}
-\input{Slidemaster_preamble_uni-graz}
+\input{SlideMage_template_acme}
 \deckoutputfolder{D:/Teaching/Somewhere}
 \begin{document}
 \slide{1aa-EN-One}
@@ -54,17 +54,18 @@ def tree(tmp_path, monkeypatch):
     write(root / "decks" / "t-Deck.tex", DECK)
     write(root / "decks" / "t-Deck-extra.tex", DECK)
     write(root / "decks" / "t-Other.tex", DECK)
-    write(root / "Slidemaster_preamble_uni-graz.tex", "graz\n")
-    write(root / "Slidemaster.bib", "@book{x, title={X}}\n")
+    write(root / "SlideMage_template_acme.tex", "graz\n")
+    write(root / "SlideMage.bib", "@book{x, title={X}}\n")
+    write(root / "SlideMage_layout_mine.tex", "% a project's own layout profile\n")
     write(root / "slides" / "1aa-EN-One-current.tex", "slide one\n")
     write(root / "slides" / "1bb-EN-Unused-current.tex", "not used\n")
     write(root / "media" / "used.png", b"png")
     write(root / "media" / "unused.png", b"png")
     write(root / "media" / "alt-text.csv", "image,short\nmedia/used.png,x\n")
     write(root / ".build" / "junk.aux", "aux")
-    write(framework / "Slidemaster_preamble_base.tex", "base\n")
-    write(framework / "Slidemaster_alt.lua", "-- lua\n")
-    write(framework / "beamerthemegotham.sty", "gotham\n")
+    write(framework / "SlideMage_base.tex", "base\n")
+    write(framework / "SlideMage_alt.lua", "-- lua\n")
+    write(framework / "beamerthemeSlideMage.sty", "theme\n")
     write(texroot / "tex" / "latex" / "beamer" / "beamer.cls", "beamer\n")
 
     monkeypatch.setattr(deck_snapshot, "tex_roots", lambda: [texroot])
@@ -88,18 +89,19 @@ def tree(tmp_path, monkeypatch):
         inputs = [
             wrapper,
             cwd / "decks" / deck_file,
-            cwd / "Slidemaster_preamble_uni-graz.tex",
+            cwd / "SlideMage_template_acme.tex",
+            cwd / "SlideMage_layout_mine.tex",
             cwd / "slides" / "1aa-EN-One-current.tex",
             cwd / "media" / "used.png",
-            fw / "Slidemaster_preamble_base.tex",
-            fw / "beamerthemegotham.sty",
+            fw / "SlideMage_base.tex",
+            fw / "beamerthemeSlideMage.sty",
             texroot / "tex" / "latex" / "beamer" / "beamer.cls",
         ]
         if state["leak"] is not None:
             inputs.append(state["leak"])
         return deck_snapshot._JobOutput(
             job_name=jobname, pdf=pdf, inputs=inputs, log_text="Package: beamer 2025/06/02 v3.75\n",
-            bib_sources=[cwd / "Slidemaster.bib"])
+            bib_sources=[cwd / "SlideMage.bib"])
 
     monkeypatch.setattr(deck_snapshot, "run_recorded_compile", fake_compile)
     decks = {d.name: d for d in deck_scan.scan_dir(root / "decks", archived=False)}
@@ -165,15 +167,15 @@ def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     snap = result.path
     assert snap == root / "snapshots" / "t-Deck_2026-10-07_14-12"
     proj = snap / "Proj"
-    for rel in ("decks/t-Deck.tex", "Slidemaster_preamble_uni-graz.tex",
-                "slides/1aa-EN-One-current.tex", "media/used.png", "Slidemaster.bib",
+    for rel in ("decks/t-Deck.tex", "SlideMage_template_acme.tex", "SlideMage_layout_mine.tex",
+                "slides/1aa-EN-One-current.tex", "media/used.png", "SlideMage.bib",
                 ".latexmkrc", "decks/.latexmkrc", "slide_ids.csv", "media/alt-text.csv"):
         assert (proj / rel).is_file(), rel
     for rel in ("slides/1bb-EN-Unused-current.tex", "media/unused.png", ".build/junk.aux",
                 "decks/t-Other.tex"):
         assert not (proj / rel).exists(), rel
     # the framework, whole, where the project's .latexmkrc looks for it
-    assert (snap / "SlideMage" / "latex" / "Slidemaster_alt.lua").is_file()
+    assert (snap / "SlideMage" / "latex" / "SlideMage_alt.lua").is_file()
     # TeX distribution files are recorded, not copied
     assert not list(snap.rglob("beamer.cls"))
     manifest = json.loads((snap / "snapshot.json").read_text(encoding="utf-8"))
@@ -265,12 +267,12 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
     fw = root.parent / "SlideMage" / "latex"
     inv = root / ".build" / f"{jobname}-x"
     write(inv / f"{jobname}.fls", "\n".join(f"INPUT {p}" for p in (
-        root / "decks" / "t-Deck.tex", root / "Slidemaster_preamble_uni-graz.tex",
+        root / "decks" / "t-Deck.tex", root / "SlideMage_template_acme.tex",
         root / "slides" / "1aa-EN-One-current.tex", root / "media" / "used.png",
-        fw / "Slidemaster_preamble_base.tex", fw / "beamerthemegotham.sty",
+        fw / "SlideMage_base.tex", fw / "beamerthemeSlideMage.sty",
         texroot / "tex" / "latex" / "beamer" / "beamer.cls")) + "\n")
     write(inv / f"{jobname}.log", "Package: beamer 2025/06/02 v3.75\n")
-    write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'Slidemaster.bib'}'\n")
+    write(inv / f"{jobname}.blg", f"Found BibTeX data source '{root / 'SlideMage.bib'}'\n")
     pdf = write(root / "pdf" / f"{jobname}.pdf", f"%PDF fake {jobname}".encode())
     assert compile_records.write_record(ctx, jobname, inv, root / "decks" / "_w.tex",
                                         compiler.wrapper_text(ctx, compiler.CompileJob(
@@ -529,10 +531,10 @@ def test_snapshot_project_is_recognized_and_uses_its_own_framework_and_dates(ope
     assert project.snapshot_info(opened_snapshot)["deck_name"] == "t-Deck"
     assert project.snapshot_manifest(opened_snapshot)["deck_name"] == "t-Deck"
 
-    env = {"TEXINPUTS": "D:/elsewhere", "SLIDEMASTER_LATEX": "D:/live/latex", "PATH": "x"}
+    env = {"TEXINPUTS": "D:/elsewhere", "SLIDEMAGE_LATEX": "D:/live/latex", "PATH": "x"}
     adjusted = project.snapshot_compile_env(opened_snapshot, env)
     assert "TEXINPUTS" not in adjusted
-    assert Path(adjusted["SLIDEMASTER_LATEX"]) == opened_snapshot.parent / "SlideMage" / "latex"
+    assert Path(adjusted["SLIDEMAGE_LATEX"]) == opened_snapshot.parent / "SlideMage" / "latex"
     assert adjusted["SOURCE_DATE_EPOCH"] == str(int(WHEN.timestamp()))
     assert adjusted["FORCE_SOURCE_DATE"] == "1" and adjusted["PATH"] == "x"
     # an ordinary project's environment is left alone
@@ -615,15 +617,14 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
     shutil.copytree(repo / "example", tmp_path / "example",
                     ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
     root = tmp_path / "example"
-    monkeypatch.setenv("SLIDEMASTER_LATEX", str(tmp_path / "latex"))
-    monkeypatch.setenv("SLIDEMASTER_PROJECT", str(root))
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(tmp_path / "latex"))
+    monkeypatch.setenv("SLIDEMAGE_PROJECT", str(root))
     ctx = ProjectContext.at(root)
     omit = (r"\omitslideversion{1an-EN-Slide-Versions}{1-0-0}" if pinned
             else r"\omitslide{1an-EN-Slide-Versions}")
     write(root / "decks" / "omit-test.tex", r"""\documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 \makeatletter\def\input@path{{../}}\makeatother
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Omission test}
 \ifdefined\deckversionoverride\deckversion[\deckversionoverride]\fi
 \typeout{SM TEST deck version: \SMDeckVersion}

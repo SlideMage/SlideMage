@@ -17,20 +17,20 @@ def make_project(root):
     (root / "decks" / "course.tex").write_text("% a citation in the deck\n", encoding="utf-8")
     (root / "decks" / "archive" / "old.tex").write_text("citation again\n", encoding="utf-8")
     (root / "decks" / "_slidemage_preview-1.tex").write_text("citation in a throwaway\n", encoding="utf-8")
-    (root / "Slidemaster.bib").write_text("@book{key,\n  title = {A Citation}\n}\n", encoding="utf-8")
+    (root / "SlideMage.bib").write_text("@book{key,\n  title = {A Citation}\n}\n", encoding="utf-8")
 
 
 def test_the_files_searched_are_slides_decks_and_the_bibliography(tmp_path):
     make_project(tmp_path)
     assert [p.relative_to(tmp_path).as_posix() for p in slide_search.project_files(tmp_path)] == [
         "slides/1ab-EN-Intro-current.tex", "slides/1cd-EN-Other-current.tex",
-        "decks/course.tex", "decks/archive/old.tex", "Slidemaster.bib"]
+        "decks/course.tex", "decks/archive/old.tex", "SlideMage.bib"]
 
 
 def test_a_hit_names_the_file_the_line_and_the_text_around_the_match(tmp_path):
     make_project(tmp_path)
     hits = slide_search.search_project("citation", tmp_path)       # any case
-    assert [h.title for h in hits] == ["1ab · Intro", "decks/course.tex", "decks/archive/old.tex", "Slidemaster.bib"]
+    assert [h.title for h in hits] == ["1ab · Intro", "decks/course.tex", "decks/archive/old.tex", "SlideMage.bib"]
     slide = hits[0]
     assert (slide.path.name, slide.line) == ("1ab-EN-Intro-current.tex", 3)
     assert "Some text about CITATION keys \\end{standardframe}" in slide.snippet        # newlines collapsed

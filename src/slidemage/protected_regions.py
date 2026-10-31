@@ -8,7 +8,7 @@ cannot understand: mask_protected_regions() replaces the file's own leading head
 \\setSlideVersion{} line with opaque `%%%PROTECTED_N%%%` placeholder tokens, and says where they were.
 That is version-tracking metadata SlideMage maintains itself.
 
-(2026-10-30, direct request, after slide tjn: \\vbox to 0pt{...} blocks -- Slidemaster_preamble_base.tex's
+(2026-10-30, direct request, after slide tjn: \\vbox to 0pt{...} blocks -- SlideMage_base.tex's
 own absolute-overlay idiom, see README.md's "Available layouts" section -- used to be protected too, as
 calibrated positioning math. On tjn the model refused to turn annotation lines into arrows or move a label
 and a box, because they all sat in such a block. They are ordinary slide content the user wants the AI to

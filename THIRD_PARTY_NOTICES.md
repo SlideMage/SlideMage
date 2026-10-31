@@ -31,7 +31,7 @@ built with.
 |---|---|---|
 | Roboto, Roboto Mono, Roboto Condensed (fonts) | SIL Open Font License 1.1 | `slidemage/assets/fonts/`, texts next to the files |
 | Material Icons (font) | Apache-2.0 | `slidemage/assets/fonts/` |
-| Gotham beamer theme (`latex/`) | LPPL-1.3c, © Romain Noël | unchanged from release v1.2.5.a (https://gitlab.com/RomainNOEL/beamertheme-gotham) |
+| SlideMage beamer theme (`latex/beamerthemeSlideMage.sty`) | LPPL-1.3c, © Romain Noël (original work) and © Stefan Palan, Jürgen Fleiß (modifications) | a modified version of the Gotham beamer theme, release v1.2.5.a; the unmodified original is at https://gitlab.com/RomainNOEL/beamertheme-gotham |
 | Qt WebEngine (Chromium; the Claude Code terminal) | LGPL-3.0 with Chromium's own third-party licences | part of PySide6_WebEngine; the licence list is in the Qt documentation (https://doc.qt.io/qt-6/qtwebengine-attribution.html) |
 | The Python runtime | PSF-2.0 | https://www.python.org/ |
 

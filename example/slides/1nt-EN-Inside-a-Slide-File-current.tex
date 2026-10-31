@@ -11,7 +11,7 @@
 	Lines that start with \SMCode{\%\%} belong to SlideMage, which keeps them up
 	to date; everything else is yours. The footer tells every reader which slide,
 	version and deck they are looking at.
-	\par\medskip
+	\par
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.52\linewidth}
 			\SMCodeFile{snippets/1nt-1.tex}
@@ -24,21 +24,40 @@
 			\end{itemize}
 		\end{column}
 	\end{columns}
-	% x positions measured on the compiled footer. The id block is flush right
-	% and ends where the former compile date and time started: the arrows sit
-	% \dx (the width of " | 2026-10-18 12:00", measured here) right of that.
-	% The labels end at their arrows, the leftmost arrow with the lowest label.
-	\sbox0{\fontsize{4}{4}\selectfont\ | 2026-10-18 12:00}%
-	\pgfmathsetmacro{\dx}{\the\wd0}%
+	% The arrows end on the items of this slide's own footer, whose places follow from what the template sets: the
+	% footer box's height, the footer fonts, the logo's padding edge. The pieces are measured here, in the footer's
+	% fonts, as the footer sets them: the frame number ends on the padding edge, 2em before it the id block ends,
+	% and the left text begins after the footer's side padding.
+	\sbox0{\usebeamerfont{footline}\hspace*{\SMFootlineSidePadding}}\edef\ntpad{\the\wd0}%
+	\sbox0{\usebeamerfont{footline}\FooterText}\edef\nttext{\the\wd0}%
+	\sbox0{\usebeamerfont{footline}\SMNavigationLinks}\edef\ntnav{\the\wd0}%
+	\sbox0{\usebeamerfont{footline}\insertframenumber}\edef\ntnum{\the\wd0}%
+	\sbox0{\usebeamerfont{footline}\hspace*{2em}}\edef\ntgap{\the\wd0}%
+	\sbox0{\SMFooterIDSize\slideID}\edef\ntid{\the\wd0}%
+	\sbox0{\SMFooterIDSize\ | }\edef\ntsep{\the\wd0}%
+	\sbox0{\SMFooterIDSize v\slideVersion\SMSlideLanguageFooterTag}\edef\ntver{\the\wd0}%
+	\sbox0{\SMFooterIDSize\SMDeckVersionText)}\edef\ntdeck{\the\wd0}%
+	\edef\ntright{\the\dimexpr\paperwidth-\SMFrametitleRightPadding\relax}% the frame number ends here
+	\edef\ntend{\the\dimexpr\ntright-\ntnum-\ntgap\relax}% the id block ends here
+	\edef\ntxnum{\the\dimexpr\ntright-\ntnum/2\relax}%
+	\edef\ntxdeck{\the\dimexpr\ntend-\ntdeck/2\relax}%
+	\edef\ntxver{\the\dimexpr\ntend-\ntdeck-\ntsep-\ntver/2\relax}%
+	\edef\ntxid{\the\dimexpr\ntend-\ntdeck-\ntsep-\ntver-\ntsep-\ntid/2\relax}%
+	\edef\ntxtext{\the\dimexpr\ntpad+\nttext/2\relax}%
+	\edef\ntxnav{\the\dimexpr\ntpad+\nttext+\ntnav/2\relax}%
+	\edef\ntxlabel{\the\dimexpr\SMTextMarginLeft-1.5pt\relax}% a label never starts left of the text margin
+	\edef\ntbottom{\the\dimexpr\SMFooterBoxHeight+1.74pt\relax}% the arrows end just above the footer box
 	\begin{tikzpicture}[overlay, remember picture, x=1pt, y=1pt,
 			every node/.style={font=\scriptsize, text=c_primary_highlight, inner sep=1.5pt},
-			lbl/.style={gotham arrow, c_primary_highlight}]
+			lbl/.style={SMArrow, c_primary_highlight}]
 		\coordinate (o) at (current page.south west);
-		\draw[lbl] ($(o)+(32,44)$) node[above right=0pt and -10pt] {the deck's \SMCmd{FooterText}} -- ($(o)+(32,9)$);
-		\draw[lbl] ($(o)+(122,26)$) node[above right=0pt and -10pt] {navigation links (\SMCmd{SMNavigationBar})} -- ($(o)+(122,9)$);
-		\draw[lbl] ($(o)+(348+\dx,30)$) node[above left=0pt and -6pt] {slide ID} -- ($(o)+(348+\dx,9)$);
-		\draw[lbl] ($(o)+(362+\dx,42)$) node[above left=0pt and -6pt] {version and language} -- ($(o)+(362+\dx,9)$);
-		\draw[lbl] ($(o)+(386+\dx,54)$) node[above left=0pt and -6pt] {deck version} -- ($(o)+(386+\dx,9)$);
-		\draw[lbl] ($(o)+(444,66)$) node[above left=0pt and -2pt] {slide number} -- ($(o)+(444,9)$);
+		\pgfmathsetmacro{\ntlabelx}{max(\ntxtext-10pt, \ntxlabel)}%
+		\draw[lbl] ($(o)+(\ntxtext,\ntbottom)+(0,35pt)$) -- ($(o)+(\ntxtext,\ntbottom)$);
+		\node[anchor=south west] at ($(o)+(\ntlabelx pt,\ntbottom)+(0,35pt)$) {the deck's \SMCmd{FooterText}};
+		\draw[lbl] ($(o)+(\ntxnav,\ntbottom)+(0,17pt)$) node[above right=0pt and -10pt] {navigation links (\SMCmd{SMNavigationBar})} -- ($(o)+(\ntxnav,\ntbottom)$);
+		\draw[lbl] ($(o)+(\ntxid,\ntbottom)+(0,21pt)$) node[above left=0pt and -6pt] {slide ID} -- ($(o)+(\ntxid,\ntbottom)$);
+		\draw[lbl] ($(o)+(\ntxver,\ntbottom)+(0,33pt)$) node[above left=0pt and -6pt] {version and language} -- ($(o)+(\ntxver,\ntbottom)$);
+		\draw[lbl] ($(o)+(\ntxdeck,\ntbottom)+(0,45pt)$) node[above left=0pt and -6pt] {deck version} -- ($(o)+(\ntxdeck,\ntbottom)$);
+		\draw[lbl] ($(o)+(\ntxnum,\ntbottom)+(0,57pt)$) node[above left=0pt and -2pt] {slide number} -- ($(o)+(\ntxnum,\ntbottom)$);
 	\end{tikzpicture}%
 \end{standardframe}

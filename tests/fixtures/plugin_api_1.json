@@ -61,6 +61,7 @@
     "SlideContext",
     "StaleFileError",
     "T",
+    "TABLE_ENVIRONMENT",
     "TITLE",
     "TRANSLATE",
     "TYPE_CHECKING",

@@ -29,7 +29,7 @@ def compiled(tmp_path, monkeypatch):
     deck = write(root / "decks" / "t-Deck.tex", "deck\n")
     slide = write(root / "slides" / "1aa-EN-One-current.tex", "slide\n")
     image = write(root / "media" / "a.png", b"png")
-    bib = write(root / "Slidemaster.bib", "@book{x}\n")
+    bib = write(root / "SlideMage.bib", "@book{x}\n")
     cache = write(tmp_path / "MiKTeX" / "luatex-cache" / "fonts" / "fira.luc", b"cache")
     build = root / ".build"
     inv = build / "t-Deck-instructor-abc"
@@ -67,7 +67,7 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     assert why == ""
     assert fresh.pdf == c["pdf"]
     assert sorted(p.name for p in fresh.inputs) == [
-        "1aa-EN-One-current.tex", "Slidemaster.bib", "a.png", "t-Deck.tex"]
+        "1aa-EN-One-current.tex", "SlideMage.bib", "a.png", "t-Deck.tex"]
     assert fresh.bib_sources == [Path(os.path.normpath(c["bib"]))]
     assert "Package: beamer 2026/01/22 v3.77" in fresh.log_text
     assert fresh.started == int(c["started"])
@@ -85,7 +85,7 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     (lambda c: write(c["pdf"], b"%PDF other"), "t-Deck-instructor.pdf was replaced"),
     (lambda c: c["pdf"].unlink(), "t-Deck-instructor.pdf is gone"),
     (lambda c: c["image"].unlink(), "a.png is gone"),
-    (lambda c: write(c["bib"], "@book{y}\n"), "Slidemaster.bib changed"),
+    (lambda c: write(c["bib"], "@book{y}\n"), "SlideMage.bib changed"),
 ])
 def test_stale_when_pdf_or_input_changes(compiled, change, reason):
     record(compiled)

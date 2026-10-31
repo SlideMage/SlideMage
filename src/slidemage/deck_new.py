@@ -14,7 +14,6 @@ from .project import ProjectContext
 
 DECK_TEXT = r"""% !TeX program = lualatex
 \documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
 
 % Compile from the project root or from decks/ (see README.md, "Directory layout").
 \makeatletter
@@ -22,7 +21,7 @@ DECK_TEXT = r"""% !TeX program = lualatex
 \makeatother
 \graphicspath{{../}}
 
-\input{Slidemaster_preamble_@TEMPLATE@}
+\input{SlideMage_template_@TEMPLATE@}
 
 \newcommand{\FooterText}{@FOOTER@}
 

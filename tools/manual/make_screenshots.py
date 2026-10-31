@@ -305,7 +305,7 @@ def shot_compile_job(shooter: Shooter) -> None:
 
     window = shooter.window
     shooter.focus(SLIDE)
-    root = Path(os.environ["SLIDEMASTER_PROJECT"])
+    root = Path(os.environ["SLIDEMAGE_PROJECT"])
     names = {"manual-instructor": "manual · Instructor", "manual-during-course": "manual · During course",
              "manual-after-course": "manual · After course"}
     run = RunStatus(names, root=root, verb="Compiling", pdfs={n: root / "decks" / "pdf" / f"{n}.pdf" for n in names})
@@ -358,7 +358,7 @@ def shot_sheets(shooter: Shooter) -> None:
                          is_dirty=window.centre.is_dirty)
     shooter.sheet_shot("add-slide-existing", sheet)
     sheet.close()
-    templates = [(key, key) for key in ("gotham", "uni-graz")]
+    templates = [(key, key) for key in ("slidemage", "stress-test")]
     sheet = DeckSettingsSheet(window, deck, templates)
     for index, name in enumerate(("general", "output")):
         shooter.sheet_shot(f"deck-settings-{name}", sheet, index)
@@ -369,7 +369,7 @@ def shot_sheets(shooter: Shooter) -> None:
     sheet = DeckGroupSheet(window, "Tags", ("course",), groups=window.deck_groups, edit_groups=True)
     shooter.sheet_shot("deck-group", sheet)
     sheet.close()
-    path = Path(os.environ["SLIDEMASTER_PROJECT"]) / "slides" / TRANSCRIPT_FILE
+    path = Path(os.environ["SLIDEMAGE_PROJECT"]) / "slides" / TRANSCRIPT_FILE
     entry = transcript.generate_single_slide(window.project, path.read_text(encoding="utf-8"), TRANSCRIPT_FILE[:3], "during-course", "en")
     sheet = TranscriptPreviewSheet(window, f"Transcript: {TRANSCRIPT_FILE[:3]}", transcript.to_html(entry, "Transcript preview"))
     shooter.sheet_shot("transcript", sheet)
@@ -414,8 +414,8 @@ def make_manual_images(out_dir: Path) -> None:
 
 def run(args: argparse.Namespace, work: Path) -> None:
     project = prepare_project(work)
-    os.environ["SLIDEMASTER_PROJECT"] = str(project)
-    os.environ["SLIDEMASTER_LATEX"] = str(work / "latex")     # the copy's framework, also when the repo is on another drive
+    os.environ["SLIDEMAGE_PROJECT"] = str(project)
+    os.environ["SLIDEMAGE_LATEX"] = str(work / "latex")     # the copy's framework, also when the repo is on another drive
     os.environ["QT_SCALE_FACTOR"] = str(args.scale)
     # On Windows the offscreen platform no longer matches the bundled Roboto weights (v8.27.3: every weight is its own
     # file), and labels fall back to the icon font; the native platform draws them, the window is never on screen.

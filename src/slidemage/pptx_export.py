@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exports a compiled deck PDF as a PowerPoint file with one full-bleed
 image per PDF page (2026-08-27, direct instruction) -- lets PowerPoint's
-own recording/presenter tools be used with a SlideMaster deck, which
+own recording/presenter tools be used with a SlideMage deck, which
 PowerPoint can't open directly (it's a PDF, not a native .pptx).
 
 Every beamer overlay/reveal step of one \\slide{} call is stacked onto a

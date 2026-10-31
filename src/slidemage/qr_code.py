@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """QR codes for slides (2026-10-25, direct instruction): a link, an email, a contact, a
 calendar event or a map location as a QR code file, and the \\SMQRCode call that puts it on a
-slide (Slidemaster_preamble_base.tex). Used by the Source view's "Insert QR" dialog
+slide (SlideMage_base.tex). Used by the Source view's "Insert QR" dialog
 (ui/dialogs/qr_code.py) and the agent's make_qr_code tool.
 
 * What a phone reads: `payload()` turns the fields of a kind into the text the code holds --
@@ -111,7 +111,7 @@ def default_error(kind: str) -> str:
 
 
 def normalize_url(text: str) -> str:
-    """`text` as a full link: "uni-graz.at/x" gets https://. ValueError when it cannot be one."""
+    """`text` as a full link: "example.org/x" gets https://. ValueError when it cannot be one."""
     url = text.strip()
     if not url:
         raise ValueError("Enter the link.")
@@ -364,7 +364,7 @@ def snippet(image: str, height: float, caption: str, link: str = "") -> str:
 
 
 def place(call: str, corner: str = "") -> str:
-    """`call` as it is, or in \\cornerfigure[corner=...] (Slidemaster_preamble_base.tex) for one of CORNERS."""
+    """`call` as it is, or in \\cornerfigure[corner=...] (SlideMage_base.tex) for one of CORNERS."""
     if corner not in CORNERS:
         raise ValueError(f"The corner is one of {', '.join(c for c in CORNERS if c)}.")
     return f"\\cornerfigure[corner={corner}]{{{call}}}" if corner else call

@@ -23,7 +23,7 @@ def fixture(tmp_path, monkeypatch, groups=(0, 0, 0)):
     framework.mkdir()
     theme = framework / 'theme.tex'
     theme.write_text('audited fixture')
-    env = {'SLIDEMASTER_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
+    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
     monkeypatch.setattr(slide_snapshot, 'prepare_preview_images',

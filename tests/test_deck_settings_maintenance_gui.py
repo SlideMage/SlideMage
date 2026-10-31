@@ -29,7 +29,7 @@ class Window(QWidget):
 @pytest.fixture
 def make_sheet(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(sheet_module, "add_route_badge", lambda *_args: None)       # the stand-in has no AI state
-    (tmp_path / "Slidemaster_preamble_uni-graz.tex").write_text("")
+    (tmp_path / "SlideMage_template_acme.tex").write_text("")
     windows = []
 
     def make(*, with_deck=True):

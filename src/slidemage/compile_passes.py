@@ -65,7 +65,7 @@ def _write(ctx: project.ProjectContext, data: dict) -> None:
 # chapter agendas, remembered TikZ positions (logo patch, overlays), the
 # automatic Top Margin -- and a presenter compile has exactly the instructor
 # content (only the page layout adds a notes panel). Measured equal on every
-# SlideMaster deck compiled both ways.
+# SlideMage deck compiled both ways.
 _SAME_PASSES = {"instructor": ("presenter", "deck"), "presenter": ("instructor", "deck"),
                 "deck": ("instructor", "presenter")}
 # Kinds whose count is a fair guess for another kind (shown as "(estimated)"):

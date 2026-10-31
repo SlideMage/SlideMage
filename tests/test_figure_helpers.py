@@ -10,7 +10,7 @@ SLIDE = (
     "\\begin{standardframe}{T}\n"
     "\\begin{besidefigure}[height=4cm, border]{media/a.png}\n text \\end{besidefigure}\n"
     "\\cornerfigure[width=3cm]{media/b.png}\n"
-    "\\cornerfigure[block]{\\begin{gothamfloatinginfoblock}{5cm}{T} x \\end{gothamfloatinginfoblock}}\n"
+    "\\cornerfigure[block]{\\begin{SMFloatingInfoBlock}{5cm}{T} x \\end{SMFloatingInfoBlock}}\n"
     "\\cornerfigure{\\includegraphics[width=2cm]{media/c.png}}\n"
     "\\fitfigure[top=here]{media/d.png}\n"
     "\\end{standardframe}\n"

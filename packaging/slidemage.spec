@@ -3,7 +3,7 @@
 # pyinstaller installed (pip install -e ".[build]"):
 #     pyinstaller packaging/slidemage.spec
 # Output lands in dist/SlideMage(.exe) and dist/SlideMage-folder/. The exe finds its project via
-# --project, $SLIDEMASTER_PROJECT, an upward search from the cwd, the
+# --project, $SLIDEMAGE_PROJECT, an upward search from the cwd, the
 # last project opened, or a folder picker.
 import importlib.util
 import os

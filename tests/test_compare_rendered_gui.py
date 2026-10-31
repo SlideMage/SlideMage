@@ -218,12 +218,12 @@ def test_a_slow_side_does_not_hold_the_other(env, renders):  # noqa: F811
 
 def test_only_a_slide_file_with_a_change_opens(env, renders):  # noqa: F811
     env = env
-    assert compare_rendered.open_compare(env.window, env.root / "Slidemaster.bib", "a", "b") is None
+    assert compare_rendered.open_compare(env.window, env.root / "SlideMage.bib", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.root / "decks" / "test.tex", "a", "b") is None
     assert compare_rendered.open_compare(env.window, env.path, "same", "same") is None
     assert renders.requests == []
     with pytest.raises(ValueError):
-        CompareRendered(env.window, env.root / "Slidemaster.bib", "a", "b")
+        CompareRendered(env.window, env.root / "SlideMage.bib", "a", "b")
 
 
 @pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
@@ -263,7 +263,7 @@ def test_slide_diff_card_offers_compare_in_each_state(env, renders):
 def test_new_file_and_bib_diff_cards_have_no_compare(env, renders):
     chat = env.window.assistant.chat
     new = chat._new_diff("new", env.root / "notes.txt", "", "x")
-    bib = chat._new_diff("bib", env.root / "Slidemaster.bib", "old", "new")
+    bib = chat._new_diff("bib", env.root / "SlideMage.bib", "old", "new")
     assert new.compare_button.isHidden() and bib.compare_button.isHidden()
 
 

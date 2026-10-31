@@ -7,7 +7,7 @@ machine that has only a TeX distribution -- no SlideMage project around it.
 lines point at the root instead of the parent of decks/), the slides it calls under ``slides/``, the media
 those slides use under ``media/``, and every other file the build reads from the project or the LaTeX
 framework: the institution and base preambles, the theme files, logos, schemes, snippets, the .bib and the
-alt-text store. A small ``.latexmkrc`` selects lualatex. Build it with ``latexmk <deck name>.tex``.
+alt-text store. A template from an installed theme package (themes.py) is exported like a project's own. A small ``.latexmkrc`` selects lualatex. Build it with ``latexmk <deck name>.tex``.
 
 Unlike a deck snapshot (deck_snapshot.py: the files a real compile read, a frozen copy that renders to the
 same PDF) this follows the sources: it walks the deck's text the way the compiler would, with the search path
@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import unused_content
+from . import themes, unused_content
 from .deck_scan import Deck
-from .project import ProjectContext
+from .project import ProjectContext, is_snapshot
 from .slide_snapshot import framework_dirs
 from .tex_source import COMMENT_RE
 
@@ -56,13 +56,21 @@ REPORTED_COMMANDS = {"input", "include", "includegraphics", "SMCodeFile", "lstin
 # These typeset a file's text as code; what is in it is not part of the build.
 LISTING_COMMANDS = {"SMCodeFile", "lstinputlisting"}
 IMPLIED_SUFFIXES = ("", ".tex", ".sty", ".cls")
-# \usetheme{gotham} loads beamerthemegotham.sty; \usecolortheme{x} beamercolorthemex.sty, and so on.
+# \usetheme{SlideMage} (in SlideMage_setup.tex; a deck never names it) loads beamerthemeSlideMage.sty;
+# \usecolortheme{x} beamercolorthemex.sty, and so on.
 THEME_RE = re.compile(r"\\use(?P<kind>color|font|inner|outer)?theme\s*(?:\[[^\]]*\])?\s*\{(?P<names>[^{}]+)\}")
 # fontspec's Path=fonts/ : a folder of font files, copied whole.
 FONT_DIR_RE = re.compile(r"\bPath\s*=\s*(?:\./)?([\w][\w./-]*)")
 # The path lines a deck in decks/ starts with: the root is the parent folder there, the folder itself here.
 PATH_LINE_RE = re.compile(r"^(\s*(?:\\def\\input@path|\\graphicspath)\s*\{\{)(?:\.\./)+(\}\})", re.MULTILINE)
 DEFAULT_BIBLIOGRAPHY_RE = re.compile(r"\\SMUseBibliography(?!\s*\[)")
+# A template picks its layout profile with \newcommand{\SMLayoutProfile}{name} before \input{SlideMage_setup}, which
+# inputs SlideMage_layout_<name>.tex: a file name built from a macro, so the token scan above cannot see it. Setup's own
+# \providecommand is the default and is not matched.
+PROFILE_RE = re.compile(r"\\(?:newcommand|renewcommand)\s*\{\\SMLayoutProfile\}\s*\{(?P<a>[^{}\\]+)\}"
+                        r"|\\def\s*\\SMLayoutProfile\s*\{(?P<b>[^{}\\]+)\}")
+DEFAULT_PROFILE = "fira"                # setup's \providecommand{\SMLayoutProfile}{fira} (a test keeps them equal)
+PROFILE_PREFIX = "SlideMage_layout_"
 
 
 @dataclass
@@ -83,17 +91,21 @@ class _Collector:
         self.ctx = ctx
         self.deck = deck
         self.frameworks = framework_dirs(ctx.root)
-        # TeX's search path during a compile: the deck's folder, the project root, then the framework.
-        self.search = [ctx.decks_dir, ctx.root, *self.frameworks]
+        # Installed theme packages (themes.py): their files go to the root, as a project's own template's would.
+        self.themes = [] if is_snapshot(ctx.root) else themes.installed_dirs()
+        # TeX's search path during a compile: the deck's folder, the project root, the framework, then the themes.
+        self.search = [ctx.decks_dir, ctx.root, *self.frameworks, *self.themes]
         self.files: dict[str, Path] = {}
         self.missing: set[str] = set()
         self._texts: list[str] = []         # the project's own texts, for the media references
         self._queue: list[Path] = []
         self._listings: set[Path] = set()   # files shown as code, never read for references
+        self.profiles: set[str] = set()     # layout profiles the templates name
 
     def destination(self, source: Path) -> str:
-        """Where a source file goes: decks/ files to the root, project files where they are, framework files to the root."""
-        for base in (self.ctx.decks_dir, self.ctx.root, *self.frameworks):
+        """Where a source file goes: decks/ files to the root, project files where they are, framework and theme files
+        to the root."""
+        for base in (self.ctx.decks_dir, self.ctx.root, *self.frameworks, *self.themes):
             if source.is_relative_to(base):
                 return source.relative_to(base).as_posix()
         raise ValueError(source)
@@ -144,7 +156,7 @@ class _Collector:
             if source.parent == self.ctx.decks_dir or source == self.deck.path:
                 self._scan_slides(text)
             if DEFAULT_BIBLIOGRAPHY_RE.search(text):
-                self.reference("Slidemaster.bib", ("",), own, True)
+                self.reference("SlideMage.bib", ("",), own, True)
         for match in NAMED_FILE_RE.finditer(text):
             command = match.group("command")
             suffixes = IMPLIED_SUFFIXES if command in {"input", "include", "usepackage", "RequirePackage",
@@ -154,6 +166,8 @@ class _Collector:
         for match in THEME_RE.finditer(text):
             for name in (n.strip() for n in match.group("names").split(",")):
                 self.reference(f"beamer{match.group('kind') or ''}theme{name}.sty", ("",), own, False)
+        for match in PROFILE_RE.finditer(text):
+            self.profiles.add((match.group("a") or match.group("b")).strip())
         for token in TOKEN_RE.findall(text):
             if Path(token).suffix.lower() in FILE_SUFFIXES:
                 self.reference(token, ("",), own, "/" in token)
@@ -175,6 +189,11 @@ class _Collector:
     def collect(self) -> None:
         """Walk from the deck through everything it names (slides, preambles, fragments, themes...)."""
         self._queue.append(self.deck.path)
+        while self._queue:
+            self.scan(self._queue.pop())
+        # The layout profile file(s), now that every template has been read: the name is built from a macro.
+        for profile in sorted(self.profiles or {DEFAULT_PROFILE}):
+            self.reference(f"{PROFILE_PREFIX}{profile}.tex", ("",), True, True)
         while self._queue:
             self.scan(self._queue.pop())
         used, missing = unused_content.media_references(self.ctx, self._texts)

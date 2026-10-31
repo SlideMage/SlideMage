@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Resolve citation keys against Slidemaster.bib.
+"""Resolve citation keys against SlideMage.bib.
 
 Without this a transcript renders `\\fullcite{loughran1995}` as the bare key
 "loughran1995", which tells a student nothing.
@@ -277,7 +277,7 @@ def format_entry(kind: str, key: str, fields: dict[str, str]) -> str:
 
 
 def add_entry(kind: str, key: str, fields: dict[str, str], path: Path) -> str:
-    """Insert a new entry into `path` (default Slidemaster.bib) and leave
+    """Insert a new entry into `path` (default SlideMage.bib) and leave
     the file alphabetically sorted by key afterward -- appends the new
     entry, then re-runs sort_entries() rather than computing its own
     insertion point, so "kept sorted" (the file's own header-comment

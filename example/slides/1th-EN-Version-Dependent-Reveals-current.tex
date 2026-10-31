@@ -13,7 +13,6 @@
 	step by step in your instructor deck, while students get it complete -- or,
 	for a solution, only after the course. The list below is live: compare the
 	deck versions.\par}
-	\medskip
 	\begin{columns}[T,onlytextwidth]
 		\begin{column}{0.34\linewidth}
 			\begin{itemize}
@@ -26,7 +25,7 @@
 		\end{column}
 		\begin{column}{0.63\linewidth}
 			\footnotesize
-			\begin{gothamtable}[gap=8pt]{lccc}
+			\begin{SMTable}[gap=8pt]{lccc}
 				\toprule
 				& instructor & during-course & after-course \\
 				\midrule
@@ -36,7 +35,7 @@
 				\SMCmd{deckrevealfinal}\SMCode{[n]} & from step $n$ & at once & at once \\
 				\SMCmd{deckonly}\SMCode{<n>[v]} & step $n$ & if listed & if listed \\
 				\bottomrule
-			\end{gothamtable}
+			\end{SMTable}
 			\medskip
 
 			\SMCmd{conditionalpause}\SMCode{[versions]} pauses in the listed versions (default: instructor); \SMCmd{deckuncover} and \SMCmd{deckvisible} work like \SMCmd{deckonly}; anything else: \SMCmd{ifSMInstructorVersion}, \SMCmd{ifSMDuringCourseVersion}, \SMCmd{ifSMAfterCourseVersion}

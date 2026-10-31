@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Transcript parsing of the optional arguments added 2026-09-30:
-\\begin{gothamtable}[gap=...]{spec} and \\begin{gothamfloating*block}[top=...]{width}{title}."""
+\\begin{SMTable}[gap=...]{spec} and \\begin{SMFloating*Block}[top=...]{width}{title}."""
 from slidemage import transcript
 
 
 def test_gap_table_spec_is_not_a_cell():
     out = transcript._convert_body(
-        "\\begin{gothamtable}[gap=12pt]{lcc}\n\\toprule\nA & B & C \\\\\n1 & 2 & 3 \\\\\n"
-        "\\end{gothamtable}", 0)
+        "\\begin{SMTable}[gap=12pt]{lcc}\n\\toprule\nA & B & C \\\\\n1 & 2 & 3 \\\\\n"
+        "\\end{SMTable}", 0)
     assert "gap" not in out and "lcc" not in out
     assert "| A | B | C |" in out
     assert "| 1 | 2 | 3 |" in out
@@ -39,7 +39,7 @@ def test_control_space_is_a_space():
 
 
 def test_floating_block_title_is_the_title_not_the_width():
-    for env in ("gothamfloatinginfoblock", "gothamfloatingexampleblock", "gothamfloatingblock"):
+    for env in ("SMFloatingInfoBlock", "SMFloatingExampleBlock", "SMFloatingBlock"):
         for option in ("", "[top=0pt, bottom=1mm]"):
             out = transcript._convert_body(
                 f"\\begin{{{env}}}{option}{{6cm}}{{Cash flows}}\nBody text\n\\end{{{env}}}", 0)

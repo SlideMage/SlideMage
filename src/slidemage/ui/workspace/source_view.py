@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The Source view: a compact toolbar over the editor of the file being edited.
 
-It edits slides, a deck's own .tex file and Slidemaster.bib alike, one
+It edits slides, a deck's own .tex file and SlideMage.bib alike, one
 `SourceFile` (source_file.py) per file, saved as you type. A file is written
 before another is shown; one that cannot be (a conflict with a change on disk)
 stays open, so that switching slides never loses an edit; a clean one is
@@ -58,8 +58,8 @@ class SourcePane(Surface):
     restore_requested = Signal(object)   # Path of a frozen version to make current
     version_requested = Signal(str)      # id_slug: Update Version of that slide
     file_requested = Signal(object)      # Path of another file to show
-    reference_added = Signal()           # an entry was added to Slidemaster.bib
-    close_requested = Signal()           # the "x" of a file that is no slide (a deck's source, Slidemaster.bib)
+    reference_added = Signal()           # an entry was added to SlideMage.bib
+    close_requested = Signal()           # the "x" of a file that is no slide (a deck's source, SlideMage.bib)
 
     def __init__(self, app) -> None:
         super().__init__()
@@ -164,7 +164,7 @@ class SourcePane(Surface):
         self._insert_button.clicked.connect(self._open_insert_menu)
         row.addWidget(self._insert_button)
         self._cite_button = Button("Cite ▾", "ghost", compact=True)
-        self._cite_button.setToolTip("Insert a citation of an entry of Slidemaster.bib")
+        self._cite_button.setToolTip("Insert a citation of an entry of SlideMage.bib")
         self._cite_button.clicked.connect(self._open_citation_popover)
         row.addWidget(self._cite_button)
         # "QR" beside Insert and Cite: the row sets the pane's minimum width (Split view).
@@ -180,7 +180,7 @@ class SourcePane(Surface):
         return bar
 
     def _build_jump_bar(self) -> QWidget:
-        """Slidemaster.bib only: one button per letter jumps to the first entry whose key starts with it."""
+        """SlideMage.bib only: one button per letter jumps to the first entry whose key starts with it."""
         bar = Surface()
         grid = QGridLayout(bar)
         grid.setContentsMargins(10, 4, 10, 4)
@@ -391,7 +391,7 @@ class SourcePane(Surface):
         changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
         self._version_button.setEnabled(changes and not read_only)
         self._version_button.setToolTip(VERSION_TIP if changes else why_not)
-        # Formatting is for slides: a deck's source and Slidemaster.bib are edited as plain text, and closed with
+        # Formatting is for slides: a deck's source and SlideMage.bib are edited as plain text, and closed with
         # the "x", which goes back to the slide.
         self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
@@ -606,13 +606,13 @@ class SourcePane(Surface):
     # -- references --------------------------------------------------------------------
 
     def add_reference(self, key: str = "") -> None:
-        """Add an entry to Slidemaster.bib (with the citation key `key`, if one is missing).
+        """Add an entry to SlideMage.bib (with the citation key `key`, if one is missing).
         The dialog writes the file on disk, not a buffer: edits of the .bib are written first,
         or the two would overwrite each other, and an open buffer is reloaded afterwards."""
         bib = self._files.get(self.app.project.bibliography_path)
         if bib is not None and not bib.write_now(force=True):
             QMessageBox.warning(self, "Add reference",
-                                "Slidemaster.bib has edits that could not be saved (it changed on disk). "
+                                "SlideMage.bib has edits that could not be saved (it changed on disk). "
                                 "Resolve that first, so the new reference and your edits can't overwrite each other.")
             return
         dialog = CitationDialog(self.app, key)

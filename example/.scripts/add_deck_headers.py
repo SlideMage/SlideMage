@@ -18,7 +18,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
 # Operate on the project this script belongs to, whatever the cwd.
-os.environ.setdefault("SLIDEMASTER_PROJECT", str(PROJECT))
+os.environ.setdefault("SLIDEMAGE_PROJECT", str(PROJECT))
 try:
     from slidemage.deck_headers import regenerate_headers
 except ImportError:

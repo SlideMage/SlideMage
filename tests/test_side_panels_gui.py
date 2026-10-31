@@ -442,12 +442,12 @@ CITED = ("\\begin{standardframe}{Cited}\n\t\\footnote{\\fullcite{smith2020}} \\t
 
 @pytest.fixture
 def paths(tmp_path):
-    return SimpleNamespace(path=tmp_path / "slides" / "cit-EN-Cited-current.tex", bib=tmp_path / "Slidemaster.bib")
+    return SimpleNamespace(path=tmp_path / "slides" / "cit-EN-Cited-current.tex", bib=tmp_path / "SlideMage.bib")
 
 
 @pytest.fixture
 def content(project, column, paths, tmp_path, monkeypatch):
-    """The slide `cit` (citations, an image, two notes), a Slidemaster.bib and an alt-text store of its own."""
+    """The slide `cit` (citations, an image, two notes), a SlideMage.bib and an alt-text store of its own."""
 
     panels, state, window = column
     paths.path.write_text(CITED, encoding="utf-8")
@@ -468,7 +468,7 @@ def test_citations_resolve_the_keys_and_mark_the_missing_ones(content, paths):
     panel = shown(panels, "citations")
     lines = texts(panel)
     assert lines[:2] == ["smith2020", "Smith (2020), “Findings”, Journal"]
-    assert lines[2:4] == ["ghost1999", "Not in Slidemaster.bib"]
+    assert lines[2:4] == ["ghost1999", "Not in SlideMage.bib"]
     assert panel.meta() == "2"
     next(r for r in rows(panel) if r.findChildren(QLabel)[0].text() == "smith2020").clicked.emit()
     assert window.opened[-1] == (paths.bib, {"line": 1})
@@ -1104,7 +1104,7 @@ def test_clicking_the_second_use_of_a_slide_in_another_deck_focuses_that_occurre
 @pytest.fixture
 def window(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

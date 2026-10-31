@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 
-from slidemage import compat, project, version
+from slidemage import compat, compat_hooks, project, version
 from slidemage.compat import APPEARANCE, BREAKS, Change, Finding
 
 NOW = datetime(2026, 10, 6, 12, 0, 0)
@@ -167,6 +167,139 @@ def test_registry_ids_are_unique_and_every_breaking_release_has_an_entry():
         if any(p.startswith("BREAKING:") for p in entry.paragraphs):
             assert entry.version in registered, (
                 f"{entry.version} has a BREAKING: paragraph but no slidemage.compat.CHANGES entry")
+
+
+def test_derived_layout_names_detector_reports_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v10.6.0")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMTitleBarBottomAlign}{25.32pt}\n"
+        "% \\setlength{\\SMContentTopAlign}{41pt}\n"
+        "\\SMFooterRightShift=4pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{\\SMContentTopAlign}}\n", encoding="utf-8")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\renewcommand{\\SMFootnoteRightShift}{3pt}\n", encoding="utf-8")
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMContentTopAlign}{1pt}\n", encoding="utf-8")       # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_derived_layout_names(root)]
+    assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleBarBottomAlign"),
+                     ("SlideMage_template_inst.tex", 4, "\\SMFooterRightShift"),
+                     ("SlideMage_layout_own.tex", 1, "\\SMFootnoteRightShift")]
+    assert any(c.id == "derived-layout-names" and c.since == "v10.7.0" for c in compat.CHANGES)
+
+
+def test_font_measurement_detector_reports_definitions_and_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v10.7.0")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\newlength{\\SMFooterTextDrop}\n"
+        "\\setlength{\\SMFooterTextDrop}{-0.4pt}\n"
+        "% \\newlength{\\SMLabelItemWidth}\n"
+        "\\newlength{\\SMEnumerateTextExtra}\n"
+        "\\newlength{\\SMContentTopShift}\n"
+        "\\setlength{\\SMSectionframeHeightCorrection}{16pt}\n", encoding="utf-8")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMEnumerateTextExtra}{9pt}\n"                      # a hook now: fine
+        "\\setlength{\\SMFootlineVOffset}{-3pt}\n"
+        "\\newcommand{\\Foo}{\\hspace*{\\SMLabelItemWidth}}\n", encoding="utf-8")     # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMLabelItemSep}{1pt}\n", encoding="utf-8")                      # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_font_measurement_names(root)]
+    assert found == [("SlideMage_layout_own.tex", 1, "\\SMFooterTextDrop"),
+                     ("SlideMage_layout_own.tex", 2, "\\SMFooterTextDrop"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMEnumerateTextExtra"),
+                     ("SlideMage_layout_own.tex", 6, "\\SMSectionframeHeightCorrection"),
+                     ("SlideMage_template_inst.tex", 3, "\\SMFootlineVOffset")]
+    assert any(c.id == "font-measurements-derived" and c.since == "v10.8.0" for c in compat.CHANGES)
+
+
+def test_top_pullup_detector_reports_definitions_and_settings_not_reads(tmp_path):
+    root = make_project(tmp_path, "v10.8.0")
+    (root / "SlideMage_layout_own.tex").write_text(
+        "\\newlength{\\SMContentTopShift}\n"
+        "\\setlength{\\SMContentTopShift}{11.5964pt}\n"
+        "% \\newlength{\\SMColumnsTopCorrection}\n"
+        "\\newlength{\\SMColumnsTTopCompensation}\\setlength{\\SMColumnsTTopCompensation}{13.76pt}\n"
+        "\\newlength{\\SMContentTopShiftExtra}\n", encoding="utf-8")                   # another name: fine
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\SMColumnsTopCorrection=10pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{-\\SMContentTopShift}}\n", encoding="utf-8")   # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMContentTopShift}{1pt}\n", encoding="utf-8")                    # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_top_pullup_names(root)]
+    assert found == [("SlideMage_layout_own.tex", 1, "\\SMContentTopShift"),
+                     ("SlideMage_layout_own.tex", 2, "\\SMContentTopShift"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
+                     ("SlideMage_layout_own.tex", 4, "\\SMColumnsTTopCompensation"),
+                     ("SlideMage_template_inst.tex", 2, "\\SMColumnsTopCorrection")]
+    change = next(c for c in compat.CHANGES if c.id == "top-pullups-measured")
+    assert change.since == "v10.9.0" and change.detect is compat._detect_top_pullup_names
+    ev = compat.evaluate(root, "v10.9.0")
+    assert change.id in [p.change.id for p in ev.loud]
+    # the shipped profiles hold none of them any more
+    shipped = Path(compat.__file__).resolve().parents[2] / "latex"
+    for profile in sorted(shipped.glob("SlideMage_layout_*.tex")):
+        assert not compat._SETS_V99_NAME.search(profile.read_text(encoding="utf-8")), profile.name
+
+
+def test_titleframe_pad_detector_reports_templates_that_set_the_hook_not_reads(tmp_path):
+    root = make_project(tmp_path, "v10.9.0")
+    (root / "SlideMage_template_inst.tex").write_text(
+        "\\input{SlideMage_setup}\n"
+        "\\setlength{\\SMTitleframeBottomPad}{41pt}\n"
+        "% \\setlength{\\SMTitleframeBottomPad}{50pt}\n"
+        "\\SMTitleframeBottomPad=30pt\n"
+        "\\newcommand{\\Foo}{\\vspace*{\\SMTitleframeBottomPad}}\n", encoding="utf-8")        # reading is fine
+    (root / "slides" / "a-EN-A-current.tex").write_text(
+        "\\setlength{\\SMTitleframeBottomPad}{1pt}\n", encoding="utf-8")                      # slides are not scanned
+    found = [(f.file, f.line, f.message.split(" ")[0]) for f in compat._detect_titleframe_bottom_pad(root)]
+    assert found == [("SlideMage_template_inst.tex", 2, "\\SMTitleframeBottomPad"),
+                     ("SlideMage_template_inst.tex", 4, "\\SMTitleframeBottomPad")]
+    change = next(c for c in compat.CHANGES if c.id == "titleframe-bottom-pad")
+    assert change.since == "v10.10.0" and change.severity == compat.APPEARANCE
+    assert change.detect is compat._detect_titleframe_bottom_pad
+    ev = compat.evaluate(root, "v10.10.0")
+    assert change.id in [p.change.id for p in ev.quiet] and change.id not in [p.change.id for p in ev.loud]
+    # the shipped templates leave the hook at its default
+    shipped = Path(compat.__file__).resolve().parents[2]
+    for template in (shipped / "latex" / "SlideMage_template_slidemage.tex",):
+        assert not compat._SETS_TITLEFRAME_PAD.search(template.read_text(encoding="utf-8")), template.name
+
+
+def test_hook_renames_migrate_in_project_files_and_the_removed_names_are_reported(tmp_path):
+    root = make_project(tmp_path, "v10.10.0")
+    template = root / "SlideMage_template_inst.tex"
+    template.write_bytes(
+        b"\\input{SlideMage_setup}\r\n"
+        b"\\setlength{\\SMProgressStripHeight}{12pt}\r\n"
+        b"% \\setlength{\\SMSideFootnoteTopSep}{4pt}\r\n"
+        b"\\setlength{\\SMSideFootnoteTopSep}{5pt}\r\n"
+        b"\\setlength{\\SMFootlineHeight}{2ex}\r\n"
+        b"\\setlength{\\SMFootlineDepth}{0.2ex}\r\n"
+        b"\\setlength{\\SMRightFooterPadding}{4ex}\r\n")
+    (root / "slides" / "a-EN-A-current.tex").write_text("\\SMProgressStripHeight\n", encoding="utf-8")   # slides are not scanned
+    change = next(c for c in compat.CHANGES if c.id == "hook-renames-and-removals")
+    assert change.since == "v10.11.0" and change.severity == compat.BREAKS
+    found = [(f.line, f.message.split(" ")[0]) for f in change.detect(root)]
+    assert found == [(2, "\\SMProgressStripHeight"), (4, "\\SMSideFootnoteTopSep"), (5, "\\SMFootlineHeight"),
+                     (6, "\\SMFootlineDepth"), (7, "\\SMRightFooterPadding")]
+    planned = change.migrate(root)
+    assert list(planned) == [Path("SlideMage_template_inst.tex")]
+    migrated = planned[Path("SlideMage_template_inst.tex")]
+    assert b"\\SMProgressStripRoom}{12pt}\r\n" in migrated and migrated.count(b"\\SMSideFootnoteTitleBlockSep") == 2
+    assert b"StripHeight" not in migrated and b"TopSep" not in migrated and migrated.count(b"\r\n") == 7
+    assert b"\\SMFootlineHeight}{2ex}" in migrated                       # the removed names are left for the user
+    template.write_bytes(migrated)
+    assert change.migrate(root) == {}                                    # idempotent
+    assert [f.message.split(" ")[0] for f in change.detect(root)] == [
+        "\\SMFootlineHeight", "\\SMFootlineDepth", "\\SMRightFooterPadding"]
+    # the shipped templates and profiles use none of the five
+    shipped = Path(compat.__file__).resolve().parents[2]
+    for path in [shipped / "latex" / "SlideMage_template_slidemage.tex",
+                 *sorted((shipped / "latex").glob("SlideMage_layout_*.tex"))]:
+        text = path.read_text(encoding="utf-8")
+        assert not compat_hooks._RENAMED_RE.search(text) and not compat_hooks._REMOVED_RE.search(text), path.name
 
 
 def test_omitslide_detector_reports_live_calls_in_decks_and_archive(tmp_path):

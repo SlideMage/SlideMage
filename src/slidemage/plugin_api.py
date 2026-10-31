@@ -83,6 +83,10 @@ Widget = Any
 COURSE_GROUP = "course"
 """The tag of the deck group "Course deck" in Deck.groups. The group belongs to SlideMage; a plugin only reads it."""
 
+TABLE_ENVIRONMENT = "SMTable"
+"""The framework's table environment (booktabs rules, optional [gap=<n>pt]) for slide text a plugin writes. Added in
+v10.12.2; a SlideMage without it has gothamtable, so read it as getattr(plugin_api, "TABLE_ENVIRONMENT", "gothamtable")."""
+
 
 class StaleFileError(Exception):
     """The deck file changed on disk since the Deck was read: reload the deck and retry. Nothing was written."""

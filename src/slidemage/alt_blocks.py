@@ -35,7 +35,7 @@ CHAPTERLOGO_RE = re.compile(r"\\chapterlogo\s*\{")
 SIDEIMAGEFRAME_RE = re.compile(r"\\begin\{sideimageframe\}(?:\[[^\]]*\])?\s*\{")
 
 # \titleframe{title}{subtitle} and \fullbleedframe{path} are *commands*,
-# not environments (Slidemaster_preamble_base.tex) -- a slide using either
+# not environments (SlideMage_base.tex) -- a slide using either
 # never contains \begin{...frame}/\end{...frame} text at all, so
 # FRAME_OPEN_RE below (which only matches the \begin{...frame} form) never
 # matches them. \fullbleedframe's one brace argument is a literal image
@@ -64,7 +64,7 @@ MUGSHOT_RE = re.compile(r"\\SMMugshot\s*\{")
 
 # \cornerfigure[keys]{file}, \begin{besidefigure}[keys]{file},
 # \fitfigure[keys]{file}, \sectionfigure[keys]{file} (the v5.x figure
-# helpers, Slidemaster_preamble_base.tex): the argument is the image file
+# helpers, SlideMage_base.tex): the argument is the image file
 # -- for \cornerfigure/besidefigure only with a width= or height= key, else
 # it is arbitrary content, whose own \includegraphics INCLUDEGRAPHICS_RE
 # finds. They were invisible to referenced_images() until 2026-10-04 (found
@@ -75,7 +75,7 @@ FIGURE_HELPER_RE = re.compile(
     r"\\(?:cornerfigure|fitfigure|sectionfigure|SMQRCode|begin\{besidefigure\})\s*(?:\[[^\]]*\])?\s*\{")
 
 # \begin{tikzillustration}[options]{ID} ... \end{tikzillustration}
-# (Slidemaster_preamble_base.tex) -- a hand-drawn tikz diagram with no
+# (SlideMage_base.tex) -- a hand-drawn tikz diagram with no
 # media/ file behind it at all. Its own ID is the only thing that
 # identifies it (there is no filename to hash), so -- unlike every macro
 # above -- this one also needs its own *options* and *body* extracted, not

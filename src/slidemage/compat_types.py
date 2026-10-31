@@ -29,4 +29,4 @@ class Change:
     description: str
     fix: str = ""
     detect: Optional[Callable[[Path], list[Finding]]] = None
-    migrate: Optional[Callable[[Path], dict[Path, bytes]]] = None
+    migrate: Optional[Callable[[Path], dict[Path, Optional[bytes]]]] = None

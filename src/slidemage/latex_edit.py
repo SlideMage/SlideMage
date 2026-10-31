@@ -244,7 +244,7 @@ INSERT_LIST_COMMANDS = [
     Insert("Numbered list", "wrap_env", "enumerate", "\\begin{enumerate}"),
 ]
 
-# The beamer blocks this project defines (Slidemaster_preamble_base.tex,
+# The beamer blocks this project defines (SlideMage_base.tex,
 # slides/ZZX-EN-Definition-formula-current.tex shows them side by side).
 INSERT_BLOCK_COMMANDS = [
     Insert(label, kind, env, f"\\begin{{{env}}}") for label, kind, env in (
@@ -254,9 +254,9 @@ INSERT_BLOCK_COMMANDS = [
         ("Reference block", "wrap_block", "referenceblock"),
         ("Definition block", "wrap_block", "definitionblock"),
         ("Info block", "wrap_block", "infoblock"),
-        ("Floating block", "wrap_block_floating", "gothamfloatingblock"),
-        ("Floating example block", "wrap_block_floating", "gothamfloatingexampleblock"),
-        ("Floating info block", "wrap_block_floating", "gothamfloatinginfoblock"),
+        ("Floating block", "wrap_block_floating", "SMFloatingBlock"),
+        ("Floating example block", "wrap_block_floating", "SMFloatingExampleBlock"),
+        ("Floating info block", "wrap_block_floating", "SMFloatingInfoBlock"),
     )
 ]
 

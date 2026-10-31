@@ -5,7 +5,7 @@
 % (\tableofcontents), Part A on the left, Part B on the right. \SMDeckAgenda
 % makes this slide the target of the footer's "Manual chapters" link. Same
 % enumerate set-up as any agenda slide (see the comment on
-% \beamer@sectionintoc in Slidemaster_preamble_base.tex); the \ifnum lines
+% \beamer@sectionintoc in SlideMage_base.tex); the \ifnum lines
 % keep each enumerate legal on the very first pass, before the .toc exists.
 % The two intro texts sit in boxes of three lines each, so that the first entry
 % of both lists starts at the same height. The deck sets the Part A count;
@@ -15,7 +15,7 @@
 \setSlideVersion{1-0-4}
 \providecommand{\SMManualPartASections}{6}
 \edef\SMManualPartBStart{\number\numexpr\SMManualPartASections+1\relax}
-\setbeamertemplate{section in toc}[gotham plain enumerate]
+\setbeamertemplate{section in toc}[SMPlainEnumerate]
 \begin{standardframe}{Contents}
 	\small
 	\SMDeckAgenda

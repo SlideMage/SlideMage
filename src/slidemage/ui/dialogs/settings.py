@@ -17,8 +17,8 @@
   project's deck groups (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
   window's `open_deck_groups()`).
 * About: the version, the version history and the check for updates.
-* Plugins: the installed plugins (enable, update, remove), the catalogue's and Install from file…:
-  ui/dialogs/settings_plugins.py. Last of SlideMage's own tabs; the plugins' tabs follow it.
+* Plugins: the installed plugins (enable, update, remove), the catalogue's, the installed theme packages (remove)
+  and Install from file… for a plugin or a theme: ui/dialogs/settings_plugins.py. Last of SlideMage's own tabs; the plugins' tabs follow it.
 The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
 it when the sheet has closed).
 

@@ -28,7 +28,7 @@ from slidemage.ui.workspace.state import WorkspaceState
 
 FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
 DECK = (
-    "\\documentclass{beamer}\n\\input{Slidemaster_preamble_uni-ibk}\n\\begin{document}\n"
+    "\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\begin{document}\n"
     "\\section{Part}\n\\slide{aaa-EN-One}\n\\slideversion{bbb-EN-Two}{1-0-0}\n"
     "\\conditionalslide[instructor]{ccc-DE-Drei}\n\\end{document}\n")
 
@@ -61,7 +61,7 @@ def project(tmp_path, monkeypatch):
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
     (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
     return slides
 
 

@@ -26,8 +26,8 @@ write = partial(write, newline=None)
 def bundle(tmp_path):
     """A bundled framework and example project (manual), like the exe's."""
     latex = tmp_path / "bundle" / "latex"
-    write(latex / "Slidemaster_preamble_base.tex", "base v1\n")
-    write(latex / "Slidemaster_preamble_slidemage.tex", "template v1\n")
+    write(latex / "SlideMage_base.tex", "base v1\n")
+    write(latex / "SlideMage_template_slidemage.tex", "template v1\n")
     example = tmp_path / "bundle" / "example"
     write(example / "decks" / "slidemage-manual.tex", "manual deck v1\n")
     write(example / "slides" / "1aa-EN-One-current.tex", "slide one v1\n")
@@ -37,7 +37,7 @@ def bundle(tmp_path):
     write(example / "media" / "alt-text.json", json.dumps({"version": 1, "images": {
         "media/shot.png": {"role": "informative", "status": "auto", "short": "shot v1"}}}))
     write(example / "slide_ids.csv", '"id"\r\n"1aa"\r\n"1bb"\r\n')
-    write(example / "Slidemaster_preamble_uni-graz.tex", "graz\n")
+    write(example / "SlideMage_template_acme.tex", "graz\n")
     return latex, example
 
 
@@ -71,7 +71,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     write(example / "slides" / "1aa-EN-One-current.tex", "slide one v2\n")
     write(example / "slides" / "1cc-EN-Three-current.tex", "slide three v2\n")
     (example / "slides" / "1bb-EN-Two-current.tex").unlink()
-    write(latex / "Slidemaster_preamble_base.tex", "base v2\n")
+    write(latex / "SlideMage_base.tex", "base v2\n")
     # the user changed the snippet, which also changed upstream
     write(root / "snippets" / "1aa-1.tex", "my own code\n")
     write(example / "snippets" / "1aa-1.tex", "code v2\n")
@@ -82,7 +82,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert manual.add == ["slides/1cc-EN-Three-current.tex"]
     assert manual.remove == ["slides/1bb-EN-Two-current.tex"]
     assert manual.kept == ["snippets/1aa-1.tex"]
-    assert framework.update == ["Slidemaster_preamble_base.tex"] and not framework.adopted
+    assert framework.update == ["SlideMage_base.tex"] and not framework.adopted
 
     backup = bundled_copies.apply_update(ProjectContext.at(root), manual, "v5.20.0", now=NOW)
     bundled_copies.apply_update(ProjectContext.at(root), framework, "v5.20.0", now=NOW)
@@ -92,7 +92,7 @@ def test_update_add_remove_and_keep(tmp_path, bundle):
     assert (root / "snippets" / "1aa-1.tex").read_text() == "my own code\n"     # kept
     assert (backup / "slides" / "1aa-EN-One-current.tex").read_text() == "slide one v1\n"
     assert (backup / "slides" / "1bb-EN-Two-current.tex").is_file()
-    assert (root.parent / "latex" / "Slidemaster_preamble_base.tex").read_text() == "base v2\n"
+    assert (root.parent / "latex" / "SlideMage_base.tex").read_text() == "base v2\n"
     # afterwards nothing is pending; the user's snippet stays theirs
     assert plan(root, bundle) == {}
 
@@ -145,12 +145,12 @@ def test_framework_adoption_and_git_checkouts(tmp_path, bundle, monkeypatch):
     latex, example = bundle
     root = tmp_path / "old" / "project"
     write(root / "slide_ids.csv", '"id"\r\n')
-    write(root.parent / "latex" / "Slidemaster_preamble_base.tex", "base v0\n")
+    write(root.parent / "latex" / "SlideMage_base.tex", "base v0\n")
     parts = plan(root, bundle)
     framework = parts[FRAMEWORK]
     assert framework.adopted
-    assert framework.update == ["Slidemaster_preamble_base.tex"]
-    assert framework.add == ["Slidemaster_preamble_slidemage.tex"]
+    assert framework.update == ["SlideMage_base.tex"]
+    assert framework.add == ["SlideMage_template_slidemage.tex"]
     # a framework folder inside a git checkout is never touched
     (root.parent / ".git").mkdir()
     assert FRAMEWORK not in plan(root, bundle)
@@ -216,7 +216,7 @@ def test_init_project_seeds_example_and_records_baseline(tmp_path, existing_late
     assert (target / "decks" / "slidemage-manual.tex").is_file()
     assert not (target / "decks" / "slidemage-manual.pdf").exists()
     assert not (target / ".build").exists()
-    assert (target / "schemes" / "scheme_uni_graz" / "Logo_Uni-Graz_4c-cropped.pdf").is_file()
+    assert (target / "media" / "alt-text.json").is_file()
     manifest = bundled_copies.read_manifest(target)
     assert "decks/slidemage-manual.tex" in manifest[MANUAL]["files"]
     if existing_latex:
@@ -291,3 +291,39 @@ def test_hidden_folders_are_never_part_of_a_copy(tmp_path, bundle):
     write(example / ".build" / "x.aux", "aux")
     files = bundled_copies.manual_files(example)
     assert not any(part.startswith(".") for f in files for part in Path(f).parts)
+
+
+def test_the_framework_swaps_the_gotham_theme_for_the_slidemage_theme(tmp_path, bundle):
+    """v10.1.0: the five Gotham .sty files and gotham.dtx/.ins are gone, beamerthemeSlideMage.sty is new. Unchanged
+    Gotham files are removed, one the user edited stays where it is (reported as kept), and nothing is pending
+    afterwards."""
+    latex, _ = bundle
+    gotham = ("beamerthemegotham.sty", "beamerouterthemegotham.sty", "gotham.dtx")
+    for name in gotham:
+        write(latex / name, f"{name} v1\n")
+    root = make_project(tmp_path, bundle)
+    for name in gotham:                                    # this SlideMage no longer carries them
+        (latex / name).unlink()
+    write(latex / "beamerthemeSlideMage.sty", "theme\n")
+    copy = root.parent / "latex"
+    write(copy / "beamerouterthemegotham.sty", "my edit\n")
+
+    framework = plan(root, bundle)[FRAMEWORK]
+    assert framework.add == ["beamerthemeSlideMage.sty"]
+    assert sorted(framework.remove) == ["beamerthemegotham.sty", "gotham.dtx"]
+    assert framework.kept == ["beamerouterthemegotham.sty"]
+    backup = bundled_copies.apply_update(ProjectContext.at(root), framework, "v10.1.0", now=NOW)
+    assert (copy / "beamerthemeSlideMage.sty").read_text() == "theme\n"
+    assert not (copy / "beamerthemegotham.sty").exists() and not (copy / "gotham.dtx").exists()
+    assert (copy / "beamerouterthemegotham.sty").read_text() == "my edit\n"
+    assert (backup / "gotham.dtx").is_file()
+    assert plan(root, bundle) == {}
+
+
+def test_the_shipped_framework_has_the_theme_and_no_gotham_file():
+    names = bundled_copies.framework_files(Path(__file__).resolve().parents[1] / "latex")
+    assert "beamerthemeSlideMage.sty" in names and "SlideMage_setup.tex" in names
+    assert "SlideMage_layout_fira.tex" in names             # v10.3.0: a new framework file reaches projects
+    assert "SlideMage_layout_lmsans.tex" in names           # v10.6.0: so does the Latin Modern Sans profile
+    assert "SlideMage_bibliography_default.tex" in names    # v10.14.0: and the bibliography default file
+    assert not [n for n in names if "gotham" in n.lower()]

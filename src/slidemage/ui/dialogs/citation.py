@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The sheet behind the Source view's "Add reference to .bib…" and the Cite menu's footer: a
-small form for adding a new entry to Slidemaster.bib without hand-writing BibTeX. It only ever
+small form for adding a new entry to SlideMage.bib without hand-writing BibTeX. It only ever
 *creates* a .bib entry; it never inserts a citation call for one. Picking a source type
 (Article/Book/Online/Report) swaps in that type's own fields below the three shared ones
 (author/title/year). Every field carries a tooltip and a placeholder example.
@@ -118,7 +118,7 @@ class CitationDialog(ModalSheet):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        intro = QLabel("Add a new entry to Slidemaster.bib. Fields marked * are required.")
+        intro = QLabel("Add a new entry to SlideMage.bib. Fields marked * are required.")
         intro.setObjectName(q.PANEL_CAPTION)
         layout.addWidget(intro)
 
@@ -219,7 +219,7 @@ class CitationDialog(ModalSheet):
             return
         existing = bibliography.load(self.app.project.bibliography_path)
         if key.lower() in {k.lower() for k in existing}:
-            self.key_status_label.setText(f"⚠ \"{key}\" already exists in Slidemaster.bib -- pick another.")
+            self.key_status_label.setText(f"⚠ \"{key}\" already exists in SlideMage.bib -- pick another.")
         else:
             self.key_status_label.setText(f"✓ \"{key}\" is available.")
 
@@ -236,7 +236,7 @@ class CitationDialog(ModalSheet):
         if key.lower() in {k.lower() for k in existing}:
             QMessageBox.critical(
                 self, "Add reference",
-                f"Citation key \"{key}\" already exists in Slidemaster.bib -- "
+                f"Citation key \"{key}\" already exists in SlideMage.bib -- "
                 "pick a different key.",
             )
             return
@@ -270,5 +270,5 @@ class CitationDialog(ModalSheet):
             return
 
         self.new_key = key
-        self.app.log(f"Added reference \"{key}\" ({kind}) to Slidemaster.bib")
+        self.app.log(f"Added reference \"{key}\" ({kind}) to SlideMage.bib")
         self.accept()

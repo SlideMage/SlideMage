@@ -22,7 +22,7 @@ copy of whatever was on disk immediately before the save (shutil.copy2,
 same as deck_duplicate.py) -- never rewritten, never re-encoded.
 
 The tracked version itself lives inside current.tex as a
-\\setSlideVersion{X-Y-Z} line (Slidemaster_preamble_base.tex), the same
+\\setSlideVersion{X-Y-Z} line (SlideMage_base.tex), the same
 "tool-managed header line" pattern as the "%% Included in decks: ..."
 line add_deck_headers.py maintains -- never hand-edited, always the
 first thing this module's own set_marker()/strip_marker() touch on save.
@@ -102,7 +102,7 @@ def format_hyphen(version: Version) -> str:
 
 def format_dot(version: Version) -> str:
     """Display form ("1.0.0") -- conventional semver, and what the
-    compiled footer shows (Slidemaster_preamble_base.tex's own
+    compiled footer shows (SlideMage_base.tex's own
     \\setSlideVersion does this same hyphen-to-dot conversion at compile
     time; this is the Python-side equivalent for the save dialog)."""
     return ".".join(str(part) for part in version)

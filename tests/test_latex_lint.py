@@ -29,11 +29,11 @@ def test_heading_text_above_a_list(ctx):
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("\\begin{gothamtable}{lcc}\na & b & c\\\\\n\\end{gothamtable}\n", True),
-    ("\\begin{gothamtable}{lc}\n\\end{gothamtable}\n", True),
-    ("\\begin{gothamtable}[gap=12pt]{lcc}\n\\end{gothamtable}\n", False),
-    ("\\begin{gothamtable}{@{}l<{\\hspace{12pt}}c@{}}\n\\end{gothamtable}\n", False),
-    ("% \\begin{gothamtable}{lcc}\n", False),
+    ("\\begin{SMTable}{lcc}\na & b & c\\\\\n\\end{SMTable}\n", True),
+    ("\\begin{SMTable}{lc}\n\\end{SMTable}\n", True),
+    ("\\begin{SMTable}[gap=12pt]{lcc}\n\\end{SMTable}\n", False),
+    ("\\begin{SMTable}{@{}l<{\\hspace{12pt}}c@{}}\n\\end{SMTable}\n", False),
+    ("% \\begin{SMTable}{lcc}\n", False),
 ])
 def test_table_edges_warns_only_for_live_tables_without_gap_or_flush_edges(ctx, text, expected):
     issues = [i for i in latex_lint.lint_text(ctx, text) if i.code == "table-edges"]

@@ -123,7 +123,7 @@ def main():
                          f'{sum(r.get("pixel_match") is False for r in rows)} |')
     lines += ['', '## Element previews (result 2)', '',
               'These four self-contained selections come from the manual: its Sharpe-ratio formula, '
-              'nested list, correlation-matrix figure and Gotham table. They are not complete slides, '
+              'nested list, correlation-matrix figure and SMTable table. They are not complete slides, '
               'so their timings are not part of the 77-call speedup ranking.', '',
               '| Selection | 2: fresh element, s | 1 + 2: warm element, s |',
               '|---|---:|---:|']

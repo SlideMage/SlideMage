@@ -43,7 +43,7 @@ def page_hashes(pdf: Path) -> dict:
 
 
 def produce(copy: Path) -> dict:
-    os.environ["SLIDEMASTER_PROJECT"] = str(copy)
+    os.environ["SLIDEMAGE_PROJECT"] = str(copy)
     os.chdir(copy)
     sys.path.insert(0, str(REPO / "src"))
     from slidemage import compiler, deck_scan, project, slide_preview

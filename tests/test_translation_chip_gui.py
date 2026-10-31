@@ -26,7 +26,7 @@ def window(qapp, tmp_path, monkeypatch):
     english.write_bytes(b"%% DE translation: abe-DE-Hallo\r\n" + english.read_bytes())
     (slides / GERMAN).write_bytes(b"%% Translation of: abc-EN-Hello\r\n"
                                   + english.read_bytes().split(b"\r\n", 1)[1].replace(b"Hello", b"Hallo"))
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

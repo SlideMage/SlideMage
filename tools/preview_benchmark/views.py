@@ -59,8 +59,7 @@ Second reveal.\deckonly<2->[instructor]{Instructor content}
     (root / 'slides' / 'bbb-EN-Hidden-current.tex').write_text(
         r'\begin{standardframe}{Hidden}Instructor only\end{standardframe}')
     preamble = r'''\documentclass[aspectratio=169]{beamer}
-\usetheme{gotham}
-\input{Slidemaster_preamble_slidemage}
+\input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{Preview integration}
 \ifdefined\deckversionoverride\deckversion[\deckversionoverride]\else\deckversion[instructor]\fi
 \ifdefined\decklanguageoverride\decklanguage[\decklanguageoverride]\else\decklanguage[en]\fi
@@ -79,7 +78,7 @@ Second reveal.\deckonly<2->[instructor]{Instructor content}
 def run(output):
     output.mkdir(parents=True, exist_ok=False)
     ctx, source, framework, deck = fixture(output)
-    os.environ['SLIDEMASTER_LATEX'] = str(framework)
+    os.environ['SLIDEMAGE_LATEX'] = str(framework)
     records = []
     service = MeasuredService(exact=True)
 
@@ -163,7 +162,7 @@ def run(output):
     # of the exact-view reference cache above. Reference PDFs are forced per
     # view, so the comparison cannot accidentally read a shared image twice.
     grouped_ctx, grouped_source, grouped_framework, grouped_deck = fixture(output / 'grouped')
-    os.environ['SLIDEMASTER_LATEX'] = str(grouped_framework)
+    os.environ['SLIDEMAGE_LATEX'] = str(grouped_framework)
     grouped_service = MeasuredService()
     reference_service = MeasuredService(exact=True)
     for name, body, expected in (
@@ -227,7 +226,7 @@ def run(output):
                             cache_hits=3, sequence_reuse=True))
     grouped_service.close()
     reference_service.close()
-    os.environ['SLIDEMASTER_LATEX'] = str(framework)
+    os.environ['SLIDEMAGE_LATEX'] = str(framework)
 
     labels = phase('default-labels-all', deck(hide=False), expected_groups=3)
     assert len(set(signatures(labels))) == 3
@@ -249,7 +248,7 @@ def run(output):
     Image.new('RGB', (80, 40), 'blue').save(ctx.root / 'media' / 'probe.png')
     changed = phase('image-edit-all', current_deck)
     assert records[-1]['compile_count'] == 3 and signatures(changed) != signatures(cold)
-    package = framework / 'Slidemaster_preamble_slidemage.tex'
+    package = framework / 'SlideMage_template_slidemage.tex'
     package.write_text(package.read_text() + '\n\\renewcommand{\\SMBulletColor}{red}\n')
     phase('external-framework-edit-all', current_deck, expect_certain=False)
     assert records[-1]['compile_count'] == 3
