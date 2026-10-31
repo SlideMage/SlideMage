@@ -46,7 +46,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
-from . import slide_versioning
+from . import slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -589,7 +589,12 @@ def build_env(ctx: project.ProjectContext) -> dict:
     perl_bin = _find_git_perl_bin()
     if perl_bin is not None:
         env["PATH"] = str(perl_bin) + os.pathsep + env.get("PATH", "")
-    # Inside a deck snapshot: its own framework copy and fixed PDF dates.
+    # Installed theme packages (themes.py) go on TEXINPUTS, after the project root and the framework the project's
+    # .latexmkrc puts in front: a project's own copy of a theme's template wins.
+    theme_path = themes.texinputs(env)
+    if theme_path is not None:
+        env["TEXINPUTS"] = theme_path
+    # Inside a deck snapshot: its own framework copy and fixed PDF dates (and no theme folders: it carries copies).
     return project.snapshot_compile_env(ctx.root, env)
 
 

@@ -49,9 +49,9 @@ def test_template_without_base_is_reported_not_rewritten():
 
 def test_deck_loses_only_its_gotham_theme_line():
     deck = ("\\documentclass[aspectratio=169]{beamer}\n\\usetheme{gotham} % the theme\n"
-            "%\\usetheme{gotham}\n\\input{SlideMage_template_uni-graz}\n")
+            "%\\usetheme{gotham}\n\\input{SlideMage_template_acme}\n")
     new = compat_setup.deck(deck)
-    assert new == "\\documentclass[aspectratio=169]{beamer}\n%\\usetheme{gotham}\n\\input{SlideMage_template_uni-graz}\n"
+    assert new == "\\documentclass[aspectratio=169]{beamer}\n%\\usetheme{gotham}\n\\input{SlideMage_template_acme}\n"
     assert not compat_setup.deck_has_theme(new)
     inline = "\\documentclass{beamer}\\usetheme{gotham}\\input{SlideMage_template_x}\n"
     assert compat_setup.deck(inline) == "\\documentclass{beamer}\\input{SlideMage_template_x}\n"

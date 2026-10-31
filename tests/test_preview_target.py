@@ -11,7 +11,7 @@ from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
 
-PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_uni-ibk}\n\\begin{document}"
+PREAMBLE = "\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\begin{document}"
 
 
 def make_deck(body):
@@ -40,7 +40,7 @@ def target_of(body, index=0):
 
 def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(renders):
     _, target = target_of("\\slide{aaa-EN-One}\n\\slidestep{bbb-EN-Two}{1,2}\n", 1)
-    assert target.macro == "slidestep" and target.frame_number == 2 and target.template == "uni-ibk"
+    assert target.macro == "slidestep" and target.frame_number == 2 and target.template == "acme-two"
     assert preview_target.render(target, "during-course", "DE", log=print) == "a.pdf"
     kind, args, kwargs = renders[0]
     assert args[1:3] == ("slidestep", "bbb-EN-Two")

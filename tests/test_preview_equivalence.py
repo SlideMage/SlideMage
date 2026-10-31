@@ -148,8 +148,8 @@ def test_fullbleed_image_list_changes_instructor_sequence(tmp_path):
 def test_default_template_and_stock_framework_fallback(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
-    shutil.copy2(REPO / "example" / "SlideMage_template_uni-graz.tex",
-                 root / "SlideMage_template_uni-graz.tex")
+    shutil.copy2(REPO / "tests" / "fixtures" / "template_acme" / "SlideMage_template_acme.tex",
+                 root / "SlideMage_template_acme.tex")
     try:
         (tmp_path / "latex").symlink_to(REPO / "latex", target_is_directory=True)
     except OSError as exc:      # Windows lets only privileged users (or Developer Mode) create symlinks
@@ -164,11 +164,11 @@ def test_default_template_and_stock_framework_fallback(tmp_path, monkeypatch):
 def test_actual_institution_shadow_and_non_top_level_imports_fail_closed(tmp_path):
     root = tmp_path / "shadow" / "project"
     root.mkdir(parents=True)
-    shutil.copy2(REPO / "example" / "SlideMage_template_uni-graz.tex",
-                 root / "SlideMage_template_uni-graz.tex")
-    requests = specs(tmp_path / "shadow", "Plain", preamble=PREAMBLE.replace("slidemage", "uni-graz"))
+    shutil.copy2(REPO / "tests" / "fixtures" / "template_acme" / "SlideMage_template_acme.tex",
+                 root / "SlideMage_template_acme.tex")
+    requests = specs(tmp_path / "shadow", "Plain", preamble=PREAMBLE.replace("slidemage", "acme"))
     (root / "decks").mkdir(exist_ok=True)
-    (root / "decks" / "SlideMage_template_uni-graz.tex").write_text("custom")
+    (root / "decks" / "SlideMage_template_acme.tex").write_text("custom")
     shadow = classify_views(requests)
     assert all(not d.certain and "shadows institution" in d.reasons[0] for d in shadow.decisions)
     grouped = PREAMBLE.replace(r"\input{SlideMage_template_slidemage}",

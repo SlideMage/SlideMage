@@ -162,7 +162,9 @@ def _check_member(info: zipfile.ZipInfo) -> None:
         raise InstallError(f"The archive contains a file that is too large: {name!r}.")
 
 
-def _extract(zf: zipfile.ZipFile, target: Path) -> None:
+def extract(zf: zipfile.ZipFile, target: Path, manifest_name: str = MANIFEST_NAME) -> None:
+    """Check every member of `zf` (the rules above) and unpack it into `target`; `manifest_name` must be at the top
+    level (plugin.toml, or a theme package's theme.toml: themes.py). Raises InstallError."""
     infos = zf.infolist()
     if len(infos) > MAX_MEMBERS:
         raise InstallError(f"The archive has too many files ({len(infos)}, at most {MAX_MEMBERS}).")
@@ -172,8 +174,8 @@ def _extract(zf: zipfile.ZipFile, target: Path) -> None:
         total += info.file_size
     if total > MAX_TOTAL_BYTES:
         raise InstallError("The archive is too large when unpacked.")
-    if MANIFEST_NAME not in {i.filename for i in infos}:
-        raise InstallError(f"The archive has no {MANIFEST_NAME} at its top level.")
+    if manifest_name not in {i.filename for i in infos}:
+        raise InstallError(f"The archive has no {manifest_name} at its top level.")
     root = target.resolve()
     for info in infos:
         dest = (target / info.filename).resolve()
@@ -233,7 +235,7 @@ def install(archive: Path, *, expected_sha256: str | None = None, app_version: s
         try:
             staging.mkdir(parents=True)
             with zipfile.ZipFile(archive) as zf:
-                _extract(zf, staging)
+                extract(zf, staging)
         except zipfile.BadZipFile:
             raise InstallError("The file is not a valid zip archive.") from None
         except OSError as e:

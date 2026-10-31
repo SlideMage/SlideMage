@@ -8,8 +8,11 @@
   run). A plugin installed or removed since the start has a row too, saying it begins or ends with the next start.
 * Available: the catalogue's plugins that are not installed, with Install. The list comes from the cache when the
   tab is built; "Check for plugins" fetches it on a thread. Building the tab never touches the network.
+* Themes: the theme packages installed on this computer (themes.py, docs/THEME_PACKAGE.md: a template packaged on
+  its own), each with Remove. A theme takes effect at once, no restart: it is a template a deck chooses by its key.
 * Install from file…: a .smplugin that is not from the catalogue. It is read first (installer.peek) and the user is
-  asked, with the plugin's name, version and network lines, because the plugin runs with their rights.
+  asked, with the plugin's name, version and network lines, because the plugin runs with their rights. The same
+  button takes a .smtheme (install_theme_file): its theme.toml is shown first, then themes.install_file checks it.
 
 Every change takes effect after a restart (the plugins load once, before the window exists), so the tab says so and
 offers "Restart now". Failures are captions, never exceptions: InstallError and CatalogueError have sentences meant
@@ -28,6 +31,7 @@ from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QCheckBox, QFileDialog, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout, QWidget
 
+from ... import themes
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import Catalogue, CataloguePlugin, CatalogueError, CatalogueTooNew, Release
 from ...plugins.loader import LoadedPlugin
@@ -96,18 +100,13 @@ def install_downloaded(folder: Path, release: Release) -> Manifest:
 
 def install_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
     """Install the .smplugin `path` after the user has seen what it is (the plugin is not from the catalogue and
-    runs with their rights). `say(text, error)` receives what to tell the user. Whether it was installed."""
-    expected = None
-    sidecar = Path(str(path) + ".sha256")
+    runs with their rights), or the .smtheme `path` (install_theme_file). `say(text, error)` receives what to tell
+    the user. Whether it was installed."""
+    if path.suffix.lower() == themes.PACKAGE_SUFFIX:
+        return install_theme_file(parent, path, say)
     try:
         manifest = installer.peek(path)
-        if sidecar.is_file():
-            expected = installer.read_sha256_file(sidecar)
-            if expected is None:
-                raise installer.InstallError(f"{sidecar.name} does not hold a SHA-256 checksum.")
-            if installer.sha256_of(path) != expected:
-                raise installer.InstallError(
-                    f"{path.name} does not match {sidecar.name} (SHA-256); nothing was installed.")
+        expected = _sidecar_sha256(path)
     except (installer.InstallError, OSError) as exc:
         say(str(exc), True)
         return False
@@ -131,8 +130,57 @@ def _confirm_file(parent: QWidget, manifest: Manifest) -> bool:
     return QMessageBox.question(parent, "Install plugin from file", text) == QMessageBox.StandardButton.Yes
 
 
+def _sidecar_sha256(path: Path) -> str | None:
+    """The SHA-256 of `path`'s `<name>.sha256` file when there is one, after checking `path` against it. Raises
+    InstallError (no checksum in it, or a file that does not match)."""
+    sidecar = Path(str(path) + ".sha256")
+    if not sidecar.is_file():
+        return None
+    expected = installer.read_sha256_file(sidecar)
+    if expected is None:
+        raise installer.InstallError(f"{sidecar.name} does not hold a SHA-256 checksum.")
+    if installer.sha256_of(path) != expected:
+        raise installer.InstallError(f"{path.name} does not match {sidecar.name} (SHA-256); nothing was installed.")
+    return expected
+
+
+def install_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
+    """Install the theme package `path` (a .smtheme) after the user has seen its theme.toml. Whether it was
+    installed."""
+    try:
+        manifest = themes.peek(path)
+        expected = _sidecar_sha256(path)
+    except (themes.ThemeError, installer.InstallError, OSError) as exc:
+        say(str(exc), True)
+        return False
+    if not _confirm_theme(parent, manifest):
+        say("", False)
+        return False
+    try:
+        themes.install_file(path, expected_sha256=expected)
+    except themes.ThemeError as exc:
+        say(str(exc), True)
+        return False
+    say(f"The theme {manifest.name} {manifest.version} is installed. Choose the template {manifest.id!r} in a "
+        "deck's settings to use it.", False)
+    return True
+
+
+def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
+    current = next((t for t in themes.installed() if t.key == manifest.id), None)
+    replaces = (f"\n\nIt replaces the installed version {current.manifest.version}." if current and current.manifest
+                else "\n\nIt replaces the installed theme of that key." if current else "")
+    text = (f"Install the theme {manifest.name} {manifest.version}?\n{manifest.summary}\n\n"
+            f"Template key: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
+            "A theme is a slide template; it runs no program. A project's own copy of the same template still wins.")
+    return QMessageBox.question(parent, "Install theme from file", text) == QMessageBox.StandardButton.Yes
+
+
 def pick_plugin_file(parent: QWidget) -> Path | None:
-    path, _ = QFileDialog.getOpenFileName(parent, "Install a plugin", "", "SlideMage plugins (*.smplugin)")
+    path, _ = QFileDialog.getOpenFileName(
+        parent, "Install a plugin or theme", "",
+        "SlideMage plugins and themes (*.smplugin *.smtheme);;SlideMage plugins (*.smplugin);;"
+        "SlideMage themes (*.smtheme)")
     return Path(path) if path else None
 
 
@@ -251,6 +299,28 @@ class AvailableRow(Card):
         layout.addWidget(row(Surface(), self.install_button))
 
 
+class ThemeRow(Card):
+    """One installed theme package: its name, version, key and summary, and Remove."""
+
+    def __init__(self, tab: PluginsTab, theme: themes.InstalledTheme) -> None:
+        super().__init__()
+        self.key = theme.key
+        layout = self.layout()
+        manifest = theme.manifest
+        title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else theme.key)
+        title.setObjectName(q.ROW_NAME)
+        layout.addWidget(row(title, caption(f"template {theme.key}"), stretch=0))
+        if manifest is not None:
+            layout.addWidget(caption(manifest.summary))
+            layout.addWidget(caption(f"{manifest.author}, {manifest.license}"))
+        if theme.problem:
+            layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
+        self.remove_button = Button("Remove", compact=True)
+        self.remove_button.clicked.connect(partial(tab.remove_theme, theme.key,
+                                                   manifest.name if manifest else theme.key))
+        layout.addWidget(row(Surface(), self.remove_button))
+
+
 class PluginsTab(Page):
     """`app` is the window (its project and relaunch_with_project); `leave(action)` closes the sheet and then runs
     `action` (SettingsSheet.close_then), which is how "Restart now" gets the modal sheet out of the way first."""
@@ -263,6 +333,7 @@ class PluginsTab(Page):
         self._job: QThread | None = None
         self.rows: dict[str, InstalledRow] = {}
         self.available: dict[str, AvailableRow] = {}
+        self.theme_rows: dict[str, ThemeRow] = {}
         layout = self.body
 
         self.banner = Card()
@@ -286,6 +357,11 @@ class PluginsTab(Page):
         layout.addLayout(self._available_box)
         self.available_note = caption("")
         layout.addWidget(self.available_note)
+
+        layout.addWidget(self._heading("Themes"))
+        self._themes_box = QVBoxLayout()
+        self._themes_box.setSpacing(8)
+        layout.addLayout(self._themes_box)
 
         self.check_button = Button("Check for plugins", compact=True)
         self.check_button.clicked.connect(self.check_catalogue)
@@ -336,8 +412,32 @@ class PluginsTab(Page):
             self.available_note.setText("" if todo else "Every plugin of the list is installed.")
         if not self.rows:
             self._installed_box.addWidget(caption("No plugins are installed."))
+        self.refresh_themes()
         self.banner.setVisible(installer.pending_restart())
         self._set_busy(self._job is not None)
+
+    def refresh_themes(self) -> None:
+        clear_layout(self._themes_box)
+        self.theme_rows.clear()
+        for theme in themes.installed():
+            self.theme_rows[theme.key] = ThemeRow(self, theme)
+            self._themes_box.addWidget(self.theme_rows[theme.key])
+        if not self.theme_rows:
+            self._themes_box.addWidget(caption("No themes are installed. A theme is a slide template packaged on its "
+                                               "own (.smtheme); install one from a file."))
+
+    def remove_theme(self, key: str, name: str) -> None:
+        if QMessageBox.question(self, "Remove theme", f"Remove the theme {name}? Decks that use the template "
+                                f"{key!r} need a copy of it in their project to compile."
+                                ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            themes.remove(key)
+        except themes.ThemeError as exc:
+            self._say(str(exc), error=True)
+            return
+        self._say(f"The theme {name} is removed.")
+        self.refresh_themes()
 
     def _add_installed(self, installed_row: InstalledRow, plugin_id: str) -> None:
         self.rows[plugin_id] = installed_row

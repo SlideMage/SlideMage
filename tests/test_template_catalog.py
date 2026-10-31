@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LATEX = ROOT / "latex"
 BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
-SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", ROOT / "example" / "SlideMage_template_uni-graz.tex"]
+SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
 # The names that were hooks and are gone (v10.11.0): the setup layer holds an error-raising macro under each. The first three
 # moved nothing; the other two were renamed.

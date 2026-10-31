@@ -1206,10 +1206,10 @@ fg=normal~text.fg
 % same idiom as \SMChapterLogoPath below) and \SMLogoHeight (a
 % length) are both defined by the per-university preamble that \input{}s
 % this file, before this file is reached -- see e.g.
-% SlideMage_template_uni-graz.tex. Whichever source image
+% an institution's template. Whichever source image
 % \SMInstituteLogoPath points at should have any symmetric margin of
 % empty transparent pixels around the actual logo artwork trimmed off first
-% (see SlideMage_template_uni-graz.tex's own comment on why: an untrimmed
+% (see the SlideMage_template_<name>.tex files' own comment on why: an untrimmed
 % margin makes \includegraphics's box bigger than the visible logo, so the
 % logo's right-hand margin ends up looking bigger than its top/bottom
 % margins, since only the latter get absorbed into vertical centering).
@@ -1413,7 +1413,7 @@ fg=normal~text.fg
 			\else
 				% \SMFrametitleLogoFixed frames (currently: sectionframe)
 				% have no inline logo/SMLogoAnchor node at all (see
-				% uni_graz_no_inline_logo's own comment above) -- the "beside"
+				% SMNoInlineLogo's own comment above) -- the "beside"
 				% placement above relies on that node for its own vertical
 				% position, so it can't be reused here. Direct instruction
 				% (2026-07-24, first raised on
@@ -1727,7 +1727,7 @@ fg=normal~text.fg
 % The sequence itself is user-configurable via \setfootnotesymbols{...} (a
 % comma-separated list, e.g. \setfootnotesymbols{*,+,#}) -- call it anywhere
 % from that point in the deck onward (e.g. once, right after
-% \input{SlideMage_template_uni-graz}) to replace the default marker set for every
+% \input{SlideMage_template_<name>}) to replace the default marker set for every
 % \footnote{}/\source{} from then on. \seq_item:Nn (expl3's indexed lookup;
 % expl3 is already loaded by the gotham theme itself, see e.g.
 % beamerthemeSlideMage.sty) is what removes the old \ifcase's hard 9-symbol
@@ -2118,10 +2118,9 @@ fg=normal~text.fg
 % "value supplied externally, referenced lazily" idiom as
 % \SMInstituteLogoPath/\SMLogoHeight above (\SMBulletDot's own
 % body only expands \SMBulletColor when a bullet actually gets drawn,
-% long after this \newcommand runs). Graz's own bullets are its primary
-% highlight color (matching this project's original, single-institution
-% behavior); MCI's and Innsbruck's are their own secondary blue instead
-% (2026-07-16, direct instruction) -- see each institution's own
+% long after this \newcommand runs). A template sets its bullets to its primary
+% highlight color or to another color (2026-07-16, direct instruction)
+% -- see each institution's own
 % SlideMage_template_*.tex for its \SMBulletColor setting.
 \newcommand{\SMBulletDot}{\tikz[baseline=-0.65ex]{\fill[\SMBulletColor] circle (1.7pt);}}
 
@@ -2530,7 +2529,7 @@ fg=normal~text.fg
 % between an element and a set/class -- and, same as $\triangleq$, it's a
 % math-mode symbol with a real Computer Modern glyph (no Fira Sans/Fira
 % Mono text-mode substitute needed, unlike most Unicode symbol candidates
-% -- see SlideMage_template_uni-graz.tex's own "beamer/TeX gotchas" entry on
+% -- see an institution template's own "beamer/TeX gotchas" entry on
 % $\triangleq$ for why that matters here). Applied to every \exampleblock/
 % \SMFloatingExampleBlock in the deck via this shared template, not a
 % one-off per slide, matching how $\triangleq$ applies to every

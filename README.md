@@ -32,7 +32,7 @@ merged with that fork's history).
 | Path | Contents |
 | --- | --- |
 | `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the house citation format `SlideMage_bibliography_default.tex`, `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
-| `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, the Uni Graz layer (`SlideMage_template_uni-graz.tex`, `schemes/`), `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
+| `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
 | `.github/workflows/` | `release.yml` builds the Windows and Linux executables for every version tag; `ci.yml` (run by hand) runs the tests and compiles the demo decks. |
@@ -624,18 +624,18 @@ shows them all on.
   v10.14.0): biblatex options and the bibliography's look. A template that wants it
   says `\input{SlideMage_bibliography_default}` after `\input{SlideMage_base}`; a deck
   turns it on with `\SMUseBibliography`.
-- `SlideMage_template_uni-graz.tex` — a thin institution layer:
+- `SlideMage_template_<name>.tex` — a template, a thin institution layer (SlideMage's own is
+  `latex/SlideMage_template_slidemage.tex`, below):
   `\input{SlideMage_setup}`, then the settings it changes from the catalog
   (the `c_*` color palette, `\renewcommand{\SMInstituteLogoPath}{...}`, the
   logo height and title-bar paddings with `\setlength`), followed by
   `\input{SlideMage_base}` and its citation format. A template is colors, a logo, a
   layout profile (the default `fira` here) and whatever catalog settings it changes;
   nothing else. A deck picks its institution by `\input{}`ing
-  this file (never the base file directly). The original project has two
-  more of these (for two other institutions), each following exactly this
-  same pattern with its own colors/logo and nothing else different — not
-  included in this copy, but add your own the same way if you need a second
-  institution: copy this file, swap the `c_*` colors and
+  this file (never the base file directly). A template for your own
+  institution follows exactly this same pattern with its own colors/logo and
+  nothing else different; the repository ships no institution's template, so add
+  yours the same way: copy SlideMage's template, swap the `c_*` colors and
   `\SMInstituteLogoPath`, keep the leading `\input{SlideMage_setup}` and the
   trailing `\input{SlideMage_base}` line. A template only changes catalog
   settings (`\renewcommand`, `\setlength`, `\definecolor`), so a misspelt
@@ -648,7 +648,7 @@ shows them all on.
   blue `#0066cc` as highlight colour (bullets, image borders, table rules)
   and the app's other colours as the `c_*` palette, each pair the framework
   combines checked against WCAG 2.1 (see the file's comments). Same
-  structure as the Graz layer, but in `latex/` rather than in a project:
+  structure as any institution's layer, but in `latex/` rather than in a project:
   every project finds it on the same search path as
   `SlideMage_base.tex`, so any deck can select it with
   `\input{SlideMage_template_slidemage}` without a copy of its own (a
@@ -740,7 +740,7 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 
 ```latex
 \documentclass[aspectratio=169]{beamer}
-\input{SlideMage_template_uni-graz}
+\input{SlideMage_template_slidemage}
 \newcommand{\FooterText}{KS Financial Markets | Stefan Palan | 2027s}
 
 \begin{document}
@@ -749,7 +749,7 @@ A deck for a specific course or talk is a `.tex` file in `decks/`, e.g.:
 \end{document}
 ```
 
-Relative paths inside `SlideMage_template_uni-graz.tex` (and `\slide{}`'s own
+Relative paths inside `SlideMage_template_slidemage.tex` (and `\slide{}`'s own
 `\input{slides/...}`) assume the project root as the working directory. Every
 deck lives one level down, in `decks/`, so needs two extra lines right after
 `\documentclass` so it can *also* be compiled from inside `decks/` itself,
@@ -765,8 +765,8 @@ not just from the root:
 This adds the project root as a *fallback* search location — tried only if
 the plain relative path isn't found relative to wherever the compiler was
 actually invoked from — so every `\input`/`\slide{}`/`\includegraphics`
-call throughout `SlideMage_template_uni-graz.tex` and the slide files themselves
-(not just the deck file's own `\input{SlideMage_template_uni-graz}`) resolves
+call throughout `SlideMage_template_slidemage.tex` and the slide files themselves
+(not just the deck file's own `\input{SlideMage_template_slidemage}`) resolves
 correctly either way, with no changes needed to any of those other files.
 `decks/slidemage-manual.tex` has this already; copy it into any new deck under `decks/`.
 
@@ -1016,7 +1016,7 @@ it is moved, copied or archived:
   (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[en]` or `[de]`.
-- **Dark slides** (supported templates, including the example Graz template):
+- **Dark slides** (supported templates, including the SlideMage template):
   a charcoal background, white body text,
   dark cards and gray code panels. Saved in the deck and applied to its previews
   and compiled PDFs; title and footer bars keep the institution colors.
@@ -1068,8 +1068,8 @@ finds it whether the compile starts in the project root or in `decks/`, and
 applies the template's citation format. The format is the template's job:
 the institution template redefines `\SMBiblatexOptions` (package options) and
 `\SMBibliographyStyle` (name format, field formats, bibliography drivers) --
-`SlideMage_template_uni-graz.tex` and the SlideMage template
-(`latex/SlideMage_template_slidemage.tex`) carry the author's house format,
+the SlideMage template
+(`latex/SlideMage_template_slidemage.tex`) carries the author's house format,
 `Markowitz, H., 1952. "Portfolio Selection", Journal of Finance 7(1), 77--91.`
 (every author as "Family, Initials.", year unparenthesized, title in quotes,
 type-specific tail for books, articles, online sources and reports). A
@@ -1190,7 +1190,7 @@ whole lualatex/biber rerun loop above automatically and correctly per deck
    Commands panel from step 1.
 
 Every top-level compilable file (`decks/slidemage-manual.tex`,
-`decks/test.tex`, `decks/test-student.tex`, `decks/test-mci.tex`, `decks/test-ibk.tex`, `decks/t-Uni-FM2-2027s.tex`,
+`decks/test.tex`, `decks/test-student.tex`, `decks/t-Uni-FM2-2027s.tex`,
 `decks/t-Uni-IA2-2026w.tex`, `decks/#workdeck.tex`) also starts
 with a `% !TeX program = lualatex` magic comment as a per-file safety net
 independent of both settings above: most editors that recognize it
@@ -1957,8 +1957,8 @@ pixel-identical; everything below is what new slides should use.
   `SMCodeKeywordColor`, `SMCodeCommentColor`, `SMCodeBackgroundColor`; a
   template that doesn't set them gets the highlight colour, `c_primary_gray`
   and `c_tertiary_gray`, which is unreadable with a yellow or orange
-  highlight colour -- so the Graz, MCI and Innsbruck templates set a dark
-  blue, a dark gray and (MCI, Innsbruck) a lighter panel, all at least 5:1
+  highlight colour -- so a template with such a highlight colour sets a dark
+  blue, a dark gray and a lighter panel, all at least 5:1
   contrast. The keys go to `\lstinputlisting`
   (`firstline=`, `lastline=`, `basicstyle=\SMCodeFont\tiny`, ...); the size
   is `\SMCodeSize`. Write the files in ASCII (umlauts, dashes, `·`, `…` and
@@ -2242,7 +2242,7 @@ institute logo directly after the title text on the *same paragraph line*,
 with a forbidden break point between them, and `sectionframe` doesn't use
 that inline logo at all (it draws its own, at a fixed position, as above) —
 so `sectionframe` switches to its own frametitle template variant,
-`uni_graz_no_inline_logo`, that drops the inline logo entirely and instead
+`SMNoInlineLogo`, that drops the inline logo entirely and instead
 reserves the same horizontal margin for it via `rightskip` (kept ragged, not
 justified, so a wrapped line doesn't stretch its word-gaps to fill that
 reserved margin). Hyphenation is also switched off for the whole
@@ -2421,16 +2421,15 @@ width); the macro's trailing `\vspace` reserves its height, so no
 
 ## Title bar and logo
 
-The Uni Graz logo (`scheme_uni_graz/Logo Uni Graz 4c-cropped.png` — a version of
-`Logo Uni Graz 4c.png` with its hidden transparent margin trimmed off, so its
-margins are exact rather than inflated) sits vertically centered in the
-yellow title bar, with the same small margin on all sides. The yellow bar is
+The institution's logo (a copy of the logo image with its hidden transparent margin
+trimmed off, so its margins are exact rather than inflated) sits vertically
+centered in the title bar, with the same small margin on all sides. The bar is
 made to visually stop short of the page's right edge by painting a white
 patch (sized to the logo, spanning the full height of the bar) over that
 corner and redrawing the logo on top of it, so the logo ends up on white
-instead of on yellow. A second white patch spans the *full width* of the bar
+instead of on the bar colour. A second white patch spans the *full width* of the bar
 from the logo's bottom edge down to the bar's actual bottom edge, so the
-yellow appears to end flush with the logo's bottom rather than extending
+bar appears to end flush with the logo's bottom rather than extending
 further down under the title text too (width and top position unchanged).
 
 **This requires compiling twice.** The white patch is positioned using a
@@ -2462,12 +2461,12 @@ content runs):
 applies to the one frame that follows the `\chapterlogo{}` call — every other
 slide is unaffected unless it opts in the same way. The chapter logo is drawn
 at the same height as the main logo, with exactly one `\SMFrametitleRightPadding`
-of margin on both sides (to the main logo, and to where the yellow bar
+of margin on both sides (to the main logo, and to where the bar
 resumes) — the same length already used around the main logo, not a new
 constant.
 
-**Crop the source image first**, the same way `scheme_uni_graz/Logo Uni Graz 4c-cropped.png`
-already is for the main logo: `\chapterlogo{}`'s margins are measured against
+**Crop the source image first**, the same way the main logo
+is: `\chapterlogo{}`'s margins are measured against
 the image file's own edges (via `\settowidth`), not against whatever icon is
 visually drawn inside it. A source image with baked-in whitespace around the
 icon (common — the sustainable-investment icon above had ~30% padding on each
@@ -2478,7 +2477,7 @@ is the untouched source, `-cropped` is what slides actually reference).
 
 ### Color palette
 
-The Graz dark option uses `#2b2b2b` for the canvas and `#3a3a3a` for cards,
+The dark option uses `#2b2b2b` for the canvas and `#3a3a3a` for cards,
 with white text, yellow inline code, and black code listings on `#c6c6c6`.
 These two dark grays are the softened variant used in the chapter-one design
 examples. The shared TikZ styles `SMCard` and `SMProcess` follow the template;
@@ -2495,8 +2494,8 @@ for `\textcolor{}` in body text). These names are shared machinery, defined
 once per institution in that institution's own `SlideMage_template_*.tex`
 (see the directory layout above for the base/institution-layer split) with
 different hex values — a slide
-that uses `c_secondary_blue` renders in Graz's blue, MCI's blue, or
-Innsbruck's blue depending only on which preamble the deck `\input{}`s, with
+that uses `c_secondary_blue` renders in a different blue
+depending only on which template the deck `\input{}`s, with
 no change to the slide itself. For a visual reference of all of them under
 whichever preamble is currently loaded — see the swatches on the manual's
 slide [slides/1pf-EN-One-Look-Several-Institutions-current.tex](example/slides/1pf-EN-One-Look-Several-Institutions-current.tex)
@@ -2545,7 +2544,7 @@ The sequence itself is a plain list, overridable with `\setfootnotesymbols{}`
 \setfootnotesymbols{†,‡,§}     % from here to the end of the deck
 ```
 
-Call it once per deck (e.g. right after `\input{SlideMage_template_uni-graz}`) for a
+Call it once per deck (e.g. right after `\input{SlideMage_template_slidemage}`) for a
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
@@ -2646,7 +2645,7 @@ and `\omitslideversion{}` are drop-in replacements for
 ```
 
 — and `\studentversion`, called anywhere in a deck (e.g. right after
-`\input{SlideMage_template_uni-graz}`), switches that one compile into the "handout"
+`\input{SlideMage_template_slidemage}`), switches that one compile into the "handout"
 variant: every tagged slide is skipped entirely (not blanked out or hidden,
 but never `\input` at all, so it produces no frame and no blank page), *and*
 it forces beamer's own `handout` mode (normally only reachable via the
@@ -2688,7 +2687,7 @@ variants can never drift apart on which slides they contain:
 
 ```latex
 % course.tex (instructor)          % course-student.tex (handout)
-\input{SlideMage_template_uni-graz}          \input{SlideMage_template_uni-graz}
+\input{SlideMage_template_slidemage}        \input{SlideMage_template_slidemage}
 ...                                \studentversion
                                     ...
 \begin{document}                   \begin{document}
@@ -2868,7 +2867,7 @@ The grid's own size isn't a fixed cm value — it's computed in LaTeX from
 this project's real per-institution length registers (paper size, logo
 padding, title-bar/footer height), left-aligned to the text margin and
 scaled up until either the row height or the logo's own right edge binds,
-so it looks right under Graz/Innsbruck/MCI alike without separate tuning.
+so it looks right under every template alike without separate tuning.
 
 ## Screen-reader accessibility
 
@@ -3306,8 +3305,8 @@ Every compile that touches a slide — rendering it on its own, or compiling
 a whole deck (instructor version) — refreshes a cached pair of PNGs of how
 it last looked (full-size and thumbnail, see below), so you can glance at
 a slide without paying a LaTeX compile to do it. Previews are specific to
-the institution template that produced them: a Uni Graz deck and a Uni
-Innsbruck deck compiling the same slide keep separate caches, and each
+the institution template that produced them: two decks with different
+templates compiling the same slide keep separate caches, and each
 deck's workspace always shows its own template's previews. Two ways to
 see them, both reading the same cache:
 

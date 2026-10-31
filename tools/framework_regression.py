@@ -16,7 +16,7 @@ Usage (run with the SlideMage venv):
              compiles, page-count changes, font-list changes and the differing pages. Differing pages are
              written as DIR/diff/<key>/p<N>.png (baseline | current | highlighted difference). Exit code 1 on
              any difference, 0 when everything is identical. `--only` restricts both modes to some entries
-             (matched against the entry key, e.g. "slidemage-manual@uni-graz", or its deck stem).
+             (matched against the entry key, e.g. "slidemage-manual@acme", or its deck stem).
 
 CONFIG.json (relative paths are relative to the config file):
 
@@ -29,11 +29,11 @@ CONFIG.json (relative paths are relative to the config file):
       "dpi":       72,
       "decks": [
         {"deck": "decks/slidemage-manual.tex"},                          compiled under its own template
-        {"deck": "decks/slidemage-manual.tex", "template": "uni-graz"}   \\input{SlideMage_template_<key>} swapped
+        {"deck": "decks/slidemage-manual.tex", "template": "acme"}   \\input{SlideMage_template_<key>} swapped
       ]
     }
 
-In-repo set (tools/framework_regression_repo.json: the manual and its sibling deck, own template and uni-graz):
+In-repo set (tools/framework_regression_repo.json: the manual and its sibling deck, each under its own template):
 
     python tools/framework_regression.py record tools/framework_regression_repo.json --out <DIR>
 

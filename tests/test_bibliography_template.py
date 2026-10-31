@@ -53,10 +53,3 @@ def test_the_default_bibliography_file_has_the_spdx_header_and_the_stock_house_f
     for entrytype in ("book", "article", "online", "report"):
         assert cs("DeclareBibliographyDriver{" + entrytype + "}") in text
 
-
-def test_a_project_templates_pre_v10140_copy_still_carries_the_format_verbatim():
-    # example/SlideMage_template_uni-graz.tex: a real institution's own template, written
-    # before the format moved into its own framework file -- exactly what
-    # compat_bibliography's optional "bibliography-default-file" change offers to shorten.
-    text = read("example", "SlideMage_template_uni-graz.tex").replace("\r\n", "\n")
-    assert bibliography_house.FULL_TEXT in text

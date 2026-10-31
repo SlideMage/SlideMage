@@ -61,9 +61,24 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 
+# The test template's logo is a copy of SlideMage's own logo (latex/slidemage-logo.pdf).
+[[annotations]]
+path = ["tests/fixtures/template_acme/schemes/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "LPPL-1.3c+"
+
 # The licence texts themselves and this overview.
 [[annotations]]
 path = ["LICENSE", "THIRD_PARTY_NOTICES.md", "REUSE.toml", "LICENSES/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The test theme package (tests/fixtures/theme_package/, docs/THEME_PACKAGE.md): its manifest, notes and licence
+# text, and a copy of SlideMage's own logo.
+[[annotations]]
+path = ["tests/fixtures/theme_package/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Stefan Palan, Jürgen Fleiß"
+SPDX-License-Identifier = "LPPL-1.3c+"

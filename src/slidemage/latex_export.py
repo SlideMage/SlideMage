@@ -7,7 +7,7 @@ machine that has only a TeX distribution -- no SlideMage project around it.
 lines point at the root instead of the parent of decks/), the slides it calls under ``slides/``, the media
 those slides use under ``media/``, and every other file the build reads from the project or the LaTeX
 framework: the institution and base preambles, the theme files, logos, schemes, snippets, the .bib and the
-alt-text store. A small ``.latexmkrc`` selects lualatex. Build it with ``latexmk <deck name>.tex``.
+alt-text store. A template from an installed theme package (themes.py) is exported like a project's own. A small ``.latexmkrc`` selects lualatex. Build it with ``latexmk <deck name>.tex``.
 
 Unlike a deck snapshot (deck_snapshot.py: the files a real compile read, a frozen copy that renders to the
 same PDF) this follows the sources: it walks the deck's text the way the compiler would, with the search path
@@ -30,9 +30,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import unused_content
+from . import themes, unused_content
 from .deck_scan import Deck
-from .project import ProjectContext
+from .project import ProjectContext, is_snapshot
 from .slide_snapshot import framework_dirs
 from .tex_source import COMMENT_RE
 
@@ -91,8 +91,10 @@ class _Collector:
         self.ctx = ctx
         self.deck = deck
         self.frameworks = framework_dirs(ctx.root)
-        # TeX's search path during a compile: the deck's folder, the project root, then the framework.
-        self.search = [ctx.decks_dir, ctx.root, *self.frameworks]
+        # Installed theme packages (themes.py): their files go to the root, as a project's own template's would.
+        self.themes = [] if is_snapshot(ctx.root) else themes.installed_dirs()
+        # TeX's search path during a compile: the deck's folder, the project root, the framework, then the themes.
+        self.search = [ctx.decks_dir, ctx.root, *self.frameworks, *self.themes]
         self.files: dict[str, Path] = {}
         self.missing: set[str] = set()
         self._texts: list[str] = []         # the project's own texts, for the media references
@@ -101,8 +103,9 @@ class _Collector:
         self.profiles: set[str] = set()     # layout profiles the templates name
 
     def destination(self, source: Path) -> str:
-        """Where a source file goes: decks/ files to the root, project files where they are, framework files to the root."""
-        for base in (self.ctx.decks_dir, self.ctx.root, *self.frameworks):
+        """Where a source file goes: decks/ files to the root, project files where they are, framework and theme files
+        to the root."""
+        for base in (self.ctx.decks_dir, self.ctx.root, *self.frameworks, *self.themes):
             if source.is_relative_to(base):
                 return source.relative_to(base).as_posix()
         raise ValueError(source)

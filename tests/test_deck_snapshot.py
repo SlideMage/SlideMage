@@ -30,7 +30,7 @@ WHEN = datetime(2026, 10, 7, 14, 12, 30)
 
 DECK = r"""\documentclass{beamer}
 \def\input@path{{../}}
-\input{SlideMage_template_uni-graz}
+\input{SlideMage_template_acme}
 \deckoutputfolder{D:/Teaching/Somewhere}
 \begin{document}
 \slide{1aa-EN-One}
@@ -54,7 +54,7 @@ def tree(tmp_path, monkeypatch):
     write(root / "decks" / "t-Deck.tex", DECK)
     write(root / "decks" / "t-Deck-extra.tex", DECK)
     write(root / "decks" / "t-Other.tex", DECK)
-    write(root / "SlideMage_template_uni-graz.tex", "graz\n")
+    write(root / "SlideMage_template_acme.tex", "graz\n")
     write(root / "SlideMage.bib", "@book{x, title={X}}\n")
     write(root / "SlideMage_layout_mine.tex", "% a project's own layout profile\n")
     write(root / "slides" / "1aa-EN-One-current.tex", "slide one\n")
@@ -89,7 +89,7 @@ def tree(tmp_path, monkeypatch):
         inputs = [
             wrapper,
             cwd / "decks" / deck_file,
-            cwd / "SlideMage_template_uni-graz.tex",
+            cwd / "SlideMage_template_acme.tex",
             cwd / "SlideMage_layout_mine.tex",
             cwd / "slides" / "1aa-EN-One-current.tex",
             cwd / "media" / "used.png",
@@ -167,7 +167,7 @@ def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):
     snap = result.path
     assert snap == root / "snapshots" / "t-Deck_2026-10-07_14-12"
     proj = snap / "Proj"
-    for rel in ("decks/t-Deck.tex", "SlideMage_template_uni-graz.tex", "SlideMage_layout_mine.tex",
+    for rel in ("decks/t-Deck.tex", "SlideMage_template_acme.tex", "SlideMage_layout_mine.tex",
                 "slides/1aa-EN-One-current.tex", "media/used.png", "SlideMage.bib",
                 ".latexmkrc", "decks/.latexmkrc", "slide_ids.csv", "media/alt-text.csv"):
         assert (proj / rel).is_file(), rel
@@ -267,7 +267,7 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
     fw = root.parent / "SlideMage" / "latex"
     inv = root / ".build" / f"{jobname}-x"
     write(inv / f"{jobname}.fls", "\n".join(f"INPUT {p}" for p in (
-        root / "decks" / "t-Deck.tex", root / "SlideMage_template_uni-graz.tex",
+        root / "decks" / "t-Deck.tex", root / "SlideMage_template_acme.tex",
         root / "slides" / "1aa-EN-One-current.tex", root / "media" / "used.png",
         fw / "SlideMage_base.tex", fw / "beamerthemeSlideMage.sty",
         texroot / "tex" / "latex" / "beamer" / "beamer.cls")) + "\n")

@@ -37,7 +37,7 @@ def bundle(tmp_path):
     write(example / "media" / "alt-text.json", json.dumps({"version": 1, "images": {
         "media/shot.png": {"role": "informative", "status": "auto", "short": "shot v1"}}}))
     write(example / "slide_ids.csv", '"id"\r\n"1aa"\r\n"1bb"\r\n')
-    write(example / "SlideMage_template_uni-graz.tex", "graz\n")
+    write(example / "SlideMage_template_acme.tex", "graz\n")
     return latex, example
 
 
@@ -216,7 +216,7 @@ def test_init_project_seeds_example_and_records_baseline(tmp_path, existing_late
     assert (target / "decks" / "slidemage-manual.tex").is_file()
     assert not (target / "decks" / "slidemage-manual.pdf").exists()
     assert not (target / ".build").exists()
-    assert (target / "schemes" / "scheme_uni_graz" / "Logo_Uni-Graz_4c-cropped.pdf").is_file()
+    assert (target / "media" / "alt-text.json").is_file()
     manifest = bundled_copies.read_manifest(target)
     assert "decks/slidemage-manual.tex" in manifest[MANUAL]["files"]
     if existing_latex:

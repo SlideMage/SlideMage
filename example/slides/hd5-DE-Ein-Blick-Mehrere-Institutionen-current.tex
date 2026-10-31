@@ -4,11 +4,11 @@
 %% Translation of: 1pf-EN-One-Look-Several-Institutions
 %%
 
-% SlideMage manual, chapter "The big picture": templates. The four crops are
-% the same slide (1wa) compiled under each template (the MCI and Innsbruck
-% templates are not part of SlideMage; the crops were made once in a project
-% that has them). The color strip is live: it shows the palette of the
-% template this deck uses.
+% SlideMage manual, chapter "The big picture": templates. The two crops are
+% the same slide (1wa) compiled under SlideMage's own template and under the
+% stress-test template (tests/fixtures/template_stress/, a test template that
+% changes every layout setting); see tools/manual/README.md. The color strip is
+% live: it shows the palette of the template this deck uses.
 \providecommand{\templatecrop}[2]{% image, caption
 	\begin{tabular}[t]{@{}c@{}}
 		{\setlength{\fboxsep}{0pt}\setlength{\fboxrule}{0.4pt}%
@@ -20,16 +20,14 @@
 	Wie eine Folie aussieht -- Farben, Logo, Titelleiste, Fußzeile -- legt ein
 	\emph{Template} fest, nicht die Folie selbst. Ein Foliensatz nennt sein Template
 	nur einmal, daher erscheint dieselbe Folie in jedem Foliensatz in einem anderen
-	Design -- unten eine Folie dieses Handbuchs unter vier Templates.
+	Design -- unten eine Folie dieses Handbuchs unter zwei Templates.
 	\par
 	\begin{columns}[T,onlytextwidth]
-		\begin{column}{0.53\linewidth}
-			\templatecrop{\includegraphics[width=89pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage} \hspace{2pt}
-			\templatecrop{\includegraphics[width=89pt]{media/screenshot-slide-template-uni-graz.png}}{Universität Graz}\\[3pt]
-			\templatecrop{\includegraphics[width=89pt]{media/screenshot-slide-template-mci.png}}{MCI} \hspace{2pt}
-			\templatecrop{\includegraphics[width=89pt]{media/screenshot-slide-template-uni-ibk.png}}{Universität Innsbruck}
+		\begin{column}{0.57\linewidth}
+			\templatecrop{\includegraphics[width=98pt]{media/screenshot-slide-template-slidemage.png}}{SlideMage-Template} \hspace{4pt}
+			\templatecrop{\includegraphics[width=98pt]{media/screenshot-slide-template-stress.png}}{Stress-Test-Template}
 		\end{column}
-		\begin{column}{0.44\linewidth}
+		\begin{column}{0.40\linewidth}
 			\shrinklists{1}
 			\begin{itemize}
 				\item Ein Template ist eine kleine Datei, \SMCode{SlideMage\_template\_<name>.tex}: Farben, ein Logo, ein Layout-Profil für die Schriften und jede Layout-Einstellung, die es ändert

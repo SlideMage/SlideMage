@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Export LaTeX (latex_export.py): a deck as a folder that compiles on its own. Works on a copy of the example
-project holding two small decks: one with the Uni Graz template, one with the SlideMage template."""
+project holding two small decks: one with a small test template of its own (tests/fixtures/template_acme), one with the SlideMage template."""
 from __future__ import annotations
 
 import os
@@ -52,7 +52,9 @@ def make_project(tmp_path: Path) -> ProjectContext:
     (root / "media" / "bare.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>", encoding="utf-8")
     (root / "media" / "alt-text.json").write_text("{}", encoding="utf-8")
     (root / "snippets" / "zz2-1.tex").write_text("\\input{nowhere-at-all}\n", encoding="utf-8")
-    for name, template in (("graz", "uni-graz"), ("plain", "slidemage")):
+    acme = Path(__file__).resolve().parent / "fixtures" / "template_acme"
+    shutil.copytree(acme, root, dirs_exist_ok=True)       # SlideMage_template_acme.tex and schemes/acme/logo.pdf
+    for name, template in (("acme", "acme"), ("plain", "slidemage")):
         (root / "decks" / f"{name}.tex").write_text(
             HEAD.format(template=template, calls="\\slide{zz1-EN-One}\n\\slide{zz2-EN-Two}"), encoding="utf-8")
     return ProjectContext.at(root)
@@ -67,7 +69,7 @@ def deck_of(ctx: ProjectContext, name: str):
     return next(d for d in deck_scan.scan_decks(ctx) if d.name == name)
 
 
-def export(project, name="graz", dest=None):
+def export(project, name="acme", dest=None):
     dest = dest or project.root.parent / "out"
     dest.mkdir(exist_ok=True)
     return latex_export.export_deck(project, deck_of(project, name), dest)
@@ -75,8 +77,8 @@ def export(project, name="graz", dest=None):
 
 def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(project):
     result = export(project)
-    assert result.folder == project.root.parent / "out" / "graz-latex" and result.missing == []
-    assert (result.folder / "graz.tex").is_file()
+    assert result.folder == project.root.parent / "out" / "acme-latex" and result.missing == []
+    assert (result.folder / "acme.tex").is_file()
     assert sorted(p.name for p in (result.folder / "slides").iterdir()) == ["zz1-EN-One-current.tex", "zz2-EN-Two-current.tex"]
     # a bare "media/bare" brings the files sharing that stem; a commented-out reference and an unused slide's image stay home
     assert sorted(p.name for p in (result.folder / "media").iterdir()) == ["alt-text.json", "bare.png", "bare.svg", "pic-one.png"]
@@ -86,13 +88,13 @@ def test_the_folder_holds_the_deck_its_slides_and_only_the_media_they_use(projec
 
 def test_the_preambles_theme_logo_bib_and_code_files_come_along(project):
     names = set(export(project).files)
-    assert {"SlideMage_template_uni-graz.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
+    assert {"SlideMage_template_acme.tex", "SlideMage_base.tex", "SlideMage_alt.lua",
             "SlideMage_measure.lua", "SlideMage_setup.tex", "beamerthemeSlideMage.sty", "SlideMage.bib",
             "SlideMage_layout_fira.tex",
-            "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf", "snippets/zz2-1.tex", ".latexmkrc"} <= names
+            "schemes/acme/logo.pdf", "snippets/zz2-1.tex", ".latexmkrc"} <= names
     assert not any(n.startswith(("decks/", "latex/")) for n in names)
     # the deck never names the theme: only SlideMage_setup.tex does, and that is where the export finds it
-    deck_text = (project.root / "decks" / "graz.tex").read_text(encoding="utf-8")
+    deck_text = (project.root / "decks" / "acme.tex").read_text(encoding="utf-8")
     setup = (Path(__file__).resolve().parents[1] / "latex" / "SlideMage_setup.tex").read_text(encoding="utf-8")
     assert "usetheme" not in deck_text and "\\usetheme{SlideMage}" in setup
     assert not any("gotham" in n.lower() for n in names)
@@ -150,9 +152,9 @@ def test_a_file_shown_as_code_is_copied_but_not_read_for_references(project):
 
 def test_the_decks_path_lines_point_at_the_folder_itself(project):
     folder = export(project).folder
-    text = (folder / "graz.tex").read_text(encoding="utf-8")
+    text = (folder / "acme.tex").read_text(encoding="utf-8")
     assert "\\def\\input@path{{./}}" in text and "\\graphicspath{{./}}" in text and "../" not in text
-    assert text.replace("./", "../") == (project.root / "decks" / "graz.tex").read_text(encoding="utf-8")
+    assert text.replace("./", "../") == (project.root / "decks" / "acme.tex").read_text(encoding="utf-8")
 
 
 def test_a_missing_image_and_a_missing_slide_are_reported_and_the_rest_is_exported(project):
@@ -160,7 +162,7 @@ def test_a_missing_image_and_a_missing_slide_are_reported_and_the_rest_is_export
     (project.root / "slides" / "zz2-EN-Two-current.tex").unlink()
     result = export(project)
     assert result.missing == ["media/pic-one.png", "slides/zz2-EN-Two-current.tex"]
-    assert (result.folder / "slides" / "zz1-EN-One-current.tex").is_file() and (result.folder / "graz.tex").is_file()
+    assert (result.folder / "slides" / "zz1-EN-One-current.tex").is_file() and (result.folder / "acme.tex").is_file()
 
 
 def test_an_existing_folder_is_replaced(project):
@@ -168,8 +170,8 @@ def test_an_existing_folder_is_replaced(project):
     (first.folder / "stale.txt").write_text("old", encoding="utf-8")
     second = export(project)
     assert second.folder == first.folder and not (second.folder / "stale.txt").exists()
-    assert (second.folder / "graz.tex").is_file()
-    assert [p.name for p in second.folder.parent.iterdir()] == ["graz-latex"]
+    assert (second.folder / "acme.tex").is_file()
+    assert [p.name for p in second.folder.parent.iterdir()] == ["acme-latex"]
 
 
 def test_a_failure_leaves_no_half_written_folder_and_the_old_one_alone(project, monkeypatch):
@@ -182,7 +184,7 @@ def test_a_failure_leaves_no_half_written_folder_and_the_old_one_alone(project, 
     monkeypatch.setattr(latex_export.shutil, "copy2", broken)
     with pytest.raises(OSError):
         export(project)
-    assert [p.name for p in first.folder.parent.iterdir()] == ["graz-latex"]
+    assert [p.name for p in first.folder.parent.iterdir()] == ["acme-latex"]
     assert (first.folder / "keep.txt").read_text(encoding="utf-8") == "old"
     fresh = project.root.parent / "fresh"
     fresh.mkdir()
@@ -199,7 +201,7 @@ def test_a_rename_windows_denies_for_a_moment_is_tried_again_and_one_it_keeps_de
     monkeypatch.setattr(latex_export.time, "sleep", lambda _s: None)
 
     def busy(source, target):                           # a scanner holds the new folder for two tries
-        if Path(source).name.startswith(".graz-latex-") and len(denied) < 2:
+        if Path(source).name.startswith(".acme-latex-") and len(denied) < 2:
             denied.append(source)
             raise PermissionError("in use")
         real(source, target)
@@ -207,11 +209,11 @@ def test_a_rename_windows_denies_for_a_moment_is_tried_again_and_one_it_keeps_de
     monkeypatch.setattr(latex_export.os, "replace", busy)
     export(project)
     assert len(denied) == 2 and not (first.folder / "keep.txt").exists()
-    assert [p.name for p in first.folder.parent.iterdir()] == ["graz-latex"]
+    assert [p.name for p in first.folder.parent.iterdir()] == ["acme-latex"]
     (first.folder / "keep.txt").write_text("old", encoding="utf-8")
 
     def never(source, target):                          # up to v8.51.0 the old folder was deleted before this
-        if Path(source).name.startswith(".graz-latex-") and not Path(source).name.startswith(".graz-latex-old-"):
+        if Path(source).name.startswith(".acme-latex-") and not Path(source).name.startswith(".acme-latex-old-"):
             raise PermissionError("in use")
         real(source, target)
 
@@ -219,7 +221,7 @@ def test_a_rename_windows_denies_for_a_moment_is_tried_again_and_one_it_keeps_de
     with pytest.raises(PermissionError):
         export(project)
     assert (first.folder / "keep.txt").read_text(encoding="utf-8") == "old"
-    assert [p.name for p in first.folder.parent.iterdir()] == ["graz-latex"]
+    assert [p.name for p in first.folder.parent.iterdir()] == ["acme-latex"]
 
 
 def test_the_slide_and_media_scans_are_the_ones_that_archive_unused_content(project):

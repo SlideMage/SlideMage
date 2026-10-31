@@ -263,7 +263,7 @@ def test_titleframe_pad_detector_reports_templates_that_set_the_hook_not_reads(t
     assert change.id in [p.change.id for p in ev.quiet] and change.id not in [p.change.id for p in ev.loud]
     # the shipped templates leave the hook at its default
     shipped = Path(compat.__file__).resolve().parents[2]
-    for template in (shipped / "latex" / "SlideMage_template_slidemage.tex", shipped / "example" / "SlideMage_template_uni-graz.tex"):
+    for template in (shipped / "latex" / "SlideMage_template_slidemage.tex",):
         assert not compat._SETS_TITLEFRAME_PAD.search(template.read_text(encoding="utf-8")), template.name
 
 
@@ -296,7 +296,7 @@ def test_hook_renames_migrate_in_project_files_and_the_removed_names_are_reporte
         "\\SMFootlineHeight", "\\SMFootlineDepth", "\\SMRightFooterPadding"]
     # the shipped templates and profiles use none of the five
     shipped = Path(compat.__file__).resolve().parents[2]
-    for path in [shipped / "latex" / "SlideMage_template_slidemage.tex", shipped / "example" / "SlideMage_template_uni-graz.tex",
+    for path in [shipped / "latex" / "SlideMage_template_slidemage.tex",
                  *sorted((shipped / "latex").glob("SlideMage_layout_*.tex"))]:
         text = path.read_text(encoding="utf-8")
         assert not compat_hooks._RENAMED_RE.search(text) and not compat_hooks._REMOVED_RE.search(text), path.name

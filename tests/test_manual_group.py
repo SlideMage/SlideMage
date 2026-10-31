@@ -88,8 +88,8 @@ def test_tags_sheet_has_no_name_field_and_keeps_the_current_group(qapp):
 
 def test_the_sheet_asks_for_a_template_when_given_some(qapp):
     sheet = DeckGroupSheet(None, "New deck", ["course"], ok_text="Create", name_prompt="Name", default_name="x",
-                           templates=[("uni-graz", "University of Graz"), ("mci", "MCI")], current_template="mci")
-    assert sheet.template_box.currentData() == "mci"
+                           templates=[("acme", "Acme University"), ("other", "Other")], current_template="other")
+    assert sheet.template_box.currentData() == "other"
     sheet.template_box.setCurrentIndex(0)
     sheet._on_ok()
-    assert sheet.template == "uni-graz" and sheet.name == "x"
+    assert sheet.template == "acme" and sheet.name == "x"

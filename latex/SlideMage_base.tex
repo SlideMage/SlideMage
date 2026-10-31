@@ -56,7 +56,7 @@
 % are template settings: SlideMage_setup.tex defines each with its default
 % (the hook catalog), the template changes what it wants, and this file only
 % reads them -- shared machinery, no institution-specific branding. See e.g.
-% SlideMage_template_uni-graz.tex for the Graz values. \SMLogoWidth is the one
+% SlideMage_template_slidemage.tex for the values of SlideMage's own template. \SMLogoWidth is the one
 % logo-derived length that *does* stay computed here (via \settowidth,
 % further below) rather than hardcoded per institution, since it already
 % adapts automatically to whatever image \SMInstituteLogoPath points at.
@@ -1097,7 +1097,7 @@
 }
 
 % Student-version decks: \studentversion (called anywhere in a deck, e.g.
-% right after \input{SlideMage_template_uni-graz}, similar to \sidefootnotes or
+% right after \input{SlideMage_template_<name>}, similar to \sidefootnotes or
 % \setfootnotesymbols) switches that compile into the "handout" variant --
 % including, as of 2026-07-03, actually forcing beamer's own "handout" mode
 % (\gdef\beamer@currentmode{handout}, normally only reachable via the
@@ -1133,7 +1133,7 @@
 % file (not inside the slide's own content file): the identical slide list
 % can serve the instructor deck and both student deck versions, e.g.
 %
-%   \input{SlideMage_template_uni-graz}
+%   \input{SlideMage_template_<name>}
 %   \FooterText{...}
 %   \makeatletter\ifdefined\HANDOUT\studentversion\fi\makeatother  % or similar
 %   \input{course-content.tex}   % the shared \slide{}/\omitslide{} list
@@ -3215,9 +3215,9 @@
 	% \color doesn't emit a PDF color operator immediately when called, only
 	% when the *next* real glyph/path actually needs it, so whatever color
 	% one of those frame types last set can end up as the active PDF color
-	% well into the *next* frame's own first draw call. Invisible for Graz
-	% (the leaked color, c_primary_dark, happens to match ordinary body text
-	% anyway) but catastrophic for MCI/Innsbruck (c_primary_white, rendering
+	% well into the *next* frame's own first draw call. Invisible for a template
+	% whose leaked color (c_primary_dark) happens to match ordinary body text
+	% but catastrophic for one whose body text is light (c_primary_white, rendering
 	% plain non-itemize body text invisible against its own white
 	% background -- itemize items escape it, since beamer's own itemize
 	% template sets color fresh per bullet). An \AtBeginEnvironment{frame}
@@ -4800,7 +4800,7 @@
 		% \SMTitleTextColor, not a literal color token -- follows the
 		% box color change right above (2026-07-16, direct instruction):
 		% leaving this hardcoded dark would be unreadable once the box
-		% itself switches to a dark blue for MCI/Innsbruck.
+		% itself switches to a dark color in an institution template.
 		\color{\SMTitleTextColor}%
 		% Beamer redefines \\ inside every frame to peek for an overlay spec
 		% (\\<2->, for line-by-line reveals in itemize/enumerate); that
@@ -5638,8 +5638,8 @@
 % SMCodeKeywordColor (control sequences), SMCodeCommentColor (% comments),
 % SMCodeBackgroundColor (the panel), SMCodeTextColor (ordinary code). A template that doesn't keeps the
 % original look: highlight colour, primary gray, tertiary gray -- which in
-% the Graz/MCI/Innsbruck palettes is yellow/orange and light gray on light
-% gray, about 1.1-1.3:1 contrast; their templates set readable colours.
+% a palette with a yellow or orange highlight is yellow/orange and light gray on light
+% gray, about 1.1-1.3:1 contrast; such templates set readable colours.
 \makeatletter
 \@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}
 \@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}
