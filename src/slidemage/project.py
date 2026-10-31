@@ -10,6 +10,7 @@ hand it on.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -471,13 +472,14 @@ _legacy_env_warned = False
 
 
 def warn_legacy_env_vars() -> None:
-    """Say on stderr, once per process, which old environment variables are being ignored."""
+    """Log a warning, once per process, for each old environment variable that is being ignored (the error log,
+    and stderr when there is a console: diagnostics.setup)."""
     global _legacy_env_warned
     if _legacy_env_warned:
         return
     _legacy_env_warned = True
     for note in legacy_env_notes():
-        print("SlideMage:", note, file=sys.stderr)
+        logging.getLogger(__name__).warning("%s", note)
 
 
 def discover() -> Path | None:

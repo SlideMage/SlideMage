@@ -186,7 +186,7 @@ def test_command_line_fix_runs_the_rename(tmp_path, capsys):
     assert not compat.evaluate(root, "v10.0.0").loud
 
 
-def test_old_environment_variables_are_reported_and_ignored(tmp_path, monkeypatch, capsys):
+def test_old_environment_variables_are_reported_and_ignored(tmp_path, monkeypatch, caplog):
     root = make_project(tmp_path)
     for name in ("SLIDEMASTER_LATEX", "SLIDEMAGE_LATEX", "SLIDEMASTER_PROJECT", "SLIDEMAGE_PROJECT"):
         monkeypatch.delenv(name, raising=False)
@@ -199,6 +199,7 @@ def test_old_environment_variables_are_reported_and_ignored(tmp_path, monkeypatc
     assert len(notes) == 1 and "$SLIDEMASTER_LATEX" in notes[0] and "$SLIDEMAGE_LATEX" in notes[0]
     assert "$SLIDEMASTER_LATEX" in compat.report_markdown(root, compat.evaluate(root, "v10.0.0"), "v10.0.0")
     assert project.discover() == root.resolve()
-    project.warn_legacy_env_vars()
-    project.warn_legacy_env_vars()
-    assert capsys.readouterr().err.count("SLIDEMASTER_LATEX") == 1
+    with caplog.at_level("WARNING", logger="slidemage"):
+        project.warn_legacy_env_vars()
+        project.warn_legacy_env_vars()
+    assert caplog.text.count("SLIDEMASTER_LATEX") == 1
