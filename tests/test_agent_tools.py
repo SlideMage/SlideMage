@@ -512,9 +512,9 @@ def test_add_bib_entry_validates(box):
 
 
 def test_make_qr_code_writes_media_and_returns_the_call(box, root):
-    out = box.ok("make_qr_code", kind="url", fields={"url": "uni-graz.at/course"}, caption="QR 1")
+    out = box.ok("make_qr_code", kind="url", fields={"url": "example.org/course"}, caption="QR 1")
     assert (root / "media" / "qr-1.pdf").is_file() and box.ws.changed[-1][0] == root / "media" / "qr-1.pdf"
-    assert out.endswith("\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://uni-graz.at/course]")
+    assert out.endswith("\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://example.org/course]")
     assert "Lecture hall ≥" in out
     out = box.ok("make_qr_code", kind="event", fields={"title": "Exam", "start": "2026-12-14 10:00"}, height=0.8,
                  caption="auto")

@@ -19,7 +19,7 @@ from slidemage.ui.workspace.palette import command_entries
 from test_workspace_window import COURSE, window as window  # noqa: F401 -- fixture
 
 LABEL = "Rerender all previews for this deck"
-NEEDED = {"uni-graz": {"aaa-EN-One", "bbb-EN-Two"}}
+NEEDED = {"acme": {"aaa-EN-One", "bbb-EN-Two"}}
 
 
 @pytest.fixture

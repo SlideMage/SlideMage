@@ -358,7 +358,7 @@ def shot_sheets(shooter: Shooter) -> None:
                          is_dirty=window.centre.is_dirty)
     shooter.sheet_shot("add-slide-existing", sheet)
     sheet.close()
-    templates = [(key, key) for key in ("slidemage", "uni-graz")]
+    templates = [(key, key) for key in ("slidemage", "stress-test")]
     sheet = DeckSettingsSheet(window, deck, templates)
     for index, name in enumerate(("general", "output")):
         shooter.sheet_shot(f"deck-settings-{name}", sheet, index)

@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import app_settings, compile_log, compile_records, compiler, project
+from . import app_settings, compile_log, compile_records, compiler, project, themes
 from .compiler import CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -511,7 +511,14 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
             if path.is_file():
                 tex_files.setdefault(_norm(path), path)
         elif kind == "external":
-            external.setdefault(_norm(path), path)
+            theme = themes.theme_of(path)
+            if theme is not None and path.is_file():
+                # An installed theme package's file goes where a project's own template would be (the project
+                # root): a snapshot compiles with its own copies only, and a project copy wins anyway.
+                rel = _rel(path.resolve(), theme.resolve())
+                project_files.setdefault(rel.lower(), (rel, path.resolve()))
+            else:
+                external.setdefault(_norm(path), path)
     for out in outputs:
         for bib in out.bib_sources:
             if is_within(bib, project_root):

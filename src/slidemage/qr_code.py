@@ -111,7 +111,7 @@ def default_error(kind: str) -> str:
 
 
 def normalize_url(text: str) -> str:
-    """`text` as a full link: "uni-graz.at/x" gets https://. ValueError when it cannot be one."""
+    """`text` as a full link: "example.org/x" gets https://. ValueError when it cannot be one."""
     url = text.strip()
     if not url:
         raise ValueError("Enter the link.")

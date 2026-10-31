@@ -13,10 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
-from . import compiler, slide_preview
+from . import compiler, slide_preview, slide_snapshot, themes
 
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59cb4d818b7249"
@@ -95,10 +96,12 @@ AUDITED_FRAMEWORK = {
     "SlideMage_setup.tex": "b249869b572cc983db166bc76438affb52a608d1f290cb1534aeb9effc3e86ec",
     "SlideMage_layout_fira.tex": "cee11bc93dfa18e0f73499818771896c0751ad110e845eb942fd93b1641b6258",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
-    "SlideMage_base.tex": "2ea63e893b354b5b6ab8d10ab956cda11471ab4fa4dd190e6fe99364ddd3c4b3",
+    # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
+    # changed), re-audited.
+    "SlideMage_base.tex": "3766784904628c34966eaa96ef7872f1c97dce186954fdc8a872e4292d1dd69d",
     "SlideMage_template_slidemage.tex": "06e0ccb1cce6bc27b6baaf6eec9fd292e57844e15440f1e0288f8e4715d94617",
     "SlideMage_bibliography_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
-    "beamerthemeSlideMage.sty": "1110cb29021e4a02f3ae996365ff8d387dfac8b70b0c29e84299ebcd134a3425",
+    "beamerthemeSlideMage.sty": "175a142a3a0a8c5becc21209ddb0266864cbee6c26771dd80b3cd48aa2d0099d",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
 }
@@ -295,7 +298,10 @@ def _source_tree(text: str, root: Path, origin: Path, dependencies: dict[str, st
 def _framework(ctx, dependencies: dict[str, str]):
     root = ctx.root.resolve()
     env = compiler.build_env(ctx)
-    if env.get("TEXINPUTS"):
+    # The installed theme folders build_env puts on TEXINPUTS come after the project root and the framework, and
+    # the same for every view; anything else on it is a custom search path. (A snapshot's env has no TEXINPUTS.)
+    theme_dirs = themes.installed_dirs()
+    if env.get("TEXINPUTS") and env["TEXINPUTS"] != os.pathsep.join([*(str(d) for d in theme_dirs), ""]):
         return "custom TEXINPUTS search path"
     if env.get("LATEXMKRCSYS"):
         return "custom system latexmk configuration"
@@ -344,7 +350,7 @@ def _framework(ctx, dependencies: dict[str, str]):
         if actual != expected:
             return f"unaudited framework file: {name}"
     try:
-        for base in (root / "decks", root, framework):
+        for base in (root / "decks", root, framework, *(theme_dirs if env.get("TEXINPUTS") else ())):
             for path in (*base.glob("*.sty"), *base.glob("*.cls")):
                 if path.name not in AUDITED_FRAMEWORK:
                     return f"custom package/class in TeX search path: {path.name}"
@@ -396,7 +402,8 @@ def _preamble(spec, dependencies: dict[str, str]):
             if _brace_depth(reduced, match.start()) != 0:
                 return deck_hidden, "scoped or delayed framework import"
             if name != "SlideMage_template_slidemage":
-                path = root / f"{name}.tex"
+                # The project's own copy, else an installed theme's (slide_snapshot.template_dirs: TeX's order).
+                path = slide_snapshot.preamble_file(name[len("SlideMage_template_"):], root)
                 if (root / "decks" / path.name).exists():
                     return deck_hidden, "deck shadows institution preamble"
                 try:

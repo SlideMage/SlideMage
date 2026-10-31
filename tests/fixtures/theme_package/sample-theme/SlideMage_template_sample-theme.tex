@@ -1,0 +1,13 @@
+% SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
+% SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage template name: Sample Theme
+% A tiny theme package's template for the tests (docs/THEME_PACKAGE.md): the
+% SlideMage template's catalog defaults with a green title bar and a logo from
+% the theme's own scheme folder, found on TEXINPUTS like any file of the theme.
+\newcommand{\SMLayoutProfile}{fira}
+\input{SlideMage_setup}
+\definecolor{c_custom_green}{HTML}{15803d}
+\renewcommand{\SMTitleBoxColor}{c_custom_green}
+\renewcommand{\SMInstituteLogoPath}{schemes/scheme_sample_theme/sample-logo.pdf}
+\input{SlideMage_base}
+\input{SlideMage_bibliography_default}

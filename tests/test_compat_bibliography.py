@@ -51,16 +51,16 @@ def make(tmp_path: Path, framework_ready=True) -> Path:
     (latex / "SlideMage_base.tex").write_text(base, encoding="utf-8")
     (latex / "SlideMage_template_slidemage.tex").write_text(
         BS + "input{SlideMage_base}\n\n" + FULL_TEXT, encoding="utf-8")
-    (root / "SlideMage_template_uni-graz.tex").write_bytes(
+    (root / "SlideMage_template_acme.tex").write_bytes(
         (BS + "usetheme{gotham}\r\n" + BS + "input{SlideMage_base}\r\n"
          + "% This project's own macros.\r\n"
          + BS + "input{SlideMage_project_macros}\r\nmore\r\n").encode())
     d = root / "decks"
-    (d / "a.tex").write_bytes(deck("uni-graz", deck_copy()).replace("\n", "\r\n").encode())
-    (d / "b.tex").write_text(deck("uni-graz", deck_copy().replace(BS + "addperiod", BS + "addsemicolon", 1)),
+    (d / "a.tex").write_bytes(deck("acme", deck_copy()).replace("\n", "\r\n").encode())
+    (d / "b.tex").write_text(deck("acme", deck_copy().replace(BS + "addperiod", BS + "addsemicolon", 1)),
                              encoding="utf-8")
     (d / "c.tex").write_text(deck("slidemage", deck_copy("")), encoding="utf-8")
-    (d / "d.tex").write_text(deck("uni-graz", "% no references here"), encoding="utf-8")
+    (d / "d.tex").write_text(deck("acme", "% no references here"), encoding="utf-8")
     return root
 
 
@@ -92,19 +92,19 @@ def test_update_replaces_the_copy_adds_the_format_to_the_template_and_backs_up(t
 
     done = compat.run_update(root, pending, now=NOW)
     assert not done.errors
-    assert sorted(done.changed) == ["SlideMage_template_uni-graz.tex", "decks/a.tex", "decks/c.tex"]
+    assert sorted(done.changed) == ["SlideMage_template_acme.tex", "decks/a.tex", "decks/c.tex"]
 
     a = (root / "decks" / "a.tex").read_bytes().decode()
     assert a.count(BS + "SMUseBibliography") == 2            # once in the comment, once as the call
     assert "DeclareBibliographyDriver" not in a and BS + "usepackage[style" not in a
     assert "\r\n" in a and "\n" not in a.replace("\r\n", "")  # line endings kept
     assert (root / "decks" / "b.tex").read_bytes() == before_b          # the variant is left alone
-    tpl = (root / "SlideMage_template_uni-graz.tex").read_bytes().decode()
+    tpl = (root / "SlideMage_template_acme.tex").read_bytes().decode()
     assert tpl.index("SlideMage_project_macros") < tpl.index(BS + "input{SlideMage_bibliography_default}") < tpl.index("more")
     assert "\r\n" in tpl and BLOCK.rstrip("\n") in tpl
     assert "DeclareBibliographyDriver" not in tpl           # the one line, not the full copy
     assert (done.backup / "decks" / "a.tex").read_bytes() == before_a
-    assert (done.backup / "SlideMage_template_uni-graz.tex").is_file()
+    assert (done.backup / "SlideMage_template_acme.tex").is_file()
     assert not (done.backup / "decks" / "b.tex").exists()
 
     # idempotent, and nothing is pending any more
@@ -123,7 +123,7 @@ def test_nothing_is_changed_while_the_framework_lacks_the_command(tmp_path, monk
 
 def test_a_template_with_another_format_keeps_its_decks(tmp_path):
     root = make(tmp_path)
-    (root / "SlideMage_template_uni-graz.tex").write_text(
+    (root / "SlideMage_template_acme.tex").write_text(
         BS + "input{SlideMage_base}\n" + BS + "renewcommand{" + BS + "SMBibliographyStyle}{" + BS
         + "relax}\n", encoding="utf-8")
     findings = compat_bibliography.detect(root)
@@ -143,24 +143,24 @@ def test_a_framework_template_using_the_default_input_line_is_also_ready(tmp_pat
     assert [f.file for f in findings] == ["decks/a.tex", "decks/c.tex"]
     plan = compat_bibliography.migrate(root)
     assert sorted(str(p) for p in plan) == sorted(
-        ["SlideMage_template_uni-graz.tex", str(Path("decks/a.tex")), str(Path("decks/c.tex"))])
+        ["SlideMage_template_acme.tex", str(Path("decks/a.tex")), str(Path("decks/c.tex"))])
     assert BS + "SMUseBibliography" in plan[Path("decks/c.tex")].decode()
 
 
 def test_shorten_finds_a_project_templates_full_copy_and_migrate_replaces_it(tmp_path):
     root = tmp_path / "proj"
     (root / "decks").mkdir(parents=True)
-    tpl = root / "SlideMage_template_uni-graz.tex"
+    tpl = root / "SlideMage_template_acme.tex"
     tpl.write_bytes((BS + "input{SlideMage_base}\r\n\r\n" + FULL_TEXT).replace("\n", "\r\n").encode())
 
     findings = compat_bibliography.detect_shorten(root)
     assert len(findings) == 1
-    assert findings[0].file == "SlideMage_template_uni-graz.tex" and findings[0].line > 1
+    assert findings[0].file == "SlideMage_template_acme.tex" and findings[0].line > 1
     assert "full house citation format" in findings[0].message
 
     plan = compat_bibliography.migrate_shorten(root)
-    assert list(plan) == [Path("SlideMage_template_uni-graz.tex")]
-    new_text = plan[Path("SlideMage_template_uni-graz.tex")].decode()
+    assert list(plan) == [Path("SlideMage_template_acme.tex")]
+    new_text = plan[Path("SlideMage_template_acme.tex")].decode()
     assert "\r\n" in new_text
     assert BS + "input{SlideMage_bibliography_default}" in new_text
     assert "DeclareBibliographyDriver" not in new_text and BS + "renewcommand{" + BS + "SMBiblatexOptions}" not in new_text
@@ -174,9 +174,9 @@ def test_shorten_finds_a_project_templates_full_copy_and_migrate_replaces_it(tmp
 def test_shorten_leaves_a_template_with_no_format_or_another_format_alone(tmp_path):
     root = tmp_path / "proj"
     (root / "decks").mkdir(parents=True)
-    (root / "SlideMage_template_uni-ibk.tex").write_text(
+    (root / "SlideMage_template_acme-two.tex").write_text(
         BS + "input{SlideMage_base}\nmore\n", encoding="utf-8")                # no format at all
-    (root / "SlideMage_template_mci.tex").write_text(
+    (root / "SlideMage_template_other.tex").write_text(
         BS + "input{SlideMage_base}\n" + BS + "renewcommand{" + BS + "SMBiblatexOptions}{x}\n"
         + BS + "renewcommand{" + BS + "SMBibliographyStyle}{" + BS + "relax}\n", encoding="utf-8")
     (root / "SlideMage_template_slidemage.tex").write_text(
@@ -192,7 +192,7 @@ def test_shorten_is_registered_as_its_own_dialog_change(tmp_path):
     project.write_project_json(root, {
         "format": project.PROJECT_FORMAT, "last_app_version": "v10.13.0",
         "highest_app_version": "v10.13.0", "compat": {"checked_version": "v10.13.0"}})
-    (root / "SlideMage_template_uni-graz.tex").write_text(
+    (root / "SlideMage_template_acme.tex").write_text(
         BS + "input{SlideMage_base}\n\n" + FULL_TEXT, encoding="utf-8")
 
     ev = compat.evaluate(root, "v10.14.0")
@@ -201,7 +201,7 @@ def test_shorten_is_registered_as_its_own_dialog_change(tmp_path):
 
     pending = [p for p in ev.loud if p.change.id == "bibliography-default-file"]
     done = compat.run_update(root, pending, now=NOW)
-    assert not done.errors and done.changed == ["SlideMage_template_uni-graz.tex"]
+    assert not done.errors and done.changed == ["SlideMage_template_acme.tex"]
     assert not compat_bibliography.detect_shorten(root)
     assert not compat.run_update(root, pending, now=NOW).changed    # idempotent
 
@@ -211,5 +211,3 @@ def test_the_shipped_templates_carry_the_house_format_one_way_or_the_other():
     assert BLOCK.rstrip("\n") in slidemage and "DeclareBibliographyDriver" not in slidemage
     default_file = (ROOT / "latex" / "SlideMage_bibliography_default.tex").read_bytes().decode("utf-8").replace("\r\n", "\n")
     assert FULL_TEXT in default_file
-    uni_graz = (ROOT / "example" / "SlideMage_template_uni-graz.tex").read_bytes().decode("utf-8").replace("\r\n", "\n")
-    assert FULL_TEXT in uni_graz

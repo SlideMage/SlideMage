@@ -23,7 +23,7 @@ from slidemage.ui.plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from slidemage.ui.workspace import deck_actions
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"
-DECK = DECK_TEXT.replace("\\begin{document}", "\\input{SlideMage_template_uni-graz}\r\n\\begin{document}", 1)
+DECK = DECK_TEXT.replace("\\begin{document}", "\\input{SlideMage_template_acme}\r\n\\begin{document}", 1)
 MARKER = "%% marker: set\r\n"
 FOOTER = "Edited footer"
 

@@ -68,7 +68,7 @@ from pathlib import Path
 # reads the same either way.
 import pymupdf as fitz
 
-from . import project, slide_language
+from . import project, slide_language, themes
 from .preview_cache import THUMBNAIL_MAX
 from .preview_metrics import measure
 
@@ -165,22 +165,31 @@ def framework_dirs(root: Path) -> list[Path]:
     return [d for d in candidates if (d / "SlideMage_base.tex").is_file()]
 
 
+def template_dirs(root: Path) -> list[Path]:
+    """The folders a deck's \\input{SlideMage_template_<key>} is found in, in TeX's order (the project's .latexmkrc
+    and compiler.build_env's TEXINPUTS): the project root, the framework, then the installed theme packages
+    (themes.py; not for a deck snapshot, whose compiles search only its own copies). The first one holding a key's
+    file wins."""
+    installed = [] if project.is_snapshot(root) else themes.installed_dirs()
+    return [root, *framework_dirs(root), *installed]
+
+
 def preamble_file(template: str, root: Path) -> Path:
     """The template's preamble file, SlideMage_template_<key>.tex: the
     project's own (institution layers live in the project root), else the
-    framework's (the SlideMage template, since v5.9.0). The project-root path
-    when neither exists."""
+    framework's (the SlideMage template, since v5.9.0), else an installed
+    theme's. The project-root path when none exists."""
     name = f"SlideMage_template_{template}.tex"
-    for folder in (root, *framework_dirs(root)):
+    for folder in template_dirs(root):
         if (folder / name).is_file():
             return folder / name
     return root / name
 
 
 def available_templates(root: Path) -> list[str]:
-    """The keys of the templates whose preamble file a deck of the project can find (project root or framework):
-    the app's own first, then the others alphabetically."""
-    keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in (root, *framework_dirs(root))
+    """The keys of the templates whose preamble file a deck of the project can find (project root, framework or an
+    installed theme): the app's own first, then the others alphabetically."""
+    keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in template_dirs(root)
             for file in folder.glob(f"{TEMPLATE_PREFIX}*.tex")}
     return sorted(keys, key=lambda key: (key != DEFAULT_TEMPLATE, key))
 

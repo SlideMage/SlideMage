@@ -71,11 +71,11 @@ def test_template_swap_edits_only_the_wrapper_text(tmp_path):
     deck = tmp_path / "deck.tex"
     original = r"\documentclass{beamer}" "\n" r"\input{SlideMage_template_slidemage}" "\n" r"\begin{document}\end{document}" "\n"
     deck.write_text(original, encoding="utf-8")
-    entry = fr.Entry(deck, "uni-graz", "instructor")
+    entry = fr.Entry(deck, "acme", "instructor")
     swapped = fr.swapped_deck_text(entry)
-    assert "SlideMage_template_uni-graz" in swapped and "slidemage}" not in swapped
+    assert "SlideMage_template_acme" in swapped and "slidemage}" not in swapped
     assert deck.read_text(encoding="utf-8") == original
-    assert entry.key == "deck@uni-graz-instructor"
+    assert entry.key == "deck@acme-instructor"
     assert fr.wrapper_text(entry, swapped).startswith(r"\def\deckversionoverride{instructor}")
 
 
@@ -83,14 +83,14 @@ def test_template_swap_without_template_input_is_an_error(tmp_path):
     deck = tmp_path / "deck.tex"
     deck.write_text(r"\documentclass{beamer}" "\n", encoding="utf-8")
     with pytest.raises(ValueError):
-        fr.swapped_deck_text(fr.Entry(deck, "mci", "instructor"))
+        fr.swapped_deck_text(fr.Entry(deck, "other", "instructor"))
 
 
 def test_config_paths_and_entries(tmp_path):
     (tmp_path / "c.json").write_text(json.dumps(
-        {"project": "p", "framework": "f", "decks": [{"deck": "decks/a.tex"}, {"deck": "decks/b.tex", "template": "mci"}]}))
+        {"project": "p", "framework": "f", "decks": [{"deck": "decks/a.tex"}, {"deck": "decks/b.tex", "template": "other"}]}))
     cfg = fr.load_config(tmp_path / "c.json")
     entries = fr.entries_of(cfg, cfg["project"], None)
-    assert [e.key for e in entries] == [f"{n}-{v}" for n in ("a", "b@mci") for v in fr.DEFAULT_VERSIONS]
-    assert [e.group for e in fr.entries_of(cfg, cfg["project"], {"b@mci"})] == ["b@mci"] * 3
+    assert [e.key for e in entries] == [f"{n}-{v}" for n in ("a", "b@other") for v in fr.DEFAULT_VERSIONS]
+    assert [e.group for e in fr.entries_of(cfg, cfg["project"], {"b@other"})] == ["b@other"] * 3
     assert {e.group for e in fr.entries_of(cfg, cfg["project"], {"a"})} == {"a"}

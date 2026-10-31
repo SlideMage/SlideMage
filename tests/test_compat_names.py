@@ -9,7 +9,7 @@ from slidemage import compat, compat_names, fileio, project
 from slidemage.compat import Pending
 
 OLD_TEMPLATE = (
-    "% SlideMage template name: University of Graz\n"
+    "% SlideMage template name: Acme University\n"
     "% Slidemaster preamble variant for Graz\n"
     "\\definecolor{c_primary_dark}{HTML}{3A4A5A}\n"
     "\\newcommand{\\SMBulletColor}{c_primary_dark}\n"
@@ -21,7 +21,7 @@ OLD_TEMPLATE = (
 OLD_DECK = (
     "\\documentclass[aspectratio=169]{beamer}\n"
     "\\usetheme{gotham}\n"
-    "\\input{Slidemaster_preamble_uni-graz}\n"
+    "\\input{Slidemaster_preamble_acme}\n"
     "\\SMUseBibliography[Slidemaster.bib]\n"
     "\\IfFileExists{Slidemaster.bib}{\\addbibresource{Slidemaster.bib}}{\\addbibresource{../Slidemaster.bib}}\n"
     "\\begin{document}\n\\end{document}\n")
@@ -36,11 +36,11 @@ def make_project(tmp_path: Path) -> Path:
     for sub in ("decks", "decks/archive", "slides", ".slidemage"):
         (root / sub).mkdir(parents=True)
     (root / project.MARKER).write_text('"id"\r\n', encoding="utf-8")
-    (root / "Slidemaster_preamble_uni-graz.tex").write_bytes(OLD_TEMPLATE.replace("\n", "\r\n").encode())
+    (root / "Slidemaster_preamble_acme.tex").write_bytes(OLD_TEMPLATE.replace("\n", "\r\n").encode())
     (root / "Slidemaster_project_macros.tex").write_bytes(b"\\newcommand{\\X}{x}\n")
     (root / "Slidemaster.bib").write_bytes(BIB.encode())
     (root / "decks" / "course.tex").write_bytes(OLD_DECK.encode())
-    (root / "decks" / "archive" / "old.tex").write_bytes(OLD_DECK.replace("uni-graz", "slidemage").encode())
+    (root / "decks" / "archive" / "old.tex").write_bytes(OLD_DECK.replace("acme", "slidemage").encode())
     (root / "decks" / "_slidemage_preview-x.tex").write_bytes(OLD_DECK.encode())
     (root / "decks" / ".latexmkrc").write_bytes(OLD_RC.encode())
     (root / ".latexmkrc").write_bytes(OLD_RC.encode())
@@ -69,7 +69,7 @@ def test_change_is_registered_as_breaking():
 def test_detect_names_every_file_that_changes(tmp_path):
     root = make_project(tmp_path)
     files = {f.file for f in compat_names.detect(root)}
-    assert files == {"Slidemaster_preamble_uni-graz.tex", "Slidemaster_project_macros.tex", "Slidemaster.bib",
+    assert files == {"Slidemaster_preamble_acme.tex", "Slidemaster_project_macros.tex", "Slidemaster.bib",
                      "decks/course.tex", "decks/archive/old.tex", "decks/.latexmkrc", ".latexmkrc",
                      ".slidemage/extra.json", ".scripts/add_deck_headers.py"}
     # regenerated wrappers and slides are not part of it
@@ -81,16 +81,16 @@ def test_migrate_renames_and_rewrites(tmp_path):
     done = update(root)
     assert not done.errors and done.backup is not None
     after = tree(root)
-    assert "Slidemaster_preamble_uni-graz.tex" not in after and "Slidemaster.bib" not in after
+    assert "Slidemaster_preamble_acme.tex" not in after and "Slidemaster.bib" not in after
     assert "Slidemaster_project_macros.tex" not in after
     assert after["SlideMage.bib"] == BIB.encode()                  # a bibliography moves byte for byte
     assert after["SlideMage_project_macros.tex"] == b"\\newcommand{\\X}{x}\n"
-    template = after["SlideMage_template_uni-graz.tex"].decode()
+    template = after["SlideMage_template_acme.tex"].decode()
     assert "\\input{SlideMage_base}\r\n\\input{SlideMage_project_macros}\r\n" in template   # CRLF kept
     assert "% Slidemaster preamble variant" in template                                     # comments stay
     deck = after["decks/course.tex"].decode()
-    assert "\\input{SlideMage_template_uni-graz}" in deck and "\\usetheme" not in deck      # setup loads the theme
-    assert template.startswith("% SlideMage template name: University of Graz\r\n"
+    assert "\\input{SlideMage_template_acme}" in deck and "\\usetheme" not in deck      # setup loads the theme
+    assert template.startswith("% SlideMage template name: Acme University\r\n"
                                "% Slidemaster preamble variant for Graz\r\n"
                                "\\input{SlideMage_setup}\r\n\\definecolor")             # after the header, before the colors
     assert "\\renewcommand{\\SMBulletColor}{c_primary_dark}\r\n\\setlength{\\SMLogoHeight}{3ex}\r\n" in template
@@ -111,7 +111,7 @@ def test_old_files_are_backed_up_before_they_go(tmp_path):
     root = make_project(tmp_path)
     done = update(root)
     assert (done.backup / "Slidemaster.bib").read_bytes() == BIB.encode()
-    assert (done.backup / "Slidemaster_preamble_uni-graz.tex").is_file()
+    assert (done.backup / "Slidemaster_preamble_acme.tex").is_file()
     assert (done.backup / "decks" / "course.tex").read_bytes() == OLD_DECK.encode()
     assert "Slidemaster.bib" in done.changed and "SlideMage.bib" in done.changed
 
@@ -145,7 +145,7 @@ def test_template_with_unknown_slidemaster_code_is_reported_and_left_alone(tmp_p
     assert b"SlideMage.bib" in deck.read_bytes()                                    # the rest of the deck does not
     reported = {(f.file, f.line) for f in compat_names.detect(root)}
     assert ("Slidemaster_preamble_odd.tex", 2) in reported and ("decks/odd.tex", 1) in reported
-    assert (root / "SlideMage_template_uni-graz.tex").is_file()                      # other templates went through
+    assert (root / "SlideMage_template_acme.tex").is_file()                      # other templates went through
 
 
 def test_a_taken_new_name_blocks_that_rename(tmp_path):
@@ -156,7 +156,7 @@ def test_a_taken_new_name_blocks_that_rename(tmp_path):
     assert (root / "SlideMage.bib").read_bytes() == b"@book{mine}\n"
     assert b"Slidemaster.bib" in (root / "decks" / "course.tex").read_bytes()         # still points at the old file
     assert any("exists already" in f.message for f in compat_names.detect(root))
-    assert (root / "SlideMage_template_uni-graz.tex").is_file()
+    assert (root / "SlideMage_template_acme.tex").is_file()
 
 
 def test_a_failed_write_puts_everything_back(tmp_path, monkeypatch):

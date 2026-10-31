@@ -725,8 +725,8 @@ What matters when touching *this code*:
   cache so a review UI can show *something current-ish* without paying a
   LaTeX compile to do it, never a guaranteed-fresh source of truth.
   `detect_template(preamble_text)` regexes a preamble's own
-  `\input{SlideMage_template_(uni-graz|uni-ibk|mci)}` line (falling back
-  to `uni-graz`), so a Uni Graz and a Uni Innsbruck compile of the same
+  `\input{SlideMage_template_<key>}` line (falling back
+  to the default template), so compiles with two different templates of the same
   slide id keep separate caches -- computed once by the caller
   (`compiler.py`/`slide_preview.py`) from `Deck.preamble_text`/the render's
   own preamble and threaded through, not re-detected per snapshot call.
@@ -776,7 +776,7 @@ What matters when touching *this code*:
   original single-template version always used, just scoped to that
   template's own needed slides instead of every slide in the project),
   skipping a template with an empty set entirely rather than wasting a
-  compile on nothing (this project's own `test-ibk.tex`/`test-mci.tex`
+  compile on nothing (this project's own `test-alt2.tex`/`test-alt.tex`
   hit exactly that: they `\input{}` a shared fragment rather than calling
   `\slide{}` directly, so their own template detects with nothing of its
   own -- confirmed directly, not assumed, when it first showed up as a
@@ -1010,12 +1010,12 @@ Confirmed working end-to-end (citations resolved, biber ran, no veto) on a
 throwaway duplicate of `t-Uni-IA2-2026w-preview.tex`.
 
 **Archiving refuses decks with a sibling `\input{}`.** `test.tex`/
-`test-mci.tex`/`test-ibk.tex`/`test-student.tex` all `\input{test-slides}`
+`test-alt.tex`/`test-alt2.tex`/`test-student.tex` all `\input{test-slides}`
 -- a fragment living in `decks/` itself, not the project root. Archiving
 moves *only* the requested deck's own `.tex` (that's how the feature was
 scoped), so a deck depending on such a same-directory sibling would
 silently break once it's one directory deeper than that sibling. This was
-hit directly while testing (a duplicate of `test-mci.tex` failed to compile
+hit directly while testing (a duplicate of `test-alt.tex` failed to compile
 after archiving with `! LaTeX Error: File 'test-slides.tex' not found`).
 `archive.py`'s `_sibling_dependencies()` detects this pattern (a bare
 `\input{X}` where `X.tex` exists next to the deck, excluding the
@@ -1249,7 +1249,7 @@ wasn't re-verified against this exact file after that change.)
 That function only returns files containing `\documentclass` (the "real
 deck" heuristic) -- but `decks/test-slides.tex` is a shared `\input{}`-ed
 fragment with real `\slide{}`/`\omitslide{}` calls of its own
-(`test.tex`/`test-mci.tex`/`test-ibk.tex`/`test-student.tex` all `\input{}`
+(`test.tex`/`test-alt.tex`/`test-alt2.tex`/`test-student.tex` all `\input{}`
 it rather than listing their own slides), so excluding it would make every
 slide it lists (the `ZZ*`-prefixed test/demo slides) look unused and get
 archived. `unused_content._deck_texts()` instead reads every `*.tex` file
@@ -1285,7 +1285,7 @@ directly inside `decks/`/`decks/archive/` (skipping only SlideMage's own
 ## What was actually tested
 
 Every check below ran against real repo state but only ever compiled
-`test.tex`, duplicates of `test-mci.tex`, and duplicates of
+`test.tex`, duplicates of `test-alt.tex`, and duplicates of
 `t-Uni-IA2-2026w-preview.tex` (a per-deck preview file retired since,
 when `decks/#workdeck.tex` took over that role -- don't go looking for
 it) -- never the real course decks
@@ -1321,7 +1321,7 @@ it) -- never the real course decks
   PASS, resulting PDF opens starting directly with the section-divider
   slide (no front matter), footer/logo/colors all correct, biblatex
   citation rendered correctly on page 2.
-- Archive-refusal path: a duplicate of `test-mci.tex` correctly raises
+- Archive-refusal path: a duplicate of `test-alt.tex` correctly raises
   (sibling dependency).
 - Archive-success path: a duplicate of `t-Uni-IA2-2026w-preview.tex`
   (self-contained, uses biblatex + version override) archived cleanly,

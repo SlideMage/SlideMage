@@ -33,13 +33,15 @@ source analysis.
 
 Only the pinned framework files (the setup layer, the layout profiles `SlideMage_layout_fira.tex` and `SlideMage_layout_lmsans.tex`, the base preamble, the generic
 template and its bundled bibliography default `SlideMage_bibliography_default.tex`, the SlideMage theme `beamerthemeSlideMage.sty` and the Lua files) and
-the bundled Uni Graz institution template are trusted. The theme and the layout
+the institution templates whose digests were audited (`AUDITED_PROJECT_TEMPLATES`: a project's own copy, or an installed theme package's, docs/THEME_PACKAGE.md) are trusted. The theme and the layout
 profiles (fonts and font metrics) contain no view-dependent rule (no version, footer-hide or
 deck-label condition; a test checks that), so pinning their text is the whole audit. A layout
 profile of a project's own is not pinned: only a template that names it can select it, and a
 template with an unaudited digest is rendered on its own. The default template is accepted when its generated preamble
 matches the audited bundled version. Project/deck `.latexmkrc` files must match
-the audited search configuration; without `SLIDEMAGE_LATEX`, the stock
+the audited search configuration; `TEXINPUTS` may hold exactly the installed theme folders SlideMage puts
+there for every compile and preview (after the project root and the framework; any other value is a custom
+search path, and a `.sty`/`.cls` in a theme folder fails closed); without `SLIDEMAGE_LATEX`, the stock
 `<project parent>/latex` fallback is used. The classifier checks for actual
 deck/project search-path shadows, top-level framework import, custom
 packages/classes, user search configuration, source and preamble definitions,

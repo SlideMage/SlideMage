@@ -116,8 +116,8 @@ def logo_visible_right(page: fitz.Page, width: float, bar_bottom: float, logo_he
     in the top-right corner that differs from the page's corner colour.
     Measured on pixels, not on the PDF's drawing list: a logo's outermost
     shape can be a white card with a dark outline (SlideMage's own logo) or
-    a small text mark (MCI's "®"), and the drawing-list version skipped
-    both and put the margin 2.4pt (SlideMage) to 12.7pt (MCI) too far left.
+    a small text mark (an institution logo's "®"), and the drawing-list version skipped
+    both and put the margin 2.4pt (SlideMage) to 12.7pt (such a mark) too far left.
     A title or quote frame has no ordinary title bar (bar_bottom stays 0): the 20pt fallback below fits the
     shipped templates' own small logos (\\SMLogoHeight 3ex, about 13pt), but a template with a taller one (the
     stress-test template's calibration logo is about 22pt tall) can draw it low enough that a flat 20pt misses

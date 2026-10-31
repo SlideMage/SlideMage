@@ -937,6 +937,27 @@ mix it in.
      the definition to the website side.
    - Afterwards a grep for `uni-graz`, `uni_graz`, `uni-ibk`, `innsbruck` and `mci` finds only CHANGELOG
      history and the course-system code (`online.uni-graz.at`).
+   - **Done 2026-10-31 (v10.16.0):**
+     - Removed from the repository: the Graz template, `schemes/scheme_uni_graz/` and the three institution
+       screenshots. Copies of the template and scheme are in `C:\Users\ms\SlideMage\regression\uni-graz-template\`
+       (outside the repository); the real project has its own. Slides 1pf/hd5 (and 1pf's frozen v1.0.0/v1.1.0, which
+       the student views compile) show the SlideMage and the stress-test template. Tests use
+       `tests/fixtures/template_acme/` or neutral keys.
+     - Theme package defined in `docs/THEME_PACKAGE.md` (the section 8 proposal as decided by the user on
+       2026-10-31); `themes.py`, Settings → Plugins → Themes and Install from file… for `.smtheme`,
+       `tools/make_theme_package.py`, fixture `tests/fixtures/theme_package/sample-theme/`. Installed themes go on
+       `TEXINPUTS` in `compiler.build_env`; snapshots and Export LaTeX copy their files. Report the definition to the
+       website side (still to do: an outward action).
+     - Remaining grep hits: CHANGELOG history, plans/handovers, `online.uni-graz.at` in a CampusOnline test, a binary
+       font false positive, and a comment in `example/.latexmkrc` naming `\input{SlideMage_template_uni-graz}`: that
+       file's digest is pinned (`AUDITED_LATEXMKRC`) and every project carries a copy, so changing a comment would
+       cost existing projects their preview sharing. Change it together with the next real `.latexmkrc` change.
+     - The in-repo regression lost its uni-graz entries; they are the private
+       `C:\Users\ms\SlideMage\regression\private-uni-graz-base.json` (project `uni-graz-project\`). The harness cannot
+       add the stress template to a run (a `template` entry only swaps the `\input` key); an `extra_dirs` option
+       would allow it.
+     - `AUDITED_PROJECT_TEMPLATES` keeps the Graz digests: they are hashes, and a project copy that matches one
+       keeps sharing previews between views.
 17. **Private institution themes** (user request 2026-10-27; after step 16, and after the plugins plan's Phase 1 has
     an installer). Includes the private-repository install and update of section 8 ("Private themes stay out of
     the catalogue"): "Add theme from GitHub…", `source.json`, the update check and offer, and the error messages.

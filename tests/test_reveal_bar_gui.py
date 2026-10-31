@@ -288,7 +288,7 @@ def test_moving_the_slider_shows_that_step_and_coming_back_shows_the_slide_again
 
 
 def test_the_page_of_a_slidestep_call_is_the_step_not_the_decks_last_included_one(centre, steps_renders, tmp_path):
-    text = ("\\documentclass{beamer}\n\\input{SlideMage_template_uni-ibk}\n\\begin{document}\n"
+    text = ("\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\begin{document}\n"
             "\\section{Part}\n\\slidestep{aaa-EN-One}[instructor]{1,3}\n\\end{document}\n")
     steps_deck = Deck(name="steps", path=tmp_path / "steps.tex", archived=False, text=text, supports_version=True,
                 uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
@@ -491,7 +491,7 @@ def test_ticks_of_a_plain_slide_are_editable_and_a_click_rewrites_the_deck(editi
 
 
 def test_the_last_step_of_a_version_cannot_be_ticked_off(centre, steps_renders, tmp_path):
-    text = ("\\documentclass{beamer}\n\\input{SlideMage_template_uni-ibk}\n\\begin{document}\n"
+    text = ("\\documentclass{beamer}\n\\input{SlideMage_template_acme-two}\n\\begin{document}\n"
             "\\section{Part}\n\\slidestep{aaa-EN-One}[instructor]{2}\n\\end{document}\n")
     one_step = Deck(name="one", path=tmp_path / "one.tex", archived=False, text=text, supports_version=True,
                     uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),

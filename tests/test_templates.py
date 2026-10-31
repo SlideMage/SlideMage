@@ -27,7 +27,7 @@ def test_slidemage_template_detected():
 
 
 def test_institution_templates_unchanged():
-    for key in ("uni-graz", "uni-ibk", "mci"):
+    for key in ("beta", "gamma", "acme"):
         assert slide_snapshot.detect_template(
             f"\\input{{SlideMage_template_{key}}}") == key
     assert slide_snapshot.detect_template("no template here") == "slidemage"
@@ -37,7 +37,7 @@ def test_institution_templates_unchanged():
 def test_update_previews_preamble_uses_slidemage_template():
     preamble = update_all_previews._preamble_for("slidemage")
     assert "\\input{SlideMage_template_slidemage}" in preamble
-    assert "\\input{SlideMage_template_uni-graz}" not in preamble
+    assert "\\input{SlideMage_template_beta}" not in preamble
 
 
 def test_preview_filenames_recognized():
@@ -55,7 +55,7 @@ def test_framework_ships_the_template_and_its_logo():
 
 def test_shipped_templates_change_catalog_settings_instead_of_creating_them():
     from slidemage import compat_setup
-    for path in (LATEX / "SlideMage_template_slidemage.tex", EXAMPLE / "SlideMage_template_uni-graz.tex"):
+    for path in (LATEX / "SlideMage_template_slidemage.tex",):
         tex = path.read_text(encoding="utf-8")
         for pattern in (compat_setup._NEWCOMMAND, compat_setup._NEWLENGTH, compat_setup._PADDING):
             assert not compat_setup._live(pattern, tex), (path.name, pattern.pattern)
@@ -82,9 +82,9 @@ def _framework(folder, *templates):
 
 def test_every_project_next_to_the_framework_offers_the_slidemage_template(tmp_path, monkeypatch):
     framework = _framework(tmp_path / "latex", "slidemage")
-    project = _project(tmp_path / "project", "uni-graz", "uni-ibk", "mci")
+    project = _project(tmp_path / "project", "beta", "gamma", "acme")
     assert slide_snapshot.framework_dirs(project) == [framework]
-    assert slide_snapshot.available_templates(project) == ["slidemage", "mci", "uni-graz", "uni-ibk"]
+    assert slide_snapshot.available_templates(project) == ["slidemage", "acme", "beta", "gamma"]
     assert slide_snapshot.preamble_file("slidemage", project) == framework / "SlideMage_template_slidemage.tex"
     assert slide_snapshot.render_template(ProjectContext.at(project)) == "slidemage"
     # A project's own copy wins over the framework's.
@@ -104,29 +104,29 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
     ctx = ProjectContext.at(tmp_path / "project")
     # A project with only institution layers and no framework next to it: the first of them.
-    root = _project(tmp_path / "project", "uni-graz", "mci")
-    assert slide_snapshot.render_template(ProjectContext.at(root)) == "mci"
+    root = _project(tmp_path / "project", "beta", "acme")
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "acme"
     # A saved choice whose file is gone falls back too.
-    app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "uni-ibk")
-    assert slide_snapshot.render_template(ProjectContext.at(root)) == "mci"
-    only_mci = _project(tmp_path / "other", "mci")
-    assert slide_snapshot.render_template(ProjectContext.at(only_mci)) == "mci"
+    app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "gamma")
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "acme"
+    only_acme = _project(tmp_path / "other", "acme")
+    assert slide_snapshot.render_template(ProjectContext.at(only_acme)) == "acme"
 
 
 def test_default_preamble_uses_the_render_template(ctx, monkeypatch):
     monkeypatch.setattr(slide_snapshot, "render_template", lambda ctx: "slidemage")
     preamble = slide_preview.default_preamble(ctx)
     assert "\\input{SlideMage_template_slidemage}" in preamble
-    assert "\\input{SlideMage_template_uni-graz}" not in preamble
+    assert "\\input{SlideMage_template_beta}" not in preamble
     assert slide_snapshot.detect_template(preamble) == "slidemage"
 
 
-@pytest.mark.parametrize("template", ["uni-graz", "mci"])
+@pytest.mark.parametrize("template", ["beta", "acme"])
 def test_set_render_template_saves_a_known_template_only(tmp_path, monkeypatch, template):
     _framework(tmp_path / "latex", "slidemage")
-    root = _project(tmp_path / "project", "uni-graz", "mci", "slidemage")
+    root = _project(tmp_path / "project", "beta", "acme", "slidemage")
     ctx = ProjectContext.at(root)
-    assert slide_snapshot.available_templates(root) == ["slidemage", "mci", "uni-graz"]
+    assert slide_snapshot.available_templates(root) == ["slidemage", "acme", "beta"]
     assert slide_snapshot.render_template(ProjectContext.at(root)) == "slidemage"
     slide_snapshot.set_render_template(ctx, template)
     assert app_settings.get(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == template

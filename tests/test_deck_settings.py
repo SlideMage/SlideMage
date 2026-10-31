@@ -9,7 +9,7 @@ from slidemage.deck_settings import DeckSettings
 
 DECK = r"""% !TeX program = lualatex
 \documentclass[aspectratio=169]{beamer}
-\input{SlideMage_template_uni-graz}
+\input{SlideMage_template_acme}
 
 \deckoutputfolder{D:/Teaching/FM2/current} % all versions
 %\deckoutputfolder[instructor]{D:/old/Instructor}
@@ -34,7 +34,7 @@ def read(text: str) -> DeckSettings:
 
 def test_read_settings_ignores_commented_lines_and_the_override_branch():
     s = read(DECK)
-    assert s.template == "uni-graz"
+    assert s.template == "acme"
     assert s.language == "en"
     assert s.footer_text == "PS Financial Management 2 | 2027s"
     assert s.output_folders == {
@@ -43,9 +43,9 @@ def test_read_settings_ignores_commented_lines_and_the_override_branch():
 
 
 def test_set_template_changes_only_the_name():
-    new = deck_settings.set_template(DECK, "mci")
-    assert "\\input{SlideMage_template_mci}" in new
-    assert new.replace("mci", "uni-graz", 1) == DECK
+    new = deck_settings.set_template(DECK, "other")
+    assert "\\input{SlideMage_template_other}" in new
+    assert new.replace("other", "acme", 1) == DECK
 
 
 def test_set_language_rewrites_the_literal_branch_only():
@@ -101,7 +101,7 @@ def test_output_folder_added_after_the_template_input_when_there_is_none():
         "\\deckoutputfolder[presenter]{D:/Teaching/FM2/current/presenter.pdf}\n", "")
     new = deck_settings.set_output_folder(text, None, "D:/Out")
     lines = new.splitlines()
-    assert lines[lines.index("\\input{SlideMage_template_uni-graz}") + 1] == "\\deckoutputfolder{D:/Out}"
+    assert lines[lines.index("\\input{SlideMage_template_acme}") + 1] == "\\deckoutputfolder{D:/Out}"
 
 
 def test_output_folder_refuses_tex_special_characters():
@@ -139,7 +139,7 @@ def test_saving_settings_leaves_a_course_url_comment_alone(tmp_path):
     path.write_text(text, encoding="utf-8", newline="")
     old = read(text)
     new = read(text)
-    new.template, new.language, new.footer_text, new.appendix_toc = "mci", "de", "Other", True
+    new.template, new.language, new.footer_text, new.appendix_toc = "other", "de", "Other", True
     new.open_pdf = "presenter"
     saved = deck_settings.save_settings(path, text, old, new)
     assert saved.count("%% SlideMage course URL: https://example.org/course/1\n") == 1
@@ -151,18 +151,18 @@ def test_save_settings_refuses_a_deck_changed_on_disk(tmp_path):
     path.write_text(DECK, encoding="utf-8", newline="")
     old = read(DECK)
     new = read(DECK)
-    new.template = "mci"
+    new.template = "other"
     with pytest.raises(deck_editor.StaleFileError):
         deck_settings.save_settings(path, DECK + "% edited elsewhere\n", old, new)
     assert path.read_text(encoding="utf-8") == DECK
     saved = deck_settings.save_settings(path, DECK, old, new)
     assert path.read_text(encoding="utf-8", errors="replace") == saved
-    assert read(saved).template == "mci"
+    assert read(saved).template == "other"
 
 
 def form(original=None, **fields) -> DeckSettings:
-    original = original or DeckSettings(template="uni-graz")
-    values = dict(template="uni-graz", language="en", footer_text="", output_folders={},
+    original = original or DeckSettings(template="acme")
+    values = dict(template="acme", language="en", footer_text="", output_folders={},
                   appendix_toc=False, open_pdf="instructor") | fields
     return deck_settings.from_form(original, **values)
 
@@ -180,7 +180,7 @@ def test_from_form_refuses_latex_specials_in_a_path_but_keeps_an_untouched_one_b
 
 
 def test_footer_elements_left_out_are_written_and_read_back():
-    text = "\\input{SlideMage_template_uni-graz}\n\\newcommand{\\FooterText}{X}\n\\begin{document}\n\\end{document}\n"
+    text = "\\input{SlideMage_template_acme}\n\\newcommand{\\FooterText}{X}\n\\begin{document}\n\\end{document}\n"
     hidden = deck_settings.set_footer_hide(text, ("deck", "id"))
     assert "\\def\\SMFooterHide{id,deck}\n" in hidden
     assert deck_settings.read_settings(hidden).footer_hide == ("id", "deck")
@@ -206,7 +206,7 @@ def test_dark_mode_round_trip_places_switch_before_template_and_keeps_line_endin
     r"\def\SMDarkMode{}", r"\providecommand\SMDarkMode{enabled}",
 ])
 def test_dark_mode_reads_existing_switches_and_ignores_comments_and_body(declaration):
-    marker = r"\input{SlideMage_template_uni-graz}"
+    marker = r"\input{SlideMage_template_acme}"
     assert read(DECK.replace(marker, declaration + "\n" + marker)).dark_mode
     ignored = "% " + declaration + "\n" + DECK + "\n" + declaration
     assert not read(ignored).dark_mode

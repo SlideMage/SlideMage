@@ -1104,7 +1104,7 @@ def test_clicking_the_second_use_of_a_slide_in_another_deck_focuses_that_occurre
 @pytest.fixture
 def window(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "uni-graz")
+    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

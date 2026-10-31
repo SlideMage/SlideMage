@@ -14,7 +14,7 @@ from slidemage.qr_code import QRSpec
 
 
 def test_url_gets_https_and_rejects_spaces():
-    assert qr_code.payload(QRSpec("url", {"url": "uni-graz.at/x"})) == "https://uni-graz.at/x"
+    assert qr_code.payload(QRSpec("url", {"url": "example.org/x"})) == "https://example.org/x"
     assert qr_code.payload(QRSpec("url", {"url": "mailto:a@b.at"})) == "mailto:a@b.at"
     for bad in ("", "a b.at", "https://"):
         with pytest.raises(ValueError):
@@ -30,11 +30,11 @@ def test_email_is_a_mailto_link():
 
 def test_contact_is_a_vcard_with_family_and_given_name():
     for name in ("Stefan Palan", "Palan, Stefan"):
-        data = qr_code.payload(QRSpec("contact", {"name": name, "organization": "Uni Graz",
-                                                  "website": "uni-graz.at"}))
+        data = qr_code.payload(QRSpec("contact", {"name": name, "organization": "Example University",
+                                                  "website": "example.org"}))
         assert data.startswith("BEGIN:VCARD\r\nVERSION:3.0\r\n")
         assert "N:Palan;Stefan" in data and "FN:Stefan Palan" in data
-        assert "ORG:Uni Graz" in data and "URL:https://uni-graz.at" in data
+        assert "ORG:Example University" in data and "URL:https://example.org" in data
     assert qr_code.alt_text(QRSpec("contact", {"name": "Palan, Stefan"})) == "QR code: add contact Stefan Palan"
 
 
@@ -77,7 +77,7 @@ def test_location_from_an_address_needs_no_lookup():
 
 
 def test_recommended_height_grows_with_the_room_and_the_grid():
-    url = qr_code.make(QRSpec("url", {"url": "https://uni-graz.at"}))
+    url = qr_code.make(QRSpec("url", {"url": "https://example.org"}))
     (seminar, low), (hall, high) = qr_code.size_advice(url)
     assert (seminar, hall) == ("Seminar room", "Lecture hall") and low < high and high == pytest.approx(2 * low)
     assert qr_code.recommended_height(10, 1) == qr_code.MIN_HEIGHT
@@ -99,7 +99,7 @@ def test_caption_latex():
 
 def test_a_click_opens_what_a_scan_opens():
     """The [link] of a call: the link, the mailto: link, the map link; nothing for a contact or an event."""
-    assert qr_code.link_target(QRSpec("url", {"url": "uni-graz.at/x"})) == "https://uni-graz.at/x"
+    assert qr_code.link_target(QRSpec("url", {"url": "example.org/x"})) == "https://example.org/x"
     assert qr_code.link_target(QRSpec("email", {"to": "a@b.at", "subject": "Hi"})) == "mailto:a@b.at?subject=Hi"
     assert qr_code.link_target(QRSpec("location", {"place": "47.0777, 15.4495", "map_link": "geo"})) == \
         "geo:47.0777,15.4495"
@@ -109,14 +109,14 @@ def test_a_click_opens_what_a_scan_opens():
 
 @pytest.mark.parametrize("fmt", qr_code.FORMATS)
 def test_every_format_is_written(tmp_path, fmt):
-    code = qr_code.make(QRSpec("url", {"url": "https://uni-graz.at"}))
+    code = qr_code.make(QRSpec("url", {"url": "https://example.org"}))
     path = qr_code.save(code, tmp_path / f"code.{fmt}")
     head = path.read_bytes()[:16]
     assert {"pdf": b"%PDF", "png": b"\x89PNG", "svg": b"<svg", "eps": b"%!PS"}[fmt] in head
 
 
 def test_the_pdf_draws_exactly_the_codes_modules(tmp_path):
-    code = qr_code.make(QRSpec("url", {"url": "https://uni-graz.at/en/course"}))
+    code = qr_code.make(QRSpec("url", {"url": "https://example.org/en/course"}))
     path = qr_code.save(code, tmp_path / "code.pdf", border=4)
     total = qr_code.modules(code, 4)
     pixmap = fitz.open(path)[0].get_pixmap(matrix=fitz.Matrix(10, 10), colorspace=fitz.csGRAY)
@@ -149,7 +149,7 @@ def test_the_pdf_is_solid_on_a_page_with_thin_lines(tmp_path):
 
 
 def test_svg_and_eps_fill_one_rectangle_per_run(tmp_path):
-    code = qr_code.make(QRSpec("url", {"url": "https://uni-graz.at"}))
+    code = qr_code.make(QRSpec("url", {"url": "https://example.org"}))
     runs = qr_code._runs(code, 4)
     svg = qr_code.save(code, tmp_path / "code.svg").read_text(encoding="utf-8")
     eps = qr_code.save(code, tmp_path / "code.eps").read_text(encoding="ascii")
@@ -159,23 +159,23 @@ def test_svg_and_eps_fill_one_rectangle_per_run(tmp_path):
 
 
 def test_png_is_at_least_png_width_wide(tmp_path):
-    code = qr_code.make(QRSpec("url", {"url": "https://uni-graz.at"}))
+    code = qr_code.make(QRSpec("url", {"url": "https://example.org"}))
     pixmap = fitz.Pixmap(str(qr_code.save(code, tmp_path / "code.png")))
     assert pixmap.width >= qr_code.PNG_WIDTH
 
 
 def test_create_writes_media_file_spec_and_alt_text(tmp_path):
     ctx = ProjectContext.at(tmp_path)
-    spec = QRSpec("url", {"url": "https://uni-graz.at/course"})
+    spec = QRSpec("url", {"url": "https://example.org/course"})
     first = qr_code.create(ctx, spec, caption_mode="custom", caption="QR 1")
     assert first.image == "media/qr-1.pdf" and first.path.is_file()
-    assert first.snippet == f"\\SMQRCode[0.60\\textheight]{{{first.image}}}{{QR 1}}[https://uni-graz.at/course]"
+    assert first.snippet == f"\\SMQRCode[0.60\\textheight]{{{first.image}}}{{QR 1}}[https://example.org/course]"
     second = qr_code.create(ctx, spec, caption_mode="custom", caption="QR 1")
     assert second.image == "media/qr-1-2.pdf" and first.path.is_file()      # never overwrites
     stored, options = qr_code.load_spec(ctx, first.image)
     assert stored.kind == "url" and stored.fields == spec.fields and options == {"caption_mode": "custom", "caption": "QR 1"}
     entry = alt_images.load_store(ctx)[first.image]
-    assert entry.short == "QR code linking to https://uni-graz.at/course" and entry.status == alt_images.STATUS_REVIEWED
+    assert entry.short == "QR code linking to https://example.org/course" and entry.status == alt_images.STATUS_REVIEWED
 
 
 def test_create_replaces_in_place_and_refuses_svg(tmp_path):
@@ -193,7 +193,7 @@ def test_smqrcode_is_an_image_reference_everywhere(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     (tmp_path / "media").mkdir()
     (tmp_path / "media" / "qr-1.pdf").write_bytes(b"%PDF-1.4\n")
-    call = "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://uni-graz.at/x]"
+    call = "\\SMQRCode[0.60\\textheight]{media/qr-1.pdf}{QR 1}[https://example.org/x]"
     assert "media/qr-1.pdf" in alt_blocks.referenced_images(f"\\begin{{standardframe}}{{T}}\n{call}\n\\end{{standardframe}}\n")
     issues = latex_lint.lint_text(ctx, "\\SMQRCode{media/missing.pdf}{}\n")
     assert [i.message for i in issues if i.code == "image"] == ["image file 'media/missing.pdf' does not exist"]
@@ -203,4 +203,4 @@ def test_smqrcode_is_an_image_reference_everywhere(tmp_path):
     path.write_text(f"\\begin{{standardframe}}{{Scan}}\nSee QR 1.\n\n{call}\n\\end{{standardframe}}\n", encoding="utf-8")
     entry = transcript.render_slide(ctx, transcript.DeckSlide(1, "abc", path, True), "during-course", {})
     assert entry is not None and "QR 1" in entry.body and "qr-1.pdf" not in entry.body
-    assert "uni-graz.at" not in entry.body                                # the [link] is not slide text
+    assert "example.org" not in entry.body                                # the [link] is not slide text

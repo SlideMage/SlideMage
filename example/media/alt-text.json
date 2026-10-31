@@ -210,49 +210,25 @@
         "1kg": {}
       }
     },
-    "media/screenshot-slide-template-mci.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "The slide \"Columns and tables\" in the MCI template.",
-      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the MCI template: a dark blue title bar and footer, the MCI logo, blue bullets and table rules. The content and layout are the same as in the other templates; only colors and logo differ.",
-      "source": "A slide of this manual, compiled with a template that is not part of SlideMage.",
-      "takeaway_default": "The same slide looks different only in colors and logo under each institution's template.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
-      "used_on": {
-        "1pf": {}
-      }
-    },
     "media/screenshot-slide-template-slidemage.png": {
       "role": "informative",
       "status": "auto",
       "short": "The slide \"Columns and tables\" in the SlideMage template.",
-      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the SlideMage template: a dark title bar and footer, the SlideMage logo, blue bullets and blue table rules. The content and layout are the same as in the other templates; only colors and logo differ.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the SlideMage template: a dark title bar and footer, the SlideMage logo, blue bullets and blue table rules. The content and layout are the same as in the other template; only colors, fonts, logo and margins differ.",
       "source": "Slides of this manual.",
-      "takeaway_default": "The same slide looks different only in colors and logo under each institution's template.",
+      "takeaway_default": "The same slide looks different under each template: colors, fonts, logo and margins come from the template.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1pf": {}
       }
     },
-    "media/screenshot-slide-template-uni-graz.png": {
+    "media/screenshot-slide-template-stress.png": {
       "role": "informative",
       "status": "auto",
-      "short": "The slide \"Columns and tables\" in the University of Graz template.",
-      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the University of Graz template: a yellow title bar and footer, the Uni Graz logo, yellow bullets and yellow table rules. The content and layout are the same as in the other templates; only colors and logo differ.",
-      "source": "Slides of this manual.",
-      "takeaway_default": "The same slide looks different only in colors and logo under each institution's template.",
-      "drafted_by": "claude-opus-5.5 (manual build)",
-      "used_on": {
-        "1pf": {}
-      }
-    },
-    "media/screenshot-slide-template-uni-ibk.png": {
-      "role": "informative",
-      "status": "auto",
-      "short": "The slide \"Columns and tables\" in the University of Innsbruck template.",
-      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the University of Innsbruck template: a dark blue title bar and footer, the University of Innsbruck logo, orange bullets and blue table rules. The content and layout are the same as in the other templates; only colors and logo differ.",
-      "source": "A slide of this manual, compiled with a template that is not part of SlideMage.",
-      "takeaway_default": "The same slide looks different only in colors and logo under each institution's template.",
+      "short": "The slide \"Columns and tables\" in the stress-test template.",
+      "long": "A reduced picture of the slide \"Columns and tables\" -- three bullets, a small table and a code panel -- in the stress-test template, a test template that changes every layout setting: a green title bar, a small logo of three colored squares, green bullets, orange table rules, a yellow code panel and a dark gray footer, in a sans-serif font of another family. The content is the same as in the SlideMage template; colors, fonts, logo and margins differ.",
+      "source": "Compiled with a test template that is not part of the SlideMage templates.",
+      "takeaway_default": "The same slide looks different under each template: colors, fonts, logo and margins come from the template.",
       "drafted_by": "claude-opus-5.5 (manual build)",
       "used_on": {
         "1pf": {}
@@ -473,42 +449,6 @@
       "used_on": {
         "1az": {}
       }
-    },
-    "schemes/scheme_uni_graz/Logo Uni Graz 4c-cropped.png": {
-      "role": "decorative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "schemes/scheme_uni_graz/Logo Uni Graz 4c.png": {
-      "role": "decorative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "schemes/scheme_uni_graz/Logo_Uni-Graz_4c-cropped.pdf": {
-      "role": "decorative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
-    },
-    "schemes/scheme_uni_graz/Logo_Uni-Graz_4c.eps": {
-      "role": "decorative",
-      "status": "auto",
-      "short": "",
-      "long": "",
-      "source": "",
-      "takeaway_default": "",
-      "used_on": {}
     },
     "tikz:1gr-tikz": {
       "role": "informative",

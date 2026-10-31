@@ -120,15 +120,15 @@ def test_dark_mode_and_tab_width_reach_the_window_as_they_change(qapp):
 
 def test_the_render_template_offers_the_project_templates_and_saves_the_choice(tmp_path, monkeypatch, qapp):
     _framework(tmp_path / "latex", "slidemage")
-    context = ProjectContext.at(_project(tmp_path / "project", "uni-graz", "uni-ibk", "mci"))
+    context = ProjectContext.at(_project(tmp_path / "project", "beta", "gamma", "acme"))
     app = FakeApp(context)
     sheet = open_sheet(qapp, app)
     combo = sheet.general.template_combo
-    assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "mci", "uni-graz", "uni-ibk"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "acme", "beta", "gamma"]
     assert combo.currentData() == "slidemage"           # out of the box
-    combo.setCurrentIndex(combo.findData("mci"))
-    assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "mci"
-    assert slide_snapshot.render_template(context) == "mci"
+    combo.setCurrentIndex(combo.findData("acme"))
+    assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "acme"
+    assert slide_snapshot.render_template(context) == "acme"
 
 
 def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):

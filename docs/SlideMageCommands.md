@@ -14,10 +14,10 @@ This project supports three deck versions:
 
 ### Setting the Deck Version
 
-In your deck file (e.g., `decks/slidemage-manual.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{SlideMage_template_uni-graz}`:
+In your deck file (e.g., `decks/slidemage-manual.tex` -- see its own `\ifdefined\deckversionoverride` block, the pattern every real course deck uses so SlideMage's own version checkboxes can drive it), add `\deckversion[]` after `\input{SlideMage_template_slidemage}`:
 
 ```latex
-\input{SlideMage_template_uni-graz}
+\input{SlideMage_template_slidemage}
 \deckversion[instructor]           % or during-course, after-course
 ```
 
@@ -191,9 +191,9 @@ images"/"Describing tikz illustrations"/"Accessible transcripts" sections.
 SlideMage caches a PNG of how each slide last looked, refreshed
 automatically whenever a compile happens to touch it (rendering it on its
 own, or compiling a whole deck's instructor version). Previews are kept
-per institution template (so a second institution's own preamble, if you
+per institution template (so a second institution's own template, if you
 ever add one, gets its own separate cache rather than sharing/corrupting
-Uni Graz's). Several ways to
+the first one's). Several ways to
 use the cache, all instant — no LaTeX compile needed:
 
 - The **slide list** shows a thumbnail on every row, and a row says "preview old"
