@@ -226,6 +226,8 @@ CampusOnline gets a Settings tab only if it has settings; its per-deck UI is a D
 | `add_sidebar_box(...)` (2.5) | CampusOnline |
 | `add_ai_route(route)` (2.4) | Ollama, Claude |
 | `settings(plugin_id)`: namespaced per-machine storage; `credentials`: keyring or file (from `ai/credentials.py`) | all |
+| `ai_chat()`: text requests on the selected Chat route | Exam Forge |
+| `project_root()`, `deck_output_folder(deck, view="instructor")` (the folder `\deckoutputfolder` and the compile give a view's PDF), `deck_slides(deck, view, language) -> list[SlideRef]`, `slide_source(ref) -> SlideSource` (text, picture files, their descriptions): read-only, no window, callable from a worker; `open_slide(ref)` (the Source view; needs a window) | Exam Forge (source links, fingerprints, folder warning); Slide Atlas, Source Watch, Accessibility Passport |
 | `terminal()`: the embedded terminal service | Claude Code |
 | `ai_tools()`: the agent's ToolBox, for the MCP server | Claude Code |
 | `run_in_background`, `log`, `show_message` | all |

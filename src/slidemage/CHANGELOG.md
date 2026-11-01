@@ -3346,3 +3346,9 @@ v0.13.19 (2026-11-01, a fix to v0.13.18): The pin of latex/SlideMage_base.tex in
 
 NEW: Previews share renders between views again.
 - v0.13.18 could render a slide once per view, where one render is enough. This restores the sharing.
+
+v0.13.20 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a deck's slides and multilingual media descriptions, open a slide, and use Host.ai_chat() for text requests on the selected Chat route. AiRoute.request_provider supports self-contained requests. Cloud requests require confirmation; cancellation and errors return on the UI thread. There is no plugin service registry. API_VERSION remains 1.
+
+NEW: Plugins can read a deck's slides and ask the selected AI route to draft text.
+- A plugin can work with a deck's slides, versions and picture descriptions, and open a slide.
+- The AI route is never swapped silently, and a cloud request shows what will be sent first.

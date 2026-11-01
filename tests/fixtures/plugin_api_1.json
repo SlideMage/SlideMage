@@ -4,6 +4,10 @@
     "API_VERSION",
     "AgentEvent",
     "AgentMessage",
+    "AiChat",
+    "AiChatError",
+    "AiChatRequest",
+    "AiChatResult",
     "AiRoute",
     "Any",
     "AssistantMessage",
@@ -40,6 +44,7 @@
     "ImageEntry",
     "InsertPosition",
     "Literal",
+    "MediaDescription",
     "NOTE",
     "Outcome",
     "PROOFREAD",
@@ -59,6 +64,8 @@
     "SUPPORTED_API_VERSIONS",
     "Settings",
     "SlideContext",
+    "SlideRef",
+    "SlideSource",
     "StaleFileError",
     "T",
     "TABLE_ENVIRONMENT",
@@ -113,6 +120,91 @@
     "update_request"
   ],
   "classes": {
+    "AiChat": {
+      "attributes": [],
+      "methods": {
+        "available": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "request": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "request",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "done",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
+    },
+    "AiChatError": {
+      "attributes": [],
+      "methods": {}
+    },
+    "AiChatRequest": {
+      "attributes": [
+        "instructions",
+        "max_tokens",
+        "text"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "instructions",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "max_tokens",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ]
+      }
+    },
+    "AiChatResult": {
+      "attributes": [
+        "route",
+        "text",
+        "truncated"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "route",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "truncated",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ]
+      }
+    },
     "AiRoute": {
       "attributes": [
         "id",
@@ -219,6 +311,23 @@
           }
         ],
         "provider": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ctx",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "route",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "request_provider": [
           {
             "name": "self",
             "kind": "POSITIONAL_OR_KEYWORD",
@@ -1199,6 +1308,13 @@
             "required": false
           }
         ],
+        "ai_chat": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "ai_tools": [
           {
             "name": "self",
@@ -1282,6 +1398,45 @@
           },
           {
             "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "deck_output_folder": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "view",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "deck_slides": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "deck",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "view",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "language",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }
@@ -1433,6 +1588,18 @@
             "required": false
           }
         ],
+        "open_slide": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ref",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "open_url": [
           {
             "name": "self",
@@ -1441,6 +1608,13 @@
           },
           {
             "name": "url",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "project_root": [
+          {
+            "name": "self",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }
@@ -1520,6 +1694,18 @@
             "required": false
           }
         ],
+        "slide_source": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ref",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "style_chat_widget": [
           {
             "name": "self",
@@ -1592,6 +1778,44 @@
             "name": "indent",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          }
+        ]
+      }
+    },
+    "MediaDescription": {
+      "attributes": [
+        "decorative",
+        "image",
+        "long",
+        "short",
+        "takeaway"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "image",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "decorative",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "short",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "long",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "takeaway",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
           }
         ]
       }
@@ -1748,6 +1972,100 @@
             "name": "value",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          }
+        ]
+      }
+    },
+    "SlideRef": {
+      "attributes": [
+        "hidden",
+        "id",
+        "id_slug",
+        "language",
+        "language_read",
+        "path",
+        "pinned",
+        "position",
+        "title",
+        "version"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "id",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "id_slug",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "path",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "language",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "version",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "pinned",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "position",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "hidden",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "language_read",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ]
+      }
+    },
+    "SlideSource": {
+      "attributes": [
+        "descriptions",
+        "media",
+        "text"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "media",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "descriptions",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
           }
         ]
       }

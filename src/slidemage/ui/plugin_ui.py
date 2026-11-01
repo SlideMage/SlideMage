@@ -135,6 +135,13 @@ class WindowHostUi:
             for sheet in self._sheets_of(path):
                 sheet.refresh_from_deck(core)
 
+    def open_slide(self, path: Any) -> None:
+        """The slide file at `path` in the Source view, a frozen version too (the window's open_slide_editor)."""
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        window.open_slide_editor(path)
+
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""
         from .workspace import deck_actions

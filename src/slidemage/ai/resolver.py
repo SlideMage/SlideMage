@@ -70,6 +70,17 @@ def provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
     return provider
 
 
+def request_provider_for(ctx: ProjectContext, route: Route) -> ChatProvider:
+    """A provider for one self-contained ai.chat request; other features still use provider_for()."""
+    found = _route(route)
+    if not hasattr(found, "request_provider"):
+        return provider_for(ctx, route)
+    provider = found.request_provider(routes.context(ctx, found.id), route)
+    if provider is None:
+        raise RouteUnavailable(not_offered(route, "This feature", "Choose a route that provides this feature."))
+    return provider
+
+
 def _checked(ctx: ProjectContext, route: Route) -> AiRoute:
     """The route, once it says it can run `route`."""
     found = _route(route)
