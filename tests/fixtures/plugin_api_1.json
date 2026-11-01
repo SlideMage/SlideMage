@@ -77,6 +77,7 @@
     "TerminalSession",
     "TerminalWidget",
     "TextDelta",
+    "ThemeTokens",
     "ToolBox",
     "ToolCall",
     "ToolFinished",
@@ -1009,6 +1010,23 @@
     "Host": {
       "attributes": [],
       "methods": {
+        "Badge": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "tone",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
         "Button": [
           {
             "name": "self",
@@ -1031,6 +1049,18 @@
             "required": false
           }
         ],
+        "Card": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "raised",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
         "Chip": [
           {
             "name": "self",
@@ -1046,6 +1076,33 @@
             "name": "tone",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": false
+          },
+          {
+            "name": "icon",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "elide",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "pressable",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          }
+        ],
+        "ElidedLabel": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
           }
         ],
         "Field": [
@@ -1099,6 +1156,40 @@
             "required": true
           }
         ],
+        "Label": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "role",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "ModalSheet": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "parent",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
         "Page": [
           {
             "name": "self",
@@ -1106,9 +1197,77 @@
             "required": true
           }
         ],
+        "PlainList": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "RowButton": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "sub",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "icon",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "chip",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "selectable",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          }
+        ],
+        "SegmentedControl": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "items",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "current",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
         "Surface": [
           {
             "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "Window": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "title",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }
@@ -1571,6 +1730,18 @@
             "required": true
           }
         ],
+        "on_theme_changed": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "callback",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "open_deck_settings": [
           {
             "name": "self",
@@ -1730,6 +1901,13 @@
             "required": true
           }
         ],
+        "theme": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "theme_color": [
           {
             "name": "self",
@@ -1738,6 +1916,23 @@
           },
           {
             "name": "role",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "toast": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "parent",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }
@@ -1986,7 +2181,9 @@
         "path",
         "pinned",
         "position",
+        "section",
         "title",
+        "title_text",
         "version"
       ],
       "methods": {
@@ -2038,6 +2235,16 @@
           },
           {
             "name": "language_read",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "title_text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "section",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": false
           }
@@ -2256,6 +2463,188 @@
           },
           {
             "name": "data",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
+    },
+    "ThemeTokens": {
+      "attributes": [
+        "bg",
+        "dark",
+        "error",
+        "error_bg",
+        "error_fg",
+        "focus",
+        "font_mono",
+        "font_sans",
+        "hover",
+        "info",
+        "info_bg",
+        "info_fg",
+        "inverse",
+        "line",
+        "ok",
+        "ok_bg",
+        "ok_fg",
+        "on_inverse",
+        "on_solid",
+        "radius_md",
+        "radius_sm",
+        "surface",
+        "text",
+        "text_2",
+        "text_3",
+        "text_4",
+        "warning",
+        "warning_bg",
+        "warning_fg"
+      ],
+      "methods": {
+        "__init__": [
+          {
+            "name": "dark",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "bg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "surface",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text_2",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text_3",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "text_4",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "line",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "hover",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "inverse",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "on_inverse",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "focus",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "on_solid",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ok",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ok_bg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ok_fg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "warning",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "warning_bg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "warning_fg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "error",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "error_bg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "error_fg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "info",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "info_bg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "info_fg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "radius_sm",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "radius_md",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "font_sans",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "font_mono",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }

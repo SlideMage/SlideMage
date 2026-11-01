@@ -318,6 +318,14 @@ def clean_frame_title(raw_title: str) -> str:
     return " ".join(title.split()).strip(" *")
 
 
+def plain_title(raw_title: str) -> str:
+    r"""A title to show as plain text: what clean_frame_title does, and also a line break (`\\`, `\\[2mm]`) and `\ ` as
+    a space, `\&` and the other escaped signs as themselves, and ``quotes'' as “quotes”."""
+    title = re.sub(r"\\\\\*?(?:\[[^\]]*\])?", " ", raw_title)
+    title = re.sub(r"\\([&%$#_])", r"\1", title).replace("\\ ", " ").replace("``", "“").replace("''", "”")
+    return clean_frame_title(title)
+
+
 def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
     """(slide id, human title). Frame title if parseable, else the filename.
 

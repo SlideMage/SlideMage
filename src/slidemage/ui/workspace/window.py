@@ -535,6 +535,9 @@ class WorkspaceWindow(QMainWindow):
         if not self._dirty_edits_resolved_for_close and not self._resolve_dirty_edits():
             event.ignore()
             return
+        if not plugin_ui.HOST_UI.close_plugin_windows():
+            event.ignore()
+            return
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         self.assistant.shutdown()
         self.images_page.shutdown()
@@ -612,8 +615,8 @@ class WorkspaceWindow(QMainWindow):
     def relaunch_with_project(self, root: Path) -> None:
         """Restart SlideMage on the project at `root` and close this window, unless the user keeps
         their unsaved edits."""
-        if not self._resolve_dirty_edits():
-            return
+        if not self._resolve_dirty_edits() or not plugin_ui.HOST_UI.close_plugin_windows():
+            return      # before the new process starts: after it, a window that refuses would leave two running
         project.relaunch_with_project(root)
         self._dirty_edits_resolved_for_close = True
         self.close()
@@ -622,7 +625,7 @@ class WorkspaceWindow(QMainWindow):
         """Close this window so that the update helper (updater.spawn_folder_swap), already started, can install the
         new version and start it; False when the user keeps their unsaved edits (the helper then waits for the
         next time SlideMage ends and starts nothing)."""
-        if not self._resolve_dirty_edits():
+        if not self._resolve_dirty_edits() or not plugin_ui.HOST_UI.close_plugin_windows():
             return False
         project.save_last_project(self.project.root)
         self._dirty_edits_resolved_for_close = True

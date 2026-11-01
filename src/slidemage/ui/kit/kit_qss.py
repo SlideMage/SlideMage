@@ -33,6 +33,12 @@ from .tokens import (
 CARD = "kitCard"
 SEGMENTED = "kitSegmented"
 CHIP = "kitChip"
+BADGE = "kitBadge"
+PLAIN_LIST = "kitPlainList"     # rows that bring their own look
+TOOL_WINDOW = "kitToolWindow"     # a separate window of a plugin
+LABEL_BODY = "kitLabelBody"
+LABEL_SECONDARY = "kitLabelSecondary"
+LABEL_MONO = "kitLabelMono"
 TOGGLE_CHIP = "kitToggleChip"
 SEGMENT_BADGE = "kitSegmentBadge"
 SPLIT = "kitSplit"
@@ -549,6 +555,22 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QPushButton[kitSegment="true"][badge="true"] {{
             padding-right: 22px;
         }}
+        QLabel#{BADGE} {{
+            {font}
+            font-size: 11px;
+            font-weight: 700;
+            color: {t.on_inverse};
+            background-color: {t.inverse};
+            border-radius: 10px;
+            padding: 0 6px;
+            min-height: 20px;
+            min-width: 8px;
+        }}
+        QLabel#{BADGE}[tone="info"] {{ color: {t.info_fg}; background-color: {t.info_bg}; }}
+        QLabel#{BADGE}[tone="error"] {{ color: {t.on_solid}; background-color: {t.error_solid}; }}
+        {text(f"QLabel#{LABEL_BODY}", 13, t.text)}
+        {text(f"QLabel#{LABEL_SECONDARY}", 13, t.text_2)}
+        {text(f"QLabel#{LABEL_MONO}", 12, t.text_2, family=mono)}
         QLabel#{SEGMENT_BADGE} {{
             {font}
             font-size: 10px;
@@ -595,10 +617,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* Fonts are set on the container and reach the labels through Qt's
            font propagation; a QSS font rule on the label itself would also
            override the icon labels' Material Icons font. */
+        /* Half the chip's height at most: Qt draws square corners for a radius beyond that (RADIUS_PILL would). */
         QFrame#{CHIP} {{
             {font}
             font-size: 12px;
-            border-radius: {RADIUS_PILL}px;
+            border-radius: 9px;
         }}
         {chips}
         QFrame#{CHIP}[pressable="true"] {{ border: 2px solid transparent; }}
@@ -1222,6 +1245,24 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{ROW_BUTTON}:hover {{
             background-color: {t.hover};
+        }}
+        QListWidget#{PLAIN_LIST}, QListWidget#{PLAIN_LIST} > QWidget {{
+            background-color: transparent;
+            border: none;
+        }}
+        QListWidget#{PLAIN_LIST}::item, QListWidget#{PLAIN_LIST}::item:hover, QListWidget#{PLAIN_LIST}::item:selected {{
+            background-color: transparent;
+            padding: 0;
+        }}
+        QFrame#{ROW_BUTTON}[selected="true"] {{
+            background-color: {t.info_bg};
+        }}
+        QFrame#{ROW_BUTTON}[selected="true"] QLabel#{PANEL_CAPTION} {{
+            color: {t.text_2};
+        }}
+        QFrame#{ROW_BUTTON}[selected="true"] QLabel#{BADGE}[tone="info"] {{
+            color: {t.surface};
+            background-color: {t.info};
         }}
         QLabel#{ROW_NAME} {{
             {font}

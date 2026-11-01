@@ -5,12 +5,21 @@
 command that raises is a message, and a plugin that fails to load does not stop the window."""
 from __future__ import annotations
 
+import dataclasses
 import sys
 from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QLabel
 
+from slidemage import app_settings
+from slidemage import project as project_module
+from slidemage.plugins.host import PluginHost
+from slidemage.plugins.manifest import read_manifest
+from slidemage.ui.kit import kit_qss as q
+from slidemage.ui.kit import widgets as w
+from slidemage.ui.kit.theme import ThemeManager
+from slidemage.ui.kit.tokens import FONT_MONO, FONT_SANS, RADIUS_MD, tokens_for
 from conftest import DECK_TEXT, build_window, command_context, filled_menu, make_project, qapp as qapp
 from slidemage.plugins import loader, session
 from slidemage.plugins.host import deck_snapshot
@@ -207,3 +216,189 @@ def test_render_priority_is_set_on_the_background_renderer(qapp, monkeypatch, tm
     renderer = window.background.renderer
     test, hidden = (next(d for d in window.decks if d.name == n) for n in ('test', 'hidden'))
     assert (renderer.plugin_soon(test), renderer.plugin_soon(hidden)) == (True, False)
+
+
+# -- the UI kit for plugins (API v1 additions) -------------------------------------------------------------------
+
+@pytest.fixture
+def kit_host(qapp, ctx):
+    return PluginHost(read_manifest(FIXTURES / "hello"), ctx, HOST_UI)
+
+
+def test_host_widgets_are_the_kit_widgets_with_their_object_names(kit_host):
+    h = kit_host
+    made = [(h.Card(), w.Card, q.CARD), (h.SegmentedControl([("a", "A")]), w.SegmentedControl, q.SEGMENTED),
+            (h.Chip("c"), w.Chip, q.CHIP), (h.Badge("3"), w.Badge, q.BADGE), (h.ElidedLabel("e"), w.ElidedLabel, ""),
+            (h.RowButton("r"), w.RowButton, q.ROW_BUTTON), (h.ModalSheet("s"), w.ModalSheet, q.SHEET),
+            (h.PlainList(), w.PlainList, q.PLAIN_LIST),
+            (h.Window("t"), w.ToolWindow, q.TOOL_WINDOW)]
+    for widget, kind, name in made:
+        assert isinstance(widget, kind) and widget.objectName() == name
+        assert widget.styleSheet() == ""
+
+
+def test_label_roles(kit_host):
+    names = {role: kit_host.Label("x", role).objectName()
+             for role in ("title", "heading", "body", "secondary", "caption", "mono")}
+    assert names["title"] == q.SHEET_TITLE and names["caption"] == q.PANEL_CAPTION and len(set(names.values())) == 6
+    assert kit_host.Label("x").objectName() == names["body"]
+    with pytest.raises(ValueError, match="role"):
+        kit_host.Label("x", "huge")
+
+
+def test_chip_keywords(kit_host):
+    chip = kit_host.Chip("A long text", "ok", icon="lock", elide=True, pressable=True)
+    assert chip.text() == "A long text" and chip.property("tone") == "ok" and chip.property("pressable") is True
+    assert chip._icon.text() == "lock"
+
+
+def test_segmented_control_says_a_click_but_not_set_current(kit_host):
+    control = kit_host.SegmentedControl([("a", "A"), ("b", "B")], current="b")
+    heard = []
+    control.changed.connect(heard.append)
+    assert control.current() == "b"
+    control.set_current("a")
+    assert heard == []
+    control.buttons()[1].click()
+    assert heard == ["b"] and control.current() == "b"
+    control.clear_current()
+    assert control.current() is None and heard == ["b"]
+    control.buttons()[0].click()
+    assert control.current() == "a" and not control.buttons()[1].isChecked()
+
+
+def test_a_row_is_as_tall_as_its_fonts_and_selects(kit_host, qapp):
+    row = kit_host.RowButton("No questions yet", "typography", selectable=True)
+    plain = kit_host.RowButton("Plain")
+    row.ensurePolished()
+    assert row.minimumHeight() == 0 and row.maximumHeight() > 10000
+    assert row.sizeHint().height() >= 2 * row.fontMetrics().height()
+    assert not row.selected()
+    row.clicked.emit()
+    plain.clicked.emit()
+    assert row.selected() and not plain.selected()
+    row.set_selected(False)
+    assert not row.selected()
+
+
+def test_a_selected_row_is_restyled(kit_host, qapp):
+    ThemeManager(dark=False).apply()
+    row = kit_host.RowButton("Row", selectable=True)
+    row.resize(200, 60)
+    row.show()
+    before = row.grab().toImage().pixelColor(5, 5).name()
+    row.set_selected(True)
+    after = row.grab().toImage().pixelColor(5, 5).name()
+    row.close()
+    assert before != after and after == tokens_for(False).info_bg
+
+
+def test_the_window_has_the_kit_font_and_a_body(kit_host):
+    window = kit_host.Window("Forge")
+    assert window.windowTitle() == "Forge" and window.isWindow() and not window.isModal()
+    assert window.font().family() == FONT_SANS and window.body is window.layout()
+
+
+def test_a_toast_stays_in_the_plugin_window_and_is_reused(kit_host):
+    window = kit_host.Window("Forge")
+    window.show()
+    kit_host.toast(window, "one")
+    kit_host.toast(window, "two")
+    toasts = window.findChildren(w.Toast)
+    assert len(toasts) == 1 and toasts[0].isVisible()
+    window.close()
+
+
+@pytest.mark.parametrize("dark", [True, False])
+def test_theme_is_the_tokens_of_the_saved_choice_before_a_window(ctx, dark):
+    app_settings.set(ctx, "dark_mode", dark)
+    HOST_UI._window = None
+    tokens = PluginHost(read_manifest(FIXTURES / "hello"), ctx, HOST_UI).theme()
+    t = tokens_for(dark)
+    assert tokens.dark is dark and (tokens.bg, tokens.info_fg, tokens.on_solid) == (t.bg, t.info_fg, t.on_solid)
+    assert tokens.radius_md == RADIUS_MD and tokens.font_mono == FONT_MONO
+
+
+def test_theme_follows_the_window_and_theme_color_stays(kit_host, window):
+    for dark in (True, False):
+        window.theme.set_dark(dark)
+        assert kit_host.theme() == dataclasses.replace(kit_host.theme(), dark=dark)
+        assert kit_host.theme().bg == tokens_for(dark).bg
+        assert kit_host.theme_color("info") == tokens_for(dark).info
+
+
+def test_on_theme_changed_fires_once_after_the_stylesheet_and_stops_when_unsubscribed(kit_host, window, qapp):
+    heard = []
+    window.theme.set_dark(True)
+    unsubscribe = kit_host.on_theme_changed(lambda tokens: heard.append((tokens.dark, tokens.bg in qapp.styleSheet())))
+    window.theme.set_dark(False)
+    window.theme.toggle()
+    assert heard == [(False, True), (True, True)]
+    unsubscribe()
+    unsubscribe()
+    window.theme.toggle()
+    assert len(heard) == 2
+
+
+def test_a_listener_subscribed_before_the_window_is_heard(qapp, monkeypatch, ctx):
+    HOST_UI._window = None
+    heard = []
+    unsubscribe = PluginHost(read_manifest(FIXTURES / "hello"), ctx, HOST_UI).on_theme_changed(heard.append)
+    window = build_window(monkeypatch, ctx)
+    window.theme.toggle()
+    unsubscribe()
+    assert len(heard) == 1
+
+
+def test_a_listener_that_raises_is_logged_and_the_others_run(kit_host, window, caplog):
+    heard = []
+
+    def bad(_tokens):
+        raise RuntimeError("no such widget")
+
+    subscriptions = [kit_host.on_theme_changed(bad), kit_host.on_theme_changed(heard.append)]
+    window.theme.toggle()
+    for unsubscribe in subscriptions:
+        unsubscribe()
+    assert len(heard) == 1 and "a theme listener raised" in caplog.text
+
+
+def test_closing_the_main_window_closes_plugin_windows_so_the_process_can_end(kit_host, window, qapp):
+    forge = kit_host.Window("Forge")
+    forge.show()
+    window.close()
+    assert not forge.isVisible() and not window.isVisible()
+
+
+class _Refuses(w.ToolWindow):
+    def closeEvent(self, event):
+        event.ignore()
+
+
+def test_a_plugin_window_that_refuses_keeps_slidemage_open(window, monkeypatch):
+    forge = _Refuses("Forge")
+    HOST_UI.track_plugin_window(forge)
+    forge.show()
+    relaunched = []
+    monkeypatch.setattr(project_module, "relaunch_with_project", relaunched.append)
+    window.close()
+    assert window.isVisible() and forge.isVisible()
+    window.relaunch_with_project(Path("elsewhere"))
+    assert relaunched == [] and window.isVisible()      # the new process would have run beside this one
+    assert window.restart_after_update() is False
+    forge.hide()
+    window.close()
+    assert not window.isVisible()
+
+
+class _Raises(w.ToolWindow):
+    def closeEvent(self, event):
+        raise RuntimeError("bug")
+
+
+def test_a_plugin_window_whose_close_raises_does_not_keep_slidemage_open(window):
+    forge = _Raises("Forge")
+    HOST_UI.track_plugin_window(forge)
+    forge.show()
+    window.close()
+    assert not window.isVisible()

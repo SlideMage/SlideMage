@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from conftest import DECK_TEXT, SLIDE_TEXT, make_project, qapp as qapp
-from slidemage import alt_images, deck_scan, plugin_api
+from slidemage import alt_blocks, alt_images, deck_scan, plugin_api
 from slidemage.plugins import host as host_module
 from slidemage.plugins.host import PluginHost, deck_snapshot
 from slidemage.plugins.manifest import read_manifest
@@ -211,3 +211,32 @@ def test_multilingual_descriptions_keep_the_requested_language_and_change_with_i
     assert host.slide_source(en) == english
     assert host.slide_source(de) != german
     assert host.slide_source(de).text == german.text
+
+
+# -- title_text and section --------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("raw, plain", [
+    (r"VO Grundlagen \\ Digitalisierung", "VO Grundlagen Digitalisierung"),
+    (r"One\\[2mm]Two", "One Two"),
+    (r"Risk \& return", "Risk & return"),
+    (r"``Big Data'' vs.\ ``AI''", "“Big Data” vs. “AI”"),
+    (r"A\ B", "A B"),
+    (r"{Grouped} title", "Grouped title"),
+    (r"An \emph{important} word", "An important word"),
+    ("Plain", "Plain"),
+])
+def test_plain_title(raw, plain):
+    assert alt_blocks.plain_title(raw) == plain
+
+
+def test_title_text_is_plain_and_title_keeps_the_markup(host, pctx):
+    write_slide(pctx, "abc-EN-Hello-current.tex", SLIDE_TEXT.replace("Hello", r"Risk \& return"))
+    ref = host.deck_slides(deck_of(pctx), "instructor", "en")[0]
+    assert ref.title == r"Risk \& return" and ref.title_text == "Risk & return"
+
+
+def test_section_before_within_and_after_sections(host, pctx):
+    text = ("\\documentclass{beamer}\r\n\\begin{document}\r\n\\slide{abc-EN-Hello}\r\n"
+            "\\section{Data \\& AI}\r\n\\slide{abd-EN-Second}\r\n\\section{Empty}\r\n\\end{document}\r\n")
+    assert [r.section for r in host.deck_slides(deck_of(pctx, text), "instructor", "en")] == ["", "Data & AI"]
+    assert [r.section for r in host.deck_slides(deck_of(pctx), "instructor", "en")] == ["Intro", "Main"]
