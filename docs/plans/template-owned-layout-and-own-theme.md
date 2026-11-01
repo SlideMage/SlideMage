@@ -993,7 +993,8 @@ mix it in.
      token rules in `docs/THEME_PACKAGE.md` (one resource owner, Contents: Read-only, org approval required by
      default). The catalog's `\SMCardHeadingStyle` replaces the Graz template's renewal of the profile's
      `\SMCardHeadingFont`. The Graz theme is prepared locally in `D:/uniCLOUD/slidemage-theme-uni-graz/` (no remote);
-     `framework_regression.py` has `extra_dirs`. Details and pending checks: `docs/plans/step17-status.md`.
+     `framework_regression.py` has `extra_dirs`. (Its status note was removed in step 19; the theme repository
+     is `SlideMage/slidemage-theme-uni-graz`, released from v1.0.0 on.)
 17b. **Final test: a template unlike SlideMage's** (user request 2026-10-31; after step 17, before step 18). Draft a
    template that differs from the SlideMage template in every respect the catalog and the layout profiles are meant
    to cover, then render the whole manual deck in it to find what still assumes Fira or SlideMage's own look.
