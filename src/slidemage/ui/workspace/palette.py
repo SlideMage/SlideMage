@@ -111,7 +111,8 @@ def slide_entries(window, words: list[str], project_slugs: list[str]) -> list[En
     for id_slug in project_slugs:
         if id_slug not in in_deck and matches(words, id_slug):
             entries.append(Entry(GO_TO_SLIDE, id_slug,
-                                 lambda s=id_slug: window.open_slide_editor(window.project.slides_dir / slide_language.current_name(s)),
+                                 lambda s=id_slug: window.open_slide_editor(window.project.slides_dir / slide_language.current_name(s),
+                                                                        tab=True),
                                  GROUP_ICONS[GO_TO_SLIDE], "not in this deck"))
     return entries                  # the palette shows MAX_SLIDES of them, or all after Show all
 
@@ -125,7 +126,7 @@ def deck_entries(window, words: list[str]) -> list[Entry]:
 
 def hit_entries(window, hits: list[slide_search.SearchHit]) -> list[Entry]:
     """Every hit; the palette shows MAX_HITS of them, or all after Show all."""
-    return [Entry(TEXT_HITS, hit.title, lambda h=hit: window.open_slide_editor(h.path, line=h.line),
+    return [Entry(TEXT_HITS, hit.title, lambda h=hit: window.open_slide_editor(h.path, line=h.line, tab=True),
                   GROUP_ICONS[TEXT_HITS], f"line {hit.line}", detail=hit.snippet) for hit in hits]
 
 

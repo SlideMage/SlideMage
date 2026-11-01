@@ -153,7 +153,7 @@ MENU_BAR = (
                      "create_snapshot")),
                ("", ("update_deck_versions", "rerender_deck_previews", "deck:readability")),
                ("", ("archive_deck",)))),
-    ("&Slide", (("", ("slide:open", "slide:preview", "slide:images")),
+    ("&Slide", (("", ("slide:open", "slide:preview", "slide:open_tab", "slide:images")),
                 ("", ("slide:before", "slide:after", "slide:section_before", "slide:duplicate", "slide:translate")),
                 ("", (Submenu("Visibility", ("slide:visible:*",)), "slide:update_versions")),
                 ("", ("slide:reviewed", "slides:unreviewed", "slide:compare", "slide:readability")),

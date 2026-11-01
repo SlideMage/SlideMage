@@ -11,10 +11,12 @@ The view reports edits that could not be saved ("dirty") and Ctrl+S ("saved"), a
 signals, for what is not its own: rendering the buffer, restoring a frozen
 version, making a version (Update Version), showing another file.
 
-A file with a tab of its own in the centre (a deck's source, SlideMage.bib) is *held* (hold(), release()): it is not
-dropped when it goes out of view, so its buffer, undo history and cursor stay while another tab is shown. It is
+A file with a tab of its own in the centre (a deck's source, SlideMage.bib, a slide's file), and the file of the slide
+tab, is *held* (hold(), unhold(), release()): it is not dropped when it goes out of view, so its buffer, undo history
+and cursor stay while another tab is shown. Holds are counted, one per tab that needs the file: the same slide in
+the slide tab and in a file tab is one buffer, and it goes only when the last of them lets go. A held file is
 still written before it goes out of view and checked against the disk (`sync()`) when it comes back, and
-`file_closed` is emitted for it when its tab is released.
+`file_closed` is emitted for it when it is dropped.
 """
 from __future__ import annotations
 
@@ -69,7 +71,7 @@ class SourcePane(Surface):
         super().__init__()
         self.app = app
         self._files: dict[Path, SourceFile] = {}
-        self._held: set[Path] = set()       # files with a tab of their own: not dropped when out of view
+        self._held: dict[Path, int] = {}    # files a tab needs, and how many do: not dropped when out of view
         self._current: Optional[SourceFile] = None
         self._dirty = False
         self._lint_errors = 0
@@ -278,10 +280,14 @@ class SourcePane(Surface):
         for other in self._files.values():
             if other is not self._current:
                 other.write_now()       # written before it goes out of view
-        for stale in [f for f in self._files.values() if f is not self._current and self._droppable(f)]:
-            self._drop(stale)
+        self.prune()
         self._update_toolbar()
         self._emit_lint_errors()
+
+    def prune(self) -> None:
+        """Drop the files out of view that no tab holds and nothing in them would be lost."""
+        for stale in [f for f in self._files.values() if f is not self._current and self._droppable(f)]:
+            self._drop(stale)
 
     def edit_off_stage(self, path: Path, change: Callable[[str], str]) -> bool:
         """Apply `change(text) -> text` to the buffer of `path` as one undo step without making it the file
@@ -314,16 +320,26 @@ class SourcePane(Surface):
         self._empty.setText(message)
 
     def hold(self, path: Path) -> None:
-        """Keep the file `path` open while it is out of view, until release(): it has a tab. (It is opened by
-        show_path() as any file is.)"""
-        self._held.add(path)
+        """Keep the file `path` open while it is out of view, until it is let go (unhold(), release()): a tab needs it.
+        Each hold is one tab's. (The file is opened by show_path() as any file is.)"""
+        self._held[path] = self._held.get(path, 0) + 1
+
+    def unhold(self, path: Path) -> None:
+        """One tab no longer needs `path`. With no other holding it, it goes as any file does, the next time it is out of
+        view when another is shown."""
+        count = self._held.get(path, 0) - 1
+        if count > 0:
+            self._held[path] = count
+        else:
+            self._held.pop(path, None)
 
     def release(self, path: Path) -> None:
-        """The tab of `path` was closed: the file is dropped now (`file_closed`), unless it still has edits that
-        could not be written or an "Ask AI to fix" running, which keep it open as for any file out of view."""
-        self._held.discard(path)
+        """The tab of `path` was closed: it lets go (unhold()) and the file is dropped now (`file_closed`) unless
+        another tab holds it (the slide tab shows it too) or it still has edits that could not be written or an "Ask
+        AI to fix" running, which keep it open as for any file out of view."""
+        self.unhold(path)
         file = self._files.get(path)
-        if file is None or file.keep_open:
+        if file is None or path in self._held or file.keep_open:
             return
         if file is self._current:
             self._current = None
@@ -331,10 +347,6 @@ class SourcePane(Surface):
         self._drop(file)
         self._update_toolbar()
         self._emit_lint_errors()
-
-    def unhold(self, path: Path) -> None:
-        """`path` goes as any file does again, the next time it is out of view when another is shown."""
-        self._held.discard(path)
 
     def is_held(self, path: Path) -> bool:
         return path in self._held

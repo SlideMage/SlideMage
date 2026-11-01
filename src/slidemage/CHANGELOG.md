@@ -3324,3 +3324,15 @@ v0.13.16 (2026-11-01, direct request: an on-demand debug log, step 5 of docs/pla
 NEW: The debug log now says what SlideMage does.
 - Compiling, previews, AI tool calls, plugins, update checks and startup each write detailed lines while the debug log is on.
 - Slide text, prompts and the values of settings stay out of it.
+
+v0.13.17 (2026-11-01, direct request): Slides open in tabs of their own (docs/plans/centre-tabs.md, step 2 of 4). Ctrl+K "Text in project files" opens every hit in a tab at its line, also a slide of the open deck; a hit in a file that has a tab shows that tab and goes to the line. Ctrl+K "Go to slide" for a slide that is not in this deck opens a tab; for a slide of the deck it still focuses it. The slide list's right-click menu has Open in new tab. Details' Open on a frozen version opens a read-only tab of its own, named with the version (1y8 v1.2); Make this the current version from it shows the slide tab, and the version's tab stays.
+
+A slide's tab has Preview, Split and Details and remembers its mode. It previews the slide as the open deck calls it (the occurrence it was opened from, when the slide is used more than once), or alone when the deck does not use it, uses it no more, or it is a frozen version. Showing such a tab does not change the focused slide: the slide list keeps its selection and the background renders keep following it; selecting a slide in the list shows the slide tab, and the other tab stays. The chat, the AI tasks, the readability check, Ctrl+S, Ctrl+R and Ctrl+Enter act on the slide on show. The side panels and the slide list's commands stay on the focused slide. The Preview's wheel past the last step stays on such a tab, and its language chip opens the other language in a tab of its own.
+
+The Source view counts who needs a file: the slide tab and a tab of the same slide share one editor with its undo history, and closing one never drops what the other shows. Update Version on leave is offered when a slide's tab closes (not when you switch away, and not when the slide tab shows the same file) and, as before, when the window closes.
+
+NEW: Slides open in tabs.
+- Search hits and slides from outside the deck open in tabs; a hit in an open file goes to its line there.
+- Right-click a slide in the list and choose Open in new tab to look at two slides by switching.
+- A frozen version opened from Details gets a tab of its own, to compare it with the current slide.
+- Each slide tab has Preview, Split and Details, and keeps the one you used last.
