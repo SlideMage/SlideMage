@@ -20,7 +20,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          git archive --format=tar.gz --prefix="SlideMage-${GITHUB_REF_NAME}/" -o "out/SlideMage-${GITHUB_REF_NAME}-source.tar.gz" HEAD
+          name="${GITHUB_REF_NAME//\//-}"      # a run by hand on a branch: fix/x would be a folder in the file name
+          git archive --format=tar.gz --prefix="SlideMage-${name}/" -o "out/SlideMage-${name}-source.tar.gz" HEAD
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

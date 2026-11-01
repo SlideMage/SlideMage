@@ -3276,3 +3276,9 @@ NEW: SlideMage Presenter can offer itself for PDF files.
 - A button in the start window adds SlideMage Presenter to the Open with list of PDF files, on Windows and Linux; another button removes it again.
 - Your normal PDF program stays as it is: the Presenter is only added to the list.
 - If you move the Presenter's folder, the start window offers to update the entry.
+
+v0.13.11 (2026-11-01, direct request: the releases since v0.13.9 have no Windows downloads of SlideMage): The release workflow builds SlideMage for Windows with Python 3.12, where the standard-library module crypt still exists but refuses to import on Windows. The plugin host bundles the whole standard library and its self-test, run on every release build, imports each module, so it failed on crypt and the Windows downloads were never attached, from v0.13.9 on; a local build with Python 3.13, which no longer has crypt, passed. plugins/selftest.py now counts crypt among the modules that are found but cannot import on Windows, like curses, pty and tty. The release workflow also changes: the Windows self-tests print what the windowed program wrote, so a failure says why; the two upload steps of the build job run only for a tag, like the others, so a run by hand publishes nothing; the source archive copes with a branch name; and SlideMage Presenter’s size limit is set per system, Windows 130, macOS 170 and Linux 260 MiB, with the largest files listed, and its macOS build leaves out Qt’s Quick, Qml, Pdf and VirtualKeyboard frameworks.
+
+NEW: Windows downloads are back.
+- SlideMage for Windows is built and attached to releases again; v0.13.9 and v0.13.10 lacked it.
+- SlideMage Presenter is now built for macOS and Linux as well.
