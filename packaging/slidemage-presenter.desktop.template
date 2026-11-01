@@ -1,0 +1,22 @@
+# Linux desktop entry for SlideMage Presenter, to show it in the GNOME/KDE app grid and dock. Exec/Icon must be
+# absolute paths (no ~ expansion in .desktop files), so this is a template, not something installed directly.
+#
+# This file ships inside SlideMagePresenter-linux.zip (the GitHub release asset), in the SlideMagePresenter folder
+# next to the program and presenter-icon-256.png: unzip the release and one path fills in both placeholders below.
+#
+# Install for your user, after unzipping SlideMagePresenter-linux.zip somewhere (grep -v strips this comment block,
+# __DIR__ included, from the result -- the sed substitution alone would otherwise also rewrite this literal example
+# command, into itself, right below):
+#   DIR=/absolute/path/to/the/unzipped/SlideMagePresenter
+#   grep -v '^#' slidemage-presenter.desktop.template | sed "s|__DIR__|$DIR|g" \
+#       > ~/.local/share/applications/slidemage-presenter.desktop
+#   update-desktop-database ~/.local/share/applications
+[Desktop Entry]
+Type=Application
+Name=SlideMage Presenter
+Comment=Present a PDF with the presenter view of SlideMage
+Exec=__DIR__/SlideMagePresenter
+Icon=__DIR__/presenter-icon-256.png
+Terminal=false
+Categories=Office;Presentation;
+StartupWMClass=SlideMage Presenter
