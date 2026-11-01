@@ -93,6 +93,10 @@ SOURCE = "kitSource"
 SOURCE_NOTE = "kitSourceNote"
 SOURCE_FILE_NAME = "kitSourceFileName"
 SOURCE_BAR = "kitSourceBar"
+# The tabs above the views (ui/workspace/centre_tabs.py).
+TAB_STRIP = "kitTabStrip"
+TAB = "kitTab"
+TAB_LABEL = "kitTabLabel"
 PREVIEW_TITLE = "kitPreviewTitle"
 PREVIEW_ID = "kitPreviewId"
 DETAILS_LABEL = "kitDetailsLabel"
@@ -558,6 +562,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton[kitSegment="true"]:hover {{
             color: {t.text};
+            background-color: transparent;
+        }}
+        QPushButton[kitSegment="true"]:disabled {{
+            color: {t.text_4};
             background-color: transparent;
         }}
         QPushButton[kitSegment="true"]:checked {{
@@ -1083,6 +1091,21 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
             border-bottom: 1px solid {t.line};
         }}
+        /* The centre's tabs: a hairline under the strip; the tab shown has the inverse line the sheet tabs have. */
+        QFrame#{TAB_STRIP} {{
+            background-color: transparent;
+            border-bottom: 1px solid {t.line};
+        }}
+        QFrame#{TAB} {{
+            background-color: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }}
+        QFrame#{TAB}:hover {{ background-color: {t.hover}; }}
+        QFrame#{TAB}:focus {{ border-bottom: 2px solid {t.focus}; }}
+        QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}
+        {text(f"QLabel#{TAB_LABEL}", 12.5, t.text_3, 500)}
+        QFrame#{TAB}:hover QLabel#{TAB_LABEL}, QFrame#{TAB}[active="true"] QLabel#{TAB_LABEL} {{ color: {t.text}; }}
         QPlainTextEdit#{SOURCE} {{
             {mono}
             font-size: 13px;

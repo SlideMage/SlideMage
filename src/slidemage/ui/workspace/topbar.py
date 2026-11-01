@@ -45,6 +45,8 @@ VIEW_TONES = {"instructor": "instructor", "during-course": "during", "after-cour
 SHORT_VIEWS = {"instructor": "Instr.", "during-course": "During", "after-course": "After"}
 MODE_LABELS = {mode: mode.capitalize() for mode in MODES}
 SHORT_MODES = {"preview": "Prev.", "split": "Split", "source": "Src.", "details": "Info"}
+SOURCE_ONLY_TIP = ("This tab shows a file that is no slide, so it has only the Source view. "
+                   "Switch to the slide tab for Preview, Split and Details.")
 
 
 def _repolish(widget: QWidget) -> None:
@@ -232,6 +234,13 @@ class TopBar(QWidget):
 
     def set_dark(self, dark: bool) -> None:
         self._logo.setPixmap(QIcon(str(DARK_LOGO_PATH if dark else LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
+
+    def set_source_only(self, source_only: bool) -> None:
+        """The tab shown has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone,
+        so Preview, Split and Details are greyed out and say why instead of closing the file."""
+        for mode in MODES:
+            if mode != "source":
+                self._modes.set_unavailable(mode, SOURCE_ONLY_TIP if source_only else None)
 
     def set_images_open(self, is_open: bool) -> None:
         self._images.setVisible(is_open)

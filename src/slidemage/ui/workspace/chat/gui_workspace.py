@@ -256,6 +256,7 @@ class GuiWorkspace(Workspace):
                 window.state.set_focused_slide(slide_id, occurrence_key=occurrence)  # the preview follows
             else:
                 window.open_slide_editor(self._local(path))
+            window.centre.show_slide_tab()      # the preview is the slide tab's, also when the slide was focused already
             if window.state.mode not in ("preview", "split"):
                 window.state.set_mode("split")
 
