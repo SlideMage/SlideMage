@@ -3311,3 +3311,10 @@ NEW: The centre column has tabs.
 - The slide tab stays first and follows the slide you select in the list; each tab remembers whether you looked at Preview, Source, Split or Details.
 - Close a tab with its x, the middle mouse button or Ctrl+W; Ctrl+Tab and Ctrl+Shift+Tab switch between the tabs you used last.
 - A deck's source and the .bib have only the Source view; Preview, Split and Details are greyed out there and say why.
+
+v0.13.15 (2026-11-01, direct request: two more footnote marker styles, dice and boxed arabic numbers, per docs/Handover_2026-10-31-Footnote-Marker-Styles.md): The theme has \SMSetFootnoteMarkers{symbols|boxed|dice}, which renews the catalog's \SMFootnoteMark. boxed sets the footnote's number in a thin rounded box in the text colour, a two-digit number in a wider box at full size; dice draws die faces, 1 to 6 one die and above that the number in bijective base 6, digits 1 to 6 with no zero, most significant die first: 7 is one-one, 12 one-six, 13 two-one, 42 six-six, 43 the first with three dice. Both are TikZ drawings in the font's ex, so they scale with the font, take the text colour and sit on the baseline; in the running text, a font of 6pt or more, they are scaled to 75%. symbols is the default, the currency signs as before, so nothing changes unless a template or deck says otherwise; \setfootnotesymbols changes the symbols only. A template says it once after \input{SlideMage_setup}, a deck or slide from any point on, inside a group to the group's end. Transcripts are unchanged: they inline each footnote's text, so no marker reaches a screen reader. The manual's slide 1nz names the command, the new appendix slide 2mk shows both styles at both sizes, and the quick reference 1d7 lists it; the preview-equivalence pins of the theme and the setup layer are renewed after a re-audit.
+
+NEW: Footnote markers as dice or as numbers in a box.
+- \SMSetFootnoteMarkers{boxed} numbers footnotes in small boxes, \SMSetFootnoteMarkers{dice} shows them as dice.
+- Put it in your template or deck; the currency signs stay the default.
+- The manual's appendix shows both styles.
