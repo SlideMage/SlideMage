@@ -3259,7 +3259,13 @@ v0.13.7 (2026-11-01, direct request: an on-demand debug log, step 3 of docs/plan
 NEW: SlideMage no longer writes trace files in the background.
 - Two diagnostic files that SlideMage wrote on every computer are gone, and their old copies are deleted; the same information now goes to the debug log, only when it is on.
 
-v0.13.8 (2026-11-01, direct request: a small visual touch on opening): A small one-time visual touch when SlideMage opens.
+v0.13.8 (2026-11-01, direct request: an on-demand debug log, step 4 of docs/plans/debug-log.md): The debug log can be switched in the app. Settings -> About has a Troubleshooting section: Write a detailed debug log, which takes effect at once and stays until it is turned off, a note on what the log holds, the log folder with Open, and Debug report with Save. The Help menu has a new section with Turn debug log on or off, Save debug report and Open log folder, which are also in Ctrl+K. While the debug log is on, a Debug log on chip follows the AutoSave switch after the Help menu, so it is not left on unnoticed; clicking it opens the log folder. AutoSaveSwitch.add_trailing carries the chip and relayout keeps the pair placed when it shows or hides; on macOS it rides with the switch in the top bar. Save debug report asks where, on the desktop by default, and writes one zip there: report.txt with the debug header, whether the log is on and the project, the error log with its older files, the three newest app sessions and the hook, plugin and rasteriser files, and the project's compatibility report if there is one; diagnostics.write_report does it, and nothing is sent anywhere. The plan had the switch under Settings -> General; it is under About, next to the version and the update check.
+
+NEW: Turn on a detailed debug log, and save a debug report.
+- Settings, About, Troubleshooting: Write a detailed debug log. It stays on until you turn it off, and a Debug log on chip after the Help menu shows that it is on.
+- Help, Save debug report: the logs in one zip file, saved where you choose, to send with a problem report. Nothing is sent by SlideMage itself.
+
+v0.13.9 (2026-11-01, direct request: a small visual touch on opening): A small one-time visual touch when SlideMage opens.
 
 NEW: A small visual touch when SlideMage opens.
 - A small one-time visual touch when SlideMage opens.

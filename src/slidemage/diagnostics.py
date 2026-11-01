@@ -381,6 +381,55 @@ def reset() -> None:
         _secrets.clear()
 
 
+REPORT_SESSIONS = 3
+COMPAT_REPORTS = (Path(".slidemage") / "compat-report.json", Path(".slidemage") / "compat-report.md")
+
+
+def report_name() -> str:
+    return f"SlideMage-debug-report_{time.strftime('%Y-%m-%d_%H%M%S')}.zip"
+
+
+def write_report(target: Path, project_root: Optional[Path] = None, sessions: int = REPORT_SESSIONS) -> list[str]:
+    """A zip for a problem report, written to `target` and nothing sent anywhere: report.txt (the header lines,
+    whether the debug log is on, the project), the error log with its older files, the newest `sessions` app
+    session logs and the files of the other roles, and the project's compatibility report if it has one. The logs
+    are masked already when written; report.txt is masked here. Returns the names in the zip."""
+    import zipfile
+
+    folder = log_dir()
+    debug = folder / DEBUG_DIR
+    files: list[tuple[Path, str]] = []
+    for path in sorted(folder.glob(ERROR_LOG + "*")):
+        files.append((path, f"logs/{path.name}"))
+    if debug.is_dir():
+        apps = sorted((p for p in debug.glob("app_*.log")), key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in apps[:sessions]:
+            files += [(q, f"debug/{q.name}") for q in (path, path.with_name(path.name + ".1")) if q.is_file()]
+        files += [(p, f"debug/{p.name}") for p in sorted(debug.iterdir())
+                  if p.is_file() and not p.name.startswith("app_")]
+    if project_root is not None:
+        files += [(project_root / rel, f"project/{rel.name}") for rel in COMPAT_REPORTS if (project_root / rel).is_file()]
+    lines = header_lines() + [
+        f"debug log: {'on, ' + str(debug_log_path()) if debug_enabled() else 'off'}",
+        f"saved setting: {'on' if saved() else 'off'}; SLIDEMAGE_DEBUG: {os.environ.get(DEBUG_ENV, '(not set)')}",
+        f"project: {project_root if project_root is not None else '(none)'}",
+        f"report written: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    for handler in logging.getLogger(LOGGER).handlers:
+        handler.flush()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    names = ["report.txt"]
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as archive:
+        archive.writestr("report.txt", redact("\n".join(lines) + "\n"))
+        for path, name in files:
+            try:
+                archive.write(path, name)
+            except OSError:
+                continue              # rotated or removed meanwhile
+            names.append(name)
+    return names
+
+
 def error_log_path() -> Optional[Path]:
     """The error log this process writes, or None before setup() or when it could not be opened."""
     if _state is None:
