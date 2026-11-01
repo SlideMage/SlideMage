@@ -79,7 +79,7 @@ def test_a_side_with_no_route_is_a_disabled_half_with_install_a_plugin(window, q
 
     monkeypatch.setattr("slidemage.ui.workspace.window.SettingsSheet", Sheet)
     window.ai_switch.install.click()
-    assert opened == [PLUGINS]                                                    # Settings → Plugins
+    assert opened == [PLUGINS]                                                    # Settings → Extensions
 
 
 def test_a_policy_on_an_empty_side_does_not_switch_routes(window):

@@ -158,7 +158,7 @@ def test_settings_tab_is_added_after_slidemages_own(window, request, with_route)
         request.getfixturevalue("fake_routes")
     sheet = SettingsSheet(window)
     labels = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
-    assert labels[-2:] == ["Plugins", "Fixture"]
+    assert labels[-2:] == ["Extensions", "Fixture"]
     assert ("AI" in labels) is with_route
     sheet.set_current_tab(len(labels) - 1 + (not with_route))
     assert any(label.text() == "fixture settings" for label in sheet._stack.currentWidget().findChildren(QLabel))

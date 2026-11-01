@@ -107,7 +107,7 @@ def download(url: str, dest: Path, *, expected_size: int | None = None, timeout:
 
 
 def peek(archive: Path) -> Manifest:
-    """The checked manifest of `archive`, read without unpacking anything else (the Plugins tab shows it before
+    """The checked manifest of `archive`, read without unpacking anything else (the Extensions tab shows it before
     it asks whether to install a file that is not from the catalogue). Raises InstallError."""
     try:
         with zipfile.ZipFile(archive) as zf:
@@ -272,7 +272,7 @@ def _pending(plugin_id: str) -> Path:
 
 
 def row_state(plugin_id: str, current: tuple[str, str, str]) -> tuple[str, str, str]:
-    """The Plugins tab reflects a queued operation while the live folder stays intact."""
+    """The Extensions tab reflects a queued operation while the live folder stays intact."""
     pending = _pending(plugin_id)
     if (pending / ".remove").is_file():
         return "Removed after a restart", "info", ""

@@ -226,6 +226,12 @@ Done in v0.13.6:
   update from a frozen build against a real release. Intel Macs are not covered (the `macos-latest` runner is
   Apple silicon).
 
+Changed in v0.13.12: the Presenter looks for updates at every start, not once a day, which hid a new release for up
+to 24 hours. The Linux build went from 338 to 172 MiB unpacked: no top-level symlinks (zipping expanded them into 106
+MiB of copies; they cannot stay links, because installed updaters unpack with zipfile), none of the 24 MiB of libraries
+that only the dropped GTK theme needed, and stripped debug symbols. ICU has to stay: libQt6Core links it. release.yml
+really starts the Linux build on a virtual display. SlideMage's own Linux folder zip has the same duplication.
+
 ### 5. Presenter-only polish (optional, later)
 
 **5a. "Open with SlideMage Presenter" for PDFs.** Double-clicking a PDF or right-click → Open with should be able to

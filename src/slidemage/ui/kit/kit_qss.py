@@ -54,6 +54,7 @@ TOAST = "kitToast"
 TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
+SHEET_SECTION = "kitSheetSection"   # a section's heading in a sheet tab
 MODE_BADGE = "kitModeBadge"
 MODE_BADGE_TEXT = "kitModeBadgeText"
 SHEET_TABS = "kitSheetTabs"
@@ -92,6 +93,10 @@ SOURCE = "kitSource"
 SOURCE_NOTE = "kitSourceNote"
 SOURCE_FILE_NAME = "kitSourceFileName"
 SOURCE_BAR = "kitSourceBar"
+# The tabs above the views (ui/workspace/centre_tabs.py).
+TAB_STRIP = "kitTabStrip"
+TAB = "kitTab"
+TAB_LABEL = "kitTabLabel"
 PREVIEW_TITLE = "kitPreviewTitle"
 PREVIEW_ID = "kitPreviewId"
 DETAILS_LABEL = "kitDetailsLabel"
@@ -559,6 +564,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             background-color: transparent;
         }}
+        QPushButton[kitSegment="true"]:disabled {{
+            color: {t.text_4};
+            background-color: transparent;
+        }}
         QPushButton[kitSegment="true"]:checked {{
             background-color: {t.surface};
             color: {t.text};
@@ -889,6 +898,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
         }}
         {text(f"QLabel#{SHEET_TITLE}", 18, t.text, 500)}
+        {text(f"QLabel#{SHEET_SECTION}", 15, t.text, 500)}
         /* The read-only route badge under a dialog's title: a grey pill, amber on Cloud. */
         QFrame#{MODE_BADGE} {{ background-color: {t.bg}; border-radius: {RADIUS_PILL}px; }}
         QFrame#{MODE_BADGE}[cloud="true"] {{ background-color: {t.cloud_bg}; }}
@@ -1081,6 +1091,21 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
             border-bottom: 1px solid {t.line};
         }}
+        /* The centre's tabs: a hairline under the strip; the tab shown has the inverse line the sheet tabs have. */
+        QFrame#{TAB_STRIP} {{
+            background-color: transparent;
+            border-bottom: 1px solid {t.line};
+        }}
+        QFrame#{TAB} {{
+            background-color: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }}
+        QFrame#{TAB}:hover {{ background-color: {t.hover}; }}
+        QFrame#{TAB}:focus {{ border-bottom: 2px solid {t.focus}; }}
+        QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}
+        {text(f"QLabel#{TAB_LABEL}", 12.5, t.text_3, 500)}
+        QFrame#{TAB}:hover QLabel#{TAB_LABEL}, QFrame#{TAB}[active="true"] QLabel#{TAB_LABEL} {{ color: {t.text}; }}
         QPlainTextEdit#{SOURCE} {{
             {mono}
             font-size: 13px;

@@ -161,7 +161,7 @@ MENU_BAR = (
                 ("", ("slide:remove",)))),
     ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Centre", ("mode:*",)),
                ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "log")),
-               ("", ("render_buffer", "preview:*")))),
+               ("Tabs", ("tab:*",)), ("", ("render_buffer", "preview:*")))),
     ("&Build", (("", ("compile:current",)),
                 ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:chapters", "compile:presenter",
                          "compile:slides", "compile:pages", "compile:several", "compile:everything")),

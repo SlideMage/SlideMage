@@ -294,15 +294,17 @@ def test_opening_the_focused_slide_keeps_the_occurrence_the_list_focused(centre,
     assert state.focused_slide == "ccc" and state.focused_occurrence is None
 
 
-def test_a_deck_source_has_nothing_to_preview_and_ends_when_another_slide_is_focused(centre, deck, project):
+def test_a_deck_source_has_nothing_to_preview_and_stays_open_when_another_slide_is_focused(centre, deck, project):
     deck.path.write_text(DECK, encoding="utf-8")
     centre.state.set_focused_slide("aaa")
     centre.open_file(deck.path)
-    centre.state.set_mode("split")
-    assert centre.source.current.path == deck.path and not centre.source.current.is_slide
-    assert "not a slide" in page(centre).message
-    centre.state.set_focused_slide("ccc")
-    assert centre.source.current.path == project / "ccc-DE-Drei-current.tex"
+    centre.state.set_mode("split")                    # no Preview or Split for a file that is no slide
+    assert centre.state.mode == "source" and centre.source.current.path == deck.path
+    assert not centre.source.current.is_slide and not centre.preview.isVisibleTo(centre)
+    centre.state.set_focused_slide("ccc")             # the slide tab comes back, in the mode it had; the deck's tab stays
+    assert centre.path == project / "ccc-DE-Drei-current.tex" and centre.state.mode == "preview"
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.tabs.tab_for(deck.path) is not None
+    assert centre.source.file_for(deck.path) is not None
 
 
 def test_a_frozen_version_opened_by_itself_is_previewed_alone(centre, project):
@@ -595,7 +597,9 @@ def test_details_follow_the_focused_slide(centre):
         "Select a slide in the list. Click it to open its source."]
     centre.state.deck.path.write_text(DECK, encoding="utf-8")
     centre.open_file(centre.state.deck.path)
-    state.set_mode("details")                       # closes the deck's source (v8.56.0): back to the focus
+    state.set_mode("details")                       # a deck's source has no details: the Source view stays
+    assert centre.path == centre.state.deck.path and state.mode == "source"
+    centre.show_slide_tab()                         # the slide tab comes back in the mode it had
     assert centre.path is None and state.mode == "details"
     assert [label.text() for label in centre.details.findChildren(QLabel)] == [
         "Select a slide in the list. Click it to open its source."]
@@ -1133,7 +1137,7 @@ def test_show_makes_a_panel_edit_the_source_views_own(centre, project):
     assert centre.source.current.path == aaa and centre.source.current.dirty
 
 
-# -- a deck's source and the .bib: the "x", and Preview closes them (v8.56.0) -----------------------------
+# -- a deck's source and the .bib: tabs of their own, closed with the "x" ---------------------------------
 
 def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centre, project, deck):
     deck.path.write_text(DECK, encoding="utf-8")
@@ -1142,8 +1146,10 @@ def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centr
     state.set_focused_slide("aaa")
     centre.open_file(deck.path)
     assert state.mode == "source" and centre.source.current.path == deck.path
-    centre.source._close_button.click()
+    button = centre.tab_strip.tab_buttons()[1]
+    button.close_button.click()
     assert state.mode == "preview" and centre.path.name == "aaa-EN-One-current.tex"
+    assert [t.kind for t in centre.tabs.tabs] == ["slide"] and centre.source.file_for(deck.path) is None
 
 
 def test_a_deck_source_has_a_save_button_while_autosave_is_off(centre, project, deck):
@@ -1163,7 +1169,7 @@ def test_a_deck_source_has_a_save_button_while_autosave_is_off(centre, project, 
     assert save.isHidden()                                              # a slide: its own toolbar, Ctrl+S
 
 
-def test_preview_closes_the_bib_and_asks_about_changes_autosave_would_not_save(centre, project, monkeypatch):
+def test_closing_a_tab_asks_about_changes_autosave_would_not_save(centre, project, monkeypatch):
     bib = centre.state.project.bibliography_path
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
     state = centre.state
@@ -1173,11 +1179,13 @@ def test_preview_closes_the_bib_and_asks_about_changes_autosave_would_not_save(c
     centre.source.current.editor.insertPlainText("% mine\n")
     answers = [None, "save"]
     monkeypatch.setattr(centre, "_ask_save", lambda _name: answers.pop(0))
-    state.set_mode("preview")                                     # Cancel: it stays, in the Source view
+    tab = centre.tabs.active
+    assert not centre.close_tab(tab)                              # Cancel: it stays, in the Source view
     assert state.mode == "source" and centre.path == bib and "% mine" not in bib.read_text(encoding="utf-8")
-    state.set_mode("preview")                                     # Save
+    assert centre.tabs.tab_for(bib) is tab and centre.source.file_for(bib).dirty
+    assert centre.close_tab(tab)                                  # Save
     assert state.mode == "preview" and "% mine" in bib.read_text(encoding="utf-8")
-    assert centre.path.name == "aaa-EN-One-current.tex"
+    assert centre.path.name == "aaa-EN-One-current.tex" and centre.source.file_for(bib) is None
 
 
 def test_with_autosave_on_closing_saves_without_asking(centre, project, deck, monkeypatch):
@@ -1186,4 +1194,300 @@ def test_with_autosave_on_closing_saves_without_asking(centre, project, deck, mo
     centre.open_file(deck.path)
     centre.source.current.editor.insertPlainText("% quick\n")       # its autosave has not run yet
     monkeypatch.setattr(centre, "_ask_save", lambda _name: pytest.fail("asked"))
-    assert centre.close_explicit_file() and "% quick" in deck.path.read_text(encoding="utf-8")
+    assert centre.close_tab(centre.tabs.active) and "% quick" in deck.path.read_text(encoding="utf-8")
+
+
+# -- the tabs (docs/plans/centre-tabs.md, step 1) ----------------------------------------------------------
+
+@pytest.fixture
+def files(centre, deck, project):
+    """A deck's source and the .bib on disk; the slide `aaa` focused, the Preview on show."""
+    deck.path.write_text(DECK, encoding="utf-8")
+    bib = centre.state.project.bibliography_path
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    centre.state.set_focused_slide("aaa")
+    centre.resize(900, 600)
+    centre.show()
+    return SimpleNamespace(deck=deck.path, bib=bib, aaa=project / "aaa-EN-One-current.tex",
+                           ccc=project / "ccc-DE-Drei-current.tex")
+
+
+def test_a_file_opens_in_a_tab_of_its_own_and_opening_it_again_shows_that_tab(centre, files):
+    slide_tab = centre.tabs.slide_tab
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    assert [t.path for t in centre.tabs.tabs] == [None, files.deck, files.bib] and centre.tabs.active.path == files.bib
+    centre.open_file(files.deck)
+    assert len(centre.tabs.tabs) == 3 and centre.tabs.active.path == files.deck and centre.path == files.deck
+    buttons = centre.tab_strip.tab_buttons()
+    assert [b.label.full_text() for b in buttons[1:]] == ["course.tex", "SlideMage.bib"]
+    assert buttons[0].label.full_text().startswith("aaa") and "First" in buttons[0].label.full_text()
+    assert buttons[0].close_button is None and buttons[1].close_button is not None      # the slide tab has no "x"
+    assert [b.property("active") for b in buttons] == [False, True, False]
+    assert centre.tabs.active is not slide_tab
+
+
+def test_clicking_a_tab_shows_it_and_the_x_and_the_middle_button_close_it(centre, files):
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    deck_button, bib_button = centre.tab_strip.tab_buttons()[1:]
+    QTest.mouseClick(deck_button, Qt.MouseButton.LeftButton)
+    assert centre.path == files.deck
+    QTest.mouseClick(centre.tab_strip.tab_buttons()[0], Qt.MouseButton.LeftButton)
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.state.mode == "preview"
+    QTest.mouseClick(bib_button, Qt.MouseButton.MiddleButton)                    # middle button: closes
+    assert centre.tabs.tab_for(files.bib) is None and len(centre.tab_strip.tab_buttons()) == 2
+    QTest.mouseClick(centre.tab_strip.tab_buttons()[0], Qt.MouseButton.MiddleButton)     # the slide tab has no close
+    assert len(centre.tabs.tabs) == 2
+    QTest.mouseClick(centre.tab_strip.tab_buttons()[1].close_button, Qt.MouseButton.LeftButton)
+    assert [t.kind for t in centre.tabs.tabs] == ["slide"] and centre.source.file_for(files.deck) is None
+
+
+def test_each_tab_remembers_its_mode_and_the_slide_tab_comes_back_in_it(centre, files):
+    state = centre.state
+    state.set_mode("split")
+    centre.open_file(files.deck)
+    assert state.mode == "source" and not centre.preview.isVisibleTo(centre)
+    centre.show_slide_tab()
+    assert state.mode == "split" and centre.preview.isVisibleTo(centre) and centre.source.current.path == files.aaa
+    state.set_mode("details")
+    centre.open_file(files.bib)
+    centre.tabs.activate(centre.tabs.slide_tab)
+    assert state.mode == "details"
+
+
+def test_a_slide_focused_from_a_file_tab_shows_the_slide_tab_and_leaves_the_file_open(centre, files):
+    state = centre.state
+    state.set_mode("split")
+    centre.open_file(files.deck)
+    state.set_focused_slide("ccc")                      # the slide list's press ...
+    assert centre.tabs.active is centre.tabs.slide_tab and state.mode == "split"
+    centre.open_file(files.ccc, keep_mode=True)         # ... and its release
+    assert centre.path == files.ccc and centre.tabs.tab_for(files.deck) is not None
+    assert centre.source.file_for(files.deck) is not None       # held: its buffer is still there
+    centre.open_file(files.deck)
+    centre.open_file(files.ccc, keep_mode=True)         # a click on the slide that is focused already
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.path == files.ccc and state.mode == "split"
+
+
+def test_two_file_tabs_keep_their_buffers_and_undo_history_and_what_is_left_is_written(centre, files):
+    centre.open_file(files.deck)
+    deck_file = centre.source.current
+    deck_file.editor.insertPlainText("% deck\n")
+    centre.open_file(files.bib)
+    bib_file = centre.source.current
+    bib_file.editor.insertPlainText("% bib\n")
+    assert "% deck" in files.deck.read_text(encoding="utf-8")          # written when its tab was left
+    centre.open_file(files.deck)
+    assert centre.source.current is deck_file and centre.source.file_for(files.bib) is bib_file
+    assert "% deck" in deck_file.editor.text() and "% bib" in bib_file.editor.text()
+    deck_file.editor.undo()
+    assert "% deck" not in deck_file.editor.text() and "% bib" in bib_file.editor.text()
+    centre.tabs.activate(centre.tabs.tab_for(files.bib))
+    bib_file.editor.undo()
+    assert "% bib" not in bib_file.editor.text()
+
+
+def test_the_slide_keeps_its_editor_while_a_file_tab_covers_it(centre, files):
+    centre.state.set_mode("source")
+    slide_file = centre.source.current
+    assert slide_file.path == files.aaa
+    slide_file.editor.insertPlainText("% slide\n")
+    centre.open_file(files.bib)
+    assert centre.source.file_for(files.aaa) is slide_file
+    centre.open_file(files.deck)                          # from one file tab to another
+    assert centre.source.file_for(files.aaa) is slide_file
+    centre.tabs.activate(centre.tabs.slide_tab)
+    assert centre.source.current is slide_file and "% slide" in slide_file.editor.text()
+    text = slide_file.editor.text()
+    slide_file.editor.undo()
+    assert slide_file.editor.text() != text               # the undo history came back with it
+
+
+def test_a_slide_the_focus_leaves_from_a_file_tab_is_dropped_as_usual(centre, files):
+    centre.state.set_mode("source")
+    centre.open_file(files.bib)
+    assert centre.source.is_held(files.aaa)
+    centre.state.set_focused_slide("bbb")
+    assert centre.tabs.active is centre.tabs.slide_tab
+    assert not centre.source.is_held(files.aaa) and centre.source.file_for(files.aaa) is None
+
+
+def test_another_slide_for_the_slide_tab_under_a_file_tab_lets_the_old_one_go(centre, files):
+    centre.state.set_mode("source")
+    centre.open_file(files.bib)
+    assert centre.source.is_held(files.aaa)
+    centre._set_path(files.ccc)                           # as a language switch does, the file tab stays on show
+    assert centre.tabs.tab_for(files.bib) is centre.tabs.active and not centre.source.is_held(files.aaa)
+
+
+@pytest.mark.parametrize("answer, kept, on_disk", [
+    ("save", False, True), ("discard", False, False), (None, True, False)])
+def test_closing_a_tab_with_edits_that_were_not_saved_asks_save_discard_or_cancel(
+        centre, files, monkeypatch, answer, kept, on_disk):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.open_file(files.deck)
+    tab = centre.tabs.active
+    centre.source.current.editor.insertPlainText("% mine\n")
+    asked = []
+    monkeypatch.setattr(centre, "_ask_save", lambda name: asked.append(name) or answer)
+    assert centre.close_tab(tab) is not kept
+    assert asked == ["course.tex"] and (centre.tabs.tab_for(files.deck) is tab) is kept
+    assert ("% mine" in files.deck.read_text(encoding="utf-8")) is on_disk
+    assert (centre.source.file_for(files.deck) is not None) is kept
+    if kept:
+        assert centre.path == files.deck and centre.state.mode == "source"
+    else:
+        assert centre.path == files.aaa
+
+
+def test_closing_returns_to_the_most_recently_used_tab_in_the_mode_it_was_shown_in(centre, files):
+    state = centre.state
+    state.set_mode("split")
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    deck_tab, bib_tab = centre.tabs.tab_for(files.deck), centre.tabs.tab_for(files.bib)
+    centre.tabs.activate(deck_tab)                                          # used last: deck, bib, slide
+    centre.close_tab(deck_tab)
+    assert centre.tabs.active is bib_tab and centre.path == files.bib and state.mode == "source"
+    centre.close_tab(bib_tab)
+    assert centre.tabs.active is centre.tabs.slide_tab and state.mode == "split" and centre.path == files.aaa
+
+
+def test_a_file_changed_on_disk_while_its_tab_is_in_the_background_is_read_when_it_comes_back(centre, files):
+    centre.open_file(files.bib)
+    bib_file = centre.source.current
+    centre.show_slide_tab()
+    files.bib.write_text("@book{a, title={Changed}}\n", encoding="utf-8")
+    assert centre.source.file_for(files.bib) is bib_file
+    centre.tabs.activate(centre.tabs.tab_for(files.bib))
+    assert "Changed" in centre.source.current.editor.text() and centre.source.current is bib_file
+
+
+def test_a_file_with_edits_changed_on_disk_in_the_background_keeps_the_edits_and_reports_the_conflict(centre, files):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.open_file(files.bib)
+    centre.source.current.editor.insertPlainText("% mine\n")
+    centre.show_slide_tab()
+    files.bib.write_text("@book{a, title={Elsewhere}}\n", encoding="utf-8")
+    centre.tabs.activate(centre.tabs.tab_for(files.bib))
+    file = centre.source.current
+    assert file.dirty and "% mine" in file.editor.text()                # coming back never reloads over edits
+    assert not file.write_now(force=True) and file.conflicted           # the save finds the change: the notice asks
+    assert "Elsewhere" in files.bib.read_text(encoding="utf-8")
+
+
+def test_the_save_hook_of_a_deck_source_survives_switching_tabs(centre, files):
+    seen = []
+    centre.open_file(files.deck, seen.append)
+    file = centre.source.current
+    centre.show_slide_tab()
+    centre.open_file(files.bib)
+    centre.open_file(files.deck)                                       # shown again without a hook
+    file.editor.insertPlainText("% hand edit\n")
+    assert file.write_now() and len(seen) == 1 and seen[0] == DECK
+    later = []
+    centre.open_file(files.deck, later.append)                         # a newer hook replaces it
+    file.editor.insertPlainText("% another\n")
+    assert file.write_now() and len(later) == 1 and len(seen) == 1
+
+
+def test_a_file_that_is_no_slide_has_the_source_view_alone(centre, files, monkeypatch):
+    state = centre.state
+    only = []
+    centre.source_only_changed.connect(only.append)
+    rendered = []
+    monkeypatch.setattr(centre.preview, "render_buffer", lambda: rendered.append(True))
+    centre.open_file(files.deck)
+    assert centre.source_only and only == [True]
+    for mode in ("preview", "split", "details"):
+        state.set_mode(mode)
+        assert state.mode == "source" and centre.source.isVisibleTo(centre) and not centre.preview.isVisibleTo(centre)
+    centre.render_buffer()
+    assert rendered == []
+    centre.show_slide_tab()
+    assert only == [True, False] and not centre.source_only
+    centre.render_buffer()
+    assert rendered == [True]
+
+
+def test_a_tab_whose_file_is_gone_is_closed_without_asking(centre, files, monkeypatch):
+    monkeypatch.setattr(centre, "_ask_save", lambda _name: pytest.fail("asked"))
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    files.bib.unlink()
+    centre.refresh()
+    assert centre.tabs.tab_for(files.bib) is None and centre.tabs.active.path == files.deck
+    files.deck.unlink()
+    centre.refresh()
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.path == files.aaa
+
+
+def test_another_deck_shows_the_slide_tab_and_the_file_tabs_stay(centre, files, deck):
+    from dataclasses import replace
+    centre.open_file(files.deck)
+    other = replace(deck, name="other", path=deck.path.with_name("other.tex"))
+    centre.state.set_deck(other)
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.tabs.tab_for(files.deck) is not None
+    assert centre.source.file_for(files.deck) is not None and centre.path is None
+
+
+def test_the_slide_tab_is_named_after_the_slide_and_follows_the_focus(centre, files):
+    first = centre.tab_strip.tab_buttons()[0]
+    assert first.label.full_text().startswith("aaa · ")
+    centre.state.set_focused_slide("ccc")
+    assert first.label.full_text().startswith("ccc · ") and "Dritte" in first.label.full_text()
+    centre.state.set_focused_slide(None)
+    assert first.label.full_text() == "Slide"
+
+
+def test_showing_a_file_tab_and_coming_back_is_not_leaving_the_slide(centre, files, asked):
+    ask_on_leave(centre)
+    centre.state.set_mode("source")
+    centre.source.current.editor.insertPlainText("edit ")
+    centre.open_file(files.deck)
+    centre.show_slide_tab()
+    QApplication.processEvents()
+    assert asked.calls == []                                   # only a change of the slide asks
+    centre.state.set_focused_slide("ccc")
+    QApplication.processEvents()
+    assert asked.calls == [("aaa", (1, 1, 0))]
+
+
+def test_unsaved_edits_of_a_tab_out_of_view_are_counted_and_its_tab_is_shown_for_them(centre, files):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    centre.open_file(files.bib)
+    centre.source.current.editor.insertPlainText("% mine\n")
+    centre.show_slide_tab()
+    centre.open_file(files.deck)
+    assert centre.state.dirty and [f.path for f in centre.source.blocked_files()] == [files.bib]
+    centre.source._show_other_dirty()                          # the "1 more not saved" chip
+    assert centre.path == files.bib
+    centre.source.current.write_now(explicit=True)
+    assert not centre.state.dirty
+
+
+def test_a_held_clean_file_is_not_dirty_and_a_background_edit_is_written(centre, files):
+    centre.open_file(files.bib)
+    centre.show_slide_tab()
+    assert centre.source.dirty_files() == [] and not centre.is_dirty(files.bib)
+    centre.open_file(files.bib)
+    centre.source.current.editor.insertPlainText("% quick\n")
+    assert centre.source.flush_all() and "% quick" in files.bib.read_text(encoding="utf-8")
+
+
+def test_ctrl_tab_cycles_in_most_recently_used_order_and_ends_with_the_key(centre, files):
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)                              # bib, deck, slide
+    slide, deck_tab, bib_tab = centre.tabs.slide_tab, centre.tabs.tab_for(files.deck), centre.tabs.tab_for(files.bib)
+    centre.cycle_tabs(1)
+    assert centre.tabs.active is deck_tab and centre.path == files.deck
+    centre.cycle_tabs(1)
+    assert centre.tabs.active is slide and centre.state.mode == "preview"
+    centre.cycle_tabs(-1)
+    assert centre.tabs.active is deck_tab
+    centre.end_tab_cycle()
+    assert centre.tabs.mru[0] is deck_tab
+    centre.cycle_tabs(1)
+    centre.end_tab_cycle()
+    assert centre.tabs.active is bib_tab

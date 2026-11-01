@@ -5,49 +5,32 @@ release, which release counts, and how to install it.
 
 A release carries the Presenter's zip only when it changes the Presenter (release.yml), and plan_update() with
 `need_asset=True` skips a release without this platform's zip, so the Presenter is told only about releases that
-concern it. The update mode is the one SlideMage shares ("off" never checks). The time of the last successful check
-is kept in the layout store, so the program looks at most once a day. The updater is imported when needed: it pulls
-in urllib, which the start window does not need."""
+concern it. The update mode is the one SlideMage shares ("off" never checks). It looks at every start, in the
+background: one small request. Once a day was too rare, a release was not offered for up to 24 hours after the
+last look (up to v0.13.11). The updater is imported when needed: it pulls in urllib, which the start window does
+not need."""
 from __future__ import annotations
 
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..ui import layout_settings
 from ..version import VERSION_NUMBER
 
-STORE_KEY = "presenter_update_checked"      # time.time() of the last successful check
-CHECK_INTERVAL = 24 * 3600                  # seconds between two checks
-
-
-def check_due(now: Optional[float] = None) -> bool:
-    """True when the update mode allows a check and the last one is a day old (or none is known, or the clock went
-    back)."""
+def check_allowed() -> bool:
+    """False when the shared update mode says never to look."""
     from .. import updater
 
-    if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
-        return False
-    now = time.time() if now is None else now
-    last = layout_settings.get(STORE_KEY)
-    if isinstance(last, bool) or not isinstance(last, (int, float)):
-        return True
-    return not 0 <= now - last < CHECK_INTERVAL
-
-
-def mark_checked(now: Optional[float] = None) -> None:
-    layout_settings.set(STORE_KEY, time.time() if now is None else now)
+    return updater.get_update_mode() != updater.UPDATE_MODE_OFF
 
 
 def find_update(current: str = VERSION_NUMBER):
     """The newest release newer than `current` that carries the Presenter's zip for this system, or None.
-    Raises updater.UpdateError when GitHub cannot be reached. Remembers the time of a successful check."""
+    Raises updater.UpdateError when GitHub cannot be reached."""
     from .. import updater
 
     releases = updater.fetch_releases(flavour=updater.PRESENTER)
-    mark_checked()
     return updater.plan_update(releases, current, need_asset=True).latest
 
 

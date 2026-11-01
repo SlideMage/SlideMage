@@ -104,7 +104,7 @@ AUDITED_FRAMEWORK = {
     # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
     # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
     # its deck-version text are unchanged.
-    "SlideMage_setup.tex": "9e55d56b5e13f7fdff9cd2158e873c0982706891afa1bc0d7054005eb438f04d",
+    "SlideMage_setup.tex": "f7a529daebb667dfcf7bbf7e4365c6e57976335d68b193af2d81d109d09cb09d",
     "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
@@ -126,11 +126,11 @@ AUDITED_FRAMEWORK = {
     # footer-hide or deck-label rule, and the loading order is the old one (after the base, before the deck).
     "SlideMage_citation_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "SlideMage_bibliography_default.tex": "d46cc2911724240bedc7d7f49391dfc9ce3c100e4a4a710897a970040c1aa076",
-    # v0.13.12: two more footnote marker styles. The theme's \SMSetFootnoteMarkers{symbols|boxed|dice} renews the
+    # v0.13.15: two more footnote marker styles. The theme's \SMSetFootnoteMarkers{symbols|boxed|dice} renews the
     # catalog's \SMFootnoteMark with the symbols, a number in a rounded box or TikZ dice (the setup layer's comment
     # says so; its code is unchanged). Re-audited: markers only, drawn the same in every view; no version, footer-hide
     # or deck-label rule entered the theme or the setup layer.
-    "beamerthemeSlideMage.sty": "07fa35d7e530e80fc945f5baeb4b9e7b4b2db14bf67d0e0e8563c73612476474",
+    "beamerthemeSlideMage.sty": "9006631fd64bae9062ff54fcf22db8001b4a15887d399005dca932868d22b869",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",

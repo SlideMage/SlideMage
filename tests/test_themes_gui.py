@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Settings → Plugins with theme packages (themes.py): the Themes list with Remove, and Install from file… taking a
+"""Settings → Extensions with theme packages (themes.py): the Themes list with Remove, and Install from file… taking a
 .smtheme (its theme.toml shown first, a .sha256 beside it checked)."""
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def test_remove_asks_and_removes(tab, package, monkeypatch):
     assert themes.installed() == [] and tab.theme_rows == {} and "removed" in tab.status.text()
 
 
-def test_the_file_dialog_offers_plugins_and_themes(tab, monkeypatch):
+def test_add_from_file_offers_themes_only(tab, monkeypatch):
     seen = {}
 
     def dialog(parent, title, folder, filters):
@@ -111,5 +111,5 @@ def test_the_file_dialog_offers_plugins_and_themes(tab, monkeypatch):
         return "", ""
 
     monkeypatch.setattr(settings_plugins.QFileDialog, "getOpenFileName", staticmethod(dialog))
-    tab.install_from_dialog()
-    assert "*.smplugin *.smtheme" in seen["filters"]
+    tab.theme_file_button.click()
+    assert seen["filters"] == settings_plugins.THEME_FILES

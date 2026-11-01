@@ -86,6 +86,11 @@ def test_typing_filters_the_commands_and_adds_the_slides_and_decks_that_match(wi
     assert labels(palette) == [] and palette._entries[0].group == CHAT and palette._current == 0     # the chat row
 
 
+def test_a_commands_keywords_find_it(window):
+    from slidemage.ui.workspace.palette import command_entries
+    assert any(entry.label == "Extensions…" for entry in command_entries(window, ["plugin"]))
+
+
 def test_the_slide_group_follows_the_focused_slide_and_the_selection(window):
     palette = window.palette
     items = window.slide_list.tree.slide_items()

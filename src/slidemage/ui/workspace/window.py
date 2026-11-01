@@ -47,7 +47,7 @@ from .. import layout_settings, plugin_ui
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGINS, PROJECT, SettingsSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGIN_LIST, PLUGINS, PROJECT, SettingsSheet
 from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
@@ -260,6 +260,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
+        self.centre.source_only_changed.connect(self.topbar.set_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
@@ -449,14 +450,16 @@ class WorkspaceWindow(QMainWindow):
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
-        *, keep_mode: bool = False,
+        *, keep_mode: bool = False, tab: bool = False,
     ) -> None:
         """Show a file in the Source view: a slide, a deck's own source or SlideMage.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
-        the Preview on show instead of switching to the Source view."""
+        the Preview on show instead of switching to the Source view. `tab` asks for a tab of its own: a file
+        that is no slide always gets one (the deck source, SlideMage.bib and test-slides.tex say so too), a
+        slide's file does not yet (docs/plans/centre-tabs.md, step 2)."""
         returning = self.stack.currentWidget() is not self.centre
         self.stack.setCurrentWidget(self.centre)
-        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode)
+        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode, tab=tab)
         if returning:
             self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
 
@@ -642,9 +645,13 @@ class WorkspaceWindow(QMainWindow):
         """A citation package was installed or updated: re-render the previews."""
         maintenance.on_citation_installed(self, key)
 
-    def open_plugins(self) -> None:
-        """Help → Plugins…: Settings on its Plugins tab."""
+    def open_extensions(self) -> None:
+        """Help → Extensions…: Settings on its Extensions tab."""
         self.open_settings(PLUGINS)
+
+    def open_plugins(self) -> None:
+        """Settings on its Extensions tab, at the plugins (a plugin to install, a plugin update)."""
+        self.open_settings(PLUGINS, focus=PLUGIN_LIST)
 
     def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
         sheet = SettingsSheet(self, tab, focus=focus)
@@ -783,6 +790,7 @@ class WorkspaceWindow(QMainWindow):
             on_saved=lambda previous_text: self.after_deck_edit(
                 deck.path, f"Edited {deck.name}'s source directly", previous_text=previous_text
             ),
+            tab=True,
         )
 
     def _on_edit_bib(self) -> None:
@@ -801,7 +809,7 @@ class WorkspaceWindow(QMainWindow):
         _on_source_closed()."""
         if self.centre.source.file_for(self.project.bibliography_path) is None:
             bibliography.sort_entries(self.project.bibliography_path)
-        self.open_slide_editor(self.project.bibliography_path)
+        self.open_slide_editor(self.project.bibliography_path, tab=True)
 
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
@@ -810,7 +818,7 @@ class WorkspaceWindow(QMainWindow):
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return
-        self.open_slide_editor(path)
+        self.open_slide_editor(path, tab=True)
 
     def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
         """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target
