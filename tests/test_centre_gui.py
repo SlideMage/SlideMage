@@ -1321,6 +1321,27 @@ def test_another_slide_for_the_slide_tab_under_a_file_tab_lets_the_old_one_go(ce
     assert centre.tabs.tab_for(files.bib) is centre.tabs.active and not centre.source.is_held(files.aaa)
 
 
+def test_closing_a_tab_of_the_file_the_slide_tab_shows_asks_nothing_and_keeps_the_edits(centre, files, monkeypatch):
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    monkeypatch.setattr(centre, "_ask_save", lambda name: pytest.fail("the slide tab still shows the edits"))
+    centre.state.set_mode("source")
+    centre.open_file(files.aaa, tab=True)
+    file = centre.source.current
+    file.editor.insertPlainText("% kept" + chr(10))
+    assert centre.close_tab(centre.tabs.active)
+    assert centre.tabs.active is centre.tabs.slide_tab and centre.source.current is file
+    assert "% kept" in file.editor.text() and file.dirty
+
+
+def test_the_chip_of_edits_elsewhere_selects_the_tab_of_a_slide_that_has_one(centre, files):
+    centre.open_file(files.ccc, tab=True)
+    tab = centre.tabs.active
+    centre.tabs.activate(centre.tabs.slide_tab)
+    focused = centre.state.focused_slide
+    centre.source.file_requested.emit(files.ccc)
+    assert centre.tabs.active is tab and centre.state.focused_slide == focused
+
+
 @pytest.mark.parametrize("answer, kept, on_disk", [
     ("save", False, True), ("discard", False, False), (None, True, False)])
 def test_closing_a_tab_with_edits_that_were_not_saved_asks_save_discard_or_cancel(

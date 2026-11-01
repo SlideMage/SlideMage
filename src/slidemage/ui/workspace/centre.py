@@ -180,7 +180,7 @@ class CentreColumn(QFrame):
         self.source.render_requested.connect(self.render_buffer)
         self.source.restore_requested.connect(self.restore_version)
         self.source.version_requested.connect(self.update_version)
-        self.source.file_requested.connect(self.open_file)
+        self.source.file_requested.connect(self._show_file)
         self.preview.partner_requested.connect(self._open_partner)
         self.tab_strip.activate_requested.connect(self.tabs.activate)
         self.tab_strip.close_requested.connect(self.close_tab)
@@ -262,6 +262,10 @@ class CentreColumn(QFrame):
             self.tabs.activate(tab)          # refreshes
         if line is not None and self.source.current is not None and self.source.current.path == path:
             self.source.current.editor.go_to_line(line)
+
+    def _show_file(self, path: Path) -> None:
+        """The Source view asks for another file (the chip of edits elsewhere): its tab, if it has one."""
+        self.open_file(path, tab=self.tabs.tab_for(path) is not None)
 
     def _open_from_details(self, path: Path) -> None:
         """Details' Open: a frozen version gets a read-only tab of its own, so that it and the current slide can be
@@ -755,12 +759,13 @@ class CentreColumn(QFrame):
 
     def close_tab(self, tab: CentreTab) -> bool:
         """Close a file tab (its "x", the middle button, Ctrl+W). Edits that would be lost are asked about: Save,
-        Discard or Cancel (False: it stays open). Then the tab used before comes back, in the mode it was last
-        shown in."""
+        Discard or Cancel (False: it stays open), unless the slide tab shows the same file: the buffer stays there, and
+        Discard would take the edits from it too. Then the tab used before comes back, in the mode it was last shown in."""
         if not tab.closable or tab not in self.tabs.tabs:
             return False
         file = self.source.file_for(tab.path)
-        if file is not None and file.dirty and not (autosave_on() and file.write_now(force=True)):
+        shared = tab.path == self._slide_path
+        if file is not None and not shared and file.dirty and not (autosave_on() and file.write_now(force=True)):
             answer = self._ask_save(file.path.name)
             if answer == "save":
                 if not file.write_now(force=True):

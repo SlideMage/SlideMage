@@ -118,9 +118,7 @@ def _review_paths(w) -> list:
     rows = _slide_targets(w)
     if not _slide_file_shown(w) and (len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide))):
         return [w.project.slides_dir / row.call.source_filename for row in rows]
-    path = w.centre.path
-    if _slide_file_shown(w):
-        return [path]       # the slide on show is not the focused one: the selected rows are not it
+    path = w.centre.path    # a slide file tab's slide is not the focused one: the selected rows are not it
     return [path] if path is not None else []
 
 
