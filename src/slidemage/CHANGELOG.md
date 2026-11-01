@@ -3341,3 +3341,8 @@ v0.13.18 (2026-11-01, direct request: size figures in one's own slides from the 
 
 NEW: Slides can size a figure from the room the template leaves.
 - The new length \SMContentHeight is the height between the top and bottom margin of a slide, for example \cornerfigure[height=0.8\SMContentHeight]{...}.
+
+v0.13.19 (2026-11-01, a fix to v0.13.18): The pin of latex/SlideMage_base.tex in preview_equivalence.py is right again. Renumbering v0.13.18 changed the version number in a comment of that file, which changed its hash, so the audit no longer recognized the file: the Preview's sharing of renders between views fell back to separate renders, and the equivalence tests failed. Only the comment had changed, so the audit stands.
+
+NEW: Previews share renders between views again.
+- v0.13.18 could render a slide once per view, where one render is enough. This restores the sharing.
