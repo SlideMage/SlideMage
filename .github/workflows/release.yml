@@ -211,7 +211,6 @@ jobs:
   presenter:
     name: Presenter (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    env:
     strategy:
       fail-fast: false
       matrix:
