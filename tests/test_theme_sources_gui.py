@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Themes from GitHub in the window (theme_sources.py): Settings → Plugins → Themes' "Add theme from GitHub…", a
+"""Themes from GitHub in the window (theme_sources.py): Settings → Extensions → Themes' "Add from GitHub…", a
 theme row's source, failure and "Check for update", and the start-up check (maintenance): under the update
 setting, offered with the release notes (Install now / Not now / Skip this version), never installed silently,
 and the previews of decks using the key re-rendered after an install. The fake GitHub API is test_theme_sources'."""

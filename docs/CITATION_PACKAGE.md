@@ -92,13 +92,13 @@ checks the folder with the installer's rules and writes both files; the same fol
 
 ## Installing, and where TeX finds it
 
-- **Install from file…** (Settings → Plugins; the same button as for plugins and themes) takes a `.smcite`: its
+- **Add from file…** (Settings → Extensions → Citation formats) takes a `.smcite`: its
   `citation.toml` is shown first, a `.sha256` next to it is checked, then the archive passes the plugin installer's
   zip checks and the unpacked folder every rule above. It is unpacked in `config_dir()/citations/<key>/` (Windows
   `%APPDATA%\SlideMage\citations\<key>\`), replacing an installed version of the key; it takes effect at once.
-- **Removing:** Settings → Plugins → Citation formats → Remove. Decks that choose the key then need a copy of the file
+- **Removing:** Settings → Extensions → Citation formats → Remove. Decks that choose the key then need a copy of the file
   in their project.
-- **From GitHub:** Settings → Plugins → Citation formats → **Add citation format from GitHub…** takes
+- **From GitHub:** Settings → Extensions → Citation formats → **Add from GitHub…** takes
   `owner/name`, reads the repository's releases with the GitHub token of Settings → General and installs the newest
   eligible one: published, with `<key>-<version>.smcite` and its `.sha256`, a matching download, a `citation.toml`
   whose version equals the tag and whose `requires_slidemage` accepts this SlideMage (the same rules and failure

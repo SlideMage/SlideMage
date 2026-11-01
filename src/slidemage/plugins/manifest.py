@@ -3,7 +3,7 @@
 """A plugin's plugin.toml: read it, check every field, and compare versions.
 
 The rules are the ones the plugin website's catalogue uses (PLUGINS_PLAN 2.9), so a plugin that passes here
-passes there. A bad manifest raises ManifestError with a sentence the Plugins tab can show as it is.
+passes there. A bad manifest raises ManifestError with a sentence the Extensions tab can show as it is.
 """
 from __future__ import annotations
 

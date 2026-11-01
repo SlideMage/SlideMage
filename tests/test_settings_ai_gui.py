@@ -32,7 +32,7 @@ def fake_plugin(registrar_calls):
 
 def test_the_ai_tab_has_the_policy_the_models_the_prompts_and_a_section_per_service(qapp):
     sheet = open_sheet(qapp, tab=AI)
-    assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Plugins"]
+    assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Extensions"]
     assert list(sheet.ai.sections) == ["prompts"]
     assert sheet.ai.policy.current() in ("local", "cloud")
     assert not sheet.ai.cloud_route_field.isVisibleTo(sheet.ai)
@@ -91,9 +91,9 @@ def test_a_route_may_share_a_service_and_so_a_section(qapp, fake_routes):
 def test_without_ai_routes_there_is_no_ai_tab(qapp):
     routes.clear()
     sheet = open_sheet(qapp, tab=PLUGINS)
-    assert tab_names(sheet) == ["General", "Presentation", "Project", "About", "Plugins"]
+    assert tab_names(sheet) == ["General", "Presentation", "Project", "About", "Extensions"]
     assert sheet.ai is None and sheet.prompts is None
-    assert sheet.current_tab() == PLUGINS and sheet._tabs.tabText(sheet._tabs.currentIndex()) == "Plugins"
+    assert sheet.current_tab() == PLUGINS and sheet._tabs.tabText(sheet._tabs.currentIndex()) == "Extensions"
     sheet.set_current_tab(PROJECT)
     assert sheet._tabs.tabText(sheet._tabs.currentIndex()) == "Project"
     sheet.close()
