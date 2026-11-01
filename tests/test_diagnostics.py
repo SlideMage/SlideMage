@@ -116,3 +116,101 @@ def test_qt_warnings_are_logged_with_their_area(logs, qapp):
     qWarning("a Qt warning")
     text = (logs / diagnostics.ERROR_LOG).read_text(encoding="utf-8")
     assert "WARNING  qt" in text and "a Qt warning" in text
+
+
+# -- the debug log (step 2) -------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def no_debug_env(monkeypatch):
+    monkeypatch.delenv(diagnostics.DEBUG_ENV, raising=False)
+
+
+def _sessions(logs):
+    return sorted((logs / diagnostics.DEBUG_DIR).glob("app_*.log"))
+
+
+def test_debug_is_off_unless_asked_for(logs, no_debug_env):
+    diagnostics.setup("app")
+    logging.getLogger("slidemage.compile").debug("job started")
+    assert not diagnostics.debug_enabled() and diagnostics.debug_log_path() is None
+    assert not (logs / diagnostics.DEBUG_DIR).exists()
+
+
+def test_the_environment_turns_it_on_with_a_header_and_debug_lines(logs, monkeypatch):
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "1")
+    diagnostics.setup("app")
+    logging.getLogger("slidemage.compile").debug("job started deck=%s", "micro-01")
+    [session] = _sessions(logs)
+    assert diagnostics.debug_log_path() == session
+    text = session.read_text(encoding="utf-8")
+    assert "INFO     startup" in text and "debug log started" in text
+    assert "    SlideMage v" in text and "    Python " in text and "    lualatex: " in text
+    assert f"    ${diagnostics.DEBUG_ENV} = 1" in text
+    assert "DEBUG    compile" in text and "job started deck=micro-01" in text
+    assert not (logs / diagnostics.ERROR_LOG).exists()         # no warning: the error log stays empty
+
+
+def test_secrets_in_the_environment_are_named_not_shown(logs, monkeypatch):
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-abcdefghijklmnopqrstuvwxyz")
+    diagnostics.setup("app")
+    text = _sessions(logs)[0].read_text(encoding="utf-8")
+    assert f"$ANTHROPIC_API_KEY = {diagnostics.REDACTED}" in text and "abcdefghijkl" not in text
+
+
+def test_the_saved_setting_holds_for_later_processes_and_the_environment_overrides_it(logs, no_debug_env,
+                                                                                     monkeypatch):
+    diagnostics.setup("app")
+    diagnostics.set_debug(True)
+    assert diagnostics.debug_enabled() and diagnostics.saved()
+    diagnostics.reset()
+    diagnostics.setup("hook")                       # a later process, say a Claude Code hook
+    logging.getLogger("slidemage.plugins.hook").debug("hook ran")
+    assert "hook ran" in (logs / diagnostics.DEBUG_DIR / "hook.log").read_text(encoding="utf-8")
+    diagnostics.reset()
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "0")
+    diagnostics.setup("app")
+    assert not diagnostics.debug_enabled()
+
+
+def test_turning_it_off_at_runtime_stops_the_file_and_the_debug_records(logs, no_debug_env):
+    diagnostics.setup("app")
+    diagnostics.set_debug(True)
+    path = diagnostics.debug_log_path()
+    diagnostics.set_debug(False)
+    logging.getLogger("slidemage.compile").debug("after it was turned off")
+    text = path.read_text(encoding="utf-8")
+    assert "debug log turned off" in text and "after it was turned off" not in text
+    assert not diagnostics.saved() and not logging.getLogger("slidemage").isEnabledFor(logging.DEBUG)
+
+
+def test_debug_flag_is_passed_on_until_it_is_turned_off(logs, no_debug_env):
+    diagnostics.setup("app", debug=True)
+    assert diagnostics.debug_enabled() and __import__("os").environ[diagnostics.DEBUG_ENV] == "1"
+    assert not diagnostics.saved()                  # --debug is for this run only
+    diagnostics.set_debug(False, persist=False)
+    assert diagnostics.DEBUG_ENV not in __import__("os").environ
+
+
+def test_the_oldest_files_go_beyond_the_session_count_and_the_size(tmp_path):
+    import os
+
+    for number in range(6):
+        path = tmp_path / f"app_2026-10-0{number}_120000_1.log"
+        path.write_text("x" * 10)
+        os.utime(path, (1000 + number, 1000 + number))
+    big = tmp_path / "hook.log"
+    big.write_text("y" * 100)
+    os.utime(big, (900, 900))
+    diagnostics.clean_up(tmp_path, keep_sessions=4, keep_bytes=1000)
+    assert sorted(p.name[:14] for p in tmp_path.glob("app_*")) == [f"app_2026-10-0{n}" for n in (2, 3, 4, 5)]
+    assert big.exists()
+    diagnostics.clean_up(tmp_path, keep_sessions=4, keep_bytes=45)
+    assert not big.exists() and len(list(tmp_path.glob("app_*"))) == 4
+
+
+def test_the_cli_takes_the_debug_flag():
+    from slidemage import cli
+
+    assert cli._role(["--claude-hook"]) == "hook" and cli._role([]) == "app"

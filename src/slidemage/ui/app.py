@@ -30,6 +30,9 @@ def load_plugins(project_context: ProjectContext) -> None:
     try:
         installer.cleanup()
         session.set_loaded(loader.load_all(lambda manifest: PluginHost(manifest, project_context, ui=HOST_UI)))
+        log = logging.getLogger(__name__)
+        for plugin in session.loaded():
+            log.debug("plugin %s %s: %s", plugin.id, getattr(plugin.manifest, "version", "?"), plugin.state)
     except Exception:
         logging.getLogger(__name__).exception("loading the plugins failed; starting without them")
         session.set_loaded([])

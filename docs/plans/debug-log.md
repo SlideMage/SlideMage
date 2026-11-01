@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: decisions made 2026-10-31 (section 7). Step 1 done (v0.12.3); step 2 next, after the go.
+Status: decisions made 2026-10-31 (section 7). Steps 1 and 2 done (v0.12.3, v0.13.5); step 3 next, after the go.
 
 ## 1. Review: what SlideMage writes today
 
@@ -184,10 +184,14 @@ These are the points that would have spared us the ad-hoc traces:
 1. **Base (done, v0.12.3):** `diagnostics.py`, the always-on error log, the excepthooks and the Qt
    message handler, called from `cli.main()` and the subprocess paths. Tests for rotation,
    cleanup, redaction and the format. This alone makes the lost exceptions from 1.3 visible.
-2. **The debug switch:** `--debug`, `SLIDEMAGE_DEBUG`, the persisted setting, the session
+2. **The debug switch (done, v0.13.5):** `--debug`, `SLIDEMAGE_DEBUG`, the persisted setting, the session
    file and header, switching at runtime, and passing it on to hooks and plugin
-   subprocesses. It also adds `Host.log(level=…)` and `Host.debug_enabled()`, with the
-   plugin-API minor bump.
+   subprocesses. It also adds `Host.log(level=…)` and `Host.debug_enabled()`. The plugin API grows
+   by additions without raising `API_VERSION` (the contract test's snapshot is renewed),
+   so "minor bump" means a plugin that uses them says `requires_slidemage = ">=0.13.5"`.
+   Short-lived processes (hook, plugin, raster) share one file per role with a two-line
+   header, so a hook does not create a session file on every run. The plugin self-test
+   loads plugins with a bare `Registrar`, which has no `log`, so it doesn't call it.
 3. **Fold in the old traces** (section 4), including the one-off file cleanup.
 4. **UI:** the settings switch, the status-bar indicator, Help → Save debug report.
 5. **Instrumentation** (section 5), area by area. Small, so it can be one PR or split
