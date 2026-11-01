@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Settings → Plugins (step 7): the rows and states of installed plugins, the enable switch and the restart banner,
+"""Settings → Extensions (step 7): the rows and states of installed plugins, the enable switch and the restart banner,
 Remove, Install from file (confirmation, checksum file), the catalogue's Available list with Install (download +
-hash), Check for plugins (too new, offline), and Help → Plugins… opening the tab. Nothing leaves the machine: the
+hash), Check for plugins (too new, offline), and Help → Extensions… opening the tab. Nothing leaves the machine: the
 download function is replaced and the catalogue comes from a local server."""
 from __future__ import annotations
 
@@ -17,15 +17,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QLabel, QMessageBox, QScrollArea, QWidget
 
 from conftest import build_window, command_context, filled_menu, make_project, qapp as qapp, wait_until
 from slidemage.plugins import catalogue, installer, loader, session
+from slidemage.plugins.loader import LoadedPlugin
+from slidemage.plugins.manifest import read_manifest
 from slidemage.plugins.registry import Registrar
 from slidemage.project import ProjectContext
 from slidemage.ui.dialogs import settings_plugins
 from slidemage.ui.dialogs.settings import PLUGINS
-from slidemage.ui.dialogs.settings_plugins import PluginsTab
+from slidemage.ui.dialogs.settings_plugins import InstalledRow, PluginsTab
+from slidemage.ui.kit import kit_qss as q
 from slidemage.ui.kit.theme import ThemeManager
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"
@@ -517,7 +521,7 @@ def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, tmp_path):
     app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
     sheet = SettingsSheet(app, tab=PLUGINS)
     names = [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
-    assert names[-1] == "Plugins"
+    assert names[-1] == "Extensions"
     assert sheet.current_tab() == PLUGINS
 
 
@@ -531,3 +535,97 @@ def test_help_plugins_opens_the_tab(qapp, monkeypatch, tmp_path):
     window.commands.run("plugins", window)
     assert opened == [PLUGINS]
     window.deleteLater()
+
+
+# -- the tab's order and density
+
+def test_themes_and_citation_formats_come_before_the_plugins(app, qapp):
+    tab = PluginsTab(app)
+    tab.resize(700, 800)
+    tab.show()
+    qapp.processEvents()
+    headings = [label.text() for label in tab.findChildren(QLabel) if label.objectName() == q.SHEET_SECTION]
+    assert headings == ["Themes", "Citation formats", "Plugins"]
+    tops = [label.mapTo(tab, QPoint(0, 0)).y() for label in tab.findChildren(QLabel)
+            if label.objectName() == q.SHEET_SECTION]
+    assert tops == sorted(tops)
+
+
+def test_a_rows_buttons_are_on_its_title_line(app):
+    plugin = LoadedPlugin(FIXTURES / "hello", "installed", "hello", read_manifest(FIXTURES / "hello"), "loaded")
+    session.set_loaded([plugin])
+    row = PluginsTab(app).rows["hello"]
+    assert row.remove_button.parentWidget() is row.title_label.parentWidget()
+    assert row.enable_check.parentWidget() is row.title_label.parentWidget()
+    assert row.state_chip.parentWidget() is row.title_label.parentWidget()
+
+
+def test_a_long_state_keeps_the_buttons_on_the_title_line(app):
+    row = InstalledRow(PluginsTab(app), None, loader.Found(FIXTURES / "hello", "installed",
+                                                           read_manifest(FIXTURES / "hello")), None)
+    assert len(row.state_chip.text()) > settings_plugins.LONG_STATE
+    assert row.state_chip.parentWidget() is not row.title_label.parentWidget()
+    assert row.remove_button.parentWidget() is row.title_label.parentWidget()
+
+
+def test_each_section_picks_its_own_kind_of_file(app, monkeypatch):
+    seen = []
+
+    def dialog(parent, title, folder, filters):
+        seen.append(filters)
+        return "", ""
+
+    monkeypatch.setattr(settings_plugins.QFileDialog, "getOpenFileName", staticmethod(dialog))
+    tab = PluginsTab(app)
+    for button in (tab.theme_file_button, tab.citation_file_button, tab.file_button):
+        button.click()
+    assert seen == ["SlideMage themes (*.smtheme)", "SlideMage citation formats (*.smcite)",
+                    "SlideMage plugins (*.smplugin)"]
+
+
+def test_an_empty_status_takes_no_room(app):
+    tab = PluginsTab(app)
+    assert not tab.status.isVisibleTo(tab)
+    tab._say("Done.")
+    assert tab.status.isVisibleTo(tab)
+    tab._say("")
+    assert not tab.status.isVisibleTo(tab)
+
+
+def test_a_status_scrolls_up_to_where_it_is_shown(app, qapp):
+    tab = PluginsTab(app)
+    area = QScrollArea()
+    area.setWidget(tab)
+    area.resize(700, 120)
+    area.show()
+    qapp.processEvents()
+    area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+    assert area.verticalScrollBar().value() > 0
+    tab._say("Done.")
+    assert area.verticalScrollBar().value() == 0
+    area.close()
+
+
+def test_opening_for_a_plugin_scrolls_to_the_plugins(app, qapp):
+    from slidemage.ui.dialogs.settings import PLUGIN_LIST, SettingsSheet
+    app.project = ProjectContext.at(app.project.root)
+    app.set_dark_mode = app.set_autosave = app.set_tab_width_chars = lambda *args: None
+    sheet = SettingsSheet(app, tab=PLUGINS, focus=PLUGIN_LIST)
+    assert sheet.current_tab() == PLUGINS
+    sheet._plugins_area.setFixedHeight(120)
+    sheet.show()
+    qapp.processEvents()
+    wait_until(lambda: sheet._plugins_area.verticalScrollBar().value() > 0)
+    bar = sheet._plugins_area.verticalScrollBar()
+    assert bar.value() == min(sheet.plugins.plugins_heading.y(), bar.maximum())
+    sheet.close()
+
+
+def test_help_opens_the_top_and_a_plugin_request_the_plugins():
+    from slidemage.ui.dialogs.settings import PLUGIN_LIST
+    from slidemage.ui.workspace.window import WorkspaceWindow
+    opened = []
+    stub = SimpleNamespace(open_settings=lambda tab=0, focus=None: opened.append((tab, focus)))
+    WorkspaceWindow.open_extensions(stub)
+    WorkspaceWindow.open_plugins(stub)
+    assert opened == [(PLUGINS, None), (PLUGINS, PLUGIN_LIST)]

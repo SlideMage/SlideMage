@@ -202,7 +202,7 @@ class AiSetup(Popover):
         if found is None:                       # that side has no route: its column is off
             combo.addItem(NO_ROUTE, "")
             combo.setEnabled(False)
-            combo.setToolTip("Install a plugin that adds an AI route (Settings → Plugins)")
+            combo.setToolTip("Install a plugin that adds an AI route (Settings → Extensions)")
             combo.blockSignals(False)
             return
         combo.setEnabled(True)

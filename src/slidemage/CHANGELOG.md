@@ -3288,3 +3288,12 @@ v0.13.12 (2026-11-01, direct request: a Presenter that does not offer an update,
 NEW: SlideMage Presenter tells you about updates sooner, and is half the size on Linux.
 - The Presenter looks for a new version every time it starts, not once a day.
 - On Linux the Presenter takes about 172 MB instead of 338 MB, and its download is smaller too.
+
+v0.13.13 (2026-11-01, direct request: the plugins tab is too drawn out, Themes and Citation formats first, a name that covers them): Settings' Plugins tab becomes Extensions, Themes and Citation formats come before the plugins, and its rows take about half the height: a row's buttons sit on its title line, a section's actions on its heading line, needs and network contacts share a line, each section has its own file button, and a request to install a plugin or see a plugin update opens the tab at its plugins.
+
+NEW: Settings → Plugins is now Settings → Extensions, and it is much shorter.
+- Themes and Citation formats come first, because everyone needs them; the plugins follow below.
+- The rows are tighter, so most of the tab now fits without scrolling.
+- Themes and Citation formats each have their own Add from file… button; Install from file… under Plugins now takes plugin files only.
+- Help → Plugins… is now Help → Extensions…; the command palette still finds it when you type plugin.
+- A plugin update notice, or Install a plugin… on the Local | Cloud switch, opens the tab at the plugins.
