@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: decisions made 2026-10-31 (section 7). Steps 1 and 2 done (v0.12.3, v0.13.5); step 3 next, after the go.
+Status: decisions made 2026-10-31 (section 7). Steps 1 to 3 done (v0.12.3, v0.13.5, v0.13.6); step 4 next, after the go.
 
 ## 1. Review: what SlideMage writes today
 
@@ -192,12 +192,15 @@ These are the points that would have spared us the ad-hoc traces:
    Short-lived processes (hook, plugin, raster) share one file per role with a two-line
    header, so a hook does not create a session file on every run. The plugin self-test
    loads plugins with a bare `Registrar`, which has no `log`, so it doesn't call it.
-3. **Fold in the old traces** (section 4), including the one-off file cleanup.
+3. **Fold in the old traces (done, v0.13.6)** (section 4), including the one-off file cleanup. `tools/debug_log.py`
+   came with it, since removing `timing.jsonl` would otherwise have left `timing_summary.py` without input. The
+   old files are deleted at every app start, not once: the files are no longer written, so it costs
+   three checks for files that are not there.
 4. **UI:** the settings switch, the status-bar indicator, Help → Save debug report.
 5. **Instrumentation** (section 5), area by area. Small, so it can be one PR or split
    into compile+preview and the rest.
-6. **Docs:** a section in the manual, a short note for plugin authors, and
-   `tools/debug_log.py` (which replaces `timing_summary.py`).
+6. **Docs:** a section in the manual and a short note for plugin authors (`tools/debug_log.py` came in
+   step 3).
 
 ## 7. Decisions (2026-10-31)
 

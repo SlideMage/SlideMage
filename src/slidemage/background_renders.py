@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import json
+import logging
 import shutil
 import threading
 import time
@@ -57,6 +58,7 @@ ALL_PAGES = 100000
 # (at most 16: about 300 MB of memory each). Each one beyond the first starts only while the CPU is below
 # idle_gate.CPU_LIMIT, so the actual number settles at what the machine can spare.
 _CORES = os.cpu_count() or 2
+_trace_log = logging.getLogger("slidemage.background")
 PROFILES = {"gentle": (1, 0.5), "normal": (max(1, _CORES // 4), 0.25),
             "fast": (parallel_runs.default_workers(), 0.0)}
 DEFAULT_PROFILE = "fast"
@@ -168,28 +170,6 @@ class Progress:
 
     def deck(self, name: str) -> Optional[DeckProgress]:
         return next((d for d in self.decks if d.deck == name), None)
-
-
-class Trace:
-    """A small text file of what background rendering decided and when (focus, input, starts, stops, the chip), for
-    finding out on a user's machine why it rendered or waited. Kept below MAX_BYTES: the older half goes to .1."""
-    MAX_BYTES = 512 * 1024
-
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self._lock = threading.Lock()
-
-    def write(self, line: str) -> None:
-        stamp = time.strftime("%Y-%m-%d %H:%M:%S") + f".{int(time.time() * 1000) % 1000:03d}"
-        with self._lock:
-            try:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-                if self.path.is_file() and self.path.stat().st_size > self.MAX_BYTES:
-                    os.replace(self.path, self.path.with_suffix(self.path.suffix + ".1"))
-                with open(self.path, "a", encoding="utf-8") as out:
-                    out.write(f"{stamp} {line}\n")
-            except OSError:
-                pass
 
 
 class Cancelled(RuntimeError):
@@ -350,16 +330,17 @@ class BackgroundRenderer:
         return True
 
     def trace(self, event: str) -> None:
-        """One line in the trace file (render_trace.Trace): the event and what the gate knows at that moment."""
-        tracer = getattr(self, "_trace", None)
-        if tracer is None:
+        """What background rendering decided and when (focus, input, starts, stops, the chip), for finding out on a
+        user's machine why it rendered or waited: one debug line (area `background`) with what the gate knows at
+        that moment. Until v0.13.6 this was background-trace.log in the cache folder, always written."""
+        if not _trace_log.isEnabledFor(logging.DEBUG):
             return
         gate = self.gate
         with self._working_lock:
             running = len(self._working)
         since = gate._clock() - gate.last_input
-        tracer.write(f"{event} | in_front={gate.in_front} input {since:.0f} s ago forced={gate.forced()} "
-                     f"running={running} planner={self.progress.paused_because!r}")
+        _trace_log.debug("%s | in_front=%s input %.0f s ago forced=%s running=%d planner=%r", event, gate.in_front,
+                         since, gate.forced(), running, self.progress.paused_because)
 
     # -- what is outstanding ---------------------------------------------------------------
 

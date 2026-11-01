@@ -57,6 +57,7 @@ SESSION_BACKUPS = 1
 KEEP_SESSIONS = 20
 KEEP_BYTES = 100 * 1024 * 1024
 _TRUE, _FALSE = {"1", "true", "on", "yes"}, {"0", "false", "off", "no"}
+TIMING_ENV = "SLIDEMAGE_TIMING"
 
 _secrets: set[str] = set()
 _state: Optional[dict] = None
@@ -77,8 +78,11 @@ def settings_path() -> Path:
 
 
 def forced() -> Optional[bool]:
-    """What SLIDEMAGE_DEBUG says: True, False, or None when it is not set (or says nothing clear)."""
+    """What SLIDEMAGE_DEBUG says: True, False, or None when it is not set (or says nothing clear). Without it,
+    SLIDEMAGE_TIMING=1 (timing.py's switch before v0.13.6) turns the debug log on."""
     value = os.environ.get(DEBUG_ENV, "").strip().lower()
+    if not value and os.environ.get(TIMING_ENV) == "1":
+        return True
     return True if value in _TRUE else False if value in _FALSE else None
 
 
@@ -205,8 +209,23 @@ def setup(role: str = "app", debug: Optional[bool] = None) -> None:
                       threading_excepthook=threading.excepthook, qt_handler=None, session=None)
         sys.excepthook = _excepthook
         threading.excepthook = _threading_excepthook
+        if role == "app":
+            remove_old_traces()
         if wanted():
             _start_session()
+
+
+def remove_old_traces() -> None:
+    """The files of the traces that wrote on every machine before v0.13.6 (their lines are in the debug log now):
+    status-progression.log in the config folder, background-trace.log and its .1 in the cache folder."""
+    from . import project
+
+    for path in (project.config_dir() / "status-progression.log", project.cache_dir() / "background-trace.log",
+                 project.cache_dir() / "background-trace.log.1"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def debug_enabled() -> bool:

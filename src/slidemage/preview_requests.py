@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 import functools
 import json
+import logging
 from pathlib import Path
 import hashlib
 from importlib.metadata import version, PackageNotFoundError
@@ -21,6 +22,8 @@ import weakref
 
 from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, slide_snapshot
 from .preview_metrics import PreviewMetrics
+
+_log = logging.getLogger("slidemage.preview")
 
 TIMEOUT = 300
 
@@ -268,6 +271,11 @@ class RenderRequest:
                 self.error = exc
                 self.release_artifact()
         self.metrics = self._metrics_of(metrics)
+        if _log.isEnabledFor(logging.DEBUG) and self.spec is not None:
+            _log.debug("preview %s view=%s language=%s seconds=%.2f cache_hit=%s error=%s stages=%s",
+                       self.spec.target.key, self.spec.view, self.spec.language, self.metrics.get("seconds", 0),
+                       self.metrics.get("cache_hit"), type(self.error).__name__ if self.error else None,
+                       {k: round(v, 2) for k, v in self.metrics.get("stages", {}).items()})
         self._collector = None
         self._finished()
         self._work = self._finished = None

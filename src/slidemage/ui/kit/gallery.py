@@ -9,6 +9,7 @@ building later steps and is rendered by tests/test_ui_kit_gui.py.
 """
 from __future__ import annotations
 
+import logging
 import sys
 
 from PySide6.QtWidgets import (
@@ -80,7 +81,7 @@ class KitGallery(QWidget):
         self._root.addStretch(1)
 
         self.toast = Toast(self)
-        self.toast.action_triggered.connect(lambda key: print("toast action:", key))
+        self.toast.action_triggered.connect(lambda key: logging.getLogger(__name__).debug("toast action: %s", key))
 
     def _set_dark(self, dark: bool) -> None:
         # Deliberately not ThemeManager.set_dark(): that persists the choice

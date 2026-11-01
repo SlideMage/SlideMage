@@ -356,10 +356,6 @@ class BackgroundPreviews(QObject):
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
             on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project))
         self.renderer.gate._busy = self._busy_reasons
-        if autostart is None and not os.environ.get(NO_BACKGROUND_ENV):
-            # The trace file of what background rendering decided (background_renders.Trace), in the cache folder.
-            from ...project import cache_dir
-            self.renderer._trace = background_renders.Trace(cache_dir() / "background-trace.log")
         self._chip_said = None
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
         self._watcher = _InputWatcher(self.renderer.user_active, self)
