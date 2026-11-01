@@ -332,6 +332,10 @@ class SourcePane(Surface):
         self._update_toolbar()
         self._emit_lint_errors()
 
+    def unhold(self, path: Path) -> None:
+        """`path` goes as any file does again, the next time it is out of view when another is shown."""
+        self._held.discard(path)
+
     def is_held(self, path: Path) -> bool:
         return path in self._held
 

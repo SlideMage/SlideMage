@@ -119,6 +119,7 @@ class CentreColumn(QFrame):
         self.app = app
         self.state = state
         self._slide_path: Optional[Path] = None   # the slide tab's file: the focused slide's, or one opened on purpose
+        self._slide_held: Optional[Path] = None   # that file while a file tab covers the slide tab: its editor stays
         self._opening = False               # open_file() is changing the focus itself
         self._edited: set[Path] = set()     # files written from the Source view since they were last left
         self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
@@ -554,6 +555,8 @@ class CentreColumn(QFrame):
         (once the switch is done). Showing a file tab and coming back is not leaving the slide."""
         left = self._slide_path
         self._slide_path = path
+        if left == self._slide_held and left != path:
+            self._hold_slide(False)
         if left is not None and left != path:
             # Its edits still waiting for their autosave are written now: the Source view does not do it
             # when it is hidden (Preview), as it shows the new file only when it is on show.
@@ -634,6 +637,7 @@ class CentreColumn(QFrame):
             file = self.source.file_for(left.path)
             if file is not None:
                 file.write_now()
+        self._hold_slide(tab.kind == FILE)
         self.tab_strip.set_active(tab)
         self._switching = True
         try:
@@ -645,6 +649,17 @@ class CentreColumn(QFrame):
         self.source_only_changed.emit(tab.source_only)
         if not self._holding:
             self.refresh()
+
+    def _hold_slide(self, covered: bool) -> None:
+        """A file tab over the slide tab keeps the slide's editor, with its undo history and cursor, for when the slide
+        tab comes back. Back on show, or left for another slide (_set_path), it goes as any slide's does."""
+        if self._slide_held is not None and (not covered or self._slide_held != self._slide_path):
+            self.source.unhold(self._slide_held)
+            self._slide_held = None
+        file = self.source.file_for(self._slide_path) if self._slide_path is not None else None
+        if covered and self._slide_held is None and file is not None:
+            self._slide_held = self._slide_path
+            self.source.hold(self._slide_held)
 
     def _update_strip(self) -> None:
         self.tab_strip.set_tabs(self.tabs.tabs, self._tab_label)

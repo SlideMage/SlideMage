@@ -1288,6 +1288,39 @@ def test_two_file_tabs_keep_their_buffers_and_undo_history_and_what_is_left_is_w
     assert "% bib" not in bib_file.editor.text()
 
 
+def test_the_slide_keeps_its_editor_while_a_file_tab_covers_it(centre, files):
+    centre.state.set_mode("source")
+    slide_file = centre.source.current
+    assert slide_file.path == files.aaa
+    slide_file.editor.insertPlainText("% slide\n")
+    centre.open_file(files.bib)
+    assert centre.source.file_for(files.aaa) is slide_file
+    centre.open_file(files.deck)                          # from one file tab to another
+    assert centre.source.file_for(files.aaa) is slide_file
+    centre.tabs.activate(centre.tabs.slide_tab)
+    assert centre.source.current is slide_file and "% slide" in slide_file.editor.text()
+    text = slide_file.editor.text()
+    slide_file.editor.undo()
+    assert slide_file.editor.text() != text               # the undo history came back with it
+
+
+def test_a_slide_the_focus_leaves_from_a_file_tab_is_dropped_as_usual(centre, files):
+    centre.state.set_mode("source")
+    centre.open_file(files.bib)
+    assert centre.source.is_held(files.aaa)
+    centre.state.set_focused_slide("bbb")
+    assert centre.tabs.active is centre.tabs.slide_tab
+    assert not centre.source.is_held(files.aaa) and centre.source.file_for(files.aaa) is None
+
+
+def test_another_slide_for_the_slide_tab_under_a_file_tab_lets_the_old_one_go(centre, files):
+    centre.state.set_mode("source")
+    centre.open_file(files.bib)
+    assert centre.source.is_held(files.aaa)
+    centre._set_path(files.ccc)                           # as a language switch does, the file tab stays on show
+    assert centre.tabs.tab_for(files.bib) is centre.tabs.active and not centre.source.is_held(files.aaa)
+
+
 @pytest.mark.parametrize("answer, kept, on_disk", [
     ("save", False, True), ("discard", False, False), (None, True, False)])
 def test_closing_a_tab_with_edits_that_were_not_saved_asks_save_discard_or_cancel(
