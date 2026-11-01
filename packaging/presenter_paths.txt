@@ -16,6 +16,7 @@ src/slidemage/ui/kit/
 # every other slidemage module the Presenter imports
 src/slidemage/__init__.py
 src/slidemage/app_settings.py
+src/slidemage/diagnostics.py
 src/slidemage/fileio.py
 src/slidemage/processes.py
 src/slidemage/project.py

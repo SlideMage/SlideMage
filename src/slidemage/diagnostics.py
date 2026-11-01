@@ -105,7 +105,7 @@ def wanted() -> bool:
 
 def _field(value) -> str:
     text = str(value)
-    return repr(text) if not text or " " in text else text
+    return f"'{text}'" if not text or " " in text else text      # no repr(): it doubles a path's backslashes
 
 
 def event(logger: logging.Logger, message: str, **fields) -> None:
