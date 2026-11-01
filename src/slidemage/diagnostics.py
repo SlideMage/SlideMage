@@ -79,7 +79,7 @@ def settings_path() -> Path:
 
 def forced() -> Optional[bool]:
     """What SLIDEMAGE_DEBUG says: True, False, or None when it is not set (or says nothing clear). Without it,
-    SLIDEMAGE_TIMING=1 (timing.py's switch before v0.13.6) turns the debug log on."""
+    SLIDEMAGE_TIMING=1 (timing.py's switch before v0.13.7) turns the debug log on."""
     value = os.environ.get(DEBUG_ENV, "").strip().lower()
     if not value and os.environ.get(TIMING_ENV) == "1":
         return True
@@ -216,7 +216,7 @@ def setup(role: str = "app", debug: Optional[bool] = None) -> None:
 
 
 def remove_old_traces() -> None:
-    """The files of the traces that wrote on every machine before v0.13.6 (their lines are in the debug log now):
+    """The files of the traces that wrote on every machine before v0.13.7 (their lines are in the debug log now):
     status-progression.log in the config folder, background-trace.log and its .1 in the cache folder."""
     from . import project
 

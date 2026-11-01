@@ -16,7 +16,7 @@ spec.loader.exec_module(tool)
 
 APP = """\
 2026-11-01 10:00:00.000 +1.000s INFO     startup            app:10 MainThread  debug log started
-    SlideMage v0.13.6, from source
+    SlideMage v0.13.7, from source
 2026-11-01 10:00:01.000 +2.000s DEBUG    timing             app:10 MainThread  prompt
 2026-11-01 10:00:03.500 +4.500s DEBUG    timing             app:10 Worker-1  render_done file=a.tex
 2026-11-01 10:00:04.000 +5.000s ERROR    plugins.hello      app:10 MainThread  box failed
@@ -39,7 +39,7 @@ def folder(tmp_path):
 def test_files_are_merged_by_time_and_indented_lines_stay_with_their_record(folder):
     records = tool.read([folder])
     assert [r.role for r in records] == ["app", "hook", "app", "hook", "app", "app"]
-    assert records[0].more == ["    SlideMage v0.13.6, from source"]
+    assert records[0].more == ["    SlideMage v0.13.7, from source"]
     assert records[-1].more[-1] == "    ValueError: boom"
 
 

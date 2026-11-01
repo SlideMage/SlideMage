@@ -49,10 +49,13 @@ def _seconds_since_process_start() -> float:
 def _self_test() -> int:
     try:
         import pymupdf  # noqa: F401
+        import ssl  # noqa: F401 -- the updater downloads over HTTPS; urllib hides a missing ssl until the first request
         from PySide6 import QtCore, QtGui, QtSvg, QtWidgets  # noqa: F401
 
         from .presentation import recent  # noqa: F401
         from .ui.kit import fonts, theme, widgets  # noqa: F401
+        from . import updater  # noqa: F401
+        from .presentation import presenter_update  # noqa: F401
         from .ui.presentation import presenter_window, resume_ui, settings_page, standalone  # noqa: F401
     except BaseException:
         # Exit 1 here: an exception left to a windowed build opens a message box, which no one clicks in CI.
@@ -121,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
+    from .presentation import presenter_update
     from .ui.kit.fonts import load_fonts
     from .ui.kit.theme import ThemeManager
     from .ui.presentation.presenter_window import TITLE, PresenterStartWindow
@@ -135,17 +139,22 @@ def main(argv: list[str] | None = None) -> int:
 
     window = PresenterStartWindow()
     opened.window = window
+    timing = bool(os.environ.get(TIMING_ENV))
+    if not timing:
+        presenter_update.remove_leftover()      # the folder an earlier update left as "<folder>.old"
     queue = [*pdf_arguments(args), *opened.pending]
     opened.pending.clear()
     if queue:
         window.present(queue[0])      # shows the start window when the talk is over
-    elif os.environ.get(TIMING_ENV):
+    elif timing:
         window.show()
         QTimer.singleShot(0, lambda: _report_timing(app))
     else:
         window.show()
     for later in queue[1:]:           # a second file is presented after the first
         window.present(later)
+    if not timing:
+        QTimer.singleShot(0, window.start_update_check)      # after the window is up, in the background
     return app.exec()
 
 

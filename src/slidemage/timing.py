@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Prompt-to-preview timing in the debug log (area `timing`), from the app, the AI tools and the Claude Code hooks,
 each process in its own debug file. `python tools/debug_log.py --timeline` merges them and prints the latest
-request's timeline. SLIDEMAGE_TIMING=1 still turns the debug log on (diagnostics.forced). Until v0.13.6 the
+request's timeline. SLIDEMAGE_TIMING=1 still turns the debug log on (diagnostics.forced). Until v0.13.7 the
 events went to <project>/.slidemage/timing.jsonl, read by tools/timing_summary.py."""
 from __future__ import annotations
 

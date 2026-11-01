@@ -332,7 +332,7 @@ class BackgroundRenderer:
     def trace(self, event: str) -> None:
         """What background rendering decided and when (focus, input, starts, stops, the chip), for finding out on a
         user's machine why it rendered or waited: one debug line (area `background`) with what the gate knows at
-        that moment. Until v0.13.6 this was background-trace.log in the cache folder, always written."""
+        that moment. Until v0.13.7 this was background-trace.log in the cache folder, always written."""
         if not _trace_log.isEnabledFor(logging.DEBUG):
             return
         gate = self.gate

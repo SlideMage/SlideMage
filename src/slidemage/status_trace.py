@@ -5,7 +5,7 @@ status looks odd).
 
 `StatusTrace.record()` is called after every log line the compile slot feeds; it writes a debug line only when
 the shown state changed: seconds since the run started, the overall percentage, the running job's text, every
-job's state, and the log line that caused the change. While the debug log is off it does nothing. Until v0.13.6
+job's state, and the log line that caused the change. While the debug log is off it does nothing. Until v0.13.7
 this was status-progression.log in the config folder, written on every run. No Qt.
 """
 from __future__ import annotations
