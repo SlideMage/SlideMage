@@ -12,6 +12,15 @@ has none, which is why nothing logged reached anyone before v0.12.3.
 One line per record, in fixed columns: time, seconds since the process started, level, area (the logger name
 without `slidemage.`), role:pid, thread, message. A traceback follows, indented. API keys and tokens are masked
 before a line is written (`redact`). No Qt here: `install_qt_message_handler` imports PySide6 only when called.
+
+The debug log (step 2 of the plan): with debug on, the `slidemage` logger takes everything from DEBUG up and a
+second file gets it all. The app writes one file per session, `logs/debug/app_<date>_<time>_<pid>.log`, starting
+with a header of what produced it; a hook, a plugin entry point and the rasteriser, which start often and live
+briefly, share one file per role (`hook.log`, ...). At the start of an app session the oldest files go beyond
+KEEP_SESSIONS app sessions or KEEP_BYTES in all. Debug is on when SLIDEMAGE_DEBUG says so (1/0), else when the
+saved setting (`diagnostics.json` in the config folder, `set_debug`) says so; `--debug` sets SLIDEMAGE_DEBUG=1
+for the process and so for everything it starts. A process reads the setting when it starts: a hook follows a
+change at once, a process already running only through `set_debug` in itself.
 """
 from __future__ import annotations
 
@@ -39,6 +48,15 @@ _TOKEN_SHAPES = re.compile(
     r"|\bgithub_pat_[A-Za-z0-9_]{20,}"              # GitHub fine-grained tokens
     r"|(?<=[Bb]earer )[A-Za-z0-9._\-~+/=]{12,}")    # an Authorization header's value
 MIN_SECRET_CHARS = 8
+DEBUG_ENV = "SLIDEMAGE_DEBUG"
+DEBUG_FLAG = "--debug"
+SETTINGS_FILE = "diagnostics.json"
+DEBUG_DIR = "debug"
+SESSION_MAX_BYTES = 10 * 1024 * 1024
+SESSION_BACKUPS = 1
+KEEP_SESSIONS = 20
+KEEP_BYTES = 100 * 1024 * 1024
+_TRUE, _FALSE = {"1", "true", "on", "yes"}, {"0", "false", "off", "no"}
 
 _secrets: set[str] = set()
 _state: Optional[dict] = None
@@ -50,6 +68,33 @@ def log_dir() -> Path:
 
     override = os.environ.get(DIR_ENV, "").strip()
     return Path(override) if override else project.cache_dir() / "logs"
+
+
+def settings_path() -> Path:
+    from . import project
+
+    return project.config_dir() / SETTINGS_FILE
+
+
+def forced() -> Optional[bool]:
+    """What SLIDEMAGE_DEBUG says: True, False, or None when it is not set (or says nothing clear)."""
+    value = os.environ.get(DEBUG_ENV, "").strip().lower()
+    return True if value in _TRUE else False if value in _FALSE else None
+
+
+def saved() -> bool:
+    """The setting: on until it is turned off (decision D1), for this computer's SlideMage, every project."""
+    import json
+
+    try:
+        return json.loads(settings_path().read_text(encoding="utf-8")).get("debug") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def wanted() -> bool:
+    on = forced()
+    return saved() if on is None else on
 
 
 def add_secret(value: str) -> None:
@@ -126,13 +171,16 @@ class _NotUncaught(logging.Filter):
         return not getattr(record, "uncaught", False)
 
 
-def setup(role: str = "app") -> None:
-    """Attach the error log (and the console, if there is one) to the `slidemage` logger and catch uncaught
-    exceptions. Once per process; later calls do nothing. `role` names the process in every line."""
+def setup(role: str = "app", debug: Optional[bool] = None) -> None:
+    """Attach the error log (and the console, if there is one) to the `slidemage` logger, catch uncaught
+    exceptions, and start the debug log when it is wanted (`debug` None: `wanted()`; True: `--debug`, passed on to
+    child processes). Once per process; later calls do nothing. `role` names the process in every line."""
     global _state
     with _lock:
         if _state is not None:
             return
+        if debug:
+            os.environ[DEBUG_ENV] = "1"
         for name in SECRET_ENV_VARS:
             add_secret(os.environ.get(name, ""))
         formatter = LineFormatter(role)
@@ -154,9 +202,141 @@ def setup(role: str = "app") -> None:
             handler.setFormatter(formatter)
             logger.addHandler(handler)
         _state = dict(role=role, handlers=handlers, excepthook=sys.excepthook,
-                      threading_excepthook=threading.excepthook, qt_handler=None)
+                      threading_excepthook=threading.excepthook, qt_handler=None, session=None)
         sys.excepthook = _excepthook
         threading.excepthook = _threading_excepthook
+        if wanted():
+            _start_session()
+
+
+def debug_enabled() -> bool:
+    """Whether the debug log is being written (cheap: ask it before building an expensive debug line)."""
+    return _state is not None and _state["session"] is not None
+
+
+def debug_log_path() -> Optional[Path]:
+    """The debug log this process writes, or None while debug is off."""
+    return Path(_state["session"].baseFilename) if debug_enabled() else None
+
+
+def set_debug(on: bool, persist: bool = True) -> None:
+    """Turn the debug log on or off for this process at once and, with persist, in the saved setting, which every
+    SlideMage process started from now on follows (unless SLIDEMAGE_DEBUG says otherwise)."""
+    if persist:
+        from .fileio import write_json
+
+        try:
+            write_json(settings_path(), {"debug": bool(on)})
+        except OSError:
+            logging.getLogger(LOGGER + ".diagnostics").warning("could not save the debug setting to %s",
+                                                               settings_path())
+    if forced() is not None and forced() is not on:
+        os.environ.pop(DEBUG_ENV)    # this process's --debug no longer holds for what it starts from now on
+    with _lock:
+        if _state is None:
+            return
+        if on and _state["session"] is None:
+            _start_session()
+        elif not on and _state["session"] is not None:
+            _stop_session()
+
+
+def _session_file(role: str) -> Path:
+    folder = log_dir() / DEBUG_DIR
+    if role != "app":
+        return folder / f"{role}.log"
+    return folder / f"app_{time.strftime('%Y-%m-%d_%H%M%S')}_{os.getpid()}.log"
+
+
+def _start_session() -> None:
+    role = _state["role"]
+    path = _session_file(role)
+    if role == "app":
+        clean_up(path.parent)
+    handler = RotatingFile(path, max_bytes=SESSION_MAX_BYTES, backups=SESSION_BACKUPS)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(LineFormatter(role))
+    logger = logging.getLogger(LOGGER)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    _state["session"] = handler
+    lines = header_lines() if role == "app" else header_lines(short=True)
+    logging.getLogger(LOGGER + ".startup").info("debug log started\n%s", "\n".join(lines))
+
+
+def _stop_session() -> None:
+    handler = _state["session"]
+    logging.getLogger(LOGGER + ".startup").info("debug log turned off")
+    logger = logging.getLogger(LOGGER)
+    logger.removeHandler(handler)
+    logger.setLevel(logging.NOTSET)
+    handler.close()
+    _state["session"] = None
+
+
+def clean_up(folder: Path, keep_sessions: int = KEEP_SESSIONS, keep_bytes: int = KEEP_BYTES) -> None:
+    """Delete the oldest debug files: app sessions beyond keep_sessions, then anything beyond keep_bytes in all."""
+    try:
+        files = sorted((p for p in folder.iterdir() if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    doomed = set([p for p in files if p.name.startswith("app_")][keep_sessions:])
+    total = 0
+    for path in files:
+        if path in doomed:
+            continue
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+        if total > keep_bytes:
+            doomed.add(path)
+    for path in doomed:
+        try:
+            path.unlink()
+        except OSError:
+            pass            # open in another process: next time
+
+
+def _system() -> str:
+    """The operating system, without platform.platform(): on Windows that asks WMI and takes half a second."""
+    if sys.platform == "win32":
+        version = sys.getwindowsversion()
+        return f"Windows {version.major}.{version.minor}.{version.build}"
+    try:
+        uname = os.uname()
+        return f"{uname.sysname} {uname.release} {uname.machine}"
+    except AttributeError:
+        return sys.platform
+
+
+def header_lines(short: bool = False) -> list[str]:
+    """What produced this log: SlideMage, Python, Qt, the system, how it was started, and the TeX it finds. Short:
+    only the first and the third line, for a hook or another process that starts often and shares one file."""
+    import shutil
+
+    from .version import VERSION_NUMBER
+
+    build = "frozen" if getattr(sys, "frozen", False) else "from source"
+    started = f"started as: {' '.join(sys.argv)}"
+    if short:
+        return [f"SlideMage {VERSION_NUMBER}, {build}", started]
+    try:
+        from PySide6 import __version__ as pyside
+    except ImportError:
+        pyside = "not installed"
+    lines = [
+        f"SlideMage {VERSION_NUMBER}, {build}: {sys.executable}",
+        f"Python {sys.version.split()[0]}, PySide6 {pyside}, {_system()}",
+        started,
+        f"working folder: {os.getcwd()}",
+        f"log folder: {log_dir()}",
+    ]
+    for tool in ("lualatex", "latexmk", "pdflatex", "xelatex"):
+        lines.append(f"{tool}: {shutil.which(tool) or 'not found'}")
+    for name in sorted(n for n in os.environ if n.startswith("SLIDEMAGE_") or n in SECRET_ENV_VARS):
+        lines.append(f"${name} = {REDACTED if name in SECRET_ENV_VARS else os.environ[name]}")
+    return lines
 
 
 def reset() -> None:
@@ -166,9 +346,10 @@ def reset() -> None:
         if _state is None:
             return
         logger = logging.getLogger(LOGGER)
-        for handler in _state["handlers"]:
+        for handler in _state["handlers"] + ([_state["session"]] if _state["session"] is not None else []):
             logger.removeHandler(handler)
             handler.close()
+        logger.setLevel(logging.NOTSET)
         if sys.excepthook is _excepthook:
             sys.excepthook = _state["excepthook"]
         if threading.excepthook is _threading_excepthook:

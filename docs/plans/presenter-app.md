@@ -196,7 +196,7 @@ from the frozen build.
 - CI: a size check (fail if the Presenter folder grows past a limit, e.g. 120 MB) so a stray import cannot
   silently bring QtWebEngine back.
 
-Done in v0.13.5:
+Done in v0.13.6:
 
 - **Release assets only when the Presenter changed.** `release.yml` has a `presenter` job (Linux, Windows, macOS)
   that builds and self-tests the Presenter on every run, checks that the unpacked program stays under 130 MiB

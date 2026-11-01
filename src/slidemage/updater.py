@@ -22,7 +22,7 @@ it ("<folder>.update", stage_folder_update()) and a small helper script, started
 "<folder>.old", removed by the next start: remove_leftover_folder()) and, when the user chose to restart,
 starts the new SlideMage.
 
-SlideMage Presenter (docs/plans/presenter-app.md, v0.13.5) is a third flavour: always a folder build, with its own
+SlideMage Presenter (docs/plans/presenter-app.md, v0.13.6) is a third flavour: always a folder build, with its own
 assets (PRESENTER_ASSETS, SlideMagePresenter-<os>.zip) attached to the same releases, but only to those that
 change it. It updates with the same stage_folder_update() and spawn_folder_swap(). On macOS it is an unsigned
 .app and does not replace itself: can_self_update() is False there and it shows the release page instead.

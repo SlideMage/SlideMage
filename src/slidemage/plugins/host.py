@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.parse import urlparse
 
-from .. import deck_editor, deck_scan, open_path, plugin_api, project, slide_ids, slide_language, transcript
+from .. import (deck_editor, deck_scan, diagnostics, open_path, plugin_api, project, slide_ids, slide_language,
+               transcript)
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
 from ..fileio import atomic_write, read_text_exact
@@ -28,6 +29,8 @@ from .manifest import Manifest
 from .registry import Registrar
 
 T = TypeVar("T")
+# Host.log's levels, by name, as plugins pass them.
+_LOG_LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 
 
 class HostUi(Protocol):
@@ -244,8 +247,14 @@ class PluginHost(Registrar):
             raise ValueError(f"only http and https links can be opened, not {url!r}")
         open_path.open_in_default_app(url)
 
-    def log(self, message: str) -> None:
-        self._logger.info("%s", message)
+    def log(self, message: str, level: str = "info") -> None:
+        number = _LOG_LEVELS.get(level)
+        if number is None:
+            raise ValueError(f"level must be one of {', '.join(_LOG_LEVELS)}, not {level!r}")
+        self._logger.log(number, "%s", message)
+
+    def debug_enabled(self) -> bool:
+        return diagnostics.debug_enabled()
 
     def show_message(self, text: str, error: bool = False) -> None:
         if self.ui is not None:

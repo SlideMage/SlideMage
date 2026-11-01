@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -81,7 +82,8 @@ def _role(first: list[str]) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     splash.release_topmost()  # the splash must not cover other windows while the app loads
-    diagnostics.setup(_role((sys.argv[1:] if argv is None else argv)[:1]))
+    given = sys.argv[1:] if argv is None else argv
+    diagnostics.setup(_role(given[:1]), debug=True if diagnostics.DEBUG_FLAG in given else None)
     if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
         # A frozen executable has no python -m; dispatch before project/GUI setup.
         from .preview_raster import serve
@@ -139,6 +141,10 @@ def main(argv: list[str] | None = None) -> None:
              "may break. With --fix the automatic updates run first (backed up).")
     parser.add_argument("--fix", action="store_true", help="with --check-project: run the automatic updates")
     parser.add_argument("--json", action="store_true", help="with --check-project: print JSON")
+    parser.add_argument(
+        diagnostics.DEBUG_FLAG, action="store_true",
+        help="write the detailed debug log for this run and what it starts (logs/debug in SlideMage's cache "
+             f"folder), whatever the setting says; ${diagnostics.DEBUG_ENV}=1 does the same")
     args, qt_args = parser.parse_known_args(argv)
     project.warn_legacy_env_vars()
 
@@ -182,6 +188,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     project.save_last_project(root)
+    logging.getLogger(__name__).info("project %s", root)
 
     from .ui.app import main as gui_main
 

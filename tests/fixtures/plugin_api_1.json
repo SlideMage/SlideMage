@@ -1267,6 +1267,13 @@
             "required": false
           }
         ],
+        "debug_enabled": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "deck_language": [
           {
             "name": "self",
@@ -1390,6 +1397,11 @@
             "name": "message",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          },
+          {
+            "name": "level",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
           }
         ],
         "model_choices_changed": [

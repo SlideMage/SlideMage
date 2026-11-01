@@ -5,7 +5,7 @@ the history entries in src/slidemage/CHANGELOG.md of every version since the
 previous release, and refuse a release whose notes would be incomplete.
 
     python packaging/release_notes.py v4.1.0 > release_notes.md
-    python packaging/release_notes.py v0.13.5 --presenter > release_notes.md     # the release carries SlideMage Presenter
+    python packaging/release_notes.py v0.13.6 --presenter > release_notes.md     # the release carries SlideMage Presenter
 
 What GitHub users see (v5.35.4, direct instruction: "describe the releases
 in a more helpful manner, so GitHub users see in few sentences or bullet
