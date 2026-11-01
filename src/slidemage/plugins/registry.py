@@ -192,4 +192,5 @@ class Registrar:
     cache_dir = legacy_cache_dir = settings = run_in_background = insert_positions = _unavailable
     insert_slides = edit_deck_text = deck_language = open_url = open_deck_settings = _unavailable
     log = show_message = Page = Field = caption = _unavailable
-    terminal = watch_external_edits = credentials = ai_tools = focus = _unavailable
+    project_root = deck_output_folder = deck_slides = slide_source = open_slide = _unavailable
+    terminal = watch_external_edits = credentials = ai_tools = focus = ai_chat = _unavailable

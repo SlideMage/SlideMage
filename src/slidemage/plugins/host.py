@@ -3,12 +3,13 @@
 """The real Host: the services behind slidemage.plugin_api.Host, one object per plugin.
 
 PluginHost is a Registrar (it records the add_* calls) plus everything a plugin calls: its own cache folder and
-settings, background work, the deck edits, opening URLs, logging. The calls that need a window (Page, Field,
-caption, open_deck_settings, show_message) go to a HostUi; step 6 implements it on the main window. Without a
+settings, background work, the deck edits, reading slides, opening URLs, logging. The calls that need a window
+(Page, Field, caption, open_deck_settings, open_slide, show_message) go to a HostUi; step 6 implements it on the main window. Without a
 HostUi they raise RuntimeError("no window").
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.parse import urlparse
 
-from .. import (deck_editor, deck_scan, diagnostics, open_path, plugin_api, project, slide_ids, slide_language,
+from .. import (app_settings, deck_editor, deck_scan, diagnostics, open_path, plugin_api, project, slide_ids, slide_language,
                transcript)
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
@@ -26,6 +27,7 @@ from ..fileio import atomic_write, read_text_exact
 from ..project import ProjectContext
 from .credentials import PluginCredentials
 from .manifest import Manifest
+from . import slide_reader
 from .registry import Registrar
 
 T = TypeVar("T")
@@ -39,6 +41,8 @@ class HostUi(Protocol):
     def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool: ...
     def end_route_task(self, route_id: str, owner: object) -> None: ...
     def open_deck_settings(self, deck: plugin_api.Deck, tab: str | None = None) -> None: ...
+    def open_slide(self, path: Path) -> None:
+        """Show the slide file at `path` in the editor (the Source view)."""
     def Page(self) -> Any: ...
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
@@ -50,9 +54,15 @@ class HostUi(Protocol):
         """A plugin edit was written to the deck at `path`: do what a core deck edit does (rescan, refresh, history
         with previous_text for Undo)."""
 
-    # Optional (the host asks with getattr): the terminal's colours, and what the user is looking at.
+    def track_plugin_window(self, window: Any) -> None:
+        """A plugin's Window: to be asked to close before SlideMage closes."""
+    def add_theme_listener(self, listener: Callable[[bool], None]) -> Callable[[], None]:
+        """Call listener(dark) after a theme switch; returns the function that removes it."""
+
+    # Optional (the host asks with getattr): the terminal's colours, what the user is looking at, and the theme.
     # def terminal_tokens(self) -> Tokens
     # def focus(self) -> plugin_api.Focus
+    # def dark(self) -> bool | None
 
 
 # -- deck snapshot ---------------------------------------------------------------------------------------------
@@ -242,6 +252,21 @@ class PluginHost(Registrar):
     def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
         return "en" if transcript.deck_language_of(deck.text) == "en" else "de"
 
+    def project_root(self) -> Path:
+        return self.ctx.root
+
+    def deck_output_folder(self, deck: plugin_api.Deck, view: str = "instructor") -> Path:
+        return slide_reader.output_folder(self.ctx, deck, view)
+
+    def deck_slides(self, deck: plugin_api.Deck, view: str, language: Literal["de", "en"]) -> list[plugin_api.SlideRef]:
+        return slide_reader.deck_slides(self.ctx, deck, view, language)
+
+    def slide_source(self, ref: plugin_api.SlideRef) -> plugin_api.SlideSource:
+        return slide_reader.slide_source(self.ctx, ref)
+
+    def open_slide(self, ref: plugin_api.SlideRef) -> None:
+        self._window().open_slide(slide_reader.check_slide_path(self.ctx, ref))
+
     def open_url(self, url: str) -> None:
         if urlparse(url).scheme.lower() not in ("http", "https"):
             raise ValueError(f"only http and https links can be opened, not {url!r}")
@@ -261,6 +286,11 @@ class PluginHost(Registrar):
             self.ui.show_message(text, error)
         else:
             self._logger.log(logging.ERROR if error else logging.INFO, "%s", text)
+
+    def ai_chat(self) -> plugin_api.AiChat:
+        from ..ai.chat import ChatService
+
+        return ChatService(self.ctx)
 
     # -- services of the AI host API
 
@@ -386,9 +416,52 @@ class PluginHost(Registrar):
         from ..ui.kit.widgets import Button
         return Button(text, kind, compact=compact)
 
-    def Chip(self, text, tone="neutral"):
+    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False):
         from ..ui.kit.widgets import Chip
-        return Chip(text, tone)
+        return Chip(text, tone, icon, pressable=pressable, elide=elide)
+
+    def Window(self, title):
+        from ..ui.kit.widgets import ToolWindow
+        window = ToolWindow(title)
+        self._window().track_plugin_window(window)
+        return window
+
+    def Card(self, raised=False):
+        from ..ui.kit.widgets import Card
+        return Card(raised=raised)
+
+    def SegmentedControl(self, items, current=None):
+        from ..ui.kit.widgets import SegmentedControl
+        return SegmentedControl(items, current=current, roving=True)
+
+    def Badge(self, text, tone="neutral"):
+        from ..ui.kit.widgets import Badge
+        return Badge(text, tone)
+
+    def ElidedLabel(self, text):
+        from ..ui.kit.widgets import ElidedLabel
+        return ElidedLabel(text)
+
+    def RowButton(self, title, sub="", *, icon=None, chip=("", ""), selectable=False):
+        from ..ui.kit.widgets import RowButton
+        return RowButton(icon, title, sub, chip=chip, selectable=selectable, elide_title=True)
+
+    def PlainList(self):
+        from ..ui.kit.widgets import PlainList
+        return PlainList()
+
+    def Label(self, text, role="body"):
+        from ..ui.kit.widgets import text_label
+        return text_label(text, role)
+
+    def ModalSheet(self, title, parent=None):
+        from ..ui.kit.widgets import ModalSheet
+        return ModalSheet(title, parent)
+
+    def toast(self, parent, text):
+        from ..ui.kit.widgets import Toast
+        toast = next((c for c in parent.findChildren(Toast)), None) or Toast(parent)
+        toast.show_message(text)
 
     def IconButton(self, icon, tooltip):
         from ..ui.kit.widgets import IconButton
@@ -405,7 +478,22 @@ class PluginHost(Registrar):
     def theme_color(self, role):
         if role != "info":
             raise ValueError(role)
-        return self._window().terminal_tokens().info
+        return self.theme().info
+
+    def theme(self) -> plugin_api.ThemeTokens:
+        read = getattr(self.ui, "dark", None)
+        dark = read() if read is not None else None
+        return _theme_tokens(bool(app_settings.get(self.ctx, "dark_mode", True)) if dark is None else dark)
+
+    def on_theme_changed(self, callback: Callable[[plugin_api.ThemeTokens], None]) -> Callable[[], None]:
+        def changed(dark: bool) -> None:
+            try:
+                callback(_theme_tokens(dark))
+            except Exception as exc:        # a plugin's bug is a message, not a crash
+                self._logger.exception("a theme listener raised")
+                self.show_message(f"{self.manifest.name}: a theme listener failed: {exc}", error=True)
+
+        return self._window().add_theme_listener(changed)
 
     # -- helpers
 
@@ -434,6 +522,17 @@ class PluginHost(Registrar):
             raise plugin_api.StaleFileError(f"{deck.path.name} cannot be read: {e}") from e
         if current != deck.text:
             raise plugin_api.StaleFileError(f"{deck.path.name} changed on disk since it was last loaded.")
+
+
+def _theme_tokens(dark: bool) -> plugin_api.ThemeTokens:
+    """The plugin's view of the design tokens (tokens.py): a chosen subset, so that the others can still change."""
+    from ..ui.kit import tokens
+
+    t = tokens.tokens_for(dark)
+    names = (f.name for f in dataclasses.fields(plugin_api.ThemeTokens) if hasattr(t, f.name))
+    return plugin_api.ThemeTokens(
+        dark=dark, radius_sm=tokens.RADIUS_SM, radius_md=tokens.RADIUS_MD, font_sans=tokens.FONT_SANS,
+        font_mono=tokens.FONT_MONO, **{name: getattr(t, name) for name in names})
 
 
 def _slide_source(frame: str) -> str:

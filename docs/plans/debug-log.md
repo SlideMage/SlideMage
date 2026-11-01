@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: done. All six steps are in develop (v0.12.3, v0.13.5, v0.13.7, v0.13.8, v0.13.16, v0.13.19).
+Status: done. All six steps are in develop (v0.12.3, v0.13.5, v0.13.7, v0.13.8, v0.13.16, v0.13.22).
 
 ## 1. Review: what SlideMage writes today
 
@@ -204,7 +204,7 @@ These are the points that would have spared us the ad-hoc traces:
 5. **Instrumentation (done, v0.13.16)** (section 5), area by area. One PR. SlideMage has no file watcher,
    so those lines do not apply; maintenance logs when each check at startup ran. Small, so it can be one PR or split
    into compile+preview and the rest.
-6. **Docs (done, v0.13.19):** the manual's slide t8w, a README section and a note for plugin authors in the
+6. **Docs (done, v0.13.22):** the manual's slide t8w, a README section and a note for plugin authors in the
    README (`tools/debug_log.py` came in step 3).
 
 ## 7. Decisions (2026-10-31)

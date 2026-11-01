@@ -3337,7 +3337,36 @@ NEW: Slides open in tabs.
 - A frozen version opened from Details gets a tab of its own, to compare it with the current slide.
 - Each slide tab has Preview, Split and Details, and keeps the one you used last.
 
-v0.13.19 (2026-11-02, direct request: an on-demand debug log, step 6 of docs/plans/debug-log.md): The debug log is documented, which ends the plan. The manual has a new slide t8w after Safety Nets, Logs and problem reports: the error log and the debug log, how to turn the debug log on and that it stays on, what it holds, and how to save a debug report for a problem report. The README has a new section, Logs and problem reports: where the logs are, the switches, the files and the line format, every area, what stays out, the debug report, and tools/debug_log.py. Its part for plugin authors says how Host.log and its levels and Host.debug_enabled work and what requires_slidemage they need. No code changes.
+v0.13.18 (2026-11-01, direct request: size figures in one's own slides from the available space, add the \SMContentHeight): The framework sets a new length \SMContentHeight, the height of the content area from the Top Margin down to the Bottom Margin, that is \paperheight minus \SMContentTopAlign and \SMContentBottomAlign, after the template's settings, so it follows every template and layout profile. A slide sizes a figure from it, for example \besidefigure[height=0.8\SMContentHeight]{...}, instead of working the height out from \paperheight, \SMFooterBoxHeight and the margins itself.
+
+NEW: Slides can size a figure from the room the template leaves.
+- The new length \SMContentHeight is the height between the top and bottom margin of a slide, for example \cornerfigure[height=0.8\SMContentHeight]{...}.
+
+v0.13.19 (2026-11-01, a fix to v0.13.18): The pin of latex/SlideMage_base.tex in preview_equivalence.py is right again. Renumbering v0.13.18 changed the version number in a comment of that file, which changed its hash, so the audit no longer recognized the file: the Preview's sharing of renders between views fell back to separate renders, and the equivalence tests failed. Only the comment had changed, so the audit stands.
+
+NEW: Previews share renders between views again.
+- v0.13.18 could render a slide once per view, where one render is enough. This restores the sharing.
+
+v0.13.20 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a deck's slides and multilingual media descriptions, open a slide, and use Host.ai_chat() for text requests on the selected Chat route. AiRoute.request_provider supports self-contained requests. Cloud requests require confirmation; cancellation and errors return on the UI thread. There is no plugin service registry. API_VERSION remains 1.
+
+NEW: Plugins can read a deck's slides and ask the selected AI route to draft text.
+- A plugin can work with a deck's slides, versions and picture descriptions, and open a slide.
+- The AI route is never swapped silently, and a cloud request shows what will be sent first.
+
+v0.13.21 (2026-11-01, direct request: plugins should look like SlideMage, per docs/Handover_2026-11-01-Plugin-UI-Kit.md): Compatible additions to plugin API 1, so a plugin's own window is built from the kit and restyled by the app's stylesheet. Host.Window, Card, SegmentedControl, Badge, ElidedLabel, RowButton, PlainList, Label, ModalSheet and toast, Chip's icon, elide and pressable, Host.theme and Host.on_theme_changed with ThemeTokens, and SlideRef.title_text and SlideRef.section (alt_blocks.plain_title). The kit gains Badge, ToolWindow, text_label and a selected RowButton; ThemeManager gains add_listener.
+
+Before SlideMage closes, restarts on another project or restarts for an update it asks the windows from Host.Window to close, and one that refuses keeps SlideMage open: left open, such a window would keep the process running after the main window closed, and on a project switch beside the new one.
+
+QFrame#kitChip's radius is 9 px instead of RADIUS_PILL: Qt draws square corners for a radius above half the height, so chips had been square since the kit began.
+
+NEW: Plugins can look like SlideMage, in light and dark.
+- A plugin's own window now can use SlideMage's cards, switches, chips, list rows, dialogs and short messages.
+- These windows follow when you switch between light and dark.
+- Closing SlideMage closes a plugin's window too, and a window with unsaved work can stop it.
+- Plugins can show slide titles without LaTeX markup, and know which section a slide is in.
+- Chips everywhere in SlideMage now have the round ends they were designed with.
+
+v0.13.22 (2026-11-02, direct request: an on-demand debug log, step 6 of docs/plans/debug-log.md): The debug log is documented, which ends the plan. The manual has a new slide t8w after Safety Nets, Logs and problem reports: the error log and the debug log, how to turn the debug log on and that it stays on, what it holds, and how to save a debug report for a problem report. The README has a new section, Logs and problem reports: where the logs are, the switches, the files and the line format, every area, what stays out, the debug report, and tools/debug_log.py. Its part for plugin authors says how Host.log and its levels and Host.debug_enabled work and what requires_slidemage they need. No code changes.
 
 NEW: The manual explains the logs and how to report a problem.
 - See Logs and problem reports in the manual, after Safety Nets.

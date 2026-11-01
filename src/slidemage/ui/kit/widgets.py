@@ -26,6 +26,7 @@ except ImportError:
     QAccessibleAnnouncementEvent = None
 from PySide6.QtWidgets import (
     QApplication,
+    QListWidget,
     QButtonGroup,
     QDialog,
     QFrame,
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QListWidget,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -47,7 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import kit_qss as q
-from .tokens import FONT_ICONS, SHADOWS
+from .tokens import FONT_ICONS, FONT_SANS, SHADOWS
 
 
 def icon_font(px: int) -> QFont:
@@ -432,6 +434,14 @@ class SegmentedControl(QFrame):
             self._buttons[key].setChecked(True)
         self._settle()
 
+    def clear_current(self) -> None:
+        """No segment is current (a value that is none of them); a click, or set_current(), chooses one again."""
+        self._group.setExclusive(False)
+        for button in self._buttons.values():
+            button.setChecked(False)
+        self._group.setExclusive(True)
+        self._settle()
+
     def _settle(self) -> None:
         """What follows the current segment: its icon's color, and the segment that is in the tab order."""
         current = self.current()
@@ -614,20 +624,27 @@ class ToggleChip(QPushButton):
 
 class RowButton(ClickFrame):
     """A clickable row for a choice with a name and a second line: a project of the picker, an action
-    of the "No decks" page. Emits `clicked` unless disabled; `chip` is (text, tone) or empty."""
+    of the "No decks" page. Emits `clicked` unless disabled; `chip` is (text, tone) or empty. No `icon`, no icon's room.
+    A `selectable` row of a list turns selected when clicked; whoever owns the list clears the others with
+    set_selected(False). `elide_title` shortens a long name with "…" rather than widen the column (its tooltip has it).
+    The height comes from the texts' fonts, so it fits at any scale."""
 
-    def __init__(self, icon: str, title: str, sub: str = "", *, mono_sub: bool = False,
-                 chip: tuple[str, str] = ("", ""), parent: QWidget | None = None) -> None:
+    def __init__(self, icon: str | None, title: str, sub: str = "", *, mono_sub: bool = False,
+                 chip: tuple[str, str] = ("", ""), selectable: bool = False, elide_title: bool = False,
+                 parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName(q.ROW_BUTTON)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 9, 12, 9)
         layout.setSpacing(12)
-        layout.addWidget(IconLabel(icon, 22))
+        if icon:
+            layout.addWidget(IconLabel(icon, 22))
         texts = QVBoxLayout()
         texts.setSpacing(1)
-        name = QLabel(title)
+        name = (_ElidedLabel if elide_title else QLabel)(title)
         name.setObjectName(q.ROW_NAME)
+        if elide_title:
+            self.setToolTip(title)
         texts.addWidget(name)
         self.sub = QLabel(sub)
         self.sub.setObjectName(q.PANEL_MONO if mono_sub else q.PANEL_CAPTION)
@@ -638,6 +655,71 @@ class RowButton(ClickFrame):
         if self.chip is not None:
             layout.addWidget(self.chip)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        if selectable:
+            self.clicked.connect(lambda: self.set_selected(True))
+
+    def selected(self) -> bool:
+        return self.property("selected") is True
+
+    def set_selected(self, selected: bool) -> None:
+        set_property(self, "selected", selected)
+
+
+class PlainList(QListWidget):
+    """A list that shows what is behind it, on a Card say, for rows that bring their own hover and selection: fill it
+    with setItemWidget."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(q.PLAIN_LIST)
+
+
+class Badge(QLabel):
+    """A small round count, e.g. what needs attention. tone: neutral, info, error."""
+
+    def __init__(self, text: str = "", tone: str = "neutral", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setObjectName(q.BADGE)
+        self.setProperty("tone", tone)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def set_text(self, text: str) -> None:
+        self.setText(text)
+        self.adjustSize()
+
+    def set_tone(self, tone: str) -> None:
+        set_property(self, "tone", tone)
+
+
+TEXT_ROLES = {"title": q.SHEET_TITLE, "heading": q.SHEET_SECTION, "body": q.LABEL_BODY, "secondary": q.LABEL_SECONDARY,
+              "caption": q.PANEL_CAPTION, "mono": q.LABEL_MONO}
+
+
+def text_label(text: str, role: str = "body") -> QLabel:
+    """A label in one of the kit's text styles (TEXT_ROLES)."""
+    if role not in TEXT_ROLES:
+        raise ValueError(f"role must be one of {', '.join(TEXT_ROLES)}, not {role!r}")
+    label = QLabel(text)
+    label.setObjectName(TEXT_ROLES[role])
+    return label
+
+
+class ToolWindow(QWidget):
+    """A separate, non-modal window on the page background: `body` to fill. It sets the family itself: the stylesheet's
+    base rule has none, and without a parent's font a window would show the system's."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self.setObjectName(q.TOOL_WINDOW)
+        self.setWindowTitle(title)
+        self.setWindowIcon(QApplication.windowIcon())
+        font = self.font()
+        font.setFamily(FONT_SANS)
+        self.setFont(font)
+        self.body = QVBoxLayout(self)
+        self.body.setContentsMargins(16, 16, 16, 16)
+        self.body.setSpacing(12)
 
 
 class Field(Surface):

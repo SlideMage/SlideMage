@@ -275,6 +275,12 @@ def read_deck(path: Path, archived: bool = False,
     # fresh restart.
     with open(path, encoding="utf-8", errors="replace", newline="") as f:
         text = f.read()
+    return deck_from_text(path, text, archived, groups)
+
+
+def deck_from_text(path: Path, text: str, archived: bool = False,
+                   groups: Sequence[deck_groups.DeckGroup] = deck_groups.DEFAULT_GROUPS) -> Deck:
+    """The Deck of `path` for `text` already in hand (read_deck without the read)."""
     doc_begin_match = DOCUMENT_BEGIN_RE.search(text)
     tags = parse_tags(text)
     in_groups = deck_groups.groups_of(tags, groups)

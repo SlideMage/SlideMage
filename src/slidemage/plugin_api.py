@@ -97,6 +97,10 @@ class EditRefusedError(ValueError):
     deck. The message says what to do ("Save or discard the changes on the other tabs first"); show it as it is."""
 
 
+class AiChatError(Exception):
+    """An AI chat request failed. Its message can be shown to the user."""
+
+
 class Deck(Protocol):
     """One deck, read-only."""
 
@@ -160,6 +164,112 @@ class Focus:
     """The slide file the editor shows, or None (a deck, a .bib or nothing is shown)."""
     scope: Literal["slide", "deck"]
     """How far an AI request may reach: this slide, or the whole deck."""
+
+
+# -- reading slides: Host.deck_slides and Host.slide_source ------------------------------------------------------
+
+@dataclass(frozen=True)
+class SlideRef:
+    """One slide as a deck calls it, from Host.deck_slides. Only the host makes these; later versions of SlideMage
+    may add fields (with defaults), so read the fields you need by name and do not build one with positional
+    arguments. A slide the deck calls twice (or at two versions) is two refs at two positions."""
+
+    id: str
+    """The slide's permanent ID, without language or slug ("abc")."""
+    id_slug: str
+    """The ID with language and slug as the file is named ("abc-EN-Hello"); for a translation it is the
+    translation's, not the original's."""
+    path: Path
+    """The exact file the ref names: the slide's current file, or the frozen file of the version the deck pins."""
+    language: str | None = None
+    """The language of that file, "de" or "en" (or "mult" for a slide in both), or None for a slide that was never
+    tagged. When the deck is read in a language the slide has no translation for, this is the other language."""
+    version: str | None = None
+    """The version of that file in its file-name form ("1-0-0"); None for a current file that was never given
+    one."""
+    pinned: bool = False
+    """True when the deck pins this version (\\slideversion); False when it follows the slide's current file."""
+    title: str = ""
+    """The frame title of that file, or the slug when there is none."""
+    position: int = 0
+    """The slide's place among the deck's slide calls, from 1, hidden slides counted."""
+    hidden: bool = False
+    """True when the view asked for does not show the slide (an instructor-only slide in the other views)."""
+    language_read: str | None = None
+    """The language requested from deck_slides ("de" or "en"), used for picture descriptions, including multilingual
+    files. None for a ref without a requested language: slide_source falls back to the file's language."""
+    title_text: str = ""
+    """The title as plain text to show (SlideMage v0.13.21): no LaTeX markup, so "VO Grundlagen \\\\ Digitalisierung"
+    reads "VO Grundlagen Digitalisierung". title keeps the markup."""
+    section: str = ""
+    """The title of the \\section the slide call stands under, as plain text, or "" before the first section
+    (SlideMage v0.13.21)."""
+
+
+@dataclass(frozen=True)
+class ThemeTokens:
+    """SlideMage's colours, radii and fonts in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
+    makes these; later versions may add fields (with defaults), so read the fields you need by name. Colours are
+    strings QSS and QColor take: hex, except hover, which is translucent and in rgba() form."""
+
+    dark: bool
+    bg: str
+    surface: str
+    text: str
+    text_2: str
+    text_3: str
+    text_4: str
+    line: str
+    hover: str
+    inverse: str
+    on_inverse: str
+    focus: str
+    on_solid: str
+    ok: str
+    ok_bg: str
+    ok_fg: str
+    warning: str
+    warning_bg: str
+    warning_fg: str
+    error: str
+    error_bg: str
+    error_fg: str
+    info: str
+    info_bg: str
+    info_fg: str
+    radius_sm: int
+    radius_md: int
+    font_sans: str
+    font_mono: str
+
+
+@dataclass(frozen=True)
+class MediaDescription:
+    """What SlideMage's image store says about one picture a slide uses, in the requested reading language."""
+
+    image: str
+    """The store's key: the file relative to the project folder with forward slashes ("media/plot.png"), or
+    "tikz:<id>" for a drawing in the slide's own source."""
+    decorative: bool = False
+    """The picture is marked as carrying no information."""
+    short: str = ""
+    long: str = ""
+    takeaway: str = ""
+    """What this slide takes from the picture, its own text or the picture's default."""
+
+
+@dataclass(frozen=True)
+class SlideSource:
+    """What a slide file holds, from Host.slide_source: all the text that decides how it looks and reads."""
+
+    text: str
+    """The file's text, line endings as on disk."""
+    media: tuple[Path, ...] = ()
+    """The picture files the source includes that exist, in the order of their references' names, each once; a
+    picture the file names but that is missing is left out, and so is a macro-valued path or a tikz drawing."""
+    descriptions: tuple[MediaDescription, ...] = ()
+    """The image store's entry for each picture and drawing the source includes, in the order of their references'
+    names, each once; none for a picture the store does not know."""
 
 
 class Credentials(Protocol):
@@ -534,6 +644,10 @@ class Host(Protocol):
         Hand it to another program as a command (shlex.join / subprocess.list2cmdline). May be called any time."""
         ...
 
+    def ai_chat(self) -> AiChat:
+        """Text requests on the selected Chat route."""
+        ...
+
     def terminal(self) -> TerminalService:
         """The embedded terminal service (the window must exist: raises RuntimeError("no window") otherwise)."""
         ...
@@ -628,6 +742,41 @@ class Host(Protocol):
         """The language a compile of the deck uses. Reads deck.text only."""
         ...
 
+    def project_root(self) -> Path:
+        """The open project's folder (decks/, slides/, media/ are inside it). May be called any time, from a
+        worker too."""
+        ...
+
+    def deck_output_folder(self, deck: Deck, view: str = "instructor") -> Path:
+        """The folder the deck's PDF of `view` ("instructor", "during-course" or "after-course") is written to: the
+        folder its \\deckoutputfolder line names (a relative one from the project folder), else the project's pdf/
+        folder. A line that names a file gives that file's folder. The folder need not exist. Reads deck.text
+        only; may be called from a worker. An unknown view raises ValueError."""
+        ...
+
+    def deck_slides(self, deck: Deck, view: str, language: Literal["de", "en"]) -> list[SlideRef]:
+        """The deck's slides in the order SlideMage lists them for `view` ("instructor", "during-course" or
+        "after-course") read in `language`: one ref per slide call, hidden ones included (SlideRef.hidden), and a
+        slide with a translation into `language` as that translation. A slide without one is the slide in its own
+        language: compare SlideRef.language. Reads deck.text and the slide files as they are now and changes
+        nothing; may be called from a worker. Slides in included fragments are not listed.
+        Raises ValueError for an unknown view or language."""
+        ...
+
+    def slide_source(self, ref: SlideRef) -> SlideSource:
+        """The text, picture files and picture descriptions of the file `ref` names (ref.path): the pinned version
+        for a pinned ref, the current file otherwise, with descriptions in ref.language_read (the language requested
+        from deck_slides). If unset, the file's language is used; "de" gives German, anything else English.
+        Reads files and changes nothing; may be called from a worker. Raises
+        OSError when the file cannot be read, and ValueError when ref.path is not a slide file of this project."""
+        ...
+
+    def open_slide(self, ref: SlideRef) -> None:
+        """Show the file `ref` names in SlideMage's editor (the Source view), as it is: a pinned version too.
+        Raises RuntimeError("no window") when there is no window, and ValueError when ref.path is not a slide file
+        of this project."""
+        ...
+
     def open_url(self, url: str) -> None:
         """Open an http(s) URL in the user's default browser. Raises ValueError for any other scheme, and OSError
         when nothing could be started."""
@@ -676,8 +825,84 @@ class Host(Protocol):
         """A themed button."""
         ...
 
-    def Chip(self, text: str, tone: str = "neutral") -> Widget:
-        """A status chip with set_text and set_tone."""
+    def Chip(
+        self, text: str, tone: str = "neutral", *, icon: str | None = None, elide: bool = False,
+        pressable: bool = False,
+    ) -> Widget:
+        """A status chip with set_text, set_tone and set_icon; it emits clicked. tone is "neutral", "muted", "info",
+        "warning", "error" or "ok". icon is a Material icon's name; an elide chip shortens its text with "…" rather
+        than widen its column; a pressable chip is a button for the keyboard too, named by its tooltip (the keyword
+        arguments came with SlideMage v0.13.21)."""
+        ...
+
+    def Window(self, title: str) -> Widget:
+        """A top-level, non-modal window in SlideMage's look: window.body is the layout to fill. Keep a reference to
+        it, and show() it yourself; it stays yours to open and close. It is not restored at the next start. When
+        SlideMage closes (a project switch restarts it) it asks this window to close first: ignoring the closeEvent,
+        for unsaved work, keeps SlideMage open (SlideMage v0.13.21)."""
+        ...
+
+    def Card(self, raised: bool = False) -> Widget:
+        """A rounded panel on the window's background: fill card.layout(), a vertical layout. raised adds a shadow; leave
+        it off for big panels (SlideMage v0.13.21)."""
+        ...
+
+    def SegmentedControl(self, items: list[tuple[str, str]], current: str | None = None) -> Widget:
+        """A switch of (key, label) segments, the first current unless current says otherwise. It emits changed(key)
+        when the user picks one, not for set_current(key); current() is the key, and clear_current() leaves none current
+        (SlideMage v0.13.21)."""
+        ...
+
+    def Badge(self, text: str, tone: str = "neutral") -> Widget:
+        """A small round count. tone is "neutral", "info" or "error". It has set_text and set_tone (SlideMage
+        v0.13.21)."""
+        ...
+
+    def ElidedLabel(self, text: str) -> Widget:
+        """One line of text, cut with "…" to the width it gets, with the whole text as its tooltip. set_full_text
+        changes it and full_text() reads it (SlideMage v0.13.21)."""
+        ...
+
+    def RowButton(
+        self, title: str, sub: str = "", *, icon: str | None = None, chip: tuple[str, str] = ("", ""),
+        selectable: bool = False,
+    ) -> Widget:
+        """A clickable row with a title, shortened with "…" when narrow, a second line, and an optional Material icon
+        and (text, tone) chip; row.layout() takes more at its right end (a Badge). It emits clicked. A selectable row
+        becomes selected when clicked; set_selected(False) clears the others of your list, and selected() reads it
+        (SlideMage v0.13.21)."""
+        ...
+
+    def PlainList(self) -> Widget:
+        """A QListWidget that shows what is behind it, on a Card say, for rows that bring their own hover and selection
+        (RowButton): fill it with setItemWidget. Do not give a list of such rows a stylesheet of its own: Qt then drops
+        the rows' styling when they are rebuilt (SlideMage v0.13.21)."""
+        ...
+
+    def Label(self, text: str, role: str = "body") -> Widget:
+        """Text in SlideMage's type scale. role is "title", "heading", "body", "secondary", "caption" or "mono"; any
+        other raises ValueError (SlideMage v0.13.21)."""
+        ...
+
+    def ModalSheet(self, title: str, parent: Widget | None = None) -> Widget:
+        """A modal dialog in SlideMage's look, over parent: add_tab(label, widget) fills it, add_button(text, kind=...,
+        role="accept" or "reject") adds a footer button, exec() runs it (SlideMage v0.13.21)."""
+        ...
+
+    def toast(self, parent: Widget, text: str) -> None:
+        """Show text for a moment at the bottom of parent, a window of yours. To tell the user something in the main
+        window use show_message (SlideMage v0.13.21)."""
+        ...
+
+    def theme(self) -> ThemeTokens:
+        """The current theme. May be called before the main window exists (SlideMage v0.13.21)."""
+        ...
+
+    def on_theme_changed(self, callback: Callable[[ThemeTokens], None]) -> Callable[[], None]:
+        """Call callback(tokens) on the UI thread after the user switched between light and dark and SlideMage's styles
+        are applied. Host widgets follow by themselves: use it only for what you draw yourself. Returns the function
+        that unsubscribes: call it when the widget you update closes. What callback raises is logged and shown
+        (SlideMage v0.13.21)."""
         ...
 
     def IconButton(self, icon: str, tooltip: str) -> Widget:
@@ -830,6 +1055,15 @@ class AiRoute(Protocol):
         problem(): core does, and never falls back to another route."""
         ...
 
+    def request_provider(self, ctx: RouteContext, route: Route) -> "ChatProvider | None":
+        """Provider for one self-contained ai.chat request; by default problem() is checked, then provider().
+        A route may override this while keeping provider() as None so the assistant uses its own chat surface: an
+        override does its own checks and raises ProviderError with a sentence to show, as problem() is not asked.
+        No other feature calls it."""
+        if reason := self.problem(ctx, route):
+            raise importlib.import_module("slidemage.ai.providers").RouteUnavailable(reason)
+        return self.provider(ctx, route)
+
     def draft_backend(self, ctx: RouteContext, route: Route, cancel: "threading.Event | None" = None) -> Any:
         """What describes images on `route` (alt_draft's backend protocol: draft(), label, provider), or None:
         core then wraps provider() in alt_draft.ModelBackend. `cancel` ends a running request of a route that runs a
@@ -864,6 +1098,50 @@ class AiRoute(Protocol):
     def settings_section(self) -> Callable[[], Widget] | None:
         """A builder for the route's own section of Settings' AI tab, or None for no section. Built when Settings opens."""
         ...
+
+
+# -- AI chat: one text request -------------------------------------------------------
+
+@dataclass(frozen=True)
+class AiChatRequest:
+    """One text turn: instructions is the system prompt, text the user message. Put the wanted answer format
+    in instructions; no files or chat history are added."""
+
+    instructions: str
+    text: str
+    max_tokens: int = 4096
+
+
+@dataclass(frozen=True)
+class AiChatResult:
+    """The reply and the captured route/model for provenance. Check truncated before using the text."""
+
+    text: str
+    route: Route
+    truncated: bool = False
+
+
+class AiChat(Protocol):
+    """Host-owned text generation on the current Chat route/model; no route or model fallback.
+    A route without a request provider is unavailable. Cloud requests require the host's confirmation each time,
+    showing the full instructions and text. Local routes (AiRoute.is_local) need no confirmation."""
+
+    def available(self) -> bool:
+        """Whether the selected Chat route/model offers self-contained requests. Quick, UI thread, never raises.
+        A missing API key still counts as available: request() explains it. No request or network call is made."""
+        ...
+
+    def request(self, request: AiChatRequest,
+                done: Callable[[AiChatResult | None, AiChatError | None], None]) -> Callable[[], None]:
+        """Call on the UI thread with a running GUI event loop; returns a cancel function, also UI-thread only.
+        The host captures the route/model now, confirms if needed, and runs the provider on a worker; plugins
+        need no worker. done(result, error) runs once, later on the UI thread, including for an unavailable route.
+        Decline or cancel gives done(None, None). Cancel is repeatable: it asks the provider to abort and discards
+        its reply; completion waits for the worker to end. Errors are AiChatError with a message ready to show.
+        Callbacks can outlive the requesting widget; check it still exists. Nothing is streamed."""
+        ...
+
+
 # -- the neutral AI types -----------------------------------------------------------------------------------------
 # Lazy additions: Task, TRANSLATE, answer_note, repair_request, translate_request, check are the task
 # definition, prompts and validation; SlideContext, DraftResult, TranslationResult, build_prompt,

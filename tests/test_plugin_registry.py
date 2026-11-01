@@ -44,3 +44,10 @@ def test_rules():
 def test_services_not_in_base():
     with pytest.raises(NotImplementedError):
         make().cache_dir()
+
+
+def test_reading_calls_are_not_in_base():
+    r = make()
+    for call in (r.project_root, r.deck_slides, r.slide_source, r.open_slide, r.deck_output_folder):
+        with pytest.raises(NotImplementedError):
+            call()

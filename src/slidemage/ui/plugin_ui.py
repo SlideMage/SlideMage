@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 import weakref
+from collections.abc import Callable
 from typing import Any
 
+import shiboken6
 from PySide6.QtCore import Signal
 
 from ..plugin_api import Focus
@@ -40,10 +42,43 @@ class WindowHostUi:
     def __init__(self) -> None:
         self._window: weakref.ref | None = None
         self._sheets: list[weakref.ref] = []        # the open Deck settings sheets
+        self._plugin_windows: list[weakref.ref] = []        # what plugins made with Host.Window
+        self._theme_listeners: list[Callable[[bool], None]] = []    # plugins subscribe before the window exists
 
     def attach(self, window: Any) -> None:
         self._window = weakref.ref(window)
         set_box_refresher(self.refresh_sidebar_box)
+        window.theme.add_listener(lambda: self._theme_changed(window.theme.dark))
+
+    def add_theme_listener(self, listener: Callable[[bool], None]) -> Callable[[], None]:
+        self._theme_listeners.append(listener)
+        return lambda: self._theme_listeners.remove(listener) if listener in self._theme_listeners else None
+
+    def _theme_changed(self, dark: bool) -> None:
+        for listener in list(self._theme_listeners):
+            listener(dark)
+
+    def dark(self) -> bool | None:
+        """Whether the window is dark; None before there is a window."""
+        window = self.window
+        return window.theme.dark if window is not None else None
+
+    def track_plugin_window(self, window: Any) -> None:
+        self._plugin_windows = [r for r in self._plugin_windows if r() is not None] + [weakref.ref(window)]
+
+    def close_plugin_windows(self) -> bool:
+        """Ask the open plugin windows to close, before SlideMage does: a window left open would keep the process
+        running after the main window closed. False when one refuses, for its unsaved work; the others are closed."""
+        closed = True
+        for window in (r() for r in self._plugin_windows):
+            if window is None or not shiboken6.isValid(window) or not window.isVisible():
+                continue
+            try:
+                closed = window.close() and closed
+            except Exception as exc:        # a plugin's bug must not keep SlideMage open, nor reach the event loop
+                say_error(f"Closing the window {window.windowTitle()!r} failed", exc)
+                window.hide()
+        return closed
 
     def refresh_sidebar_box(self, plugin_id: str, key: str) -> None:
         """Build the box `key` of the plugin again (Host.refresh_sidebar_box); nothing without a window."""
@@ -134,6 +169,13 @@ class WindowHostUi:
         if core is not None:
             for sheet in self._sheets_of(path):
                 sheet.refresh_from_deck(core)
+
+    def open_slide(self, path: Any) -> None:
+        """The slide file at `path` in the Source view, a frozen version too (the window's open_slide_editor)."""
+        window = self.window
+        if window is None:
+            raise RuntimeError("no window")
+        window.open_slide_editor(path)
 
     def open_deck_settings(self, deck: Any, tab: str | None = None) -> None:
         """The Deck settings sheet of the deck with `deck`'s file, on the tab with that title (else the first)."""
