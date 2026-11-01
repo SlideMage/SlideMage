@@ -19,7 +19,7 @@ from ... import project
 from .wizard_portal import color, ease, play_wizard
 
 MESSAGE = "Happy birthday, Jürgen!"
-MARKER = "greeting_v0.13.7"
+MARKER = "greeting_v0.13.8"
 DELAY_MS = 1500
 SHOW_SECONDS = 8.0  # from the cast; the last second fades out
 

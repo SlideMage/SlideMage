@@ -214,3 +214,27 @@ def test_the_cli_takes_the_debug_flag():
     from slidemage import cli
 
     assert cli._role(["--claude-hook"]) == "hook" and cli._role([]) == "app"
+
+
+# -- the old traces folded in (step 3) --------------------------------------------------------------------------
+
+
+def test_the_old_timing_switch_still_turns_the_debug_log_on(monkeypatch):
+    monkeypatch.delenv(diagnostics.DEBUG_ENV, raising=False)
+    monkeypatch.setenv(diagnostics.TIMING_ENV, "1")
+    assert diagnostics.forced() is True
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "0")             # the new switch wins
+    assert diagnostics.forced() is False
+
+
+def test_the_app_removes_the_files_of_the_old_traces(logs, no_debug_env):
+    old = [project.config_dir() / "status-progression.log", project.cache_dir() / "background-trace.log",
+           project.cache_dir() / "background-trace.log.1"]
+    for path in old:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("old")
+    diagnostics.setup("hook")
+    assert all(path.exists() for path in old)                  # only the app tidies up
+    diagnostics.reset()
+    diagnostics.setup("app")
+    assert not any(path.exists() for path in old)
