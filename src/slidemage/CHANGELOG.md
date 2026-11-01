@@ -3264,3 +3264,8 @@ v0.13.8 (2026-11-01, direct request: an on-demand debug log, step 4 of docs/plan
 NEW: Turn on a detailed debug log, and save a debug report.
 - Settings, About, Troubleshooting: Write a detailed debug log. It stays on until you turn it off, and a Debug log on chip after the Help menu shows that it is on.
 - Help, Save debug report: the logs in one zip file, saved where you choose, to send with a problem report. Nothing is sent by SlideMage itself.
+
+v0.13.9 (2026-11-01, direct request: a small visual touch on opening): A small one-time visual touch when SlideMage opens.
+
+NEW: A small visual touch when SlideMage opens.
+- A small one-time visual touch when SlideMage opens.
