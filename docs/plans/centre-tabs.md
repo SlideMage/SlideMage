@@ -155,6 +155,9 @@ Each step a PR into develop with its own minor version, after the user's go (fee
    Frozen versions opened from Details in a tab of their own, named with the version (`1y8 v1.2`) (D6). Slide file tabs get
    Preview / Split / Details (as the deck calls the slide, or alone). Tests in the palette, the slide list and centre
    GUI tests.
+2b. **The side panels follow the tab on show** (D9). With a slide file tab on show, the panels (versions, used-in,
+   notes, images; `panels/base.py`) act on that tab's slide, not the focused one. To be planned against the code
+   before it starts.
 3. **Context menu, keyboard order, restore at start** (D5, D7). Tests: layout settings round trip, missing files.
 4. **Docs.** The manual slide on the workspace and the shortcuts dialog (`ui/dialogs/shortcuts.py`); the CHANGELOG
    entries are written per step.
@@ -191,3 +194,5 @@ Decided by the user 2026-11-01:
   so a version and the current slide can be compared by switching; in step 2.
 * **D7. Restore the file tabs when the project is opened again:** yes, per project, in step 3; missing files are
   skipped silently.
+* **D9. Side panels on a slide file tab** (user, 2026-11-01, after step 2): they follow the tab on show. Step 2 left
+  them on the focused slide; step 2b changes that.
