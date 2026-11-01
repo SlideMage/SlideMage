@@ -3336,3 +3336,8 @@ NEW: Slides open in tabs.
 - Right-click a slide in the list and choose Open in new tab to look at two slides by switching.
 - A frozen version opened from Details gets a tab of its own, to compare it with the current slide.
 - Each slide tab has Preview, Split and Details, and keeps the one you used last.
+
+v0.13.18 (2026-11-01, direct request: size figures in one's own slides from the available space, add the \SMContentHeight): The framework sets a new length \SMContentHeight, the height of the content area from the Top Margin down to the Bottom Margin, that is \paperheight minus \SMContentTopAlign and \SMContentBottomAlign, after the template's settings, so it follows every template and layout profile. A slide sizes a figure from it, for example \besidefigure[height=0.8\SMContentHeight]{...}, instead of working the height out from \paperheight, \SMFooterBoxHeight and the margins itself.
+
+NEW: Slides can size a figure from the room the template leaves.
+- The new length \SMContentHeight is the height between the top and bottom margin of a slide, for example \cornerfigure[height=0.8\SMContentHeight]{...}.
