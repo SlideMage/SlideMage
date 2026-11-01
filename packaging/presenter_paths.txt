@@ -1,0 +1,40 @@
+# The files SlideMage Presenter is built from, one git pathspec per line (comments start with #).
+#
+# release.yml (packaging/presenter_changed.py) attaches the SlideMagePresenter-*.zip assets to a release only when
+# one of these changed since the previous release tag, so a Presenter that updates itself is told only about
+# releases that change it. tests/test_presenter_paths.py imports the Presenter's modules and fails when a
+# slidemage module it loads is not matched here: add the path when it does.
+#
+# Not listed on purpose: src/slidemage/version.py and src/slidemage/CHANGELOG.md change with every release.
+
+# the Presenter's own modules
+src/slidemage/presenter_app.py
+src/slidemage/presentation/
+src/slidemage/ui/presentation/
+src/slidemage/ui/kit/
+
+# every other slidemage module the Presenter imports
+src/slidemage/__init__.py
+src/slidemage/app_settings.py
+src/slidemage/fileio.py
+src/slidemage/processes.py
+src/slidemage/project.py
+src/slidemage/ui/__init__.py
+src/slidemage/ui/layout_settings.py
+src/slidemage/updater.py
+
+# assets the build bundles
+src/slidemage/assets/presenter-icon.svg
+src/slidemage/assets/presenter-icon-256.png
+src/slidemage/assets/presenter-icon.ico
+src/slidemage/assets/presenter-icon.icns
+src/slidemage/assets/fonts/
+
+# the build
+packaging/slidemage_presenter.spec
+packaging/launch_presenter.py
+packaging/slidemage-presenter.desktop.template
+packaging/presenter_paths.txt
+packaging/presenter_changed.py
+pyproject.toml
+uv.lock
