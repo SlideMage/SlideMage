@@ -198,7 +198,7 @@ These are the points that would have spared us the ad-hoc traces:
    old files are deleted at every app start, not once: the files are no longer written, so it costs
    three checks for files that are not there.
 4. **UI (done, v0.13.8):** the settings switch, the indicator, Help → Save debug report. SlideMage has no
-   status bar, so the indicator is a "Debug log" chip after the AutoSave switch, next to the Help menu.
+   status bar, so the indicator is a "Debug log on" chip after the AutoSave switch, next to the Help menu.
    The report holds no compile log: those live in each run's temporary folder, and step 5 puts the
    compile lines into the debug log itself.
 5. **Instrumentation** (section 5), area by area. Small, so it can be one PR or split

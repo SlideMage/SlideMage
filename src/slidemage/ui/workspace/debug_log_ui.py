@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The debug log in the window (step 4 of docs/plans/debug-log.md): the commands that switch it, open its folder and
-save a debug report (Help menu, Settings -> About, Ctrl+K), and the "Debug log" chip after the AutoSave switch that
+save a debug report (Help menu, Settings -> About, Ctrl+K), and the "Debug log on" chip after the AutoSave switch that
 shows while it is on, so it is not left on unnoticed (decision D1: it stays on until turned off). Clicking the chip
 opens the log folder. The log itself is diagnostics.py."""
 from __future__ import annotations
@@ -19,7 +19,7 @@ CHIP_TOOLTIP = "The detailed debug log is on. Click to open its folder; Help tur
 
 class DebugChip(Chip):
     def __init__(self, window, parent: QWidget | None = None) -> None:
-        super().__init__("Debug log", "warning", icon="bug_report", parent=parent, pressable=True)
+        super().__init__("Debug log on", "warning", icon="bug_report", parent=parent, pressable=True)
         self.setToolTip(CHIP_TOOLTIP)
         self.setAccessibleName("Debug log on")
         self.clicked.connect(lambda: open_folder(window))
