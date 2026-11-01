@@ -97,6 +97,11 @@ if sys.platform not in ("win32", "darwin"):
 # QtNetwork stay there, because CI's self-test only imports, and a missing framework would show first at a real start.
 _DROP_QT_FRAMEWORKS = ("qtquick", "qtqml", "qtpdf", "qtvirtualkeyboard")
 
+_LINUX_UNUSED = ("gtk-3", "gdk-3", "gdk_pixbuf", "glycin", "gio-2.0", "gmodule", "gobject", "cairo", "pango", "harfbuzz",
+                 "graphite2", "fribidi", "thai", "datrie", "pixman", "epoxy", "atk", "atspi", "lcms2", "krb5", "gssapi_krb5",
+                 "k5crypto", "keyutils", "com_err", "mount.", "blkid", "selinux", "seccomp", "qt6eglfs", "xcb-glx", "xext.",
+                 "xi.", "xrandr", "xcursor", "xrender", "xfixes", "xdmcp", "xres", "xau.", "xinerama", "xdamage", "xcomposite")
+
 
 def _unneeded(dest):
     path = dest.replace("\\", "/")
@@ -123,7 +128,21 @@ def _unneeded(dest):
 
 
 a.binaries = [entry for entry in a.binaries if not _unneeded(entry[0])]
+if sys.platform not in ("win32", "darwin"):
+    # PyInstaller links libraries from the top of _internal to where they live (libQt6Core.so.6 -> PySide6/Qt/lib/...).
+    # Zipping expands those links into full copies, 106 MiB of duplicates in v0.13.11, and they cannot stay links: the
+    # updater of an installed Presenter unpacks with zipfile, which would turn them into broken text files. Nothing
+    # needs them, the libraries find each other by their rpath (release.yml starts the program to prove it).
+    a.binaries = [entry for entry in a.binaries if not (entry[2] == "SYMLINK" and "/" not in entry[0])]
+    # What the GTK platform theme, dropped above, brought along: no library the Presenter keeps needs these. Read from
+    # the libraries' DT_NEEDED entries in the v0.13.11 zip: 24 MiB.
+    a.binaries = [entry for entry in a.binaries
+                  if not ("/" not in entry[0] and entry[0].lower().removeprefix("lib").startswith(_LINUX_UNUSED))]
 a.datas = [entry for entry in a.datas if not _unneeded(entry[0])]
+
+# Debug symbols, on Linux only: libpython alone is 29 MiB with them. Windows has none in its DLLs, and on macOS stripping
+# would invalidate the libraries' signatures.
+STRIP = sys.platform not in ("win32", "darwin")
 
 pyz = PYZ(a.pure)
 
@@ -134,12 +153,14 @@ exe = EXE(
     exclude_binaries=True,
     name="SlideMagePresenter",
     console=False,
+    strip=STRIP,
     icon=icon,
 )
 coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    strip=STRIP,
     name="SlideMagePresenter",
 )
 

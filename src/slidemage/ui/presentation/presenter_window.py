@@ -113,9 +113,9 @@ class PresenterStartWindow(QWidget):
     # -- the update notice ---------------------------------------------------------------------
 
     def start_update_check(self) -> None:
-        """Look for a newer release in the background, when the shared update mode allows it and the last look is a
-        day old. Never blocks the window; a failed check says nothing."""
-        if presenter_update.check_due():
+        """Look for a newer release in the background, when the shared update mode allows it. Never blocks the
+        window; a failed check says nothing."""
+        if presenter_update.check_allowed():
             run_in_background(self.check_for_update)
 
     def check_for_update(self) -> None:

@@ -251,7 +251,7 @@ jobs:
           python-version: "3.12"
       - name: Qt runtime libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 xvfb libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0
       - run: pip install -e ".[build]"
       - name: Build SlideMage Presenter
         run: pyinstaller --noconfirm packaging/slidemage_presenter.spec
@@ -262,6 +262,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: dist/SlideMagePresenter/SlideMagePresenter --self-test
+      # The self-test only imports. This really starts the program on a virtual display: the start window opens through
+      # the xcb plugin, with the libraries the spec leaves out gone, and the program quits by itself (TIMING).
+      - name: Real start (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: xcb
+          SLIDEMAGE_PRESENTER_TIMING: "1"
+        run: xvfb-run -a dist/SlideMagePresenter/SlideMagePresenter
       - name: Self-test (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 5
