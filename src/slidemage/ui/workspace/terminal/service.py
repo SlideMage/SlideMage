@@ -12,6 +12,7 @@ output out, the view's size to the process, and the start when the view knows it
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -20,8 +21,11 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QWidget
 
+from .... import diagnostics
 from ....pty_process import PtyProcess
 from ...kit.tokens import Tokens, tokens_for
+
+_log = logging.getLogger("slidemage.terminal")
 
 
 class PtySession(QObject):
@@ -49,6 +53,8 @@ class PtySession(QObject):
         with self._lock:
             self._generation += 1
             generation = self._generation
+        # The program's name only: its arguments can hold a prompt, its environment a key.
+        diagnostics.event(_log, "started", program=Path(argv[0]).name, cwd=cwd, size=f"{cols}x{rows}")
         self._process = PtyProcess(
             list(argv), cwd, dict(env), lambda data: self._emit(self._chunk, generation, data),
             lambda code: self._emit(self._ended, generation, code), cols, rows)
@@ -67,6 +73,7 @@ class PtySession(QObject):
             self._generation += 1
         process, self._process = self._process, None
         if process is not None:
+            diagnostics.event(_log, "stopped")
             process.stop()
 
     # The reader thread's callbacks only name the process they come from. What arrives on the GUI thread
@@ -78,6 +85,7 @@ class PtySession(QObject):
 
     def _on_ended(self, generation: int, code: int) -> None:
         if generation == self._generation:
+            diagnostics.event(_log, "exited", code=code)
             self.exited.emit(code)
 
     @staticmethod

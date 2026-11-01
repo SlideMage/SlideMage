@@ -247,6 +247,7 @@ class WorkspaceWindow(QMainWindow):
         self.model_choices_changed.connect(lambda _route: self.refresh_ai_models())
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
+        debug_log_ui.log_state_changes(self.state)
         self.state.deck_changed.connect(self._remember_deck)
         self.state.dirty_changed.connect(self._on_dirty_changed)
         # An autosave changes lint errors, stale previews and versions, but a rebuild per write while

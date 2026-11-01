@@ -20,6 +20,7 @@ import shutil
 import time
 import weakref
 
+from . import diagnostics
 from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, slide_snapshot
 from .preview_metrics import PreviewMetrics
 
@@ -696,6 +697,8 @@ class RenderService:
                                                                         spec=spec, require_pdf=True), require_pdf=True,
                                           delivery=delivered)
             if request is None or request.cancel.is_set():
+                diagnostics.event(_log, "preview requested", target=spec.target.key, view=spec.view,
+                                  language=spec.language, force=options.force)
                 request = RenderRequest(work, finished)
                 request.spec = spec
                 request._delivery = delivered

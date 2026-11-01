@@ -18,6 +18,7 @@ No Qt here: plain functions, so the Extensions tab can run fetch() on a worker t
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.error
@@ -25,6 +26,7 @@ import urllib.request
 from dataclasses import dataclass
 from http.client import HTTPException
 
+from .. import diagnostics
 from ..fileio import atomic_write
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
@@ -221,7 +223,9 @@ def fetch(timeout: float = 10) -> Catalogue:
         catalogue_url(), headers={"Accept": "application/json", "User-Agent": USER_AGENT},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with diagnostics.timed(logging.getLogger("slidemage.plugins"), "GET", url=request.full_url) as info, \
+                urllib.request.urlopen(request, timeout=timeout) as response:
+            info["status"] = getattr(response, "status", None)
             raw = response.read(MAX_BYTES + 1)
     except (urllib.error.URLError, HTTPException, OSError, ValueError) as e:
         raise CatalogueError(f"Could not load the plugin list: {e}") from None
