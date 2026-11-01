@@ -741,3 +741,19 @@ def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, mon
     context.close()
 
 
+
+
+def test_log_takes_a_level_and_says_whether_debug_is_on(host, caplog, monkeypatch):
+    from slidemage import diagnostics
+
+    with caplog.at_level(logging.DEBUG, logger="slidemage.plugins"):
+        host.log("plain")
+        host.log("detail", level="debug")
+        host.log("careful", level="warning")
+    assert [(r.name, r.levelname, r.getMessage()) for r in caplog.records] == [
+        ("slidemage.plugins.hello", "INFO", "plain"), ("slidemage.plugins.hello", "DEBUG", "detail"),
+        ("slidemage.plugins.hello", "WARNING", "careful")]
+    with pytest.raises(ValueError):
+        host.log("x", level="loud")
+    monkeypatch.setattr(diagnostics, "debug_enabled", lambda: True)
+    assert host.debug_enabled() is True

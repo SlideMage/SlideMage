@@ -3199,3 +3199,10 @@ v0.12.3 (2026-10-31, direct request: an on-demand debug log, step 1 of docs/plan
 NEW: SlideMage keeps a small error log.
 - Warnings and errors, for example a plugin that fails, now go to logs/slidemage.log in SlideMage's cache folder, which helps when you report a problem.
 - It holds no slide text and no API keys, and stays below 4 MB.
+
+v0.12.4 (2026-10-31, direct request: an on-demand debug log, step 2 of docs/plans/debug-log.md): SlideMage can write a detailed debug log. It is on while the saved setting says so, diagnostics.json in SlideMage's config folder, until it is turned off; SLIDEMAGE_DEBUG=1 or 0 overrides the setting, and the new option --debug turns it on for one run and for everything that run starts. The app writes one file per session, logs/debug/app_<date>_<time>_<pid>.log in SlideMage's cache folder, starting with a header: the SlideMage version and build, Python, PySide6, Windows, how it was started, the TeX programs it finds and the SLIDEMAGE_ environment variables, secret ones named but not shown. A Claude Code hook, a plugin entry point and the preview rasteriser, which start often, share one file per role with a two-line header. At the start of an app session the oldest files go beyond 20 sessions or 100 MB, and a file moves to .1 at 10 MB. diagnostics.set_debug turns the log on or off at once, without a restart, and saves the setting, which processes started later follow; the switch in Settings comes in step 4. The app logs the project it opens and every plugin with its version and state. For plugins, Host.log takes a level, debug, info, warning or error, and the new Host.debug_enabled says whether the debug log is on; both are additions to the plugin API, which stays version 1, so a plugin that uses them says requires_slidemage = ">=0.12.4". The plan's step 2 says so.
+
+NEW: A detailed debug log, for finding out what went wrong.
+- Start SlideMage with --debug to write a detailed log of what it does, in logs/debug in SlideMage's cache folder.
+- A switch in Settings follows in a later version.
+- Plugins can write debug lines to it.
