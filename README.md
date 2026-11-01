@@ -280,6 +280,66 @@ touched. A project without the manual is offered to add it (only missing
 files are added, nothing is overwritten): the way to get the manual into a
 project of your own.
 
+## Logs and problem reports
+
+SlideMage keeps two logs, in `logs` in its cache folder (`%LOCALAPPDATA%\SlideMage` on Windows,
+`~/Library/Caches/SlideMage` on macOS, `~/.cache/slidemage` on Linux; `SLIDEMAGE_LOG_DIR` names another
+folder). It sends neither anywhere.
+
+- **The error log**, `slidemage.log`, is always on: warnings, errors and uncaught exceptions of every SlideMage
+  process, and Qt's own warnings. It is created when there is something to write, and stays below 4 MB
+  (four files of 1 MB).
+- **The debug log**, in `logs/debug`, is off until you turn it on. It says what SlideMage does.
+
+Turn the debug log on under Settings → About → Troubleshooting or with Help → Turn debug log on. It starts at
+once and stays on until you turn it off, also across restarts; a **Debug log on** chip after the AutoSave switch
+shows it and opens the log folder. `slidemage --debug` turns it on for one run and for what that run starts.
+`SLIDEMAGE_DEBUG=1` or `0` overrides the setting; the older `SLIDEMAGE_TIMING=1` also turns it on, when
+`SLIDEMAGE_DEBUG` is not set.
+
+The app writes one file per session, `app_<date>_<time>_<pid>.log`, starting with what produced it: the version,
+Python, Qt, the system, the TeX programs found and the `SLIDEMAGE_` environment variables. Claude Code hooks, plugin
+entry points and the preview rasteriser share one file per kind (`hook.log`, `plugin.log`, `raster.log`). When a session
+starts, the oldest files go beyond 20 sessions or 100 MB in all, and a file moves to `.1` at 10 MB.
+
+Each line has the time, the seconds since the process started, the level, the area, the process, the thread and
+the message, with any traceback indented below:
+
+```
+2026-11-01 19:54:10.128 +4.899s DEBUG    compile            app:57336 MainThread  process ended program=latexmk exit=12 seconds=4.375
+```
+
+| Area | What it says |
+|---|---|
+| `startup` | the header; the seconds of the imports, fonts, theme, plugins and window |
+| `project`, `ui`, `settings` | the project opened; changes of deck, view, language, mode and slide; the key of a changed setting |
+| `compile` | runs and jobs with their results; every TeX call's command line, folder, exit code and seconds |
+| `preview`, `background` | preview requests and results with their stages; what background rendering decided |
+| `status` | what the progress card showed, and when |
+| `ai`, `timing` | AI tool calls by name and argument names; prompt-to-preview events |
+| `terminal` | the embedded program's name, stop and exit code |
+| `plugins`, `plugins.<id>` | each plugin's version, state and load time, entry points; what a plugin logs |
+| `update`, `themes` | each request's URL, HTTP status or error, and seconds |
+| `maintenance` | each check at startup |
+| `qt` | Qt's warnings |
+
+API keys and tokens are masked before a line is written. Slide text, prompts, setting values and a terminal
+program's arguments are left out on purpose. File names and paths are in the log, and they can tell what a
+talk is about, so look through a log before you share it.
+
+**To report a problem**, turn the debug log on, make the problem happen, and choose Help → Save debug report…. That
+writes one zip file where you choose: a summary, the error log, the three newest sessions, the other processes'
+files and the project's compatibility report.
+
+To read the logs, `tools/debug_log.py` merges the files by time and filters them:
+
+```bash
+python tools/debug_log.py --area compile --level warning
+```
+
+`--grep TEXT` keeps the records with that text, and `--timeline` prints the latest AI request's events since its
+prompt, as seconds after it, with the process that wrote each. Without a file or folder it reads `logs/debug`.
+
 ## Plugins
 
 A plugin adds a feature to SlideMage from outside its core: a command, a Deck
@@ -387,8 +447,14 @@ and may register:
 The `add_*` calls work only inside `activate()`. The other services are
 `cache_dir()`, `legacy_cache_dir()`, `settings()`, `run_in_background(work, done)`,
 `insert_positions`, `insert_slides`, `edit_deck_text`, `deck_language`, `open_url`,
-`open_deck_settings`, `log`, `show_message`, and the widgets `Page()`, `Field()` and
+`open_deck_settings`, `log`, `debug_enabled`, `show_message`, and the widgets `Page()`, `Field()` and
 `caption()`. The docstrings in `plugin_api.py` say what each does.
+
+`log(message, level="info")` writes to SlideMage's log under the area `plugins.<id>`; `level` is `"debug"`,
+`"info"`, `"warning"` or `"error"`. Warnings and errors always reach the error log, and debug and info lines only the
+debug log while it is on (see [Logs and problem reports](#logs-and-problem-reports)). Check `debug_enabled()` before
+building an expensive debug line. Keep user content and secrets out of your lines: only keys and tokens of known
+shapes are masked. The `level` argument and `debug_enabled` need `requires_slidemage = ">=0.13.5"`.
 
 The rules: import only `slidemage.plugin_api`, the standard library, PySide6 and
 your own package; pure Python (compiled files are refused). `activate()` runs at
