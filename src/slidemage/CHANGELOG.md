@@ -3269,3 +3269,10 @@ v0.13.9 (2026-11-01, direct request: a small visual touch on opening): A small o
 
 NEW: A small visual touch when SlideMage opens.
 - A small one-time visual touch when SlideMage opens.
+
+v0.13.10 (2026-11-01, direct request: SlideMage Presenter, step 5a of docs/plans/presenter-app.md): A frozen Windows or Linux Presenter can list itself under Open with for PDF files; the start window gets a row with a button, Add, Remove or Update, that follows the status. presentation/open_with.py, without Qt, does the work with injectable parts (registry, file system, notification). On Windows it writes per user, without administrator rights, HKCU\Software\Classes\SlideMage.Presenter.pdf (description, DefaultIcon, shell\open\command and FriendlyAppName), an empty REG_NONE value SlideMage.Presenter.pdf under .pdf\OpenWithProgids, and Applications\SlideMagePresenter.exe (FriendlyAppName, shell\open\command, SupportedTypes with .pdf), then calls SHChangeNotify; removing deletes exactly these. It never sets the default PDF program. On Linux it writes slidemage-presenter.desktop to $XDG_DATA_HOME/applications with Exec and Icon as absolute paths, MimeType=application/pdf; and NoDisplay=false, and runs update-desktop-database when it exists. The status compares the registered program with the running one: off, on, or moved when the folder was moved. A source checkout never registers (it would register python.exe), and the macOS app already declares PDFs in its Info.plist, so the row is shown only in a frozen Windows or Linux build. packaging/slidemage-presenter.desktop.template gets MimeType=application/pdf; and %f in Exec, and a test keeps it in step with the embedded entry.
+
+NEW: SlideMage Presenter can offer itself for PDF files.
+- A button in the start window adds SlideMage Presenter to the Open with list of PDF files, on Windows and Linux; another button removes it again.
+- Your normal PDF program stays as it is: the Presenter is only added to the list.
+- If you move the Presenter's folder, the start window offers to update the entry.
