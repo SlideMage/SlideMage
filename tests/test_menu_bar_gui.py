@@ -269,3 +269,14 @@ def test_save_debug_report_writes_the_zip_where_chosen(window, tmp_path, monkeyp
     assert window.toast.isVisible()
     monkeypatch.setattr(debug_log_ui.QFileDialog, "getSaveFileName", lambda *args: ("", ""))
     window.commands.run("debug_report", window)               # cancelled: nothing happens
+
+
+def test_changes_of_deck_view_and_language_are_in_the_debug_log(window, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="slidemage.ui")
+    window.state.set_language("DE" if window.state.language != "DE" else "EN")
+    other = next(view for view in ("instructor", "during-course") if view != window.state.view)
+    window.state.set_view(other)
+    said = [r.getMessage() for r in caplog.records if r.name == "slidemage.ui"]
+    assert any(s.startswith("language language=") for s in said) and f"view view={other}" in said

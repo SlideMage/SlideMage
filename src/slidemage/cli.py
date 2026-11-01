@@ -188,9 +188,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     project.save_last_project(root)
-    logging.getLogger(__name__).info("project %s", root)
+    logging.getLogger("slidemage.project").info("project opened: %s", root)
 
-    from .ui.app import main as gui_main
+    with diagnostics.timed(logging.getLogger("slidemage.startup"), "imports"):
+        from .ui.app import main as gui_main
 
     gui_main(project.ProjectContext.at(root))
 

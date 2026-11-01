@@ -37,7 +37,7 @@ STOPPING = "Stopping AI work before switching"
 class AiSwitch(QFrame):
     requested = Signal(str)         # LOCAL or CLOUD: the user asked for it (the switch has not moved yet)
     setup_requested = Signal()      # the ▾
-    install_requested = Signal()    # "Install a plugin…": a side has no route (Settings → Plugins)
+    install_requested = Signal()    # "Install a plugin…": a side has no route (Settings → Extensions)
 
     def __init__(self, state: WorkspaceState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -58,7 +58,7 @@ class AiSwitch(QFrame):
         self.state_label.setObjectName(q.AI_SWITCH_STATE)
         layout.addWidget(self.state_label)
         self.install = Button(INSTALL, "ghost", compact=True)
-        self.install.setToolTip("A side of the switch has no AI route: plugins add routes (Settings → Plugins)")
+        self.install.setToolTip("A side of the switch has no AI route: plugins add routes (Settings → Extensions)")
         self.install.clicked.connect(self.install_requested)
         layout.addWidget(self.install)
         self.caret = IconButton("expand_more", SETUP_TIP, size=16)

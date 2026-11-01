@@ -43,6 +43,7 @@ class Command:
     tone: str = ""            # "danger" for what destroys something
     enabled: Callable[[Context], bool] = _always   # shown greyed out when False
     visible: Callable[[Context], bool] = _always   # left out when False
+    keywords: str = ""        # more words the palette finds it by
 
     def title(self, ctx: Context) -> str:
         return self.label(ctx) if callable(self.label) else self.label

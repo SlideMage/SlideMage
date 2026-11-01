@@ -18,7 +18,7 @@ APP = """\
 2026-11-01 10:00:00.000 +1.000s INFO     startup            app:10 MainThread  debug log started
     SlideMage v0.13.7, from source
 2026-11-01 10:00:01.000 +2.000s DEBUG    timing             app:10 MainThread  prompt
-2026-11-01 10:00:03.500 +4.500s DEBUG    timing             app:10 Worker-1  render_done file=a.tex
+2026-11-01 10:00:03.500 +4.500s DEBUG    timing             app:10 Thread-5 (work)  render_done file=a.tex
 2026-11-01 10:00:04.000 +5.000s ERROR    plugins.hello      app:10 MainThread  box failed
     Traceback (most recent call last):
     ValueError: boom
@@ -56,7 +56,7 @@ def test_the_timeline_starts_at_the_last_prompt_and_names_the_process(folder):
     assert len(lines) == 3
     assert lines[0].startswith("+  0.000 s  prompt") and lines[0].endswith("[app:10]")
     assert "+  1.250 s  tool_start tool=modify_slide  [hook:23]" == lines[1]
-    assert lines[2].startswith("+  2.500 s  render_done file=a.tex")
+    assert lines[2].startswith("+  2.500 s  render_done file=a.tex")     # a thread's name can have a space
 
 
 def test_it_reads_what_diagnostics_writes(tmp_path, monkeypatch):

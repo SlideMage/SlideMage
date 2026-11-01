@@ -200,3 +200,15 @@ def test_reserved_manifest_id_is_refused(tmp_path, monkeypatch, source):
         monkeypatch.setenv(loader.PATH_ENV, str(folder))
     found, = loader.discover()
     assert found.manifest is None and "reserved" in found.error
+
+
+def test_every_plugin_is_in_the_debug_log_with_its_state_and_seconds(monkeypatch, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="slidemage.plugins")
+    use_dev(monkeypatch, "hello", "bad-manifest")
+    load()
+    said = [r.getMessage() for r in caplog.records if r.name == "slidemage.plugins"]
+    assert said[0] == "plugins found count=2"
+    assert any(s.startswith("plugin id=hello version=") and "state=loaded" in s and "seconds=" in s for s in said)
+    assert any("state=failed" in s and "reason=" in s for s in said)

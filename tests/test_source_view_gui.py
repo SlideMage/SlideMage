@@ -411,20 +411,52 @@ def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_p
 
 # -- what is no slide; AutoSave off (v8.56.0) ------------------------------------------------------------
 
-def test_a_deck_source_and_the_bib_have_no_formatting_row_but_an_x(pane, ctx, slides):
+def test_a_deck_source_and_the_bib_have_no_formatting_row(pane, ctx, slides):
     deck = ctx.root / "decks" / "talk.tex"
     deck.parent.mkdir()
     deck.write_text("\\begin{document}\nwords\n\\end{document}\n", encoding="utf-8")
     pane.show_path(slides / "abc-EN-Demo-current.tex")
-    assert pane._format_row.isVisibleTo(pane) and not pane._close_button.isVisibleTo(pane)
+    assert pane._format_row.isVisibleTo(pane)
     pane.show_path(deck)
-    assert not pane._format_row.isVisibleTo(pane) and pane._close_button.isVisibleTo(pane)
+    assert not pane._format_row.isVisibleTo(pane)
     pane._wrap("textbf")                                          # Ctrl+B does nothing in plain text
     assert pane.current.editor.text() == deck.read_text(encoding="utf-8")
+
+
+def test_a_held_file_stays_open_out_of_view_is_written_and_synced_and_goes_with_its_release(pane, slides):
     closed = []
-    pane.close_requested.connect(lambda: closed.append(True))
-    pane._close_button.click()
-    assert closed == [True]
+    pane.file_closed.connect(closed.append)
+    held, other = slides / "abc-EN-Demo-current.tex", slides / "def-EN-Other-current.tex"
+    pane.hold(held)
+    pane.show_path(held)
+    file = pane.current
+    file.editor.insertPlainText("mine ")
+    undo_depth = file.editor.document().availableUndoSteps()
+    pane.show_path(other)                                         # not dropped, but written before it left
+    assert pane.file_for(held) is file and closed == []
+    assert "mine " in held.read_text(encoding="utf-8")
+    held.write_text("changed on disk\n", encoding="utf-8")        # elsewhere, while it is out of view
+    pane.show_path(held)
+    assert pane.current is file and "changed on disk" in file.editor.text() and "mine" not in file.editor.text()
+    file.editor.insertPlainText("again ")
+    assert file.editor.document().availableUndoSteps() >= 1 and undo_depth >= 1
+    pane.show_path(other)
+    pane.release(held)
+    assert pane.file_for(held) is None and closed == [other, held] and pane.file_for(other) is not None
+
+
+def test_releasing_the_file_on_show_empties_the_view_and_a_file_with_unwritten_edits_stays(pane, slides):
+    held = slides / "abc-EN-Demo-current.tex"
+    pane.hold(held)
+    pane.show_path(held)
+    pane.release(held)
+    assert pane.current is None and pane.file_for(held) is None
+    pane.hold(held)
+    pane.show_path(held)
+    layout_settings.set(source_file.AUTOSAVE_KEY, False)
+    pane.current.editor.insertPlainText("% not saved\n")
+    pane.release(held)                                            # edits that would be lost keep it open
+    assert pane.file_for(held) is not None and not pane.is_held(held)
 
 
 def test_with_autosave_off_edits_wait_for_ctrl_s_and_stay_open(pane, slides):

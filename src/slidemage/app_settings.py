@@ -31,13 +31,16 @@ the prompts.
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
+from . import diagnostics
 from .fileio import read_json, write_json
 from .project import ProjectContext, config_dir
 
+_log = logging.getLogger("slidemage.settings")
 OLLAMA_HOST_SETTING_KEY = "ollama_host"
 MACHINE_STORE_PATH = config_dir() / "ai_settings.json"
 # The keys of ai/ai_profile.py (models per route and task, the Cloud connection, and the per-task model keys of
@@ -96,6 +99,7 @@ def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:
 
 
 def set(ctx: ProjectContext, key: str, value: Any) -> None:
+    diagnostics.event(_log, "setting changed", key=key)     # the key only: a value can be a key or a token
     settings = load(ctx)
     settings[key] = value
     save(ctx, settings)

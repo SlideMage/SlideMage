@@ -196,8 +196,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
   done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
   slides on selection and in the background).
-- **Plugins** (v8.71, `plugins/`, `ui/dialogs/settings_plugins.py`, `plugin_offer.py`): Settings → Plugins and Help →
-  Plugins… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
+- **Plugins** (v8.71, `plugins/`, `ui/dialogs/settings_plugins.py`, `plugin_offer.py`): Settings → Extensions and Help →
+  Extensions… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
   **Install from file…**); the first-start sheet offers them once, preselecting a plugin for a feature the user
   used before. Claude and Ollama (the AI, v9.1) and CampusOnline (v9.0) are plugins; with no AI route registered
   the assistant, the AI menu, the AI commands and the AI tab of Settings are hidden.
