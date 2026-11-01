@@ -119,12 +119,12 @@
 %%    The alert and progress bar colours (SMColorD, SMColorC) follow the catalog's roles
 %%    \SMAlertTextColor and \SMProgressBarColor, whose defaults are the Gotham colours they had, and
 %%    a standout frame's text takes \SMStandoutTextColor when a template names one.
-%% 12. (v0.13.6) Two more footnote marker styles: \SMSetFootnoteMarkers{boxed} sets the number
+%% 12. (v0.13.12) Two more footnote marker styles: \SMSetFootnoteMarkers{boxed} sets the number
 %%    in a rounded box, \SMSetFootnoteMarkers{dice} draws die faces, \SMSetFootnoteMarkers{symbols}
 %%    is the symbol sequence again. Each renews \SMFootnoteMark; the default is unchanged.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/11/01}{0.13.6}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/11/01}{0.13.12}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -1815,7 +1815,7 @@ fg=normal~text.fg
 % below), which happens to already match this deck's "restart every slide"
 % footnote convention for the common case of one minipage per frame.
 \renewcommand{\thempfootnote}{\SMFootnoteMark{\value{mpfootnote}}}
-% Two more marker styles beside the symbols (v0.13.6): \SMSetFootnoteMarkers{boxed} sets the
+% Two more marker styles beside the symbols (v0.13.12): \SMSetFootnoteMarkers{boxed} sets the
 % footnote's number in a thin rounded box, a two-digit number in a wider box at full size;
 % \SMSetFootnoteMarkers{dice} draws die faces, 1 to 6 one die and above that the number in
 % bijective base 6 (digits 1 to 6, no zero), most significant die first: 7 is one-one, 12

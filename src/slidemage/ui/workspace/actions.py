@@ -26,7 +26,7 @@ from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..presentation import launch
 from ..text import plural
-from . import compare_rendered, compile_actions, deck_actions, maintenance
+from . import compare_rendered, compile_actions, deck_actions, debug_log_ui, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile, routes
@@ -350,6 +350,11 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
     add("plugins", "Plugins…", PROJECT, _window("open_plugins"), icon="extension")
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
+    add("debug_log", debug_log_ui.toggle_title, PROJECT, debug_log_ui.toggle, icon="bug_report",
+        meta="a detailed log of what SlideMage does, for finding problems")
+    add("debug_report", "Save debug report…", PROJECT, debug_log_ui.save_report,
+        meta="the logs in one zip file, saved where you choose")
+    add("open_logs", "Open log folder", PROJECT, debug_log_ui.open_folder)
     add("exit", "Exit SlideMage", PROJECT, lambda w: w.close(), hint="Alt+F4")
     add("open_manual", "SlideMage manual", PROJECT, lambda w: w.state.set_deck(_manual_deck(w)), icon="menu_book",
         shortcut="F1", enabled=lambda w: _manual_deck(w) is not None)

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -652,7 +653,7 @@ def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(pro
         batched.stop()
 
 
-def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, tmp_path):
+def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, tmp_path, caplog):
     # A render that ended while the planner rebuilt the progress stayed "working" in the copy: the chip said
     # "Preparing previews" with nothing running until the next render, and in front of the window none starts.
     r = make(project, store, raster)
@@ -671,12 +672,12 @@ def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(projec
     del r.scheduler._running[job.key]
     r.scan()
     assert r.progress.working is None                          # the new progress names what runs, from the workers
-    r._trace = background_renders.Trace(tmp_path / "trace.log")
-    r.window_focus(True)
-    r.trace("chip: Preview rendering waits while you use SlideMage")
-    lines = (tmp_path / "trace.log").read_text(encoding="utf-8").splitlines()
+    with caplog.at_level(logging.DEBUG, logger="slidemage.background"):
+        r.window_focus(True)
+        r.trace("chip: Preview rendering waits while you use SlideMage")
+    lines = [rec.getMessage() for rec in caplog.records if rec.name == "slidemage.background"]
     assert "focus in: stopped 0 | in_front=True" in lines[0] and "running=0" in lines[0]
-    assert lines[1].split(" ", 2)[2].startswith("chip: Preview rendering waits")
+    assert lines[1].startswith("chip: Preview rendering waits")
 
 
 def test_a_slide_the_plan_counted_as_fresh_is_not_counted_again_when_its_page_number_is_refreshed(project, store, raster):

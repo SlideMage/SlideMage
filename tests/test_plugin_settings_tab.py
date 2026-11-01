@@ -523,7 +523,7 @@ def test_the_tab_is_in_the_sheet_before_the_plugins_own(qapp, tmp_path):
 
 def test_help_plugins_opens_the_tab(qapp, monkeypatch, tmp_path):
     help_menu = filled_menu(command_context(), "Help")
-    assert [a.objectName() for a in help_menu.actions() if not a.isSeparator()][-3:] == [
+    assert [a.objectName() for a in help_menu.actions() if not a.isSeparator()][-6:-3] == [
         "check_updates", "plugins", "project_compat"]
     window = build_window(monkeypatch, ProjectContext.at(make_project(monkeypatch, tmp_path / "proj2")))
     opened = []

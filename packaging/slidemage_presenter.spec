@@ -2,19 +2,23 @@
 # on -- PyInstaller never cross-compiles. From the repo root, with pyinstaller installed (pip install -e ".[build]"):
 #     pyinstaller --noconfirm packaging/slidemage_presenter.spec
 # Output: dist/SlideMagePresenter/ with SlideMagePresenter(.exe) and _internal/ (on macOS also
-# SlideMage Presenter.app, see step 4). It is a separate spec, not an option of slidemage.spec: the Presenter's entry
+# dist/SlideMage Presenter.app, the BUNDLE step at the end; release.yml ships the .app there). It is a separate spec, not an option of slidemage.spec: the Presenter's entry
 # point (presenter_app.py) imports only the presentation modules and the kit, so PyInstaller leaves the compiler, the
 # workspace, QtWebEngine and the rest out by itself, and this spec bundles only the data the Presenter reads
 # (some fonts, its icon, the licences). `excludes` is the safety net, and tests/test_presenter_imports.py keeps the
 # import graph small.
 # A folder build only, no one-file exe and no splash screen: a one-file exe unpacks itself on every start, which is
 # exactly the slow start the Presenter is meant to avoid, and a folder starts fast enough to need no splash.
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
 ASSETS = ROOT / "src" / "slidemage" / "assets"
 FONTS = ASSETS / "fonts"
+# The version the Presenter is built as: the same VERSION_NUMBER as SlideMage (read as release.yml's tag check does).
+VERSION = re.search(r'^VERSION_NUMBER = "v([^"]*)"', (ROOT / "src" / "slidemage" / "version.py").read_text(encoding="utf-8"),
+                    re.MULTILINE).group(1)
 
 # Fonts: ui/kit/fonts.py loads every *.ttf it finds in FONT_DIR, which must resolve in the frozen build to
 # slidemage/assets/fonts. SlideMage ships all 37 files (12 MB); the Presenter's own windows use only Roboto in
@@ -51,10 +55,9 @@ EXCLUDES = [
     "lxml", "pptx", "odf", "segno", "winpty", "ptyprocess",
     # standard library the Presenter does not need
     "tkinter", "unittest", "pydoc",
-    # PyMuPDF imports Pillow only to convert a pixmap on request; ssl (and with it libssl) is only reached from
-    # urllib/http, which the Presenter does not use; _hashlib (and libcrypto, 5 MB) because hashlib falls back to
-    # Python's own sha/md5 code without it
-    "PIL", "ssl", "_ssl", "_hashlib",
+    # PyMuPDF imports Pillow only to convert a pixmap on request. ssl, _ssl and _hashlib (with libssl and libcrypto,
+    # about 6 MB) are in the build since step 4: the updater downloads a release over HTTPS.
+    "PIL",
     # SlideMage's heavy parts
     "slidemage.compiler", "slidemage.ui.app", "slidemage.ui.workspace", "slidemage.ui.dialogs", "slidemage.ai",
     "slidemage.plugins",
@@ -85,6 +88,14 @@ _KEEP_IMAGEFORMATS = ("qjpeg", "qsvg", "qico", "qgif", "qwebp", "qicns")     # P
 _DROP_FILES = ("qtdbus.pyd", "opengl32sw.dll", "d3dcompiler_47.dll", "dxcompiler.dll", "dxil.dll", "qdirect2d.dll", "qminimal.dll")
 # Qt libraries that Qt's own plugins or PySide6's hooks pull in although no module of the Presenter uses them
 _DROP_QT_LIBRARIES = ("qt6quick", "qt6qml", "qt6pdf", "qt6network", "qt6virtualkeyboard", "qt6opengl", "qt6dbus")
+if sys.platform not in ("win32", "darwin"):
+    # On Linux the Qt libraries and plugins link libQt6DBus, and keep_awake.py calls the session bus through
+    # PySide6.QtDBus; without the library the program would not start (the Windows build has neither).
+    _DROP_QT_LIBRARIES = tuple(name for name in _DROP_QT_LIBRARIES if name != "qt6dbus")
+    _DROP_FILES = tuple(name for name in _DROP_FILES if name != "qtdbus.pyd")
+# macOS frameworks (QtQuick.framework …): only those no platform or style plugin can link. QtOpenGL, QtDBus and
+# QtNetwork stay there, because CI's self-test only imports, and a missing framework would show first at a real start.
+_DROP_QT_FRAMEWORKS = ("qtquick", "qtqml", "qtpdf", "qtvirtualkeyboard")
 
 
 def _unneeded(dest):
@@ -94,6 +105,10 @@ def _unneeded(dest):
     if name in _DROP_FILES or name.endswith(".qm"):
         return True
     if "plugins" not in parts and name.removeprefix("lib").startswith(_DROP_QT_LIBRARIES):
+        return True
+    # macOS: Qt comes as frameworks (lib/QtQuick.framework/...), named without the 6, so the rule above missed them
+    # and the first macOS build kept them all (141.6 MiB at v0.13.10).
+    if any(part.lower().endswith(".framework") and part.lower().startswith(_DROP_QT_FRAMEWORKS) for part in parts):
         return True
     if "translations" in parts or "qml" in parts:
         return True
@@ -127,3 +142,28 @@ coll = COLLECT(
     a.datas,
     name="SlideMagePresenter",
 )
+
+if sys.platform == "darwin":
+    # dist/SlideMage Presenter.app, unsigned (a first start needs right-click, Open). The executable inside is
+    # Contents/MacOS/SlideMagePresenter. CFBundleDocumentTypes lists the Presenter under "Open With" for PDFs, which
+    # then arrive as a QFileOpenEvent (presenter_app.make_filter); "Alternate" keeps the default PDF viewer.
+    app = BUNDLE(
+        coll,
+        name="SlideMage Presenter.app",
+        icon=icon,
+        bundle_identifier="org.slidemage.presenter",
+        version=VERSION,
+        info_plist={
+            "CFBundleName": "SlideMage Presenter",
+            "CFBundleDisplayName": "SlideMage Presenter",
+            "CFBundleShortVersionString": VERSION,
+            "CFBundleVersion": VERSION,
+            "NSHighResolutionCapable": True,
+            "CFBundleDocumentTypes": [{
+                "CFBundleTypeName": "PDF Document",
+                "CFBundleTypeRole": "Viewer",
+                "LSHandlerRank": "Alternate",
+                "LSItemContentTypes": ["com.adobe.pdf"],
+            }],
+        },
+    )

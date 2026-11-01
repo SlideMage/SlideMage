@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QObject
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QWidget
 
 from ..kit import kit_qss as q
@@ -42,6 +42,21 @@ class AutoSaveSwitch(QWidget):
     def refresh(self) -> None:
         """Show the setting as it is now (after Settings, File or Ctrl+K changed it)."""
         self.control.set_current(ON if autosave_on() else OFF)
+
+    def add_trailing(self, widget: QWidget) -> None:
+        """A small indicator after the switch, which rides with it (the debug log's chip, debug_log_ui.py)."""
+        self.layout().addSpacing(GAP // 2)
+        self.layout().addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.relayout()
+
+    def relayout(self) -> None:
+        """Take the size the visible parts need now (an indicator shown or hidden)."""
+        self.layout().invalidate()
+        self.adjustSize()
+        self.updateGeometry()
+        placer = getattr(self, "_placer", None)
+        if placer is not None:
+            placer.place()
 
     def is_on(self) -> bool:
         return self.control.current() == ON

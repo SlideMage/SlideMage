@@ -2597,7 +2597,7 @@ with the digits 1 to 6, so 7 is two dice, one-one, and 13 is two-one):
 A template says it once after `\input{SlideMage_setup}`; a deck or a slide can
 say it from any point on, and inside a group `{...}` it holds to the group's
 end. `\setfootnotesymbols` changes only the symbol list, never the style. In
-running text the markers are scaled to 75%. The appendix sheet below shows both
+running text the markers are scaled to 75%. The manual's appendix slide 2mk shows both
 styles live.
 [slides/2rg-EN-Footnote-symbol-options-current.tex](example/slides/2rg-EN-Footnote-symbol-options-current.tex)
 (in the manual's appendix; `ZZU` until v5.16.0)

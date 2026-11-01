@@ -5,13 +5,16 @@ ones, drop one on the window, or change the presentation settings. Imports only 
 modules, like standalone.py, so the small Presenter program can be built from it."""
 from __future__ import annotations
 
+import sys
+import threading
 from pathlib import Path
+from typing import Callable
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from ...presentation import recent
+from ...presentation import open_with, presenter_update, recent
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, ModalSheet, RowButton, Surface, caption, clear_layout
@@ -20,9 +23,24 @@ from .settings_page import PresentationTab
 
 TITLE = "SlideMage Presenter"
 FOLDER_WIDTH = 400         # px of a recent PDF's folder line before it is shortened
+# The "Open with" button says what it does on its own: "Add" alone did not.
+BUTTON_TEXT = {open_with.OFF: "Add to “Open with”", open_with.ON: "Remove from “Open with”",
+               open_with.MOVED: "Use this copy for “Open with”"}
+
+
+def run_in_background(work: Callable[[], None]) -> None:
+    """Run `work` on a thread of its own (the update check and download; tests run it on the spot instead)."""
+    threading.Thread(target=work, daemon=True).start()
 
 
 class PresenterStartWindow(QWidget):
+    # From the worker threads to the window: the release found (None: up to date), progress (done, total) in bytes,
+    # the download is installed, an error message.
+    update_found = Signal(object)
+    update_progress = Signal(int, int)
+    update_installed = Signal()
+    update_failed = Signal(str)
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(TITLE)
@@ -31,6 +49,9 @@ class PresenterStartWindow(QWidget):
         self.rows: list[RowButton] = []
         self.presenting = False
         self.waiting: list[Path] = []      # PDFs opened during a talk
+        self.update_release = None         # a newer release that carries the Presenter's zip, if one was found
+        self.updating = False              # its download is running
+        self.update_ready = False          # it is installed: quit when the talk that was running has ended
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 22, 24, 16)
         root.setSpacing(12)
@@ -51,6 +72,31 @@ class PresenterStartWindow(QWidget):
         self._list_layout.setSpacing(0)
         root.addWidget(self._list)
         root.addStretch(1)
+        # The update notice: a quiet line above the footer, shown only when a newer release changes the Presenter.
+        self.update_bar = QWidget()
+        bar = QHBoxLayout(self.update_bar)
+        bar.setContentsMargins(0, 0, 0, 0)
+        self.update_label = caption("")
+        bar.addWidget(self.update_label, 1)
+        self.update_button = Button("Update and restart", "secondary")
+        self.update_button.clicked.connect(self.on_update_clicked)
+        bar.addWidget(self.update_button)
+        self.update_bar.hide()
+        root.addWidget(self.update_bar)
+        # "Open with": offered only by a frozen Windows or Linux build (open_with.supported()).
+        self.open_with_bar = QWidget()
+        with_bar = QHBoxLayout(self.open_with_bar)
+        with_bar.setContentsMargins(0, 0, 0, 0)
+        self.open_with_label = caption("")
+        with_bar.addWidget(self.open_with_label, 1)
+        self.open_with_button = Button(BUTTON_TEXT[open_with.OFF], "secondary")
+        self.open_with_button.setToolTip("Only adds SlideMage Presenter to the “Open with” list of PDF files. "
+                                         "It never changes the program that opens a PDF on a double-click.")
+        self.open_with_button.clicked.connect(self.on_open_with_clicked)
+        with_bar.addWidget(self.open_with_button)
+        root.addWidget(self.open_with_bar)
+        self.open_with_state = open_with.OFF
+        self.refresh_open_with()
         footer = QHBoxLayout()
         footer.addWidget(caption(VERSION_NUMBER.lstrip("v")))
         footer.addStretch(1)
@@ -58,7 +104,123 @@ class PresenterStartWindow(QWidget):
         self.settings_button.clicked.connect(self.open_settings)
         footer.addWidget(self.settings_button)
         root.addLayout(footer)
+        self.update_found.connect(self.show_update)
+        self.update_progress.connect(self.show_progress)
+        self.update_installed.connect(self.finish_update)
+        self.update_failed.connect(self.show_update_failure)
         self.refresh()
+
+    # -- the update notice ---------------------------------------------------------------------
+
+    def start_update_check(self) -> None:
+        """Look for a newer release in the background, when the shared update mode allows it and the last look is a
+        day old. Never blocks the window; a failed check says nothing."""
+        if presenter_update.check_due():
+            run_in_background(self.check_for_update)
+
+    def check_for_update(self) -> None:
+        """The check itself (a worker thread's job): emits update_found with the release, or None."""
+        from ... import updater
+
+        try:
+            release = presenter_update.find_update()
+        except (updater.UpdateError, OSError, ValueError):
+            return
+        self.update_found.emit(release)
+
+    def show_update(self, release) -> None:
+        self.update_release = release
+        if release is None:
+            self.update_bar.hide()
+            return
+        self.update_label.setText(f"SlideMage Presenter {release.tag} is available.")
+        self.update_label.setProperty("tone", "")
+        self.update_button.setText("Update and restart" if presenter_update.can_install() else "Download…")
+        self.update_button.setEnabled(True)
+        self.update_bar.show()
+
+    def on_update_clicked(self) -> None:
+        release = self.update_release
+        if release is None or self.presenting or self.updating:      # never during a talk
+            return
+        if not presenter_update.can_install():
+            QDesktopServices.openUrl(QUrl(release.page_url))
+            return
+        self.updating = True
+        self.update_button.setEnabled(False)
+        self.update_label.setProperty("tone", "")
+        self.update_label.setText(f"Downloading SlideMage Presenter {release.tag}…")
+        run_in_background(lambda: self.download_update(release))
+
+    def download_update(self, release) -> None:
+        """Download and stage the update, start the swap helper (a worker thread's job)."""
+        from ... import updater
+
+        def progress(done: int, total: int) -> bool:
+            self.update_progress.emit(done, total)
+            return True
+
+        try:
+            presenter_update.install(release, progress=progress)
+        except (updater.UpdateError, OSError) as exc:
+            self.update_failed.emit(str(exc))
+            return
+        self.update_installed.emit()
+
+    def show_progress(self, done: int, total: int) -> None:
+        if total and self.updating:
+            self.update_label.setText(f"Downloading SlideMage Presenter {self.update_release.tag}… "
+                                      f"{min(100, done * 100 // total)} %")
+
+    def finish_update(self) -> None:
+        """The helper is waiting for this process to end, then swaps the folders and starts the new Presenter."""
+        self.update_label.setText("Restarting…")
+        if self.presenting:
+            self.update_ready = True      # present() quits when the talk has ended
+        else:
+            QApplication.quit()
+
+    def show_update_failure(self, message: str) -> None:
+        self.updating = False
+        self.update_label.setProperty("tone", "error")
+        self.update_label.setText(f"The update failed: {message}")
+        self.update_label.style().unpolish(self.update_label)
+        self.update_label.style().polish(self.update_label)
+        self.update_button.setText("Try again")
+        self.update_button.setEnabled(True)
+
+    # -- "Open with" ---------------------------------------------------------------------------
+
+    def refresh_open_with(self, error: str = "") -> None:
+        """Show the row when this build can register itself; the button follows the status (Add, Remove, Update)."""
+        if not open_with.supported():
+            self.open_with_bar.hide()
+            return
+        try:
+            self.open_with_state = open_with.status(sys.executable)
+        except OSError as exc:
+            self.open_with_state, error = open_with.OFF, error or str(exc)
+        state = self.open_with_state
+        text = {open_with.ON: "SlideMage Presenter is in the “Open with” list of PDF files.",
+                open_with.MOVED: "“Open with” for PDF files points to another copy of SlideMage Presenter."}.get(
+            state, "SlideMage Presenter is not in the “Open with” list of PDF files.")
+        self.open_with_label.setText(error or text)
+        self.open_with_label.setProperty("tone", "error" if error else "")
+        self.open_with_label.style().unpolish(self.open_with_label)
+        self.open_with_label.style().polish(self.open_with_label)
+        self.open_with_button.setText(BUTTON_TEXT.get(state, BUTTON_TEXT[open_with.OFF]))
+        self.open_with_bar.show()
+
+    def on_open_with_clicked(self) -> None:
+        try:
+            if self.open_with_state == open_with.ON:
+                open_with.unregister()
+            else:
+                open_with.register(sys.executable)
+        except OSError as exc:
+            self.refresh_open_with(f"Could not change it: {exc}")
+            return
+        self.refresh_open_with()
 
     # -- the list ------------------------------------------------------------------------------
 
@@ -112,6 +274,9 @@ class PresenterStartWindow(QWidget):
         finally:
             self.presenting = False
             self.refresh()
+            if self.update_ready:           # an update was installed during the talk
+                QApplication.quit()
+                return
             self.show()
             self.raise_()
             self.activateWindow()

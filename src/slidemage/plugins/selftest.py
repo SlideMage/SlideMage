@@ -25,8 +25,10 @@ from pathlib import Path
 EXCLUDED = frozenset({
     "tkinter", "turtle", "turtledemo", "idlelib", "test", "ensurepip", "lib2to3", "pydoc_data", "this", "antigravity",
 })
-# Found by find_spec on Windows but not importable there: they need _curses or termios, which Windows lacks.
-POSIX_ONLY = frozenset({"curses", "pty", "tty"})
+# Found by find_spec on Windows but not importable there: they need _curses or termios, which Windows lacks, and
+# crypt (Python 3.12, gone in 3.13) refuses Windows outright; with it listed, the release build's self-test failed
+# and v0.13.9 and v0.13.10 were published without their Windows downloads.
+POSIX_ONLY = frozenset({"crypt", "curses", "pty", "tty"})
 # The list the spec writes beside the build (slidemage/plugins/), for the frozen self-test: find_spec in a frozen
 # app finds only what was bundled, so a module PyInstaller missed would silently drop out of the check.
 STDLIB_LIST_NAME = "stdlib_modules.txt"

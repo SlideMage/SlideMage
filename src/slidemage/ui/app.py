@@ -18,7 +18,7 @@ from ..project import ProjectContext
 from .plugin_ui import HOST_UI
 from .kit.fonts import load_fonts
 from .kit.theme import ThemeManager
-from .workspace import maintenance
+from .workspace import greeting, maintenance
 from .workspace.window import WorkspaceWindow
 
 ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "icon.ico"
@@ -56,5 +56,6 @@ def main(project_context: ProjectContext) -> None:
     maintenance.schedule_course_hint(window)
     maintenance.schedule_compat_check(window)
     maintenance.schedule_bundled_copies_check(window)
+    greeting.schedule_greeting(window)
     sys.exit(app.exec())
 

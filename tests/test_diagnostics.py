@@ -214,3 +214,57 @@ def test_the_cli_takes_the_debug_flag():
     from slidemage import cli
 
     assert cli._role(["--claude-hook"]) == "hook" and cli._role([]) == "app"
+
+
+# -- the old traces folded in (step 3) --------------------------------------------------------------------------
+
+
+def test_the_old_timing_switch_still_turns_the_debug_log_on(monkeypatch):
+    monkeypatch.delenv(diagnostics.DEBUG_ENV, raising=False)
+    monkeypatch.setenv(diagnostics.TIMING_ENV, "1")
+    assert diagnostics.forced() is True
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "0")             # the new switch wins
+    assert diagnostics.forced() is False
+
+
+def test_the_app_removes_the_files_of_the_old_traces(logs, no_debug_env):
+    old = [project.config_dir() / "status-progression.log", project.cache_dir() / "background-trace.log",
+           project.cache_dir() / "background-trace.log.1"]
+    for path in old:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("old")
+    diagnostics.setup("hook")
+    assert all(path.exists() for path in old)                  # only the app tidies up
+    diagnostics.reset()
+    diagnostics.setup("app")
+    assert not any(path.exists() for path in old)
+
+
+# -- the debug report (step 4) ----------------------------------------------------------------------------------
+
+
+def test_the_report_holds_the_logs_the_newest_sessions_and_the_compat_report(logs, no_debug_env, tmp_path):
+    import os
+    import zipfile
+
+    diagnostics.setup("app")
+    logging.getLogger("slidemage.themes").warning("a warning")
+    debug = logs / diagnostics.DEBUG_DIR
+    debug.mkdir(parents=True)
+    for number in range(5):
+        path = debug / f"app_2026-11-0{number + 1}_120000_1.log"
+        path.write_text(f"session {number} key sk-ant-api03-abcdefghijklmnop")
+        os.utime(path, (1000 + number, 1000 + number))
+    (debug / "hook.log").write_text("hook")
+    root = tmp_path / "project"
+    (root / ".slidemage").mkdir(parents=True)
+    (root / ".slidemage" / "compat-report.json").write_text("{}")
+    names = diagnostics.write_report(tmp_path / "out" / "r.zip", root, sessions=2)
+    assert names[0] == "report.txt" and "logs/slidemage.log" in names and "project/compat-report.json" in names
+    assert sorted(n for n in names if n.startswith("debug/app_")) == [
+        "debug/app_2026-11-04_120000_1.log", "debug/app_2026-11-05_120000_1.log"]
+    assert "debug/hook.log" in names
+    with zipfile.ZipFile(tmp_path / "out" / "r.zip") as archive:
+        text = archive.read("report.txt").decode()
+        assert "SlideMage v" in text and "debug log: off" in text and f"project: {root}" in text
+        assert "a warning" in archive.read("logs/slidemage.log").decode()

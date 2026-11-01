@@ -196,6 +196,36 @@ from the frozen build.
 - CI: a size check (fail if the Presenter folder grows past a limit, e.g. 120 MB) so a stray import cannot
   silently bring QtWebEngine back.
 
+Done in v0.13.6:
+
+- **Release assets only when the Presenter changed.** `release.yml` has a `presenter` job (Linux, Windows, macOS)
+  that builds and self-tests the Presenter on every run, checks that the unpacked program stays under 130 MiB
+  (`PRESENTER_MAX_MIB`), and attaches `SlideMagePresenter-windows.zip`, `-linux.zip` and `-macos.zip` only when a
+  file the Presenter is built from changed since the previous `v*` tag (or there is no previous tag). The Presenter's
+  updater skips releases without its zip (`plan_update(..., need_asset=True)`), so it hears only of releases that
+  concern it. Same version number and tags as SlideMage.
+- **The list of files** is `packaging/presenter_paths.txt` (git pathspecs, one per line), asked by
+  `packaging/presenter_changed.py`. Not in it: `version.py` and `CHANGELOG.md`, which change with every release.
+  `tests/test_presenter_paths.py` imports the Presenter's modules in a subprocess and fails when a loaded
+  `slidemage` module is not matched by the list, so a new import cannot silently stay out of it.
+- **Release notes.** The `build` job writes the release body; when the Presenter changed it adds a paragraph
+  (`release_notes.py --presenter`) saying what the Presenter is, which zip is for which system and, for macOS,
+  that the app is unsigned (right-click, Open). The `presenter` job sets no body, so the two jobs do not overwrite
+  each other.
+- **Spec.** `ssl`, `_ssl` and `_hashlib` are back for the updater: Windows 105 MiB unpacked, 46 MiB zipped (99 and
+  44 before). The macOS `BUNDLE` makes `SlideMage Presenter.app` (identifier `org.slidemage.presenter`, declares
+  PDFs under Open With) and ships unsigned; on Linux `libQt6DBus` stays in, because the Qt libraries link it and
+  `keep_awake.py` uses it. The Linux zip holds the icon and a desktop file template inside the one top-level folder,
+  so the updater unpacks it like the others.
+- **Updater.** `updater.PRESENTER`, `PRESENTER_ASSETS`, `is_presenter()`; the Presenter replaces its folder with
+  `stage_folder_update` and `spawn_folder_swap`. On macOS it does not install itself (`can_self_update()` is False):
+  the start window links to the release page. The start window checks at most once a day (key
+  `presenter_update_checked`), in a background thread, only when the shared update mode is not "off"; `presentation/presenter_update.py`
+  holds the logic without Qt. `keep_awake.py` already had a macOS branch (`caffeinate`); it has a test now.
+- Not verified yet: the workflow itself (no run was made), the Linux and macOS builds and their sizes, and an
+  update from a frozen build against a real release. Intel Macs are not covered (the `macos-latest` runner is
+  Apple silicon).
+
 ### 5. Presenter-only polish (optional, later)
 
 **5a. "Open with SlideMage Presenter" for PDFs.** Double-clicking a PDF or right-click → Open with should be able to
@@ -209,6 +239,18 @@ start the Presenter.
   rights are needed and the default PDF viewer is not changed: it only adds the Presenter to Open with. A second
   button removes it. If the folder is moved, the keys point to the old place, so the start window re-checks them.
 - Linux: the `.desktop` file gets `MimeType=application/pdf;`.
+
+*Done in v0.13.10* (origin/develop was at v0.13.7 when this was written, hence the next patch).
+`presentation/open_with.py` (no Qt; registry, file system and notification are injectable) and a row in the start
+window, shown only in a frozen Windows or Linux build: a button reading Add, Remove or Update (the entry points to
+another copy) and a caption. Windows keys, all under HKCU\Software\Classes: the ProgID `SlideMage.Presenter.pdf`
+(description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `FriendlyAppName`), the value
+`SlideMage.Presenter.pdf` under `.pdf\OpenWithProgids` (REG_NONE, no data) and `Applications\SlideMagePresenter.exe`
+(`FriendlyAppName`, command, `SupportedTypes\.pdf`); then `SHChangeNotify`. Linux: `slidemage-presenter.desktop`
+in `$XDG_DATA_HOME/applications`, written from the text embedded in the module (the packaging template, for manual
+installs, got `MimeType` and `%f` and a test keeps the two in step), then `update-desktop-database` if present.
+Not verified: that Explorer or a Linux file manager actually lists the Presenter (needs the real registry or a
+real desktop; the tests use fakes).
 
 **5b. Slide numbers and reveal steps without a project.** A beamer slide with reveals (`\pause`, `\only<2>`, …)
 becomes several PDF pages, one per step. When SlideMage presents a deck from a project, it reads beamer's `.nav`
