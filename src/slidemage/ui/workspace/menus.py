@@ -172,7 +172,8 @@ MENU_BAR = (
     ("H&ousekeeping", (("", ("housekeeping",)), ("Cleanup", ("empty_pdf", "remove_temp", "archive_unused")),
                        ("Updating", ("update_previews", "sync_links")))),
     ("&Help", (("", ("open_manual", "shortcuts", "palette")),
-               ("", ("version_history", "check_updates", "plugins", "project_compat")))),
+               ("", ("version_history", "check_updates", "plugins", "project_compat")),
+               ("", ("debug_log", "debug_report", "open_logs")))),
 )
 # The commands that are one of a set of states: a radio item, checked where the command's meta says "current".
 RADIO_PREFIXES = ("view:", "language:", "mode:", "ai:local", "ai:cloud")

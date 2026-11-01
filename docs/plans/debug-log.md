@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: decisions made 2026-10-31 (section 7). Steps 1 to 3 done (v0.12.3, v0.13.5, v0.13.7); step 4 next, after the go.
+Status: decisions made 2026-10-31 (section 7). Steps 1 to 4 done (v0.12.3, v0.13.5, v0.13.7, v0.13.8); step 5 next, after the go.
 
 ## 1. Review: what SlideMage writes today
 
@@ -132,7 +132,8 @@ the TeX engine found and its version, loaded plugins with their versions, and ev
 
 ### 3.5 UI
 
-* **Settings → General:** "Detailed debug log" switch, with "Open log folder" next to it.
+* **Settings → About (built there, not under General: it sits with the version and the update
+  check):** "Write a detailed debug log", the log folder with Open, and the debug report.
 * While it is on, a small indicator appears in the status bar, so it is not left on
   by mistake. Clicking the indicator opens the folder.
 * **Help → "Save debug report…":** a zip of the newest session logs, the error log, the
@@ -196,7 +197,10 @@ These are the points that would have spared us the ad-hoc traces:
    came with it, since removing `timing.jsonl` would otherwise have left `timing_summary.py` without input. The
    old files are deleted at every app start, not once: the files are no longer written, so it costs
    three checks for files that are not there.
-4. **UI:** the settings switch, the status-bar indicator, Help → Save debug report.
+4. **UI (done, v0.13.8):** the settings switch, the indicator, Help → Save debug report. SlideMage has no
+   status bar, so the indicator is a "Debug log on" chip after the AutoSave switch, next to the Help menu.
+   The report holds no compile log: those live in each run's temporary folder, and step 5 puts the
+   compile lines into the debug log itself.
 5. **Instrumentation** (section 5), area by area. Small, so it can be one PR or split
    into compile+preview and the rest.
 6. **Docs:** a section in the manual and a short note for plugin authors (`tools/debug_log.py` came in
