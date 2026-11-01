@@ -119,9 +119,12 @@
 %%    The alert and progress bar colours (SMColorD, SMColorC) follow the catalog's roles
 %%    \SMAlertTextColor and \SMProgressBarColor, whose defaults are the Gotham colours they had, and
 %%    a standout frame's text takes \SMStandoutTextColor when a template names one.
+%% 12. (v0.13.15) Two more footnote marker styles: \SMSetFootnoteMarkers{boxed} sets the number
+%%    in a rounded box, \SMSetFootnoteMarkers{dice} draws die faces, \SMSetFootnoteMarkers{symbols}
+%%    is the symbol sequence again. Each renews \SMFootnoteMark; the default is unchanged.
 %% ---------------------------------------------------------------------------
 %%
-\ProvidesExplPackage{beamerthemeSlideMage}{2026/10/31}{10.18.0}
+\ProvidesExplPackage{beamerthemeSlideMage}{2026/11/01}{0.13.15}
   {SlideMage beamer theme, MODIFIED version derived from beamertheme-gotham 1.2.5.a by Romain NOEL}
 
 
@@ -1812,6 +1815,88 @@ fg=normal~text.fg
 % below), which happens to already match this deck's "restart every slide"
 % footnote convention for the common case of one minipage per frame.
 \renewcommand{\thempfootnote}{\SMFootnoteMark{\value{mpfootnote}}}
+% Two more marker styles beside the symbols (v0.13.15): \SMSetFootnoteMarkers{boxed} sets the
+% footnote's number in a thin rounded box, a two-digit number in a wider box at full size;
+% \SMSetFootnoteMarkers{dice} draws die faces, 1 to 6 one die and above that the number in
+% bijective base 6 (digits 1 to 6, no zero), most significant die first: 7 is one-one, 12
+% one-six, 13 two-one, 42 six-six, 43 the first of three dice. \SMSetFootnoteMarkers{symbols}
+% goes back to \SMFnSymbol. Each renews the catalog's \SMFootnoteMark, so a template can say
+% it once after \input{SlideMage_setup} and a deck from any point on; inside a group it holds
+% to the group's end. \setfootnotesymbols changes the symbols only and leaves the style alone.
+% Both are TikZ drawings in units of the font's ex (Fira Sans has no dice, U+2680-2685): they
+% scale with the font, take the text colour and sit on the baseline. In the running text, a
+% font of 6pt or more, they are scaled to 75%; the footnote line's font is small enough as it
+% is. \number makes the counter's value digits while \thefootnote is expanded, for the
+% drawings are \protected and would otherwise read the counter only when the note is set.
+\protected\def\SM@FootnoteMarkerInText#1{%
+	\ifdim\f@size pt<6pt #1\else\scalebox{0.75}{#1}\fi}
+\protected\def\SM@FootnoteDiePip#1#2{\fill (#1*1.7,#2*1.7) circle (0.14);}
+\protected\def\SM@FootnoteDieFace#1{%
+	\draw[rounded corners=0.22ex] (0,0) rectangle (1.7,1.7);
+	\ifcase#1\or
+		\SM@FootnoteDiePip{0.5}{0.5}\or
+		\SM@FootnoteDiePip{0.27}{0.27}\SM@FootnoteDiePip{0.73}{0.73}\or
+		\SM@FootnoteDiePip{0.25}{0.25}\SM@FootnoteDiePip{0.5}{0.5}\SM@FootnoteDiePip{0.75}{0.75}\or
+		\SM@FootnoteDiePip{0.27}{0.27}\SM@FootnoteDiePip{0.73}{0.27}\SM@FootnoteDiePip{0.27}{0.73}%
+			\SM@FootnoteDiePip{0.73}{0.73}\or
+		\SM@FootnoteDiePip{0.27}{0.27}\SM@FootnoteDiePip{0.73}{0.27}\SM@FootnoteDiePip{0.5}{0.5}%
+			\SM@FootnoteDiePip{0.27}{0.73}\SM@FootnoteDiePip{0.73}{0.73}\or
+		\SM@FootnoteDiePip{0.27}{0.25}\SM@FootnoteDiePip{0.73}{0.25}\SM@FootnoteDiePip{0.27}{0.5}%
+			\SM@FootnoteDiePip{0.73}{0.5}\SM@FootnoteDiePip{0.27}{0.75}\SM@FootnoteDiePip{0.73}{0.75}%
+	\fi}
+% Die number #1 (0 the first) with face #2, 2.1ex further right than the one before.
+\protected\def\SM@FootnoteDieAt#1#2{\begin{scope}[xshift=#1*2.1ex]\SM@FootnoteDieFace{#2}\end{scope}}
+\protected\def\SM@FootnoteDice#1{\SM@FootnoteMarkerInText{%
+	\SM@FootnoteDiceFaces{#1}%
+	\tikz[baseline=0pt, x=1ex, y=1ex, line width=0.08ex, line cap=round]{\SM@FootnoteDiceList}}}
+\protected\def\SM@FootnoteBoxed#1{\SM@FootnoteMarkerInText{%
+	\tikz[baseline=(SMBoxedNumber.base)]{%
+		\node[draw, line width=0.07ex, rounded corners=0.22ex, inner xsep=0.28ex, inner ysep=0.2ex,
+			minimum width=1.3ex, minimum height=1.55ex, align=center] (SMBoxedNumber) {#1};}}}
+\ExplSyntaxOn
+\int_new:N \l__SM_footnote_dice_int
+\int_new:N \l__SM_footnote_die_int
+\tl_new:N \l__SM_footnote_dice_tl
+\tl_new:N \l__SM_footnote_dice_list_tl
+% \SM@FootnoteDiceFaces{n} sets \SM@FootnoteDiceList to the drawing of n's dice:
+% \SM@FootnoteDieAt{position}{face} for each digit, most significant first.
+\cs_new_protected:cpn { SM@FootnoteDiceFaces } #1
+	{
+		\int_set:Nn \l__SM_footnote_dice_int {#1}
+		\tl_clear:N \l__SM_footnote_dice_tl
+		\int_while_do:nNnn { \l__SM_footnote_dice_int } > { 0 }
+			{
+				\int_set:Nn \l__SM_footnote_die_int { \int_mod:nn { \l__SM_footnote_dice_int - 1 } { 6 } + 1 }
+				\tl_put_left:Nx \l__SM_footnote_dice_tl { { \int_use:N \l__SM_footnote_die_int } }
+				\int_set:Nn \l__SM_footnote_dice_int
+					{ ( \l__SM_footnote_dice_int - \l__SM_footnote_die_int ) / 6 }
+			}
+		\int_zero:N \l__SM_footnote_die_int
+		\tl_clear:N \l__SM_footnote_dice_list_tl
+		\tl_map_inline:Nn \l__SM_footnote_dice_tl
+			{
+				\tl_put_right:Nx \l__SM_footnote_dice_list_tl
+					{ \exp_not:c { SM@FootnoteDieAt } { \int_use:N \l__SM_footnote_die_int } {##1} }
+				\int_incr:N \l__SM_footnote_die_int
+			}
+		\cs_set_eq:cN { SM@FootnoteDiceList } \l__SM_footnote_dice_list_tl
+	}
+% \SMSetFootnoteMarkers{symbols|boxed|dice}: see above.
+\cs_new_protected:Npn \SMSetFootnoteMarkers #1
+	{
+		\str_case:nnF {#1}
+			{
+				{ symbols } { \cs_set:Npn \SMFootnoteMark ##1 { \SMFnSymbol {##1} } }
+				{ boxed } { \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteBoxed } { \number ##1 } } }
+				{ dice } { \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteDice } { \number ##1 } } }
+			}
+			{
+				\PackageError { beamerthemeSlideMage }
+					{ Unknown~footnote~marker~style~`#1' }
+					{ \string\SMSetFootnoteMarkers\space takes~symbols,~boxed~or~dice. }
+			}
+	}
+\ExplSyntaxOff
 % Every footnote goes to the frame's own footnote block, also from inside a
 % minipage/column (beamer's class option "framefootnotes", i.e. \footnote
 % defaults to [frame]) -- 2026-10-01, direct instruction ("one footnote is
