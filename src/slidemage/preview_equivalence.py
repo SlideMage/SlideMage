@@ -104,7 +104,7 @@ AUDITED_FRAMEWORK = {
     # tools/calibrate_font_profile.py --new) and the second shipped template SlideMage_template_greyscale.tex (catalog
     # settings only). Re-audited: no version, footer-hide or deck-label rule entered any of them; the frame footer and
     # its deck-version text are unchanged.
-    "SlideMage_setup.tex": "8c9d131f5e005b7e7796995b9a2d77f13f5cb7f82df3ca762484e3fcd32ce1ba",
+    "SlideMage_setup.tex": "f7a529daebb667dfcf7bbf7e4365c6e57976335d68b193af2d81d109d09cb09d",
     "SlideMage_layout_fira.tex": "2e623934349b3492a501ef2610308567ae4d681a0ba4256edc9b926861d20701",
     "SlideMage_layout_lmsans.tex": "a7b6eb2497194fc7298f28073e6aadae821d0d13f7074deb3f3b3e3d3af97036",
     # v10.16.0 (step 16): base and theme comments no longer name institution templates (comments only; no rule
@@ -114,7 +114,7 @@ AUDITED_FRAMEWORK = {
     # \input of it is skipped. Re-audited: the macros file is the project's, unknown content as before, and loads at
     # the same place in the preamble; the wrapper only drops that one \input and passes every other through; no
     # version, footer-hide or deck-label rule entered the base.
-    # v0.13.8: the base sets one more length, \SMContentHeight, from \paperheight and the two content margins.
+    # v0.13.18: the base sets one more length, \SMContentHeight, from \paperheight and the two content margins.
     # Re-audited: a length only, no version, footer-hide or deck-label rule entered the base.
     "SlideMage_base.tex": "9210f37055d458f03f7bf8b26aa570a35b9e4e606d15a5369f641b4df9ff1160",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
@@ -128,7 +128,11 @@ AUDITED_FRAMEWORK = {
     # footer-hide or deck-label rule, and the loading order is the old one (after the base, before the deck).
     "SlideMage_citation_default.tex": "7756b1392cb8f5dbe17ba1397923c065179af44159ca3311d71f8dc487045349",
     "SlideMage_bibliography_default.tex": "d46cc2911724240bedc7d7f49391dfc9ce3c100e4a4a710897a970040c1aa076",
-    "beamerthemeSlideMage.sty": "ab6168a5052e6c7aeede8e162a970360c942528bbbc2403d7309d69a3c951ffb",
+    # v0.13.15: two more footnote marker styles. The theme's \SMSetFootnoteMarkers{symbols|boxed|dice} renews the
+    # catalog's \SMFootnoteMark with the symbols, a number in a rounded box or TikZ dice (the setup layer's comment
+    # says so; its code is unchanged). Re-audited: markers only, drawn the same in every view; no version, footer-hide
+    # or deck-label rule entered the theme or the setup layer.
+    "beamerthemeSlideMage.sty": "9006631fd64bae9062ff54fcf22db8001b4a15887d399005dca932868d22b869",
     "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",

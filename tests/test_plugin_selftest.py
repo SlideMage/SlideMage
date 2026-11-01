@@ -103,3 +103,16 @@ def test_missing_plugin_api_module_fails_selftest(monkeypatch, capsys):
     assert selftest.run() == 1
     assert "plugin_api's module slidemage.no_such_module does not import" in capsys.readouterr().out
 
+
+
+def test_modules_that_refuse_windows_are_not_listed_there(monkeypatch):
+    """crypt (Python 3.12) is found on Windows but refuses to import: listed, it failed the release build's
+    self-test, and v0.13.9 and v0.13.10 lost their Windows downloads."""
+    import importlib.util
+    import sys
+
+    from slidemage.plugins import selftest
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "stdlib_module_names", frozenset({"crypt", "curses", "json", "pty", "tty"}))
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())      # as if each were there
+    assert selftest.bundled_stdlib_modules() == ["json"]

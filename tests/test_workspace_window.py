@@ -678,8 +678,13 @@ def test_the_bib_is_sorted_when_it_is_opened_and_when_it_is_left(window, tmp_pat
     assert sorted_ == [True] and window.centre.source.current.path == bib
     window._on_edit_bib()                                   # already open: nothing to sort under it
     assert sorted_ == [True]
-    window.centre.source.show_path(None)                    # leaving the clean buffer closes it
-    assert sorted_ == [True, True]
+    window.centre.show_slide_tab()                          # leaving its tab keeps it open: nothing sorted yet
+    assert sorted_ == [True] and window.centre.source.file_for(bib) is not None
+    window.centre.close_tab(window.centre.tabs.tab_for(bib))      # its tab is closed: sorted again
+    assert sorted_ == [True, True] and window.centre.source.file_for(bib) is None
+    window._on_edit_bib()                                   # a new tab: sorted when it opens, once more when closed
+    window.centre.close_active_tab()
+    assert sorted_ == [True, True, True, True]
 
 
 def test_leaving_the_images_page_saves_a_pending_edit_and_opening_a_slide_leaves_it(window, monkeypatch):
@@ -717,11 +722,12 @@ def test_clicking_the_selected_row_after_an_explicit_file_goes_back_to_the_slide
     window.state.set_mode("preview")
     window.state.set_focused_slide(slide.name.split("-", 1)[0])
     window.open_slide_editor(slide, keep_mode=True)
-    window.open_slide_editor(window.project.bibliography_path, keep_mode=True)       # an explicit file
-    assert window.centre._path == window.project.bibliography_path
+    window.open_slide_editor(window.project.bibliography_path, keep_mode=True)       # an explicit file: a tab, Source alone
+    assert window.centre._path == window.project.bibliography_path and window.state.mode == "source"
     window.open_slide_editor(slide, keep_mode=True)       # a click on the row that is still selected
     assert window.centre._path == slide and window.state.mode == "preview"
     assert window.centre.preview._target.source_path == slide
+    assert window.centre.tabs.tab_for(window.project.bibliography_path) is not None     # the file's tab stays open
 
 
 def test_the_slide_lists_images_entry_lands_on_that_slides_images(window, monkeypatch):
@@ -1341,3 +1347,167 @@ def test_without_ai_the_editor_and_manual_images_remain_available(window):
     assert window.assistant.isHidden()
     assert window.commands["images"].visible(window)
     assert not window.commands["ai:setup"].visible(window)
+
+
+# -- the centre's tabs in the window (docs/plans/centre-tabs.md, step 1) --------------------------------
+
+@pytest.fixture
+def tabbed(window, tmp_path, monkeypatch):
+    """The window on a scratch project with the deck's source and SlideMage.bib open in tabs (the slide tab first)."""
+    bib = tmp_path / "SlideMage.bib"
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    deck_path = tmp_path / "course.tex"
+    deck_path.write_text("\\begin{document}\n\\end{document}\n", encoding="utf-8")
+    deck = make_deck("course", ["course"])
+    deck.path = deck_path
+    window.project = ProjectContext.at(tmp_path)
+    edits = []
+    monkeypatch.setattr(window, "after_deck_edit", lambda *args, **kwargs: edits.append(args))
+    window.open_deck_source_editor(deck)
+    window._on_edit_bib()
+    return SimpleNamespace(deck=deck_path, bib=bib, edits=edits)
+
+
+def test_the_mode_switch_shows_preview_split_and_details_disabled_with_a_reason_on_a_file_that_is_no_slide(window, tabbed):
+    modes = window.topbar._modes
+    assert window.state.mode == "source" and modes.current() == "source"
+    for mode in ("preview", "split", "details"):
+        button = modes._buttons[mode]
+        assert not button.isEnabled() and "no slide" in button.toolTip() and "slide tab" in button.toolTip()
+        button.click()                                              # a disabled segment does nothing
+    assert window.state.mode == "source" and modes._buttons["source"].isEnabled()
+    window.centre.show_slide_tab()
+    assert all(modes._buttons[m].isEnabled() for m in ("preview", "split", "details"))
+    assert all("no slide" not in modes._buttons[m].toolTip() for m in modes._buttons)
+    window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))
+    assert not modes._buttons["preview"].isEnabled()                    # and again for the next file tab
+    window.topbar._apply_density("narrow")                              # relabelling keeps the reason
+    assert not modes._buttons["split"].isEnabled() and "no slide" in modes._buttons["split"].toolTip()
+
+
+def test_no_command_gets_around_the_source_alone_rule(window, tabbed):
+    for mode in ("preview", "split", "details"):
+        assert not window.commands[f"mode:{mode}"].enabled(window)
+        assert not window.commands.run(f"mode:{mode}", window)
+    assert window.commands["mode:source"].enabled(window)
+    assert not window.commands["render_buffer"].enabled(window)
+    window.centre.render_buffer()                                       # Ctrl+Enter and Ctrl+R end here
+    window.state.set_mode("details")                                    # whatever else asks for a mode
+    assert window.state.mode == "source" and not window.centre.preview.isVisibleTo(window.centre)
+    window.centre.show_slide_tab()
+    assert window.commands["mode:preview"].enabled(window) and window.commands["render_buffer"].enabled(window)
+
+
+def test_a_deck_source_saved_after_switching_tabs_still_goes_through_the_deck_edit_pipeline(window, tabbed):
+    centre = window.centre
+    file = centre.source.file_for(tabbed.deck)
+    centre.show_slide_tab()
+    centre.tabs.activate(centre.tabs.tab_for(tabbed.bib))
+    centre.tabs.activate(centre.tabs.tab_for(tabbed.deck))
+    window.reload_decks()                                               # a rescan of the decks keeps the tab on show
+    assert centre.tabs.active.path == tabbed.deck
+    file.editor.insertPlainText("% hand edit\n")
+    assert centre.source.save()
+    assert [args[:2] for args in tabbed.edits] == [(tabbed.deck, "Edited course's source directly")]
+
+
+def test_the_tab_commands_are_in_the_view_menu_with_their_keys(window, tabbed):
+    view = menu_actions(filled_menu(window, "View"))
+    for command_id, keys in (("tab:next", "Ctrl+Tab"), ("tab:previous", "Ctrl+Shift+Tab"), ("tab:close", "Ctrl+W")):
+        assert window.commands[command_id].shortcut == keys
+        assert view[command_id].isEnabled() and view[command_id].text().endswith(
+            "\t" + QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText))
+    window.centre.close_active_tab()
+    window.centre.close_active_tab()
+    view = menu_actions(filled_menu(window, "View"))
+    assert not view["tab:next"].isEnabled() and not view["tab:close"].isEnabled()      # only the slide tab is left
+
+
+def test_ctrl_w_closes_the_file_tab_and_ctrl_tab_cycles_even_with_the_focus_in_the_editor(window, tabbed, qapp):
+    window.resize(1600, 900)
+    window.show()
+    qapp.processEvents()
+    window.activateWindow()
+    centre = window.centre
+    deck_tab, bib_tab = centre.tabs.tab_for(tabbed.deck), centre.tabs.tab_for(tabbed.bib)
+
+    def press(keys):
+        if centre.source.current is not None and centre.source.isVisibleTo(centre):
+            centre.source.current.editor.setFocus()
+        qapp.processEvents()
+        QTest.keySequence(qapp.focusWidget() or window, QKeySequence(keys))
+        qapp.processEvents()
+
+    press("Ctrl+Tab")                                                   # bib, deck, slide: the deck was used before
+    assert centre.tabs.active is deck_tab and centre.path == tabbed.deck
+    centre.end_tab_cycle()                                              # (a test sends no Ctrl release)
+    press("Ctrl+Shift+Tab")                                             # now deck, bib, slide: the least recently used
+    assert centre.tabs.active is centre.tabs.slide_tab
+    centre.end_tab_cycle()
+    press("Ctrl+W")                                                     # nothing on the slide tab
+    assert len(centre.tabs.tabs) == 3 and centre.tabs.active is centre.tabs.slide_tab
+    centre.tabs.activate(bib_tab)
+    editor = centre.source.current.editor
+    editor.setPlainText("a\nb\nc\n")
+    editor.selectAll()
+    press("Ctrl+Tab")                                                   # with several lines selected: no indent
+    assert centre.tabs.active is not bib_tab and "\t" not in editor.toPlainText()
+    centre.end_tab_cycle()
+    centre.tabs.activate(deck_tab)
+    press("Ctrl+W")
+    assert centre.tabs.tab_for(tabbed.deck) is None and len(centre.tabs.tabs) == 2
+
+
+def test_closing_the_window_counts_the_unsaved_edits_of_a_tab_out_of_view(window, tabbed, monkeypatch):
+    centre = window.centre
+    layout_settings.set("autosave", False)
+    centre.tabs.activate(centre.tabs.tab_for(tabbed.bib))
+    centre.source.current.editor.insertPlainText("% not saved\n")
+    centre.show_slide_tab()
+    assert [f.path for f in centre.source.dirty_files()] == [tabbed.bib] and window.state.dirty
+    asked = []
+    monkeypatch.setattr(window_module.QMessageBox, "question",
+                        lambda *args, **kwargs: asked.append(args[2]) or window_module.QMessageBox.StandardButton.Cancel)
+    assert not window._resolve_dirty_edits()
+    assert asked and "1 file that could not be saved" in asked[0]
+
+
+def test_the_slide_lists_preview_command_leaves_a_file_tab_for_the_slide_tab(window, tabbed):
+    window.state.set_focused_slide("aaa")
+    window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))      # focused already: no focus signal
+    window.slide_list._run("preview", [SimpleNamespace(call=SimpleNamespace(id="aaa"), key=None)])
+    assert window.centre.tabs.active is window.centre.tabs.slide_tab and window.state.mode == "preview"
+    assert window.centre.tabs.tab_for(tabbed.bib) is not None
+
+
+def test_a_slide_opened_with_tab_gets_a_tab_and_the_focus_and_the_chat_stay_where_they_were(window):
+    first, second = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.open_slide_editor(first)
+    focused = window.state.focused_slide
+    window.open_slide_editor(second, tab=True)
+    tab = window.centre.tabs.active
+    assert tab.kind == "file" and tab.slide and tab.path == second
+    assert window.state.focused_slide == focused and window.centre._slide_path == first
+    workspace = window.assistant.workspace
+    workspace.begin_request()                                       # what the chat takes as "this slide"
+    assert workspace.context().path == second and workspace.context().slide_id == second.name.split("-", 1)[0]
+    window.centre.show_slide_tab()
+    workspace.begin_request()
+    assert workspace.context().path == first and workspace.context().slide_id == focused
+
+
+def test_the_live_render_follows_the_slide_on_show_not_a_slide_in_a_background_tab(window, monkeypatch):
+    from slidemage import app_settings
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+
+    first, second = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.open_slide_editor(first)
+    window.open_slide_editor(second, tab=True)
+    window.state.set_mode("split")
+    renders = []
+    monkeypatch.setattr(window.centre.preview, "render_after_save", lambda: renders.append(window.centre.preview.target_path))
+    monkeypatch.setattr(app_settings, "get", lambda ctx, key, default=None: key == LIVE_RENDER_SETTING_KEY or default)
+    window._live_render(first)                                      # saved in the background: the Preview shows the other
+    assert renders == []
+    window._live_render(second)
+    assert renders == [window.centre.preview.target_path] and window.centre.preview.target_path == second

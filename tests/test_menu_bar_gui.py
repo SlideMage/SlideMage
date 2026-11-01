@@ -87,7 +87,8 @@ def test_the_file_edit_housekeeping_and_help_menus(qapp):
         "housekeeping", "|", "#Cleanup", "empty_pdf", "remove_temp", "archive_unused", "|", "#Updating",
         "update_previews", "sync_links"]
     assert names(filled_menu(ctx, "Help")) == [
-        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "plugins", "project_compat"]
+        "open_manual", "shortcuts", "palette", "|", "version_history", "check_updates", "plugins", "project_compat", "|",
+        "debug_log", "debug_report", "open_logs"]
 
 
 def test_view_has_radio_groups_that_follow_the_state(window):
@@ -223,3 +224,59 @@ def test_autosave_is_an_on_off_switch_right_after_help(window):
     assert not source_file.autosave_on() and not switch.is_on()
     window.set_autosave(True)
     assert switch.is_on()
+
+
+def test_a_debug_log_chip_follows_the_autosave_switch_while_the_log_is_on(window, tmp_path, monkeypatch):
+    from slidemage import diagnostics
+    from slidemage.ui.workspace import debug_log_ui
+
+    monkeypatch.setenv(diagnostics.DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.delenv(diagnostics.DEBUG_ENV, raising=False)
+    diagnostics.setup("app")
+    window.resize(1600, 900)
+    QApplication.processEvents()
+    chip, switch = window.debug_chip, window.autosave_switch
+    assert not chip.isVisible() and window.commands["debug_log"].title(window) == "Turn debug log on"
+    width = switch.width()
+    window.commands.run("debug_log", window)
+    QApplication.processEvents()
+    assert diagnostics.debug_enabled() and chip.isVisible() and chip.parent() is switch
+    assert switch.width() > width and window.commands["debug_log"].title(window) == "Turn debug log off"
+    opened = []
+    monkeypatch.setattr(debug_log_ui.open_path, "open_in_default_app", opened.append)
+    chip.clicked.emit()
+    assert opened == [diagnostics.debug_log_path().parent]
+    debug_log_ui.set_debug(window, False)
+    QApplication.processEvents()
+    assert not chip.isVisible() and switch.width() == width
+
+
+def test_save_debug_report_writes_the_zip_where_chosen(window, tmp_path, monkeypatch):
+    import zipfile
+
+    from slidemage import diagnostics
+    from slidemage.ui.workspace import debug_log_ui
+
+    monkeypatch.setenv(diagnostics.DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.setenv(diagnostics.DEBUG_ENV, "1")
+    diagnostics.setup("app")
+    monkeypatch.setattr(debug_log_ui.QFileDialog, "getSaveFileName",
+                        lambda *args: (str(tmp_path / "out" / "report"), ""))
+    window.commands.run("debug_report", window)
+    target = tmp_path / "out" / "report.zip"
+    names = zipfile.ZipFile(target).namelist()
+    assert "report.txt" in names and any(n.startswith("debug/app_") for n in names)
+    assert window.toast.isVisible()
+    monkeypatch.setattr(debug_log_ui.QFileDialog, "getSaveFileName", lambda *args: ("", ""))
+    window.commands.run("debug_report", window)               # cancelled: nothing happens
+
+
+def test_changes_of_deck_view_and_language_are_in_the_debug_log(window, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="slidemage.ui")
+    window.state.set_language("DE" if window.state.language != "DE" else "EN")
+    other = next(view for view in ("instructor", "during-course") if view != window.state.view)
+    window.state.set_view(other)
+    said = [r.getMessage() for r in caplog.records if r.name == "slidemage.ui"]
+    assert any(s.startswith("language language=") for s in said) and f"view view={other}" in said

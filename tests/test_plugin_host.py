@@ -723,7 +723,7 @@ def test_chat_context_builds_fresh_tools_on_gui_and_exposes_full_focus(host, mon
         def close(self):
             calls.append("close")
     monkeypatch.setattr(plugin_surface, "GuiWorkspace", Workspace)
-    app = SimpleNamespace(centre=SimpleNamespace(path=path, is_dirty=lambda path: True))
+    app = SimpleNamespace(centre=SimpleNamespace(path=path, is_dirty=lambda path: True, shown_slide=("abc", None)))
     state = SimpleNamespace(project=host.ctx, focused_slide="abc", view="instructor", language="EN",
                             deck=SimpleNamespace(path=host.ctx.root / "decks/test.tex", is_test_deck=False))
     context = plugin_surface.ChatSurfaceContext(app, state, SimpleNamespace(), SimpleNamespace())

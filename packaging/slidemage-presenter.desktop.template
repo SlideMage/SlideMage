@@ -15,8 +15,9 @@
 Type=Application
 Name=SlideMage Presenter
 Comment=Present a PDF with the presenter view of SlideMage
-Exec=__DIR__/SlideMagePresenter
+Exec=__DIR__/SlideMagePresenter %f
 Icon=__DIR__/presenter-icon-256.png
 Terminal=false
 Categories=Office;Presentation;
+MimeType=application/pdf;
 StartupWMClass=SlideMage Presenter

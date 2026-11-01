@@ -17,8 +17,9 @@
   project's deck groups (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
   window's `open_deck_groups()`).
 * About: the version, the version history and the check for updates.
-* Plugins: the installed plugins (enable, update, remove), the catalogue's, the installed theme packages (remove)
-  and Install from file… for a plugin or a theme: ui/dialogs/settings_plugins.py. Last of SlideMage's own tabs; the plugins' tabs follow it.
+* Extensions: the installed theme and citation format packages, then the plugins: installed (enable, update, remove)
+  and the catalogue's: ui/dialogs/settings_plugins.py. `SettingsSheet(app, PLUGINS, focus=PLUGIN_LIST)` (the window's
+  `open_plugins()`) opens it at the plugins. Last of SlideMage's own tabs; the plugins' tabs follow it.
 The buttons of Project and About close the sheet first, then run their window command (`after`: the window runs
 it when the sheet has closed).
 
@@ -38,12 +39,13 @@ import shiboken6
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
-from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
+from ... import app_settings, diagnostics, slide_preview, slide_snapshot, slide_versioning, updater, version
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..workspace import debug_log_ui
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
 from .settings_ai import PROMPTS_KEY, AiPage, LanguageBlock as AiTab  # noqa: F401
@@ -56,6 +58,7 @@ GENERAL, AI, PRESENTATION, PROJECT, ABOUT, PLUGINS = range(6)     # the tabs, wh
 CLOUD, OLLAMA, PROMPTS = 100, 101, 102
 AI_SECTION_ALIASES = {CLOUD: "Anthropic API", OLLAMA: "Ollama", PROMPTS: PROMPTS_KEY}
 DECK_GROUPS = "deck_groups"       # a `focus` of the sheet: the Project tab with its deck groups list focused
+PLUGIN_LIST = "plugin_list"       # a `focus` of the sheet: the Extensions tab scrolled to its plugins
 LIVE_RENDER_SETTING_KEY = "live_render_on_autosave"    # app_settings: render the Preview after each autosave
 UPDATE_MODES = (
     (updater.UPDATE_MODE_OFF, "Off"), (updater.UPDATE_MODE_ASK, "Ask"), (updater.UPDATE_MODE_AUTO, "Automatic"))
@@ -324,6 +327,19 @@ class AboutTab(Page):
             "Open…")[0])
         layout.addWidget(_command_row(
             app, leave, "check_updates", "Check for updates", "Look for a newer release now.", "Check…")[0])
+        self.debug_check = QCheckBox("Write a detailed debug log")
+        self.debug_check.setChecked(diagnostics.debug_enabled())
+        self.debug_check.toggled.connect(lambda on: debug_log_ui.set_debug(app, on))
+        layout.addWidget(Field("Troubleshooting", self.debug_check))
+        layout.addWidget(caption(
+            "For finding out what went wrong: what SlideMage does, in files in its log folder, until you turn it "
+            "off here or in the Help menu. It holds file names and paths, but no slide text and no API keys. "
+            "Warnings and errors are always kept, in a small error log."))
+        layout.addWidget(_command_row(
+            app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open")[0])
+        layout.addWidget(_command_row(
+            app, leave, "debug_report", "Debug report",
+            "The logs in one zip file, saved where you choose, to send with a problem report.", "Save…")[0])
         layout.addStretch(1)
 
 
@@ -352,16 +368,19 @@ class SettingsSheet(ModalSheet):
         self.about = AboutTab(app, self.close_then)
         self.plugins = PluginsTab(app, self.close_then)
         self._ai_area = None
+        self._plugins_area = None
         self._scroll_key: str | None = None
         self.scrolled_to: str | None = None            # the AI section the sheet scrolled to when it opened
         for label, tab_widget in (("General", self.general), ("AI", self.ai),
                                   ("Presentation", self.presentation), ("Project", self.project_tab),
-                                  ("About", self.about), ("Plugins", self.plugins)):
+                                  ("About", self.about), ("Extensions", self.plugins)):
             if tab_widget is not None:
                 self.add_tab(label, tab_widget, scroll=True)
                 if tab_widget is self.ai:
                     self._ai_area = self._scrolling[-1]
-        # The plugins' tabs come last, after Plugins: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
+                elif tab_widget is self.plugins:
+                    self._plugins_area = self._scrolling[-1]
+        # The plugins' tabs come last, after Extensions: the indices of SlideMage's own tabs (PROJECT, ...) stay as they are.
         for plugin in session.active():
             for plugin_tab in plugin.contributions.settings_tabs:
                 self.add_tab(plugin_tab.title, self._plugin_page(plugin, plugin_tab), scroll=True)
@@ -375,6 +394,9 @@ class SettingsSheet(ModalSheet):
             self.scroll_to_section(self._scroll_key)
         if focus == DECK_GROUPS:
             self.project_tab.deck_groups.list.setFocus()
+        if focus == PLUGIN_LIST:
+            self._scroll_key = PLUGIN_LIST
+            self._scroll_now()
         self.reload_models()
 
     def set_current_tab(self, index: int) -> None:
@@ -399,6 +421,10 @@ class SettingsSheet(ModalSheet):
 
     def _scroll_now(self) -> None:
         # also run from a timer, which can fire after the sheet was closed and its widgets deleted
+        if self._scroll_key == PLUGIN_LIST:
+            if shiboken6.isValid(self._plugins_area):
+                self._plugins_area.verticalScrollBar().setValue(self.plugins.plugins_heading.y())
+            return
         if self._ai_area is not None and shiboken6.isValid(self._ai_area) and self._scroll_key in self.ai.sections:
             bar = self._ai_area.verticalScrollBar()
             bar.setValue(self.ai.sections[self._scroll_key].y())

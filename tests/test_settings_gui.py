@@ -76,7 +76,7 @@ def answer(monkeypatch, button_text):
 
 def test_the_sheet_has_a_tab_for_each_group_of_settings_and_a_sensible_width(qapp):
     sheet = open_sheet(qapp)
-    assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Plugins"]
+    assert tab_names(sheet) == ["General", "AI", "Presentation", "Project", "About", "Extensions"]
     sheet.show()
     qapp.processEvents()
     assert sheet.width() < 1000            # unwrapped notes once made this ~2200 px wide
@@ -425,3 +425,24 @@ def test_the_window_runs_what_the_sheet_leaves_after_it_has_closed(monkeypatch, 
 def test_about_shows_the_version(qapp):
     sheet = open_sheet(qapp, tab=ABOUT)
     assert any(label.text() == f"SlideMage {version.VERSION_NUMBER}" for label in sheet.about.findChildren(QLabel))
+
+
+def test_about_switches_the_debug_log_and_offers_its_folder_and_a_report(qapp, tmp_path, monkeypatch):
+    from slidemage import diagnostics
+
+    monkeypatch.setenv(diagnostics.DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.delenv(diagnostics.DEBUG_ENV, raising=False)
+    diagnostics.setup("app")
+    app = FakeApp()
+    sheet = open_sheet(qapp, app, tab=ABOUT)
+    assert not sheet.about.debug_check.isChecked()
+    sheet.about.debug_check.setChecked(True)
+    assert diagnostics.debug_enabled() and diagnostics.saved()
+    assert app.logged[-1].startswith("Debug log on: ")
+    sheet.about.debug_check.setChecked(False)
+    assert not diagnostics.debug_enabled() and app.logged[-1] == "Debug log off"
+    for text in ("Open", "Save…"):
+        sheet = open_sheet(qapp, app, tab=ABOUT)
+        next(b for b in sheet.about.findChildren(Button) if b.text() == text).click()
+        sheet.after()
+    assert [c[0] for c in app.calls[-2:]] == ["open_logs", "debug_report"]

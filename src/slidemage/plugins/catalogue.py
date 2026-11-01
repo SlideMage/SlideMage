@@ -11,13 +11,14 @@ The format is schema 1 of the website (PLUGINS_PLAN 2.9 and website section 5). 
 ignored, so the website can add fields without an update; a newer schema number raises CatalogueTooNew, because
 an older app cannot tell what the new fields mean. A plugin entry that breaks one of the checks is left out of the
 list, the rest of the catalogue still works. The last good copy is kept in plugins_dir()/.catalogue.json, so the
-Plugins tab can show something offline.
+Extensions tab can show something offline.
 
-No Qt here: plain functions, so the Plugins tab can run fetch() on a worker thread.
+No Qt here: plain functions, so the Extensions tab can run fetch() on a worker thread.
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.error
@@ -25,6 +26,7 @@ import urllib.request
 from dataclasses import dataclass
 from http.client import HTTPException
 
+from .. import diagnostics
 from ..fileio import atomic_write
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
@@ -45,7 +47,7 @@ _HTTPS_RE = re.compile(r"^https://\S+$")
 
 
 class CatalogueError(Exception):
-    """The catalogue could not be fetched or read; the message is a sentence the Plugins tab can show."""
+    """The catalogue could not be fetched or read; the message is a sentence the Extensions tab can show."""
 
 
 class CatalogueTooNew(CatalogueError):
@@ -221,7 +223,9 @@ def fetch(timeout: float = 10) -> Catalogue:
         catalogue_url(), headers={"Accept": "application/json", "User-Agent": USER_AGENT},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with diagnostics.timed(logging.getLogger("slidemage.plugins"), "GET", url=request.full_url) as info, \
+                urllib.request.urlopen(request, timeout=timeout) as response:
+            info["status"] = getattr(response, "status", None)
             raw = response.read(MAX_BYTES + 1)
     except (urllib.error.URLError, HTTPException, OSError, ValueError) as e:
         raise CatalogueError(f"Could not load the plugin list: {e}") from None

@@ -5,7 +5,7 @@
 SlideMage ships without plugins and works without them, so the sheet is an offer, never a gate: nothing is ticked
 (Claude sends slides to the cloud, Ollama does nothing without Ollama installed), the recommended plugins come
 first, and "Not now" is always there. The list is fetched when the sheet opens, on a thread; offline it says so
-and still offers "Install from file…". Installing reuses the Plugins tab's download and install steps
+and still offers "Install from file…". Installing reuses the Extensions tab's download and install steps
 (settings_plugins), one plugin after the other, and ends with "Restart now" because plugins load once, at start.
 
 `preselected` maps a plugin id to the reason it is ticked ("You have an Anthropic API key"): the migrations of
@@ -39,13 +39,13 @@ from .settings_plugins import (PLUGINS_PAGE, Job, download_release, install_down
 log = logging.getLogger(__name__)
 
 INTRO = ("SlideMage works without plugins. These add features; you can add or remove them later in "
-         "Settings → Plugins.")
+         "Settings → Extensions.")
 LOADING = "Loading the list of plugins…"
 OFFLINE = "The list of plugins could not be loaded."
 NEEDS_NEWER = "Needs a newer SlideMage"
 MIGRATION_TITLE = "These features are now plugins"
 MIGRATION_INTRO = ("These features used to be part of SlideMage and are now plugins. Install them to keep using "
-                   "them; you can add or remove plugins later in Settings → Plugins.")
+                   "them; you can add or remove plugins later in Settings → Extensions.")
 ALL_INSTALLED = "Every plugin of the list is installed."
 
 

@@ -151,6 +151,14 @@ def context_chip(target: PreviewTarget, view: str, mode: Optional[str], rendered
             f"This slide shows {why}: a render typesets it with the deck's context.")
 
 
+def _shown_occurrence(window, state=None):
+    """The occurrence key of the slide on show: a slide file tab's own, else the focused slide's."""
+    centre = getattr(window, "centre", None)
+    if hasattr(centre, "shown_occurrence"):
+        return centre.shown_occurrence
+    return getattr(state or getattr(window, "state", None), "focused_occurrence", None)
+
+
 def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str]]:
     """(target, view, language) for rendering the slide file `path` as the top bar says: in its own
     language when that is one of EN and DE, as the open deck calls it. None when `path` is no slide file."""
@@ -158,7 +166,7 @@ def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str
     language = own_language(path.name)
     language = language if language in TRANSLATION_LANGUAGES else state.language
     target = slide_target(window.project, state.deck, path, state.view, language,
-                          occurrence_key=getattr(state, "focused_occurrence", None))
+                          occurrence_key=_shown_occurrence(window))
     return None if target is None else (target, state.view, language)
 
 
@@ -2034,7 +2042,7 @@ class PreviewPane(Surface):
             workspace = self.app.assistant.workspace
             context = WorkspaceContext(deck=self.state.deck, slide_id=target.bare_id, path=target.source_path,
                                        view=self.state.view, language=self.language,
-                                       occurrence_key=self.state.focused_occurrence)
+                                       occurrence_key=_shown_occurrence(self.app, self.state))
             requests = workspace.prepare_preview_batch(target.source_path, saved=saved, context=context)
         except (OSError, ValueError, RuntimeError) as exc:
             self._batch_status = ''

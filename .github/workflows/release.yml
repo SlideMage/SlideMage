@@ -20,7 +20,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
-          git archive --format=tar.gz --prefix="SlideMage-${GITHUB_REF_NAME}/" -o "out/SlideMage-${GITHUB_REF_NAME}-source.tar.gz" HEAD
+          name="${GITHUB_REF_NAME//\//-}"      # a run by hand on a branch: fix/x would be a folder in the file name
+          git archive --format=tar.gz --prefix="SlideMage-${name}/" -o "out/SlideMage-${name}-source.tar.gz" HEAD
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -102,7 +103,8 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
           if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test exited with $($run.ExitCode)" }
           # The Claude Code terminal's programs start through these; up to v8.58.0 they were missing.
           foreach ($helper in 'OpenConsole.exe', 'winpty-agent.exe') {
@@ -120,13 +122,15 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru
+          $run = Start-Process -FilePath 'dist/SlideMage-folder/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
           if ($run.ExitCode -ne 0) { throw "SlideMage-folder --self-test --plugins exited with $($run.ExitCode)" }
       # A zip with one top-level folder, which the updater of a folder installation unpacks.
       - name: Package the folder
         run: |
           python -c "import os, shutil; os.makedirs('out', exist_ok=True); shutil.make_archive('out/${{ matrix.asset_name }}-folder', 'zip', 'dist', 'SlideMage-folder')"
       - name: Attach the folder to the release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: out/${{ matrix.asset_name }}-folder.zip
@@ -152,7 +156,8 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru
+          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
           if ($run.ExitCode -ne 0) { throw "SlideMage.exe --self-test exited with $($run.ExitCode)" }
       - name: Self-test the single file's plugin host (Linux)
         if: runner.os != 'Windows'
@@ -165,7 +170,8 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru
+          $run = Start-Process -FilePath 'dist/SlideMage.exe' -ArgumentList '--self-test', '--plugins' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
           if ($run.ExitCode -ne 0) { throw "SlideMage.exe --self-test --plugins exited with $($run.ExitCode)" }
 
       # PyInstaller produces one file (dist/SlideMage[.exe]) -- zipped so
@@ -190,6 +196,7 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "${{ matrix.binary_path }}" -DestinationPath "out/${{ matrix.asset_name }}.zip"
       - name: Attach the single file to the release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: out/${{ matrix.asset_name }}.zip
@@ -205,24 +212,26 @@ jobs:
   presenter:
     name: Presenter (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    env:
-      # The unpacked Presenter (the folder, or the .app) must stay below this many MiB. It is about 105 MiB on
-      # Windows; the limit is the guard against a stray import that brings QtWebEngine, the compiler or the
-      # workspace back (that would add several hundred MiB), not a target to fill.
-      PRESENTER_MAX_MIB: "130"
     strategy:
       fail-fast: false
       matrix:
         include:
+          # max_mib: the unpacked Presenter (the folder, or the .app) must stay below it. It is the guard against a
+          # stray import that brings QtWebEngine, the compiler or the workspace back (several hundred MiB more), not
+          # a target to fill. Measured: Windows 105, macOS 142 (v0.13.10), Linux 172 MiB (v0.13.12). The step lists
+          # the largest files, and the symbolic links on Linux: zipping would expand each into a full copy.
           - os: ubuntu-latest
             asset_name: SlideMagePresenter-linux
             bundle_path: dist/SlideMagePresenter
+            max_mib: 200
           - os: windows-latest
             asset_name: SlideMagePresenter-windows
             bundle_path: dist/SlideMagePresenter
+            max_mib: 130
           - os: macos-latest
             asset_name: SlideMagePresenter-macos
             bundle_path: dist/SlideMage Presenter.app
+            max_mib: 170
     steps:
       - uses: actions/checkout@v4
         with:
@@ -242,7 +251,7 @@ jobs:
           python-version: "3.12"
       - name: Qt runtime libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 xvfb libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0
       - run: pip install -e ".[build]"
       - name: Build SlideMage Presenter
         run: pyinstaller --noconfirm packaging/slidemage_presenter.spec
@@ -253,12 +262,22 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: dist/SlideMagePresenter/SlideMagePresenter --self-test
+      # The self-test only imports. This really starts the program on a virtual display: the start window opens through
+      # the xcb plugin, with the libraries the spec leaves out gone, and the program quits by itself (TIMING).
+      - name: Real start (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        env:
+          QT_QPA_PLATFORM: xcb
+          SLIDEMAGE_PRESENTER_TIMING: "1"
+        run: xvfb-run -a dist/SlideMagePresenter/SlideMagePresenter
       - name: Self-test (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 5
         shell: pwsh
         run: |
-          $run = Start-Process -FilePath 'dist/SlideMagePresenter/SlideMagePresenter.exe' -ArgumentList '--self-test' -Wait -PassThru
+          $run = Start-Process -FilePath 'dist/SlideMagePresenter/SlideMagePresenter.exe' -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest-out.txt -RedirectStandardError selftest-err.txt
+          Get-Content selftest-out.txt, selftest-err.txt -ErrorAction SilentlyContinue      # the program has no console of its own
           if ($run.ExitCode -ne 0) { throw "SlideMagePresenter --self-test exited with $($run.ExitCode)" }
       - name: Self-test (macOS)
         if: runner.os == 'macOS'
@@ -271,16 +290,22 @@ jobs:
         shell: bash
         env:
           BUNDLE: ${{ matrix.bundle_path }}
+          PRESENTER_MAX_MIB: ${{ matrix.max_mib }}
         run: |
           python - "$BUNDLE" "$PRESENTER_MAX_MIB" <<'PY'
           import os, sys
           root, limit = sys.argv[1], int(sys.argv[2])
-          total = 0
+          sizes = []
           for folder, _dirs, files in os.walk(root):      # symlinks (a macOS bundle has some) count as the links they are
               for name in files:
-                  total += os.lstat(os.path.join(folder, name)).st_size
-          mib = total / 2**20
-          print(f"{root}: {mib:.1f} MiB (limit {limit} MiB)")
+                  path = os.path.join(folder, name)
+                  sizes.append((os.lstat(path).st_size, os.path.relpath(path, root)))
+          mib = sum(size for size, _path in sizes) / 2**20
+          print(f"{root}: {mib:.1f} MiB (limit {limit} MiB); the largest files:")
+          for size, path in sorted(sizes, reverse=True)[:20]:
+              print(f"  {size / 2**20:7.1f} MiB  {path}")
+          links = [path for _size, path in sizes if os.path.islink(os.path.join(root, path))]
+          print(f"{len(links)} symbolic links", links[:10])
           if mib > limit:
               print(f"::error::The unpacked Presenter is {mib:.1f} MiB, over the limit of {limit} MiB")
               sys.exit(1)

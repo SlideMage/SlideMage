@@ -226,6 +226,12 @@ Done in v0.13.6:
   update from a frozen build against a real release. Intel Macs are not covered (the `macos-latest` runner is
   Apple silicon).
 
+Changed in v0.13.12: the Presenter looks for updates at every start, not once a day, which hid a new release for up
+to 24 hours. The Linux build went from 338 to 172 MiB unpacked: no top-level symlinks (zipping expanded them into 106
+MiB of copies; they cannot stay links, because installed updaters unpack with zipfile), none of the 24 MiB of libraries
+that only the dropped GTK theme needed, and stripped debug symbols. ICU has to stay: libQt6Core links it. release.yml
+really starts the Linux build on a virtual display. SlideMage's own Linux folder zip has the same duplication.
+
 ### 5. Presenter-only polish (optional, later)
 
 **5a. "Open with SlideMage Presenter" for PDFs.** Double-clicking a PDF or right-click → Open with should be able to
@@ -239,6 +245,18 @@ start the Presenter.
   rights are needed and the default PDF viewer is not changed: it only adds the Presenter to Open with. A second
   button removes it. If the folder is moved, the keys point to the old place, so the start window re-checks them.
 - Linux: the `.desktop` file gets `MimeType=application/pdf;`.
+
+*Done in v0.13.10* (origin/develop was at v0.13.7 when this was written, hence the next patch).
+`presentation/open_with.py` (no Qt; registry, file system and notification are injectable) and a row in the start
+window, shown only in a frozen Windows or Linux build: a button reading Add, Remove or Update (the entry points to
+another copy) and a caption. Windows keys, all under HKCU\Software\Classes: the ProgID `SlideMage.Presenter.pdf`
+(description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `FriendlyAppName`), the value
+`SlideMage.Presenter.pdf` under `.pdf\OpenWithProgids` (REG_NONE, no data) and `Applications\SlideMagePresenter.exe`
+(`FriendlyAppName`, command, `SupportedTypes\.pdf`); then `SHChangeNotify`. Linux: `slidemage-presenter.desktop`
+in `$XDG_DATA_HOME/applications`, written from the text embedded in the module (the packaging template, for manual
+installs, got `MimeType` and `%f` and a test keeps the two in step), then `update-desktop-database` if present.
+Not verified: that Explorer or a Linux file manager actually lists the Presenter (needs the real registry or a
+real desktop; the tests use fakes).
 
 **5b. Slide numbers and reveal steps without a project.** A beamer slide with reveals (`\pause`, `\only<2>`, …)
 becomes several PDF pages, one per step. When SlideMage presents a deck from a project, it reads beamer's `.nav`

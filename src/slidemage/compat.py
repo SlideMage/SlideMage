@@ -286,7 +286,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     id="ai-plugins", since="v0.9.1.0", severity=LAYOUT,
     title="AI routes are provided by plugins",
     description="Claude and Ollama AI features now require their respective plugins. Existing settings remain available.",
-    fix="Install the Claude or Ollama plugin from Settings → Plugins.", detect=_detect_ai_settings,
+    fix="Install the Claude or Ollama plugin from Settings → Extensions.", detect=_detect_ai_settings,
 ), compat_names.CHANGE, compat_own_theme.CHANGE, Change(
     id="derived-layout-names",
     since="v0.10.7.0",

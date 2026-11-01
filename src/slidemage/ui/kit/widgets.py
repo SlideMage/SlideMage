@@ -388,6 +388,8 @@ class SegmentedControl(QFrame):
         self._buttons: dict[str, QPushButton] = {}
         self._badges: dict[str, QLabel] = {}
         self._compact = False
+        self._tooltips: dict[str, str] = {}
+        self._why_not: dict[str, str] = {}      # segment -> why it cannot be chosen now (set_unavailable)
         for key, label in items:
             button = QPushButton(label)
             button.setCheckable(True)
@@ -457,11 +459,23 @@ class SegmentedControl(QFrame):
         `compact` also drops the native style's minimum text-button width.
         """
         self._compact = compact
+        self._tooltips = dict(tooltips) if tooltips else {}
         for key, label in labels.items():
             self._buttons[key].setText(label)
-            self._buttons[key].setToolTip(tooltips.get(key, "") if tooltips else "")
-            self._buttons[key].setAccessibleName(label or (tooltips.get(key, "") if tooltips else ""))
+            self._buttons[key].setToolTip(self._why_not.get(key) or self._tooltips.get(key, ""))
+            self._buttons[key].setAccessibleName(label or self._tooltips.get(key, ""))
             self._fit_button(key)
+
+    def set_unavailable(self, key: str, why: str | None) -> None:
+        """Grey out a segment that cannot be chosen now, with `why` as its tooltip; None makes it available again
+        (and gives back the tooltip set_labels() gave it)."""
+        if why:
+            self._why_not[key] = why
+        else:
+            self._why_not.pop(key, None)
+        button = self._buttons[key]
+        button.setEnabled(not why)
+        button.setToolTip(why or self._tooltips.get(key, ""))
 
     def _fit_button(self, key: str) -> None:
         button = self._buttons[key]

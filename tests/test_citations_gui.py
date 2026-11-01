@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Settings → Plugins with citation format packages (citations.py): the Citation formats list with Remove, and
+"""Settings → Extensions with citation format packages (citations.py): the Citation formats list with Remove, and
 Install from file… taking a .smcite (its citation.toml shown first, a .sha256 beside it checked)."""
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def answer(monkeypatch, yes):
 
 
 def test_no_format_is_a_caption_and_the_github_button_is_there(tab):
-    assert tab.citation_rows == {} and tab.citation_github_button.text().startswith("Add citation format")
+    assert tab.citation_rows == {} and tab.citation_github_button.text() == "Add from GitHub…"
 
 
 def test_install_from_file_takes_a_package_after_showing_its_manifest(tab, package, monkeypatch):

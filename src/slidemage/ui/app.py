@@ -11,17 +11,18 @@ from pathlib import Path
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from .. import splash
+from .. import diagnostics, splash
 from ..plugins import installer, loader, session
 from ..plugins.host import PluginHost
 from ..project import ProjectContext
 from .plugin_ui import HOST_UI
 from .kit.fonts import load_fonts
 from .kit.theme import ThemeManager
-from .workspace import maintenance
+from .workspace import greeting, maintenance
 from .workspace.window import WorkspaceWindow
 
 ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "icon.ico"
+_startup = logging.getLogger("slidemage.startup")
 
 
 def load_plugins(project_context: ProjectContext) -> None:
@@ -30,9 +31,6 @@ def load_plugins(project_context: ProjectContext) -> None:
     try:
         installer.cleanup()
         session.set_loaded(loader.load_all(lambda manifest: PluginHost(manifest, project_context, ui=HOST_UI)))
-        log = logging.getLogger(__name__)
-        for plugin in session.loaded():
-            log.debug("plugin %s %s: %s", plugin.id, getattr(plugin.manifest, "version", "?"), plugin.state)
     except Exception:
         logging.getLogger(__name__).exception("loading the plugins failed; starting without them")
         session.set_loaded([])
@@ -40,13 +38,17 @@ def load_plugins(project_context: ProjectContext) -> None:
 
 def main(project_context: ProjectContext) -> None:
     app = QApplication.instance() or QApplication(sys.argv)
-    load_fonts()
+    with diagnostics.timed(_startup, "fonts"):
+        load_fonts()
     app.setWindowIcon(QIcon(str(ICON_PATH)))
-    theme = ThemeManager(project=project_context)
-    theme.apply()
-    load_plugins(project_context)
-    window = WorkspaceWindow(theme, project_context)
-    window.show()
+    with diagnostics.timed(_startup, "theme"):
+        theme = ThemeManager(project=project_context)
+        theme.apply()
+    with diagnostics.timed(_startup, "plugins"):
+        load_plugins(project_context)
+    with diagnostics.timed(_startup, "window"):
+        window = WorkspaceWindow(theme, project_context)
+        window.show()
     splash.close()
     maintenance.schedule_startup_update_check(window)
     maintenance.schedule_plugin_update_check(window)
@@ -56,5 +58,6 @@ def main(project_context: ProjectContext) -> None:
     maintenance.schedule_course_hint(window)
     maintenance.schedule_compat_check(window)
     maintenance.schedule_bundled_copies_check(window)
+    greeting.schedule_greeting(window)
     sys.exit(app.exec())
 

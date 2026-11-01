@@ -419,6 +419,22 @@ def test_a_plain_click_opens_the_slide_without_leaving_the_preview(make_list):
     assert [p.name for p in window.opened] == ["bbb-Two-current.tex", "bbb-Two-current.tex"]
     assert window.open_kwargs == [{"keep_mode": True}, {"keep_mode": False}]
 
+def test_open_in_new_tab_asks_for_a_tab_of_that_row_through_the_command_route(make_list):
+    """centre-tabs step 2, D0: the slide menu's Open in new tab is a registry command like the others; it passes the
+    row it was opened from, so the tab previews the occurrence the user clicked."""
+    slide_list, window, _path = make_list("\\slide{aaa-First}\n\\slide{bbb-Second}\n\\slide{aaa-First}\n")
+    focus(slide_list, "bbb")
+    menu = slide_list._slide_menu()
+    assert "slide:open_tab" in keys_of(menu)
+    assert _entry(menu, "slide:open_tab")[2] == "Open in new tab"
+    window.commands.run("slide:open_tab", window)
+    row = slide_list.targets()[0]
+    assert [p.name for p in window.opened] == ["bbb-Second-current.tex"]
+    assert window.open_kwargs == [{"keep_mode": False, "tab": True, "occurrence": row.key}]
+    # not offered for several slides: the bulk menu has no single slide to open
+    assert "slide:open_tab" not in keys_of(slide_list._bulk_menu())
+
+
 def test_alt_up_and_down_move_the_slide_past_a_slide_or_a_section_marker(make_list):
     slide_list, _window, path = make_list(FRONT_AND_SECTIONS)
     focus(slide_list, "ccc")
@@ -558,7 +574,7 @@ def test_the_slide_menu_offers_every_way_to_call_a_slide(make_list, monkeypatch,
     focus(slide_list, "aaa")
     menu = slide_list._slide_menu()
     expected = [
-        "slide:open", "slide:preview", "slide:images", "slide:reviewed",
+        "slide:open", "slide:preview", "slide:open_tab", "slide:images", "slide:reviewed",
         "variant:slide", "variant:slidefinal", "variant:omitslide", "variant:conditionalslide",
         "variant:slidestep", "variant:slideversion:1-0-0", "variant:omitslideversion:1-0-0",
         "slide:visible:instructor", "slide:visible:during-course", "slide:visible:after-course",

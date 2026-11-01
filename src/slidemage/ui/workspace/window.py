@@ -47,7 +47,7 @@ from .. import layout_settings, plugin_ui
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGINS, PROJECT, SettingsSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGIN_LIST, PLUGINS, PROJECT, SettingsSheet
 from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
@@ -67,6 +67,7 @@ from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
 from .background_previews import BackgroundPreviews
 from .compile_display import CompileDisplay
+from . import debug_log_ui
 from .autosave_switch import AutoSaveSwitch
 from .menus import build_menu_bar
 from .palette import CommandPalette
@@ -176,7 +177,7 @@ class WorkspaceWindow(QMainWindow):
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
             edit_slide_text=lambda path, change, **kw: self.centre.edit_slide_text(path, change, **kw),
-            save_source=lambda: self.centre.source.save(),
+            save_source=lambda: self.centre.save(),
             restore_version=lambda path: self.centre.restore_version(path),
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
             edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
@@ -229,6 +230,8 @@ class WorkspaceWindow(QMainWindow):
         menu_bar = build_menu_bar(self, self)
         self.setMenuBar(menu_bar)
         self.autosave_switch = AutoSaveSwitch(self.set_autosave)
+        self.debug_chip = debug_log_ui.DebugChip(self)
+        self.autosave_switch.add_trailing(self.debug_chip)
         if menu_bar.isNativeMenuBar():
             self.topbar.host_autosave(self.autosave_switch)     # macOS: the menu bar is not in the window
         else:
@@ -244,6 +247,7 @@ class WorkspaceWindow(QMainWindow):
         self.model_choices_changed.connect(lambda _route: self.refresh_ai_models())
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
+        debug_log_ui.log_state_changes(self.state)
         self.state.deck_changed.connect(self._remember_deck)
         self.state.dirty_changed.connect(self._on_dirty_changed)
         # An autosave changes lint errors, stale previews and versions, but a rebuild per write while
@@ -257,12 +261,13 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
+        self.centre.source_only_changed.connect(self.topbar.set_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.source.save)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.save)
         # Ctrl+Enter renders the editor's buffer, saved or not, and shows the page (Ctrl+R in the Source view too).
         for sequence in ("Ctrl+Return", "Ctrl+Enter"):
             QShortcut(QKeySequence(sequence), self).activated.connect(self.centre.render_buffer)
@@ -446,14 +451,17 @@ class WorkspaceWindow(QMainWindow):
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
-        *, keep_mode: bool = False,
+        *, keep_mode: bool = False, tab: bool = False, occurrence: Optional[tuple] = None,
     ) -> None:
         """Show a file in the Source view: a slide, a deck's own source or SlideMage.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
-        the Preview on show instead of switching to the Source view."""
+        the Preview on show instead of switching to the Source view. `tab` asks for a tab of its own: a file
+        that is no slide always gets one (the deck source, SlideMage.bib and test-slides.tex say so too), a
+        slide's file gets one if asked (search, the slide list's Open in new tab, a frozen version from Details), else
+        it is the slide tab's; `occurrence` is the deck row (SlideRow.key) the slide was opened from."""
         returning = self.stack.currentWidget() is not self.centre
         self.stack.setCurrentWidget(self.centre)
-        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode)
+        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode, tab=tab, occurrence=occurrence)
         if returning:
             self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
 
@@ -639,9 +647,13 @@ class WorkspaceWindow(QMainWindow):
         """A citation package was installed or updated: re-render the previews."""
         maintenance.on_citation_installed(self, key)
 
-    def open_plugins(self) -> None:
-        """Help → Plugins…: Settings on its Plugins tab."""
+    def open_extensions(self) -> None:
+        """Help → Extensions…: Settings on its Extensions tab."""
         self.open_settings(PLUGINS)
+
+    def open_plugins(self) -> None:
+        """Settings on its Extensions tab, at the plugins (a plugin to install, a plugin update)."""
+        self.open_settings(PLUGINS, focus=PLUGIN_LIST)
 
     def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
         sheet = SettingsSheet(self, tab, focus=focus)
@@ -780,6 +792,7 @@ class WorkspaceWindow(QMainWindow):
             on_saved=lambda previous_text: self.after_deck_edit(
                 deck.path, f"Edited {deck.name}'s source directly", previous_text=previous_text
             ),
+            tab=True,
         )
 
     def _on_edit_bib(self) -> None:
@@ -798,7 +811,7 @@ class WorkspaceWindow(QMainWindow):
         _on_source_closed()."""
         if self.centre.source.file_for(self.project.bibliography_path) is None:
             bibliography.sort_entries(self.project.bibliography_path)
-        self.open_slide_editor(self.project.bibliography_path)
+        self.open_slide_editor(self.project.bibliography_path, tab=True)
 
     def _on_edit_test_slides(self) -> None:
         """"Tabs -> Edit test-slides.tex" -- opens decks/test-slides.tex in
@@ -807,7 +820,7 @@ class WorkspaceWindow(QMainWindow):
         if not path.is_file():
             QMessageBox.warning(self, "Edit test-slides.tex", f"{path} does not exist.")
             return
-        self.open_slide_editor(path)
+        self.open_slide_editor(path, tab=True)
 
     def open_add_slide_dialog(self, deck: Deck, insert_at: int, indent: str, **start) -> None:
         """The Add slide sheet for a place in `deck`; `start`: where, source, slide, target

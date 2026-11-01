@@ -26,7 +26,7 @@ from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
 from ..presentation import launch
 from ..text import plural
-from . import compare_rendered, compile_actions, deck_actions, maintenance
+from . import compare_rendered, compile_actions, deck_actions, debug_log_ui, maintenance
 from .menus import VIEW_LABELS
 from .panels import PANELS
 from ...ai import ai_profile, routes
@@ -46,6 +46,8 @@ MAC_KEYS = {
     "deck_settings": {"shortcut": "Ctrl+Alt+,"},
     "present": {"shortcut": "Ctrl+Alt+P"},
     "open_manual": {"shortcut": ""},
+    "tab:next": {"shortcut": "Meta+Tab"},               # Qt reads Ctrl as the Command key there, and Command+Tab is the system's
+    "tab:previous": {"shortcut": "Meta+Shift+Tab"},
     "exit": {"hint": ""},
 }
 
@@ -77,6 +79,23 @@ def _keeps_group(w) -> bool:
     return deck is not None and deck.group == TAG_MANUAL
 
 
+def _source_only(w) -> bool:
+    """The tab on show has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone."""
+    centre = getattr(w, "centre", None)
+    return centre is not None and centre.source_only
+
+
+def _slide_file_shown(w) -> bool:
+    """A slide file tab is on show: its slide is not necessarily the focused one, so the selected rows are not "this slide"."""
+    centre = getattr(w, "centre", None)
+    return centre is not None and centre.slide_file_shown
+
+
+def _several_tabs(w) -> bool:
+    centre = getattr(w, "centre", None)
+    return centre is not None and len(centre.tabs.tabs) > 1
+
+
 def _versioned(w) -> bool:
     deck = w.state.deck
     return deck is not None and deck.supports_version
@@ -97,9 +116,9 @@ def _slide_targets(w) -> list:
 
 def _review_paths(w) -> list:
     rows = _slide_targets(w)
-    if len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide)):
+    if not _slide_file_shown(w) and (len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide))):
         return [w.project.slides_dir / row.call.source_filename for row in rows]
-    path = w.centre.path
+    path = w.centre.path    # a slide file tab's slide is not the focused one: the selected rows are not it
     return [path] if path is not None else []
 
 
@@ -206,7 +225,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
             meta=lambda w, lang=language: _current(w.state.language == lang))
     for mode in MODES:
         add(f"mode:{mode}", f"Show {mode.capitalize()}", VIEW_AND_BUILD,
-            lambda w, m=mode: w.state.set_mode(m), icon="tab", meta=lambda w, m=mode: _current(w.state.mode == m))
+            lambda w, m=mode: w.state.set_mode(m), icon="tab", meta=lambda w, m=mode: _current(w.state.mode == m),
+            enabled=lambda w, m=mode: m == "source" or not _source_only(w))
     for view in VIEWS:
         add(f"compile:{view}", f"Compile PDF · {VIEW_LABELS[view]}", VIEW_AND_BUILD,
             lambda w, v=view: compile_actions.compile_current(w, v), icon="picture_as_pdf", enabled=_has_deck,
@@ -241,14 +261,21 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("log", "Log", VIEW_AND_BUILD, lambda w: w.compile_display.drawer.toggle(), icon="terminal", shortcut="Ctrl+L")
     # Keys the window and the Source view bind themselves (window.py, source_file.py): the commands only show them.
     add("render_buffer", "Render editor buffer", VIEW_AND_BUILD, lambda w: w.centre.render_buffer(), icon="preview",
-        hint="Ctrl+Enter")
-    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.source.save(), icon="save", hint="Ctrl+S")
+        hint="Ctrl+Enter", enabled=lambda w: not _source_only(w))
+    # The centre's tabs (centre_tabs.py): a file tab is closed with its "x" too.
+    add("tab:next", "Next tab", VIEW_AND_BUILD, lambda w: w.centre.cycle_tabs(1), icon="tab", shortcut="Ctrl+Tab",
+        meta="most recently used first", enabled=_several_tabs)
+    add("tab:previous", "Previous tab", VIEW_AND_BUILD, lambda w: w.centre.cycle_tabs(-1), icon="tab",
+        shortcut="Ctrl+Shift+Tab", meta="least recently used first", enabled=_several_tabs)
+    add("tab:close", "Close tab", VIEW_AND_BUILD, lambda w: w.centre.close_active_tab(), icon="close", shortcut="Ctrl+W",
+        meta="not the slide tab", enabled=_several_tabs)
+    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.save(), icon="save", hint="Ctrl+S")
     add("find", "Find in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, False), icon="search", hint="Ctrl+F")
     add("replace", "Replace in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, True), icon="find_replace",
         hint=REPLACE_KEY)
 
     # Slide: the focused slide, or the selected ones ---------------------------------------
-    for name, label in (("open", "Source"), ("preview", "Preview"), ("images", "Images")):
+    for name, label in (("open", "Source"), ("preview", "Preview"), ("open_tab", "Open in new tab"), ("images", "Images")):
         add(f"slide:{name}", label, SLIDE, _run_slide(name), visible=_one_slide)
     add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
         visible=lambda w: bool(_review_paths(w)),
@@ -348,8 +375,14 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
-    add("plugins", "Plugins…", PROJECT, _window("open_plugins"), icon="extension")
+    add("plugins", "Extensions…", PROJECT, _window("open_extensions"), icon="extension",
+        keywords="plugins themes citation formats")
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
+    add("debug_log", debug_log_ui.toggle_title, PROJECT, debug_log_ui.toggle, icon="bug_report",
+        meta="a detailed log of what SlideMage does, for finding problems")
+    add("debug_report", "Save debug report…", PROJECT, debug_log_ui.save_report,
+        meta="the logs in one zip file, saved where you choose")
+    add("open_logs", "Open log folder", PROJECT, debug_log_ui.open_folder)
     add("exit", "Exit SlideMage", PROJECT, lambda w: w.close(), hint="Alt+F4")
     add("open_manual", "SlideMage manual", PROJECT, lambda w: w.state.set_deck(_manual_deck(w)), icon="menu_book",
         shortcut="F1", enabled=lambda w: _manual_deck(w) is not None)

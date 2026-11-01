@@ -86,6 +86,11 @@ def test_typing_filters_the_commands_and_adds_the_slides_and_decks_that_match(wi
     assert labels(palette) == [] and palette._entries[0].group == CHAT and palette._current == 0     # the chat row
 
 
+def test_a_commands_keywords_find_it(window):
+    from slidemage.ui.workspace.palette import command_entries
+    assert any(entry.label == "Extensions…" for entry in command_entries(window, ["plugin"]))
+
+
 def test_the_slide_group_follows_the_focused_slide_and_the_selection(window):
     palette = window.palette
     items = window.slide_list.tree.slide_items()
@@ -174,9 +179,9 @@ def test_a_slide_outside_the_deck_opens_in_the_source_view(window, monkeypatch):
     assert [p.name for p in opened] == [f"{outside}-current.tex"]
 
 
-def test_a_slide_from_outside_the_deck_keeps_the_focus_when_it_is_saved(window):
+def test_a_slide_from_outside_the_deck_opens_a_tab_and_keeps_the_focus_when_it_is_saved(window):
     """2026-10-26: edited and saved (or rendered), a slide opened from Find anything that the deck does not show
-    lost the focus to the slide shown before -- the slide list's rebuild focused its highlighted row again."""
+    lost the focus to the slide shown before. Now it has a tab of its own and the focus never moves (centre-tabs step 2)."""
     rows = window.slide_list.rows()
     before = rows[0].call.id
     window.state.set_focused_slide(before)
@@ -186,15 +191,17 @@ def test_a_slide_from_outside_the_deck_keeps_the_focus_when_it_is_saved(window):
     palette.open()
     type_text(palette, outside)
     palette._run(palette._entries.index(next(e for e in palette._entries if e.label == outside)))
-    outside_id = outside.split("-")[0]
-    assert window.state.focused_slide == outside_id
-    assert window.slide_list.tree.currentItem() is None                # no row of the deck stays highlighted
-    window.centre.source.current.editor.insertPlainText("% edit\n")
-    window.centre.source.save()                                       # Ctrl+S, which also renders
-    window.slide_list.rebuild()                                       # what a save does after its pause
-    assert window.state.focused_slide == outside_id
-    window.state.set_focused_slide(before)                            # a deck slide again: its row is highlighted
+    tab = window.centre.tabs.active
+    assert tab.kind == "file" and tab.slide and tab.path.name.startswith(outside)
+    assert window.state.focused_slide == before                        # a tab does not move the focus
     assert window.slide_list.tree.data_of(window.slide_list.tree.currentItem()).call.id == before
+    window.state.set_mode("source")                                   # the tab opened in the mode it came from
+    window.centre.source.current.editor.insertPlainText("% edit\n")
+    window.centre.save()                                            # Ctrl+S, which also renders
+    window.slide_list.rebuild()                                       # what a save does after its pause
+    assert window.state.focused_slide == before
+    window.state.set_focused_slide(rows[1].call.id)                   # another slide: the slide tab, the file tab stays
+    assert window.centre.tabs.active is window.centre.tabs.slide_tab and tab in window.centre.tabs.tabs
 
 
 def test_another_deck_is_found_by_name_and_switched_to(window):
@@ -212,7 +219,7 @@ def test_another_deck_is_found_by_name_and_switched_to(window):
 
 def test_from_three_characters_the_files_are_searched_and_a_hit_opens_at_its_line(window, monkeypatch):
     opened = []
-    monkeypatch.setattr(window, "open_slide_editor", lambda path, on_saved=None, line=None: opened.append((path, line)))
+    monkeypatch.setattr(window, "open_slide_editor", lambda path, on_saved=None, line=None, **kw: opened.append((path, line, kw)))
     palette = window.palette
     palette.open()
     type_text(palette, "ci")
@@ -230,7 +237,8 @@ def test_from_three_characters_the_files_are_searched_and_a_hit_opens_at_its_lin
     assert hits and len(hits) <= palette_module.MAX_HITS and all(e.detail and e.meta.startswith("line ") for e in hits)
     assert palette._entries[-1] is not hits[-1] and palette._entries[-1].group == CHAT      # the chat stays last
     palette._run(palette._entries.index(hits[0]))
-    path, line = opened[0]
+    path, line, kw = opened[0]
+    assert kw == {"tab": True}                                  # every hit gets a tab, also a slide of the open deck
     assert path.is_file() and line == int(hits[0].meta.removeprefix("line "))
     assert path.read_text(encoding="utf-8").splitlines()[line - 1].lower().count("citation")
 

@@ -31,7 +31,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
-from ... import citation_sources, citations, slide_snapshot, theme_sources, themes
+from ... import citation_sources, citations, diagnostics, slide_snapshot, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
@@ -52,7 +52,7 @@ BUNDLED_COPIES_CHECK_DELAY_MS = 1500
 RENDER_SWEEP_DELAY_MS = 8000
 # The first-start plugin sheet opens once the window has settled, after the checks that may ask something.
 PLUGIN_OFFER_DELAY_MS = 4000
-OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Settings → Plugins
+OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Settings → Extensions at its plugins
 # The project hint for decks with a course link while the CampusOnline plugin is not loaded (v9.0.0 moved the feature
 # into the plugin). Dismissed per project: app_settings key (a project one), set by "Don't show again" or by opening Plugins.
 COURSE_HINT_DELAY_MS = 6000
@@ -63,12 +63,14 @@ COURSE_HINT_TEXT = ("This project uses CampusOnline course links. Install or ena
 # The project compatibility check (compat.py): static scans of the project, a
 # local comparison -- shown before the framework/manual update offer.
 COMPAT_CHECK_DELAY_MS = 1000
+_logged = diagnostics.logged("maintenance")     # a debug line when a check at startup has run
 
 
 def schedule_compat_check(window) -> None:
     QTimer.singleShot(COMPAT_CHECK_DELAY_MS, partial(check_project_compat, window))
 
 
+@_logged
 def check_project_compat(window) -> None:
     if project.is_snapshot(window.project.root):
         return  # a deck snapshot is frozen: nothing to migrate
@@ -203,6 +205,7 @@ def schedule_bundled_copies_check(window) -> None:
     QTimer.singleShot(RENDER_SWEEP_DELAY_MS, partial(sweep_old_renders, window))
 
 
+@_logged
 def sweep_old_renders(window) -> None:
     threading.Thread(target=slide_preview.sweep_renders, args=(window.project,), daemon=True).start()
 
@@ -214,6 +217,7 @@ def bundled_parts(window) -> list:
         example_source=project.template_dir("example"))
 
 
+@_logged
 def check_bundled_copies(window) -> None:
     app_version = version_mod.VERSION_NUMBER
     if bundled_copies.is_dismissed(window.project.root, app_version):
@@ -292,6 +296,7 @@ def schedule_startup_update_check(window) -> None:
     QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(startup_update_check, window))
 
 
+@_logged
 def startup_update_check(window) -> None:
     def work() -> None:
         try:
@@ -591,6 +596,7 @@ def schedule_plugin_offer(window) -> None:
         QTimer.singleShot(PLUGIN_OFFER_DELAY_MS, partial(show_plugin_offer, window))
 
 
+@_logged
 def show_plugin_offer(window) -> None:
     """Fetch the catalogue on a thread first; `window.plugin_offer_fetched` carries it to on_plugin_offer_fetched.
     The sheet is for a list with something in it: the public catalogue may still be empty."""
@@ -610,7 +616,7 @@ def show_plugin_offer(window) -> None:
 def on_plugin_offer_fetched(window, result) -> None:
     """Open the sheet, with the fetched catalogue, only when something is offerable: the onboarding (not seen yet)
     and/or the plugins of due migrations (preselected, with their reason). Both due: one onboarding sheet.
-    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins…
+    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Extensions…
     is always there)."""
     pending = plugin_upgrade.migrations_due(window.project)
     if isinstance(result, Exception):
@@ -647,6 +653,7 @@ def schedule_course_hint(window, *, unavailable: bool = False) -> None:
         QTimer.singleShot(COURSE_HINT_DELAY_MS, partial(show_course_hint, window))
 
 
+@_logged
 def show_course_hint(window) -> None:
     if getattr(window, "_course_migration_shown", False):
         return
@@ -657,7 +664,7 @@ def show_course_hint(window) -> None:
     if not plugin_upgrade.course_linked_decks(window.project):
         return
     window.toast.show_message(
-        COURSE_HINT_TEXT, [(OPEN_PLUGINS, "Open Plugins"), (COURSE_HINT_DISMISS, "Don't show again")],
+        COURSE_HINT_TEXT, [(OPEN_PLUGINS, "Open Extensions"), (COURSE_HINT_DISMISS, "Don't show again")],
         timeout_ms=15000)
 
 
@@ -667,6 +674,7 @@ def schedule_plugin_update_check(window) -> None:
         QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(plugin_update_check, window))
 
 
+@_logged
 def plugin_update_check(window) -> None:
     """At most once a day, and only when a plugin was installed through SlideMage. The catalogue is fetched on
     a thread (and, in auto mode, the updates installed there); `window.plugin_updates_done` carries the outcome."""
@@ -731,7 +739,7 @@ def on_plugin_updates_done(window, result) -> None:
         return
     text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
                      for plugin_id, _have, release in result.updates)
-    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Plugins")], timeout_ms=12000)
+    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Extensions")], timeout_ms=12000)
 
 
 def schedule_theme_update_check(window) -> None:
@@ -741,6 +749,7 @@ def schedule_theme_update_check(window) -> None:
         QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(theme_update_check, window))
 
 
+@_logged
 def theme_update_check(window) -> None:
     if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
         return
@@ -756,7 +765,7 @@ def theme_update_check(window) -> None:
 
 
 def on_theme_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Plugins → Themes says why); a newer release is offered, never
+    """A failed check is only logged (Settings → Extensions → Themes says why); a newer release is offered, never
     installed silently, whatever the update mode."""
     if isinstance(result, Exception):
         window.log(f"Theme update check failed: {result}")
@@ -805,6 +814,7 @@ def schedule_citation_update_check(window) -> None:
         QTimer.singleShot(STARTUP_UPDATE_CHECK_DELAY_MS, partial(citation_update_check, window))
 
 
+@_logged
 def citation_update_check(window) -> None:
     if updater.get_update_mode() == updater.UPDATE_MODE_OFF:
         return
@@ -820,7 +830,7 @@ def citation_update_check(window) -> None:
 
 
 def on_citation_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Plugins says why); a newer release is offered, never installed
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, never installed
     silently, whatever the update mode."""
     if isinstance(result, Exception):
         window.log(f"Citation format update check failed: {result}")

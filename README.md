@@ -71,7 +71,7 @@ tab's terminal is xterm.js in a web view), the bundled fonts and the Anthropic A
 It was built and started on Linux (Python 3.14); Windows and macOS builds are untested. On
 a bare Linux QtWebEngine needs more system libraries than Qt's base set (for instance
 `libnss3`, `libxcomposite1`, `libxdamage1`, `libxrandr2`, `libxtst6` and an ALSA
-library); install them with the package manager. Since v9.1 AI comes from plugins (**Settings → Plugins**,
+library); install them with the package manager. Since v9.1 AI comes from plugins (**Settings → Extensions**,
 see "Plugins" below): the **Claude** plugin supplies the Claude Code route and the Anthropic API, the **Ollama**
 plugin the local models; without them SlideMage is a complete editor with no assistant, AI menu or AI commands.
 The **Claude Code** route is optional: it
@@ -190,7 +190,7 @@ screenshots.
   it does not fit the screen. Since v8.72 the **AI** tab (there only when an AI plugin is installed) is one
   tab with a section per service: the German address of translations, Claude's API key, Ollama's models
   (updating, deleting), Prompts (image-description and translation prompts), and sections that plugins add. The
-  model of each task is in AI setup, not here. **Plugins** (also Help → Plugins…) is described below.
+  model of each task is in AI setup, not here. **Extensions** (also Help → Extensions…) is described below.
 
 ## Releases and updates
 
@@ -299,34 +299,34 @@ a project with course links), which is ticked with the reason; a copy that had t
 them once as *These features are now plugins*. **Install selected** installs the ticked ones (then **Restart
 now**), **Install from file…** a plugin file, **See all plugins and what they do** opens
 https://slidemage.org/plugins/, **Not now** closes the sheet. A project with course links opened without the
-CampusOnline plugin shows a hint once, with **Open Plugins** and **Don't show again**.
+CampusOnline plugin shows a hint once, with **Open Extensions** and **Don't show again**.
 
-Everything else is in **File → Settings… → Plugins** (also **Help → Plugins…**):
+Everything else is in **File → Settings… → Extensions** (also **Help → Extensions…**), with what everyone needs
+first and the plugins below:
 
-- **Installed**: each plugin with its version and state (*Loaded*, *Disabled*,
+- **Themes**: the theme packages installed on this computer (a slide template
+  packaged on its own, `docs/THEME_PACKAGE.md`), each with **Remove**; no restart
+  needed. **Add from file…** takes a `.smtheme`. **Add from GitHub…** takes
+  `owner/name` and installs the newest release of a (private) theme repository with
+  the GitHub token of Settings → General; such a theme's updates are offered at start
+  (*Install now*, *Not now*, *Skip this version*, under the update setting) and its
+  row has **Check for update** and says why the last check failed.
+- **Citation formats**: the citation format packages installed on this computer (the
+  way references look, packaged on its own: `SlideMage_citation_<key>.tex` with a
+  `citation.toml`, `docs/CITATION_PACKAGE.md`), with the same buttons as the themes:
+  **Remove**, **Add from file…** (a `.smcite`), **Add from GitHub…**, update offers at
+  start, **Check for update**. A template or deck chooses one with `\SMCitationFormat`.
+- **Plugins**, installed: each plugin with its version and state (*Loaded*, *Disabled*,
   *Failed to load* with **Details…**, or *Incompatible*). The **Enabled** switch
   turns it on or off; **Update to …** and **Remove** are on the same row.
-- **Available**: the plugins of the list at https://slidemage.org/plugins/, each
+- **Plugins**, available: the plugins of the list at https://slidemage.org/plugins/, each
   with its summary, what it needs and what it contacts on the network. **Install**
   installs it; **Check for plugins** fetches the list again.
 - **Install from file…**: a `.smplugin` file that is not from the list. A sheet
   warns that it is not from the SlideMage plugin list and runs with your rights,
   and shows its name, version and network lines. Nothing is installed until you
   confirm. A `.sha256` file named after the plugin (`name.smplugin.sha256`) beside
-  it must match. The same button takes a theme package (`.smtheme`) and a citation
-  format package (`.smcite`).
-- **Themes**: the theme packages installed on this computer (a slide template
-  packaged on its own, `docs/THEME_PACKAGE.md`), each with **Remove**; no restart
-  needed. **Add theme from GitHub…** takes `owner/name` and installs the newest
-  release of a (private) theme repository with the GitHub token of Settings →
-  General; such a theme's updates are offered at start (*Install now*, *Not now*,
-  *Skip this version*, under the update setting) and its row has **Check for
-  update** and says why the last check failed.
-- **Citation formats**: the citation format packages installed on this computer (the
-  way references look, packaged on its own: `SlideMage_citation_<key>.tex` with a
-  `citation.toml`, `docs/CITATION_PACKAGE.md`), with the same buttons as the themes:
-  **Remove**, **Add citation format from GitHub…**, update offers at start, **Check
-  for update**. A template or deck chooses one with `\SMCitationFormat`.
+  it must match.
 
 Changes take effect after a restart: plugins load once, before the window opens. A plugin can add Settings
 tabs; AI services add sections to the AI tab.
@@ -1072,7 +1072,7 @@ comment:
 The comment does not change the compiled slides. The link stays with the
 deck when it is moved or archived.
 
-With the **CampusOnline** plugin installed (Settings → Plugins), a linked CAMPUSonline course also has the
+With the **CampusOnline** plugin installed (Settings → Extensions), a linked CAMPUSonline course also has the
 **Admin slides** tab in the Deck settings. Without the plugin the comment above stays in the deck, untouched, and
 the deck compiles the same.
 SlideMage reads the course's Abhaltungstermine page when the tab is first shown, asks
@@ -1108,7 +1108,7 @@ the SlideMage template
 type-specific tail for books, articles, online sources and reports). Since
 v0.13.0 the format is the catalog's `\SMCitationFormat` (`default`: that house format, loaded
 by the base, so the templates need no line for it); another one comes as an installed
-citation package (Settings → Plugins → Citation formats). A template sets it before
+citation package (Settings → Extensions → Citation formats). A template sets it before
 `\input{SlideMage_base}`, a deck before `\SMUseBibliography`. A deck that wants a format of its
 own can also redefine the two macros before `\SMUseBibliography`, or skip the command and
 load biblatex itself.
@@ -2584,6 +2584,21 @@ Call it once per deck (e.g. right after `\input{SlideMage_template_slidemage}`) 
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
+
+`\SMSetFootnoteMarkers{}` picks another style for the markers, `symbols` (the
+sequence above, the default), `boxed` (the footnote's number in a thin rounded
+box) or `dice` (die faces: 1 to 6 one die, above that the number in base 6
+with the digits 1 to 6, so 7 is two dice, one-one, and 13 is two-one):
+
+```latex
+\SMSetFootnoteMarkers{dice}    % from here on; {boxed}, {symbols} likewise
+```
+
+A template says it once after `\input{SlideMage_setup}`; a deck or a slide can
+say it from any point on, and inside a group `{...}` it holds to the group's
+end. `\setfootnotesymbols` changes only the symbol list, never the style. In
+running text the markers are scaled to 75%. The manual's appendix slide 2mk shows both
+styles live.
 [slides/2rg-EN-Footnote-symbol-options-current.tex](example/slides/2rg-EN-Footnote-symbol-options-current.tex)
 (in the manual's appendix; `ZZU` until v5.16.0)
 is a reference sheet of candidate symbols — every character on it was checked
