@@ -1,32 +1,24 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Optional prompt-to-preview timing, off unless SLIDEMAGE_TIMING=1 is in the environment (the embedded Claude Code
-and its hooks inherit it). `event` appends one JSON line {"t": epoch seconds, "event": name, ...} to
-<project>/.slidemage/timing.jsonl; `python tools/timing_summary.py <project>` prints the latest request's timeline."""
+"""Prompt-to-preview timing in the debug log (area `timing`), from the app, the AI tools and the Claude Code hooks,
+each process in its own debug file. `python tools/debug_log.py --timeline` merges them and prints the latest
+request's timeline. SLIDEMAGE_TIMING=1 still turns the debug log on (diagnostics.forced). Until v0.13.7 the
+events went to <project>/.slidemage/timing.jsonl, read by tools/timing_summary.py."""
 from __future__ import annotations
 
-import json
-import os
-import time
+import logging
 from pathlib import Path
 
 ENV = "SLIDEMAGE_TIMING"
-LOG_NAME = "timing.jsonl"
+log = logging.getLogger("slidemage.timing")
 
 
 def enabled() -> bool:
-    return os.environ.get(ENV) == "1"
+    return log.isEnabledFor(logging.DEBUG)
 
 
 def event(root: Path, name: str, **fields) -> None:
-    """Record `name` now; a no-op when timing is off and never an error when the log cannot be written."""
-    if not enabled():
-        return
-    line = json.dumps({"t": round(time.time(), 3), "event": name, **fields}) + "\n"
-    try:
-        log = Path(root) / ".slidemage" / LOG_NAME
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with open(log, "a", encoding="utf-8") as stream:
-            stream.write(line)          # one short append: lines from the hook and the app do not interleave
-    except OSError:
-        pass
+    """Record `name` now as `name key=value ...`; a no-op while the debug log is off. `root` (the project) stays in
+    the signature for the callers and the plugin API's HookContext.timing_event."""
+    if enabled():
+        log.debug("%s%s", name, "".join(f" {key}={value}" for key, value in fields.items()))

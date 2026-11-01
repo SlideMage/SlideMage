@@ -66,7 +66,7 @@ class CompileController(QObject):
         self._stop_requested = False
         self._on_done: Optional[Callable[[Any], None]] = None
         self._result: Any = None
-        self._trace: Optional[status_trace.StatusTrace] = None    # what the card showed, and when
+        self._trace: Optional[status_trace.StatusTrace] = None    # what the card showed, and when (debug log)
         self.log.connect(self._feed)
         self.preview_progress.connect(self._preview_progress)
 
@@ -85,8 +85,6 @@ class CompileController(QObject):
         "<failure> failed". `on_done(result)` runs once the slot is free again."""
         self.progress = compile_progress.BatchProgress()
         self.progress.reset(specs)
-        if self._trace is not None:
-            self._trace.close()
         self._trace = status_trace.StatusTrace()
         self._trace.header(f"{verb or 'run'}: " + ", ".join(
             f"{name} ({spec.passes} passes{' est.' if spec.estimated else ''}, {spec.slides} slides)"
