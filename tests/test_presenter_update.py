@@ -15,7 +15,6 @@ import pytest
 
 from slidemage import updater
 from slidemage.presentation import keep_awake, presenter_update
-from slidemage.ui import layout_settings
 from slidemage.ui.presentation import presenter_window
 from slidemage.ui.presentation.presenter_window import PresenterStartWindow
 
@@ -93,44 +92,20 @@ def test_the_updater_stays_light():
 
 # -- presenter_update.py: when to look -----------------------------------------------------------
 
-def test_a_check_is_due_when_never_made_or_a_day_old():
-    now = 1_000_000.0
-    assert presenter_update.check_due(now)
-    layout_settings.set(presenter_update.STORE_KEY, now - 3600)
-    assert not presenter_update.check_due(now)
-    layout_settings.set(presenter_update.STORE_KEY, now - presenter_update.CHECK_INTERVAL - 1)
-    assert presenter_update.check_due(now)
-    layout_settings.set(presenter_update.STORE_KEY, now + 5000)         # the clock went back
-    assert presenter_update.check_due(now)
-    layout_settings.set(presenter_update.STORE_KEY, "junk")
-    assert presenter_update.check_due(now)
-
-
 def test_the_update_mode_off_never_checks():
     updater.set_update_mode(updater.UPDATE_MODE_OFF)
-    assert not presenter_update.check_due()
+    assert not presenter_update.check_allowed()
     for mode in (updater.UPDATE_MODE_ASK, updater.UPDATE_MODE_AUTO):
         updater.set_update_mode(mode)
-        assert presenter_update.check_due()
+        assert presenter_update.check_allowed()
 
 
-def test_find_update_asks_for_the_presenter_asset_and_remembers_the_time(monkeypatch):
+def test_find_update_asks_for_the_presenter_asset(monkeypatch):
     asked = []
     monkeypatch.setattr(updater, "fetch_releases", lambda **kw: asked.append(kw) or [release("v98.0.0"), release()])
     found = presenter_update.find_update("v0.13.5")
     assert found.tag == NEWER and asked == [{"flavour": updater.PRESENTER}]
-    assert isinstance(layout_settings.get(presenter_update.STORE_KEY), float)
     assert presenter_update.find_update("v99.0.0") is None
-
-
-def test_a_failed_check_is_not_remembered(monkeypatch):
-    def fail(**_kw):
-        raise updater.UpdateError("offline")
-
-    monkeypatch.setattr(updater, "fetch_releases", fail)
-    with pytest.raises(updater.UpdateError):
-        presenter_update.find_update("v0.13.5")
-    assert layout_settings.get(presenter_update.STORE_KEY) is None
 
 
 # -- the start window ---------------------------------------------------------------------------
@@ -183,13 +158,12 @@ def test_mode_off_never_asks_github(window):
     assert window.fetched == [] and window.update_bar.isHidden()
 
 
-def test_it_looks_once_a_day(window):
+def test_it_looks_at_every_start(window):
+    """Once a day hid a new release for up to 24 hours after the last look."""
     window.start_update_check()
-    window.start_update_check()
-    assert len(window.fetched) == 1
-    layout_settings.set(presenter_update.STORE_KEY, 1.0)       # long ago
     window.start_update_check()
     assert len(window.fetched) == 2
+
 
 
 def test_a_network_error_is_silent(window, monkeypatch):

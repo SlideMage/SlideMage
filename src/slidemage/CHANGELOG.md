@@ -3282,3 +3282,9 @@ v0.13.11 (2026-11-01, direct request: the releases since v0.13.9 have no Windows
 NEW: Windows downloads are back.
 - SlideMage for Windows is built and attached to releases again; v0.13.9 and v0.13.10 lacked it.
 - SlideMage Presenter is now built for macOS and Linux as well.
+
+v0.13.12 (2026-11-01, direct request: a Presenter that does not offer an update, and the size of the Linux Presenter): SlideMage Presenter looks for a newer release at every start, in the background, instead of once a day, which hid a new release for up to 24 hours after the last look; presenter_update.check_allowed replaces check_due, and the update mode off still means never. Copies already installed keep the old rule until they have updated once. The Linux build of the Presenter goes from 338 to 172 MiB unpacked. PyInstaller links libraries from the top of _internal to where they live, and zipping expanded those 17 links into 106 MiB of full copies, so the spec leaves the links out: the libraries find each other by their rpath. They cannot stay links in the zip, because the updater of an installed Presenter unpacks with zipfile, which would turn them into broken files. The spec also leaves out 24 MiB of libraries that only the dropped GTK platform theme needed, read from the libraries’ DT_NEEDED entries, and strips debug symbols on Linux, which takes libpython from 28.6 to 6.6 MiB. ICU stays, because libQt6Core links it. The release workflow now really starts the Linux Presenter on a virtual display under xvfb, since the self-test only imports, and the window opened in 0.33 seconds; the Linux size limit is 200 MiB and the size step lists symbolic links too.
+
+NEW: SlideMage Presenter tells you about updates sooner, and is half the size on Linux.
+- The Presenter looks for a new version every time it starts, not once a day.
+- On Linux the Presenter takes about 172 MB instead of 338 MB, and its download is smaller too.
