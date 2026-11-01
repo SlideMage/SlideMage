@@ -22,6 +22,11 @@ it ("<folder>.update", stage_folder_update()) and a small helper script, started
 "<folder>.old", removed by the next start: remove_leftover_folder()) and, when the user chose to restart,
 starts the new SlideMage.
 
+SlideMage Presenter (docs/plans/presenter-app.md, v0.13.5) is a third flavour: always a folder build, with its own
+assets (PRESENTER_ASSETS, SlideMagePresenter-<os>.zip) attached to the same releases, but only to those that
+change it. It updates with the same stage_folder_update() and spawn_folder_swap(). On macOS it is an unsigned
+.app and does not replace itself: can_self_update() is False there and it shows the release page instead.
+
 v4.1.0 (direct instruction): an update mode per user and machine --
 "off" (never check on start), "ask" (default: check on start and ask) or
 "auto" (check on start and install) -- stored next to the token in
@@ -69,10 +74,18 @@ FOLDER_ASSETS = {
     "win32": ("SlideMage-windows-folder.zip", "SlideMage.exe"),
     "linux": ("SlideMage-linux-folder.zip", "SlideMage"),
 }
-SINGLE, FOLDER = "single", "folder"
+# SlideMage Presenter: a zip of one folder (SlideMagePresenter(.exe) and _internal/); on macOS a zip of the .app.
+PRESENTER_ASSETS = {
+    "win32": ("SlideMagePresenter-windows.zip", "SlideMagePresenter.exe"),
+    "linux": ("SlideMagePresenter-linux.zip", "SlideMagePresenter"),
+    "darwin": ("SlideMagePresenter-macos.zip", "SlideMage Presenter.app"),
+}
+PRESENTER_NAME = "SlideMagePresenter"
+PRESENTER_APP = "SlideMage Presenter.app"
+SINGLE, FOLDER, PRESENTER = "single", "folder", "presenter"
 OLD_SUFFIX = ".old"
 UPDATE_SUFFIX = ".update"
-FLAVOUR_ENV_VAR = "SLIDEMAGE_FLAVOUR"      # tests and support: "single" or "folder" instead of detecting it
+FLAVOUR_ENV_VAR = "SLIDEMAGE_FLAVOUR"      # tests and support: "single", "folder" or "presenter" instead of detecting it
 
 UPDATE_MODE_OFF = "off"
 UPDATE_MODE_ASK = "ask"
@@ -125,16 +138,27 @@ def is_newer(latest_tag: str, current_tag: str) -> bool:
     return latest is not None and current is not None and latest > current
 
 
+def is_presenter() -> bool:
+    """True when the running program is SlideMage Presenter: its executable is SlideMagePresenter(.exe), or it sits
+    inside SlideMage Presenter.app."""
+    executable = Path(sys.executable)
+    return executable.stem == PRESENTER_NAME or any(part.name == PRESENTER_APP for part in executable.parents)
+
+
 def can_self_update() -> bool:
+    """A frozen Windows or Linux build can replace itself. The macOS Presenter (an unsigned .app, the only macOS
+    build) cannot: it is not in ASSETS, so this stays False there."""
     return getattr(sys, "frozen", False) and sys.platform in ASSETS
 
 
 def install_flavour() -> str:
     """FOLDER when SlideMage runs from a folder build (PyInstaller's onedir: the libraries sit in _internal/ next to
-    the executable), else SINGLE."""
+    the executable), else SINGLE; PRESENTER for SlideMage Presenter, which is always a folder build."""
     forced = os.environ.get(FLAVOUR_ENV_VAR)
-    if forced in (SINGLE, FOLDER):
+    if forced in (SINGLE, FOLDER, PRESENTER):
         return forced
+    if is_presenter():
+        return PRESENTER
     internal = getattr(sys, "_MEIPASS", None)
     if internal and getattr(sys, "frozen", False) and Path(internal).resolve() == (Path(sys.executable).parent / "_internal").resolve():
         return FOLDER
@@ -143,7 +167,8 @@ def install_flavour() -> str:
 
 def asset_names(flavour: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """(zip name, binary name) of this platform's release asset for `flavour` (the running one by default)."""
-    table = FOLDER_ASSETS if (flavour or install_flavour()) == FOLDER else ASSETS
+    flavour = flavour or install_flavour()
+    table = PRESENTER_ASSETS if flavour == PRESENTER else FOLDER_ASSETS if flavour == FOLDER else ASSETS
     return table.get(sys.platform, (None, None))
 
 
@@ -304,8 +329,8 @@ def _get_json(url: str, timeout: float):
         raise UpdateError(f"Couldn't reach GitHub: {exc}") from exc
 
 
-def _release_from(data: dict) -> Release:
-    asset_name = asset_names()[0]
+def _release_from(data: dict, flavour: Optional[str] = None) -> Release:
+    asset_name = asset_names(flavour)[0]
     asset = next((a for a in data.get("assets", []) if a.get("name") == asset_name), None)
     return Release(
         tag=data.get("tag_name", ""),
@@ -320,14 +345,15 @@ def fetch_latest_release(timeout: float = 10) -> Release:
     return _release_from(_get_json(LATEST_RELEASE_URL, timeout))
 
 
-def fetch_releases(limit: int = 30, timeout: float = 10) -> list[Release]:
+def fetch_releases(limit: int = 30, timeout: float = 10, flavour: Optional[str] = None) -> list[Release]:
     """The newest `limit` published releases (drafts and prereleases
-    skipped), in GitHub's order -- plan_update() sorts them itself."""
+    skipped), in GitHub's order -- plan_update() sorts them itself.
+    `flavour` picks the asset each Release carries (PRESENTER from a source checkout)."""
     data = _get_json(f"{RELEASES_URL}?per_page={limit}", timeout)
     if not isinstance(data, list):
         raise UpdateError("GitHub sent an unexpected answer for the release list.")
     return [
-        _release_from(item) for item in data
+        _release_from(item, flavour) for item in data
         if isinstance(item, dict) and not item.get("draft") and not item.get("prerelease")
     ]
 

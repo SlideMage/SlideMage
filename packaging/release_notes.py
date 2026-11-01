@@ -5,6 +5,7 @@ the history entries in src/slidemage/CHANGELOG.md of every version since the
 previous release, and refuse a release whose notes would be incomplete.
 
     python packaging/release_notes.py v4.1.0 > release_notes.md
+    python packaging/release_notes.py v0.13.5 --presenter > release_notes.md     # the release carries SlideMage Presenter
 
 What GitHub users see (v5.35.4, direct instruction: "describe the releases
 in a more helpful manner, so GitHub users see in few sentences or bullet
@@ -115,7 +116,18 @@ def _covers(entries: list[version.HistoryEntry]) -> str:
     return f"{entries[-1].version} to {entries[0].version}"
 
 
-def render(tag: str, previous: str | None, entries: list[version.HistoryEntry]) -> str:
+PRESENTER_NOTE = (
+    "## SlideMage Presenter\n\n"
+    "SlideMage Presenter is a small program that presents a PDF, a SlideMage presenter PDF with notes or any plain "
+    "one, with the same presenter view as SlideMage and without a project. Download the zip for your system: "
+    "`SlideMagePresenter-windows.zip`, `SlideMagePresenter-linux.zip` or `SlideMagePresenter-macos.zip` (the Mac "
+    "build is for Apple silicon). Unzip it and start it. On Windows and Linux it updates itself when a release changes it; on a Mac it says "
+    "when a new version is out, and you download it again. The macOS app is not signed: open it the first time "
+    "with right-click, then Open."
+)
+
+
+def render(tag: str, previous: str | None, entries: list[version.HistoryEntry], presenter: bool = False) -> str:
     """The release notes (see the module docstring). The changelog link sits
     under a heading of its own, so the updater (updater.breaking_notes(),
     which reads a "## Breaking changes" section up to the next heading)
@@ -138,6 +150,8 @@ def render(tag: str, previous: str | None, entries: list[version.HistoryEntry]) 
         parts.append("\n\n".join(entries[0].paragraphs))
     else:
         parts.extend(f"## {e.version}\n\n" + "\n\n".join(e.paragraphs) for e in entries)
+    if presenter:
+        parts.append(PRESENTER_NOTE)
     if previous:
         parts.append(f"## Full changelog\n\n"
                      f"https://github.com/{updater.REPO}/compare/{previous}...{tag}")
@@ -148,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("tag")
     parser.add_argument("--previous", help="previous release tag (default: from git)")
+    parser.add_argument("--presenter", action="store_true",
+                        help="add a paragraph about SlideMage Presenter, whose zips this release carries")
     args = parser.parse_args(argv)
     # A redirected stdout on Windows defaults to the ANSI code page, which
     # can't hold "→" or "ü"; the notes file is read back as UTF-8.
@@ -174,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     if marked and new is not None and old is not None and updater.major_key(new) == updater.major_key(old):
         print(f"warning: {args.tag} has a {BREAKING_PREFIX} paragraph but keeps the "
               f"major version of {previous}", file=sys.stderr)
-    sys.stdout.write(render(args.tag, previous, entries))
+    sys.stdout.write(render(args.tag, previous, entries, args.presenter))
     return 0
 
 
