@@ -3330,3 +3330,16 @@ v0.13.17 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a dec
 NEW: Plugins can read a deck's slides and ask the selected AI route to draft text.
 - A plugin can work with a deck's slides, versions and picture descriptions, and open a slide.
 - The AI route is never swapped silently, and a cloud request shows what will be sent first.
+
+v0.13.18 (2026-11-01, direct request: plugins should look like SlideMage, per docs/Handover_2026-11-01-Plugin-UI-Kit.md): Compatible additions to plugin API 1, so a plugin's own window is built from the kit and restyled by the app's stylesheet. Host.Window, Card, SegmentedControl, Badge, ElidedLabel, RowButton, PlainList, Label, ModalSheet and toast, Chip's icon, elide and pressable, Host.theme and Host.on_theme_changed with ThemeTokens, and SlideRef.title_text and SlideRef.section (alt_blocks.plain_title). The kit gains Badge, ToolWindow, text_label and a selected RowButton; ThemeManager gains add_listener.
+
+Before SlideMage closes, restarts on another project or restarts for an update it asks the windows from Host.Window to close, and one that refuses keeps SlideMage open: left open, such a window would keep the process running after the main window closed, and on a project switch beside the new one.
+
+QFrame#kitChip's radius is 9 px instead of RADIUS_PILL: Qt draws square corners for a radius above half the height, so chips had been square since the kit began.
+
+NEW: Plugins can look like SlideMage, in light and dark.
+- A plugin's own window now can use SlideMage's cards, switches, chips, list rows, dialogs and short messages.
+- These windows follow when you switch between light and dark.
+- Closing SlideMage closes a plugin's window too, and a window with unsaved work can stop it.
+- Plugins can show slide titles without LaTeX markup, and know which section a slide is in.
+- Chips everywhere in SlideMage now have the round ends they were designed with.

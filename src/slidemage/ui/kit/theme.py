@@ -12,7 +12,9 @@ express: the source editor's syntax colors and the status colors.
 """
 from __future__ import annotations
 
+import logging
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -68,6 +70,12 @@ class ThemeManager:
         if dark is None:
             dark = project is None or bool(app_settings.get(project, "dark_mode", True))
         self.dark = dark
+        self._listeners: list[Callable[[], None]] = []
+
+    def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call `listener` after each set_dark() has applied its stylesheet; returns the function that removes it."""
+        self._listeners.append(listener)
+        return lambda: self._listeners.remove(listener) if listener in self._listeners else None
 
     @property
     def colors(self) -> dict[str, str]:
@@ -100,6 +108,11 @@ class ThemeManager:
         if self.project is not None:
             app_settings.set(self.project, "dark_mode", dark)
         self.apply()
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception:
+                logging.getLogger(__name__).exception("a theme listener raised")
 
     def apply(self) -> None:
         app = QApplication.instance()

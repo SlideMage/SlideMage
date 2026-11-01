@@ -50,6 +50,8 @@ def deck_slides(ctx: ProjectContext, deck: plugin_api.Deck, view: str, language:
             except OSError:
                 parsed = None
             version = slide_versioning.format_hyphen(parsed) if parsed is not None else None
+        title = deck_outline.slide_file_title(path, call.id_slug)
+        chapter = slot.slot.original.chapter
         refs.append(plugin_api.SlideRef(
             id=call.id,
             id_slug=call.id_slug,
@@ -57,10 +59,12 @@ def deck_slides(ctx: ProjectContext, deck: plugin_api.Deck, view: str, language:
             language=own.lower() if own else None,
             version=version,
             pinned=call.version is not None,
-            title=deck_outline.slide_file_title(path, call.id_slug),
+            title=title,
             position=slot.position,
             hidden=slot.hidden,
             language_read=language,
+            title_text=alt_blocks.plain_title(title),
+            section=alt_blocks.plain_title(chapter.title) if chapter else "",
         ))
     return refs
 
