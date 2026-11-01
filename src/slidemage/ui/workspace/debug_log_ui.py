@@ -6,6 +6,7 @@ shows while it is on, so it is not left on unnoticed (decision D1: it stays on u
 opens the log folder. The log itself is diagnostics.py."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
@@ -27,6 +28,16 @@ class DebugChip(Chip):
 
     def refresh(self) -> None:
         self.setVisible(diagnostics.debug_enabled())
+
+
+def log_state_changes(state) -> None:
+    """Debug lines (area ui) when the deck, the view, the language, the mode or the focused slide change."""
+    log = logging.getLogger("slidemage.ui")
+    state.deck_changed.connect(lambda deck: diagnostics.event(log, "deck", name=getattr(deck, "name", None)))
+    state.view_changed.connect(lambda view: diagnostics.event(log, "view", view=view))
+    state.language_changed.connect(lambda language: diagnostics.event(log, "language", language=language))
+    state.mode_changed.connect(lambda mode: diagnostics.event(log, "mode", mode=mode))
+    state.focused_slide_changed.connect(lambda slide: diagnostics.event(log, "slide", id=slide))
 
 
 def toggle_title(_window) -> str:

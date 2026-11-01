@@ -22,6 +22,7 @@ TeXstudio" section).
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import signal
@@ -33,6 +34,7 @@ import uuid
 from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -46,11 +48,13 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
-from . import citations, slide_versioning, themes
+from . import citations, diagnostics, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
 from .processes import no_console_kwargs
+
+_log = logging.getLogger("slidemage.compile")
 
 
 _BUILD_STATE_LOCK = threading.Lock()
@@ -426,6 +430,9 @@ def run_streamed(
     """
     if cancel is not None and cancel.is_set():
         return -1
+    diagnostics.event(_log, "process started", cmd=" ".join(str(part) for part in cmd), cwd=cwd)
+    started = time.monotonic()
+    returncode = None
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
@@ -440,8 +447,11 @@ def run_streamed(
             if on_line is not None:
                 on_line(line)
             log(line.rstrip("\n"))
-        return proc.wait()
+        returncode = proc.wait()
+        return returncode
     finally:
+        diagnostics.event(_log, "process ended", program=cmd[0], exit=returncode,
+                          seconds=round(time.monotonic() - started, 3))
         if cancel is not None:
             cancel._set_process(None)
 
@@ -851,6 +861,27 @@ def _relocate_pdf_and_finish(
     _release_build_dir_after_attempts(build_dir, attempts_drained, remove=True)
 
 
+def _logged_job(run):
+    """Debug lines for a job (area compile): started, what its compile log's banners said (passed, failed, stopped,
+    superseded), finished with its result and seconds."""
+    @wraps(run)
+    def logged(ctx, job, log, *args, **kwargs):
+        if not _log.isEnabledFor(logging.DEBUG):
+            return run(ctx, job, log, *args, **kwargs)
+
+        def banners(line: str) -> None:
+            if line.startswith(("====", "***")):
+                diagnostics.event(_log, "job says", job=job.jobname, line=line)
+            log(line)
+
+        diagnostics.event(_log, "job started", deck=job.deck.name, job=job.jobname, pages=job.pages)
+        with diagnostics.timed(_log, "job finished", job=job.jobname) as info:
+            info["ok"] = done = run(ctx, job, banners, *args, **kwargs)
+            return done
+    return logged
+
+
+@_logged_job
 def run_job(
     ctx: project.ProjectContext, job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None,
     dest_override: Optional[tuple[Path, str]] = None,
@@ -1064,6 +1095,7 @@ def run_jobs(
     started. Jobs the GUI took out of the queue (cancel.skip) are left out
     one by one."""
     destinations = _disambiguated_destinations(ctx, jobs, log)
+    diagnostics.event(_log, "run started", jobs=",".join(job.jobname for job in jobs))
     results: dict[str, bool] = {}
     for position, job in enumerate(jobs):
         if cancel is not None and cancel.is_set():

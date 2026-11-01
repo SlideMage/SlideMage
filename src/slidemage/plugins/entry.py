@@ -10,9 +10,10 @@ else of the app starts: no project picker, no Qt application. The exit code is t
 """
 from __future__ import annotations
 
+import logging
 import sys
 
-from .. import project
+from .. import diagnostics, project
 from ..version import VERSION_NUMBER
 from . import loader
 from .host import PluginHost
@@ -35,7 +36,9 @@ def run(spec: str, args: list[str]) -> int:
     fn = plugin.contributions.entry_points.get(name)
     if fn is None:
         return _fail(f"plugin {plugin_id!r} has no entry point {name!r}")
-    code = fn(list(args))
+    with diagnostics.timed(logging.getLogger("slidemage.plugins"), "entry point", plugin=plugin_id, name=name) as info:
+        code = fn(list(args))
+        info["code"] = code
     return 0 if code is None else int(code)
 
 

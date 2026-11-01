@@ -4,15 +4,18 @@
 the context every function gets (2026-10-10, UI redesign step 10a)."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ... import compiler, timing
+from ... import compiler, diagnostics, timing
 from ...project import ProjectContext
 from ..focus_scope import deck_problem, scope_problem
 from ..agent_types import EDIT_ASK, AgentEvent, ToolCall, ToolResult, ToolSpec
 from ..workspace import Workspace
+
+_log = logging.getLogger("slidemage.ai")
 
 
 class ToolError(Exception):
@@ -130,15 +133,21 @@ class ToolBox:
             return ToolResult(call.id, f"There is no tool '{call.name}'. Tools: {', '.join(self._tools)}.", True)
         ctx = replace(self.ctx, call_id=call.id)
         timing.event(self.ctx.root, "tool_start", tool=call.name)
-        try:
-            check_arguments(found.spec, call.input)
-            output = found.run(ctx, call.input)
-        except ToolError as exc:
-            timing.event(ctx.root, "tool_end", tool=call.name, error=True)
-            return ToolResult(call.id, str(exc), True)
-        except Exception as exc:  # noqa: BLE001 -- a bug in a tool must not end the chat
-            timing.event(ctx.root, "tool_end", tool=call.name, error=True)
-            return ToolResult(call.id, f"{call.name} failed unexpectedly: {type(exc).__name__}: {exc}", True)
+        # The arguments by name only: their values can be slide text.
+        names = ",".join(sorted(call.input)) if isinstance(call.input, dict) else ""
+        with diagnostics.timed(_log, "tool call", tool=call.name, args=names) as info:
+            try:
+                check_arguments(found.spec, call.input)
+                output = found.run(ctx, call.input)
+            except ToolError as exc:
+                info["failed"] = type(exc).__name__
+                timing.event(ctx.root, "tool_end", tool=call.name, error=True)
+                return ToolResult(call.id, str(exc), True)
+            except Exception as exc:  # noqa: BLE001 -- a bug in a tool must not end the chat
+                _log.exception("tool %s failed unexpectedly", call.name)
+                info["failed"] = type(exc).__name__
+                timing.event(ctx.root, "tool_end", tool=call.name, error=True)
+                return ToolResult(call.id, f"{call.name} failed unexpectedly: {type(exc).__name__}: {exc}", True)
         text, images = (output, []) if isinstance(output, str) else output
         timing.event(self.ctx.root, "tool_end", tool=call.name)
         return ToolResult(call.id, text, False, images)

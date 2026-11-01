@@ -40,6 +40,7 @@ or when its major version number is higher than the running one.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -52,6 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import diagnostics
 from .project import config_dir
 from .version import to_zero_x
 
@@ -63,6 +65,7 @@ RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
 # lives in the per-user config folder -- never the project's .slidemage/,
 # which travels with the (often cloud-synced) project folder.
 TOKEN_ENV_VAR = "SLIDEMAGE_GITHUB_TOKEN"
+_log = logging.getLogger("slidemage.update")
 TOKEN_FILENAME = "github_token"
 # release.yml's asset names and the binary each one contains.
 ASSETS = {
@@ -307,9 +310,10 @@ def _request(url: str, accept: str) -> urllib.request.Request:
 
 def _get_json(url: str, timeout: float):
     try:
-        with urllib.request.urlopen(
+        with diagnostics.timed(_log, "GET", url=url) as info, urllib.request.urlopen(
             _request(url, "application/vnd.github+json"), timeout=timeout,
         ) as response:
+            info["status"] = getattr(response, "status", None)
             return json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
@@ -366,7 +370,7 @@ def download(
     if release.asset_url is None:
         raise UpdateError(f"Release {release.tag} has no download for this platform.")
     try:
-        with urllib.request.urlopen(
+        with diagnostics.timed(_log, "download", url=release.asset_url), urllib.request.urlopen(
             _request(release.asset_url, "application/octet-stream"), timeout=timeout,
         ) as response, open(dest, "wb") as out:
             total = int(response.headers.get("Content-Length") or release.asset_size or 0)

@@ -30,6 +30,8 @@ import re
 import sys
 import threading
 import time
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
@@ -99,6 +101,49 @@ def saved() -> bool:
 def wanted() -> bool:
     on = forced()
     return saved() if on is None else on
+
+
+def _field(value) -> str:
+    text = str(value)
+    return repr(text) if not text or " " in text else text
+
+
+def event(logger: logging.Logger, message: str, **fields) -> None:
+    """One debug line, `message key=value ...`, the same way everywhere; nothing is built while the log is off."""
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("%s%s", message, "".join(f" {key}={_field(value)}" for key, value in fields.items()))
+
+
+@contextmanager
+def timed(logger: logging.Logger, message: str, **fields):
+    """An `event` when the block ends, with its seconds and, if it raised, the error (the HTTP code too). The block
+    gets the fields as a dict and may add to them."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        yield {}
+        return
+    started = time.monotonic()
+    info = dict(fields)
+    try:
+        yield info
+    except BaseException as exc:
+        code = getattr(exc, "code", None)
+        info["error"] = f"{type(exc).__name__} {code}" if code is not None else type(exc).__name__
+        raise
+    finally:
+        event(logger, message, **info, seconds=round(time.monotonic() - started, 3))
+
+
+def logged(area: str):
+    """A decorator: a `timed` line in `area`, named after the function, each time it runs."""
+    logger = logging.getLogger(f"{LOGGER}.{area}")
+
+    def wrap(function):
+        @wraps(function)
+        def run(*args, **kwargs):
+            with timed(logger, function.__name__):
+                return function(*args, **kwargs)
+        return run
+    return wrap
 
 
 def add_secret(value: str) -> None:

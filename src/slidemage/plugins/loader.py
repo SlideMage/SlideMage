@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import os
 import sys
 import traceback
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import Literal
 
 from .. import project
+from .. import diagnostics
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .manifest import MANIFEST_NAME, RESERVED_IDS, Manifest, ManifestError, matches, package_name, read_manifest
@@ -154,6 +156,9 @@ def _discard_module(name: str) -> None:
         del sys.modules[key]
 
 
+_log = logging.getLogger("slidemage.plugins")
+
+
 def _load_one(found: Found, make_host: Callable[[Manifest], Registrar], app_version: str) -> LoadedPlugin:
     plugin = LoadedPlugin(found.folder, found.source, found.id, found.manifest, "failed", note=found.note)
     manifest = found.manifest
@@ -209,4 +214,14 @@ def _load_one(found: Found, make_host: Callable[[Manifest], Registrar], app_vers
 
 def load_all(make_host: Callable[[Manifest], Registrar], app_version: str = VERSION_NUMBER) -> list[LoadedPlugin]:
     """Load every discovered plugin; make_host(manifest) builds the host that plugin's activate() gets."""
-    return [_load_one(f, make_host, app_version) for f in discover()]
+    found = discover()
+    diagnostics.event(_log, "plugins found", count=len(found))
+    plugins = []
+    for one in found:
+        with diagnostics.timed(_log, "plugin", id=one.id) as info:
+            plugin = _load_one(one, make_host, app_version)
+            info.update(version=plugin.manifest.version if plugin.manifest else "?", state=plugin.state)
+            if plugin.reason.strip():
+                info["reason"] = plugin.reason.strip().splitlines()[-1]
+        plugins.append(plugin)
+    return plugins

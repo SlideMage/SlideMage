@@ -4,10 +4,14 @@
 Claude Code tab runs its tasks with."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from .. import diagnostics
 from ..fileio import read_json, write_json
 from ..project import config_dir
+
+_log = logging.getLogger("slidemage.settings")
 
 STORE_PATH = config_dir() / "layout.json"
 
@@ -17,4 +21,5 @@ def get(key: str, default: Any = None) -> Any:
 
 
 def set(key: str, value: Any) -> None:
+    diagnostics.event(_log, "setting changed", key=key)
     write_json(STORE_PATH, {**read_json(STORE_PATH), key: value})
