@@ -1,6 +1,6 @@
 # Plan: an on-demand debug log for SlideMage
 
-Status: decisions made 2026-10-31 (section 7). Steps 1 to 4 done (v0.12.3, v0.13.5, v0.13.7, v0.13.8); step 5 next, after the go.
+Status: decisions made 2026-10-31 (section 7). Steps 1 to 5 done (v0.12.3, v0.13.5, v0.13.7, v0.13.8, v0.13.16); step 6 next, after the go.
 
 ## 1. Review: what SlideMage writes today
 
@@ -201,7 +201,8 @@ These are the points that would have spared us the ad-hoc traces:
    status bar, so the indicator is a "Debug log on" chip after the AutoSave switch, next to the Help menu.
    The report holds no compile log: those live in each run's temporary folder, and step 5 puts the
    compile lines into the debug log itself.
-5. **Instrumentation** (section 5), area by area. Small, so it can be one PR or split
+5. **Instrumentation (done, v0.13.16)** (section 5), area by area. One PR. SlideMage has no file watcher,
+   so those lines do not apply; maintenance logs when each check at startup ran. Small, so it can be one PR or split
    into compile+preview and the rest.
 6. **Docs:** a section in the manual and a short note for plugin authors (`tools/debug_log.py` came in
    step 3).

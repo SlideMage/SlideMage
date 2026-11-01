@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}) \+(\S+)s (\w+)\s+(\S+)\s+(\S+):(\d+) (\S+)  (.*)$")
+LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}) \+(\S+)s (\w+)\s+(\S+)\s+(\S+):(\d+) (.+?)  (.*)$")
 LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 

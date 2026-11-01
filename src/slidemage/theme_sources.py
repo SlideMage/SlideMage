@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from http.client import HTTPException
 from pathlib import Path
 
-from . import themes, updater
+from . import diagnostics, themes, updater
 from .plugins import installer
 from .plugins.manifest import parse_version
 from .version import VERSION_NUMBER
@@ -208,7 +208,9 @@ def _explain(exc: urllib.error.HTTPError, repo: str) -> SourceError:
 
 def _get_json(url: str, repo: str, timeout: float):
     try:
-        with urllib.request.urlopen(updater._request(url, "application/vnd.github+json"), timeout=timeout) as response:
+        request = updater._request(url, "application/vnd.github+json")
+        with diagnostics.timed(log, "GET", url=url) as info, urllib.request.urlopen(request, timeout=timeout) as response:
+            info["status"] = getattr(response, "status", None)
             return json.load(response)
     except urllib.error.HTTPError as exc:
         raise _explain(exc, repo) from exc
@@ -221,7 +223,8 @@ def _download(url: str, dest: Path, repo: str, max_bytes: int, timeout: float) -
     for a file larger than `max_bytes`."""
     done = 0
     try:
-        with urllib.request.urlopen(updater._request(url, "application/octet-stream"), timeout=timeout) as response, \
+        request = updater._request(url, "application/octet-stream")
+        with diagnostics.timed(log, "download", url=url), urllib.request.urlopen(request, timeout=timeout) as response, \
                 open(dest, "wb") as out:
             while chunk := response.read(256 * 1024):
                 done += len(chunk)

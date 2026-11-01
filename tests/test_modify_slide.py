@@ -310,3 +310,5 @@ def test_timing_records_the_request_in_order(env, monkeypatch, debug_logs, switc
     assert "tool=modify_slide" in records[1].message and "tool=modify_slide" in records[4].message
     lines = tool.timeline(records)
     assert lines[0].startswith("+  0.000 s  prompt") and "[app:" in lines[0] and len(lines) == 5
+    [tool_call] = [r for r in tool.read([debug_logs]) if r.area == "ai"]
+    assert "tool call tool=modify_slide args=" in tool_call.message and "seconds=" in tool_call.message
