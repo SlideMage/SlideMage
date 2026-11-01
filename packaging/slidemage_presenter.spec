@@ -93,6 +93,9 @@ if sys.platform not in ("win32", "darwin"):
     # PySide6.QtDBus; without the library the program would not start (the Windows build has neither).
     _DROP_QT_LIBRARIES = tuple(name for name in _DROP_QT_LIBRARIES if name != "qt6dbus")
     _DROP_FILES = tuple(name for name in _DROP_FILES if name != "qtdbus.pyd")
+# macOS frameworks (QtQuick.framework …): only those no platform or style plugin can link. QtOpenGL, QtDBus and
+# QtNetwork stay there, because CI's self-test only imports, and a missing framework would show first at a real start.
+_DROP_QT_FRAMEWORKS = ("qtquick", "qtqml", "qtpdf", "qtvirtualkeyboard")
 
 
 def _unneeded(dest):
@@ -102,6 +105,10 @@ def _unneeded(dest):
     if name in _DROP_FILES or name.endswith(".qm"):
         return True
     if "plugins" not in parts and name.removeprefix("lib").startswith(_DROP_QT_LIBRARIES):
+        return True
+    # macOS: Qt comes as frameworks (lib/QtQuick.framework/...), named without the 6, so the rule above missed them
+    # and the first macOS build kept them all (141.6 MiB at v0.13.10).
+    if any(part.lower().endswith(".framework") and part.lower().startswith(_DROP_QT_FRAMEWORKS) for part in parts):
         return True
     if "translations" in parts or "qml" in parts:
         return True
