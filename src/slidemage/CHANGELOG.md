@@ -3246,3 +3246,8 @@ NEW: A detailed debug log, for finding out what went wrong.
 - Start SlideMage with --debug to write a detailed log of what it does, in logs/debug in SlideMage's cache folder.
 - A switch in Settings follows in a later version.
 - Plugins can write debug lines to it.
+
+v0.13.7 (2026-11-01, direct request: a small visual touch on opening): A small one-time visual touch when SlideMage opens.
+
+NEW: A small visual touch when SlideMage opens.
+- A small one-time visual touch when SlideMage opens.
