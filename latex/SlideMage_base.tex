@@ -6065,9 +6065,29 @@
 % writes that unresolved literal path into the .bcf, which biber (a separate
 % process that never sees \input@path) then cannot find.
 \makeatletter
+% The citation format (v0.13.0): SlideMage_citation_\SMCitationFormat.tex redefines the two macros. The
+% template's choice is loaded at the end of this file (so a deck's own redefinitions still win, as when the
+% template had an \input line for the house format); a deck that sets another \SMCitationFormat gets that
+% file at the \SMUseBibliography call. \SM@citationLoaded holds the key that is loaded, so the same format
+% is never loaded twice by SlideMage itself (a template's old \input{SlideMage_bibliography_default} loads
+% the house format again, which only repeats two \renewcommands).
 \newcommand{\SMBiblatexOptions}{style=authoryear, backend=biber}
 \newcommand{\SMBibliographyStyle}{}
+\def\SM@citationLoaded{}
+\newcommand{\SM@LoadCitationFormat}{%
+	\ifx\SM@citationLoaded\SMCitationFormat\else
+		\IfFileExists{SlideMage_citation_\SMCitationFormat.tex}{%
+			\input{SlideMage_citation_\SMCitationFormat}%
+		}{%
+			\PackageError{SlideMage}{The citation format "\SMCitationFormat" is not available}{%
+				There is no file SlideMage_citation_\SMCitationFormat.tex on the TeX search path.\MessageBreak
+				Install the citation package for "\SMCitationFormat" (Settings -> Plugins -> Citation formats),\MessageBreak
+				or set \string\SMCitationFormat\space to a format that is installed (default is built in).}%
+		}%
+		\xdef\SM@citationLoaded{\SMCitationFormat}%
+	\fi}
 \newcommand{\SMUseBibliography}[1][SlideMage.bib]{%
+	\SM@LoadCitationFormat
 	\expandafter\usepackage\expandafter[\SMBiblatexOptions]{biblatex}% (options are not expanded otherwise)
 	\let\SM@SavedInputPath\input@path
 	\def\input@path{}%
@@ -6159,4 +6179,7 @@
 	\def\input{\@ifnextchar\bgroup\SM@inputProjectMacros\SMKernelInput}%
 	\AtBeginDocument{\let\input\SMKernelInput}%
 }{}
+% The template's citation format (\SMCitationFormat, see \SMUseBibliography above), loaded last as the
+% templates' own \input line did.
+\SM@LoadCitationFormat
 \makeatother

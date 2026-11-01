@@ -641,12 +641,12 @@ class Host(Protocol):
     def log(self, message: str, level: Literal["debug", "info", "warning", "error"] = "info") -> None:
         """Write a line to SlideMage's log, marked with the plugin's id (area plugins.<id>). Warnings and errors
         always reach the error log; debug and info lines only the debug log, while it is on. The level argument
-        came with SlideMage v0.12.4: a plugin that passes it says requires_slidemage = ">=0.12.4"."""
+        came with SlideMage v0.13.5: a plugin that passes it says requires_slidemage = ">=0.13.5"."""
         ...
 
     def debug_enabled(self) -> bool:
         """Whether SlideMage writes its debug log now: check it before building an expensive debug line
-        (SlideMage v0.12.4)."""
+        (SlideMage v0.13.5)."""
         ...
 
     def show_message(self, text: str, error: bool = False) -> None:

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import themes, unused_content
+from . import citations, themes, unused_content
 from .deck_scan import Deck
 from .project import ProjectContext, is_snapshot
 from .slide_snapshot import framework_dirs
@@ -69,6 +69,12 @@ DEFAULT_BIBLIOGRAPHY_RE = re.compile(r"\\SMUseBibliography(?!\s*\[)")
 # \providecommand is the default and is not matched.
 PROFILE_RE = re.compile(r"\\(?:newcommand|renewcommand)\s*\{\\SMLayoutProfile\}\s*\{(?P<a>[^{}\\]+)\}"
                         r"|\\def\s*\\SMLayoutProfile\s*\{(?P<b>[^{}\\]+)\}")
+# The citation format is likewise a file name built from the catalog's \SMCitationFormat (a template or a deck sets it);
+# the base loads SlideMage_citation_<key>.tex, the house format "default" unless another is named, so both are exported.
+CITATION_RE = re.compile(r"\\(?:newcommand|renewcommand)\s*\{\\SMCitationFormat\}\s*\{(?P<a>[^{}\\]+)\}"
+                         r"|\\def\s*\\SMCitationFormat\s*\{(?P<b>[^{}\\]+)\}")
+DEFAULT_CITATION = "default"
+CITATION_PREFIX = "SlideMage_citation_"
 DEFAULT_PROFILE = "fira"                # setup's \providecommand{\SMLayoutProfile}{fira} (a test keeps them equal)
 PROFILE_PREFIX = "SlideMage_layout_"
 
@@ -92,7 +98,8 @@ class _Collector:
         self.deck = deck
         self.frameworks = framework_dirs(ctx.root)
         # Installed theme packages (themes.py): their files go to the root, as a project's own template's would.
-        self.themes = [] if is_snapshot(ctx.root) else themes.installed_dirs()
+        # Installed citation formats (citations.py) go the same way.
+        self.themes = [] if is_snapshot(ctx.root) else [*citations.citation_dirs(), *themes.installed_dirs()]
         # TeX's search path during a compile: the deck's folder, the project root, the framework, then the themes.
         self.search = [ctx.decks_dir, ctx.root, *self.frameworks, *self.themes]
         self.files: dict[str, Path] = {}
@@ -101,6 +108,7 @@ class _Collector:
         self._queue: list[Path] = []
         self._listings: set[Path] = set()   # files shown as code, never read for references
         self.profiles: set[str] = set()     # layout profiles the templates name
+        self.citations: set[str] = set()    # citation formats the templates and decks name
 
     def destination(self, source: Path) -> str:
         """Where a source file goes: decks/ files to the root, project files where they are, framework and theme files
@@ -168,6 +176,8 @@ class _Collector:
                 self.reference(f"beamer{match.group('kind') or ''}theme{name}.sty", ("",), own, False)
         for match in PROFILE_RE.finditer(text):
             self.profiles.add((match.group("a") or match.group("b")).strip())
+        for match in CITATION_RE.finditer(text):
+            self.citations.add((match.group("a") or match.group("b")).strip())
         for token in TOKEN_RE.findall(text):
             if Path(token).suffix.lower() in FILE_SUFFIXES:
                 self.reference(token, ("",), own, "/" in token)
@@ -194,6 +204,8 @@ class _Collector:
         # The layout profile file(s), now that every template has been read: the name is built from a macro.
         for profile in sorted(self.profiles or {DEFAULT_PROFILE}):
             self.reference(f"{PROFILE_PREFIX}{profile}.tex", ("",), True, True)
+        for key in sorted(self.citations | {DEFAULT_CITATION}):
+            self.reference(f"{CITATION_PREFIX}{key}.tex", ("",), True, True)
         while self._queue:
             self.scan(self._queue.pop())
         used, missing = unused_content.media_references(self.ctx, self._texts)

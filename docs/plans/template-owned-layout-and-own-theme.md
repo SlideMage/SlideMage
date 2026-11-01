@@ -993,7 +993,8 @@ mix it in.
      token rules in `docs/THEME_PACKAGE.md` (one resource owner, Contents: Read-only, org approval required by
      default). The catalog's `\SMCardHeadingStyle` replaces the Graz template's renewal of the profile's
      `\SMCardHeadingFont`. The Graz theme is prepared locally in `D:/uniCLOUD/slidemage-theme-uni-graz/` (no remote);
-     `framework_regression.py` has `extra_dirs`. Details and pending checks: `docs/plans/step17-status.md`.
+     `framework_regression.py` has `extra_dirs`. (Its status note was removed in step 19; the theme repository
+     is `SlideMage/slidemage-theme-uni-graz`, released from v1.0.0 on.)
 17b. **Final test: a template unlike SlideMage's** (user request 2026-10-31; after step 17, before step 18). Draft a
    template that differs from the SlideMage template in every respect the catalog and the layout profiles are meant
    to cover, then render the whole manual deck in it to find what still assumes Fira or SlideMage's own look.
@@ -1139,6 +1140,33 @@ mix it in.
    the base wraps `\input` until `\begin{document}` and drops that one repeat, so the file is read once and
    its `\newcommand`s do not stop with "already defined". The compat entry `project-macros-by-the-framework`
    (module `compat_project_macros`, not breaking) removes the now redundant line from a project's templates.
+18c. **Citation formats as a category** (user decision 2026-10-31; v0.13.0). Citation formats become a third
+   category beside themes and plugins. Decided: files are `SlideMage_citation_<key>.tex`;
+   `SlideMage_bibliography_default.tex` becomes `SlideMage_citation_default.tex` and the old name stays as a one-line
+   loader of it (templates and the private Graz theme keep working); the catalog setting `\SMCitationFormat`
+   (default `default`) names the format, a template sets it, a deck may override it before `\SMUseBibliography`;
+   other formats come as packages like themes (`.smcite` with `citation.toml`, installed into the config folder and
+   put on the TeX path, from a file or a GitHub repository, with update offers), and the website lists them as a
+   third category (a handover, the website is another repository). Design:
+   - **TeX.** The base loads `SlideMage_citation_\SMCitationFormat` at its very end (after the project macros), so a
+     deck's own `\renewcommand` of `\SMBiblatexOptions`/`\SMBibliographyStyle` still wins, as it did when the template
+     had the `\input` line. `\SMUseBibliography` loads the format only when the deck changed `\SMCitationFormat`
+     since (`\SM@citationLoaded` holds the loaded key). A missing file is a `\PackageError` naming the key. A
+     template that still inputs the old file repeats two `\renewcommand`s of the same text: no change in output.
+   - **Packages.** `docs/CITATION_PACKAGE.md`; `citation.toml` (id = key, name, version, requires_slidemage, summary,
+     author, homepage, license); a package holds the manifest, `SlideMage_citation_<key>.tex`, README.md,
+     CHANGELOG.md, LICENSE, optionally preview.png, LICENSES/ and extra TeX files named
+     `SlideMage_citation_<key>_*` (.tex, .bbx, .cbx, .dbx, .lbx: the prefix keeps them from shadowing biblatex's own
+     styles); a key cannot be `default`. `src/slidemage/citations.py` mirrors `themes.py` (check, peek, install,
+     remove, `citation_dirs()`, `texinputs()`); `citation_sources.py` reuses `theme_sources.py`'s GitHub
+     mechanism, which is generalised by an asset pattern (`.smcite`) rather than copied; `tools/make_citation_package.py`.
+   - **Precedence** as for themes: the project's copy, then the framework's, then the installed package (the citation
+     folders come first on TEXINPUTS only among the installed ones; none can take a bundled key).
+   - **UI.** Settings → Plugins gets a "Citation formats" section under Themes (Remove, Check for update, Add from
+     GitHub…), the file button takes `.smcite`; the start-up update check offers citation updates like theme ones.
+   - **Compat** `citation-format-by-the-framework` (module `compat_citation_format`, optional, not breaking): removes a
+     project template's `\input{SlideMage_bibliography_default}`, which the base does now; a template wanting another
+     format sets `\SMCitationFormat`.
 19. **Clean up everything no longer needed** (user request 2026-10-29; the very last step, after everything else is
     merged and verified). List what will go and get the user's OK before deleting anything that cannot be
     recreated:

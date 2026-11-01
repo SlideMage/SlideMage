@@ -46,7 +46,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
-from . import slide_versioning, themes
+from . import citations, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -594,6 +594,10 @@ def build_env(ctx: project.ProjectContext) -> dict:
     theme_path = themes.texinputs(env)
     if theme_path is not None:
         env["TEXINPUTS"] = theme_path
+    # Installed citation formats (citations.py) likewise, in front of the themes (their file names never collide).
+    citation_path = citations.texinputs(env)
+    if citation_path is not None:
+        env["TEXINPUTS"] = citation_path
     # Inside a deck snapshot: its own framework copy and fixed PDF dates (and no theme folders: it carries copies).
     return project.snapshot_compile_env(ctx.root, env)
 

@@ -32,6 +32,7 @@ keyring = ["keyring"]
 
 [project.gui-scripts]
 slidemage = "slidemage.cli:main"
+slidemage-presenter = "slidemage.presenter_app:main"
 
 [tool.hatch.version]
 path = "src/slidemage/version.py"

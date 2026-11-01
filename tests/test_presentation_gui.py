@@ -15,6 +15,7 @@ from presentation_fixtures import JUMP_SPOT, URI_SPOT, make_pdf
 from slidemage.presentation.keep_awake import KeepAwake
 from slidemage.presentation.pdf_source import PresentationDeck
 from slidemage.presentation.screens import ScreenInfo
+from slidemage.presentation.session import TOOL_PEN
 from slidemage.presentation.settings import PresentationSettings
 from slidemage.ui.presentation.controller import PresentationController
 from slidemage.ui.presentation.slide_canvas import SlideCanvas
@@ -346,3 +347,58 @@ def test_a_presentation_continued_at_a_slide_opens_there_on_both_screens(make):
     controller = make(frames=FrameMap(((0, 0), (1, 3), (4, 4), (5, 5))), start_page=4)
     counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Slide")][0]
     assert controller.session.page == 4 and counter.text() == "Slide 3 / 4 · step 1 / 1"
+
+
+def test_changing_the_layout_leaves_no_updates_to_deleted_widgets(make, capfd):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    controller = make()
+    for _ in range(3):                       # every profile change replaces the presenter's widgets
+        controller.next_profile()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    for _ in range(4):
+        controller.session.next()
+        controller.session.set_tool(TOOL_PEN)
+    err = capfd.readouterr().err
+    assert "already deleted" not in err, err[-600:]
+    counter = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Page")][0]
+    assert counter.text() == "Page 5 / 6"
+
+
+def test_the_laser_menu_changes_colour_and_size_for_this_presentation_only(make):
+    from PySide6.QtWidgets import QSlider, QToolButton
+    saved = PresentationSettings()
+    controller = make(settings=saved)
+    assert any(tool.text() == "Laser" for tool in controller.presenter.findChildren(QToolButton))
+    menu = controller._laser_menu(controller.presenter)
+    menu.findChildren(QSlider)[0].setValue(40)
+    assert controller.settings.laser_size == pytest.approx(0.04)
+    canvases = controller.audience.findChildren(SlideCanvas) + controller.presenter.findChildren(SlideCanvas)
+    assert canvases and all(canvas.settings is controller.settings for canvas in canvases)   # drawn from it live
+    assert PresentationSettings.load().laser_size == PresentationSettings().laser_size       # nothing saved
+
+
+def test_the_presenter_names_its_current_and_next_slide_but_the_projector_shows_no_name(make):
+    controller = make()
+    names = sorted(canvas.name for canvas in controller.presenter.findChildren(SlideCanvas) if canvas.name)
+    assert names == ["Current", "Next"]
+    assert all(not canvas.name for canvas in controller.audience.findChildren(SlideCanvas))
+
+
+def test_the_presentation_settings_fit_a_sheet_of_the_settings_width(qapp):
+    from slidemage.ui.presentation.settings_page import PresentationTab
+    assert PresentationTab().minimumSizeHint().width() <= 700      # the sheet is 760 wide; nothing is cut off
+
+
+def test_the_clock_says_it_is_the_current_time(make):
+    controller = make(settings=PresentationSettings(clock_format="24"))
+    clocks = [label for label in controller.presenter.findChildren(QLabel) if label.text().startswith("Current time: ")]
+    assert len(clocks) == 1 and clocks[0].text()[len("Current time: "):].count(":") == 1
+
+
+def test_the_footer_bar_is_taller_with_larger_text(make):
+    from PySide6.QtWidgets import QWidget
+    from slidemage.ui.presentation import layout_view
+    controller = make()
+    strips = [w for w in controller.presenter.findChildren(QWidget) if w.styleSheet() == layout_view.STRIP_STYLE]
+    assert strips and all(strip.height() == layout_view.STRIP_HEIGHT == 58 for strip in strips)
+    assert "font-size: 16px" in layout_view.STRIP_STYLE

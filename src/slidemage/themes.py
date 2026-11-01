@@ -161,6 +161,11 @@ def check_names(names: list[str], manifest: ThemeManifest) -> None:
     files and nothing that is not the theme's own. Raises ThemeError."""
     files = {n for n in names if not n.endswith("/")}
     own_layout = f"{LAYOUT_PREFIX}{manifest.layout}.tex"
+    if manifest.layout in BUNDLED_PROFILES and own_layout in files:
+        # An installed theme is on TEXINPUTS ahead of the framework: its copy would replace the bundled profile
+        # for every deck using it, not just the theme's own template.
+        raise ThemeError(f"The theme ships its own copy of SlideMage's layout profile {manifest.layout} "
+                         f"({own_layout}); a theme may ship a layout profile only under a name of its own.")
     allowed_top = {MANIFEST_NAME, manifest.template_file, own_layout, *REQUIRED_FILES, *OPTIONAL_FILES}
     for name in names:
         path = PurePosixPath(name.rstrip("/"))
