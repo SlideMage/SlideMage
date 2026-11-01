@@ -240,6 +240,18 @@ start the Presenter.
   button removes it. If the folder is moved, the keys point to the old place, so the start window re-checks them.
 - Linux: the `.desktop` file gets `MimeType=application/pdf;`.
 
+*Done in v0.13.8* (origin/develop was at v0.13.7 when this was written, hence the next patch).
+`presentation/open_with.py` (no Qt; registry, file system and notification are injectable) and a row in the start
+window, shown only in a frozen Windows or Linux build: a button reading Add, Remove or Update (the entry points to
+another copy) and a caption. Windows keys, all under HKCU\Software\Classes: the ProgID `SlideMage.Presenter.pdf`
+(description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `FriendlyAppName`), the value
+`SlideMage.Presenter.pdf` under `.pdf\OpenWithProgids` (REG_NONE, no data) and `Applications\SlideMagePresenter.exe`
+(`FriendlyAppName`, command, `SupportedTypes\.pdf`); then `SHChangeNotify`. Linux: `slidemage-presenter.desktop`
+in `$XDG_DATA_HOME/applications`, written from the text embedded in the module (the packaging template, for manual
+installs, got `MimeType` and `%f` and a test keeps the two in step), then `update-desktop-database` if present.
+Not verified: that Explorer or a Linux file manager actually lists the Presenter (needs the real registry or a
+real desktop; the tests use fakes).
+
 **5b. Slide numbers and reveal steps without a project.** A beamer slide with reveals (`\pause`, `\only<2>`, …)
 becomes several PDF pages, one per step. When SlideMage presents a deck from a project, it reads beamer's `.nav`
 file from the compile records (`presentation/frames.py`) and so knows which pages belong together. The presenter

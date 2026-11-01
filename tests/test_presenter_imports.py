@@ -17,7 +17,8 @@ import slidemage
 # What the Presenter imports: presenting a PDF, the presentation settings page, the kit's theme.
 PRESENTER_MODULES = ("slidemage.ui.presentation.standalone", "slidemage.ui.presentation.settings_page",
                      "slidemage.ui.presentation.resume_ui", "slidemage.ui.kit.theme",
-                     "slidemage.presenter_app", "slidemage.ui.presentation.presenter_window")
+                     "slidemage.presenter_app", "slidemage.ui.presentation.presenter_window",
+                     "slidemage.presentation.open_with")
 
 # Never needed for presenting a PDF. A package listed here also forbids its submodules.
 FORBIDDEN = (

@@ -5,6 +5,7 @@ ones, drop one on the window, or change the presentation settings. Imports only 
 modules, like standalone.py, so the small Presenter program can be built from it."""
 from __future__ import annotations
 
+import sys
 import threading
 from pathlib import Path
 from typing import Callable
@@ -13,7 +14,7 @@ from PySide6.QtCore import QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from ...presentation import presenter_update, recent
+from ...presentation import open_with, presenter_update, recent
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, ModalSheet, RowButton, Surface, caption, clear_layout
@@ -79,6 +80,20 @@ class PresenterStartWindow(QWidget):
         bar.addWidget(self.update_button)
         self.update_bar.hide()
         root.addWidget(self.update_bar)
+        # "Open with": offered only by a frozen Windows or Linux build (open_with.supported()).
+        self.open_with_bar = QWidget()
+        with_bar = QHBoxLayout(self.open_with_bar)
+        with_bar.setContentsMargins(0, 0, 0, 0)
+        self.open_with_label = caption("")
+        with_bar.addWidget(self.open_with_label, 1)
+        self.open_with_button = Button("Add", "secondary")
+        self.open_with_button.setToolTip("Only adds SlideMage Presenter to the “Open with” list of PDF files. "
+                                         "It never changes the program that opens a PDF on a double-click.")
+        self.open_with_button.clicked.connect(self.on_open_with_clicked)
+        with_bar.addWidget(self.open_with_button)
+        root.addWidget(self.open_with_bar)
+        self.open_with_state = open_with.OFF
+        self.refresh_open_with()
         footer = QHBoxLayout()
         footer.addWidget(caption(VERSION_NUMBER.lstrip("v")))
         footer.addStretch(1)
@@ -170,6 +185,39 @@ class PresenterStartWindow(QWidget):
         self.update_label.style().polish(self.update_label)
         self.update_button.setText("Try again")
         self.update_button.setEnabled(True)
+
+    # -- "Open with" ---------------------------------------------------------------------------
+
+    def refresh_open_with(self, error: str = "") -> None:
+        """Show the row when this build can register itself; the button follows the status (Add, Remove, Update)."""
+        if not open_with.supported():
+            self.open_with_bar.hide()
+            return
+        try:
+            self.open_with_state = open_with.status(sys.executable)
+        except OSError as exc:
+            self.open_with_state, error = open_with.OFF, error or str(exc)
+        state = self.open_with_state
+        text = "Offer SlideMage Presenter under “Open with” for PDF files."
+        if state == open_with.MOVED:
+            text = "“Open with” for PDF files points to another copy of SlideMage Presenter."
+        self.open_with_label.setText(error or text)
+        self.open_with_label.setProperty("tone", "error" if error else "")
+        self.open_with_label.style().unpolish(self.open_with_label)
+        self.open_with_label.style().polish(self.open_with_label)
+        self.open_with_button.setText({open_with.ON: "Remove", open_with.MOVED: "Update"}.get(state, "Add"))
+        self.open_with_bar.show()
+
+    def on_open_with_clicked(self) -> None:
+        try:
+            if self.open_with_state == open_with.ON:
+                open_with.unregister()
+            else:
+                open_with.register(sys.executable)
+        except OSError as exc:
+            self.refresh_open_with(f"Could not change it: {exc}")
+            return
+        self.refresh_open_with()
 
     # -- the list ------------------------------------------------------------------------------
 
