@@ -218,12 +218,12 @@ jobs:
         include:
           # max_mib: the unpacked Presenter (the folder, or the .app) must stay below it. It is the guard against a
           # stray import that brings QtWebEngine, the compiler or the workspace back (several hundred MiB more), not
-          # a target to fill. Measured at v0.13.10: Windows 105, macOS 142, Linux 232 MiB (Linux and macOS strip
-          # less so far: the step lists the largest files so they can be looked at).
+          # a target to fill. Measured: Windows 105, macOS 142 (v0.13.10), Linux 172 MiB (v0.13.12). The step lists
+          # the largest files, and the symbolic links on Linux: zipping would expand each into a full copy.
           - os: ubuntu-latest
             asset_name: SlideMagePresenter-linux
             bundle_path: dist/SlideMagePresenter
-            max_mib: 260
+            max_mib: 200
           - os: windows-latest
             asset_name: SlideMagePresenter-windows
             bundle_path: dist/SlideMagePresenter
@@ -304,6 +304,8 @@ jobs:
           print(f"{root}: {mib:.1f} MiB (limit {limit} MiB); the largest files:")
           for size, path in sorted(sizes, reverse=True)[:20]:
               print(f"  {size / 2**20:7.1f} MiB  {path}")
+          links = [path for _size, path in sizes if os.path.islink(os.path.join(root, path))]
+          print(f"{len(links)} symbolic links", links[:10])
           if mib > limit:
               print(f"::error::The unpacked Presenter is {mib:.1f} MiB, over the limit of {limit} MiB")
               sys.exit(1)
