@@ -1,6 +1,6 @@
 # Plan: tabs in the centre column
 
-Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is done (v0.13.12, branch tabs/step1-strip, not merged); steps 2 to 4 next, after the go.
+Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is merged (v0.13.14). Step 2 is done (v0.13.16, branch tabs/step2-slides, not merged); steps 3 and 4 next, after the go.
 
 Request (2026-11-01): "I liked working in tabs in SlideMage versions up to v5. Draft a plan to open source views, the
 .bib edit view, and slides that the user opens using the search functionality in tabs. When opening a deck source or
@@ -119,6 +119,27 @@ file tab means that slide. Check each in step 1 and list them in the PR.
 
 Per project, in `layout_settings` (`centre_tabs`: the file tabs' paths relative to the project, the active one, their
 modes); files that no longer exist are skipped silently.
+
+Step 2 as built (decided while building, 2026-11-01):
+
+* **Which tab shows what.** A slide file tab has every mode; it opens in the Source view when it has a line to go to or is a
+  frozen version, else in the mode of the tab it was asked from (Open in new tab from Preview opens in Preview). Opening
+  a slide's file with `tab=True` again selects its tab (and updates the occurrence it was opened from).
+* **Preview and Details follow the active tab.** A slide file tab previews as the deck calls it (found by id-slug; for
+  a slide used more than once, the row it was opened from, `SlideRow.key`) or alone (`for_path`) when the deck does not
+  use the slide, no longer uses it (no error), or it is a frozen version (also when the deck pins that version). The
+  language chip on a slide file tab opens the partner in a tab of its own.
+* **Focus.** Activating a slide file tab changes neither the focused slide nor the slide list. The chat, the AI tasks,
+  the readability check, Ctrl+S, Ctrl+R, the plugin focus and the render batches act on the slide on show
+  (`CentreColumn.shown_slide`). The side panels (versions, notes, used in, images) and the slide list's commands stay on
+  the focused slide, which their headers name; this is the one place where "this slide" can still mean the focused slide
+  while another slide is on show.
+* **The Preview's wheel** past the last step does nothing on a slide file tab (no focus change, no tab change); its
+  neighbours for the reveal-step counts are those of the tab's row.
+* **Holding is counted** (`SourcePane.hold`/`unhold`/`release`): the slide tab holds its file, each tab holds its own,
+  so one buffer serves both; the old `_hold_slide` is gone, the slide tab's file is always held.
+* **Update Version on leave** is offered when a slide file tab closes, unless the slide tab shows the same file; moving
+  the slide tab away from a slide that has a tab does not ask. Window close covers all edited files as before.
 
 ## 4. Steps
 

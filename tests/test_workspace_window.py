@@ -1478,3 +1478,36 @@ def test_the_slide_lists_preview_command_leaves_a_file_tab_for_the_slide_tab(win
     window.slide_list._run("preview", [SimpleNamespace(call=SimpleNamespace(id="aaa"), key=None)])
     assert window.centre.tabs.active is window.centre.tabs.slide_tab and window.state.mode == "preview"
     assert window.centre.tabs.tab_for(tabbed.bib) is not None
+
+
+def test_a_slide_opened_with_tab_gets_a_tab_and_the_focus_and_the_chat_stay_where_they_were(window):
+    first, second = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.open_slide_editor(first)
+    focused = window.state.focused_slide
+    window.open_slide_editor(second, tab=True)
+    tab = window.centre.tabs.active
+    assert tab.kind == "file" and tab.slide and tab.path == second
+    assert window.state.focused_slide == focused and window.centre._slide_path == first
+    workspace = window.assistant.workspace
+    workspace.begin_request()                                       # what the chat takes as "this slide"
+    assert workspace.context().path == second and workspace.context().slide_id == second.name.split("-", 1)[0]
+    window.centre.show_slide_tab()
+    workspace.begin_request()
+    assert workspace.context().path == first and workspace.context().slide_id == focused
+
+
+def test_the_live_render_follows_the_slide_on_show_not_a_slide_in_a_background_tab(window, monkeypatch):
+    from slidemage import app_settings
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+
+    first, second = sorted(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex"))[:2]
+    window.open_slide_editor(first)
+    window.open_slide_editor(second, tab=True)
+    window.state.set_mode("split")
+    renders = []
+    monkeypatch.setattr(window.centre.preview, "render_after_save", lambda: renders.append(window.centre.preview.target_path))
+    monkeypatch.setattr(app_settings, "get", lambda ctx, key, default=None: key == LIVE_RENDER_SETTING_KEY or default)
+    window._live_render(first)                                      # saved in the background: the Preview shows the other
+    assert renders == []
+    window._live_render(second)
+    assert renders == [window.centre.preview.target_path] and window.centre.preview.target_path == second

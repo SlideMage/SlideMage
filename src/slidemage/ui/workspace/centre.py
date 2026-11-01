@@ -4,22 +4,25 @@
 Details (docs/UI_REDESIGN_PLAN.md, step 5; docs/plans/centre-tabs.md).
 
 The first tab is the slide tab, always there: it follows the focused slide. A file opened on purpose -- a deck's own
-source, SlideMage.bib, test-slides.tex -- has a tab of its own until it is closed (centre_tabs.py); opening a file
-that has a tab shows that tab. Every tab remembers the mode it was last shown in, and a file tab has the Source view
-alone. The top bar's mode switch (WorkspaceState.mode) says which of the views are shown for the tab on show; the
-focused slide, view and language come from the same state. This class decides *what* each view shows and keeps
-them in step:
+source, SlideMage.bib, test-slides.tex, or a slide's file (search, the slide list's Open in new tab, a frozen
+version from Details) -- has a tab of its own until it is closed (centre_tabs.py); opening a file that has a tab
+shows that tab. Every tab remembers the mode it was last shown in; a file that is no slide has the Source view alone.
+The top bar's mode switch (WorkspaceState.mode) says which of the views are shown for the tab on show; the focused
+slide, view and language come from the same state. This class decides *what* each view shows and keeps them in step:
 
 * the Source view shows the file of the tab on show: for the slide tab the file of the focused slide (the one the
   deck calls, so a pinned version opens as the frozen snapshot it is), or a slide's file opened on purpose -- a
   frozen version -- until another slide is focused; for a file tab its file, which the Source view keeps open
-  while another tab is shown;
-* the Preview shows the slide tab's slide as the deck typesets it, or a frozen version alone; saving re-renders it
-  while it is visible. Its language chip shows the slide's file in the other language instead (the top bar's
-  language stays), typeset in that language as the deck calls it;
-* Details shows the slide the same way.
+  while another tab is shown (and shares with the slide tab when both show the same file);
+* the Preview shows the slide of the tab on show: the slide tab's as the deck typesets it, a slide file tab's as the
+  deck calls it (found by id-slug, the occurrence it was opened from) or, when the deck does not use it, alone; a
+  frozen version always alone. Saving re-renders it while it is visible. Its language chip shows the slide's file in
+  the other language instead (the top bar's language stays), typeset in that language as the deck calls it;
+* Details shows the slide of the tab on show the same way.
 
-Focusing a slide shows the slide tab; the file tabs stay open. Views that are not visible are not updated, only
+Focusing a slide shows the slide tab; the file tabs stay open. Showing a slide file tab does not focus its slide: the
+slide list, the side panels and the background renders stay on the focused slide, while the chat, Ctrl+S, Ctrl+R and
+the readability and AI tasks act on the file shown (`path`, `shown_slide`). Views that are not visible are not updated, only
 brought up to date when they are shown. Unsaved edits are kept per file by the Source view, whichever tab is
 shown, and counted in WorkspaceState.dirty.
 """
@@ -118,8 +121,7 @@ class CentreColumn(QFrame):
         super().__init__()
         self.app = app
         self.state = state
-        self._slide_path: Optional[Path] = None   # the slide tab's file: the focused slide's, or one opened on purpose
-        self._slide_held: Optional[Path] = None   # that file while a file tab covers the slide tab: its editor stays
+        self._slide_file: Optional[Path] = None   # the slide tab's file: the focused slide's, or one opened on purpose
         self._opening = False               # open_file() is changing the focus itself
         self._edited: set[Path] = set()     # files written from the Source view since they were last left
         self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
@@ -137,7 +139,7 @@ class CentreColumn(QFrame):
         self.preview.slide_requested.connect(self._go_adjacent)
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
-        self.details.open_requested.connect(lambda path: self.open_file(path))
+        self.details.open_requested.connect(self._open_from_details)
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
                              and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)
@@ -179,7 +181,7 @@ class CentreColumn(QFrame):
         self.source.restore_requested.connect(self.restore_version)
         self.source.version_requested.connect(self.update_version)
         self.source.file_requested.connect(self.open_file)
-        self.preview.partner_requested.connect(lambda path: self.open_file(path, keep_mode=True))
+        self.preview.partner_requested.connect(self._open_partner)
         self.tab_strip.activate_requested.connect(self.tabs.activate)
         self.tab_strip.close_requested.connect(self.close_tab)
         self.tabs.tabs_changed.connect(self._update_strip)
@@ -195,17 +197,24 @@ class CentreColumn(QFrame):
     # -- what the window asks ----------------------------------------------------------
 
     def open_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None,
-                  line: Optional[int] = None, *, keep_mode: bool = False, tab: bool = False) -> None:
+                  line: Optional[int] = None, *, keep_mode: bool = False, tab: bool = False,
+                  occurrence: Optional[tuple] = None) -> None:
         """Show `path` in the Source view. A file that is no slide (a deck's source, SlideMage.bib, test-slides.tex)
         has a tab of its own, which is shown (opened first unless it has one) in the Source view alone; `keep_mode`
         does not apply to it. A slide's file is the slide tab's: the slide tab is shown, the slide of the project is
-        focused, and the Source view is switched to unless it is on show or `keep_mode`. (`tab` asks for a tab of its
-        own, which a slide's file does not get yet.) `on_saved(previous_text)` runs after each save of it; `line`
+        focused, and the Source view is switched to unless it is on show or `keep_mode`. With `tab` a slide's file
+        gets a tab of its own instead (selected when it has one), which does not change the focused slide; it opens in
+        the Source view when `line` says where to go or the file is a frozen version, else in the mode of the tab it
+        was asked from. `occurrence` is the deck row (SlideRow.key) it was opened from.
+        `on_saved(previous_text)` runs after each save of it; `line`
         puts the cursor there. With the Preview alone on show (`keep_mode`) the file only becomes the centre's path:
         its editor is built when the Source view is shown (refresh()), unless `on_saved` or `line` need it now, as
         they live on the editor. The views are refreshed unless the focus click had already put them there."""
         if not _is_slide_file(path):
             self._open_file_tab(path, on_saved, line)
+            return
+        if tab:
+            self._open_file_tab(path, on_saved, line, slide=True, occurrence=occurrence)
             return
         flipped = self._show_slide_tab()
         changed = path != self._path or flipped
@@ -227,20 +236,46 @@ class CentreColumn(QFrame):
         if line is not None and self.source.current is not None:
             self.source.current.editor.go_to_line(line)
 
-    def _open_file_tab(self, path: Path, on_saved: Optional[Callable[[str], None]], line: Optional[int]) -> None:
-        """Show the file tab of `path`, opening it (at the end of the strip) unless it has one."""
+    def _open_file_tab(self, path: Path, on_saved: Optional[Callable[[str], None]], line: Optional[int], *,
+                       slide: bool = False, occurrence: Optional[tuple] = None) -> None:
+        """Show the file tab of `path`, opening it (at the end of the strip) unless it has one. A slide's tab starts in
+        the Source view when there is a line to go to or the file is a frozen version, else in the mode shown now."""
         tab = self.tabs.tab_for(path)
         if tab is None:
-            tab = self.tabs.add_file(path, on_saved)
+            frozen = slide and self._file_slide(path)[1] is not None
+            mode = "source" if line is not None or frozen else self.state.mode
+            tab = self.tabs.add_file(path, on_saved, slide=slide, occurrence=occurrence, mode=mode)
             self.source.hold(path)
-        elif on_saved is not None:
-            tab.on_saved = on_saved
+        else:
+            if on_saved is not None:
+                tab.on_saved = on_saved
+            if slide and occurrence is not None:
+                tab.occurrence = occurrence
+            if tab.slide and line is not None and tab.mode not in ("source", "split"):
+                if tab is self.tabs.active:
+                    self.state.set_mode("source")        # records it in the tab, refreshes
+                else:
+                    tab.mode = "source"
         if tab is self.tabs.active:
             self.refresh()                   # the hook or the line are for the file on show already
         else:
             self.tabs.activate(tab)          # refreshes
-        if line is not None and self.source.current is not None:
+        if line is not None and self.source.current is not None and self.source.current.path == path:
             self.source.current.editor.go_to_line(line)
+
+    def _open_from_details(self, path: Path) -> None:
+        """Details' Open: a frozen version gets a read-only tab of its own, so that it and the current slide can be
+        compared by switching (D6); the other language opens as the slide tab's."""
+        self.open_file(path, tab=slide_language.FROZEN_RE.search(path.name) is not None)
+
+    def _open_partner(self, path: Path) -> None:
+        """The Preview's language chip: the slide's file in the other language. A slide file tab keeps its own slide
+        and opens the partner in a tab of its own."""
+        tab = self.tabs.active
+        if tab.slide:
+            self.open_file(path, keep_mode=True, tab=True, occurrence=tab.occurrence)
+        else:
+            self.open_file(path, keep_mode=True)
 
     @property
     def path(self) -> Optional[Path]:
@@ -252,6 +287,47 @@ class CentreColumn(QFrame):
     def _path(self) -> Optional[Path]:
         tab = self.tabs.active
         return tab.path if tab.kind == FILE else self._slide_path
+
+    @property
+    def _slide_path(self) -> Optional[Path]:
+        return self._slide_file
+
+    @_slide_path.setter
+    def _slide_path(self, path: Optional[Path]) -> None:
+        """The slide tab's file is held by the Source view while the slide tab has it, so that a file tab of the same
+        file shares its editor, and closing that tab (or leaving the slide) never drops what the other still shows."""
+        old, self._slide_file = self._slide_file, path
+        if path != old:
+            if path is not None:
+                self.source.hold(path)
+            if old is not None:
+                self.source.unhold(old)
+                self.source.prune()             # as show_path would, which a Preview on show does not call
+
+    @property
+    def shown_slide(self) -> tuple[Optional[str], Optional[tuple]]:
+        """(bare id, occurrence key) of the slide on show, which the chat and the tasks act on: the focused slide for the
+        slide tab (and the tabs of files that are no slide), the tab's own slide for a slide file tab -- the focused
+        slide's row is not its row."""
+        tab = self.tabs.active
+        if not tab.slide:
+            return self.state.focused_slide, self.state.focused_occurrence
+        row = self._tab_row(tab)
+        return bare_id(tab.path.name), (row.key if row is not None else None)
+
+    @property
+    def shown_occurrence(self) -> Optional[tuple]:
+        return self.shown_slide[1]
+
+    @property
+    def slide_file_shown(self) -> bool:
+        """A slide file tab is on show: its slide is not necessarily the focused one."""
+        return self.tabs.active.slide
+
+    def save(self) -> bool:
+        """Ctrl+S: write the file of the tab on show now (and render it). Whether it is saved."""
+        file = self.source.file_for(self._path) if self._path is not None else None
+        return file is not None and file.write_now(explicit=True)
 
     @property
     def source_only(self) -> bool:
@@ -555,8 +631,6 @@ class CentreColumn(QFrame):
         (once the switch is done). Showing a file tab and coming back is not leaving the slide."""
         left = self._slide_path
         self._slide_path = path
-        if left == self._slide_held and left != path:
-            self._hold_slide(False)
         if left is not None and left != path:
             # Its edits still waiting for their autosave are written now: the Source view does not do it
             # when it is hidden (Preview), as it shows the new file only when it is on show.
@@ -577,8 +651,8 @@ class CentreColumn(QFrame):
         file `path` was edited in the Source view and now carries a "+" -- ask whether to make it a version
         (Update Version, as its button does). Asked once per visit with edits; "Not now" leaves the "+".
         Edits that were discarded instead of saved (AutoSave off) are not asked about: they cannot be written."""
-        if path not in self._edited or (path == self._slide_path and not closing):
-            return                         # not edited on this visit, or the slide tab shows it again already
+        if path not in self._edited or (not closing and (path == self._slide_path or self.tabs.tab_for(path) is not None)):
+            return                         # not edited on this visit, or a tab shows it still (offered when that closes)
         self._edited.discard(path)
         if not app_settings.get(self.state.project, slide_versioning.ASK_ON_LEAVE_SETTING_KEY, False):
             return
@@ -637,46 +711,44 @@ class CentreColumn(QFrame):
             file = self.source.file_for(left.path)
             if file is not None:
                 file.write_now()
-        self._hold_slide(tab.kind == FILE)
         self.tab_strip.set_active(tab)
         self._switching = True
         try:
             self.state.set_mode("source" if tab.source_only else tab.mode)
         finally:
             self._switching = False
-        if tab.kind != FILE and self.state.mode not in ("source", "split"):
+        if not tab.source_only and self.state.mode not in ("source", "split"):
             self.source.show_path(None)         # as for the slide tab in Preview before: no file is "shown"
         self.source_only_changed.emit(tab.source_only)
         if not self._holding:
             self.refresh()
-
-    def _hold_slide(self, covered: bool) -> None:
-        """A file tab over the slide tab keeps the slide's editor, with its undo history and cursor, for when the slide
-        tab comes back. Back on show, or left for another slide (_set_path), it goes as any slide's does."""
-        if self._slide_held is not None and (not covered or self._slide_held != self._slide_path):
-            self.source.unhold(self._slide_held)
-            self._slide_held = None
-        file = self.source.file_for(self._slide_path) if self._slide_path is not None else None
-        if covered and self._slide_held is None and file is not None:
-            self._slide_held = self._slide_path
-            self.source.hold(self._slide_held)
 
     def _update_strip(self) -> None:
         self.tab_strip.set_tabs(self.tabs.tabs, self._tab_label)
         self.tab_strip.set_active(self.tabs.active)
 
     def _tab_label(self, tab: CentreTab) -> tuple[str, str]:
-        """(text, tooltip) of a tab: a file tab names its file; the slide tab names the slide on show."""
+        """(text, tooltip) of a tab: a file tab names its file (a slide's as "1y8 · Title", a frozen version as
+        "1y8 v1.2"); the slide tab names the slide on show."""
         if tab.kind == FILE:
-            return tab.path.name, str(tab.path)
+            return (self._slide_file_label(tab.path) if tab.slide else tab.path.name), str(tab.path)
         return self._slide_label(), ""
+
+    def _slide_file_label(self, path: Path) -> str:
+        id_slug, version = self._file_slide(path)
+        if not id_slug:
+            return path.name
+        if version is not None:
+            return f"{bare_id(id_slug)} v{version.replace('-', '.')}"
+        title = deck_outline.slide_file_title(path, id_slug)
+        return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
 
     def _slide_label(self) -> str:
         """"1y8 · Market efficiency": the slide tab's slide."""
         path = self._slide_path
         if path is None:
             return "Slide"
-        id_slug, _version = self._file_slide()
+        id_slug, _version = self._file_slide(path)
         row = self._focused_row()
         title = row.title if row is not None and id_slug == row.call.id_slug else deck_outline.slide_file_title(path, id_slug)
         return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
@@ -707,6 +779,10 @@ class CentreColumn(QFrame):
     def _remove_tab(self, tab: CentreTab) -> None:
         self.tabs.close(tab)                   # shows the tab used before when this was on show
         self.source.release(tab.path)          # the file goes (and `file_closed` tells the window), edits kept aside
+        if tab.slide:
+            # Closing is leaving the slide (switching away was not), unless the slide tab shows the file still;
+            # asked after the switch.
+            QTimer.singleShot(0, lambda path=tab.path: self._offer_version(path))
 
     def _forget_missing_tabs(self) -> None:
         """A file tab whose file was renamed or deleted meanwhile is closed without asking: there is nothing to save to."""
@@ -754,8 +830,8 @@ class CentreColumn(QFrame):
             return
         if self._switching:
             return
-        if tab.kind != FILE:
-            tab.mode = mode                    # the slide tab comes back in this mode
+        if not tab.source_only:
+            tab.mode = mode                    # the tab comes back in this mode
         self.refresh()
 
     def _on_focus(self, _slide_id: Optional[str]) -> None:
@@ -770,9 +846,9 @@ class CentreColumn(QFrame):
             self._set_path(self._focused_path())
         self.refresh()
 
-    def _on_saved(self, _path: Path) -> None:
+    def _on_saved(self, path: Path) -> None:
         self.state.drop_outline()
-        if self.state.mode in ("preview", "split"):
+        if self.state.mode in ("preview", "split") and path == self.preview.target_path:
             self.preview.render_after_save()
         self.refresh()
 
@@ -792,6 +868,24 @@ class CentreColumn(QFrame):
             return None
         return deck_outline.slide_row(state.project, deck, state.focused_slide, state.view, state.language,
                                       occurrence_key=state.focused_occurrence, outline=state.outline)
+
+    def _tab_row(self, tab: CentreTab) -> Optional[deck_outline.SlideRow]:
+        """The row of the open deck that a slide file tab previews as, or None when it previews alone: the deck does not
+        use the slide (any more), it is a frozen version, or there is no deck. A slide used more than once keeps the
+        occurrence the tab was opened from."""
+        state, deck = self.state, self.state.deck
+        if not tab.slide or deck is None or deck.is_test_deck:
+            return None
+        id_slug, version = self._file_slide(tab.path)
+        if not id_slug or version is not None:
+            return None
+        return deck_outline.slide_row(state.project, deck, bare_id(id_slug), state.view, state.language,
+                                      occurrence_key=tab.occurrence, outline=state.outline)
+
+    def _shown_row(self) -> Optional[deck_outline.SlideRow]:
+        """The deck row of the slide on show: the focused one for the slide tab, the tab's own for a slide file tab."""
+        tab = self.tabs.active
+        return self._tab_row(tab) if tab.slide else self._focused_row()
 
     def _focused_path(self) -> Optional[Path]:
         """The file of the focused slide, if it has one: what the deck's call loads, else the
@@ -831,10 +925,13 @@ class CentreColumn(QFrame):
             target, row, title, language = self._preview_context()
             self.preview.show_slide(target, row, title, message, language)
         if mode == "details":
-            row = self._focused_row()
-            id_slug = row.call.id_slug if row else self._file_slide()[0]
+            row = self._shown_row()
+            id_slug = row.call.id_slug if row else self._file_slide(self._path)[0]
             self.details.show_slide(id_slug, row, message)
         self.tab_strip.set_label(self.tabs.slide_tab, self._slide_label())
+        for tab in self.tabs.tabs:
+            if tab.slide:
+                self.tab_strip.set_label(tab, self._slide_file_label(tab.path), str(tab.path))
 
     def _apply_split(self) -> None:
         # Weights, so the share holds when the window is resized.
@@ -851,24 +948,29 @@ class CentreColumn(QFrame):
         layout_settings.set(SPLIT_SETTING, DEFAULT_SPLIT)
         self._apply_split()
 
-    def _file_slide(self) -> tuple[str, Optional[str]]:
-        """(id-slug, version) of the slide tab's file, or ("", None) if it has none."""
-        if self._slide_path is None:
+    def _file_slide(self, path: Optional[Path]) -> tuple[str, Optional[str]]:
+        """(id-slug, version) of the slide file `path`, or ("", None) if it is none."""
+        if path is None:
             return "", None
         try:
-            _macro, id_slug, version = slide_language.call_for_slide_path(self._slide_path)
+            _macro, id_slug, version = slide_language.call_for_slide_path(path)
         except ValueError:
             return "", None
         return id_slug, version
 
     def _preview_context(self) -> tuple[Optional[PreviewTarget], Optional[deck_outline.SlideRow], str, Optional[str]]:
-        """(target, row, title, language) of what the Preview shows: the focused slide as the deck calls it; the
-        file of the other language that the language chip opened, as the deck calls it in that language (`row`
-        stays the slot's, `language` is the file's); a frozen version, or a slide the deck doesn't use, alone."""
-        row = self._focused_row()
-        id_slug, version = self._file_slide()
+        """(target, row, title, language) of what the Preview shows: the slide of the tab on show -- the focused slide
+        or a slide file tab's, as the deck calls it; the file of the other language that the language chip opened, as
+        the deck calls it in that language (`row` stays the slot's, `language` is the file's); a frozen version, or a
+        slide the deck doesn't use, alone."""
+        tab = self.tabs.active
+        if tab.slide:
+            return self._context_for(tab.path, self._tab_row(tab))
+        return self._context_for(self._slide_path, self._focused_row())
+
+    def _context_for(self, path: Optional[Path], row: Optional[deck_outline.SlideRow]):
+        id_slug, version = self._file_slide(path)
         state = self.state
-        path = self._slide_path
         if row is not None and (path is None or (id_slug == row.call.id_slug and version == row.call.version)):
             return for_call(state.project, state.deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
                             occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
@@ -885,6 +987,8 @@ class CentreColumn(QFrame):
     def _go_adjacent(self, direction: int) -> None:
         """The Preview's wheel ran past the last (first) reveal step: focus the slide after (before) the focused one,
         opening at its first step going forward, at its last going back -- as in a presentation."""
+        if self.tabs.active.slide:
+            return                  # a slide file tab keeps its slide, and the focus stays where it is
         state, row = self.state, self._focused_row()
         if state.deck is None or row is None:
             return
@@ -922,9 +1026,10 @@ class CentreColumn(QFrame):
         return cached
 
     def _neighbour_targets(self) -> list:
-        """[(target, row)] of the slides nearest to the focused one in the deck (one before, one after, two before,
-        two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle."""
-        state, row = self.state, self._focused_row()
+        """[(target, row)] of the slides nearest to the one on show in the deck (one before, one after, two before,
+        two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle. A slide file tab
+        the deck does not use has none."""
+        state, row = self.state, self._shown_row()
         if state.deck is None or row is None:
             return []
         # Kept while the slide, the view and the resolved outline stay: building them reads every slide's language

@@ -85,6 +85,12 @@ def _source_only(w) -> bool:
     return centre is not None and centre.source_only
 
 
+def _slide_file_shown(w) -> bool:
+    """A slide file tab is on show: its slide is not necessarily the focused one, so the selected rows are not "this slide"."""
+    centre = getattr(w, "centre", None)
+    return centre is not None and centre.slide_file_shown
+
+
 def _several_tabs(w) -> bool:
     centre = getattr(w, "centre", None)
     return centre is not None and len(centre.tabs.tabs) > 1
@@ -110,9 +116,11 @@ def _slide_targets(w) -> list:
 
 def _review_paths(w) -> list:
     rows = _slide_targets(w)
-    if len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide)):
+    if not _slide_file_shown(w) and (len(rows) > 1 or (rows and rows[0].matches(w.state.focused_slide))):
         return [w.project.slides_dir / row.call.source_filename for row in rows]
     path = w.centre.path
+    if _slide_file_shown(w):
+        return [path]       # the slide on show is not the focused one: the selected rows are not it
     return [path] if path is not None else []
 
 
@@ -263,13 +271,13 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         shortcut="Ctrl+Shift+Tab", meta="least recently used first", enabled=_several_tabs)
     add("tab:close", "Close tab", VIEW_AND_BUILD, lambda w: w.centre.close_active_tab(), icon="close", shortcut="Ctrl+W",
         meta="not the slide tab", enabled=_several_tabs)
-    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.source.save(), icon="save", hint="Ctrl+S")
+    add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.save(), icon="save", hint="Ctrl+S")
     add("find", "Find in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, False), icon="search", hint="Ctrl+F")
     add("replace", "Replace in source", VIEW_AND_BUILD, lambda w: _find_in_source(w, True), icon="find_replace",
         hint=REPLACE_KEY)
 
     # Slide: the focused slide, or the selected ones ---------------------------------------
-    for name, label in (("open", "Source"), ("preview", "Preview"), ("images", "Images")):
+    for name, label in (("open", "Source"), ("preview", "Preview"), ("open_tab", "Open in new tab"), ("images", "Images")):
         add(f"slide:{name}", label, SLIDE, _run_slide(name), visible=_one_slide)
     add("slide:reviewed", "Mark reviewed", SLIDE, lambda w: w.slide_list.mark_reviewed(_review_paths(w)),
         visible=lambda w: bool(_review_paths(w)),
