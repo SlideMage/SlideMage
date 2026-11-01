@@ -5,11 +5,16 @@
 It edits slides, a deck's own .tex file and SlideMage.bib alike, one
 `SourceFile` (source_file.py) per file, saved as you type. A file is written
 before another is shown; one that cannot be (a conflict with a change on disk)
-stays open, so that switching slides never loses an edit; a clean one is
+stays open, so that switching slides never loses an edit; a clean one that has no tab is
 dropped and read from disk again when it comes back, so it is never stale.
 The view reports edits that could not be saved ("dirty") and Ctrl+S ("saved"), and asks the window, through the
 signals, for what is not its own: rendering the buffer, restoring a frozen
 version, making a version (Update Version), showing another file.
+
+A file with a tab of its own in the centre (a deck's source, SlideMage.bib) is *held* (hold(), release()): it is not
+dropped when it goes out of view, so its buffer, undo history and cursor stay while another tab is shown. It is
+still written before it goes out of view and checked against the disk (`sync()`) when it comes back, and
+`file_closed` is emitted for it when its tab is released.
 """
 from __future__ import annotations
 
@@ -59,12 +64,12 @@ class SourcePane(Surface):
     version_requested = Signal(str)      # id_slug: Update Version of that slide
     file_requested = Signal(object)      # Path of another file to show
     reference_added = Signal()           # an entry was added to SlideMage.bib
-    close_requested = Signal()           # the "x" of a file that is no slide (a deck's source, SlideMage.bib)
 
     def __init__(self, app) -> None:
         super().__init__()
         self.app = app
         self._files: dict[Path, SourceFile] = {}
+        self._held: set[Path] = set()       # files with a tab of their own: not dropped when out of view
         self._current: Optional[SourceFile] = None
         self._dirty = False
         self._lint_errors = 0
@@ -127,15 +132,12 @@ class SourcePane(Surface):
         self._version_button.clicked.connect(self.update_version)
         self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
-        # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S, beside the "x".
+        # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S.
         save_key = QKeySequence("Ctrl+S").toString(QKeySequence.SequenceFormat.NativeText)
         self._save_button = Button("Save", "primary", compact=True)
         self._save_button.setToolTip(f"Save this file ({save_key})")
         self._save_button.clicked.connect(self.save)
         top.addWidget(self._save_button)
-        self._close_button = IconButton("close", "Close and go back to the slide")
-        self._close_button.clicked.connect(self.close_requested.emit)
-        top.addWidget(self._close_button)
         outer.addLayout(top)
 
         self._format_row = Surface()
@@ -276,7 +278,7 @@ class SourcePane(Surface):
         for other in self._files.values():
             if other is not self._current:
                 other.write_now()       # written before it goes out of view
-        for stale in [f for f in self._files.values() if f is not self._current and not f.keep_open]:
+        for stale in [f for f in self._files.values() if f is not self._current and self._droppable(f)]:
             self._drop(stale)
         self._update_toolbar()
         self._emit_lint_errors()
@@ -296,7 +298,7 @@ class SourcePane(Surface):
         if done:
             file.editor.replace_all_text(change(file.editor.text()))
             file.write_now()
-        if file is not self._current and not file.keep_open:
+        if file is not self._current and self._droppable(file):
             self._drop(file)
         return done
 
@@ -310,6 +312,32 @@ class SourcePane(Surface):
     def set_message(self, message: str) -> None:
         """What to say when no file is shown."""
         self._empty.setText(message)
+
+    def hold(self, path: Path) -> None:
+        """Keep the file `path` open while it is out of view, until release(): it has a tab. (It is opened by
+        show_path() as any file is.)"""
+        self._held.add(path)
+
+    def release(self, path: Path) -> None:
+        """The tab of `path` was closed: the file is dropped now (`file_closed`), unless it still has edits that
+        could not be written or an "Ask AI to fix" running, which keep it open as for any file out of view."""
+        self._held.discard(path)
+        file = self._files.get(path)
+        if file is None or file.keep_open:
+            return
+        if file is self._current:
+            self._current = None
+            self._stack.setCurrentWidget(self._empty)
+        self._drop(file)
+        self._update_toolbar()
+        self._emit_lint_errors()
+
+    def is_held(self, path: Path) -> bool:
+        return path in self._held
+
+    def _droppable(self, file: SourceFile) -> bool:
+        """Whether a file that is out of view goes: it has no tab and nothing in it would be lost."""
+        return file.path not in self._held and not file.keep_open
 
     def _drop(self, file: SourceFile) -> None:
         del self._files[file.path]
@@ -391,11 +419,9 @@ class SourcePane(Surface):
         changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
         self._version_button.setEnabled(changes and not read_only)
         self._version_button.setToolTip(VERSION_TIP if changes else why_not)
-        # Formatting is for slides: a deck's source and SlideMage.bib are edited as plain text, and closed with
-        # the "x", which goes back to the slide.
+        # Formatting is for slides: a deck's source and SlideMage.bib are edited as plain text.
         self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
-        self._close_button.setVisible(has and not file.is_slide)
         self._save_button.setVisible(has and not file.is_slide and not autosave_on())
         self._save_button.setEnabled(has and file.dirty and not read_only)
         self._tools_button.setEnabled(has)

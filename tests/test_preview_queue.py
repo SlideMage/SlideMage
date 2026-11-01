@@ -840,7 +840,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     deck = SimpleNamespace(path=tmp_path / "decks" / "open.tex", text=f"\\slide{{bbb-{language}-New}}\n", chapters=[])
     state.deck = deck
     state.focused_slide_changed.connect(lambda _: view.show_slide(target, None, "New", ""))
-    window = SimpleNamespace(project=state.project, state=state, centre=SimpleNamespace(preview=view))
+    window = SimpleNamespace(project=state.project, state=state, centre=SimpleNamespace(preview=view, show_slide_tab=lambda: None))
     workspace = GuiWorkspace(window)
     # The focus snapshot deliberately describes another deck: the live recheck must ignore it.
     workspace._context = SimpleNamespace(deck=None)

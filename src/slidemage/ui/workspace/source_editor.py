@@ -404,7 +404,8 @@ class LatexPlainTextEdit(QPlainTextEdit):
 
     def event(self, event) -> bool:  # noqa: N802 -- Qt's name
         # Tab and Shift+Tab reach the widget's event() first, which would move the focus on Shift+Tab.
-        if event.type() == QEvent.Type.KeyPress and not self.isReadOnly():
+        modifiers = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier
+        if event.type() == QEvent.Type.KeyPress and not self.isReadOnly() and not event.modifiers() & modifiers:
             key, shift = event.key(), bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
             if key == Qt.Key.Key_Backtab or (key == Qt.Key.Key_Tab and shift):
                 self.shift_lines(outdent=True)

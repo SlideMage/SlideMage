@@ -760,6 +760,9 @@ class SlideList(QWidget):
             self._open_source(target)
         elif name == "preview":
             self.state.set_focused_slide(target.call.id, occurrence_key=target.key)
+            centre = getattr(self.app, "centre", None)
+            if centre is not None:
+                centre.show_slide_tab()      # the Preview is the slide tab's, also when the slide was focused already
             self.state.set_mode("preview")
         elif name == "images":
             self.app.open_images_for_slide(target.call.id_slug)
