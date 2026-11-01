@@ -4407,6 +4407,13 @@
 \newlength{\SMContentBottomAlign}
 \setlength{\SMContentBottomAlign}{\dimexpr\SMFooterBoxHeight+\SMContentTopAlign-\SMTitleBarBottomAlign\relax}
 
+% \SMContentHeight (v0.13.6): the height of the content area, from the Top
+% Margin down to the Bottom Margin, so a slide can size a figure from the room
+% the template leaves (height=0.8\SMContentHeight) instead of working it out
+% from \paperheight, \SMFooterBoxHeight and the margins itself.
+\newlength{\SMContentHeight}
+\setlength{\SMContentHeight}{\dimexpr\paperheight-\SMContentTopAlign-\SMContentBottomAlign\relax}
+
 % \cornerfigure[keys]{image file or content} (2026-09-30, direct instruction:
 % systematic replacements for per-slide fixes) -- a figure in a corner of the
 % content area, as a zero-space overlay: the construct 105 slides wrote out

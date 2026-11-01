@@ -3246,3 +3246,8 @@ NEW: A detailed debug log, for finding out what went wrong.
 - Start SlideMage with --debug to write a detailed log of what it does, in logs/debug in SlideMage's cache folder.
 - A switch in Settings follows in a later version.
 - Plugins can write debug lines to it.
+
+v0.13.6 (2026-11-01, direct request: size figures in one's own slides from the available space, add the \SMContentHeight): The framework sets a new length \SMContentHeight, the height of the content area from the Top Margin down to the Bottom Margin, that is \paperheight minus \SMContentTopAlign and \SMContentBottomAlign, after the template's settings, so it follows every template and layout profile. A slide sizes a figure from it, for example \besidefigure[height=0.8\SMContentHeight]{...}, instead of working the height out from \paperheight, \SMFooterBoxHeight and the margins itself.
+
+NEW: Slides can size a figure from the room the template leaves.
+- The new length \SMContentHeight is the height between the top and bottom margin of a slide, for example \cornerfigure[height=0.8\SMContentHeight]{...}.
