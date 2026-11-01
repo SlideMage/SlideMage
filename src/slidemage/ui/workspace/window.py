@@ -67,6 +67,7 @@ from .build_options import BuildOptionsDialog
 from .compile_controller import CompileController
 from .background_previews import BackgroundPreviews
 from .compile_display import CompileDisplay
+from . import debug_log_ui
 from .autosave_switch import AutoSaveSwitch
 from .menus import build_menu_bar
 from .palette import CommandPalette
@@ -229,6 +230,8 @@ class WorkspaceWindow(QMainWindow):
         menu_bar = build_menu_bar(self, self)
         self.setMenuBar(menu_bar)
         self.autosave_switch = AutoSaveSwitch(self.set_autosave)
+        self.debug_chip = debug_log_ui.DebugChip(self)
+        self.autosave_switch.add_trailing(self.debug_chip)
         if menu_bar.isNativeMenuBar():
             self.topbar.host_autosave(self.autosave_switch)     # macOS: the menu bar is not in the window
         else:

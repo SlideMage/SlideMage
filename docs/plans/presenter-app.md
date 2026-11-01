@@ -240,7 +240,7 @@ start the Presenter.
   button removes it. If the folder is moved, the keys point to the old place, so the start window re-checks them.
 - Linux: the `.desktop` file gets `MimeType=application/pdf;`.
 
-*Done in v0.13.8* (origin/develop was at v0.13.7 when this was written, hence the next patch).
+*Done in v0.13.10* (origin/develop was at v0.13.7 when this was written, hence the next patch).
 `presentation/open_with.py` (no Qt; registry, file system and notification are injectable) and a row in the start
 window, shown only in a frozen Windows or Linux build: a button reading Add, Remove or Update (the entry points to
 another copy) and a caption. Windows keys, all under HKCU\Software\Classes: the ProgID `SlideMage.Presenter.pdf`

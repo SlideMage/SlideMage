@@ -38,12 +38,13 @@ import shiboken6
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
-from ... import app_settings, slide_preview, slide_snapshot, slide_versioning, updater, version
+from ... import app_settings, diagnostics, slide_preview, slide_snapshot, slide_versioning, updater, version
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
+from ..workspace import debug_log_ui
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
 from .settings_ai import PROMPTS_KEY, AiPage, LanguageBlock as AiTab  # noqa: F401
@@ -324,6 +325,19 @@ class AboutTab(Page):
             "Open…")[0])
         layout.addWidget(_command_row(
             app, leave, "check_updates", "Check for updates", "Look for a newer release now.", "Check…")[0])
+        self.debug_check = QCheckBox("Write a detailed debug log")
+        self.debug_check.setChecked(diagnostics.debug_enabled())
+        self.debug_check.toggled.connect(lambda on: debug_log_ui.set_debug(app, on))
+        layout.addWidget(Field("Troubleshooting", self.debug_check))
+        layout.addWidget(caption(
+            "For finding out what went wrong: what SlideMage does, in files in its log folder, until you turn it "
+            "off here or in the Help menu. It holds file names and paths, but no slide text and no API keys. "
+            "Warnings and errors are always kept, in a small error log."))
+        layout.addWidget(_command_row(
+            app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open")[0])
+        layout.addWidget(_command_row(
+            app, leave, "debug_report", "Debug report",
+            "The logs in one zip file, saved where you choose, to send with a problem report.", "Save…")[0])
         layout.addStretch(1)
 
 
