@@ -42,7 +42,7 @@ class ChatSurfaceContext:
         state, centre = self._state, self._app.centre
         slide = centre.path
         deck = state.deck.path if state.deck is not None and not state.deck.is_test_deck else None
-        return plugin_api.ChatFocus(state.focused_slide, slide, deck, state.view, state.language,
+        return plugin_api.ChatFocus(centre.shown_slide[0], slide, deck, state.view, state.language,
                                     slide is not None and centre.is_dirty(slide))
 
     def build_tools(self, host, scope, cancel):

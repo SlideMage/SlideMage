@@ -114,7 +114,9 @@ AUDITED_FRAMEWORK = {
     # \input of it is skipped. Re-audited: the macros file is the project's, unknown content as before, and loads at
     # the same place in the preamble; the wrapper only drops that one \input and passes every other through; no
     # version, footer-hide or deck-label rule entered the base.
-    "SlideMage_base.tex": "9b1d01b18f440c6bad56cbb86ff9432cde3c8d56223c2560051c1f4df9bd4035",
+    # v0.13.18: the base sets one more length, \SMContentHeight, from \paperheight and the two content margins.
+    # Re-audited: a length only, no version, footer-hide or deck-label rule entered the base.
+    "SlideMage_base.tex": "8e414f16a324c9afe929bea8a110e9bc2ffb77896683cb84673e1e768e92652c",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name

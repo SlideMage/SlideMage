@@ -144,9 +144,10 @@ class GuiWorkspace(Workspace):
         """Take the focus for the request about to start (GUI thread)."""
         self._stopping = False
         window, state = self.window, self.window.state
+        slide_id, occurrence = window.centre.shown_slide      # the slide on show: a slide file tab's, not the focused one
         self._context = WorkspaceContext(
-            deck=state.deck, slide_id=state.focused_slide, path=window.centre.path, view=state.view,
-            language=state.language, occurrence_key=state.focused_occurrence)
+            deck=state.deck, slide_id=slide_id, path=window.centre.path, view=state.view,
+            language=state.language, occurrence_key=occurrence)
 
     def is_open_deck(self, path: Path) -> bool:
         return self.on_gui(lambda: self.window.state.deck is not None and

@@ -200,7 +200,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   Extensions… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
   **Install from file…**); the first-start sheet offers them once, preselecting a plugin for a feature the user
   used before. Claude and Ollama (the AI, v9.1) and CampusOnline (v9.0) are plugins; with no AI route registered
-  the assistant, the AI menu, the AI commands and the AI tab of Settings are hidden. Since v0.13.18 `plugin_api` also
+  the assistant, the AI menu, the AI commands and the AI tab of Settings are hidden. Since v0.13.21 `plugin_api` also
   offers the kit (`Host.Window`, `Card`, `SegmentedControl`, `Badge`, `ElidedLabel`, `RowButton`, `PlainList`, `Label`, `ModalSheet`,
   `toast`, and `theme`/`on_theme_changed` with `ThemeTokens`), so a plugin's own window looks like SlideMage's and follows
   a theme switch; before SlideMage closes or restarts it asks such a window to close, and one that refuses keeps it open.

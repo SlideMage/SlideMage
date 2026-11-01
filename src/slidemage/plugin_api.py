@@ -199,16 +199,16 @@ class SlideRef:
     """The language requested from deck_slides ("de" or "en"), used for picture descriptions, including multilingual
     files. None for a ref without a requested language: slide_source falls back to the file's language."""
     title_text: str = ""
-    """The title as plain text to show (SlideMage v0.13.18): no LaTeX markup, so "VO Grundlagen \\\\ Digitalisierung"
+    """The title as plain text to show (SlideMage v0.13.21): no LaTeX markup, so "VO Grundlagen \\\\ Digitalisierung"
     reads "VO Grundlagen Digitalisierung". title keeps the markup."""
     section: str = ""
     """The title of the \\section the slide call stands under, as plain text, or "" before the first section
-    (SlideMage v0.13.18)."""
+    (SlideMage v0.13.21)."""
 
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """SlideMage's colours, radii and fonts in the current theme, from Host.theme() (SlideMage v0.13.18). Only the host
+    """SlideMage's colours, radii and fonts in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
     makes these; later versions may add fields (with defaults), so read the fields you need by name. Colours are
     strings QSS and QColor take: hex, except hover, which is translucent and in rgba() form."""
 
@@ -832,35 +832,35 @@ class Host(Protocol):
         """A status chip with set_text, set_tone and set_icon; it emits clicked. tone is "neutral", "muted", "info",
         "warning", "error" or "ok". icon is a Material icon's name; an elide chip shortens its text with "…" rather
         than widen its column; a pressable chip is a button for the keyboard too, named by its tooltip (the keyword
-        arguments came with SlideMage v0.13.18)."""
+        arguments came with SlideMage v0.13.21)."""
         ...
 
     def Window(self, title: str) -> Widget:
         """A top-level, non-modal window in SlideMage's look: window.body is the layout to fill. Keep a reference to
         it, and show() it yourself; it stays yours to open and close. It is not restored at the next start. When
         SlideMage closes (a project switch restarts it) it asks this window to close first: ignoring the closeEvent,
-        for unsaved work, keeps SlideMage open (SlideMage v0.13.18)."""
+        for unsaved work, keeps SlideMage open (SlideMage v0.13.21)."""
         ...
 
     def Card(self, raised: bool = False) -> Widget:
         """A rounded panel on the window's background: fill card.layout(), a vertical layout. raised adds a shadow; leave
-        it off for big panels (SlideMage v0.13.18)."""
+        it off for big panels (SlideMage v0.13.21)."""
         ...
 
     def SegmentedControl(self, items: list[tuple[str, str]], current: str | None = None) -> Widget:
         """A switch of (key, label) segments, the first current unless current says otherwise. It emits changed(key)
         when the user picks one, not for set_current(key); current() is the key, and clear_current() leaves none current
-        (SlideMage v0.13.18)."""
+        (SlideMage v0.13.21)."""
         ...
 
     def Badge(self, text: str, tone: str = "neutral") -> Widget:
         """A small round count. tone is "neutral", "info" or "error". It has set_text and set_tone (SlideMage
-        v0.13.18)."""
+        v0.13.21)."""
         ...
 
     def ElidedLabel(self, text: str) -> Widget:
         """One line of text, cut with "…" to the width it gets, with the whole text as its tooltip. set_full_text
-        changes it and full_text() reads it (SlideMage v0.13.18)."""
+        changes it and full_text() reads it (SlideMage v0.13.21)."""
         ...
 
     def RowButton(
@@ -870,39 +870,39 @@ class Host(Protocol):
         """A clickable row with a title, shortened with "…" when narrow, a second line, and an optional Material icon
         and (text, tone) chip; row.layout() takes more at its right end (a Badge). It emits clicked. A selectable row
         becomes selected when clicked; set_selected(False) clears the others of your list, and selected() reads it
-        (SlideMage v0.13.18)."""
+        (SlideMage v0.13.21)."""
         ...
 
     def PlainList(self) -> Widget:
         """A QListWidget that shows what is behind it, on a Card say, for rows that bring their own hover and selection
         (RowButton): fill it with setItemWidget. Do not give a list of such rows a stylesheet of its own: Qt then drops
-        the rows' styling when they are rebuilt (SlideMage v0.13.18)."""
+        the rows' styling when they are rebuilt (SlideMage v0.13.21)."""
         ...
 
     def Label(self, text: str, role: str = "body") -> Widget:
         """Text in SlideMage's type scale. role is "title", "heading", "body", "secondary", "caption" or "mono"; any
-        other raises ValueError (SlideMage v0.13.18)."""
+        other raises ValueError (SlideMage v0.13.21)."""
         ...
 
     def ModalSheet(self, title: str, parent: Widget | None = None) -> Widget:
         """A modal dialog in SlideMage's look, over parent: add_tab(label, widget) fills it, add_button(text, kind=...,
-        role="accept" or "reject") adds a footer button, exec() runs it (SlideMage v0.13.18)."""
+        role="accept" or "reject") adds a footer button, exec() runs it (SlideMage v0.13.21)."""
         ...
 
     def toast(self, parent: Widget, text: str) -> None:
         """Show text for a moment at the bottom of parent, a window of yours. To tell the user something in the main
-        window use show_message (SlideMage v0.13.18)."""
+        window use show_message (SlideMage v0.13.21)."""
         ...
 
     def theme(self) -> ThemeTokens:
-        """The current theme. May be called before the main window exists (SlideMage v0.13.18)."""
+        """The current theme. May be called before the main window exists (SlideMage v0.13.21)."""
         ...
 
     def on_theme_changed(self, callback: Callable[[ThemeTokens], None]) -> Callable[[], None]:
         """Call callback(tokens) on the UI thread after the user switched between light and dark and SlideMage's styles
         are applied. Host widgets follow by themselves: use it only for what you draw yourself. Returns the function
         that unsubscribes: call it when the widget you update closes. What callback raises is logged and shown
-        (SlideMage v0.13.18)."""
+        (SlideMage v0.13.21)."""
         ...
 
     def IconButton(self, icon: str, tooltip: str) -> Widget:

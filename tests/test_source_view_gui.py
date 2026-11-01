@@ -492,3 +492,40 @@ def test_a_long_file_name_is_cut_in_a_narrow_pane_and_whole_in_its_tooltip(pane,
     QApplication.processEvents()
     assert pane._name.toolTip() == path.name and pane._name.full_text() == path.name
     assert pane._name.text() != path.name and pane._name.text().endswith("…")
+
+
+def test_holds_are_counted_one_per_tab_that_needs_the_file(pane, slides):
+    """The slide tab and a file tab of one slide hold the same file: it goes only when the last of them lets go."""
+    closed = []
+    pane.file_closed.connect(closed.append)
+    held, other = slides / "abc-EN-Demo-current.tex", slides / "def-EN-Other-current.tex"
+    pane.hold(held)                                               # the slide tab
+    pane.hold(held)                                               # a file tab of the same slide
+    pane.show_path(held)
+    file = pane.current
+    pane.release(held)                                            # the file tab closes: the slide tab still has it
+    assert pane.file_for(held) is file and pane.is_held(held) and pane.current is file and closed == []
+    pane.show_path(other)
+    assert pane.file_for(held) is file                            # still held, so not dropped when out of view
+    pane.unhold(held)                                             # the slide tab moves on
+    assert not pane.is_held(held) and pane.file_for(held) is file
+    pane.show_path(other)                                         # dropped by the next change of view
+    assert pane.file_for(held) is None and closed == [held]
+
+
+def test_the_last_release_of_the_file_on_show_drops_it_and_an_extra_unhold_is_harmless(pane, slides):
+    closed = []
+    pane.file_closed.connect(closed.append)
+    path = slides / "abc-EN-Demo-current.tex"
+    pane.hold(path)
+    pane.hold(path)
+    pane.show_path(path)
+    pane.release(path)
+    assert pane.current is not None and closed == []
+    pane.release(path)
+    assert pane.current is None and pane.file_for(path) is None and closed == [path]
+    pane.unhold(path)                                             # nobody holds it: nothing happens, nothing negative
+    pane.hold(path)
+    assert pane.is_held(path)
+    pane.unhold(path)
+    assert not pane.is_held(path)

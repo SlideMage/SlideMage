@@ -598,8 +598,9 @@ class SlideList(QWidget):
         elif isinstance(row, SectionRow):
             self.tree.toggle_section(item)
 
-    def _open_source(self, row: SlideRow, *, keep_mode: bool = False) -> None:
-        self.app.open_slide_editor(self.app.project.slides_dir / row.call.source_filename, keep_mode=keep_mode)
+    def _open_source(self, row: SlideRow, *, keep_mode: bool = False, tab: bool = False) -> None:
+        extra = {"tab": True, "occurrence": row.key} if tab else {}
+        self.app.open_slide_editor(self.app.project.slides_dir / row.call.source_filename, keep_mode=keep_mode, **extra)
 
     def _step(self, delta: int) -> None:
         """Alt+Up/Down: the focused slide passes the item above or below it, a
@@ -666,7 +667,7 @@ class SlideList(QWidget):
         call = row.deck_call
         menu = self._new_menu(280)
         menu.add_header(f"{row.call.id} · {row.title}")
-        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:images", "slide:reviewed", "slide:compare"])
+        add_commands(menu, self.app, ["slide:open", "slide:preview", "slide:open_tab", "slide:images", "slide:reviewed", "slide:compare"])
         if not call.editable:
             menu.add_header(f"Read-only here: {call.readonly_reason}")
         menu.add_separator()
@@ -758,6 +759,8 @@ class SlideList(QWidget):
         target = targets[0]
         if name == "open":
             self._open_source(target)
+        elif name == "open_tab":
+            self._open_source(target, tab=True)
         elif name == "preview":
             self.state.set_focused_slide(target.call.id, occurrence_key=target.key)
             centre = getattr(self.app, "centre", None)
