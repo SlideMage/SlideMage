@@ -369,7 +369,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)
-    add("plugins", "Plugins…", PROJECT, _window("open_plugins"), icon="extension")
+    add("plugins", "Extensions…", PROJECT, _window("open_extensions"), icon="extension",
+        keywords="plugins themes citation formats")
     add("project_compat", "Project compatibility…", PROJECT, maintenance.on_project_compat)
     add("debug_log", debug_log_ui.toggle_title, PROJECT, debug_log_ui.toggle, icon="bug_report",
         meta="a detailed log of what SlideMage does, for finding problems")

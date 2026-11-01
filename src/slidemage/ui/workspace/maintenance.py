@@ -52,7 +52,7 @@ BUNDLED_COPIES_CHECK_DELAY_MS = 1500
 RENDER_SWEEP_DELAY_MS = 8000
 # The first-start plugin sheet opens once the window has settled, after the checks that may ask something.
 PLUGIN_OFFER_DELAY_MS = 4000
-OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Settings → Plugins
+OPEN_PLUGINS = "open-plugins"      # the key of the toast action that opens Settings → Extensions at its plugins
 # The project hint for decks with a course link while the CampusOnline plugin is not loaded (v9.0.0 moved the feature
 # into the plugin). Dismissed per project: app_settings key (a project one), set by "Don't show again" or by opening Plugins.
 COURSE_HINT_DELAY_MS = 6000
@@ -610,7 +610,7 @@ def show_plugin_offer(window) -> None:
 def on_plugin_offer_fetched(window, result) -> None:
     """Open the sheet, with the fetched catalogue, only when something is offerable: the onboarding (not seen yet)
     and/or the plugins of due migrations (preselected, with their reason). Both due: one onboarding sheet.
-    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Plugins…
+    Offline, too new, or nothing to offer: no sheet and no flag, so a later start tries again (Help → Extensions…
     is always there)."""
     pending = plugin_upgrade.migrations_due(window.project)
     if isinstance(result, Exception):
@@ -657,7 +657,7 @@ def show_course_hint(window) -> None:
     if not plugin_upgrade.course_linked_decks(window.project):
         return
     window.toast.show_message(
-        COURSE_HINT_TEXT, [(OPEN_PLUGINS, "Open Plugins"), (COURSE_HINT_DISMISS, "Don't show again")],
+        COURSE_HINT_TEXT, [(OPEN_PLUGINS, "Open Extensions"), (COURSE_HINT_DISMISS, "Don't show again")],
         timeout_ms=15000)
 
 
@@ -731,7 +731,7 @@ def on_plugin_updates_done(window, result) -> None:
         return
     text = ", ".join(f"{result.names.get(plugin_id, plugin_id)} {release.version}"
                      for plugin_id, _have, release in result.updates)
-    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Plugins")], timeout_ms=12000)
+    window.toast.show_message(f"Plugin updates: {text}", [(OPEN_PLUGINS, "Open Extensions")], timeout_ms=12000)
 
 
 def schedule_theme_update_check(window) -> None:
@@ -756,7 +756,7 @@ def theme_update_check(window) -> None:
 
 
 def on_theme_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Plugins → Themes says why); a newer release is offered, never
+    """A failed check is only logged (Settings → Extensions → Themes says why); a newer release is offered, never
     installed silently, whatever the update mode."""
     if isinstance(result, Exception):
         window.log(f"Theme update check failed: {result}")
@@ -820,7 +820,7 @@ def citation_update_check(window) -> None:
 
 
 def on_citation_updates_done(window, result) -> None:
-    """A failed check is only logged (Settings → Plugins says why); a newer release is offered, never installed
+    """A failed check is only logged (Settings → Extensions says why); a newer release is offered, never installed
     silently, whatever the update mode."""
     if isinstance(result, Exception):
         window.log(f"Citation format update check failed: {result}")

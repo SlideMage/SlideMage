@@ -85,19 +85,19 @@ against another SlideMage than the checkout's.
 
 ## Installing
 
-- **Install from file…** (Settings → Plugins; the same button as for a `.smplugin`) takes a `.smtheme`. It shows the
+- **Add from file…** (Settings → Extensions → Themes) takes a `.smtheme`. It shows the
   theme's name, version, key, author and licence first. A `.sha256` file next to it is checked before that; a
   mismatch installs nothing. Then the archive members pass the plugin installer's zip checks, and the unpacked
   folder every rule above. Nothing is changed when a check fails.
 - **Where:** unpacked in `config_dir()/themes/<key>/` (Windows `%APPDATA%\SlideMage\themes\<key>\`). Installing a
   key that is installed replaces it. A theme takes effect at once, no restart.
-- **Removing:** Settings → Plugins → Themes → Remove. Decks using the key then need a project copy of the template.
-- **From GitHub:** Settings → Plugins → Themes → **Add theme from GitHub…** (below), since v10.17.0. A theme
+- **Removing:** Settings → Extensions → Themes → Remove. Decks using the key then need a project copy of the template.
+- **From GitHub:** Settings → Extensions → Themes → **Add from GitHub…** (below), since v10.17.0. A theme
   installed from a file is never updated.
 
 ## From a (private) GitHub repository
 
-Since v10.17.0 (step 17 of the plan; `src/slidemage/theme_sources.py`). **Add theme from GitHub…** takes the
+Since v10.17.0 (step 17 of the plan; `src/slidemage/theme_sources.py`). **Add from GitHub…** takes the
 repository as `owner/name` (a `https://github.com/owner/name` address works too) and reads it with the GitHub token
 SlideMage keeps for its own updates: Settings → General → Updates, stored as `github_token` in `config_dir()`, never
 in a project; `$SLIDEMAGE_GITHUB_TOKEN` wins. There is no second token setting: one token covers SlideMage and every

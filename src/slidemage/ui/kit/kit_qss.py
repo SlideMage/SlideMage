@@ -54,6 +54,7 @@ TOAST = "kitToast"
 TOAST_ACTION = "kitToastAction"
 SHEET = "kitSheet"
 SHEET_TITLE = "kitSheetTitle"
+SHEET_SECTION = "kitSheetSection"   # a section's heading in a sheet tab
 MODE_BADGE = "kitModeBadge"
 MODE_BADGE_TEXT = "kitModeBadgeText"
 SHEET_TABS = "kitSheetTabs"
@@ -897,6 +898,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
         }}
         {text(f"QLabel#{SHEET_TITLE}", 18, t.text, 500)}
+        {text(f"QLabel#{SHEET_SECTION}", 15, t.text, 500)}
         /* The read-only route badge under a dialog's title: a grey pill, amber on Cloud. */
         QFrame#{MODE_BADGE} {{ background-color: {t.bg}; border-radius: {RADIUS_PILL}px; }}
         QFrame#{MODE_BADGE}[cloud="true"] {{ background-color: {t.cloud_bg}; }}

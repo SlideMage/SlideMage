@@ -47,7 +47,7 @@ from .. import layout_settings, plugin_ui
 from ..dialogs.add_slide import AddSlideSheet
 from ..dialogs.import_presentation import ImportPresentationSheet
 from ..dialogs.open_project import OpenProjectSheet
-from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGINS, PROJECT, SettingsSheet
+from ..dialogs.settings import DECK_GROUPS, GENERAL, PLUGIN_LIST, PLUGINS, PROJECT, SettingsSheet
 from ..ai_models import LocalModelList
 from ..kit.kit_qss import WARNING_LABEL
 from ..kit.theme import ThemeManager
@@ -645,9 +645,13 @@ class WorkspaceWindow(QMainWindow):
         """A citation package was installed or updated: re-render the previews."""
         maintenance.on_citation_installed(self, key)
 
-    def open_plugins(self) -> None:
-        """Help → Plugins…: Settings on its Plugins tab."""
+    def open_extensions(self) -> None:
+        """Help → Extensions…: Settings on its Extensions tab."""
         self.open_settings(PLUGINS)
+
+    def open_plugins(self) -> None:
+        """Settings on its Extensions tab, at the plugins (a plugin to install, a plugin update)."""
+        self.open_settings(PLUGINS, focus=PLUGIN_LIST)
 
     def open_settings(self, tab: int = GENERAL, *, focus: str | None = None) -> None:
         sheet = SettingsSheet(self, tab, focus=focus)

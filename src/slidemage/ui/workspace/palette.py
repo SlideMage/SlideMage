@@ -85,7 +85,7 @@ def command_entries(window, words: list[str]) -> list[Entry]:
             continue
         group = titles.get(command.group, command.group)
         label = command.title(window)
-        if matches(words, label, group):
+        if matches(words, label, group, command.keywords):
             entries.append(Entry(
                 group, label, lambda c=command: window.commands.run(c.id, window), command.icon or
                 GROUP_ICONS[command.group], command.info(window), tone=command.tone, enabled=command.enabled(window)))

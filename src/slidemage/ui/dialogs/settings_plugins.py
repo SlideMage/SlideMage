@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Settings → Plugins: the plugins on this computer, the catalogue's, and installing from a file.
+"""Settings → Extensions: what can be added to SlideMage. Themes and citation formats first, because every user needs
+them, then the plugins: the ones on this computer, the catalogue's. Each section has its own way to add from a file.
+
+The tab is meant to be read at a glance: a row is a title line with its buttons at the right and its facts below,
+close together; each section's actions sit on its heading line.
 
 * Installed: one row per plugin SlideMage found at start (session.loaded(), failed and disabled ones too) with its
   state, what it needs and what it contacts on the network, an enable switch, Remove (a plugin installed through
@@ -10,16 +14,17 @@
   tab is built; "Check for plugins" fetches it on a thread. Building the tab never touches the network.
 * Themes: the theme packages installed on this computer (themes.py, docs/THEME_PACKAGE.md: a template packaged on
   its own), each with Remove. A theme takes effect at once, no restart: it is a template a deck chooses by its key.
-  "Add theme from GitHub…" takes owner/name and installs the repository's newest eligible release with the GitHub
+  "Add from GitHub…" takes owner/name and installs the repository's newest eligible release with the GitHub
   token of Settings → General (theme_sources.py); such a theme's row names its repository, says why its last update
   check failed, and has "Check for update".
 * Citation formats: the citation format packages installed on this computer (citations.py,
   docs/CITATION_PACKAGE.md: a format for \\SMCitationFormat, packaged on its own), the third category, with the
-  same rows and buttons as the themes (Remove, Check for update, "Add citation format from GitHub…"; the file button
+  same rows and buttons as the themes (Remove, Check for update, "Add from GitHub…"; the file button
   takes a .smcite; citation_sources.py). Also at once, no restart.
 * Install from file…: a .smplugin that is not from the catalogue. It is read first (installer.peek) and the user is
-  asked, with the plugin's name, version and network lines, because the plugin runs with their rights. The same
-  button takes a .smtheme (install_theme_file): its theme.toml is shown first, then themes.install_file checks it.
+  asked, with the plugin's name, version and network lines, because the plugin runs with their rights. Themes' and
+  citation formats' "Add from file…" take a .smtheme (install_theme_file: its theme.toml is shown first, then
+  themes.install_file checks it) and a .smcite.
 
 Every change takes effect after a restart (the plugins load once, before the window exists), so the tab says so and
 offers "Restart now". Failures are captions, never exceptions: InstallError and CatalogueError have sentences meant
@@ -37,7 +42,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-                               QVBoxLayout, QWidget)
+                               QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from ... import citation_sources, citations, theme_sources, themes
 from ...plugins import catalogue, installer, loader, session, updates
@@ -53,6 +58,12 @@ log = logging.getLogger(__name__)
 PLUGINS_PAGE = "https://slidemage.org/plugins/"
 WITHDRAWN_NOTE = "Withdrawn from the plugin list: update or remove it"
 STATE_TONES = {"loaded": "ok", "disabled": "muted", "failed": "error", "incompatible": "warning"}
+PLUGIN_FILES = "SlideMage plugins (*.smplugin)"
+THEME_FILES = "SlideMage themes (*.smtheme)"
+CITATION_FILES = "SlideMage citation formats (*.smcite)"
+SECTION_GAP = 10    # px above a section's heading, on top of the page's own spacing
+LIST_GAP = 4        # px between the rows of a list
+LONG_STATE = 28     # characters: a longer state chip gets a line of its own, so the title line keeps its buttons
 
 
 class Job(QThread):
@@ -295,12 +306,22 @@ def pick_plugin_file(parent: QWidget) -> Path | None:
     return Path(path) if path else None
 
 
+def _pick_file(parent: QWidget, title: str, files: str) -> Path | None:
+    path, _ = QFileDialog.getOpenFileName(parent, title, "", files)
+    return Path(path) if path else None
+
+
 def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
 def network_line(network: tuple[str, ...]) -> str:
     return "Contacts: " + "; ".join(network) if network else "Contacts nothing on the network"
+
+
+def _facts_line(needs: tuple[str, ...], network: tuple[str, ...]) -> str:
+    """What a plugin needs and what it contacts, in one line."""
+    return " · ".join((["Needs: " + "; ".join(needs)] if needs else []) + [network_line(network)])
 
 
 def _newer(release: Release, installed: Manifest) -> bool:
@@ -310,7 +331,23 @@ def _newer(release: Release, installed: Manifest) -> bool:
         return False
 
 
-class InstalledRow(Card):
+class _ListRow(Card):
+    """A row of the tab's lists, tighter than a Card's default."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.layout().setContentsMargins(8, 8, 8, 8)
+        self.layout().setSpacing(2)
+
+    def add_title_line(self, left: list[QWidget], buttons: list[QWidget]) -> None:
+        """`left` at the left, `buttons` at the right, the width between them empty. The buttons are the line's
+        tallest: what is on its left keeps its own height, centred (a chip would stretch)."""
+        for widget in left:
+            widget.setSizePolicy(widget.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
+        self.layout().addWidget(row(*left, Surface(), *buttons, stretch=len(left)))
+
+
+class InstalledRow(_ListRow):
     """One plugin of the Installed list. The controls are attributes so the tab (and its tests) can reach them."""
 
     def __init__(self, tab: PluginsTab, plugin: LoadedPlugin | None, found: loader.Found | None,
@@ -334,20 +371,7 @@ class InstalledRow(Card):
             state, tone, details = "Installed; it starts after a restart", "info", ""
         state, tone, details = installer.row_state(self.plugin_id, (state, tone, details))
         self.state_chip = Chip(state, tone)
-        head = [title, caption(origin), self.state_chip]
-        layout.addWidget(row(*head, stretch=0))
         self.title_label = title
-        if manifest is not None:
-            layout.addWidget(caption(manifest.summary))
-            if manifest.needs:
-                layout.addWidget(caption("Needs: " + "; ".join(manifest.needs)))
-            layout.addWidget(caption(network_line(manifest.network)))
-        self.withdrawn_label: QLabel | None = None
-        if withdrawn:
-            self.withdrawn_label = caption(WITHDRAWN_NOTE, "error")
-            layout.addWidget(self.withdrawn_label)
-        if plugin is not None and plugin.note:
-            layout.addWidget(caption(_sentence(plugin.note)))
         if details:
             self.details_button = Button("Details…", compact=True)
             self.details_button.clicked.connect(partial(tab.show_details, self.plugin_id, details))
@@ -370,8 +394,20 @@ class InstalledRow(Card):
             self.remove_button.clicked.connect(partial(tab.remove_plugin, self.plugin_id,
                                                        manifest.name if manifest else self.plugin_id))
             buttons.append(self.remove_button)
-        if buttons:
-            layout.addWidget(row(Surface(), *buttons))      # the empty first cell takes the width: buttons at the right
+
+        long_state = len(state) > LONG_STATE
+        self.add_title_line([title, caption(origin), *([] if long_state else [self.state_chip])], buttons)
+        if long_state:
+            layout.addWidget(row(self.state_chip, Surface(), stretch=1))
+        if manifest is not None:
+            layout.addWidget(caption(manifest.summary))
+            layout.addWidget(caption(_facts_line(manifest.needs, manifest.network)))
+        self.withdrawn_label: QLabel | None = None
+        if withdrawn:
+            self.withdrawn_label = caption(WITHDRAWN_NOTE, "error")
+            layout.addWidget(self.withdrawn_label)
+        if plugin is not None and plugin.note:
+            layout.addWidget(caption(_sentence(plugin.note)))
 
     @staticmethod
     def _state(plugin: LoadedPlugin) -> tuple[str, str, str]:
@@ -383,7 +419,7 @@ class InstalledRow(Card):
         return plugin.state.capitalize(), STATE_TONES[plugin.state], ""
 
 
-class AvailableRow(Card):
+class AvailableRow(_ListRow):
     """One catalogue plugin that is not installed."""
 
     def __init__(self, tab: PluginsTab, plugin: CataloguePlugin, release: Release | None) -> None:
@@ -392,25 +428,20 @@ class AvailableRow(Card):
         layout = self.layout()
         title = QLabel(f"{plugin.name}  {release.version}" if release else plugin.name)
         title.setObjectName(q.ROW_NAME)
-        items: list[QWidget] = [title]
-        if plugin.recommended:
-            items.append(Chip("Recommended", "info"))
-        layout.addWidget(row(*items))
-        layout.addWidget(caption(plugin.summary))
-        if plugin.needs:
-            layout.addWidget(caption("Needs: " + "; ".join(plugin.needs)))
-        layout.addWidget(caption(network_line(plugin.network)))
         self.install_button = Button("Install", compact=True)
         self.installable = release is not None
+        self.add_title_line([title, *([Chip("Recommended", "info")] if plugin.recommended else [])],
+                            [self.install_button])
+        layout.addWidget(caption(plugin.summary))
+        layout.addWidget(caption(_facts_line(plugin.needs, plugin.network)))
         if release is None:
             self.install_button.setEnabled(False)
             layout.addWidget(caption("No release of this plugin works with this SlideMage."))
         else:
             self.install_button.clicked.connect(partial(tab.install_release, plugin, release))
-        layout.addWidget(row(Surface(), self.install_button))
 
 
-class ThemeRow(Card):
+class ThemeRow(_ListRow):
     """One installed theme package: its name, version, key and summary, and Remove."""
 
     def __init__(self, tab: PluginsTab, theme: themes.InstalledTheme) -> None:
@@ -421,24 +452,9 @@ class ThemeRow(Card):
         self.source = theme_sources.read_source(theme.key)
         title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else theme.key)
         title.setObjectName(q.ROW_NAME)
-        layout.addWidget(row(title, caption(f"template {theme.key}"), stretch=0))
-        if manifest is not None:
-            layout.addWidget(caption(manifest.summary))
-            layout.addWidget(caption(f"{manifest.author}, {manifest.license}"))
         self.source_label: QLabel | None = None
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
-        if self.source is not None:
-            self.source_label = caption(f"From GitHub: {self.source.repository}; updates are offered from there")
-            layout.addWidget(self.source_label)
-            if self.source.check_error:
-                self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
-                                                 "The installed version keeps working.", "error")
-                layout.addWidget(self.check_error_label)
-        else:
-            layout.addWidget(caption("Installed from a file; never updated"))
-        if theme.problem:
-            layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
         buttons: list[QWidget] = []
         if self.source is not None and manifest is not None and not theme.problem:
             self.update_button = Button("Check for update", compact=True)
@@ -448,10 +464,24 @@ class ThemeRow(Card):
         self.remove_button.clicked.connect(partial(tab.remove_theme, theme.key,
                                                    manifest.name if manifest else theme.key))
         buttons.append(self.remove_button)
-        layout.addWidget(row(Surface(), *buttons))
+        self.add_title_line([title, caption(f"template {theme.key}")], buttons)
+        if manifest is not None:
+            layout.addWidget(caption(manifest.summary))
+        origin = (f"From GitHub: {self.source.repository}; updates are offered from there" if self.source is not None
+                  else "Installed from a file; never updated")
+        origin_label = caption(f"{manifest.author}, {manifest.license} · {origin}" if manifest is not None else origin)
+        layout.addWidget(origin_label)
+        if self.source is not None:
+            self.source_label = origin_label
+            if self.source.check_error:
+                self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
+                                                 "The installed version keeps working.", "error")
+                layout.addWidget(self.check_error_label)
+        if theme.problem:
+            layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
 
 
-class CitationRow(Card):
+class CitationRow(_ListRow):
     """One installed citation package: its name, version, key and summary, and Remove (ThemeRow's twin)."""
 
     def __init__(self, tab: PluginsTab, item: citations.InstalledCitation) -> None:
@@ -462,24 +492,9 @@ class CitationRow(Card):
         self.source = citation_sources.read_source(item.key)
         title = QLabel(f"{manifest.name}  {manifest.version}" if manifest else item.key)
         title.setObjectName(q.ROW_NAME)
-        layout.addWidget(row(title, caption(f"format {item.key}"), stretch=0))
-        if manifest is not None:
-            layout.addWidget(caption(manifest.summary))
-            layout.addWidget(caption(f"{manifest.author}, {manifest.license}"))
         self.source_label: QLabel | None = None
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
-        if self.source is not None:
-            self.source_label = caption(f"From GitHub: {self.source.repository}; updates are offered from there")
-            layout.addWidget(self.source_label)
-            if self.source.check_error:
-                self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
-                                                 "The installed version keeps working.", "error")
-                layout.addWidget(self.check_error_label)
-        else:
-            layout.addWidget(caption("Installed from a file; never updated"))
-        if item.problem:
-            layout.addWidget(caption(_sentence(f"not usable: {item.problem}"), "error"))
         buttons: list[QWidget] = []
         if self.source is not None and manifest is not None and not item.problem:
             self.update_button = Button("Check for update", compact=True)
@@ -489,7 +504,21 @@ class CitationRow(Card):
         self.remove_button.clicked.connect(partial(tab.remove_citation, item.key,
                                                    manifest.name if manifest else item.key))
         buttons.append(self.remove_button)
-        layout.addWidget(row(Surface(), *buttons))
+        self.add_title_line([title, caption(f"format {item.key}")], buttons)
+        if manifest is not None:
+            layout.addWidget(caption(manifest.summary))
+        origin = (f"From GitHub: {self.source.repository}; updates are offered from there" if self.source is not None
+                  else "Installed from a file; never updated")
+        origin_label = caption(f"{manifest.author}, {manifest.license} · {origin}" if manifest is not None else origin)
+        layout.addWidget(origin_label)
+        if self.source is not None:
+            self.source_label = origin_label
+            if self.source.check_error:
+                self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
+                                                 "The installed version keeps working.", "error")
+                layout.addWidget(self.check_error_label)
+        if item.problem:
+            layout.addWidget(caption(_sentence(f"not usable: {item.problem}"), "error"))
 
 
 class PluginsTab(Page):
@@ -507,6 +536,7 @@ class PluginsTab(Page):
         self.theme_rows: dict[str, ThemeRow] = {}
         self.citation_rows: dict[str, CitationRow] = {}
         layout = self.body
+        layout.setSpacing(4)
 
         self.banner = Card()
         banner_text = caption("Changes take effect after a restart.")
@@ -516,50 +546,56 @@ class PluginsTab(Page):
         layout.addWidget(self.banner)
 
         self.status = caption("")
+        self.status.hide()
         layout.addWidget(self.status)
 
-        layout.addWidget(self._heading("Installed"))
-        self._installed_box = QVBoxLayout()
-        self._installed_box.setSpacing(8)
-        layout.addLayout(self._installed_box)
-
-        layout.addWidget(self._heading("Available"))
-        self._available_box = QVBoxLayout()
-        self._available_box.setSpacing(8)
-        layout.addLayout(self._available_box)
-        self.available_note = caption("")
-        layout.addWidget(self.available_note)
-
-        layout.addWidget(self._heading("Themes"))
-        self._themes_box = QVBoxLayout()
-        self._themes_box.setSpacing(8)
-        layout.addLayout(self._themes_box)
-        self.github_button = Button("Add theme from GitHub…", compact=True)
+        self.theme_file_button = Button("Add from file…", compact=True)
+        self.theme_file_button.clicked.connect(self.add_theme_file_from_dialog)
+        self.github_button = Button("Add from GitHub…", compact=True)
         self.github_button.clicked.connect(self.add_theme_from_dialog)
-        layout.addWidget(row(Surface(), self.github_button))
+        layout.addWidget(row(self._heading("Themes"), self.theme_file_button, self.github_button))
+        self._themes_box = QVBoxLayout()
+        self._themes_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._themes_box)
 
-        layout.addWidget(self._heading("Citation formats"))
-        self._citations_box = QVBoxLayout()
-        self._citations_box.setSpacing(8)
-        layout.addLayout(self._citations_box)
-        self.citation_github_button = Button("Add citation format from GitHub…", compact=True)
+        layout.addSpacing(SECTION_GAP)
+        self.citation_file_button = Button("Add from file…", compact=True)
+        self.citation_file_button.clicked.connect(self.add_citation_file_from_dialog)
+        self.citation_github_button = Button("Add from GitHub…", compact=True)
         self.citation_github_button.clicked.connect(self.add_citation_from_dialog)
-        layout.addWidget(row(Surface(), self.citation_github_button))
+        layout.addWidget(row(self._heading("Citation formats"), self.citation_file_button,
+                             self.citation_github_button))
+        self._citations_box = QVBoxLayout()
+        self._citations_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._citations_box)
 
+        layout.addSpacing(SECTION_GAP)
+        self.page_button = Button("See all plugins and what they do", kind="ghost", compact=True)
+        self.page_button.clicked.connect(self.open_plugins_page)
         self.check_button = Button("Check for plugins", compact=True)
         self.check_button.clicked.connect(self.check_catalogue)
         self.file_button = Button("Install from file…", compact=True)
         self.file_button.clicked.connect(self.install_from_dialog)
-        self.page_button = Button("See all plugins and what they do", kind="ghost", compact=True)
-        self.page_button.clicked.connect(self.open_plugins_page)
-        layout.addWidget(row(self.check_button, self.file_button, self.page_button, stretch=2))
+        self.plugins_heading = row(self._heading("Plugins"), self.page_button, self.check_button, self.file_button)
+        layout.addWidget(self.plugins_heading)
+        layout.addWidget(caption("Installed"))
+        self._installed_box = QVBoxLayout()
+        self._installed_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._installed_box)
+
+        layout.addWidget(caption("Available"))
+        self._available_box = QVBoxLayout()
+        self._available_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._available_box)
+        self.available_note = caption("")
+        layout.addWidget(self.available_note)
         layout.addStretch(1)
         self.refresh()
 
     @staticmethod
     def _heading(text: str) -> QLabel:
         label = QLabel(text)
-        label.setObjectName(q.ROW_NAME)
+        label.setObjectName(q.SHEET_SECTION)
         return label
 
     # -- what is shown
@@ -593,11 +629,15 @@ class PluginsTab(Page):
                 self.available[entry.id] = available_row
                 self._available_box.addWidget(available_row)
             self.available_note.setText("" if todo else "Every plugin of the list is installed.")
+        self.available_note.setVisible(bool(self.available_note.text()))
         if not self.rows:
             self._installed_box.addWidget(caption("No plugins are installed."))
         self.refresh_themes()
         self.refresh_citations()
-        self.banner.setVisible(installer.pending_restart())
+        pending = installer.pending_restart()
+        if pending and not self.banner.isVisibleTo(self):
+            self._show_top()        # it says what to do next, and the plugins are at the bottom of the tab
+        self.banner.setVisible(pending)
         self._set_busy(self._job is not None)
 
     def refresh_themes(self) -> None:
@@ -608,7 +648,7 @@ class PluginsTab(Page):
             self._themes_box.addWidget(self.theme_rows[theme.key])
         if not self.theme_rows:
             self._themes_box.addWidget(caption("No themes are installed. A theme is a slide template packaged on its "
-                                               "own (.smtheme); install one from a file or add one from GitHub."))
+                                               "own (.smtheme)."))
 
     def remove_theme(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove theme", f"Remove the theme {name}? Decks that use the template "
@@ -624,6 +664,11 @@ class PluginsTab(Page):
         self.refresh_themes()
 
     # -- themes from GitHub
+
+    def add_theme_file_from_dialog(self) -> None:
+        path = _pick_file(self, "Add a theme", THEME_FILES)
+        if path is not None:
+            self.install_from_file(path)
 
     def add_theme_from_dialog(self) -> None:
         text, accepted = QInputDialog.getText(
@@ -718,7 +763,7 @@ class PluginsTab(Page):
         if not self.citation_rows:
             self._citations_box.addWidget(caption(
                 "No citation formats are installed; the house format is built in. A citation format is a way "
-                "references look, packaged on its own (.smcite); install one from a file or add one from GitHub."))
+                "references look, packaged on its own (.smcite)."))
 
     def remove_citation(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove citation format", f"Remove the citation format {name}? Decks that "
@@ -732,6 +777,11 @@ class PluginsTab(Page):
             return
         self._say(f"The citation format {name} is removed.")
         self.refresh_citations()
+
+    def add_citation_file_from_dialog(self) -> None:
+        path = _pick_file(self, "Add a citation format", CITATION_FILES)
+        if path is not None:
+            self.install_from_file(path)
 
     def add_citation_from_dialog(self) -> None:
         text, accepted = QInputDialog.getText(
@@ -830,8 +880,19 @@ class PluginsTab(Page):
         release = catalogue.best_release(entry)
         return (entry, release) if release is not None and _newer(release, plugin.manifest) else None
 
+    def _show_top(self) -> None:
+        """Scroll the tab to its top, where the status line and the restart banner are."""
+        area = self.parentWidget()
+        while area is not None and not isinstance(area, QScrollArea):
+            area = area.parentWidget()
+        if area is not None:
+            area.verticalScrollBar().setValue(0)
+
     def _say(self, text: str, error: bool = False) -> None:
         self.status.setText(text)
+        self.status.setVisible(bool(text))
+        if text:
+            self._show_top()
         self.status.setProperty("tone", "error" if error else "")
         self.status.style().unpolish(self.status)
         self.status.style().polish(self.status)
@@ -839,8 +900,9 @@ class PluginsTab(Page):
     def _set_busy(self, busy: bool) -> None:
         """While a download or a check runs, the buttons that start another one wait."""
         self.check_button.setEnabled(not busy)
-        self.file_button.setEnabled(not busy)
-        self.github_button.setEnabled(not busy)
+        for button in (self.file_button, self.theme_file_button, self.github_button, self.citation_file_button,
+                       self.citation_github_button):
+            button.setEnabled(not busy)
         for theme_row in self.theme_rows.values():
             if theme_row.update_button is not None:
                 theme_row.update_button.setEnabled(not busy)
@@ -918,7 +980,7 @@ class PluginsTab(Page):
     # -- a file
 
     def install_from_dialog(self) -> None:
-        path = pick_plugin_file(self)
+        path = _pick_file(self, "Install a plugin", PLUGIN_FILES)
         if path is not None:
             self.install_from_file(path)
 
