@@ -23,6 +23,9 @@ from .settings_page import PresentationTab
 
 TITLE = "SlideMage Presenter"
 FOLDER_WIDTH = 400         # px of a recent PDF's folder line before it is shortened
+# The "Open with" button says what it does on its own: "Add" alone did not.
+BUTTON_TEXT = {open_with.OFF: "Add to “Open with”", open_with.ON: "Remove from “Open with”",
+               open_with.MOVED: "Use this copy for “Open with”"}
 
 
 def run_in_background(work: Callable[[], None]) -> None:
@@ -86,7 +89,7 @@ class PresenterStartWindow(QWidget):
         with_bar.setContentsMargins(0, 0, 0, 0)
         self.open_with_label = caption("")
         with_bar.addWidget(self.open_with_label, 1)
-        self.open_with_button = Button("Add", "secondary")
+        self.open_with_button = Button(BUTTON_TEXT[open_with.OFF], "secondary")
         self.open_with_button.setToolTip("Only adds SlideMage Presenter to the “Open with” list of PDF files. "
                                          "It never changes the program that opens a PDF on a double-click.")
         self.open_with_button.clicked.connect(self.on_open_with_clicked)
@@ -198,14 +201,14 @@ class PresenterStartWindow(QWidget):
         except OSError as exc:
             self.open_with_state, error = open_with.OFF, error or str(exc)
         state = self.open_with_state
-        text = "Offer SlideMage Presenter under “Open with” for PDF files."
-        if state == open_with.MOVED:
-            text = "“Open with” for PDF files points to another copy of SlideMage Presenter."
+        text = {open_with.ON: "SlideMage Presenter is in the “Open with” list of PDF files.",
+                open_with.MOVED: "“Open with” for PDF files points to another copy of SlideMage Presenter."}.get(
+            state, "SlideMage Presenter is not in the “Open with” list of PDF files.")
         self.open_with_label.setText(error or text)
         self.open_with_label.setProperty("tone", "error" if error else "")
         self.open_with_label.style().unpolish(self.open_with_label)
         self.open_with_label.style().polish(self.open_with_label)
-        self.open_with_button.setText({open_with.ON: "Remove", open_with.MOVED: "Update"}.get(state, "Add"))
+        self.open_with_button.setText(BUTTON_TEXT.get(state, BUTTON_TEXT[open_with.OFF]))
         self.open_with_bar.show()
 
     def on_open_with_clicked(self) -> None:

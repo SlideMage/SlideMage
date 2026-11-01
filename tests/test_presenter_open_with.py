@@ -205,25 +205,25 @@ def fake_backend(monkeypatch):
 def test_the_button_follows_the_status(qapp, fake_backend):
     win = PresenterStartWindow()
     assert not win.open_with_bar.isHidden()
-    assert win.open_with_button.text() == "Add"
+    assert win.open_with_button.text() == "Add to “Open with”"
     assert "Open with" in win.open_with_label.text()
     assert "never changes" in win.open_with_button.toolTip()
     win.open_with_button.click()
     assert fake_backend["calls"][0][0] == "register"
-    assert win.open_with_button.text() == "Remove"
+    assert win.open_with_button.text() == "Remove from “Open with”"
     win.open_with_button.click()
     assert fake_backend["calls"][1] == ("unregister",)
-    assert win.open_with_button.text() == "Add"
+    assert win.open_with_button.text() == "Add to “Open with”"
 
 
 def test_a_moved_copy_offers_an_update(qapp, fake_backend):
     fake_backend["value"] = "moved"
     win = PresenterStartWindow()
-    assert win.open_with_button.text() == "Update"
+    assert win.open_with_button.text() == "Use this copy for “Open with”"
     assert "another copy" in win.open_with_label.text()
     win.open_with_button.click()
     assert fake_backend["calls"][0][0] == "register"       # registers this copy
-    assert win.open_with_button.text() == "Remove"
+    assert win.open_with_button.text() == "Remove from “Open with”"
 
 
 def test_an_error_is_shown_not_raised(qapp, fake_backend):
@@ -231,4 +231,4 @@ def test_an_error_is_shown_not_raised(qapp, fake_backend):
     win = PresenterStartWindow()
     win.open_with_button.click()
     assert "access denied" in win.open_with_label.text()
-    assert win.open_with_button.text() == "Add"
+    assert win.open_with_button.text() == "Add to “Open with”"
