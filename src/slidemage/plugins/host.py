@@ -3,8 +3,8 @@
 """The real Host: the services behind slidemage.plugin_api.Host, one object per plugin.
 
 PluginHost is a Registrar (it records the add_* calls) plus everything a plugin calls: its own cache folder and
-settings, background work, the deck edits, opening URLs, logging. The calls that need a window (Page, Field,
-caption, open_deck_settings, show_message) go to a HostUi; step 6 implements it on the main window. Without a
+settings, background work, the deck edits, reading slides, opening URLs, logging. The calls that need a window
+(Page, Field, caption, open_deck_settings, open_slide, show_message) go to a HostUi; step 6 implements it on the main window. Without a
 HostUi they raise RuntimeError("no window").
 """
 from __future__ import annotations
@@ -26,6 +26,7 @@ from ..fileio import atomic_write, read_text_exact
 from ..project import ProjectContext
 from .credentials import PluginCredentials
 from .manifest import Manifest
+from . import slide_reader
 from .registry import Registrar
 
 T = TypeVar("T")
@@ -39,6 +40,8 @@ class HostUi(Protocol):
     def try_start_route_task(self, route_id: str, label: str, owner: object) -> bool: ...
     def end_route_task(self, route_id: str, owner: object) -> None: ...
     def open_deck_settings(self, deck: plugin_api.Deck, tab: str | None = None) -> None: ...
+    def open_slide(self, path: Path) -> None:
+        """Show the slide file at `path` in the editor (the Source view)."""
     def Page(self) -> Any: ...
     def Field(self, label: str, widget: Any) -> Any: ...
     def caption(self, text: str, tone: str = "") -> Any: ...
@@ -242,6 +245,21 @@ class PluginHost(Registrar):
     def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
         return "en" if transcript.deck_language_of(deck.text) == "en" else "de"
 
+    def project_root(self) -> Path:
+        return self.ctx.root
+
+    def deck_output_folder(self, deck: plugin_api.Deck, view: str = "instructor") -> Path:
+        return slide_reader.output_folder(self.ctx, deck, view)
+
+    def deck_slides(self, deck: plugin_api.Deck, view: str, language: Literal["de", "en"]) -> list[plugin_api.SlideRef]:
+        return slide_reader.deck_slides(self.ctx, deck, view, language)
+
+    def slide_source(self, ref: plugin_api.SlideRef) -> plugin_api.SlideSource:
+        return slide_reader.slide_source(self.ctx, ref)
+
+    def open_slide(self, ref: plugin_api.SlideRef) -> None:
+        self._window().open_slide(slide_reader.check_slide_path(self.ctx, ref))
+
     def open_url(self, url: str) -> None:
         if urlparse(url).scheme.lower() not in ("http", "https"):
             raise ValueError(f"only http and https links can be opened, not {url!r}")
@@ -261,6 +279,11 @@ class PluginHost(Registrar):
             self.ui.show_message(text, error)
         else:
             self._logger.log(logging.ERROR if error else logging.INFO, "%s", text)
+
+    def ai_chat(self) -> plugin_api.AiChat:
+        from ..ai.chat import ChatService
+
+        return ChatService(self.ctx)
 
     # -- services of the AI host API
 

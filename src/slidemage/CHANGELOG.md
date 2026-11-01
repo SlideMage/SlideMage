@@ -3288,3 +3288,9 @@ v0.13.12 (2026-11-01, direct request: a Presenter that does not offer an update,
 NEW: SlideMage Presenter tells you about updates sooner, and is half the size on Linux.
 - The Presenter looks for a new version every time it starts, not once a day.
 - On Linux the Presenter takes about 172 MB instead of 338 MB, and its download is smaller too.
+
+v0.13.13 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a deck's slides and multilingual media descriptions, open a slide, and use Host.ai_chat() for text requests on the selected Chat route. AiRoute.request_provider supports self-contained requests. Cloud requests require confirmation; cancellation and errors return on the UI thread. There is no plugin service registry. API_VERSION remains 1.
+
+NEW: Plugins can read a deck's slides and ask the selected AI route to draft text.
+- A plugin can work with a deck's slides, versions and picture descriptions, and open a slide.
+- The AI route is never swapped silently, and a cloud request shows what will be sent first.

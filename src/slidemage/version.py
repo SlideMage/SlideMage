@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .processes import command_output
 
-VERSION_NUMBER = "v0.13.12"
+VERSION_NUMBER = "v0.13.13"
 
 # Versions before v0.11.0 were numbered vX.Y.Z with X from 2 to 10; the history, the tags and the files projects
 # and plugins hold under that scheme are read as 0.X.Y.Z (v10.19.0 is v0.10.19.0). A first part of 2 or more can only

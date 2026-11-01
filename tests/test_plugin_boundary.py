@@ -8,7 +8,7 @@ from pathlib import Path
 
 SRC = Path(__file__).parent.parent / "src" / "slidemage"
 HEAVY = {"slidemage", "PySide6"}
-FORBIDDEN = {"hello", "campusonline", "claude", "ollama", "slidemage_plugins"}
+FORBIDDEN = {"hello", "campusonline", "claude", "ollama", "exam_forge", "slidemage_plugins"}
 
 
 def imports(path: Path):

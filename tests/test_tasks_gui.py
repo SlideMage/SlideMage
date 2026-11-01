@@ -316,6 +316,9 @@ def test_stop_cancels_and_the_late_result_is_dropped(fake, tmp_path):
 
 def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, fake):
     env = fake.env
+    # This checks unsaved buffer links. Saving the backlink on leaving the source can
+    # mark the translation outdated if the save falls in the next clock second.
+    env.window.set_autosave(False)
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
     status = settled(env)
@@ -342,6 +345,8 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     env.window.centre.open_file(env.path)
     env.window.assistant.header.schedule()
     wait_until(lambda: env.window.centre.path == env.path and buttons(env) == ["Better title"])
+    assert (env.root / SLIDE).read_bytes() == SLIDE_TEXT.encode()
+    assert slide_file(env).editor.text() == source
     (call,) = fake.calls()
     assert call["request"].startswith("Translate this slide from English to German.\n"
                                       'Address the audience with "Sie" (formal).\n<slide>\n')
