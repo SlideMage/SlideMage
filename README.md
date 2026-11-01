@@ -2584,6 +2584,21 @@ Call it once per deck (e.g. right after `\input{SlideMage_template_slidemage}`) 
 project-wide style, or partway through to change the marker set from that
 point on. If a slide has more footnotes than the list has entries, indexing
 wraps back around to the start rather than erroring.
+
+`\SMSetFootnoteMarkers{}` picks another style for the markers, `symbols` (the
+sequence above, the default), `boxed` (the footnote's number in a thin rounded
+box) or `dice` (die faces: 1 to 6 one die, above that the number in base 6
+with the digits 1 to 6, so 7 is two dice, one-one, and 13 is two-one):
+
+```latex
+\SMSetFootnoteMarkers{dice}    % from here on; {boxed}, {symbols} likewise
+```
+
+A template says it once after `\input{SlideMage_setup}`; a deck or a slide can
+say it from any point on, and inside a group `{...}` it holds to the group's
+end. `\setfootnotesymbols` changes only the symbol list, never the style. In
+running text the markers are scaled to 75%. The appendix sheet below shows both
+styles live.
 [slides/2rg-EN-Footnote-symbol-options-current.tex](example/slides/2rg-EN-Footnote-symbol-options-current.tex)
 (in the manual's appendix; `ZZU` until v5.16.0)
 is a reference sheet of candidate symbols — every character on it was checked
