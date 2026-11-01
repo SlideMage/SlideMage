@@ -1,6 +1,6 @@
 # Plan: tabs in the centre column
 
-Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is done (v0.13.12, branch tabs/step1-strip, not merged); steps 2 to 4 next, after the go.
+Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is merged (v0.13.14). Step 2 is done (v0.13.16, branch tabs/step2-slides, not merged); steps 3 and 4 next, after the go.
 
 Request (2026-11-01): "I liked working in tabs in SlideMage versions up to v5. Draft a plan to open source views, the
 .bib edit view, and slides that the user opens using the search functionality in tabs. When opening a deck source or
@@ -120,6 +120,27 @@ file tab means that slide. Check each in step 1 and list them in the PR.
 Per project, in `layout_settings` (`centre_tabs`: the file tabs' paths relative to the project, the active one, their
 modes); files that no longer exist are skipped silently.
 
+Step 2 as built (decided while building, 2026-11-01):
+
+* **Which tab shows what.** A slide file tab has every mode; it opens in the Source view when it has a line to go to or is a
+  frozen version, else in the mode of the tab it was asked from (Open in new tab from Preview opens in Preview). Opening
+  a slide's file with `tab=True` again selects its tab (and updates the occurrence it was opened from).
+* **Preview and Details follow the active tab.** A slide file tab previews as the deck calls it (found by id-slug; for
+  a slide used more than once, the row it was opened from, `SlideRow.key`) or alone (`for_path`) when the deck does not
+  use the slide, no longer uses it (no error), or it is a frozen version (also when the deck pins that version). The
+  language chip on a slide file tab opens the partner in a tab of its own.
+* **Focus.** Activating a slide file tab changes neither the focused slide nor the slide list. The chat, the AI tasks,
+  the readability check, Ctrl+S, Ctrl+R, the plugin focus and the render batches act on the slide on show
+  (`CentreColumn.shown_slide`). The side panels (versions, notes, used in, images) and the slide list's commands stay on
+  the focused slide; this is where "this slide" can still mean the focused slide while another slide is on show. The
+  panels change in step 2b (section 4b).
+* **The Preview's wheel** past the last step does nothing on a slide file tab (no focus change, no tab change); its
+  neighbours for the reveal-step counts are those of the tab's row.
+* **Holding is counted** (`SourcePane.hold`/`unhold`/`release`): the slide tab holds its file, each tab holds its own,
+  so one buffer serves both; the old `_hold_slide` is gone, the slide tab's file is always held.
+* **Update Version on leave** is offered when a slide file tab closes, unless the slide tab shows the same file; moving
+  the slide tab away from a slide that has a tab does not ask. Window close covers all edited files as before.
+
 ## 4. Steps
 
 Each step a PR into develop with its own minor version, after the user's go (feedback rule: pause between steps).
@@ -134,11 +155,70 @@ Each step a PR into develop with its own minor version, after the user's go (fee
    Frozen versions opened from Details in a tab of their own, named with the version (`1y8 v1.2`) (D6). Slide file tabs get
    Preview / Split / Details (as the deck calls the slide, or alone). Tests in the palette, the slide list and centre
    GUI tests.
+2b. **The side panels follow the tab on show** (D9). With a slide file tab on show, the panels (versions, used-in,
+   notes, images; `panels/base.py`) act on that tab's slide, not the focused one. See section 4b.
 3. **Context menu, keyboard order, restore at start** (D5, D7). Tests: layout settings round trip, missing files.
 4. **Docs.** The manual slide on the workspace and the shortcuts dialog (`ui/dialogs/shortcuts.py`); the CHANGELOG
    entries are written per step.
 
 Steps 1 and 2 are the request; 3 and 4 can be merged into them if the user prefers fewer PRs.
+
+## 4b. Step 2b: the side panels follow the tab on show
+
+Status: planned 2026-11-01, not started; D10-D12 decided; waits for #68 to merge and the user's go. It builds on
+step 2's branch.
+
+### What is there today
+
+Every panel gets its slide from four methods of `panels/base.py`: `_focused_row`, `id_slug`, `slide_path` and
+`deck_calls`, and `slide_text` through them. They are the only readers of `state.focused_slide` and
+`state.focused_occurrence` in the panels, apart from `used.py`'s Open, which moves the focus on purpose. So the change
+has one home. The host (`side_panels.py`) rebuilds on the state's deck, focus, view and language signals, and
+`_panel_state()` says what the panel was built for; a change of tab is none of these.
+
+### What changes
+
+1. **`panels/base.py`: one source for "the slide".** A new `PanelActions.tab_slide()` returns `(path, row)` while a
+   slide file tab is on show, else None. With None the four methods work as today, so the slide tab, and a deck source
+   or .bib tab, show the focused slide as now. Otherwise `slide_path` is the tab's path, `_focused_row` the tab's row
+   (`CentreColumn._tab_row`: None when the deck does not use the slide or the file is a frozen version), `id_slug` the
+   row's or the file's, and `deck_calls` matches the tab's bare id. The field defaults to "no tab", so test fakes need no
+   change. `SidePanels` is built before the centre (`window.py`), and its constructor refreshes: the window's lambda must
+   answer None while there is no centre yet.
+2. **`side_panels.py`: a change of tab is a change of slide.** `_panel_state()` gains the tab's path. The window connects
+   the centre's active tab to `_defer()`, so a pending edit is flushed against the slide it was typed for, the old
+   content stops answering and the rebuild waits for the pause, as for a focus change. Going to a .bib tab gives the same
+   state, so nothing rebuilds.
+3. **`centre.edit_slide_text(show=True)`** (the Notes panel's Save notes) calls `show_slide_tab()`: on a slide tab this
+   would jump to the slide tab and show the wrong slide's file there. It stays when the tab on show has that path.
+4. **`centre.restore_version`** ends with `open_file(current)`, which moves the focus to that slide. From the Versions
+   panel on a slide tab it shows that file's tab if it has one (`_show_file`). From a frozen version's tab with no tab
+   of the current file, it still goes to the slide tab, as step 2 decided.
+5. **The panels' Open buttons** (D10): Versions' Open and Language's Open call `open_slide_editor(path)` today.
+6. **A rename must not close the tab** (D11): `_forget_missing_tabs` closes a tab whose file is gone, so Set language in
+   the Language panel, and Rename in Details (which already follows the tab since step 2), would drop the user out of
+   the slide they are working on. `CentreColumn.retarget_file(old, new)` moves the tab, and its hold, to the new file.
+
+### What needs no change
+
+* **Notes, Images, Transcript entry** capture their path and slide at build time (`self._path`, `self._slide`), so a
+  flush after the tab changed still writes to the slide it was typed for. Notes and Images are read-only or limited on a
+  frozen file by the same checks a pinned version gets today.
+* **Visibility and the pin in Versions** pass the deck call to `edit_deck`, so they edit the tab's slide once
+  `deck_calls` does; a slide the deck does not use already says so.
+* **Language's Translate** goes through the assistant header's scope, which reads `centre.path` since step 2.
+* **Plugin boxes** are built from the deck, not a slide, and stay as they are.
+* **Used in decks' Open** is a deliberate move: it changes the deck and focus, and so shows the slide tab.
+
+### Tests
+
+For each of Notes, Versions, Visibility, Images, Language, Citations and Used in decks on a slide tab of another slide:
+the panel shows that slide, and its action reaches that slide and leaves the focused one alone. Also: typed notes
+flushed to the right slide when the tab changes; Save notes stays on the tab; a .bib tab keeps the focused slide without
+a rebuild; a frozen tab and a slide the deck does not use; closing a tab with a pending note; the slide list's selection
+unchanged after a panel's deck edit; rename and Set language keeping the tab, undo included.
+
+Size: about 60 lines of code in `base.py`, `side_panels.py`, `window.py` and `centre.py`, plus the tests. One PR.
 
 ## 5. Risks
 
@@ -170,3 +250,15 @@ Decided by the user 2026-11-01:
   so a version and the current slide can be compared by switching; in step 2.
 * **D7. Restore the file tabs when the project is opened again:** yes, per project, in step 3; missing files are
   skipped silently.
+* **D9. Side panels on a slide file tab** (user, 2026-11-01, after step 2): they follow the tab on show. Step 2 left
+  them on the focused slide; step 2b changes that.
+
+Decided by the user 2026-11-01, for step 2b:
+
+* **D10. The panels' Open buttons.** Versions' Open of a frozen version always gives it a tab of its own,
+  also from the slide tab, like Details (D6). Language's Open of the other language gives it a tab while a slide tab is
+  on show, like the Preview's language chip, and stays on the slide tab otherwise.
+* **D11. A rename while a slide has a tab.** The tab follows the renamed file.
+* **D12. Ctrl+K's "Slide" group and the Slide menu on a slide tab.** They keep acting on the slide list's selection,
+  because they are deck operations (Duplicate, Remove, Hide) and the group's heading names the slide ("Slide 1y8").
+  Check in step 2b whether the Slide menu names the slide too; if it does not, say so to the user.

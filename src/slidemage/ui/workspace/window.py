@@ -177,7 +177,7 @@ class WorkspaceWindow(QMainWindow):
         self.side_panels = SidePanels(self, self.state, PanelActions(
             slide_text=lambda path: self.centre.slide_text(path), is_dirty=lambda path: self.centre.unsaved(path),
             edit_slide_text=lambda path, change, **kw: self.centre.edit_slide_text(path, change, **kw),
-            save_source=lambda: self.centre.source.save(),
+            save_source=lambda: self.centre.save(),
             restore_version=lambda path: self.centre.restore_version(path),
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
             edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
@@ -267,7 +267,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.versions_changed.connect(self.side_panels.refresh)
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.source.save)
+        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.save)
         # Ctrl+Enter renders the editor's buffer, saved or not, and shows the page (Ctrl+R in the Source view too).
         for sequence in ("Ctrl+Return", "Ctrl+Enter"):
             QShortcut(QKeySequence(sequence), self).activated.connect(self.centre.render_buffer)
@@ -451,16 +451,17 @@ class WorkspaceWindow(QMainWindow):
 
     def open_slide_editor(
         self, path: Path, on_saved: Optional[Callable[[str], None]] = None, line: Optional[int] = None,
-        *, keep_mode: bool = False, tab: bool = False,
+        *, keep_mode: bool = False, tab: bool = False, occurrence: Optional[tuple] = None,
     ) -> None:
         """Show a file in the Source view: a slide, a deck's own source or SlideMage.bib.
         `on_saved(previous_text)` runs after each save; `line` puts the cursor there; `keep_mode` leaves
         the Preview on show instead of switching to the Source view. `tab` asks for a tab of its own: a file
         that is no slide always gets one (the deck source, SlideMage.bib and test-slides.tex say so too), a
-        slide's file does not yet (docs/plans/centre-tabs.md, step 2)."""
+        slide's file gets one if asked (search, the slide list's Open in new tab, a frozen version from Details), else
+        it is the slide tab's; `occurrence` is the deck row (SlideRow.key) the slide was opened from."""
         returning = self.stack.currentWidget() is not self.centre
         self.stack.setCurrentWidget(self.centre)
-        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode, tab=tab)
+        self.centre.open_file(path, on_saved, line, keep_mode=keep_mode, tab=tab, occurrence=occurrence)
         if returning:
             self.centre.refresh()   # open_file skips it when the focus click already did; the views were not on show
 

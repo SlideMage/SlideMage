@@ -5,8 +5,9 @@ order in which they were last used; and the strip that draws them.
 
 `CentreTabs` is the model and needs no window. The first tab is the slide tab, always there and never closed: it
 shows the focused slide, as the centre always did. A file tab holds a file of its own, opened on purpose (a deck's
-source, SlideMage.bib, test-slides.tex), until it is closed. Each tab remembers the mode (Preview, Source, ...) it
-was last shown in; a file tab shows the Source view alone.
+source, SlideMage.bib, test-slides.tex, or a slide's file), until it is closed. Each tab remembers the mode (Preview,
+Source, ...) it was last shown in; a file tab of a file that is no slide shows the Source view alone, a slide's file
+tab has every mode.
 
 `TabStrip` draws the tabs and says what the user did to them (activate, close with the "x" or the middle button);
 what that means is the centre's (centre.py).
@@ -36,6 +37,8 @@ class CentreTab:
     path: Optional[Path] = None                     # None for the slide tab, which follows the focused slide
     mode: str = "preview"                           # the mode it was last shown in
     on_saved: Optional[Callable[[str], None]] = None    # runs after each save of the file (a deck's after_deck_edit)
+    slide: bool = False                             # a file tab of a slide's file (current or a frozen version)
+    occurrence: Optional[tuple] = None              # the deck row (SlideRow.key) it was opened from, if any
 
     @property
     def closable(self) -> bool:
@@ -44,7 +47,7 @@ class CentreTab:
     @property
     def source_only(self) -> bool:
         """The tab has no Preview or Details: a deck's source or SlideMage.bib is not a slide."""
-        return self.kind == FILE
+        return self.kind == FILE and not self.slide
 
 
 class CentreTabs(QObject):
@@ -86,14 +89,16 @@ class CentreTabs(QObject):
     def tab_for(self, path: Path) -> Optional[CentreTab]:
         return next((t for t in self._tabs if t.kind == FILE and t.path == path), None)
 
-    def add_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None) -> CentreTab:
-        """The file tab of `path`, opened at the end of the strip unless it has one; it is not shown yet."""
+    def add_file(self, path: Path, on_saved: Optional[Callable[[str], None]] = None, *, slide: bool = False,
+                 occurrence: Optional[tuple] = None, mode: str = "source") -> CentreTab:
+        """The file tab of `path`, opened at the end of the strip unless it has one; it is not shown yet. `slide`:
+        the file is a slide's, so the tab has every mode; it starts in `mode`."""
         tab = self.tab_for(path)
         if tab is not None:
             if on_saved is not None:
                 tab.on_saved = on_saved
             return tab
-        tab = CentreTab(FILE, path, "source", on_saved)
+        tab = CentreTab(FILE, path, mode if slide else "source", on_saved, slide, occurrence)
         self._tabs.append(tab)
         self._mru.append(tab)
         self.tabs_changed.emit()

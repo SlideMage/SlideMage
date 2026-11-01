@@ -145,3 +145,12 @@ def test_a_click_or_a_close_ends_a_series(tabs):
     tabs.cycle(1)
     tabs.close(deck)
     assert not tabs.cycling
+
+
+def test_a_slide_file_tab_has_every_mode_and_starts_where_it_is_told_to(tabs):
+    slide = tabs.add_file(BIB.with_name("aaa-EN-One-current.tex"), slide=True, occurrence=("k", 1), mode="preview")
+    assert slide.kind == FILE and slide.closable and slide.slide and not slide.source_only
+    assert slide.mode == "preview" and slide.occurrence == ("k", 1)
+    assert tabs.add_file(BIB.with_name("aaa-EN-One-current.tex")) is slide          # one tab per file
+    assert tabs.add_file(DECK).mode == "source" and tabs.add_file(BIB, mode="preview").mode == "source"
+    assert tabs.tab_for(DECK).source_only                                          # a deck source stays Source-only

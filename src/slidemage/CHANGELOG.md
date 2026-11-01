@@ -3325,7 +3325,29 @@ NEW: The debug log now says what SlideMage does.
 - Compiling, previews, AI tool calls, plugins, update checks and startup each write detailed lines while the debug log is on.
 - Slide text, prompts and the values of settings stay out of it.
 
-v0.13.17 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a deck's slides and multilingual media descriptions, open a slide, and use Host.ai_chat() for text requests on the selected Chat route. AiRoute.request_provider supports self-contained requests. Cloud requests require confirmation; cancellation and errors return on the UI thread. There is no plugin service registry. API_VERSION remains 1.
+v0.13.17 (2026-11-01, direct request): Slides open in tabs of their own (docs/plans/centre-tabs.md, step 2 of 4). Ctrl+K "Text in project files" opens every hit in a tab at its line, also a slide of the open deck; a hit in a file that has a tab shows that tab and goes to the line. Ctrl+K "Go to slide" for a slide that is not in this deck opens a tab; for a slide of the deck it still focuses it. The slide list's right-click menu has Open in new tab. Details' Open on a frozen version opens a read-only tab of its own, named with the version (1y8 v1.2); Make this the current version from it shows the slide tab, and the version's tab stays.
+
+A slide's tab has Preview, Split and Details and remembers its mode. It previews the slide as the open deck calls it (the occurrence it was opened from, when the slide is used more than once), or alone when the deck does not use it, uses it no more, or it is a frozen version. Showing such a tab does not change the focused slide: the slide list keeps its selection and the background renders keep following it; selecting a slide in the list shows the slide tab, and the other tab stays. The chat, the AI tasks, the readability check, Ctrl+S, Ctrl+R and Ctrl+Enter act on the slide on show. The side panels and the slide list's commands stay on the focused slide. The Preview's wheel past the last step stays on such a tab, and its language chip opens the other language in a tab of its own.
+
+The Source view counts who needs a file: the slide tab and a tab of the same slide share one editor with its undo history, and closing one never drops what the other shows. Update Version on leave is offered when a slide's tab closes (not when you switch away, and not when the slide tab shows the same file) and, as before, when the window closes.
+
+NEW: Slides open in tabs.
+- Search hits and slides from outside the deck open in tabs; a hit in an open file goes to its line there.
+- Right-click a slide in the list and choose Open in new tab to look at two slides by switching.
+- A frozen version opened from Details gets a tab of its own, to compare it with the current slide.
+- Each slide tab has Preview, Split and Details, and keeps the one you used last.
+
+v0.13.18 (2026-11-01, direct request: size figures in one's own slides from the available space, add the \SMContentHeight): The framework sets a new length \SMContentHeight, the height of the content area from the Top Margin down to the Bottom Margin, that is \paperheight minus \SMContentTopAlign and \SMContentBottomAlign, after the template's settings, so it follows every template and layout profile. A slide sizes a figure from it, for example \besidefigure[height=0.8\SMContentHeight]{...}, instead of working the height out from \paperheight, \SMFooterBoxHeight and the margins itself.
+
+NEW: Slides can size a figure from the room the template leaves.
+- The new length \SMContentHeight is the height between the top and bottom margin of a slide, for example \cornerfigure[height=0.8\SMContentHeight]{...}.
+
+v0.13.19 (2026-11-01, a fix to v0.13.18): The pin of latex/SlideMage_base.tex in preview_equivalence.py is right again. Renumbering v0.13.18 changed the version number in a comment of that file, which changed its hash, so the audit no longer recognized the file: the Preview's sharing of renders between views fell back to separate renders, and the equivalence tests failed. Only the comment had changed, so the audit stands.
+
+NEW: Previews share renders between views again.
+- v0.13.18 could render a slide once per view, where one render is enough. This restores the sharing.
+
+v0.13.20 (2026-11-01, the plugin calls Exam Forge needs): Plugins can read a deck's slides and multilingual media descriptions, open a slide, and use Host.ai_chat() for text requests on the selected Chat route. AiRoute.request_provider supports self-contained requests. Cloud requests require confirmation; cancellation and errors return on the UI thread. There is no plugin service registry. API_VERSION remains 1.
 
 NEW: Plugins can read a deck's slides and ask the selected AI route to draft text.
 - A plugin can work with a deck's slides, versions and picture descriptions, and open a slide.
