@@ -3365,3 +3365,8 @@ NEW: Plugins can look like SlideMage, in light and dark.
 - Closing SlideMage closes a plugin's window too, and a window with unsaved work can stop it.
 - Plugins can show slide titles without LaTeX markup, and know which section a slide is in.
 - Chips everywhere in SlideMage now have the round ends they were designed with.
+
+v0.13.22 (2026-11-02, direct request: an on-demand debug log, step 6 of docs/plans/debug-log.md): The debug log is documented, which ends the plan. The manual has a new slide t8w after Safety Nets, Logs and problem reports: the error log and the debug log, how to turn the debug log on and that it stays on, what it holds, and how to save a debug report for a problem report. The README has a new section, Logs and problem reports: where the logs are, the switches, the files and the line format, every area, what stays out, the debug report, and tools/debug_log.py. Its part for plugin authors says how Host.log and its levels and Host.debug_enabled work and what requires_slidemage they need. No code changes.
+
+NEW: The manual explains the logs and how to report a problem.
+- See Logs and problem reports in the manual, after Safety Nets.

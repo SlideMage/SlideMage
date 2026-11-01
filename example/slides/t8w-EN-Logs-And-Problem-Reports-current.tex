@@ -1,0 +1,30 @@
+%% Included in decks: slidemage-manual, slidemage-manual-copy
+%%
+
+% SlideMage manual, after the safety nets: the error log, the debug log and the debug report
+% (v0.13.22, step 6 of docs/plans/debug-log.md; README, "Logs and problem reports").
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Logs and problem reports}
+	\small
+	When something goes wrong, SlideMage can show what it did. You decide what leaves your computer: SlideMage sends \textcolor{c_primary_highlight}{nothing} by itself.
+	\par
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.48\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \textbf{Error log}: always on and small. Warnings, errors and crashes, kept below 4~MB
+				\item \textbf{Debug log}: what SlideMage does, in detail. Turn it on under \emph{Settings} $\rightarrow$ \emph{About} $\rightarrow$ \emph{Troubleshooting} or in the \emph{Help} menu; it starts at once
+				\item It \textbf{stays on} until you turn it off. A \emph{Debug log on} chip after the AutoSave switch reminds you, and clicking it opens the log folder
+				\item \SMCode{slidemage --debug}: on for one run
+			\end{itemize}
+		\end{column}
+		\begin{column}{0.48\linewidth}
+			\shrinklists{1}
+			\begin{itemize}
+				\item \textbf{In the debug log}: compile runs, previews, AI tool calls, plugins, update checks, with file names and paths. No slide text, prompts or API keys are written on purpose
+				\item \textbf{To report a problem}: turn it on, make the problem happen, then \emph{Help} $\rightarrow$ \emph{Save debug report\ldots}: one zip file, saved where you choose. Look through it before you send it
+				\item The oldest files go by themselves, beyond 20 sessions or 100~MB
+			\end{itemize}
+		\end{column}
+	\end{columns}
+\end{standardframe}
