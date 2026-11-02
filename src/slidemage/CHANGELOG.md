@@ -3467,3 +3467,8 @@ v0.13.40 (2026-11-02, direct request: the rendering status text sometimes jumps 
 
 NEW: The rendering status text stays still.
 - It no longer jumps upwards for a moment when the status refreshes.
+
+v0.13.41 (2026-11-01, direct request: remove the visual touch on opening): The one-time visual touch when SlideMage opens, added in v0.13.9, is gone.
+
+NEW: The one-time visual touch when SlideMage opens is gone.
+- SlideMage opens straight to its window again.
