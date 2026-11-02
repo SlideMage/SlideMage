@@ -36,10 +36,10 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout,
     QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, languages, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
-from ...slide_language import TRANSLATION_LANGUAGES, bare_id, current_path_for_bare_id, own_language
+from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
 from ..dialogs.new_slide_version import NewSlideVersionSheet
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
@@ -744,7 +744,7 @@ class CentreColumn(QFrame):
             return path.name
         if version is not None:
             return f"{bare_id(id_slug)} v{version.replace('-', '.')}"
-        title = deck_outline.slide_file_title(path, id_slug)
+        title = deck_outline.slide_file_title(self.state.project, path, id_slug)
         return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
 
     def _slide_label(self) -> str:
@@ -754,7 +754,7 @@ class CentreColumn(QFrame):
             return "Slide"
         id_slug, _version = self._file_slide(path)
         row = self._focused_row()
-        title = row.title if row is not None and id_slug == row.call.id_slug else deck_outline.slide_file_title(path, id_slug)
+        title = row.title if row is not None and id_slug == row.call.id_slug else deck_outline.slide_file_title(self.state.project, path, id_slug)
         return f"{bare_id(id_slug)} · {title}" if title else bare_id(id_slug)
 
     def close_tab(self, tab: CentreTab) -> bool:
@@ -981,12 +981,12 @@ class CentreColumn(QFrame):
                             occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
         if path is None:
             return None, None, "", None
-        own = own_language(id_slug)
-        partner = (row is not None and version is None and own in TRANSLATION_LANGUAGES and id_slug != row.call.id_slug
+        own = own_language(id_slug, languages.project_languages(state.project).codes)
+        partner = (row is not None and version is None and own not in (None, MULT) and id_slug != row.call.id_slug
                    and row.matches(bare_id(id_slug)))
         target = (slide_target(state.project, state.deck, path, state.view, own) if partner
                   else for_path(state.project, path))
-        title = deck_outline.slide_file_title(path, id_slug) if target else ""
+        title = deck_outline.slide_file_title(state.project, path, id_slug) if target else ""
         return target, row if partner else None, title, own if partner else None
 
     def _go_adjacent(self, direction: int) -> None:
@@ -1023,7 +1023,7 @@ class CentreColumn(QFrame):
         cached = getattr(self, "_english_frames_cache", None)
         if cached is not None and cached.matches(state.project, state.deck, "EN"):
             return cached
-        links = slide_language.TranslationLinks(state.project.slides_dir)
+        links = slide_language.links_for(state.project)
         slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links)
         cached = deck_outline.Outline(state.project, state.deck.path, state.deck.text, deck_editor.VIEW_INSTRUCTOR, "EN",
                                       [], links, {r.key: r.frame_number for r in slots})

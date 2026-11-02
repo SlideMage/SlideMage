@@ -20,7 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from . import alt_draft, deck_editor, deck_language, deck_outline, fileio, slide_ids, slide_language, slide_rename, slide_versioning
+from . import (
+    alt_draft, deck_editor, deck_language, deck_outline, fileio, languages, slide_ids, slide_language, slide_rename,
+    slide_versioning, translation_prompts,
+)
 from .ai.providers import ChatProvider
 from .deck_scan import Deck
 from .project import ProjectContext
@@ -87,7 +90,7 @@ class CreatedSlide:
 
 def create_new(ctx: ProjectContext, slug: str, language: str, frame: str = STANDARD_FRAME, title: str = "",
                *, body: str | None = None) -> CreatedSlide:
-    """A new slide of `frame` in `language` (one of slide_language.LANGUAGES), with a fresh id."""
+    """A new slide of `frame` in `language` (one of the project's languages, or mult), with a fresh id."""
     return _create(ctx, slug, language, frame_body(ctx, frame, title) if body is None else body)
 
 
@@ -95,15 +98,16 @@ def create_copy(
     ctx: ProjectContext, source_id_slug: str, slug: str, language: Optional[str] = None, body: Optional[str] = None,
 ) -> CreatedSlide:
     """A new slide seeded from `source_id_slug`'s saved content (or from `body`, e.g. its
-    translation). Without `language` it is a duplicate in the source's language (EN when the source
-    has none), independent of the source; with one, a translation into it, linked with the source."""
+    translation). Without `language` it is a duplicate in the source's language (the project's main
+    language when the source has none), independent of the source; with one, a translation into it, linked with the source."""
     source = slide_path(ctx, source_id_slug)
     if body is None:
         body = slide_ids.slide_body(source)
     # A fresh id starts its own version history, just like a template-seeded slide.
     body = slide_versioning.strip_marker(body)
     if language is None:
-        return _create(ctx, slug, slide_language.own_language(source_id_slug) or "EN", body)
+        codes = languages.project_languages(ctx).codes
+        return _create(ctx, slug, slide_language.own_language(source_id_slug, codes) or codes[0], body)
     created = create_translation(ctx, source_id_slug, slug, language, body)
     slide_ids.add_translation_backreference(source, language, created.id_slug)
     slide_rename.regenerate_translation_links(ctx)
@@ -144,30 +148,38 @@ def source_body(ctx: ProjectContext, id_slug: str) -> str:
     return slide_ids.slide_body(slide_path(ctx, id_slug))
 
 
-def slug_of(id_slug: str) -> str:
+def slug_of(ctx: ProjectContext, id_slug: str) -> str:
     """The descriptive part of an id-slug (a copy gets a fresh id and keeps or changes this)."""
-    return slide_rename.parse_id_slug(id_slug)[2]
+    return slide_rename.parse_id_slug(id_slug, languages.project_languages(ctx).codes)[2]
 
 
-def other_languages(id_slug: str) -> list[str]:
-    """The languages a translation of the slide can be written in: all but its own."""
-    own = slide_language.own_language(id_slug)
-    return [code for code in slide_language.LANGUAGES if code != own]
+def other_languages(ctx: ProjectContext, id_slug: str) -> list[str]:
+    """The languages a translation of the slide can be written in: all of the project's but its own, and mult."""
+    codes = languages.project_languages(ctx).codes
+    own = slide_language.own_language(id_slug, codes)
+    return [code for code in (*codes, slide_language.MULT) if code != own]
 
 
-def can_machine_translate(id_slug: str, target: str) -> bool:
-    """Whether a model can translate the slide into `target`. Only English to German is
-    configured (translation_prompts.json has no other direction, and even the hardcoded
-    last-resort prompt is worded "into German"): offering another would silently produce a
-    mistranslation instead of an honest refusal."""
-    return slide_language.own_language(id_slug) == "EN" and target == "DE"
+def can_machine_translate(ctx: ProjectContext, id_slug: str, target: str) -> bool:
+    """Whether a model can translate the slide into `target`: from one language of the project into another.
+    English to German always (the default prompt is worded for it); another pair only when
+    translation_prompts.json has a prompt of its own for it, because the last-resort prompt says "into
+    German" and would silently produce a mistranslation instead of an honest refusal."""
+    codes = languages.project_languages(ctx).codes
+    own = slide_language.own_language(id_slug, codes)
+    if own in (None, slide_language.MULT) or target not in codes or target == own:
+        return False
+    return (own, target) == ("EN", "DE") or any(
+        (source, to) == (own.lower(), target.lower()) for _, source, to, _ in translation_prompts.list_configs(ctx))
 
 
-def translate_body(ctx: ProjectContext, provider: ChatProvider, body: str) -> tuple[str, Optional[str]]:
-    """(translation, error) of a slide body, sent to the model as one block. Experimental: a
-    translation model knows nothing about LaTeX, so a command's argument text can come back
-    altered; reviewing the result is the user's job."""
-    backend = alt_draft.ModelTranslationBackend(ctx, provider, max_tokens=TRANSLATION_MAX_TOKENS)
+def translate_body(ctx: ProjectContext, provider: ChatProvider, body: str, source: str = "en",
+                   target: str = "de") -> tuple[str, Optional[str]]:
+    """(translation, error) of a slide body from the language `source` into `target` (codes, lower case), sent
+    to the model as one block. Experimental: a translation model knows nothing about LaTeX, so a command's
+    argument text can come back altered; reviewing the result is the user's job."""
+    backend = alt_draft.ModelTranslationBackend(ctx, provider, max_tokens=TRANSLATION_MAX_TOKENS,
+                                                source_lang=source, target_lang=target)
     translated, error = backend.translate_text(body)
     eol = "\r\n" if "\r\n" in body else "\n"
     return re.sub(r"\r?\n", eol, translated), error
@@ -232,9 +244,9 @@ class ProjectSlide:
 def project_slides(ctx: ProjectContext) -> list[ProjectSlide]:
     """Every slide of the project, sorted by id-slug."""
     slides = []
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     for id_slug in slide_ids.list_id_slugs(ctx):
         path = slide_path(ctx, id_slug)
-        slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(path, id_slug),
+        slides.append(ProjectSlide(id_slug, deck_outline.slide_file_title(ctx, path, id_slug),
                                    slide_language.badge_for(ctx, id_slug, links=links).text()))
     return slides

@@ -92,7 +92,7 @@ def test_rename_collision_check_ignores_case(ctx, rename_project):
 
 
 def test_raw_reads_work_below_python_313():
-    slide_language.cross_referenced_language(EXAMPLE_PROJECT, "1vn-EN-Languages")
+    slide_language.translated_languages(EXAMPLE_PROJECT, "1vn-EN-Languages")
     assert "slidemage-manual" in slide_rename.deck_names_referencing(EXAMPLE_PROJECT, "1mu-EN-Slidestep-Demo")
 
 

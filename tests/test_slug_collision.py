@@ -46,7 +46,7 @@ def test_a_tagged_slide_is_never_listed_for_its_own_language(ctx):
 
 
 def test_without_it_in_the_list_the_slug_is_no_language(ctx):
-    assert slide_language.own_language("x7k-IT-Governance") is None
+    assert slide_language.own_language("x7k-IT-Governance", ("EN", "DE")) is None
 
 
 def test_tagging_renames_every_file_and_call_and_keeps_the_links(ctx):
@@ -58,7 +58,7 @@ def test_tagging_renames_every_file_and_call_and_keeps_the_links(ctx):
     assert "\\slide{x7k-EN-IT-Governance}" in deck and "\\slideversion{x7k-EN-IT-Governance}{1-0-0}" in deck
     assert "x7k-IT-Governance" not in deck
     assert "%% Translation of: x7k-EN-IT-Governance" in (ctx.slides_dir / "ddd-DE-Eins-current.tex").read_text(encoding="utf-8")
-    assert slide_language.own_language(new) == "EN"
+    assert slide_language.own_language(new, ("EN", "DE")) == "EN"
     assert slide_rename.untagged_slugs_matching(ctx, "it") == ["b2c-IT"]
 
 

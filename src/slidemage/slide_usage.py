@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from . import deck_editor, slide_language, slide_versioning
+from . import deck_editor, languages, slide_language, slide_versioning
 from .deck_scan import Deck, scan_decks
 from .project import ProjectContext
 
@@ -101,7 +101,7 @@ def find_usage(ctx: ProjectContext, id_slug: str, decks: Optional[list[Deck]] = 
             continue
         if language is not None:
             from . import deck_language
-            links = links or slide_language.TranslationLinks(ctx.slides_dir)
+            links = links or slide_language.links_for(ctx)
             every = [slot.call for slot in deck_language.deck_slots(ctx, deck, language, links=links)]
         else:
             every = deck_editor.parse_slide_calls(deck)
@@ -122,13 +122,14 @@ def find_translations(ctx: ProjectContext, id_slug: str, text: str, decks: Optio
     partners += [slide_language.bare_id(x.group(2))
                  for x in slide_language.LANG_TRANSLATION_RE.finditer(text)]
     out = []
+    codes = languages.project_languages(ctx).codes
     for bare in dict.fromkeys(partners):
         partner = slide_language.current_id_slug_for_bare_id(ctx, bare)
         path = slide_language.current_path_for_bare_id(ctx, bare)
         if partner is None or path is None or partner == id_slug:
             continue
         used = [u.deck.name for u in find_usage(ctx, partner, decks)]
-        out.append(Translation(partner, slide_language.own_language(partner), path, used))
+        out.append(Translation(partner, slide_language.own_language(partner, codes), path, used))
     return out
 
 

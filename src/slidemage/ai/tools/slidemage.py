@@ -21,6 +21,7 @@ from ... import (
     deck_headers,
     deck_outline,
     deck_scan,
+    languages,
     latex_lint,
     preview_target,
     qr_code,
@@ -186,8 +187,8 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
     """One captured batch for chat and MCP; image numbers refer to returned image order."""
     context = ctx.workspace.context()
     if language is None:
-        language = slide_language.own_language(path.name) if saved else context.language
-        language = language if language in slide_language.TRANSLATION_LANGUAGES else context.language
+        language = slide_language.own_language(path.name, languages.project_languages(ctx.project).codes) if saved else context.language
+        language = language if language not in (None, slide_language.MULT) else context.language
     context = replace(context, language=language,
                       deck=open_deck(ctx) if context.deck is not None else None)
     try:
@@ -294,9 +295,9 @@ def apply_slide(ctx: ToolContext, path: Path, before: str, after: str, *,
     warnings = "\n".join(latex_lint.format_issue(i) for i in findings if i.severity != latex_lint.ERROR)
     status += "\nLint: " + (warnings or "no problems found.")
     try:
-        language = slide_language.own_language(path.name)
+        language = slide_language.own_language(path.name, languages.project_languages(ctx.project).codes)
         rendered, images = preview_batch_output(ctx, path, view=None,
-                                                language=language if language in slide_language.TRANSLATION_LANGUAGES else None,
+                                                language=language if language != slide_language.MULT else None,
                                                 show=True)
     except ToolError as exc:
         raise ToolError(f"{status}\nThe slide stays in place; edit this file to fix it.\nThe slide did not compile:\n{exc}") from None
@@ -326,7 +327,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
     slide = args["slide"].strip()
     if _BARE_ID.match(slide):
         language = ctx.workspace.context().language
-        links = slide_language.TranslationLinks(ctx.project.slides_dir)
+        links = slide_language.links_for(ctx.project)
         if partner := links.find(path.name.removesuffix(slide_language.CURRENT_SUFFIX), language):
             path = project_path(ctx.root, str(ctx.project.slides_dir / slide_language.current_name(partner)))
             note = f"{slide} in {language} is its partner {partner}"
@@ -360,7 +361,7 @@ def modify_slide(ctx: ToolContext, args: dict) -> str | tuple[str, list[bytes]]:
       {"slug": {"type": "string", "description": "Required for creation: hyphenated letters and digits, e.g. 'Capital-Budgeting'."},
        "title": {"type": "string", "description": "Required for creation: the frame title (plain text)."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Default standardframe."},
-       "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default: the edited language."},
+       "language": {"type": "string", "description": "A language code of the project in capitals (EN), or mult. Default: the edited language."},
        "after": {"type": "string", "description": "Slide id to put it after; default the end of the deck, "
                  "or directly after the source slide for a translation."},
        "translation_of": {"type": "string", "description": "Slide id of the slide this is a translation of; "
@@ -382,7 +383,7 @@ def add_slide(ctx: ToolContext, args: dict) -> str:
         source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
         if not slide_add.slide_path(ctx.project, source_id_slug).exists():
             raise ToolError(f"'{args['translation_of']}' is not a slide. list_slides shows the ids.")
-        if slide_language.own_language(source_id_slug) == language:
+        if slide_language.own_language(source_id_slug, languages.project_languages(ctx.project).codes) == language:
             raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
         body = slide_ids.slide_body(source).replace("\r\n", "\n")
     else:
@@ -467,7 +468,7 @@ def insert_slide(ctx: ToolContext, args: dict) -> str:
        "slug": {"type": "string", "description": "Hyphenated letters and digits, e.g. Capital-Budgeting."},
        "body": {"type": "string", "description": "Complete LaTeX frame, without a document wrapper or managed header."},
        "deck": {"type": "string", "description": "Default: the open deck; if given, must name it."},
-       "language": {"type": "string", "enum": list(slide_language.LANGUAGES), "description": "Default edited language."},
+       "language": {"type": "string", "description": "A language code of the project in capitals (EN), or mult. Default: the edited language."},
        "after": {"type": "string", "description": "Slide id; default end of deck, or directly after the source for a translation."},
        "translation_of": {"type": "string", "description": "Source slide id; preserve its protected body regions."},
        "frame": {"type": "string", "enum": list(slide_add.FRAMES), "description": "Optional frame type."}},
@@ -495,7 +496,7 @@ def create_slide(ctx: ToolContext, args: dict) -> tuple[str, list[bytes]]:
         if source.parent != ctx.project.slides_dir.resolve() or not source.name.endswith(slide_language.CURRENT_SUFFIX) or not source.is_file():
             raise ToolError("translation_of must name a live slide.")
         source_id_slug = source.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        if slide_language.own_language(source_id_slug) == language:
+        if slide_language.own_language(source_id_slug, languages.project_languages(ctx.project).codes) == language:
             raise ToolError(f"{source_id_slug} is already {language}; pass the target language.")
         source_text = current_text(ctx.workspace, source)
         protected = slide_ids.body_of(source_text)

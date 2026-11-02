@@ -296,4 +296,4 @@ def test_a_slides_title_with_an_overlay_reads_as_its_visible_text():
     from pathlib import Path
     from slidemage import alt_blocks
     source = r"\begin{standardframe}{Be kind\ldots\only<2->{ but clear}}x\end{standardframe}" + "\n"
-    assert alt_blocks.slide_title(source, Path("sn8-EN-Be-Kind-but-Clear-current.tex")) == ("sn8", "Be kind… but clear")
+    assert alt_blocks.slide_title(source, Path("sn8-EN-Be-Kind-but-Clear-current.tex"), ("EN", "DE")) == ("sn8", "Be kind… but clear")

@@ -339,9 +339,11 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     assert env.window.centre.path == partner
     ((target, *_),) = fake.renders
     assert target.source_path == partner                                  # Check preview rendered the new slide
-    link = slide_language.translation_link(ctx, "abc-EN-Hello")                # found although the source is unsaved
-    assert link is not None and link.partner == new_id_slug and not any(b.label.startswith("Translate") for b in tasks_module._offers(ctx, 
-        tasks_module._focus(env.window), link))
+    links = slide_language.translation_group(ctx, "abc-EN-Hello")                # found although the source is unsaved
+    assert links and links[0].partner == new_id_slug
+    focus = tasks_module._focus(env.window)
+    assert not any(b.label.startswith("Translate") for b in tasks_module._offers(
+        ctx, focus, slide_language.translation_group(ctx, focus.id_slug)))
     env.window.centre.open_file(env.path)
     env.window.assistant.header.schedule()
     wait_until(lambda: env.window.centre.path == env.path and buttons(env) == ["Better title"])
@@ -498,9 +500,9 @@ def test_a_slide_without_a_language_is_not_proofread(ctx, fake):
     env = fake.env
     show_text(env, PROSE)
     wait_until(lambda: "Proofread" in buttons(env))
-    assert tasks_module._offers(ctx, tasks_module._focus(env.window), None)[1].label == "Proofread"
+    assert tasks_module._offers(ctx, tasks_module._focus(env.window), [])[1].label == "Proofread"
     legacy = tasks_module._Focus(env.root / "slides" / "xyz-legacy-current.tex", "xyz-legacy", PROSE)
-    assert "Proofread" not in [b.label for b in tasks_module._offers(ctx, legacy, None)]
+    assert "Proofread" not in [b.label for b in tasks_module._offers(ctx, legacy, [])]
 
 
 def test_proofreading_applies_its_edits_into_the_buffer(fake):

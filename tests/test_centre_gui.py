@@ -209,10 +209,10 @@ def test_an_outdated_translation_shows_a_chip(centre, project, monkeypatch):
     state = centre.state
     state.set_focused_slide("bbb")
     link = slide_language.TranslationLink("bbb-DE-Zwei", "DE", project / "bbb-DE-Zwei-current.tex", False, True)
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: link)
+    monkeypatch.setattr(preview_view, "translation_group", lambda _ctx, id_slug, **_kw: [link])
     centre.preview._refresh()
     assert chip_texts(centre) == ["Deck stays on v1.0.0", "Translation outdated", "EN + DE"]
-    monkeypatch.setattr(preview_view, "translation_link", lambda _ctx, id_slug, **_kw: None)
+    monkeypatch.setattr(preview_view, "translation_group", lambda _ctx, id_slug, **_kw: [])
     centre.preview._refresh()
     assert "Translation outdated" not in chip_texts(centre)
 

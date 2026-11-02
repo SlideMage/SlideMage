@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import ai_review, alt_images, deck_editor, deck_headers, slide_ids, slide_language
+from . import ai_review, alt_images, deck_editor, deck_headers, languages, slide_ids, slide_language
 from .project import ProjectContext
 from .processes import delete_file, move_file
 
@@ -46,15 +46,16 @@ from .processes import delete_file, move_file
 _MACROS = "|".join(sorted(deck_editor.ALL_MACROS))
 
 
-def compute_new_id_slug(id_slug: str, language: str) -> str:
-    """<id>-<slug> or <id>-<OLDLANG>-<slug> -> <id>-<language>-<slug>."""
-    if language not in slide_language.LANGUAGES:
-        raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
+def compute_new_id_slug(id_slug: str, language: str, codes: tuple[str, ...]) -> str:
+    """<id>-<slug> or <id>-<OLDLANG>-<slug> -> <id>-<language>-<slug>; `codes` are the project's languages."""
+    allowed = (*codes, slide_language.MULT)
+    if language not in allowed:
+        raise ValueError(f"language must be one of {allowed}, got {language!r}")
     parts = id_slug.split("-", 2)
     if len(parts) < 2:
         raise ValueError(f"not a valid id-slug (needs at least one hyphen): {id_slug!r}")
     slide_id = parts[0]
-    if len(parts) >= 3 and parts[1] in slide_language.LANGUAGES:
+    if len(parts) >= 3 and parts[1] in allowed:
         slug = parts[2]
     else:
         slug = "-".join(parts[1:])
@@ -150,7 +151,7 @@ def set_slide_language(ctx: ProjectContext, id_slug: str, language: str) -> str:
     (deck-inclusion headers, translation cross-references). Returns the
     new id-slug (unchanged from id_slug if it already carried this exact
     language segment)."""
-    return _apply_id_slug_rename(ctx, id_slug, compute_new_id_slug(id_slug, language))
+    return _apply_id_slug_rename(ctx, id_slug, compute_new_id_slug(id_slug, language, languages.project_languages(ctx).codes))
 
 
 def untagged_slugs_matching(ctx: ProjectContext, code: str) -> list[str]:
@@ -159,11 +160,12 @@ def untagged_slugs_matching(ctx: ProjectContext, code: str) -> list[str]:
     slide's language. Ask before adding the code to the project; a slide tagged with a language already
     ("x7k-EN-IT-Governance") is never listed."""
     code = code.upper()
+    codes = languages.project_languages(ctx).codes
     found = []
     for path in ctx.slides_dir.glob(f"*{slide_language.CURRENT_SUFFIX}"):
         id_slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
         parts = id_slug.split("-", 2)
-        if len(parts) >= 2 and parts[1] == code and slide_language.own_language(id_slug) is None:
+        if len(parts) >= 2 and parts[1] == code and slide_language.own_language(id_slug, codes) is None:
             found.append(id_slug)
     return sorted(found)
 
@@ -181,21 +183,21 @@ def tag_untagged(ctx: ProjectContext, id_slug: str, language: str) -> str:
 _SLUG_RE = re.compile(r"[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*")
 
 
-def parse_id_slug(id_slug: str) -> tuple[str, Optional[str], str]:
+def parse_id_slug(id_slug: str, codes: tuple[str, ...]) -> tuple[str, Optional[str], str]:
     """<id>[-<LANG>]-<slug> -> (bare id, language or None, descriptive
     slug) -- e.g. "hnr-EN-Deception-in-Experimental-Economics" ->
     ("hnr", "EN", "Deception-in-Experimental-Economics"), or a
-    not-yet-migrated "abc-Some-Title" -> ("abc", None, "Some-Title")."""
+    not-yet-migrated "abc-Some-Title" -> ("abc", None, "Some-Title"). `codes` are the project's languages."""
     parts = id_slug.split("-", 2)
     if len(parts) < 2:
         raise ValueError(f"not a valid id-slug (needs at least one hyphen): {id_slug!r}")
     bare_id = parts[0]
-    if len(parts) >= 3 and parts[1] in slide_language.LANGUAGES:
+    if len(parts) >= 3 and slide_language.own_language(id_slug, codes):
         return bare_id, parts[1], parts[2]
     return bare_id, None, "-".join(parts[1:])
 
 
-def compute_new_slug(id_slug: str, new_slug: str) -> str:
+def compute_new_slug(id_slug: str, new_slug: str, codes: tuple[str, ...]) -> str:
     """<id>[-<LANG>]-<slug> -> <id>[-<LANG>]-<new_slug> -- same bare id and
     language segment (if any); only the descriptive slug changes."""
     if not _SLUG_RE.fullmatch(new_slug):
@@ -204,7 +206,7 @@ def compute_new_slug(id_slug: str, new_slug: str) -> str:
             "and single hyphens between words (no leading/trailing/doubled "
             "hyphens)"
         )
-    bare_id, language, _ = parse_id_slug(id_slug)
+    bare_id, language, _ = parse_id_slug(id_slug, codes)
     return f"{bare_id}-{language}-{new_slug}" if language else f"{bare_id}-{new_slug}"
 
 
@@ -217,30 +219,51 @@ def rename_slide_slug(ctx: ProjectContext, id_slug: str, new_slug: str) -> str:
     job). Same move + reference-rewrite + header-regen machinery as both
     of those. Returns the new id-slug (unchanged from id_slug if it
     already had this exact slug)."""
-    return _apply_id_slug_rename(ctx, id_slug, compute_new_slug(id_slug, new_slug))
+    return _apply_id_slug_rename(ctx, id_slug, compute_new_slug(id_slug, new_slug, languages.project_languages(ctx).codes))
 
 
 def _resolve_reference(ctx: ProjectContext, bare_ref: str) -> Optional[str]:
     return slide_language.current_id_slug_for_bare_id(ctx, slide_language.bare_id(bare_ref))
 
 
-def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
-    """Rescan every slides/*-current.tex file's own "%% Translation of:
-    ..." / "%% <LANG> translation: ..." header lines and refresh each to
-    point at its target's *current* id-slug/language. Returns (files
-    changed, [report strings for any link whose target no longer has a
-    -current.tex] -- surfaced in the GUI log/a summary dialog rather than
-    silently dropped, same as alt_images.SyncReport.missing)."""
-    changed = 0
-    missing: list[str] = []
+# A translation line with the bare "%%" that closes its block, as slide_ids.with_translation_backreference writes it.
+_LINK_RE = re.compile(r"^%% (?:Translation of: (?P<of>\S+)|(?P<language>[A-Z]{2}|mult) translation: (?P<to>\S+))"
+                      r"[^\r\n]*\r?\n(?:%%\r?\n)?", re.MULTILINE)
 
+
+def _star_text(text: str, members: set[str], original: Optional[str], translations: list[tuple[str, str]]) -> str:
+    """`text` of a slide file in a translation group whose members have these bare ids: its header lines
+    that name a member are replaced by the star's own ("Translation of: <original>" for a translation, one
+    "<LANG> translation:" per (language, id-slug) of `translations` for the original), put where the first of them
+    stood. Lines naming anything else stay."""
+    wanted = ([f"Translation of: {original}"] if original else []) \
+        + [f"{language} translation: {slug}" for language, slug in translations]
+    found = [m for m in _LINK_RE.finditer(text) if slide_language.bare_id(m.group("of") or m.group("to")) in members]
+    if [m.group(0).splitlines()[0] for m in found] == [f"%% {line}" for line in wanted]:
+        return text
+    eol = "\r\n" if "\r\n" in text else "\n"
+    blocks = "".join(f"%% {line}{eol}%%{eol}" for line in wanted)
+    if not found:
+        at = slide_ids.header_insert_point(text)
+        return text[:at] + blocks + text[at:]
+    out, last = [], 0
+    for index, m in enumerate(found):
+        out.append(text[last:m.start()] + (blocks if index == 0 else ""))
+        last = m.end()
+    return "".join(out) + text[last:]
+
+
+def _refresh_links(ctx: ProjectContext, missing: list[str]) -> int:
+    """Point every translation line at its target's *current* id-slug/language; `missing` collects a report
+    for any whose target no longer has a -current.tex. Returns the number of files changed."""
+    changed = 0
+    codes = languages.project_languages(ctx).codes
     for path in sorted(ctx.slides_dir.glob("*-current.tex")):
         own_name = path.name[: -len(slide_language.CURRENT_SUFFIX)]
         text = read_text_exact(path)
         new_text = text
 
-        m = slide_language.TRANSLATION_OF_RE.search(new_text)
-        if m:
+        for m in reversed(list(slide_language.TRANSLATION_OF_RE.finditer(new_text))):
             resolved = _resolve_reference(ctx, m.group(1))
             if resolved is None:
                 missing.append(
@@ -259,7 +282,7 @@ def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
                     "please check."
                 )
                 return lm.group(0)
-            target_lang = slide_language.own_language(resolved) or lm.group(1)
+            target_lang = slide_language.own_language(resolved, codes) or lm.group(1)
             return f"%% {target_lang} translation: {resolved}"
 
         new_text = slide_language.LANG_TRANSLATION_RE.sub(_lang_repl, new_text)
@@ -267,8 +290,69 @@ def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
         if new_text != text:
             write_text_exact(path, new_text)
             changed += 1
+    return changed
 
+
+def regenerate_translation_links(ctx: ProjectContext) -> tuple[int, list[str]]:
+    """Rescan every slides/*-current.tex file's own "%% Translation of:
+    ..." / "%% <LANG> translation: ..." header lines and refresh each to
+    point at its target's *current* id-slug/language, then write every
+    translation group as a star: each translation names the original, and
+    the original has one "<LANG> translation:" line per translation (a
+    chain, where a translation names another translation, is rewritten
+    that way). Returns (files changed, [report strings for any link whose
+    target no longer has a -current.tex, and for any group whose links
+    name no original (a cycle) -- left as they are] -- surfaced in the GUI
+    log/a summary dialog rather than silently dropped, same as
+    alt_images.SyncReport.missing)."""
+    missing: list[str] = []
+    changed = _refresh_links(ctx, missing)
+    links = slide_language.links_for(ctx)
+    done: set[int] = set()
+    for slug in sorted(path.name[:-len(slide_language.CURRENT_SUFFIX)] for path in links.paths.values()):
+        group = links.group(slug)
+        if links.own(slug) in (None, slide_language.MULT) or id(group) in done or len(group.members) < 2:
+            continue
+        done.add(id(group))
+        if group.original is None:
+            missing.append(f"{', '.join(sorted(group.members.values()))}: the translation links name no original "
+                           "(they refer to each other, or to more than one) -- left as-is, please check.")
+            continue
+        bare_ids = {slide_language.bare_id(member) for member in group.members.values()}
+        translations = [(language, member) for language in links.codes
+                        if (member := group.members.get(language)) and member != group.original]
+        for member in group.members.values():
+            path = links.paths[slide_language.bare_id(member)]
+            text = read_text_exact(path)
+            if member == group.original:
+                new_text = _star_text(text, bare_ids, None, translations)
+            else:
+                new_text = _star_text(text, bare_ids, group.original, [])
+            if new_text != text:
+                write_text_exact(path, new_text)
+                changed += 1
     return changed, missing
+
+
+def make_original(ctx: ProjectContext, id_slug: str) -> None:
+    """Make the translation `id_slug` the original of its translation group, for when the author starts writing
+    in another language: its "Translation of:" line goes, every other member's names it (the old original's
+    too), and the "<LANG> translation:" lines follow (regenerate_translation_links). All the members' files are
+    written, so right afterwards none is outdated. The caller makes sure no member has unsaved edits."""
+    links = slide_language.links_for(ctx)
+    group = links.group(id_slug)
+    own = links.own(id_slug)
+    if own in (None, slide_language.MULT) or group.original is None or group.members.get(own) != id_slug:
+        raise ValueError(f"{id_slug} is in no translation group with an original")
+    members = set(group.members.values())
+    bare_ids = {slide_language.bare_id(member) for member in members}
+    for member in members:
+        path = links.paths[slide_language.bare_id(member)]
+        text = read_text_exact(path)
+        new_text = _star_text(text, bare_ids, None if member == id_slug else id_slug, [])
+        if new_text != text:
+            write_text_exact(path, new_text)
+    regenerate_translation_links(ctx)
 
 
 def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: bool = False) -> dict[str, str]:

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from . import languages
 from .project import ProjectContext
 from .tex_source import COMMENT_RE, braced_argument
 
@@ -326,8 +327,9 @@ def plain_title(raw_title: str) -> str:
     return clean_frame_title(title)
 
 
-def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
-    """(slide id, human title). Frame title if parseable, else the filename.
+def slide_title(source: str, slide_path: Path, codes: tuple[str, ...]) -> tuple[str, str]:
+    """(slide id, human title). Frame title if parseable, else the filename (without a language segment
+    of `codes`, the project's languages).
 
     The title argument is brace-matched, not regex-matched. 70 slide files
     carry a braced macro inside the frame title -- almost always a
@@ -359,7 +361,7 @@ def slide_title(source: str, slide_path: Path) -> tuple[str, str]:
             return slide_id, title
     # the slug without its language segment ("EN-Quote-Demo" -> "Quote Demo")
     language, _, rest = slug.partition("-")
-    if language in ("EN", "DE", "mult") and rest:
+    if language in (*codes, "mult") and rest:
         slug = rest
     return slide_id, slug.replace("-", " ")
 
@@ -649,6 +651,6 @@ def scan_slides_raw(ctx: ProjectContext) -> list[SlideRow]:
         images = referenced_images(text)
         if not images:
             continue
-        slide_id, title = slide_title(text, path)
+        slide_id, title = slide_title(text, path, languages.project_languages(ctx).codes)
         results.append(SlideRow(path=path, slide_id=slide_id, title=title, images=images))
     return results

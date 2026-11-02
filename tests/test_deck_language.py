@@ -124,9 +124,9 @@ def test_one_sided_links_resolve_in_both_directions(ctx, project, missing_header
         ("aaa-EN-One", "ddd-DE-Eins", "[EN + DE]", False),
         ("ddd-DE-Eins", "aaa-EN-One", "[DE + EN]", True),
     ):
-        link = slide_language.translation_link(ctx, slug)
+        (link,) = slide_language.translation_group(ctx, slug)
         assert (link.partner, link.is_translation) == (partner, is_translation)
-        assert slide_language.cross_referenced_language(ctx, slug) == slide_language.own_language(partner)
+        assert slide_language.translated_languages(ctx, slug) == (slide_language.own_language(partner, ("EN", "DE")),)
         assert slide_language.badge_for(ctx, slug).text() == badge
 
 
@@ -136,8 +136,8 @@ def test_conflicting_reverse_links_have_no_partner_in_either_reader(ctx, project
     (slides / "eee-DE-Andere-current.tex").write_text("%% Translation of: aaa-EN-One\nText\n")
     d = deck(project, "\\slide{aaa-EN-One}\n")
     assert deck_language.deck_slots(ctx, d, "DE")[0].call.id_slug == "aaa-EN-One"
-    assert slide_language.translation_link(ctx, "aaa-EN-One") is None
-    assert slide_language.cross_referenced_language(ctx, "aaa-EN-One") is None
+    assert slide_language.translation_group(ctx, "aaa-EN-One") == []
+    assert slide_language.translated_languages(ctx, "aaa-EN-One") == ()
     assert slide_language.badge_for(ctx, "aaa-EN-One").text() == "[EN]"
 
 
@@ -150,7 +150,7 @@ def test_slide_reader_skips_unusable_comments_like_the_deck_reader(ctx, project,
     (project / "slides" / "aaa-EN-One-current.tex").write_text(header + "Text\n")
     d = deck(project, "\\slide{aaa-EN-One}\n")
     assert deck_language.deck_slots(ctx, d, "DE")[0].call.id_slug == "ddd-DE-Eins"
-    link = slide_language.translation_link(ctx, "aaa-EN-One")
+    (link,) = slide_language.translation_group(ctx, "aaa-EN-One")
     assert (link.partner, link.is_translation) == ("ddd-DE-Eins", False)
     assert slide_language.badge_for(ctx, "aaa-EN-One").text() == "[EN + DE]"
 
@@ -162,8 +162,8 @@ def test_frozen_headers_do_not_change_the_translation_partner(ctx, project):
     (slides / "eee-DE-Old-current.tex").write_text("Text\n")
     d = deck(project, "\\slideversion{aaa-EN-One}{1-0-0}\n")
     assert deck_language.deck_slots(ctx, d, "DE")[0].call.id_slug == "ddd-DE-Eins"
-    assert slide_language.translation_link(ctx, "aaa-EN-One", frozen).partner == "ddd-DE-Eins"
-    assert slide_language.cross_referenced_language(ctx, "aaa-EN-One") == "DE"
+    assert slide_language.translation_group(ctx, "aaa-EN-One", frozen)[0].partner == "ddd-DE-Eins"
+    assert slide_language.translated_languages(ctx, "aaa-EN-One") == ("DE",)
     assert slide_language.badge_for(ctx, "aaa-EN-One").text() == "[EN + DE]"
 
 

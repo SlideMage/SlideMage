@@ -51,9 +51,9 @@ import re
 import threading
 from pathlib import Path
 
+from . import languages
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
-from .slide_language import TRANSLATION_LANGUAGES
 
 # Serialize header passes within the app. Atomic expected-text writes below also
 # protect edits from other writers; after three conflicts leave the file untouched
@@ -116,7 +116,7 @@ def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Pat
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
-        for language in TRANSLATION_LANGUAGES:
+        for language in languages.project_languages(ctx).codes:
             for slot in deck_language.slots(ctx, calls, language):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
     return id_to_decks, deck_paths

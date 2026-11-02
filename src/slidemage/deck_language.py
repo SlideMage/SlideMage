@@ -3,9 +3,11 @@
 """Resolve a deck's logical slide slots to their language partners.
 
 Deck files remain unchanged. The original call owns placement, visibility
-and reveal steps; a partner has its own version history, so switching
-languages uses its current file. Explicit partner calls in old decks are
-folded into the original slot, even when they occur in another section.
+and reveal steps; a translation has its own version history, so switching
+languages uses its current file. Explicit calls of other members of a
+translation group in old decks are folded into one slot, even when they
+occur in another section: the call of the group's original owns it, else the
+earliest call into the group.
 """
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ _TEX_PDF_TAGS = {"en": "en-US", "de": "de-DE"}
 
 def resolve_call(call: SlideCall, language: str, links: slide_language.TranslationLinks) -> SlideCall:
     language = language.upper()
-    if slide_language.own_language(call.id_slug) in (None, "mult", language):
+    if links.own(call.id_slug) in (None, slide_language.MULT, language):
         return call
     # Translation links belong to the slide, independently of a frozen
     # version's old header. Never transfer a version number between slides.
@@ -60,31 +62,23 @@ def slots(ctx: ProjectContext, calls: list[SlideCall], language: str, *,
     different slidestep calls retain their order and their individual rules.
     `links` is a scan of the slides folder to share between decks.
     """
-    return _slots(calls, language, links or slide_language.TranslationLinks(ctx.slides_dir))
+    return _slots(calls, language, links or slide_language.links_for(ctx))
 
 
 def _slots(calls: list[SlideCall], language: str, links: slide_language.TranslationLinks) -> list[SlideSlot]:
-    by_id = {c.id: c for c in calls}
-    owners: dict[str, str] = {}
+    in_group: dict[str, list[str]] = {}       # a group's original -> the ids of the slides the deck calls from it
     for call in calls:
-        text = links.header(call.id_slug)
-        if match := slide_language.TRANSLATION_OF_RE.search(text):
-            original = links.partner(match.group(1))
-            if (original and slide_language.bare_id(original) in by_id and original != call.id_slug
-                    and slide_language.own_language(original) != slide_language.own_language(call.id_slug)):
-                owners[call.id] = slide_language.bare_id(original)
-        for match in slide_language.LANG_TRANSLATION_RE.finditer(text):
-            partner = links.partner(match.group(2))
-            if (partner and slide_language.own_language(partner) == match.group(1)
-                    and slide_language.own_language(partner) != slide_language.own_language(call.id_slug)
-                    and slide_language.bare_id(partner) in by_id and partner != call.id_slug):
-                owners.setdefault(slide_language.bare_id(partner), call.id)
-    # Malformed reciprocal links must not remove both slides.
-    owners = {child: owner for child, owner in owners.items() if owner not in owners}
+        original = links.group(call.id_slug).original
+        if original is not None and call.id not in in_group.setdefault(slide_language.bare_id(original), []):
+            in_group[slide_language.bare_id(original)].append(call.id)
+    owners: dict[str, str] = {}
+    for original, called in in_group.items():
+        owner = original if original in called else called[0]
+        owners.update({slide_id: owner for slide_id in called if slide_id != owner})
     return [SlideSlot(c, resolve_call(c, language, links),
                      tuple(p for p in calls if owners.get(p.id) == c.id),
-                     tuple(slide_language.bare_id(partner) for lang in slide_language.TRANSLATION_LANGUAGES
-                           if (partner := links.find(c.id_slug, lang))))
+                     tuple(slide_language.bare_id(member) for member in links.group(c.id_slug).members.values()
+                           if slide_language.bare_id(member) != c.id))
             for c in calls if c.id not in owners]
 
 
@@ -190,7 +184,7 @@ def compile_deck(ctx: ProjectContext, deck: Deck, language: str) -> tuple[Deck, 
     candidate, dependencies = expand_fragments(deck)
     expanded = candidate.text
     resolved = resolved_text(ctx, candidate, language)
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     header_inputs = {links.paths[slide_id] for slot in deck_slots(ctx, candidate, language)
                      if slot.related_ids for slide_id in (slot.original.id, *slot.related_ids)
                      if slide_id in links.paths}

@@ -15,7 +15,7 @@ calls generate_appendix_tex() and appends the result right before
 """
 from __future__ import annotations
 
-from . import deck_editor, project, slide_snapshot
+from . import deck_editor, languages, project, slide_snapshot
 from .deck_editor import SlideCall
 from .deck_scan import Deck
 
@@ -113,7 +113,7 @@ def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, template: str) -> 
         # of a broken \includegraphics, still wrapped in the same working
         # \hyperlink below.
         language, _, rest = call.slug.partition("-")
-        slug = rest if language in ("EN", "DE", "mult") and rest else call.slug
+        slug = rest if language in (*languages.project_languages(ctx).codes, "mult") and rest else call.slug
         label = slug.replace("-", " ")
         inner = (
             f"\\fbox{{\\parbox[c][\\SMAppendixThumbH][c]{{\\SMAppendixThumbW}}"

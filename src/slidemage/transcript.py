@@ -29,7 +29,7 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, languages, slide_language
 from .project import ProjectContext
 from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import Deck
@@ -1393,7 +1393,7 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
     agenda_title = (_finish(_inline_markdown(agenda_titles[0], bib).strip())
                     if agenda_titles else "")
 
-    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
+    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path, languages.project_languages(ctx).codes)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
                              or alt_blocks.TITLEFRAME_RE.search(stripped)):
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)

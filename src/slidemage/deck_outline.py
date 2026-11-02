@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
-from . import ai_review, alt_blocks, deck_editor, deck_language, latex_lint, slide_language, slide_snapshot
+from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language, slide_snapshot
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -81,24 +81,25 @@ def _source_facts(ctx: ProjectContext, call: SlideCall) -> tuple[bool, str]:
         mtime = path.stat().st_mtime_ns
     except OSError:
         # A missing slide file is an error (lint_file reports it).
-        return True, _title("", call.id_slug)
+        return True, _title(ctx, "", call.id_slug)
     cached = _source_cache.get(path)
     if cached is None or cached[0] != mtime:
         errors = any(i.severity == latex_lint.ERROR for i in latex_lint.lint_file(ctx, path))
         text = path.read_text(encoding="utf-8", errors="replace")
-        cached = _source_cache[path] = (mtime, errors, _title(text, call.id_slug))
+        cached = _source_cache[path] = (mtime, errors, _title(ctx, text, call.id_slug))
     return cached[1], cached[2]
 
 
-def _title(source: str, id_slug: str) -> str:
+def _title(ctx: ProjectContext, source: str, id_slug: str) -> str:
     # Named as the current file whichever version the source is of, so that a
     # slide without a frame title falls back to its slug alone.
-    return alt_blocks.slide_title(source, Path(slide_language.current_name(id_slug)))[1]
+    return alt_blocks.slide_title(source, Path(slide_language.current_name(id_slug)),
+                                  languages.project_languages(ctx).codes)[1]
 
 
-def slide_file_title(path: Path, id_slug: str) -> str:
+def slide_file_title(ctx: ProjectContext, path: Path, id_slug: str) -> str:
     """The title of a slide file that is not a call of the open deck (any version of `id_slug`)."""
-    return _title(path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
+    return _title(ctx, path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
 
 
 def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
@@ -118,7 +119,7 @@ def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, positio
         lint_error=lint_error,
         stale_preview=png.is_file() and _older(png, path),
         hidden=not call.included_in(view),
-        missing_translation=badge.own in slide_language.TRANSLATION_LANGUAGES and badge.own != language,
+        missing_translation=badge.own not in (None, slide_language.MULT) and badge.own != language,
         original_call=slot.original,
         folded_calls=slot.folded,
         related_ids=slot.related_ids,
@@ -150,7 +151,7 @@ def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
     frame = 0
     result = []
     for position, slot in enumerate(deck_language._slots(deck_language.active_calls(deck), language,
-                                                      links or slide_language.TranslationLinks(ctx.slides_dir)), 1):
+                                                      links or slide_language.links_for(ctx)), 1):
         base = _call_key(slot.original)
         occurrence = occurrences.get(base, 0)
         occurrences[base] = occurrence + 1
@@ -183,7 +184,7 @@ def _sections(ctx: ProjectContext, deck: Deck, view: str, language: str, resolve
 def build_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> list[SectionRow]:
     """The sections of `deck` in file order, as seen in `view` (a deck version)
     while editing in `language` ("EN"/"DE")."""
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     return _sections(ctx, deck, view, language, resolve_slots(ctx, deck, view, language, links=links), links)
 
 
@@ -228,7 +229,7 @@ class Outline:
 
 def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -> Outline:
     """`build_outline`, with what resolving it learnt kept for others to reuse."""
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     resolved = resolve_slots(ctx, deck, view, language, links=links)
     instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
         ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links)
@@ -250,7 +251,7 @@ def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, languag
     if outline is not None and outline.matches(ctx, deck, language, view):
         return outline.row(slide_id, occurrence_key)
     template = slide_snapshot.detect_template(deck.preamble_text)
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
     matches = [r for r in resolve_slots(ctx, deck, view, language, links=links) if r.slot.matches(slide_id)]
     selected = next((r for r in matches if r.key == occurrence_key), matches[0] if matches else None)

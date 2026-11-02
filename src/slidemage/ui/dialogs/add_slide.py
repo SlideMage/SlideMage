@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, alt_draft, deck_editor, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
+from ... import ai_review, alt_draft, deck_editor, languages, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
 from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
 from ...project import ProjectContext
@@ -52,7 +52,7 @@ SOURCES = (("new", "New"), ("existing", "Existing"), ("duplicate", "Duplicate"),
 LOAD_LABELS = (("live", "Live slide"), ("frozen", "Frozen version"), ("step", "One reveal step"))
 LOAD_TIPS = {"live": "Follows every edit of the slide.", "frozen": "Stays as it was when it was frozen.",
              "step": "One reveal step of the slide, as a slide of its own."}
-LANGUAGE_LABELS = {"EN": "EN", "DE": "DE", "mult": "Multilingual"}
+LANGUAGE_LABELS = {"mult": "Multilingual"}      # a language code is its own label
 SLUG_HINT = "The slug is letters and digits with single hyphens between words, e.g. MM-Theorem."
 PICKER_LABELS = {"existing": "Slide", "duplicate": "Slide to duplicate", "translate": "Slide to translate"}
 TRANSLATION_WARNING = ("Sends the whole slide text to the model as one block. LaTeX commands are not "
@@ -68,16 +68,17 @@ class _TranslateWorker(QThread):
 
     translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
 
-    def __init__(self, ctx: ProjectContext, translator, body: str) -> None:
+    def __init__(self, ctx: ProjectContext, translator, body: str, source: str = "en", target: str = "de") -> None:
         super().__init__()
         self.ctx = ctx
         self.translator = translator
         self.body = body
+        self.source, self.target = source, target
 
     def run(self) -> None:
         translate = getattr(self.translator, "translate", None)
         if translate is None:
-            translate = lambda body: slide_add.translate_body(self.ctx, self.translator, body)
+            translate = lambda body: slide_add.translate_body(self.ctx, self.translator, body, self.source, self.target)
         text, error = translate(self.body)
         self.translated.emit(self, text, error)
 
@@ -202,7 +203,9 @@ class AddSlideSheet(ModalSheet):
         self.frame_note = QLabel()
         self.frame_note.setObjectName(q.PANEL_CAPTION)
         layout.addWidget(self.frame_note)
-        self.language = SegmentedControl([(code, label) for code, label in LANGUAGE_LABELS.items()], current="EN")
+        codes = languages.project_languages(self.app.project).codes
+        self.language = SegmentedControl([(code, LANGUAGE_LABELS.get(code, code)) for code in (*codes, slide_language.MULT)],
+                                         current=codes[0])
         self.language.changed.connect(lambda _key: self._sync())
         self.language.setToolTip("Multilingual: the same slide in every language, in one file.")
         layout.addWidget(Field("Language", self.language))
@@ -399,8 +402,8 @@ class AddSlideSheet(ModalSheet):
         self.target.blockSignals(True)
         self.target.clear()
         if slide:
-            for code in slide_add.other_languages(slide):
-                self.target.addItem(LANGUAGE_LABELS[code], code)
+            for code in slide_add.other_languages(self.app.project, slide):
+                self.target.addItem(LANGUAGE_LABELS.get(code, code), code)
             preset = self.target.findData(self._preset_target)
             if preset >= 0:
                 self.target.setCurrentIndex(preset)
@@ -410,7 +413,7 @@ class AddSlideSheet(ModalSheet):
                 chip.setChecked(call.included_in(view))
         if not self._slug_edited and slide:
             suffix = "-Copy" if self.current_source() == "duplicate" else ""
-            self.copy_slug.setText(slide_add.slug_of(slide) + suffix)
+            self.copy_slug.setText(slide_add.slug_of(self.app.project, slide) + suffix)
         self._sync()
 
     def _on_title(self, title: str) -> None:
@@ -441,12 +444,12 @@ class AddSlideSheet(ModalSheet):
         has_ai = bool(routes.all())
         self.machine.setVisible(has_ai)
         can_translate = has_ai and slide is not None and self.chosen_target() is not None \
-            and slide_add.can_machine_translate(slide, self.chosen_target())
+            and slide_add.can_machine_translate(self.app.project, slide, self.chosen_target())
         if can_translate != self.machine.isEnabled():
             self.machine.setEnabled(can_translate)
             self.machine.setChecked(can_translate)    # on whenever it is possible, as asked for
         self.machine.setToolTip("" if can_translate else
-                                "Only English to German can be translated by a model; the copy is linked all the same.")
+                                "A model translates English to German, and the pairs with a prompt of their own in Settings; the copy is linked all the same.")
         self.machine_box.setVisible(self.wants_translation())
         frame = self.frames.current()
         self.frame_note.setText("Replace the picture in the new slide before you compile it."
@@ -486,7 +489,7 @@ class AddSlideSheet(ModalSheet):
             if source == "existing":
                 self._finish(self.picked(), None)
             elif source == "new":
-                created = slide_add.create_new(self.app.project, self.slug(), self.language.current() or "EN",
+                created = slide_add.create_new(self.app.project, self.slug(), self.language.current() or languages.project_languages(self.app.project).codes[0],
                                                self.frames.current() or slide_add.STANDARD_FRAME,
                                                self.title_edit.text())
                 self._finish(created.id_slug, created.path)
@@ -536,7 +539,10 @@ class AddSlideSheet(ModalSheet):
             return
         self._route, self._translator, self._lease = route, translator, lease
         try:
-            self._worker = _TranslateWorker(self.app.project, translator, slide_add.source_body(self.app.project, self.picked()))
+            self._worker = _TranslateWorker(
+                self.app.project, translator, slide_add.source_body(self.app.project, self.picked()),
+                slide_language.own_language(self.picked(), languages.project_languages(self.app.project).codes).lower(),
+                self.chosen_target().lower())
             self._worker.translated.connect(self._on_translated)
             self._busy(f"Translating with {translator.label}…")
             self._worker.start()

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, alt_blocks, slide_language, slide_rename, slide_source, slide_versioning
+from ... import ai_review, alt_blocks, languages, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Surface
@@ -127,7 +127,7 @@ class DetailsPane(Surface):
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
         version = slide_versioning.version_text(text)
         badge = slide_language.badge_for(self.app.project, self._id_slug)
-        _language, _, slug = slide_rename.parse_id_slug(self._id_slug)
+        _language, _, slug = slide_rename.parse_id_slug(self._id_slug, languages.project_languages(self.app.project).codes)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
@@ -167,11 +167,11 @@ class DetailsPane(Surface):
         grid.setColumnStretch(1, 1)
         index = 0
         try:
-            link = slide_language.translation_link(project, self._id_slug)
+            links = slide_language.translation_group(project, self._id_slug)
         except OSError:
-            link = None
-        if link is not None:
-            role = "Original" if not link.is_translation else "Translation of"
+            links = []
+        for link in links:
+            role = "Translation of" if link.is_translation else "Original" if link.is_original else "Another translation of the original"
             self._related_row(grid, index, f"{link.language or 'Other language'}", f"{role}: {link.path.name}", link.path,
                               "may be out of date" if link.outdated else "")
             index += 1
@@ -214,7 +214,7 @@ class DetailsPane(Surface):
 
     def _rename(self) -> None:
         old = self._id_slug
-        _, _, current_slug = slide_rename.parse_id_slug(old)
+        _, _, current_slug = slide_rename.parse_id_slug(old, languages.project_languages(self.app.project).codes)
         if not self._guard("Rename slide"):
             return
         slug, ok = QInputDialog.getText(
@@ -225,7 +225,7 @@ class DetailsPane(Surface):
         if not ok or not slug or slug == current_slug:
             return
         try:
-            new = slide_rename.compute_new_slug(old, slug)
+            new = slide_rename.compute_new_slug(old, slug, languages.project_languages(self.app.project).codes)
         except ValueError as exc:
             QMessageBox.critical(self, "Rename slide", str(exc))
             return

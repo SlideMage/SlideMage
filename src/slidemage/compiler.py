@@ -47,7 +47,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, project, slide_snapshot
+from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot
 from . import citations, diagnostics, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
@@ -239,8 +239,9 @@ def deck_pdfs(ctx: project.ProjectContext, deck: Deck) -> list[DeckPdf]:
 
     from dataclasses import replace
     from .deck_settings import read_settings
-    other = "DE" if read_settings(deck.text).language.lower() == "en" else "EN"
-    jobs += [replace(job, language=other) for job in jobs]
+    own = read_settings(deck.text).language.upper()
+    others = [code for code in languages.project_languages(ctx).codes if code != own]
+    jobs += [replace(job, language=code) for code in others for job in jobs]
 
     found: dict[str, DeckPdf] = {}
     for job in jobs:

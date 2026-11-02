@@ -106,6 +106,7 @@ class TaskCard:
     focus: Path | None = None          # the file it was started on: Run again starts there
     file: str = ""                     # the file the change goes into
     language: str = ""                 # of a translation: the language it is written in ("DE")
+    source: str = ""                   # of a translation: the language it is made from ("EN"; "" for the other one)
     t0: float = 0.0                    # time.monotonic() at the start
     elapsed: int = 0                   # seconds, while it generates
     auto: bool = False                 # "Edit automatically": Review is skipped
@@ -180,7 +181,7 @@ def first_error(log: str) -> str:
 def state_text(card: TaskCard) -> str:
     """The state line of the card's phase (the handoff's table)."""
     names = ai_tasks.LANGUAGE_NAMES
-    source = names.get(other_language(card.language), card.language)
+    source = names.get(card.source or other_language(card.language), card.source or other_language(card.language))
     target = names.get(card.language, card.language)
     phase, file = card.phase, card.file
     if phase == GENERATE:

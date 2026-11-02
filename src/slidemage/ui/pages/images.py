@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ... import alt_draft, alt_images, image_review, slide_language
+from ... import alt_draft, alt_images, image_review, languages, slide_language
 from ...ai import ai_profile, routes
 from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
@@ -405,7 +405,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         if view is None:
             return
         row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        language = "de" if slide_language.own_language(id_slug) == "DE" else "en"
+        language = "de" if slide_language.own_language(id_slug, languages.project_languages(self.app.project).codes) == "DE" else "en"
         show_transcript_preview(self.app, self.source.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)
 

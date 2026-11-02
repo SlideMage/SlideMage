@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_language, deck_settings, render_key, render_store, slide_language
+from . import app_settings, deck_language, deck_settings, languages, render_key, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -79,9 +79,11 @@ def batch_size(ctx: ProjectContext) -> int:
         return DEFAULT_BATCH_SIZE
 
 
-def deck_language_code(deck: Deck) -> str:
-    code = deck_settings.read_settings(deck.text).language.upper() if deck.preamble_end is not None else ""
-    return code if code in slide_language.TRANSLATION_LANGUAGES else slide_language.TRANSLATION_LANGUAGES[0]
+def deck_language_code(ctx: ProjectContext, deck: Deck) -> str:
+    """The deck's `\\decklanguage`, upper case; the project's main language for a deck with no preamble."""
+    if deck.preamble_end is None:
+        return languages.project_languages(ctx).codes[0]
+    return deck_settings.read_settings(deck.text).language.upper()
 
 
 def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_at: Optional[str] = None,
@@ -92,7 +94,7 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
     is a unit only when `context_ready()` says there is one to use; without it (the default) it is left out."""
     if deck.preamble_end is None:
         return []
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     slots = deck_language._slots(deck_language.active_calls(deck), language, links)
     units: list[render_key.Unit] = []
     start_index = None
@@ -370,12 +372,10 @@ class BackgroundRenderer:
         return list(VIEWS) if deck.supports_version else [VIEW_INSTRUCTOR]
 
     def languages_for(self, deck: Deck) -> list[str]:
-        usage = next((u for u in self.store.deck_usage() if u["deck"] == deck.name), None)
-        primary = (usage or {}).get("last_language") or deck_language_code(deck)
-        languages = [primary.upper()]
+        found = [deck_language_code(self.ctx, deck)]
         if setting(self.ctx, SECOND_LANGUAGE_KEY, False):
-            languages += [l for l in slide_language.TRANSLATION_LANGUAGES if l not in languages]
-        return languages
+            found += [code for code in languages.project_languages(self.ctx).codes if code not in found]
+        return found
 
     def scan(self) -> list:
         """Everything outstanding, in the order it is rendered: [(sort key, unit)], and the progress counts.
@@ -600,7 +600,7 @@ class BackgroundRenderer:
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
             return 0                                    # not the PDF the record describes (another compile replaced it)
         view = job.version or VIEW_INSTRUCTOR
-        language = (getattr(job, "language", None) or deck_language_code(job.deck)).upper()
+        language = (getattr(job, "language", None) or deck_language_code(self.ctx, job.deck)).upper()
         recorded = {norm(entry["path"]): (Path(entry["path"]), entry["sha256"])
                     for entry in record.get("inputs", []) if not entry.get("copy")}
         import pymupdf

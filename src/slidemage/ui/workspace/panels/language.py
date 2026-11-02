@@ -3,14 +3,14 @@
 """Language: the focused slide's language, its translation partner and whether that is outdated.
 
 The facts are slide_language's (the id-slug's language segment and the "Translation of" /
-"<LANG> translation" header comments); "outdated" is slide_language.translation_link()'s, which
+"<LANG> translation" header comments); "outdated" is slide_language.translation_group()'s, which
 says exactly what it measures. Translate runs the assistant's Translate task on the slide: its task
 card shows the proposed slide, and creates it on Apply. Set language moved here from the Details view."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox
 
-from .... import slide_language, slide_rename
+from .... import languages, slide_language, slide_rename
 from ....deck_outline import slide_file_title
 from ...kit import kit_qss as q
 from ...ai_models import cloud_label
@@ -18,10 +18,7 @@ from ...kit.widgets import Button, PopoverMenu
 from ..details_view import SAVE_FIRST
 from .base import Row, SidePanel, box, text
 
-# The language menu: label -> the code slide_rename.set_slide_language() takes.
-LANGUAGE_CHOICES = (("EN", "EN"), ("DE", "DE"), ("Multilingual", "mult"))
-LABELS = {code: label for label, code in LANGUAGE_CHOICES}
-OTHER = {"EN": "DE", "DE": "EN"}
+LABELS = {"mult": "Multilingual"}      # a language code is its own label
 
 
 class Language(SidePanel):
@@ -32,30 +29,35 @@ class Language(SidePanel):
 
     def meta(self) -> str:
         slide = self.id_slug()
-        own = slide_language.own_language(slide) if slide else None
+        own = slide_language.own_language(slide, self._codes()) if slide else None
         if own is None:
             return ""
-        link = slide_language.translation_link(self.app.project, slide)
-        if link is None:
-            return f"{own} only" if own in OTHER else own
-        return f"{own} · {link.language or '?'}" + (" outdated" if link.outdated else "")
+        links = slide_language.translation_group(self.app.project, slide)
+        if not links:
+            return f"{own} only" if own != slide_language.MULT else own
+        return f"{own} · {' '.join(link.language or '?' for link in links)}" + (" outdated" if any(link.outdated for link in links) else "")
+
+    def _codes(self) -> tuple[str, ...]:
+        return languages.project_languages(self.app.project).codes
 
     def build(self, id_slug: str) -> None:
         self.translate_button = None
-        own = slide_language.own_language(id_slug)
+        own = slide_language.own_language(id_slug, self._codes())
         path = self.slide_path()
-        link = slide_language.translation_link(self.app.project, id_slug, path) if own in OTHER and path is not None else None
+        listed = own not in (None, slide_language.MULT)
+        links = slide_language.translation_group(self.app.project, id_slug, path) if listed and path is not None else []
         frame, layout = box()
-        self._add_language(layout, own or "?", id_slug, path, self._own_caption(own, link))
-        if link is not None:
+        self._add_language(layout, own or "?", id_slug, path, self._own_caption(own, links))
+        for link in links:
             self._add_language(layout, link.language or "?", link.partner, link.path, self._partner_caption(link),
                                open_it=True)
-        elif own in OTHER:
+        missing = next((code for code in self._codes() if code != own and code not in {l.language for l in links}), None)
+        if listed and missing:
             row = Row(layout)
             line = QHBoxLayout()
-            line.addWidget(text(OTHER[own], q.PANEL_MONO))
+            line.addWidget(text(missing, q.PANEL_MONO))
             line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
-            self.translate_text = f"Translate to {OTHER[own]}"
+            self.translate_text = f"Translate to {missing}"
             translate = self.translate_button = Button(cloud_label(self.app.project, self.translate_text), "primary", compact=True)
             translate.setToolTip("Translate this slide with the model chosen in AI setup (the ▾ of the AI switch): "
                                  "the assistant shows the proposed slide, and creates it linked to this one when you apply it.")
@@ -71,14 +73,15 @@ class Language(SidePanel):
             self.translate_button.setText(cloud_label(self.app.project, self.translate_text))
 
     @staticmethod
-    def _own_caption(own, link) -> str:
+    def _own_caption(own, links) -> str:
         if own is None:
             return "This slide has no language in its name."
         if own == "mult":
             return "The same in every language (\\multilingualtext)."
-        if link is None:
+        if not links:
             return "No translation linked."
-        return f"A translation of {link.partner}." if link.is_translation else "The original."
+        original = next((link for link in links if link.is_translation), None)
+        return f"A translation of {original.partner}." if original else "The original."
 
     @staticmethod
     def _partner_caption(link) -> str:
@@ -90,7 +93,7 @@ class Language(SidePanel):
         row = Row(layout)
         line = QHBoxLayout()
         line.addWidget(text(language, q.PANEL_MONO))
-        line.addWidget(text(slide_file_title(path, id_slug) if path else id_slug, q.DETAILS_VALUE), 1)
+        line.addWidget(text(slide_file_title(self.app.project, path, id_slug) if path else id_slug, q.DETAILS_VALUE), 1)
         if open_it:
             open_button = Button("Open", "secondary", compact=True)
             open_button.clicked.connect(lambda: self.app.open_slide_editor(path))
@@ -120,14 +123,14 @@ class Language(SidePanel):
 
     def _open_menu(self, anchor, id_slug: str, own) -> None:
         menu = PopoverMenu(self, min_width=180)
-        for label, code in LANGUAGE_CHOICES:
-            menu.add_item(code, label, icon="check" if code == own else "")
+        for code in (*self._codes(), slide_language.MULT):
+            menu.add_item(code, LABELS.get(code, code), icon="check" if code == own else "")
         menu.triggered.connect(lambda code: self._set_language(id_slug, code))
         menu.closed.connect(menu.deleteLater)
         menu.popup_below(anchor)
 
     def _set_language(self, old: str, language: str) -> None:
-        if slide_language.own_language(old) == language or not self._saved("Set language"):
+        if slide_language.own_language(old, self._codes()) == language or not self._saved("Set language"):
             return
         n_refs = slide_rename.count_references(self.app.project, old)
         confirm = QMessageBox.question(

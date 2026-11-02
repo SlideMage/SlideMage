@@ -27,11 +27,10 @@ from ...ai import ai_profile
 from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
 from ...project import ProjectContext
-from ...slide_language import TRANSLATION_LANGUAGES
 
 MODES = ("preview", "split", "source", "details")
-# "mult" marks a slide that is the same in every language: not a language to edit in.
-UI_LANGUAGES = TRANSLATION_LANGUAGES
+# The languages of the language switch. Step 2b of the content-languages plan replaces this by the project's languages.
+UI_LANGUAGES = ("EN", "DE")
 
 SETTLE_MS = 150   # the focus must rest this long before the side panels and the assistant's offers are worked out afresh
 

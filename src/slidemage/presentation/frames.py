@@ -12,20 +12,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .. import compile_records, compiler, project
+from .. import compile_records, compiler, languages, project
 from ..deck_scan import Deck
 from .frame_map import FrameMap, parse_nav
 
 
-def candidate_jobnames(deck: Deck, pdf: Path) -> list[str]:
-    """The names a Presenter compile of this deck is recorded under: the deck's language and the other one."""
+def candidate_jobnames(ctx: project.ProjectContext, deck: Deck, pdf: Path) -> list[str]:
+    """The names a Presenter compile of this deck is recorded under: the deck's language and the other project languages."""
     from dataclasses import replace
 
     from ..deck_settings import read_settings
     version = "instructor" if deck.supports_version else None
     job = compiler.CompileJob(deck, version, None, presenter=True)
-    other = "DE" if read_settings(deck.text).language.lower() == "en" else "EN"
-    names = [job.jobname, replace(job, language=other).jobname, pdf.stem]
+    own = read_settings(deck.text).language.upper()
+    names = [job.jobname, *(replace(job, language=code).jobname for code in languages.project_languages(ctx).codes if code != own),
+             pdf.stem]
     return list(dict.fromkeys(names))
 
 
@@ -41,7 +42,7 @@ def nav_files(ctx: project.ProjectContext, jobname: str) -> list[Path]:
 
 def load_for(ctx: project.ProjectContext, deck: Deck, pdf: Path, page_count: int) -> Optional[FrameMap]:
     """The frame map of the presented PDF, or None (the page numbers are used then)."""
-    for jobname in candidate_jobnames(deck, pdf):
+    for jobname in candidate_jobnames(ctx, deck, pdf):
         for nav in nav_files(ctx, jobname):
             try:
                 frames = parse_nav(nav.read_text(encoding="utf-8", errors="replace"), page_count)

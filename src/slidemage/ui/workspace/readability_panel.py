@@ -339,12 +339,12 @@ class ReadabilityCheck(QObject):
         for slide in report.slides:
             path = slide_language.current_path_for_bare_id(self.app.project, slide.slide_id)
             if path is not None:
-                titles[slide.slide_id] = deck_outline.slide_file_title(path, path.name.removesuffix(slide_language.CURRENT_SUFFIX))
+                titles[slide.slide_id] = deck_outline.slide_file_title(self.app.project, path, path.name.removesuffix(slide_language.CURRENT_SUFFIX))
         return titles
 
     def _slide_label(self, path: Path) -> str:
         id_slug = path.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        title = deck_outline.slide_file_title(path, id_slug)
+        title = deck_outline.slide_file_title(self.app.project, path, id_slug)
         return f"{slide_language.bare_id(id_slug)} · {title}" if title else slide_language.bare_id(id_slug)
 
     # -- the clicks -------------------------------------------------------------------------------------

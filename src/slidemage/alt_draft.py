@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
-from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, draft_prompts, languages, media_render, tikz_render, translation_prompts
 from .batch_result import CANCELLED, DONE, FAILED, KEPT, ItemOutcome
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .project import ProjectContext
@@ -298,7 +298,7 @@ def build_context(ctx: ProjectContext, slide_path: Path, reference: str) -> Slid
     source_text = slide_path.read_text(encoding="utf-8")
     stripped = COMMENT_RE.sub("", source_text)
 
-    slide_id, title = alt_blocks.slide_title(source_text, slide_path)
+    slide_id, title = alt_blocks.slide_title(source_text, slide_path, languages.project_languages(ctx).codes)
 
     body, sources = alt_blocks.extract_macro_calls(stripped, "source")
     body, _notes = alt_blocks.extract_macro_calls(body, "note")  # discarded, see docstring
