@@ -85,8 +85,11 @@ The project's languages live in `.slidemage/project.json` (shared and versioned 
 
 - Codes are ISO 639-1, two letters, stored lowercase; in slide file names they are uppercase (`FR`), as now.
   `mult` stays reserved.
-- A project without the key behaves as today: `main: "en"`, `secondary: ["de"]`. Nothing is written until the
-  user changes the languages.
+- Every project states its languages (decided 2026-11-02, replacing "nothing is written until the user changes
+  the languages"). When a new SlideMage first opens a project without the key, it writes the key once, worked out
+  from the project: `main: "en"`, and `secondary: ["de"]` if the project uses German anywhere (slides, decks, image
+  descriptions, `de_address`), else `[]`. New projects get the key at creation. There is no implicit EN + DE
+  default and no special case for it; the one-time cost is that every preview renders once more.
 - New module `languages.py` (no Qt): a table of about 40 languages with code, English name, native name, default
   PDF tag (`en-US`, `de-DE`, `fr-FR`, ...), which is not settable per project. The UI translation plan uses the same table for its language picker. `project_languages(ctx)` returns the ordered list, main first.
 - **What "main" means**: the default language of a new slide and a new deck, the default source of a translation,

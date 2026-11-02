@@ -6,10 +6,10 @@ against develop at b6de8b7 (v0.13.23). Section numbers like "2.4" refer to the d
 Every step is its own branch off develop, pushed to the fork and merged by PR after the owner has tested it. Each
 step bumps `VERSION_NUMBER` with a CHANGELOG entry and ends with `pytest -n 8` green.
 
-**The invariant for every step:** a project without a `languages` key behaves exactly as before. That means the
-same compile and preview wrappers (byte for byte), the same render keys, the same `alt-text.csv`, the same
-transcript, and nothing written to `project.json`. Step 1 adds a regression test for this and every later step
-keeps it passing.
+**The invariant for every step** (revised 2026-11-02): an existing project, after its one-time migration (step 1
+writes the inferred `languages` key on first open), produces the same PDFs, the same `alt-text.csv` and the same
+transcript as before. Wrappers differ from develop only by the `\SMProjectLanguages` line, and render keys change
+once. Step 1 adds a regression test for this and every later step keeps it passing.
 
 ## 1. Where the design plan does not match develop
 
