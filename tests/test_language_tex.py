@@ -8,6 +8,9 @@ language."""
 from __future__ import annotations
 
 import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 import pymupdf
 import pytest
@@ -24,14 +27,32 @@ BODY = ("\\begin{standardframe}{Language}\nSlide language: [\\slideLanguage] "
         "PDF language: [\\SMPDFLanguage].\n\\end{standardframe}\n")
 
 
-@pytest.fixture
-def ctx(tmp_path):
+def example_copy(parent: Path) -> ProjectContext:
     """A copy of the example project: the languages of a project are in its own project.json."""
-    root = tmp_path / "project"
+    root = parent / "project"
     shutil.copytree(EXAMPLE, root, ignore=_ignore_template_build_output)
     ctx = ProjectContext.at(root)
     languages.set_project_languages(ctx, "en", ["de"])
     return ctx
+
+
+@pytest.fixture
+def ctx(tmp_path):
+    return example_copy(tmp_path)
+
+
+@pytest.fixture
+def ctx_on_tex_path(tmp_path):
+    """example_copy where TeX finds the project's own files. On Windows that is not under %TEMP%: Git for Windows' Perl,
+    which runs latexmk, calls that folder /tmp, so .latexmkrc puts a path on TEXINPUTS that TeX cannot resolve."""
+    if sys.platform != "win32":
+        yield example_copy(tmp_path)
+        return
+    parent = Path(tempfile.mkdtemp(prefix="slidemage-test-", dir=Path.home()))
+    try:
+        yield example_copy(parent)
+    finally:
+        shutil.rmtree(parent, ignore_errors=True)
 
 
 def render(ctx, id_slug: str, language: str = "en"):
@@ -165,7 +186,8 @@ def fake_french(ctx):
     (ctx.root / "hyphenation" / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
 
 
-def test_a_deck_hyphenates_in_its_language(ctx):
+def test_a_deck_hyphenates_in_its_language(ctx_on_tex_path):
+    ctx = ctx_on_tex_path
     # The project's own hyphenation/ folder is searched first, so these made-up French patterns win over the shipped
     # ones: break after every z.
     fake_french(ctx)
@@ -179,7 +201,8 @@ def test_a_deck_hyphenates_in_its_language(ctx):
     assert "xqz- xqz-" in text
 
 
-def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_decks(ctx):
+def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_decks(ctx_on_tex_path):
+    ctx = ctx_on_tex_path
     fake_french(ctx)
     languages.set_project_languages(ctx, "en", ["fr"])
     text, _log = render_hyphenation(ctx, "fr", "EN")             # not translated yet: English, also in a French deck
