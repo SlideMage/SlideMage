@@ -438,8 +438,9 @@ Next:
 1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
 2. **6, the plugins** in their own repositories, each raising `requires_slidemage` to v0.13.31: Exam Forge (sources
    with any project code, the drafting dialog's languages, the main language as fallback, the exam HTML's `lang`),
-   CampusOnline (English as the fallback everywhere), Claude (`claude/code/images.py`: the translation backend gets
-   `target_lang`, its schema `short`/`long`/`takeaway`, its result the `language`). Coordinate with the plugin UI
-   kit's author first.
+   CampusOnline (English as the fallback everywhere), Claude (done as Claude 1.2.0, committed only locally on branch
+   `feature/any-language-images` in the worktree `~/github/slidemage-plugin-claude-langs`, from `origin/main`; its
+   suite has 15 failures against `develop` too, from drift between the plugin and SlideMage). Coordinate with the
+   plugin UI kit's author first.
 3. **7**, the manual and docs.
 4. PRs into `develop` in the order of the table, after testing.
