@@ -450,13 +450,16 @@ def test_about_switches_the_debug_log_and_offers_its_folder_and_a_report(qapp, t
 
 # -- Languages (Project) ---------------------------------------------------------------------
 
-def languages_page(tmp_path, qapp, **files):
-    """The Languages section of a project with the given slide files and decks (name: text)."""
+def languages_page(tmp_path, qapp, stated=("en", ["de"]), **files):
+    """The Languages section of a project with the given slide files and decks (name: text) that states its
+    languages (`stated`: none for a project from before the key)."""
     project = ProjectContext.at(tmp_path / "project")
     for folder in ("slides", "decks"):
         (project.root / folder).mkdir(parents=True)
     for name, text in files.items():
         (project.root / name).write_text(text, encoding="utf-8")
+    if stated:
+        languages.set_project_languages(project, *stated)
     app = FakeApp(project)
     return open_sheet(qapp, app, tab=PROJECT).project_tab.languages, app
 
@@ -465,11 +468,25 @@ def shown(page):
     return [page.list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(page.list.count())]
 
 
-def test_the_languages_page_shows_english_and_german_by_default_and_writes_nothing(tmp_path, qapp):
-    page, app = languages_page(tmp_path, qapp)
+def test_the_languages_page_of_a_project_without_the_key_shows_what_it_uses_and_writes_nothing(tmp_path, qapp):
+    page, app = languages_page(tmp_path, qapp, stated=None, **{"slides/aaa-DE-Eins-current.tex": "x\n"})
     assert page.main.currentData() == "en" and shown(page) == ["de"]
     assert page.address.current() == "Sie"
     assert not (app.project.root / ".slidemage" / "project.json").exists()
+
+
+def test_a_project_with_one_language_has_no_secondary_ones_and_can_add_and_remove(tmp_path, qapp):
+    page, app = languages_page(tmp_path, qapp, stated=("en", []))
+    assert page.main.currentData() == "en" and shown(page) == []
+    assert not (page.remove_button.isEnabled() or page.up_button.isEnabled() or page.down_button.isEnabled())
+    assert page.add_button.isEnabled()
+    page.main.activated.emit(page.main.findData("fr"))              # the old main language becomes the secondary one
+    assert languages.project_languages(app.project) == languages.Languages("fr", ("en",))
+    assert page.add_language("de") and page.remove_language() and page.remove_language() is False
+    page.list.setCurrentRow(0)
+    assert page.remove_language() and shown(page) == []
+    assert languages.project_languages(app.project) == languages.Languages("fr")
+    page.move(1)                                                    # nothing selected, nothing to move
 
 
 def test_another_main_language_keeps_the_old_one_as_a_secondary_language(tmp_path, qapp):

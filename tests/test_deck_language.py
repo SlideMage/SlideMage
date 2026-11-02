@@ -353,7 +353,8 @@ def test_fragment_expansion_keeps_compiler_sources_and_tex_lookup_order(ctx, pro
     resolved, dependencies = deck_language.compile_deck(ctx, d, "EN")
     assert resolved is d and dependencies == []
     wrapper = compiler.wrapper_text(ctx, compiler.CompileJob(d, "after-course", None))
-    assert r"\input{course.tex}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper
+    # The wrapper carries the languages line, so it holds the deck's text; the fragment is still not expanded.
+    assert rf"\{command}{{nested/list}}" in wrapper and r"\slide{bbb-EN-Two}" not in wrapper
 
 
 def test_slidestep_slide_counts_as_used():

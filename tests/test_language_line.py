@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The language lines of a compile and a preview wrapper (deck_language.language_lines).
 
-A project without its own languages gets exactly the wrappers it always got: the GOLDEN texts below are what
-develop (v0.13.23, `language_line` and `_deck_language_line`) wrote. A project with its own languages gets
-`\\SMProjectLanguages` (and `\\SMPdfLang`) as well, which changes the preview's build folder and render key."""
+Every project states its languages, so every wrapper carries `\\SMProjectLanguages`: the GOLDEN texts below are
+what develop (v0.13.23, `language_line` and `_deck_language_line`) wrote, and a project's wrappers are those plus that
+line (and `\\SMPdfLang` when the PDF language tag needs it). The line changes the preview's build folder and the render
+key."""
 from __future__ import annotations
 
 import os
@@ -73,21 +74,39 @@ def wrappers(ctx) -> dict[str, str]:
     return out
 
 
-def test_a_default_projects_wrappers_are_what_develop_wrote(ctx):
-    assert languages.is_default(ctx)
-    assert wrappers(ctx) == GOLDEN
+def with_line(golden: dict[str, str], line: str) -> dict[str, str]:
+    """What the wrappers of GOLDEN become in a project with `line` (\\SMProjectLanguages...): the line and nothing else,
+    except that a compile without a language of its own now keeps its preamble to carry it, and a language whose PDF
+    tag is not TeX's own (fr) has its tag line."""
+    out = {}
+    for key, text in golden.items():
+        kind, language = key.split()
+        if language == "None" and kind == "compile":
+            text = HEAD + "\\documentclass{beamer}\n\\begin{document}\n" + line + "\n\n\\section{One}\n\\slide{1aa-EN-A}\n\\end{document}\n\n"
+        elif language == "None" and kind == "partial":
+            text = HEAD + "\\documentclass{beamer}\n\\begin{document}\n" + line + "\n\\section{One}\n\\end{document}\n"
+        elif language == "None":
+            text = text.replace("\\deckversion[instructor]\n", "\\deckversion[instructor]\n" + line)
+        else:
+            tag = "\\SMPdfLang{fr-FR}\n" if language == "fr" else ""
+            text = text.replace(f"\\decklanguage[{language}]\n", f"{line}\\decklanguage[{language}]\n{tag}")
+        out[key] = text
+    return out
 
 
-def test_a_project_that_wrote_out_english_and_german_is_still_the_default(ctx):
-    languages.set_project_languages(ctx, "en", ["de"])
-    assert wrappers(ctx) == GOLDEN
+@pytest.mark.parametrize("secondary, line", [
+    (["de"], "\\SMProjectLanguages[en]{EN,DE}\n"),
+    (["de", "fr"], "\\SMProjectLanguages[en]{EN,DE,FR}\n"),
+    ([], "\\SMProjectLanguages[en]{EN}\n")])
+def test_every_wrapper_is_what_develop_wrote_plus_the_languages_line(ctx, secondary, line):
+    languages.set_project_languages(ctx, "en", secondary)
+    assert wrappers(ctx) == with_line(GOLDEN, line)
 
 
-def test_the_lines_of_a_default_project():
+def test_the_lines_of_a_project_without_a_key_follow_what_it_uses():
     ctx = ProjectContext.at(Path("/nonexistent/project"))
-    assert deck_language.language_lines(ctx, "DE") == "\\decklanguage[de]\n"
-    assert deck_language.language_lines(ctx, "fr") == "\\decklanguage[fr]\n"        # no PDF tag line: as before
-    assert deck_language.language_lines(ctx, None) == ""
+    assert deck_language.language_lines(ctx, "DE") == "\\SMProjectLanguages[en]{EN}\n\\decklanguage[de]\n"
+    assert deck_language.language_lines(ctx, None) == "\\SMProjectLanguages[en]{EN}\n"
 
 
 def test_the_lines_of_a_project_with_its_own_languages(ctx):
@@ -102,25 +121,8 @@ def test_the_lines_of_a_project_with_its_own_languages(ctx):
     assert deck_language.language_lines(ctx, "de") == "\\SMProjectLanguages[de]{DE,EN,NO}\n\\decklanguage[de]\n"
 
 
-def test_a_project_with_its_own_languages_tells_every_wrapper_about_them(ctx):
-    languages.set_project_languages(ctx, "en", ["de", "fr"])
-    found = wrappers(ctx)
-    project_line = "\\SMProjectLanguages[en]{EN,DE,FR}\n"
-    # The whole-deck compile keeps its preamble and names the languages even without a language of its own.
-    assert found["compile None"] == (
-        HEAD + "\\documentclass{beamer}\n\\begin{document}\n" + project_line + "\n\n\\section{One}\n\\slide{1aa-EN-A}\n\\end{document}\n\n")
-    assert found["partial None"] == (
-        HEAD + "\\documentclass{beamer}\n\\begin{document}\n" + project_line + "\n\\section{One}\n\\end{document}\n")
-    assert "\\decklanguage[fr]\n\\SMPdfLang{fr-FR}\n" in found["compile fr"] and project_line in found["compile fr"]
-    assert "\\decklanguage[fr]\n\\SMPdfLang{fr-FR}\n" in found["partial fr"]
-    assert found["compile de"].replace(project_line, "") == GOLDEN["compile de"]      # nothing else changed
-    assert found["calls None"] == GOLDEN["calls None"].replace("\\deckversion[instructor]\n",
-                                                                "\\deckversion[instructor]\n" + project_line)
-    assert found["calls de"] == GOLDEN["calls de"].replace("\\decklanguage[de]\n", project_line + "\\decklanguage[de]\n")
-    assert found["text de"] == GOLDEN["text de"].replace("\\decklanguage[de]\n", project_line + "\\decklanguage[de]\n")
-
-
 def test_the_preview_build_folder_follows_the_project_languages(ctx):
+    languages.set_project_languages(ctx, "en", ["de"])
     plain = wrappers(ctx)
     languages.set_project_languages(ctx, "en", ["de", "fr"])
     french = wrappers(ctx)
@@ -129,7 +131,7 @@ def test_the_preview_build_folder_follows_the_project_languages(ctx):
     def variant(text):          # the wrappers here have a stand-in preamble: give view_variant its \begin{document}
         return preview_build.view_variant("\\begin{document}\n" + text)
 
-    assert variant(plain["calls de"]) == "\\deckversion[instructor]|\\decklanguage[de]"
+    assert variant(plain["calls de"]) == "\\deckversion[instructor]|\\SMProjectLanguages[en]{EN,DE}|\\decklanguage[de]"
     assert variant(french["calls de"]) == "\\deckversion[instructor]|\\SMProjectLanguages[en]{EN,DE,FR}|\\decklanguage[de]"
     assert variant(french["calls de"]) != variant(german_main["calls de"]) != variant(plain["calls de"])
     assert variant(french["text de"]) != variant(plain["text de"])
@@ -156,24 +158,20 @@ def unit_for(ctx, language="DE"):
                 "\\documentclass{beamer}\n\\begin{document}", "acme", path)
 
 
-# The key of unit_for(ctx) in a project without its own languages, as develop computed it: not to change.
-DEFAULT_KEY = "11f0a4827849545224ba58774b7a18151857ec17959abdc042f0be8f5d8f9d6e"
-
-
-def test_the_render_key_of_a_default_project_is_what_it_was(ctx, resolver):
-    assert resolver.fast_key(unit_for(ctx)) == DEFAULT_KEY
-
-
 def test_the_render_key_changes_with_the_projects_languages_and_main_language(ctx, resolver):
     unit = unit_for(ctx)
-    default = resolver.fast_key(unit)
-    languages.set_project_languages(ctx, "en", ["de"])
-    assert resolver.fast_key(unit) == default
+    keys = []
+    for main, secondary in (("en", []), ("en", ["de"]), ("en", ["de", "fr"]), ("de", ["en", "fr"]), ("en", ["de", "fr", "it"])):
+        languages.set_project_languages(ctx, main, secondary)
+        keys.append(resolver.fast_key(unit))
+    assert len(set(keys)) == 5
     languages.set_project_languages(ctx, "en", ["de", "fr"])
-    with_french = resolver.fast_key(unit)
-    languages.set_project_languages(ctx, "de", ["en", "fr"])
-    german_main = resolver.fast_key(unit)
-    languages.set_project_languages(ctx, "en", ["de", "fr", "it"])
-    assert len({default, with_french, german_main, resolver.fast_key(unit)}) == 4
-    languages.set_project_languages(ctx, "en", ["de", "fr"])
-    assert resolver.fast_key(unit) == with_french                    # and back
+    assert resolver.fast_key(unit) == keys[2]                          # and back
+
+
+def test_the_render_key_of_a_project_without_the_key_is_that_of_the_languages_it_uses(ctx, resolver):
+    unit = unit_for(ctx)                                               # an English slide only
+    inferred = resolver.fast_key(unit)
+    assert not (ctx.root / ".slidemage" / "project.json").exists()
+    languages.migrate(ctx)
+    assert resolver.fast_key(unit) == inferred

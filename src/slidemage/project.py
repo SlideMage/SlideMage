@@ -447,6 +447,7 @@ def init_project(path: Path, copy_example: bool = True) -> None:
             framework_dir=sibling_latex if copied_latex else None,
             framework_source=latex_dir if copied_latex else None,
             example_source=example_dir)
+        _state_languages(path)
         return
 
     conflicts = _scaffold_conflicts(path)
@@ -460,6 +461,13 @@ def init_project(path: Path, copy_example: bool = True) -> None:
         csv_path.write_text('"id"\r\n', encoding="utf-8", newline="")
     for sub in ("slides", "decks", "media"):
         (path / sub).mkdir(exist_ok=True)
+    _state_languages(path)
+
+
+def _state_languages(path: Path) -> None:
+    """A new project states its languages from the start: English, and German when the copied example has any."""
+    from . import languages
+    languages.migrate(ProjectContext.at(path))
 
 
 def legacy_env_notes() -> list[str]:

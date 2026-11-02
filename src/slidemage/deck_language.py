@@ -208,16 +208,15 @@ def language_for_job(job) -> str:
 def language_lines(ctx: ProjectContext, language: str | None) -> str:
     """The lines put after a deck's preamble so its own setting cannot undo the UI choice, newline-terminated.
 
-    `\\decklanguage[xx]` for `language` (none for None). A project that has its own languages writes first
-    `\\SMProjectLanguages[main]{EN,DE,FR}`, which SlideMage_base.tex reads slide languages from, and, when the
-    table's PDF tag is not the one TeX picks for the language itself, `\\SMPdfLang{fr-FR}` after it. A project
-    with the default languages writes exactly `\\decklanguage[xx]`."""
+    First `\\SMProjectLanguages[main]{EN,DE,FR}`, which SlideMage_base.tex reads the project's languages from. Then,
+    for `language` (none for None), `\\decklanguage[xx]` and, when the table's PDF tag is not the one TeX picks for
+    the language itself, `\\SMPdfLang{fr-FR}`."""
     own = languages.project_languages(ctx)
-    lines = "" if own == languages.DEFAULT else f"\\SMProjectLanguages[{own.main}]{{{','.join(own.codes)}}}\n"
+    lines = f"\\SMProjectLanguages[{own.main}]{{{','.join(own.codes)}}}\n"
     if language is None:
         return lines
     code = language.lower()
     lines += f"\\decklanguage[{code}]\n"
-    if own != languages.DEFAULT and languages.pdf_tag(code) != _TEX_PDF_TAGS.get(code, code):
+    if languages.pdf_tag(code) != _TEX_PDF_TAGS.get(code, code):
         lines += f"\\SMPdfLang{{{languages.pdf_tag(code)}}}\n"
     return lines

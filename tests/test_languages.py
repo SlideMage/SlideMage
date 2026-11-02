@@ -36,13 +36,121 @@ def test_names_and_tags_by_code_in_any_case_and_an_unknown_code_is_its_own():
     assert languages.get("xx") is None and languages.get("DE").native == "Deutsch"
 
 
-def test_a_project_without_the_key_has_english_and_german_and_nothing_is_written(ctx):
+def slide(ctx, name: str) -> None:
+    ctx.slides_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.slides_dir / name).write_text("x\n", encoding="utf-8")
+
+
+def test_a_project_without_the_key_has_english_and_german_if_it_uses_german_and_nothing_is_written(ctx):
+    slide(ctx, "1aa-EN-One-current.tex")
     found = languages.project_languages(ctx)
-    assert found == languages.DEFAULT and found.codes == ("EN", "DE") and found.lower == ("en", "de")
-    assert languages.is_default(ctx)
+    assert found == languages.Languages("en") and found.codes == ("EN",) and found.lower == ("en",)
     assert not (ctx.root / project.PROJECT_INFO_PATH).exists()
-    write_json(ctx, {"format": 1})
-    assert languages.is_default(ctx)
+
+
+@pytest.mark.parametrize("where", ["slide", "frozen slide", "deck", "archived deck", "description", "takeaway", "address"])
+def test_german_anywhere_in_a_project_without_the_key_makes_german_a_secondary_language(tmp_path, where):
+    ctx = ProjectContext.at(tmp_path / "proj")
+    slide(ctx, "1aa-EN-One-current.tex")
+    deck = "\\documentclass{beamer}\n\\decklanguage[DE]\n"
+    match where:
+        case "slide":
+            slide(ctx, "1ab-DE-Eins-current.tex")
+        case "frozen slide":
+            slide(ctx, "1ab-DE-Eins-v1-0-0.tex")
+        case "deck":
+            ctx.decks_dir.mkdir()
+            (ctx.decks_dir / "d.tex").write_text(deck, encoding="utf-8")
+        case "archived deck":
+            ctx.archive_dir.mkdir(parents=True)
+            (ctx.archive_dir / "d.tex").write_text(deck, encoding="utf-8")
+        case "description":
+            ctx.media_dir.mkdir()
+            (ctx.media_dir / "alt-text.json").write_text(
+                json.dumps({"images": {"media/a.png": {"short": "x", "short_de": "y"}}}), encoding="utf-8")
+        case "takeaway":
+            ctx.media_dir.mkdir()
+            (ctx.media_dir / "alt-text.json").write_text(
+                json.dumps({"images": {"media/a.png": {"used_on": {"1aa": {"takeaway_de": "y"}}}}}), encoding="utf-8")
+        case "address":
+            write_json(ctx, {"de_address": "du"})
+    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
+
+
+def test_english_decks_and_descriptions_do_not_make_german_a_language(ctx):
+    slide(ctx, "1aa-EN-One-current.tex")
+    ctx.decks_dir.mkdir()
+    (ctx.decks_dir / "d.tex").write_text("\\decklanguage[en]\n\\decklanguage[\\decklanguageoverride]\n", encoding="utf-8")
+    ctx.media_dir.mkdir()
+    (ctx.media_dir / "alt-text.json").write_text(
+        json.dumps({"images": {"media/a.png": {"short": "x", "short_de": "", "used_on": {"1aa": {"takeaway": "t"}}}}}),
+        encoding="utf-8")
+    assert languages.project_languages(ctx).secondary == ()
+
+
+def test_migrating_writes_the_inferred_languages_once_and_keeps_the_other_keys(ctx):
+    slide(ctx, "1aa-EN-One-current.tex")
+    slide(ctx, "1ab-DE-Eins-current.tex")
+    write_json(ctx, {"format": 1, "ai": {"policy": "local"}})
+    languages.migrate(ctx)
+    path = ctx.root / project.PROJECT_INFO_PATH
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "format": 1, "ai": {"policy": "local"}, "languages": {"main": "en", "secondary": ["de"]}}
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+    (ctx.slides_dir / "1ab-DE-Eins-current.tex").unlink()                  # the key now rules, not the files
+    languages.migrate(ctx)
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
+
+
+def test_migrating_a_project_without_german_writes_english_alone(ctx):
+    slide(ctx, "1aa-EN-One-current.tex")
+    languages.migrate(ctx)
+    assert project.read_project_json(ctx.root) == {"languages": {"main": "en", "secondary": []}}
+    assert languages.project_languages(ctx) == languages.Languages("en")
+
+
+def test_migrating_does_not_touch_a_key_that_is_there_even_a_malformed_one(ctx):
+    slide(ctx, "1ab-DE-Eins-current.tex")
+    write_json(ctx, {"languages": "fr"})
+    languages.migrate(ctx)
+    assert project.read_project_json(ctx.root) == {"languages": "fr"}
+    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))      # read like a missing key
+
+
+def test_a_project_that_cannot_be_written_keeps_the_inferred_languages(ctx, monkeypatch):
+    slide(ctx, "1ab-DE-Eins-current.tex")
+    def refuse(root, data):
+        raise PermissionError("read-only")
+    monkeypatch.setattr(project, "write_project_json", refuse)
+    languages.migrate(ctx)
+    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
+    assert not (ctx.root / project.PROJECT_INFO_PATH).exists()
+
+
+def test_opening_a_project_migrates_it(tmp_path):
+    from slidemage import cli
+    root = tmp_path / "proj"
+    slide(ProjectContext.at(root), "1ab-DE-Eins-current.tex")
+    assert cli.check_project_format(root, "v0.13.25")
+    assert project.read_project_json(root)["languages"] == {"main": "en", "secondary": ["de"]}
+
+
+def test_a_snapshot_is_not_migrated(tmp_path):
+    from slidemage import cli
+    snapshot = tmp_path / "snapshot"
+    write_json(ProjectContext.at(snapshot), {"format": 1, "snapshot": {"of": "decks/x.tex"}})
+    assert cli.check_project_format(snapshot, "v0.13.25")
+    assert "languages" not in project.read_project_json(snapshot)
+
+
+def test_a_new_project_states_its_languages(tmp_path):
+    empty = tmp_path / "empty"
+    project.init_project(empty, copy_example=False)
+    assert project.read_project_json(empty)["languages"] == {"main": "en", "secondary": []}
+    with_manual = tmp_path / "manual"
+    project.init_project(with_manual, copy_example=True)
+    assert project.read_project_json(with_manual)["languages"] == {"main": "en", "secondary": ["de"]}
 
 
 def test_the_key_is_read_main_first(ctx):
@@ -50,14 +158,14 @@ def test_the_key_is_read_main_first(ctx):
     found = languages.project_languages(ctx)
     assert (found.main, found.secondary) == ("de", ("en", "fr"))
     assert found.codes == ("DE", "EN", "FR") and found.lower == ("de", "en", "fr")
-    assert not languages.is_default(ctx)
 
 
 @pytest.mark.parametrize("value", [
     "fr", [], {"secondary": ["de"]}, {"main": "FR"}, {"main": "fra"}, {"main": 3}, {"main": "fr", "secondary": "de"}])
-def test_a_malformed_key_reads_as_the_default(ctx, value):
+def test_a_malformed_key_reads_like_a_missing_one(ctx, value):
+    slide(ctx, "1ab-DE-Eins-current.tex")
     write_json(ctx, {"languages": value})
-    assert languages.project_languages(ctx) == languages.DEFAULT
+    assert languages.project_languages(ctx) == languages.Languages("en", ("de",))
 
 
 def test_bad_and_repeated_secondary_codes_are_dropped(ctx):
@@ -65,10 +173,10 @@ def test_bad_and_repeated_secondary_codes_are_dropped(ctx):
     assert languages.project_languages(ctx).secondary == ("de", "it")
 
 
-def test_a_project_with_the_default_languages_written_out_counts_as_default(ctx):
-    languages.set_project_languages(ctx, "en", ["de"])
-    assert languages.is_default(ctx)
-    assert project.read_project_json(ctx.root)["languages"] == {"main": "en", "secondary": ["de"]}
+def test_a_project_can_have_one_language(ctx):
+    languages.set_project_languages(ctx, "fr", [])
+    assert project.read_project_json(ctx.root)["languages"] == {"main": "fr", "secondary": []}
+    assert languages.project_languages(ctx).codes == ("FR",)
 
 
 def test_writing_keeps_the_other_keys_and_is_read_back(ctx):
@@ -102,4 +210,4 @@ def test_the_file_is_read_again_only_when_it_has_changed(ctx, monkeypatch):
 def test_two_projects_do_not_share_a_cache_entry(tmp_path):
     first, second = ProjectContext.at(tmp_path / "a"), ProjectContext.at(tmp_path / "b")
     languages.set_project_languages(first, "fr", ["en"])
-    assert languages.project_languages(first).main == "fr" and languages.is_default(second)
+    assert languages.project_languages(first).main == "fr" and languages.project_languages(second).main == "en"

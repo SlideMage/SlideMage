@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Optional
 
-from . import app_settings, citations, compile_log, compile_records, compiler, project, themes
+from . import app_settings, citations, compile_log, compile_records, compiler, languages, project, themes
 from .compiler import CancelToken, CompileJob
 from .compile_records import (
     BIBER_NEEDED_RE as _BIBER_NEEDED_RE,
@@ -1197,6 +1197,8 @@ def create_snapshot(
             "format": info["format"], "last_app_version": app["version"],
             "highest_app_version": app["version"],
             "compat": {"checked_version": app["version"]},
+            # The snapshot's own slides may not show the project's languages: it states them.
+            languages.KEY: languages.project_languages(project.ProjectContext.at(project_root)).as_json(),
             "snapshot": {"of": _rel(deck.path.resolve(), project_root.resolve()),
                          "deck_name": deck.name, "created": created, "read_only": True},
         }

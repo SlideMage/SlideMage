@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, deck_language, languages, slide_snapshot
+from . import compile_records, deck_language, slide_snapshot
 from .dep_hash import HashCache, norm
 from .preview_target import PreviewTarget
 from .project import ProjectContext
@@ -180,8 +180,8 @@ class Resolver:
             "preamble": hashlib.sha256((unit.preamble_text or "").encode()).hexdigest(),
             "engine": self.engine_fp, "rc": rc,
             **({"context": unit.context} if unit.context else {}),
-            # What the wrapper tells TeX about the project's languages; absent for a default project, so its keys stay valid.
-            **({} if languages.is_default(self.ctx) else {"languages": deck_language.language_lines(self.ctx, unit.language)}),
+            # What the wrapper tells TeX about the project's languages.
+            "languages": deck_language.language_lines(self.ctx, unit.language),
         })
 
     # -- manifests ---------------------------------------------------------------

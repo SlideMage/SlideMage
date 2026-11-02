@@ -8,15 +8,18 @@ the project:
 
     "languages": {"main": "en", "secondary": ["de", "fr"]}
 
-A project without the key has English as its main and German as its secondary language, and nothing is written
-until the user changes them (`is_default`). In slide file names the codes are upper case (`FR`); `mult` is
-reserved for multilingual slides and is not a language. No Qt.
+Every project states its languages. A project from before the key existed gets it when SlideMage opens it
+(`migrate`): English as the main language, German as the secondary one if the project uses German anywhere, no
+secondary language otherwise (`infer`). In slide file names the codes are upper case (`FR`); `mult` is reserved for
+multilingual slides and is not a language. No Qt.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from . import project
+from .deck_settings import LANGUAGE_RE
+from .fileio import read_json
 from .project import ProjectContext
 
 KEY = "languages"
@@ -111,55 +114,98 @@ class Languages:
         """Every language, main first, as slide file names write them ("EN", "DE", "FR")."""
         return tuple(code.upper() for code in self.lower)
 
+    def as_json(self) -> dict:
+        """What project.json stores under the key."""
+        return {"main": self.main, "secondary": list(self.secondary)}
 
-DEFAULT = Languages(main="en", secondary=("de",))
+
 
 
 def _valid(code) -> bool:
     return isinstance(code, str) and len(code) == 2 and code.isascii() and code.isalpha() and code.islower()
 
 
-def _parse(value) -> Languages:
-    """The list in project.json; the default for a missing or malformed key. A repeated code counts once."""
+def _parse(value) -> Languages | None:
+    """The list in project.json; None for a missing or malformed key. A repeated code counts once."""
     if not isinstance(value, dict) or not _valid(value.get("main")):
-        return DEFAULT
+        return None
     secondary = value.get("secondary", [])
     if not isinstance(secondary, list):
-        return DEFAULT
+        return None
     main = value["main"]
     return Languages(main, tuple(dict.fromkeys(c for c in secondary if _valid(c) and c != main)))
 
 
-# project.json path -> ((modification time, size), what it said): the render keys ask for every unit.
-_cache: dict[str, tuple[tuple[int, int], Languages]] = {}
+def _slides_use_german(ctx: ProjectContext) -> bool:
+    return any(path.name.split("-", 2)[1:2] == ["DE"] for path in ctx.slides_dir.glob("*.tex"))
+
+
+def _decks_use_german(ctx: ProjectContext) -> bool:
+    return any(match.group(1).strip().lower() == "de"
+               for folder in (ctx.decks_dir, ctx.archive_dir) for path in folder.glob("*.tex")
+               for match in LANGUAGE_RE.finditer(path.read_text(encoding="utf-8", errors="replace")))
+
+
+def _descriptions_use_german(ctx: ProjectContext) -> bool:
+    images = read_json(ctx.media_dir / "alt-text.json").get("images")
+    german = ("short_de", "long_de", "source_de", "takeaway_default_de")
+    return any(isinstance(image, dict) and (any(image.get(key) for key in german) or any(
+        isinstance(use, dict) and use.get("takeaway_de") for use in (image.get("used_on") or {}).values()))
+        for image in (images.values() if isinstance(images, dict) else ()))
+
+
+def infer(ctx: ProjectContext) -> Languages:
+    """The languages of a project that has not stated them, as SlideMage worked before the key existed: English
+    is the main language, German the secondary one if any slide file is tagged DE, any deck sets `\\decklanguage[de]`,
+    any image description has German text or the project has a German form of address; no secondary language
+    otherwise. Reads the project's files."""
+    german = ("de_address" in project.read_project_json(ctx.root) or _slides_use_german(ctx)
+              or _decks_use_german(ctx) or _descriptions_use_german(ctx))
+    return Languages("en", ("de",) if german else ())
+
+
+# project.json path -> ((modification time, size) or None for no file, the languages): the render keys ask for
+# every unit. A project without the key is inferred once and then kept, until the file changes.
+_cache: dict[str, tuple[tuple[int, int] | None, Languages]] = {}
 
 
 def project_languages(ctx: ProjectContext) -> Languages:
-    """The project's languages, main first; read again when project.json has changed."""
+    """The project's languages, main first: the key in project.json, or what `infer` finds for a project that has
+    none (nothing is written: `migrate` does that when the project is opened). Read again when project.json
+    changes."""
     path = ctx.root / project.PROJECT_INFO_PATH
     try:
         info = path.stat()
+        stamp = (info.st_mtime_ns, info.st_size)
     except OSError:
-        return DEFAULT
-    stamp = (info.st_mtime_ns, info.st_size)
+        stamp = None
     cached = _cache.get(str(path))
     if cached is None or cached[0] != stamp:
-        cached = _cache[str(path)] = (stamp, _parse(project.read_project_json(ctx.root).get(KEY)))
+        found = _parse(project.read_project_json(ctx.root).get(KEY)) or infer(ctx)
+        cached = _cache[str(path)] = (stamp, found)
     return cached[1]
+
+
+def migrate(ctx: ProjectContext) -> None:
+    """Write the languages key into a project that has none, with what `infer` finds, keeping the other keys.
+    Called once when a project is opened; a project folder that cannot be written keeps working with the inferred
+    languages."""
+    data = project.read_project_json(ctx.root)
+    if KEY in data:
+        return
+    found = infer(ctx)
+    try:
+        set_project_languages(ctx, found.main, found.secondary)
+    except OSError:
+        pass
 
 
 def set_project_languages(ctx: ProjectContext, main: str, secondary: list[str] | tuple[str, ...]) -> None:
     """Write the project's languages (lower case codes, `main` not among `secondary`), keeping the other keys."""
     value = _parse({"main": main, "secondary": list(secondary)})
-    if value.main != main:
+    if value is None:
         raise ValueError(f"not a language code: {main!r}")
     data = project.read_project_json(ctx.root)
-    data[KEY] = {"main": value.main, "secondary": list(value.secondary)}
+    data[KEY] = value.as_json()
     project.write_project_json(ctx.root, data)
     _cache.pop(str(ctx.root / project.PROJECT_INFO_PATH), None)
-
-
-def is_default(ctx: ProjectContext) -> bool:
-    """Whether the project has the languages of a project that never changed them: SlideMage then writes
-    exactly what it always wrote."""
-    return project_languages(ctx) == DEFAULT
