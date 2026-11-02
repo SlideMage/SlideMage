@@ -417,6 +417,8 @@ wraps):
 | v0.13.30 | `feat/content-languages-4-images` | a fix (a new project no longer copies the example's `.slidemage` state), then 4 |
 | v0.13.31 | `feat/content-languages-6-plugin-api` | 6, SlideMage's part |
 | v0.13.32 | the same branch | the rest of 2.5: Add slide offers a model translation between any two project languages |
+| v0.13.33 | the same branch | the Images page shows a language added in Settings at once (found in the owner's test) |
+| v0.13.34 | the same branch | a description written without English text is its own, not a translation (found in the owner's test) |
 
 Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6` (and the empty `cl-5b-spike`).
 
@@ -431,8 +433,9 @@ Decided while implementing, differing from the text above:
   without `target_lang` (the Claude plugin today) translates into German only and says so for another language.
   Core's `image_tasks.TRANSLATE` schema has `short`, `long`, `takeaway` since step 6.
 - `insert_slides` refuses a language the project does not have.
-- The Images page builds its language list when it is built; a language added in Settings shows after the page is
-  built again.
+- The image state (No description, Needs attention) follows the English text: an image described only in another
+  language counts as undescribed (decided in the owner's test, 2026-11-02). A text written in another language
+  while the image has no English text is that language's own (`translated_from` empty), not a translation.
 
 Step 6 is done: SlideMage's part (v0.13.31) and the three plugins, each on a branch of its own repository, none
 merged or released:
@@ -447,10 +450,12 @@ merged or released:
 Each plugin raises requires_slidemage to v0.13.31 (CampusOnline excepted); coordinate with the plugin UI kit's author
 before releasing them.
 
+Tested in the app by the owner on a copy of the real project (2026-11-02, v0.13.34): the conversion of the image
+store and its backup, French added in Settings, French descriptions on the Images page; the two bugs found are
+fixed in v0.13.33 and v0.13.34, the rest worked.
+
 Next (the rebased branches are force-pushed to the fork):
 
 1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
 2. **7**, the manual and docs.
-3. The owner tests everything in the app on a copy of a real project, once 5b and 7 are done (among others the
-   conversion of the image store and its backup).
-4. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
+3. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
