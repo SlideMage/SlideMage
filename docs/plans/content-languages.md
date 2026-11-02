@@ -419,6 +419,7 @@ wraps):
 | v0.13.32 | the same branch | the rest of 2.5: Add slide offers a model translation between any two project languages |
 | v0.13.33 | the same branch | the Images page shows a language added in Settings at once (found in the owner's test) |
 | v0.13.34 | the same branch | a description written without English text is its own, not a translation (found in the owner's test) |
+| v0.13.35 | the same branch | an image described only in another language says "No English description" |
 
 Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6` (and the empty `cl-5b-spike`).
 
@@ -459,3 +460,5 @@ Next (the rebased branches are force-pushed to the fork):
 1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
 2. **7**, the manual and docs.
 3. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
+
+Small, noted in the owner's test: Translate stays clickable on an image without English text (nothing to translate).
