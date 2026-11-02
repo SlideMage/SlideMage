@@ -433,16 +433,24 @@ Decided while implementing, differing from the text above:
 - The Images page builds its language list when it is built; a language added in Settings shows after the page is
   built again.
 
+Step 6 is done: SlideMage's part (v0.13.31) and the three plugins, each on a branch of its own repository, none
+merged or released:
+
+- Exam Forge 0.9.0, `feature/any-language` on top of `feature/ui-redesign` (JuergenFleiss/slidemage-plugin-exam-forge).
+- Claude 1.2.0, `feature/any-language-images` from `origin/main` (SlideMage org); worktree
+  `~/github/slidemage-plugin-claude-langs`. Its suite has 15 failures against `develop` too, from drift between the
+  plugin and SlideMage.
+- CampusOnline 1.0.2, `feature/any-language` (SlideMage org); worktree `~/github/slidemage-plugin-campusonline-langs`.
+  No new API, so its requires_slidemage stays.
+
+Each plugin raises requires_slidemage to v0.13.31 (CampusOnline excepted); coordinate with the plugin UI kit's author
+before releasing them.
+
 Next:
 
-1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
-2. **6, the plugins** (Exam Forge done as 0.9.0 on `feature/any-language`, on top of `feature/ui-redesign`, pushed to
-   JuergenFleiss/slidemage-plugin-exam-forge) in their own repositories, each raising `requires_slidemage` to v0.13.31: Exam Forge (sources
-   with any project code, the drafting dialog's languages, the main language as fallback, the exam HTML's `lang`),
-   CampusOnline (done as CampusOnline 1.0.2, committed only locally on branch `feature/any-language` in
-   `~/github/slidemage-plugin-campusonline-langs`; no new API, so its requires_slidemage stays), Claude (done as Claude 1.2.0, committed only locally on branch
-   `feature/any-language-images` in the worktree `~/github/slidemage-plugin-claude-langs`, from `origin/main`; its
-   suite has 15 failures against `develop` too, from drift between the plugin and SlideMage). Coordinate with the
-   plugin UI kit's author first.
+1. The owner force-pushes the rebased SlideMage branches to the fork (steps 1, 2a, 3, 5a, 2b and 4 were rebased onto
+   the guard, and step 4 was amended, after their first push), and tries steps 4 and 6 in the app on a copy of a real
+   project (the conversion of the image store and its backup).
+2. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
 3. **7**, the manual and docs.
-4. PRs into `develop` in the order of the table, after testing.
+4. PRs into `develop` in the order of the table, after testing; the plugin branches after SlideMage's.
