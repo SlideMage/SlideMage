@@ -140,12 +140,12 @@ class ImagesPage(ImageRunsMixin, Surface):
         titles.addWidget(self.slide_title)
         titles.addWidget(self.slide_note)
         head.addLayout(titles, 1)
-        self.languages = SegmentedControl(
-            [(code, code.upper()) for code in dict.fromkeys(["en", *languages.project_languages(self.app.project).lower])],
-            current=self._language, mono=True)
-        self.languages.changed.connect(self._set_language)
+        self._head = head
+        self.languages = self._language_switch()
         head.addWidget(self.languages, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(head)
+        # Settings → Languages: the switch lists the project's languages again
+        self.state.languages_changed.connect(lambda _codes: self._rebuild_languages())
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
@@ -354,6 +354,29 @@ class ImagesPage(ImageRunsMixin, Surface):
             return
         self.nav.set_filter(image_review.FILTER_ALL)
         self._populate(match.row.path)
+
+    def _language_switch(self) -> SegmentedControl:
+        """English and the project's other languages, as the switch between the forms' fields."""
+        codes = dict.fromkeys(["en", *languages.project_languages(self.app.project).lower])
+        switch = SegmentedControl([(code, code.upper()) for code in codes], current=self._language, mono=True)
+        switch.changed.connect(self._set_language)
+        return switch
+
+    def _rebuild_languages(self) -> None:
+        """The project's languages changed: a new switch takes the old one's place. A language no longer in the
+        project gives way to English, and to the first other language as the forms' second one."""
+        codes = languages.project_languages(self.app.project).lower
+        if self._language not in ("en", *codes):
+            self._language = "en"
+        old, self.languages = self.languages, self._language_switch()
+        self._head.replaceWidget(old, self.languages)
+        old.deleteLater()
+        if self._second not in codes:
+            self._second = next((code for code in codes if code != "en"), "de")
+            if self._current is not None and self._may_leave_translation():
+                self.flush()
+                self._show_slide(self._current)
+        self._missing_in()
 
     def _set_language(self, language: str) -> None:
         """Show the English fields or those of `language`. Another language than the forms' second one builds the

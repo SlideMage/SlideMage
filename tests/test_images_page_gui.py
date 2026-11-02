@@ -992,3 +992,19 @@ def test_tuning_requires_a_provider_on_the_selected_route(make_page, ctx, fake_r
     page._tune(page._forms[0])
     assert len(told) == 1 and "not available on Cloud · Fake cloud" in told[0]
     assert page.app.slots == []
+
+
+def test_the_language_switch_follows_the_projects_languages(make_page, ctx):
+    from slidemage import languages
+    page = make_page()
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE"]
+    languages.set_project_languages(ctx, "en", ["de", "fr"])
+    page.state.refresh_languages()                 # what saving Settings → Languages does
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE", "FR"]
+    page._set_language("fr")
+    assert page._forms and all(form.second == "fr" for form in page._forms)
+    languages.set_project_languages(ctx, "en", ["de"])
+    page.state.refresh_languages()
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE"]
+    assert page._language == "en" and all(form.second == "de" for form in page._forms)
+

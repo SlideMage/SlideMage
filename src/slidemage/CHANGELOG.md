@@ -3425,3 +3425,8 @@ v0.13.32 (2026-11-02, direct request: any main and secondary languages, the rest
 
 NEW: Add slide translates with a model between any languages of your project.
 - Copy as translation offers the model for every pair, not only English to German.
+
+v0.13.33 (2026-11-02, bug report: a language added in Settings did not appear on the Images page): The Images page built its language switch once, so French added in Settings → Languages only showed after the window was opened again. It now builds the switch again on WorkspaceState.languages_changed; a language no longer in the project gives way to English, and to the first other language as the forms' second one. Tests: test_images_page_gui.py.
+
+NEW: The Images page shows a language as soon as you add it.
+- A language added in Settings, Languages appears on the Images page's switch at once.
