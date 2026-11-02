@@ -3,7 +3,9 @@
 Status: draft (2026-11-02), not started. Decided 2026-11-02: languages are per project (2.1); multilingual slides
 are kept and extended lightly (2.8); hyphenation by deck language is part of this task (2.10); old untagged slugs
 get a light check (2.1); the image store is converted automatically (2.4); the main window's language switch
-follows the deck's language (2.3). Asked for: "generalizing the language treatment in SlideMage. [...] retain
+follows the deck's language (2.3); any translation can be made the group's original (2.2); a translation group
+is a star, every translation naming the original (2.2); one formal or informal form of address per project (2.5);
+the plugin API stays at version 1 (2.9). Asked for: "generalizing the language treatment in SlideMage. [...] retain
 one language as a main language, but [...] leave the choice of main language up to the user. Furthermore, they
 should be able to use multiple secondary languages, so that where SlideMage for example offers to translate to
 German, it should offer to translate to any language of the user's choosing. The language selector then should
@@ -86,16 +88,13 @@ The project's languages live in `.slidemage/project.json` (shared and versioned 
 - A project without the key behaves as today: `main: "en"`, `secondary: ["de"]`. Nothing is written until the
   user changes the languages.
 - New module `languages.py` (no Qt): a table of about 40 languages with code, English name, native name, default
-  PDF tag (`en-US`, `de-DE`, `fr-FR`, ...) and, where the language has one, the choice of form of address (de: Sie/du,
-  fr: vous/tu, es: usted/tú, it: Lei/tu, nl: u/jij, ...). The UI translation plan uses the same table for its
-  language picker. `project_languages(ctx)` returns the ordered list, main first.
+  PDF tag (`en-US`, `de-DE`, `fr-FR`, ...), which is not settable per project. The UI translation plan uses the same table for its language picker. `project_languages(ctx)` returns the ordered list, main first.
 - **What "main" means**: the default language of a new slide and a new deck, the default source of a translation,
   the first entry of every language selector, the fallback of `\multilingualtext*` and of image descriptions, and
   the language the AI writes new drafts in. Changing the main language renames nothing and moves no text; with the
   per-language image store (2.4) it is safe at any time.
 - Settings gets a **Languages** page (project section): main language (combo), secondary languages (a list with
-  Add/Remove/reorder), and per language the PDF tag (so `en-GB` is possible) and, where it has one, the form of
-  address. Removing a language that slides or decks still use is allowed but warns with the count ("12 slides and
+  Add/Remove/reorder) and the project's form of address (2.5). Removing a language that slides or decks still use is allowed but warns with the count ("12 slides and
   1 deck are in French; they stay as they are, but SlideMage no longer offers French").
 
 **Old slugs that look like a language** (decided: a light check). SlideMage itself always writes a language segment
@@ -113,19 +112,43 @@ Only listed codes are ever read as a language, so a code the project does not us
   pass `project_languages(ctx)`; `TRANSLATION_LANGUAGES` and `LANGUAGES` become functions of the context. The
   constants are removed, so every one of the 24 modules is found by the tests and by grep rather than left behind.
 - Header comments keep their form and allow any code: `%% FR translation: <id-slug>`. No migration.
-- A slide's **translation group** is the set of slides connected by those links: one original (the slide that is
-  nobody's translation) and its translations. A translation may be made from another translation (DE → FR when the
-  original is EN); its `Translation of:` names the slide it was made from, and the group is still found through
-  it. `TranslationLinks.find(id_slug, language)` already resolves "the slide of that language for this slot"; it
-  is extended from "partner" to "member of the group", with the same rule that conflicting links pick none.
+- A slide's **translation group** is a star: one original (the slide that is nobody's translation) and its
+  translations, each of which names the original in its `Translation of:` line. That holds also for a translation
+  made from another translation (DE → FR when the original is EN): FR names EN, not DE. Which member a translation
+  was made from is not recorded. The original has one `%% <LANG> translation:` line per language
+  (`regenerate_translation_links` already tolerates several). `TranslationLinks.find(id_slug, language)` already
+  resolves "the slide of that language for this slot"; it is extended from "partner" to "member of the group", with
+  the same rule that conflicting links pick none.
 - `translation_link()` becomes `translation_group()` → a list of `TranslationLink` (one per other language), each
-  with its own `outdated` (measured against the slide it was made from, as now).
+  with its own `outdated` (measured against the original, as now).
 - `LanguageBadge`: `[EN]`, `[EN + DE]`, `[EN + DE FR]`; at four or more languages `[EN +3]` with the full list in
   the tooltip. `both` becomes "has at least one translation".
 - **Language panel**: one row per project language: the slide (own), each existing translation (open, outdated
   mark), and for each missing language "No translation yet" with **Translate to <language>**. The Set language menu
-  lists the project's languages and Multilingual.
+  lists the project's languages and Multilingual. A translation also shows **Make this the original**.
+- **Make this the original** (decided 2026-11-02), for when the author starts writing in another language:
+  `slide_rename.make_original(ctx, id_slug)` removes this slide's `Translation of:` line and points every other
+  member's at this slide, the old original included. `regenerate_translation_links` then rewrites the
+  `%% <LANG> translation:` lines. Allowed only while the files it rewrites have no unsaved edits, as for Set
+  language. Rewriting the headers counts as writing, so right afterwards no member is outdated: making a slide the
+  original declares the group in step.
+- **Deck slots fold by group, not by direct link.** `deck_language._slots` folds a deck's calls into one slot only
+  along a direct `Translation of:` or `<LANG> translation:` link today, so a deck that calls DE and FR of a group
+  whose original is EN would show the slide twice. Instead:
+  - `_slots` groups the deck's calls by translation group. If the deck calls the original, that call owns the slot;
+    otherwise the earliest call into the group does. The others are folded into it, as today, and keep their
+    visibility and reveal steps only through the owner, as today. After Make this the original, the slot moves to
+    the new original's call where the deck has one.
+  - `resolve_call(owner, language)` picks the group's member in `language` through `find()`; `related_ids` lists
+    every member of the group.
+  - A group is valid only when every translation names the same original. A chain (FR names DE, DE names EN, as a
+    hand-edited header could leave it) is rewritten as a star by **Reestablish broken translation links**. A cycle
+    (A names B, B names A) has no original: each call stays its own slot, as the existing rule for malformed
+    reciprocal links does today, and Reestablish broken translation links reports it instead of rewriting it.
+  - `deck_headers` and `compile_records`, which call `slots()` per language, need no change of their own.
 - **Add slide** sheet: "Copy as translation" offers every project language the group does not have yet.
+- The AI task card's translation (`ui/workspace/task_bubbles.py`, today `next(code ...)`, the first other language)
+  takes its target from the command, with one offer per missing project language.
 
 ### 2.3 Decks, compiles and previews
 
@@ -133,8 +156,9 @@ Only listed codes are ever read as a language, so a code the project does not us
   should it be another).
 - "The other language" becomes "the other project languages": `compiler.deck_pdfs` and
   `frames.candidate_jobnames` look for the PDFs of every project language.
-- The topbar language switch lists the project's languages, main first; a segmented control up to three, a
-  dropdown above that.
+- The topbar language switch lists the project's languages, main first, as a segmented control of their codes.
+  Since the switch follows the deck (below), picking another language is only a short look, and a dropdown for
+  long lists waits until a project has more languages than fit.
 - **The switch follows the deck** (decided 2026-11-02). Today `WorkspaceState.set_deck` restores the language last
   chosen for that deck (`_remember("language", ...)` in `app_settings`) and uses the deck's `\decklanguage` only
   while nothing was chosen. Instead: opening a deck or switching to another one always sets the switch to that
@@ -144,8 +168,9 @@ Only listed codes are ever read as a language, so a code the project does not us
   dropped). A deck whose language is not one of the project's still shows it, as an extra entry on the switch.
 - Background previews take the deck's language as their first language (`languages_for` uses `\decklanguage`
   instead of the usage record's `last_language`).
-- Background previews: `bg_previews_second_language` (bool) becomes `bg_previews_languages` (a list, default empty,
-  the old `true` read as "all secondary languages"); the setting says how many more renders each language costs.
+- Background previews: `bg_previews_second_language` stays a yes/no setting, with its key; it now means "also
+  render the deck's slides in the other project languages they exist in". The cost is bounded by the translations
+  that exist, so there is no list setting and nothing to convert.
 - `compile_records`, `deck_headers`, `unused_content`, `update_all_previews`, `render_key`: iterate over the
   project's languages instead of the constant. No change to the render store's keys, which already carry the code.
 
@@ -174,15 +199,20 @@ stay shared, as now.
   opening the project; an older SlideMage that meets a version-2 store must refuse to write it rather than
   overwrite it with version 1 (check what the current release does and, if needed, ship that guard in a release
   before this one).
-- The CSV for LuaLaTeX gets a header row naming its columns (`image,role,short@en,source@en,short@de,...`);
-  `SlideMage_alt.lua` reads columns by name, and `altText`/`recordSource` take any code with the same fallback chain.
-  A CSV without a header row is still read by position.
+- The CSV for LuaLaTeX already has a header row naming its columns (`image,role,status_en,short_alt_en,source_en,
+  status_de,short_alt_de,source_de`). The en and de columns stay where they are and each further language appends
+  `status_xx,short_alt_xx,source_xx`, so an older framework copy that reads columns 4, 5, 7 and 8 by position keeps
+  working. `SlideMage_alt.lua` reads columns by name, and `altText`/`recordSource` take any code with the same
+  fallback chain.
 - Images page: the EN | DE switch lists the project's languages; the form's "German" group becomes "<language>"
   for the one selected; **Translate to <language>** and the batch "Translate descriptions" ask for the target
   (default: every secondary language that is missing or stale). Review filter "No German" becomes "Missing a
   translation" with a language choice.
 - `ai/image_instructions.py`: the German rule becomes "write the fields of the requested language in that
-  language", with the language's name filled in.
+  language", with the language's name filled in. The answer schema in `ai/image_tasks.py` (`short_de`, `long_de`,
+  `takeaway_de`) becomes `short`, `long`, `takeaway` for the requested language.
+- The Claude plugin (`claude/code/images.py`) uses the same `_de` schema and fields; it is updated and released
+  together with this step.
 
 ### 2.5 AI translation to any language
 
@@ -191,9 +221,14 @@ stay shared, as now.
   prompt page lists every pair of project languages instead of en → de only. A local MT model that cannot handle a
   pair is the user's call; the prompt page shows which pairs have their own prompt.
 - `ai/tasks.py`: `LANGUAGE_NAMES` comes from `languages.py`; the form-of-address line is added for every target
-  language that has a setting, not only `DE`; proofreading uses the same per-language rule.
-- `translation_style.py`: `de_address` becomes `addresses: {"de": "Sie", "fr": "vous"}` in `project.json`, with
-  `de_address` still read (and written as long as only German has one, so an older SlideMage keeps working).
+  language, not only `DE`; proofreading uses the same rule.
+- **Form of address**: one setting per project, formal or informal, for every language and every deck (slides are
+  shared between decks, so a per-deck setting could not hold for a shared slide). The prompt says "address the
+  reader formally" (or informally) and leaves it to the model what that means in the target language (Sie, vous,
+  usted, ...); a language without the distinction, such as English, is unaffected. `languages.py` needs no address
+  words. `translation_style.py`: `de_address` becomes `address: "formal" | "informal"` in `project.json`, read from
+  `de_address` when missing (Sie = formal, du = informal), and `de_address` is still written alongside it, so an
+  older SlideMage keeps working.
 - Glossary: `.slidemage/glossary.md` may hold a Markdown table with one column per language (`| EN | DE | FR |`);
   the old `EN = DE` lines are still read. Each request carries the rows for its pair only.
 - `ai/tools/slidemage.py`: the `language` enums come from the project's languages.
@@ -205,54 +240,77 @@ stay shared, as now.
   a project adds or overrides entries in `SlideMage_project_macros.tex`. A missing entry falls back to the main
   language, then to English, with a warning in the log. `\ifSMGerman` stays defined (true for `de`), because
   templates and slides may test it.
-- PDF `/Lang` comes from the project's per-language PDF tag (written into the compile, see 2.7); the built-in table
-  is the default.
+- PDF `/Lang` is the deck language's tag from the table in `languages.py`, passed into the compile (2.7). A deck
+  compiled outside SlideMage keeps today's rule (`en-US`, `de-DE`, anything else the code itself).
 - `\multilingualtext*` falls back to the main language (`\SMMainLanguage`) instead of `EN`.
 - `transcript.STRINGS` gets the same languages as the LaTeX table; `deck_language_of()` returns the deck's code,
   and the strings fall back to the main language, then English.
+- `transcript._resolve_multilingual_text` today finds only `\multilingualtext{`; it also resolves the keyed
+  `\multilingualtext*{...}`, with the same fallback as TeX.
 
 ### 2.7 How LaTeX learns the project's languages
 
-`\setSlideLanguageFromSlug` must recognise the same codes as Python (section 2.1, old slugs). SlideMage writes a
-generated file `SlideMage_languages.tex` at the project root whenever the languages change (`\SMProjectLanguages{EN,
-DE,FR}`, `\SMMainLanguage{en}`, the PDF tags); `SlideMage_base.tex` loads it when present, like the project
-macros. Without it TeX keeps today's `EN, DE, mult`, so a project that never changes its languages and a deck
-compiled by hand outside SlideMage behave as now. The file is committed with the project.
+`\setSlideLanguageFromSlug` must recognise the same codes as Python (section 2.1, old slugs). SlideMage already adds
+one line to every compile and preview after the deck preamble (`deck_language.language_line`, used by
+`compiler.py`, `partial_compile.py` and `slide_preview.py`), which today is `\decklanguage[xx]`. That line also
+carries the project's languages, its main language and the deck language's PDF tag:
+`\SMProjectLanguages{EN,DE,FR}\SMMainLanguage{en}\SMPdfLang{fr-FR}\decklanguage[fr]`.
+
+- No generated file: nothing to write when the languages change, to commit, or to find stale on another machine.
+- `render_key` must include the project's languages and main language, because they change how a slide's
+  language is read and what `\multilingualtext*` falls back to. The line's text is the natural input.
+- Without the line (a deck compiled outside SlideMage) TeX keeps today's `EN, DE, mult` and falls back to `EN`, so
+  a project that never changes its languages behaves as now. In a project with further languages, such a compile
+  still runs, but slides in those languages count as untagged, so their footer language is wrong.
 
 ### 2.8 Multilingual slides
 
 Decided: keep `mult` slides as they are and make them work with N languages, but do not add new machinery.
 
 - `\multilingualtext*{...}` (keyed) is already N-language; the two-argument form stays exactly EN/DE (documented
-  as the old form). New multilingual slides from SlideMage templates use the keyed form.
+  as the old form). New multilingual slides from SlideMage templates use the keyed form, and so does the editor's
+  "Both languages" insertion (`latex_edit.py`) in a project with more than two languages, one key per language.
 - Fallback to the main language instead of English (2.6).
-- The Language panel of a `mult` slide lists, per project language, whether every `\multilingualtext*` on it has a
-  key for it ("FR: 2 of 3 texts missing, shown in English"). This is a scan of the source, no compile.
-- Not in this task: AI translation of a multilingual slide (adding a key to each call). It is a natural follow-up
-  once the panel shows what is missing.
+- Not in this task: showing on a `mult` slide which languages its `\multilingualtext*` calls lack ("FR: 2 of 3
+  texts missing, shown in English"), and AI translation of a multilingual slide (adding a key to each call). They
+  are a natural follow-up together.
 
 The alternative, converting `mult` slides into a translation group, is what the user can already do by hand
 (Copy as translation); forcing it would break decks that rely on one file.
 
 ### 2.9 Plugins
 
-`plugin_api` version 2: languages are `str` (a project code, lowercase) instead of `Literal["de", "en"]`;
-`deck_language()` may return any code; new `project_languages()` on the host. Version-1 plugins keep working: the
-host maps a code other than en/de to the main language for them. `plugins/slide_reader.py` takes any project code.
-Coordinate with the plugin UI kit's author before merging, since the manifest versions change. The UI translation
-plan adds plugin translation to the API (ui-translation.md, 2.6); both should land in the same API version.
+`plugin_api` stays at version 1: languages become `str` (a project code, lowercase) instead of
+`Literal["de", "en"]`, `deck_language()` may return any code, and the host gets a new `project_languages()`. Both
+keep existing plugin code working, so there is no version bump and no mapping of codes for older plugins. The
+plugins that assume en/de are the risk, and they are updated in the same release (below); until then a French deck
+reaches them as `fr`. `plugins/slide_reader.py` takes any project code. `insert_slides` writes the requested code into the file name (today anything but `en`
+becomes `DE`).
+
+The plugins that assume en/de are updated with this step:
+
+- **Exam Forge**: source links accept any project code (`sources.py`), the drafting dialog lists the project's
+  languages, the fallback is the main language instead of `en`, and the exam HTML gets the deck's `lang`.
+- **CampusOnline**: an unknown language falls back to English everywhere (`course_schedule.py` falls back to German
+  today, `course_box.py` to English).
+- **Claude**: the image description schema, with step 4 (2.4).
+
+Coordinate with the plugin UI kit's author before merging, since each updated plugin raises its
+`requires_slidemage`. The UI translation plan adds plugin translation to the API (ui-translation.md, 2.6), also as an
+addition to version 1.
 
 ### 2.10 Hyphenation by deck language
 
 Decided: in this task. Today every deck hyphenates with the format's default US English patterns, whatever its
 `\decklanguage`.
 
-- `SlideMage_base.tex` loads `babel` for LuaLaTeX with the ini-based setup: `\babelprovide[import]{<language>}` for
-  each language of `SlideMage_languages.tex` (English and German without it), no shorthands (so `"` in German
-  slides keeps meaning what it does now), and no babel captions or date formats (beamer's own texts and the
-  string table of 2.6 stay in charge).
-- `\decklanguage[xx]` selects the language for the document body (`\AtBeginDocument{\selectlanguage{...}}`), so
-  the line SlideMage appends after the preamble (`deck_language.language_line`) still decides.
+- A deck hyphenates in one language, so only that language is loaded. `SlideMage_base.tex` loads `babel` for
+  LuaLaTeX with the ini-based setup, no shorthands (so `"` in German slides keeps meaning what it does now), and no
+  babel captions or date formats (beamer's own texts and the string table of 2.6 stay in charge).
+- `\decklanguage[xx]` only records the code, and the deck's one language is set up and selected for the document
+  body when the preamble ends (`\babelprovide[import]{xx}`, English and German without it). So the last
+  `\decklanguage` wins, as now, and the line SlideMage appends after the preamble (`deck_language.language_line`)
+  still decides. Babel needs no list of the project's languages.
 - `\multilingualtext*` and `mult` slides hyphenate in the deck's language, which is the language they print.
 - Places that switch hyphenation off on purpose (titles, quotes: `\hyphenpenalty=10000`) are unaffected.
 
@@ -260,7 +318,7 @@ Risks, checked before anything else in step 5 (a spike on a copy of the example 
 
 - **Preview formats.** babel's LuaTeX pattern loading keeps state in Lua, which a precompiled format loses
   (`preview_format.py`). It may need its own replay through `\SMLuaOnce`, or the patterns must be loaded at format
-  build time. The preview must still typeset exactly like the final compile (the equivalence contract,
+  build time; since a compile loads only its deck's language, that means one format per language. The preview must still typeset exactly like the final compile (the equivalence contract,
   `docs/PREVIEW_RENDER_EQUIVALENCE_CONTRACT.md`).
 - **Changed line breaks in existing decks.** German decks will hyphenate differently, and a slide that fitted may
   now break a line elsewhere, or the reverse. Before merging: compile every non-English deck of the example
@@ -276,17 +334,20 @@ The deck settings tooltip ("hyphenation, automatic texts, ...") becomes true; un
 Each step ends with the test suite green (`pytest -n 8`) and nothing changed for a project that keeps EN + DE.
 
 1. **Language registry and settings** — `languages.py`, `project_languages(ctx)`, the `project.json` key, the
-   Languages settings page, `SlideMage_languages.tex` generation and loading in `SlideMage_base.tex`.
+   Languages settings page, the project's languages on the compile line and their reading in `SlideMage_base.tex`
+   (2.7).
 2. **Slides and decks** — `own_language(…, codes)`, removal of the constants across the 24 modules, translation
-   groups, badges, Language panel, Add slide, slug-collision check and rename, deck settings, topbar switch,
+   groups, Make this the original, badges, Language panel, Add slide, slug-collision check and rename, deck
+   settings, topbar switch,
    compiler/frames/background previews/compile records.
-3. **AI translation** — prompts for any pair, per-language address, glossary table, AI tool enums.
+3. **AI translation** — prompts for any pair, formal or informal address, glossary table, AI tool enums.
 4. **Image descriptions** — store version 2 with automatic conversion and backup, CSV header and Lua, Images page and form,
    review filters, image instructions.
-5. **LaTeX texts, PDF language, transcript, multilingual slides, hyphenation** — string table, PDF tags, fallback
-   to main language, transcript strings, the `mult` coverage display; then the hyphenation spike (preview formats,
+5. **LaTeX texts, PDF language, transcript, multilingual slides, hyphenation** — string table, PDF tag, fallback
+   to main language, transcript strings; then the hyphenation spike (preview formats,
    layout comparison, compile time) and, once it holds, `babel` per deck language (2.10).
-6. **Plugin API version 2.**
+6. **Plugin API and plugins** — `str` languages and `project_languages()` in version 1, Exam Forge,
+   CampusOnline, Claude.
 7. **Manual and docs** — the manual deck's language slides (1vn "Languages" and the quick reference 1uw), README,
    `docs/SlideMage.md`, CHANGELOG.
 
@@ -298,6 +359,13 @@ them.
 
 - A fixture project with main `de` and secondary `en, fr`: slide list badges, Language panel rows, translation of a
   translation, deck PDFs found for all three languages, background preview languages.
+- Make this the original: in a group with original EN and translations DE, FR and IT, making FR the original
+  leaves EN, DE and IT all naming FR, FR naming none, and no member outdated right after; a deck listing EN and FR
+  separately has its slot at FR's call afterwards.
+- Deck slots by group: a deck that calls EN and FR of a group with original EN shows one slot, at EN's call, and
+  shows FR's file when compiled in French; a deck that calls DE and IT of that group shows one slot, at the earlier
+  call; a chain (FR names DE, DE names EN) is rewritten as a star by Reestablish broken translation links; a cycle
+  of two slides gives two slots and a report.
 - Language switch: switching from an English deck to a German one shows DE, back shows EN, also after picking FR
   on the first deck; changing a deck's language in its settings moves the switch; a stored per-deck language from
   an older version is ignored.
@@ -306,16 +374,24 @@ them.
 - Slug collision: adding `it` to a project with `x7k-IT-Governance` lists it and renames it correctly; without `it`
   in the list, the slug is not a language in Python or in TeX.
 - Image store: a version-1 store is converted on first open, with its backup, and reads back identically; the Lua
-  reads both CSV forms and picks `fr` with the fallback chain.
+  reads the CSV by column name and picks `fr` with the fallback chain, and an older framework copy still reads en
+  and de from a CSV with an appended `fr`.
 - LaTeX: a French deck shows the French automatic texts and `/Lang fr-FR`; a language missing from the string table
   falls back to the main language with a warning.
-- Plugin API: a version-1 plugin on a French deck gets the main language.
+- Compile line: a preview's render key changes when the project's languages or main language change; a deck
+  compiled without the line reads only EN, DE and mult.
+- Plugin API: on a French deck `deck_language()` returns `fr`, and `insert_slides` with `fr` writes an `FR` file.
+- Transcript: a `mult` slide with `\multilingualtext*{EN=..., FR=...}` shows only the deck language's text.
 
 ## 5. Open questions for the owner
 
 All answered 2026-11-02: multilingual slides kept and extended lightly (2.8); language list per project only
 (2.1); hyphenation in this task (2.10); a light check for old untagged slugs (2.1); the image store converted
 automatically (2.4).
+
+Also decided 2026-11-02 (left to the plan's author): LaTeX learns the project's languages from the compile line,
+not from a generated file (2.7); background previews keep their yes/no setting (2.3); PDF tags come only from the
+built-in table (2.1, 2.6).
 
 Still to find out during implementation (no decision needed): whether the current release already refuses to
 overwrite an image store of a newer format (2.4), and whether babel survives the preview formats (2.10).
