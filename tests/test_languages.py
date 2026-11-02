@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 import pytest
 
@@ -146,7 +147,13 @@ def test_a_snapshot_is_not_migrated(tmp_path):
     assert "languages" not in project.read_project_json(snapshot)
 
 
-def test_a_new_project_states_its_languages(tmp_path):
+def test_a_new_project_states_its_languages(tmp_path, monkeypatch):
+    example = tmp_path / "example"           # an example that was open in the app, with French as its main language
+    template_dir = project.template_dir
+    shutil.copytree(template_dir("example"), example, ignore=shutil.ignore_patterns(".build", ".previews"))
+    (example / project.PROJECT_INFO_PATH).parent.mkdir(exist_ok=True)
+    (example / project.PROJECT_INFO_PATH).write_text('{"languages": {"main": "fr", "secondary": ["en"]}}', encoding="utf-8")
+    monkeypatch.setattr(project, "template_dir", lambda name: example if name == "example" else template_dir(name))
     empty = tmp_path / "empty"
     project.init_project(empty, copy_example=False)
     assert project.read_project_json(empty)["languages"] == {"main": "en", "secondary": []}

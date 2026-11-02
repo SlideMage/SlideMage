@@ -48,8 +48,12 @@ def _ignore_template_build_output(directory: str, names: list[str]) -> set[str]:
     start out with; a new project compiles its own from scratch. NOT a
     blanket "*.pdf" skip: a scheme folder's logo PDF is a real,
     tracked logo asset the preamble \\includegraphics's, needed for the
-    copy to actually compile."""
+    copy to actually compile. Nor the example's own state in .slidemage/
+    (what the app wrote while the example was open, gitignored): a new
+    project states its languages and records its own opens."""
     skip = {".build", ".previews", ".backups", "pdf", "__pycache__"}
+    if os.path.basename(directory) == ".slidemage":
+        skip |= {"project.json", "app_settings.json", "compile_passes.json", "ai-before"}
     if os.path.basename(directory) == "decks":
         skip |= {n for n in names if n.endswith((".pdf", ".synctex.gz"))}
         skip |= {n for n in names if n.startswith("_") and (Path(directory) / n).is_file()}
