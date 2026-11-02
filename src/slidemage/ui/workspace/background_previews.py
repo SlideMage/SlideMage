@@ -603,7 +603,8 @@ class BackgroundPreviews(QObject):
         if text:
             self.chip.set_text(text)
             self.chip.set_tone(tone)
-            self.chip.adjustSize()
+            if self._row is None:       # in the status row the layout sizes it: shrunk here, its text jumped up until the layout ran
+                self.chip.adjustSize()
         self.chip.setVisible(bool(text))
         self.dial.show()
         if self._row is not None:
