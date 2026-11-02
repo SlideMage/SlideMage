@@ -3370,3 +3370,8 @@ v0.13.22 (2026-11-02, direct request: an on-demand debug log, step 6 of docs/pla
 
 NEW: The manual explains the logs and how to report a problem.
 - See Logs and problem reports in the manual, after Safety Nets.
+
+v0.13.23 (2026-11-02, bug report: issue #72, the arrow keys stop on section headings): Up and Down in the slide list stopped on every section heading as if it were a slide: the heading took the highlight, the slide shown stayed and the next key press was needed to go on. SlideTree.moveCursor now passes headings for Up, Down, Page Up, Page Down, Home and End, and stays on the row when no slide is left in that direction. Left still goes up to a slide's heading, so F2 and Alt+Up on a section stay reachable by keyboard.
+
+NEW: The arrow keys in the slide list go from slide to slide.
+- Up and Down no longer stop on section headings.

@@ -411,6 +411,64 @@ def test_arrow_keys_move_the_focus_and_enter_or_a_double_click_open_the_source(m
 
 
 
+def test_arrow_keys_step_over_section_headings_from_slide_to_slide(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    focus(slide_list, "aaa")
+    for expected in ("bbb", "ccc", "ddd", "ddd"):       # past One, past Empty and Two; nothing below the last slide
+        key(slide_list, Qt.Key.Key_Down)
+        assert window.state.focused_slide == expected
+        assert slide_list.tree.currentItem() is item_of(slide_list, expected)
+        assert [r.call.id for r in slide_list.tree.selected_rows()] == [expected]
+    for expected in ("ccc", "bbb", "aaa", "aaa"):       # nothing above the first slide, its heading included
+        key(slide_list, Qt.Key.Key_Up)
+        assert window.state.focused_slide == expected
+        assert slide_list.tree.currentItem() is item_of(slide_list, expected)
+
+
+def test_home_end_and_the_page_keys_land_on_a_slide(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    focus(slide_list, "bbb")
+    key(slide_list, Qt.Key.Key_Home)
+    assert window.state.focused_slide == "aaa"
+    key(slide_list, Qt.Key.Key_End)
+    assert window.state.focused_slide == "ddd"
+    key(slide_list, Qt.Key.Key_PageUp)
+    assert isinstance(slide_list.tree.data_of(slide_list.tree.currentItem()), deck_outline.SlideRow)
+    key(slide_list, Qt.Key.Key_PageDown)
+    assert isinstance(slide_list.tree.data_of(slide_list.tree.currentItem()), deck_outline.SlideRow)
+
+
+def test_arrow_keys_pass_a_closed_section_and_slides_the_filter_hides(make_list):
+    slide_list, window, _path = make_list(FRONT_AND_SECTIONS)
+    slide_list.tree.toggle_section(head_of(slide_list, "One"))
+    focus(slide_list, "aaa")
+    key(slide_list, Qt.Key.Key_Down)
+    assert window.state.focused_slide == "ccc"
+    key(slide_list, Qt.Key.Key_Up)
+    assert window.state.focused_slide == "aaa"
+    slide_list.tree.toggle_section(head_of(slide_list, "One"))
+    slide_list.find.setText("-")
+    item_of(slide_list, "bbb").setHidden(True)
+    key(slide_list, Qt.Key.Key_Down)
+    assert window.state.focused_slide == "ccc"
+
+
+def test_a_section_heading_stays_reachable_by_keyboard(make_list):
+    slide_list, window, path = make_list(FRONT_AND_SECTIONS)
+    focus(slide_list, "ccc")
+    key(slide_list, Qt.Key.Key_Left)                    # up to the slide's heading, for F2 and Alt+Up
+    assert slide_list.tree.data_of(slide_list.tree.currentItem()).title == "Two"
+    assert window.state.focused_slide == "ccc"
+    key(slide_list, Qt.Key.Key_Down)                    # and on from the heading to a slide
+    assert window.state.focused_slide == "ccc"
+    key(slide_list, Qt.Key.Key_Left)
+    key(slide_list, Qt.Key.Key_Up)
+    assert window.state.focused_slide == "bbb"
+    slide_list.tree.setCurrentItem(head_of(slide_list, "Two"))
+    key(slide_list, Qt.Key.Key_Up, Qt.KeyboardModifier.AltModifier)     # Alt+Up still moves the heading itself
+    assert deck_lines(path).index("\\section{Two}") < deck_lines(path).index("\\section{Empty}")
+
+
 def test_a_plain_click_opens_the_slide_without_leaving_the_preview(make_list):
     slide_list, window, _path = make_list("\\slide{aaa-One}\n\\slide{bbb-Two}\n")
     focus(slide_list, "bbb")
