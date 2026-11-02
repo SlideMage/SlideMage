@@ -634,7 +634,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
-    language_lines = deck_language.language_lines(ctx, language if job.language else None)
+    language_lines = deck_language.language_lines(ctx, language if job.language else None, deck=language)
     if language_lines and preamble:
         preamble += "\n" + language_lines
 

@@ -36,8 +36,8 @@ from PySide6.QtWidgets import (
 )
 
 from ...ai import routes
-from ... import latex_edit, slide_versioning
-from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert
+from ... import languages, latex_edit, slide_versioning
+from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert, multilingual_for
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs import qr_code as qr_dialog
 from ..dialogs.citation import CitationDialog
@@ -520,7 +520,8 @@ class SourcePane(Surface):
     def _open_insert_menu(self) -> None:
         menu = PopoverMenu(self, min_width=340)
         # The two that ask first lead; then the lists, the blocks and the plain commands.
-        commands = list(enumerate(INSERT_COMMANDS))
+        codes = languages.project_languages(self.app.project).codes
+        commands = [(i, multilingual_for(c, codes)) for i, c in enumerate(INSERT_COMMANDS)]
         groups = (("", "cmd", [c for c in commands if c[1].kind in ASKS]),
                   ("Lists", "list", list(enumerate(INSERT_LIST_COMMANDS))),
                   ("Blocks", "block", list(enumerate(INSERT_BLOCK_COMMANDS))),
@@ -544,7 +545,7 @@ class SourcePane(Surface):
             return
         editor = self._current.editor
         if insert.kind not in ASKS:
-            editor.apply_insert(insert)
+            editor.apply_insert(multilingual_for(insert, languages.project_languages(self.app.project).codes))
         elif insert.kind == "hyperlink":
             self._ask(LinkPopover(editor.selected_text()), self._insert_button)
         else:

@@ -97,6 +97,17 @@ def test_multilingual_puts_the_selection_in_the_first_braces():
     assert le.insert_multilingual("Hi", "ml") == le.Edit("\\ml{Hi}{}", 8)
 
 
+def test_both_languages_is_keyed_with_one_key_per_language_for_more_than_two():
+    both = next(i for i in le.INSERT_COMMANDS if i.kind == "wrap_multilingual")
+    assert le.multilingual_for(both, ("EN", "DE")) is both
+    keyed = le.multilingual_for(both, ("FR", "EN", "DE"))
+    assert keyed.hint == "\\multilingualtext*{FR={...}, EN={...}, DE={...}}"
+    empty = le.insert_edit(keyed, "", "")
+    assert empty == le.Edit("\\multilingualtext*{FR={}, EN={}, DE={}}", len("\\multilingualtext*{FR={"))
+    text = "\\multilingualtext*{FR={Salut}, EN={}, DE={}}"
+    assert le.insert_edit(keyed, "Salut", "") == le.Edit(text, text.index("EN={") + 4)
+
+
 def test_block_lands_in_the_title_braces_and_floating_blocks_take_a_width_first():
     edit = le.wrap_block("body", "\t", "infoblock")
     assert edit.text == "\\begin{infoblock}{}\nbody\n\t\\end{infoblock}"

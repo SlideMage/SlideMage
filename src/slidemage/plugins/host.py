@@ -250,7 +250,7 @@ class PluginHost(Registrar):
         return new
 
     def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
-        return "en" if transcript.deck_language_of(deck.text) == "en" else "de"
+        return "de" if transcript.deck_language_of(deck.text) == "de" else "en"
 
     def project_root(self) -> Path:
         return self.ctx.root

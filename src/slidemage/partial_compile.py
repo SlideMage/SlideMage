@@ -374,8 +374,8 @@ def wrapper_text(plan: PartialPlan) -> str:
     body_end = end.start() if end else len(text)
     kept = {k.call.line_start: k for k in plan.kept}
     out: list[str] = [text[:deck.preamble_end]]
-    language = deck_language.language_for_job(job) if job.language else None
-    if language_lines := deck_language.language_lines(plan.context, language):
+    language = deck_language.language_for_job(job)
+    if language_lines := deck_language.language_lines(plan.context, language if job.language else None, deck=language):
         out.append("\n" + language_lines)
     if plan.extra_lines:
         out.append("\n" + plan.extra_lines)

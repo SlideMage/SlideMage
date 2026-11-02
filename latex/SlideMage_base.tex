@@ -1285,17 +1285,64 @@
 		\ifstrequal{##1}{de}{\global\SMGermantrue\gdef\SMPDFLanguage{de-DE}}{}}%
 	\edef\SM@decklanguage@call{\noexpand\do@decklanguage{\SMDeckLanguage}}%
 	\SM@decklanguage@call
-	% Document-level PDF /Lang, independent of (and not blocked by) the
-	% structural PDF/UA tagging this project can't use under beamer -- see
-	% \SMArtifactBegin's own comment above for why full tagging is out;
-	% a screen reader still uses this Catalog-level entry to pick
-	% pronunciation for the whole document.
-	\hypersetup{pdflang=\SMPDFLanguage}%
 }
 % \SMPdfLang{fr-FR} -- the PDF language tag of the project's table (languages.py), for a language whose tag is not
 % the one \decklanguage picks (en-US, de-DE, anything else its own code). SlideMage writes it after \decklanguage.
-\newcommand{\SMPdfLang}[1]{\gdef\SMPDFLanguage{#1}\hypersetup{pdflang=\SMPDFLanguage}}
+\newcommand{\SMPdfLang}[1]{\gdef\SMPDFLanguage{#1}}
+% Document-level PDF /Lang, independent of (and not blocked by) the structural PDF/UA tagging this project can't use
+% under beamer -- see \SMArtifactBegin's own comment above for why full tagging is out; a screen reader still uses
+% this Catalog-level entry to pick pronunciation for the whole document. It is written once, at the end, from
+% \SMPDFLanguage: SlideMage's own \decklanguage and \SMPdfLang lines come after \begin{document}, where
+% \hypersetup{pdflang=...} no longer reaches the PDF (hyperref writes the Catalog at \begin{document}).
+\AtEndDocument{\ifdefined\SMPDFLanguage\pdfextension catalog{/Lang(\SMPDFLanguage)}\fi}
 \makeatother
+
+% \SMSetLanguageStrings{fr}{ImageSource={Source(s) de l'image}, ImagePrefix={Image : }} -- the automatic texts of a
+% language: the label of the image sources footnote (\SMImageSourceLabel) and the prefix of an image's invisible
+% description (\SMAltImagePrefix). Shipped for en, de, fr, es and it; a project adds a language or overrides an entry
+% in SlideMage_project_macros.tex. The text is the deck language's; a missing entry falls back to the project's main
+% language (\SMMainLanguage), then to English, with a warning in the log (once per language and key).
+% \ifSMGerman stays (true for de): templates and slides may test it.
+\ExplSyntaxOn
+\tl_new:N \l__SM_string_lang_tl
+\cs_generate_variant:Nn \str_casefold:n { e }
+\cs_new:Npn \__SM_string_cs:nn #1#2 { g__SM_string_ \str_casefold:e {#1} _ #2 _tl }
+\cs_new_protected:Npn \__SM_string_set:nn #1#2
+  { \tl_gset:cn { \__SM_string_cs:nn { \l__SM_string_lang_tl } {#1} } {#2} }
+\cs_new_protected:Npn \__SM_string_bad:n #1
+  { \msg_warning:nnn { slidemage } { string-without-value } {#1} }
+\msg_new:nnn { slidemage } { string-without-value }
+  { \string\SMSetLanguageStrings:~"#1"~has~no~=~value;~ignored. }
+\msg_new:nnn { slidemage } { string-missing }
+  { No~"#2"~text~for~the~language~"#1";~using~the~project's~main~language~or~English. }
+\NewDocumentCommand{\SMSetLanguageStrings}{m m}
+  {
+    \tl_set:Nn \l__SM_string_lang_tl {#1}
+    \keyval_parse:NNn \__SM_string_bad:n \__SM_string_set:nn {#2}
+  }
+% The text of string #1: the deck language's, else the main language's, else English.
+\cs_new_protected:Npn \__SM_string:n #1
+  {
+    \cs_if_exist:cTF { \__SM_string_cs:nn { \SMDeckLanguage } {#1} }
+      { \tl_use:c { \__SM_string_cs:nn { \SMDeckLanguage } {#1} } }
+      {
+        \cs_if_exist:cF { g__SM_string_warned_ \str_casefold:e { \SMDeckLanguage } _ #1 _tl }
+          {
+            \tl_new:c { g__SM_string_warned_ \str_casefold:e { \SMDeckLanguage } _ #1 _tl }
+            \msg_warning:nnxx { slidemage } { string-missing } { \SMDeckLanguage } {#1}
+          }
+        \cs_if_exist:cTF { \__SM_string_cs:nn { \SMMainLanguage } {#1} }
+          { \tl_use:c { \__SM_string_cs:nn { \SMMainLanguage } {#1} } }
+          { \tl_use:c { \__SM_string_cs:nn { en } {#1} } }
+      }
+  }
+\NewDocumentCommand{\SMLanguageString}{m} { \__SM_string:n {#1} }
+\ExplSyntaxOff
+\SMSetLanguageStrings{en}{ImageSource={Image source(s)}, ImagePrefix={Image: }}
+\SMSetLanguageStrings{de}{ImageSource={Bildquelle(n)}, ImagePrefix={Bild: }}
+\SMSetLanguageStrings{fr}{ImageSource={Source(s) de l'image}, ImagePrefix={Image : }}
+\SMSetLanguageStrings{es}{ImageSource={Fuente(s) de la imagen}, ImagePrefix={Imagen: }}
+\SMSetLanguageStrings{it}{ImageSource={Fonte/i dell'immagine}, ImagePrefix={Immagine: }}
 
 % \multilingualtext{EN text}{DE text} -- for the handful of light,
 % image-only/title-only slides (id-slug's own language segment "mult",
@@ -1308,25 +1355,25 @@
 % (2026-10-05, direct instruction), for any number of languages: one
 % key=value pair per language, the key being the deck's \decklanguage code
 % (upper or lower case: EN = en). The value is picked whose key is the
-% deck's language; a deck in a language the list does not have gets the EN
-% value, or the first one if there is no EN. Commas and equals signs inside a
+% deck's language; a deck in a language the list does not have gets the value of the project's main language
+% (\SMMainLanguage, EN without SlideMage's language line), or the first one if there is no such key. Commas and equals signs inside a
 % value need the braces shown. A deck in another language than en/de just says
 % \decklanguage[fr] (fr, es, ...): \ifSMGerman stays false for it, and the
 % PDF's /Lang is the code itself.
 \ExplSyntaxOn
 \tl_new:N \l__SM_mlt_pick_tl
-\tl_new:N \l__SM_mlt_en_tl
+\tl_new:N \l__SM_mlt_main_tl
 \tl_new:N \l__SM_mlt_first_tl
 \bool_new:N \l__SM_mlt_pick_bool
-\bool_new:N \l__SM_mlt_en_bool
+\bool_new:N \l__SM_mlt_main_bool
 \bool_new:N \l__SM_mlt_first_bool
 \cs_new:Npn \__SM_mlt_pair:nn #1#2 { \ifSMGerman #2 \else #1 \fi }
 \cs_new_protected:Npn \__SM_mlt_item:nn #1#2
   {
     \bool_if:NF \l__SM_mlt_first_bool
       { \tl_set:Nn \l__SM_mlt_first_tl {#2} \bool_set_true:N \l__SM_mlt_first_bool }
-    \str_if_eq:eeT { \str_casefold:n {#1} } { en }
-      { \tl_set:Nn \l__SM_mlt_en_tl {#2} \bool_set_true:N \l__SM_mlt_en_bool }
+    \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMMainLanguage }
+      { \tl_set:Nn \l__SM_mlt_main_tl {#2} \bool_set_true:N \l__SM_mlt_main_bool }
     \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMDeckLanguage }
       { \tl_set:Nn \l__SM_mlt_pick_tl {#2} \bool_set_true:N \l__SM_mlt_pick_bool }
   }
@@ -1338,14 +1385,14 @@
   {
     \group_begin:
       \bool_set_false:N \l__SM_mlt_pick_bool
-      \bool_set_false:N \l__SM_mlt_en_bool
+      \bool_set_false:N \l__SM_mlt_main_bool
       \bool_set_false:N \l__SM_mlt_first_bool
       \keyval_parse:NNn \__SM_mlt_item_bad:n \__SM_mlt_item:nn {#1}
       \bool_if:NTF \l__SM_mlt_pick_bool
         { \exp_last_unbraced:NV \group_end: \l__SM_mlt_pick_tl }
         {
-          \bool_if:NTF \l__SM_mlt_en_bool
-            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_en_tl }
+          \bool_if:NTF \l__SM_mlt_main_bool
+            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_main_tl }
             { \exp_last_unbraced:NV \group_end: \l__SM_mlt_first_tl }
         }
   }
@@ -1819,11 +1866,10 @@
 % of that. Coexists with a real hand-authored \source{} call elsewhere in
 % the same frame -- both are just separate unmarked footnote-styled lines,
 % stacking the same way multiple real \footnote{}s already do.
-% \SMImageSourceLabel -- the "Image source(s):"/"Bildquelle(n):" label,
-% driven by \ifSMGerman (set from the compiling deck's own
-% \decklanguage) rather than hardcoded, so a German deck's auto-footnote
+% \SMImageSourceLabel -- the "Image source(s):"/"Bildquelle(n):" label, the deck language's text of the string
+% table (\SMSetLanguageStrings above) rather than hardcoded, so a German deck's auto-footnote
 % reads naturally instead of showing an English label on German content.
-\newcommand{\SMImageSourceLabel}{\ifSMGerman Bildquelle(n)\else Image source(s)\fi}
+\newcommand{\SMImageSourceLabel}{\SMLanguageString{ImageSource}}
 % The line lists every image of the frame, also those shown on its first step, so it is shown on
 % every step (v10.12.0): it is emitted at the frame's end, where a \pause earlier in the frame still
 % covers what follows, and a footnote in covered content would be covered with it
@@ -1968,7 +2014,7 @@
 	% \SMAltImagePrefix -- language-conditional counterpart to
 	% \SMImageSourceLabel above, for this invisible layer's own "Image: "/
 	% "Bild: " prefix.
-	\newcommand{\SMAltImagePrefix}{\ifSMGerman Bild: \else Image: \fi}
+	\newcommand{\SMAltImagePrefix}{\SMLanguageString{ImagePrefix}}
 	\newcommand{\SMAltInvisible}[1]{%
 		\begingroup
 		% A long alt string in an unbreakable hbox would otherwise flood the

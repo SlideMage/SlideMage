@@ -122,6 +122,13 @@ def test_the_lines_of_a_project_with_its_own_languages(ctx):
     assert deck_language.language_lines(ctx, "de") == "\\SMProjectLanguages[de]{DE,EN,NO}\n\\decklanguage[de]\n"
 
 
+def test_the_decks_own_language_gets_its_pdf_tag_without_an_override(ctx):
+    languages.set_project_languages(ctx, "en", ["de", "fr"])
+    assert deck_language.language_lines(ctx, None, deck="fr") == "\\SMProjectLanguages[en]{EN,DE,FR}\n\\SMPdfLang{fr-FR}\n"
+    assert deck_language.language_lines(ctx, None, deck="de") == "\\SMProjectLanguages[en]{EN,DE,FR}\n"
+    assert deck_language.language_lines(ctx, "en", deck="fr") == "\\SMProjectLanguages[en]{EN,DE,FR}\n\\decklanguage[en]\n"
+
+
 def test_the_preview_build_folder_follows_the_project_languages(ctx):
     languages.set_project_languages(ctx, "en", ["de"])
     plain = wrappers(ctx)

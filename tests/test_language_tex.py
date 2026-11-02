@@ -90,3 +90,55 @@ def test_an_english_and_german_project_reads_the_same_with_and_without_the_langu
         monkeypatch.setattr(slide_preview, "language_lines", without)
         assert pages(language) == with_line and len(with_line) == 3 and "set" in with_line[0]
         monkeypatch.undo()
+
+
+LABELS = "Label: [\\SMImageSourceLabel]. Prefix: [\\SMAltImagePrefix]."
+
+
+def render_labels(ctx, language: str):
+    """The page text and the TeX log of a slide in `language` that shows the two automatic texts."""
+    body = f"\\begin{{standardframe}}{{Texts}}\n{LABELS}\n\\end{{standardframe}}\n"
+    pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-EN-Test", body, deck_version="instructor",
+                                                 deck_language=language, capture_snapshot=False)
+    logs = ctx.build_dir.glob("preview-cache/*/*.log")
+    log = max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8", errors="replace")
+    with pymupdf.open(pdf) as doc:
+        return " ".join(doc[0].get_text().split()), " ".join(log.split()), doc.xref_get_key(doc.pdf_catalog(), "Lang")[1]
+
+
+def test_the_automatic_texts_and_the_pdf_language_follow_the_decks_language(ctx):
+    languages.set_project_languages(ctx, "en", ["fr", "es", "it"])
+    for code, label, prefix, tag in (("fr", "Source(s) de l’image", "Image : ", "fr-FR"),
+                                     ("es", "Fuente(s) de la imagen", "Imagen: ", "es-ES"),
+                                     ("it", "Fonte/i dell’immagine", "Immagine: ", "it-IT")):
+        text, log, lang = render_labels(ctx, code)
+        assert f"Label: [{label}]. Prefix: [{prefix}]." in text
+        assert lang == tag
+        assert "No \"" not in log
+
+
+def test_a_missing_string_falls_back_to_the_main_language_with_a_warning(ctx):
+    languages.set_project_languages(ctx, "de", ["en", "pt"])
+    text, log, lang = render_labels(ctx, "pt")
+    assert "Label: [Bildquelle(n)]. Prefix: [Bild: ]." in text          # Portuguese has none: the main language's
+    assert 'No "ImageSource" text for the language "pt"' in log and 'No "ImagePrefix" text for the language "pt"' in log
+    assert lang == "pt-PT"
+
+
+def test_a_project_adds_strings_of_its_own(ctx):
+    macros = ctx.root / "SlideMage_project_macros.tex"
+    macros.write_text("\\SMSetLanguageStrings{pt}{ImageSource={Fonte(s) da imagem}, ImagePrefix={Imagem: }}\n", encoding="utf-8")
+    languages.set_project_languages(ctx, "en", ["de", "pt"])
+    text, log, _lang = render_labels(ctx, "pt")
+    assert "Label: [Fonte(s) da imagem]. Prefix: [Imagem: ]." in text and "No \"" not in log
+
+
+def test_a_keyed_multilingual_text_falls_back_to_the_main_language(ctx):
+    languages.set_project_languages(ctx, "fr", ["en", "de"])
+    body = ("\\begin{standardframe}{Mult}\n\\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}} and "
+            "\\multilingualtext*{EN={only}, FR={seul}}\n\\end{standardframe}\n")
+    for language, expected in (("fr", "Bonjour and seul"), ("de", "Hallo and seul")):
+        pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-mult-Test", body, deck_version="instructor",
+                                                     deck_language=language, capture_snapshot=False)
+        with pymupdf.open(pdf) as doc:
+            assert expected in " ".join(doc[0].get_text().split())

@@ -194,6 +194,25 @@ def insert_multilingual(selected: str, macro: str) -> Edit:
     return Edit(text, len(text) - 1)
 
 
+def insert_multilingual_keyed(selected: str, macro: str, codes: tuple[str, ...]) -> Edit:
+    """\\multilingualtext*{EN={...}, DE={}, FR={}}, one key per language of the project (the first, its main
+    language, first): the selection goes into the first braces and the cursor lands in the second ones, ready for
+    the translation; with no selection the cursor lands in the first."""
+    first = f"\\{macro}*{{{codes[0]}={{"
+    rest = "".join(f", {code}={{}}" for code in codes[1:])
+    text = f"{first}{selected}}}{rest}}}"
+    return Edit(text, len(first) if not selected else len(first) + len(selected) + len(f"}}, {codes[1]}={{"))
+
+
+def multilingual_for(insert: "Insert", codes: tuple[str, ...]) -> "Insert":
+    """The "Both languages" entry for a project with the language `codes`: the two-argument form EN/DE for two
+    languages, the keyed form for more."""
+    if insert.kind != "wrap_multilingual" or len(codes) <= 2:
+        return insert
+    return Insert(insert.label, "wrap_multilingual_keyed", ",".join(codes),
+                  f"\\{insert.payload}*{{{', '.join(f'{code}={{...}}' for code in codes)}}}")
+
+
 def wrap_block(selected: str, indent: str, env: str, floating: bool = False) -> Edit:
     """\\begin{env}{Title} ... \\end{env} (floating: \\begin{env}{5cm}{Title}):
     the selection becomes the body, else a blank indented line is left; the
@@ -209,7 +228,8 @@ class Insert(NamedTuple):
     wraps the selection as \\{payload}{...}; "wrap_env" in \\begin/\\end of
     environment `payload`; "wrap_env_ellipsis" the same with
     \\item[\\SMBulletEllipsis] items; "wrap_multilingual" a two-argument macro
-    (see insert_multilingual); "wrap_block" and "wrap_block_floating" a
+    (see insert_multilingual), "wrap_multilingual_keyed" its keyed form for the project's languages, the
+    comma-joined codes in `payload` (see multilingual_for); "wrap_block" and "wrap_block_floating" a
     beamer block (see wrap_block). "hyperlink" and "code_file" need the
     user's input first (format_hyperlink, code_file_call). `hint` is the
     LaTeX a menu shows beside a label that is not itself LaTeX."""
@@ -290,6 +310,8 @@ def insert_edit(insert: Insert, selected: str, indent: str) -> Optional[Edit]:
             item_prefix="\\item[\\SMBulletEllipsis] ", leading_comment="%Use \\ldots for in-text ellipses")
     if kind == "wrap_multilingual":
         return insert_multilingual(selected, payload)
+    if kind == "wrap_multilingual_keyed":
+        return insert_multilingual_keyed(selected, "multilingualtext", tuple(payload.split(",")))
     if kind == "wrap_block":
         return wrap_block(selected, indent, payload)
     if kind == "wrap_block_floating":

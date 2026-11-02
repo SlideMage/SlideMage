@@ -119,7 +119,11 @@ AUDITED_FRAMEWORK = {
     # v0.13.25: the slide language is read from the project's languages (\SMProjectLanguages, default EN,DE), and
     # \SMPdfLang sets the PDF language tag. Re-audited: the language is the slide's, in the render key, not the view;
     # no version, footer-hide or deck-label rule entered the base.
-    "SlideMage_base.tex": "0aea6f8ff0575770c644d8488c421238308d30f8435173b97c2293f262817c9c",
+    # v0.13.28: the automatic texts (image source label, alt-text prefix) come from a table per language
+    # (\SMSetLanguageStrings), \multilingualtext* falls back to the main language, and the PDF /Lang is written at the
+    # end of the document from \SMPDFLanguage. Re-audited: texts of the invisible and the footnote layers by language,
+    # no version, footer-hide or deck-label rule entered the base.
+    "SlideMage_base.tex": "947eee80f356acfce08a16e0250f6af474648239f339f11b2072a5b486caabaf",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name
