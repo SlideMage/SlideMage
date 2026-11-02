@@ -442,6 +442,8 @@ wraps):
 | v0.13.35 | the same branch | an image described only in another language says "No English description" |
 | v0.13.36 | `spike/hyphenation-babel-2` (on v0.13.35) | 5b: hyphenation by slide language (2.10) |
 | v0.13.37 | the same branch | the framework ships the hyphenation patterns (2.10) |
+| v0.13.38 | the same branch | Translate waits for English text on an image form (found in the owner's test) |
+| v0.13.39 | the same branch | 7: the manual (1vn, 1uw), README, docs/SlideMage.md; Both languages writes the keyed form in any project but English + German; the Add slide tooltip |
 
 Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6`, `cl-5b-spike` (branch
 `spike/hyphenation-babel-2`; the old `spike/hyphenation-babel` holds only a pre-rebase copy of step 1).
@@ -482,8 +484,7 @@ fixed in v0.13.33 and v0.13.34, the rest worked.
 
 Next (the rebased branches are force-pushed to the fork):
 
-1. **5b**, hyphenation (2.10): done, v0.13.36 and v0.13.37.
-2. **7**, the manual and docs.
-3. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
+1. The owner tests v0.13.36 to v0.13.39 (hyphenation with the shipped patterns, the manual, the Translate button).
+2. Then PRs into `develop` in the order of the table, from the public fork; the plugin branches after SlideMage's.
 
-Small, noted in the owner's test: Translate stays clickable on an image without English text (nothing to translate).
+Steps 5b and 7 are done; the small bug noted in the owner's test is fixed in v0.13.38.
