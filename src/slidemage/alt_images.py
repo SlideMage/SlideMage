@@ -68,6 +68,17 @@ from .tex_source import COMMENT_RE
 
 FORMAT_VERSION = 2
 
+NEWER_STORE_MESSAGE = ("This project's image descriptions were saved by a newer SlideMage. "
+                       "Update SlideMage to change them.")
+
+
+class NewerStoreError(Exception):
+    """The store was written by a newer SlideMage. An older one would drop the fields it does not know,
+    so it may read the store but never write it."""
+
+    def __init__(self) -> None:
+        super().__init__(NEWER_STORE_MESSAGE)
+
 
 def _store_path(ctx: ProjectContext) -> Path:
     return ctx.media_dir / "alt-text.json"
@@ -353,6 +364,20 @@ def _read_raw(ctx: ProjectContext) -> dict:
     return read_json(_store_path(ctx))
 
 
+def _read_raw_for_save(ctx: ProjectContext) -> dict:
+    """The store as it is on disk, for a save to build on. Raises NewerStoreError if a newer SlideMage wrote it."""
+    raw = _read_raw(ctx)
+    version = raw.get("version", 0)
+    if isinstance(version, int) and version > FORMAT_VERSION:
+        raise NewerStoreError
+    return raw
+
+
+def check_writable(ctx: ProjectContext) -> None:
+    """Raise NewerStoreError if saving the store would be refused: for callers that ask before they start work."""
+    _read_raw_for_save(ctx)
+
+
 def load_slide_notes(ctx: ProjectContext) -> dict[str, SlideNotes]:
     raw = _read_raw(ctx)
     slides = raw.get("slides", {})
@@ -414,8 +439,8 @@ def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
 
 
 def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None:
+    raw = _read_raw_for_save(ctx)
     _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
-    raw = _read_raw(ctx)
     raw["version"] = FORMAT_VERSION
     # Empty summaries aren't worth a row -- keeps the file from
     # accumulating dead entries for a slide someone typed into and then
@@ -432,13 +457,13 @@ def _save_slide_notes(ctx: ProjectContext, notes: dict[str, SlideNotes]) -> None
 
 
 def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
+    existing_slides = _read_raw_for_save(ctx).get("slides", {})
     _store_path(ctx).parent.mkdir(parents=True, exist_ok=True)
     # save_store() only ever receives the "images" half (that's the shape
     # every existing caller works with) -- reading the file's current
     # "slides" section first and carrying it forward unchanged is what
     # stops an image save from silently wiping out slide summaries saved
     # through update_slide_notes(), and vice versa.
-    existing_slides = _read_raw(ctx).get("slides", {})
     payload = {
         "version": FORMAT_VERSION,
         "images": {

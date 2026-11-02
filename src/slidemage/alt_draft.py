@@ -790,6 +790,12 @@ def run_batch(
     """
     summary = BatchSummary()
     started = time.monotonic()
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:     # nothing could be written
+        summary.errors.append(str(exc))
+        summary.stopped_early = True
+        return summary
     stored = alt_images.load_store(ctx)
 
     for index, job in enumerate(queue, start=1):
@@ -1118,6 +1124,12 @@ def run_translation_batch(
     (or English they changed) since the run began is KEPT."""
     summary = TranslationBatchSummary()
     started = time.monotonic()
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:     # nothing could be written
+        summary.errors.append(str(exc))
+        summary.stopped_early = True
+        return summary
     entries = alt_images.load_store(ctx)
 
     for index, image in enumerate(queue, start=1):

@@ -3375,3 +3375,8 @@ v0.13.23 (2026-11-02, bug report: issue #72, the arrow keys stop on section head
 
 NEW: The arrow keys in the slide list go from slide to slide.
 - Up and Down no longer stop on section headings.
+
+v0.13.24 (2026-11-02, safeguard: a newer SlideMage may save image descriptions in a form this one does not know): An older SlideMage that opened such a project showed every description as empty, and its first save deleted what it did not know. It now reads the descriptions but does not change them, and says so.
+
+NEW: Image descriptions saved by a newer SlideMage are kept safe.
+- If a newer SlideMage saved the image descriptions, this one no longer changes them. It shows "This project's image descriptions were saved by a newer SlideMage. Update SlideMage to change them."

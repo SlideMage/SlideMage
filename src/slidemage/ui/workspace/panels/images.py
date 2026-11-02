@@ -29,7 +29,7 @@ from ...ai_models import built, cloud_label, task_route
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
-from ...pages.image_form import ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused
+from ...pages.image_form import ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused, store_writable
 from ...text import plural
 from .base import Row, SidePanel, box, empty_row, text
 
@@ -200,6 +200,8 @@ class ImageDescriptions(SidePanel):
 
     def _store(self, form: ImageForm, reviewed: bool) -> None:
         """Save the form: only what changed since it was shown, a source apart (it goes to review)."""
+        if not store_writable(self, self.app.project):
+            return
         slide_id, path = self._slide
         role, short, long = form.values()
         alt_images.save_slide_image(self.app.project, form.reference, slide_id, path, role=role, short=short,
@@ -210,6 +212,8 @@ class ImageDescriptions(SidePanel):
 
     def _review_source(self, form: ImageForm) -> None:
         """Confirm the stored citation at once, apart from the description's Save."""
+        if not store_writable(self, self.app.project):
+            return
         entry = alt_images.mark_source_reviewed(self.app.project, form.reference)
         if entry is not None:
             form.source_stored = alt_images.source_state(entry)

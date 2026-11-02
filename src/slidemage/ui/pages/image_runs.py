@@ -26,7 +26,7 @@ from ..ai_models import built, picked_route
 from .. import background
 from ..workspace.ai_work import RunningWork
 from .image_dialogs import PromptTuningSheet
-from .image_form import ImageForm
+from .image_form import ImageForm, store_writable
 from .image_jobs import Job, draft_job, translate_job
 from .image_results import confirm
 
@@ -160,7 +160,7 @@ class ImageRunsMixin:
 
     def _draft_slide(self) -> None:
         view = self._current
-        if view is None or self._job is not None:
+        if view is None or self._job is not None or not store_writable(self, self.app.project):
             return
         jobs = alt_draft.slide_jobs(self.app.project, view.row, self._entries)
         if not jobs:
@@ -183,7 +183,7 @@ class ImageRunsMixin:
 
     def _draft_all(self, only: Optional[list[str]] = None) -> None:
         """Draft what still needs it, after asking; with `only` (Retry failed) just those images."""
-        picked = self._draft_backend()
+        picked = self._draft_backend() if store_writable(self, self.app.project) else None
         if picked is None:
             return
         route, backend = picked
@@ -230,7 +230,7 @@ class ImageRunsMixin:
 
     def _tune(self, form: ImageForm) -> None:
         view = self._current
-        if view is None or self._job is not None:
+        if view is None or self._job is not None or not store_writable(self, self.app.project):
             return
         route = picked_route(self, self.app.project, self.draft_model, "image_description",
                              "the slide's text and the image to describe")
@@ -268,7 +268,8 @@ class ImageRunsMixin:
 
     def _translate_all(self, only: Optional[list[str]] = None) -> None:
         """Translate what still needs it, after asking; with `only` (Retry failed) just those images."""
-        picked = self._translation_backend("the descriptions of all untranslated images")
+        picked = (self._translation_backend("the descriptions of all untranslated images")
+                  if store_writable(self, self.app.project) else None)
         if picked is None:
             return
         route, backend = picked
@@ -323,7 +324,7 @@ class ImageRunsMixin:
 
     def _translate_image(self, form: ImageForm, save_first: bool) -> None:
         """Translate one image's English text into the German fields of its form (nothing is saved)."""
-        if self._job is not None:
+        if self._job is not None or not store_writable(self, self.app.project):
             return
         english = form.english()
         if not save_first and english != form.saved_english():

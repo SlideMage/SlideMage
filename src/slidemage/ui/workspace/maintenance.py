@@ -30,7 +30,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from ... import app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
+from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
 from ... import citation_sources, citations, diagnostics, slide_snapshot, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
@@ -266,6 +266,9 @@ def apply_bundled_parts(window, parts: list) -> None:
             backup = bundled_copies.apply_update(window.project, part, version_mod.VERSION_NUMBER)
         except OSError as exc:
             QMessageBox.critical(window, "Update failed", f"{part.label}: {exc}")
+            continue
+        except alt_images.NewerStoreError as exc:
+            QMessageBox.warning(window, "Update not applied", f"{part.label}: {exc}")
             continue
         for line in bundled_copies.summary_lines(part):
             window.log(f"Updated -- {line}")

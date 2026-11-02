@@ -40,7 +40,7 @@ from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption
 from .image_dialogs import ReplaceImageSheet
-from .image_form import ImageForm, review_refused
+from .image_form import ImageForm, review_refused, store_writable
 from .image_jobs import Job, JobCard
 from .image_nav import SlideNav
 from .image_results import BatchResultView
@@ -220,11 +220,15 @@ class ImagesPage(ImageRunsMixin, Surface):
     def reload(self, preserve: Optional[Path] = None) -> None:
         """Scan the slides again (pending edits are saved as a draft first)."""
         self.flush()
-        report = alt_images.sync_store(self.app.project)
-        if report.added:
-            self.app.log(f"alt-text store: added {len(report.added)} new image row(s).")
-        if report.new_uses:
-            self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
+        try:
+            report = alt_images.sync_store(self.app.project)
+        except alt_images.NewerStoreError as exc:   # still shown: reading the store is allowed
+            QMessageBox.warning(self, "Image descriptions", str(exc))
+        else:
+            if report.added:
+                self.app.log(f"alt-text store: added {len(report.added)} new image row(s).")
+            if report.new_uses:
+                self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
         self._entries = alt_images.load_store(self.app.project)
         self._views = image_review.scan_views(self.app.project, self._entries)
         self._populate(preserve or self._current_path())
@@ -375,7 +379,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         """Store the forms of the slide on show; "reviewed" is refused while an informative image has no
         long description. Returns whether it was saved."""
         view = self._current
-        if view is None:
+        if view is None or not store_writable(self, self.app.project):
             return False
         if reviewed and review_refused(self, [(form.reference, form.role, form.values()["long"])
                                               for form in self._forms]):
@@ -427,6 +431,9 @@ class ImagesPage(ImageRunsMixin, Surface):
                                 + warning) != QMessageBox.StandardButton.Yes:
             return
 
+        if not store_writable(self, self.app.project):
+            return
+
         def mutate(store: dict[str, alt_images.ImageEntry]) -> bool:
             changed = False
             for reference in clearable:
@@ -447,7 +454,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         slides using the image) at it. The old file stays; so does its description unless nothing uses
         the image any more and the user agrees to delete it."""
         view = self._current
-        if view is None or view.row.slide_id != form.slide_id:
+        if view is None or view.row.slide_id != form.slide_id or not store_writable(self, self.app.project):
             return
         others = sorted(slide_id for slide_id in form.entry.used_on if slide_id != form.slide_id)
         sheet = ReplaceImageSheet(self, self.app.project, form.reference, others)

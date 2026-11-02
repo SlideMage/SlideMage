@@ -31,6 +31,7 @@ add_deck_headers.py's own add-only caution.
 """
 from __future__ import annotations
 
+import contextlib
 import re
 from pathlib import Path
 from typing import Optional
@@ -323,7 +324,8 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
                 changed = True
         return changed
 
-    alt_images.update_store(ctx, _move_uses)
+    with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
+        alt_images.update_store(ctx, _move_uses)
 
     def _move_notes(notes) -> bool:
         if old_id in notes:
@@ -331,7 +333,8 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
             return True
         return False
 
-    alt_images.update_slide_notes(ctx, _move_notes)
+    with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
+        alt_images.update_slide_notes(ctx, _move_notes)
 
     if ctx.slide_previews_dir.is_dir():
         for src in ctx.slide_previews_dir.glob(f"{old_id}-*.png"):
@@ -450,7 +453,8 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
                 changed = True
         return changed
 
-    alt_images.update_store(ctx, _drop_uses)
+    with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
+        alt_images.update_store(ctx, _drop_uses)
 
     def _drop_notes(notes) -> bool:
         if bare_id in notes:
@@ -458,7 +462,8 @@ def delete_slide_id(ctx: ProjectContext, id_slug: str, remove_deck_references: b
             return True
         return False
 
-    alt_images.update_slide_notes(ctx, _drop_notes)
+    with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
+        alt_images.update_slide_notes(ctx, _drop_notes)
 
     deck_headers.regenerate_headers(ctx)
     regenerate_translation_links(ctx)

@@ -40,6 +40,16 @@ SOURCE_HELP = ("Feeds the automatic \"Image source(s):\" footnote. For an AI-gen
                "ordinary credit (e.g. Own illustration.).")
 
 
+def store_writable(parent, ctx) -> bool:
+    """False, with the reason shown, when a newer SlideMage wrote the image store and this one must not change it."""
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:
+        QMessageBox.warning(parent, "Image descriptions", str(exc))
+        return False
+    return True
+
+
 def review_refused(parent, images: list[tuple[str, str, str]]) -> bool:
     """Warn and return True when an image of `images` ((reference, role, long description) as typed) is
     informative without a long description: it cannot be marked reviewed. Shared by the Images page and
@@ -294,6 +304,8 @@ class ImageForm(Surface):
                               (self.baseline["source"], self.baseline["source_de"]))
 
     def _mark_source_reviewed(self) -> None:
+        if not store_writable(self, self.app.project):
+            return
         entry = alt_images.mark_source_reviewed(self.app.project, self.reference)
         if entry is not None:
             self.refresh_entry(entry)
@@ -369,7 +381,7 @@ class ImageForm(Surface):
 
     def _set_default(self) -> None:
         text = self.fields["takeaway"].toPlainText().strip()
-        if not text:        # would clear the default of every slide that follows it
+        if not text or not store_writable(self, self.app.project):   # empty would clear the default of every slide that follows it
             return
         entry = alt_images.set_takeaway_default(self.app.project, self.reference, self.slide_id, text)
         if entry is None:
