@@ -9,7 +9,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
-from ... import slide_import
+from ... import languages, slide_import
 from ...deck_scan import Deck, scan_decks
 from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption
 
@@ -50,7 +50,8 @@ class ImportPresentationSheet(ModalSheet):
         index = self.deck_combo.findText(current.name) if current is not None else -1
         self.deck_combo.setCurrentIndex(max(index, 0))
         layout.addWidget(Field("Add to deck", self.deck_combo))
-        self.language = SegmentedControl([("EN", "EN"), ("DE", "DE")], current="EN")
+        codes = languages.project_languages(self.app.project).codes
+        self.language = SegmentedControl([(code, code) for code in codes], current=codes[0])
         layout.addWidget(Field("Language of the slides", self.language))
         self.add_tab("", body)
         self.add_button("Cancel", role="reject")
@@ -74,7 +75,8 @@ class ImportPresentationSheet(ModalSheet):
         source = Path(self.file_edit.text())
         previous_text = deck.text
         try:
-            summary = slide_import.import_presentation(self.app.project, source, deck, self.language.current() or "EN", log=self.app.log)
+            summary = slide_import.import_presentation(self.app.project, source, deck, self.language.current() or languages.project_languages(self.app.project).codes[0],
+                                                   log=self.app.log)
         except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
             QMessageBox.critical(self, "Import failed", f"Could not import {source.name}:\n\n{exc}")
             return

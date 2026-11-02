@@ -29,7 +29,7 @@ Conventions of all calls:
   proofread_selection_request, note_request, summarise_request, fix_request, readable_request, answer_note,
   repair_request and check build requests and validate answers. SlideContext, DraftResult, TranslationResult, build_prompt, draft_from_fields,
   effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash, PromptConfig and get_effective_prompt provide
-  image drafting and translation data and prompts. de_address and glossary read translation style.
+  image drafting and translation data and prompts. address, de_address and glossary read translation style.
   IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED describe image rules and Claude Code's allowed tools.
   Outcome is the neutral task result. CancelToken supports process-aware cancellation for ai_tools. These names
   load their implementation on first access; importing plugin_api itself uses only the standard library.
@@ -68,7 +68,7 @@ if TYPE_CHECKING:       # for type checkers only: at run time these load on firs
     )
     from .alt_images import ImageEntry, en_text_hash  # noqa: F401
     from .translation_prompts import PromptConfig, get_effective_prompt  # noqa: F401
-    from .ai.translation_style import de_address, glossary  # noqa: F401
+    from .ai.translation_style import address, de_address, glossary  # noqa: F401
     from .ai.image_instructions import IMAGE_DESCRIPTION_RULES  # noqa: F401
     from .ai.tools import CLAUDE_CODE_PRE_APPROVED  # noqa: F401
     from .compiler import CancelToken  # noqa: F401
@@ -719,11 +719,12 @@ class Host(Protocol):
         ...
 
     def insert_slides(
-        self, deck: Deck, position: InsertPosition, slides: list[tuple[str, str]], language: Literal["de", "en"],
+        self, deck: Deck, position: InsertPosition, slides: list[tuple[str, str]], language: str,
     ) -> list[Path]:
         """Create one new slide per (id_suffix, frame) (frame is the slide's LaTeX body; SlideMage adds its file
-        header and version), named <new id>-<DE|EN>-<id_suffix>, and add their calls to the deck at position as one
-        edit, in order. Returns the new slide files. All or nothing: on any failure the new files are removed and
+        header and version), named <new id>-<LANG>-<id_suffix> with `language` (a code of project_languages(), such
+        as "en" or "fr") in capitals, and add their calls to the deck at position as one edit, in order. A language
+        the project does not have raises ValueError. Returns the new slide files. All or nothing: on any failure the new files are removed and
         the deck is untouched (the deck is replaced atomically, and checked against deck.text at that moment).
         Raises StaleFileError if the deck changed, EditRefusedError while the Deck settings sheet of the deck has
         unsaved changes, OSError if a file cannot be written.
@@ -738,8 +739,14 @@ class Host(Protocol):
         in SlideMage's deck history. change must be pure: no I/O."""
         ...
 
-    def deck_language(self, deck: Deck) -> Literal["de", "en"]:
-        """The language a compile of the deck uses. Reads deck.text only."""
+    def deck_language(self, deck: Deck) -> str:
+        """The language a compile of the deck uses: a lowercase code such as "en", "de" or "fr" (any language of
+        the project, or the deck's own should it be another). Reads deck.text only."""
+        ...
+
+    def project_languages(self) -> list[str]:
+        """The project's languages as lowercase codes, the main language first (["en", "de"] for a project in
+        English and German). May be called any time, from a worker too."""
         ...
 
     def project_root(self) -> Path:
@@ -754,9 +761,9 @@ class Host(Protocol):
         only; may be called from a worker. An unknown view raises ValueError."""
         ...
 
-    def deck_slides(self, deck: Deck, view: str, language: Literal["de", "en"]) -> list[SlideRef]:
+    def deck_slides(self, deck: Deck, view: str, language: str) -> list[SlideRef]:
         """The deck's slides in the order SlideMage lists them for `view` ("instructor", "during-course" or
-        "after-course") read in `language`: one ref per slide call, hidden ones included (SlideRef.hidden), and a
+        "after-course") read in `language` (a code of project_languages()): one ref per slide call, hidden ones included (SlideRef.hidden), and a
         slide with a translation into `language` as that translation. A slide without one is the slide in its own
         language: compare SlideRef.language. Reads deck.text and the slide files as they are now and changes
         nothing; may be called from a worker. Slides in included fragments are not listed.
@@ -1146,7 +1153,7 @@ class AiChat(Protocol):
 # Lazy additions: Task, TRANSLATE, answer_note, repair_request, translate_request, check are the task
 # definition, prompts and validation; SlideContext, DraftResult, TranslationResult, build_prompt,
 # draft_from_fields, effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash and
-# get_effective_prompt define image drafting and translation. de_address and glossary read project translation
+# get_effective_prompt define image drafting and translation. address, de_address and glossary read project translation
 # style. IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED supply Claude launch instructions. CancelToken
 # is the process-aware cancellation token accepted by ai_tools. Outcome is the task runner result.
 # Re-exported from SlideMage's modules, which are not standard library, so they load on first use: importing this
@@ -1182,6 +1189,7 @@ _LAZY = {
     "en_text_hash": "slidemage.alt_images",
     "PromptConfig": "slidemage.translation_prompts",
     "get_effective_prompt": "slidemage.translation_prompts",
+    "address": "slidemage.ai.translation_style",
     "de_address": "slidemage.ai.translation_style",
     "glossary": "slidemage.ai.translation_style",
     "IMAGE_DESCRIPTION_RULES": "slidemage.ai.image_instructions",

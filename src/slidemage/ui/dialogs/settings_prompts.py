@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QPlainTextEdit, QSpinBox, QStackedWidget
 
-from ... import alt_draft, draft_prompts, slide_language
+from ... import alt_draft, draft_prompts, languages
 from ... import translation_prompts as tp
 from ..kit.widgets import Button, Field, Page, SegmentedControl, caption, columns, row, set_property
 
@@ -23,7 +23,8 @@ IMAGE_NOTE = (
 TRANSLATION_NOTE = (
     "Used for the Images page's \"Translate\" and \"Translate all\" and for translating a slide. The "
     "prompt and the blank lines after it are sent as one message, followed by the text to translate. A "
-    "model with an override of its own for the language pair uses that; any other uses the default.")
+    "model with an override of its own for the language pair uses that; any other uses the default, "
+    "where {source} and {target} stand for the names of the two languages.")
 DEFAULT_CHOICE, NEW_CHOICE = "default", "new"
 
 
@@ -84,6 +85,14 @@ class PromptPage(Page):
         return True
 
 
+def language_pairs(ctx) -> list[tuple[str, str, bool]]:
+    """Every ordered pair (from, to) of the project's languages (lower case codes), and whether some model
+    has a prompt of its own for it."""
+    own = {(source, target) for _model, source, target, _config in tp.list_configs(ctx)}
+    codes = languages.project_languages(ctx).lower
+    return [(source, target, (source, target) in own) for source in codes for target in codes if source != target]
+
+
 class TranslationPage(Page):
     """The default translation prompt and the overrides for one (model, from, to) -- one form, for
     whichever the chooser names. A new override names its model and languages; an existing one is
@@ -96,15 +105,17 @@ class TranslationPage(Page):
         self.chooser = QComboBox()
         self._choices: list = []            # what each chooser entry stands for
         self.body.addWidget(Field("Prompt for", self.chooser))
+        self.pairs = caption("")
+        self.body.addWidget(self.pairs)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.model_combo.setMinimumContentsLength(16)
         self.source_combo, self.target_combo = QComboBox(), QComboBox()
-        languages = tuple(lang.lower() for lang in slide_language.TRANSLATION_LANGUAGES)
-        for combo, codes in ((self.source_combo, languages), (self.target_combo, languages[::-1])):
+        codes = languages.project_languages(app.project).lower
+        for combo, order in ((self.source_combo, codes), (self.target_combo, codes[1:] + codes[:1])):
             combo.setEditable(True)
-            combo.addItems(codes)
+            combo.addItems(order)
             combo.setMinimumWidth(80)       # an editable combo sizes itself to its two letters otherwise
         self.keys = columns(Field("Model", self.model_combo), Field("From", self.source_combo),
                         Field("To", self.target_combo))
@@ -150,6 +161,10 @@ class TranslationPage(Page):
         self.chooser.addItem("New override…")
         self._choices.append(NEW_CHOICE)
         self.chooser.blockSignals(False)
+        pairs = language_pairs(self.app.project)
+        self.pairs.setText("Language pairs of this project: " + "; ".join(
+            f"{source} → {target}" + (" (own prompt)" if own else "") for source, target, own in pairs)
+            if pairs else "The project has one language, so there is nothing to translate.")
         self.chooser.setCurrentIndex(self._choices.index(select) if select in self._choices else 0)
         self._on_choice(self.chooser.currentIndex())
 
@@ -164,10 +179,11 @@ class TranslationPage(Page):
 
     def _on_choice(self, index: int) -> None:
         choice = self._choices[index]
+        first = ("", self.source_combo.itemText(0), self.target_combo.itemText(0))      # the first pair
         if choice == DEFAULT_CHOICE:
-            config, key = tp.effective_default_prompt(self.app.project), ("", "en", "de")
+            config, key = tp.effective_default_prompt(self.app.project), first
         elif choice == NEW_CHOICE:
-            config, key = tp.PromptConfig(prompt=""), ("", "en", "de")
+            config, key = tp.PromptConfig(prompt=""), first
         else:
             config, key = tp.get_prompt(self.app.project, *choice) or tp.PromptConfig(prompt=""), choice
         for edit, value in zip((self.model_combo, self.source_combo, self.target_combo), key):

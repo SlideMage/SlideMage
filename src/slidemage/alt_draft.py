@@ -25,13 +25,14 @@ resolution.
 """
 from __future__ import annotations
 
+import dataclasses
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
-from . import alt_blocks, alt_images, draft_prompts, media_render, tikz_render, translation_prompts
+from . import alt_blocks, alt_images, draft_prompts, languages, media_render, tikz_render, translation_prompts
 from .batch_result import CANCELLED, DONE, FAILED, KEPT, ItemOutcome
 from .ai.providers import ChatProvider, ProviderError, parse_json_object
 from .project import ProjectContext
@@ -298,7 +299,7 @@ def build_context(ctx: ProjectContext, slide_path: Path, reference: str) -> Slid
     source_text = slide_path.read_text(encoding="utf-8")
     stripped = COMMENT_RE.sub("", source_text)
 
-    slide_id, title = alt_blocks.slide_title(source_text, slide_path)
+    slide_id, title = alt_blocks.slide_title(source_text, slide_path, languages.project_languages(ctx).codes)
 
     body, sources = alt_blocks.extract_macro_calls(stripped, "source")
     body, _notes = alt_blocks.extract_macro_calls(body, "note")  # discarded, see docstring
@@ -634,9 +635,14 @@ def _english(entry: "alt_images.ImageEntry") -> tuple[str, str, str]:
     return entry.short, entry.long, entry.takeaway_default
 
 
+def _translated(entry: "alt_images.ImageEntry", language: str = "de") -> tuple[str, str, str]:
+    """The text in `language` a translation replaces: what `baseline` of apply_one_translation is compared with."""
+    text = entry.texts.get(language) or alt_images.ImageText()
+    return text.short, text.long, text.takeaway_default
+
+
 def _german(entry: "alt_images.ImageEntry") -> tuple[str, str, str]:
-    """The German text a translation replaces: what `baseline` of apply_one_translation is compared with."""
-    return entry.short_de, entry.long_de, entry.takeaway_default_de
+    return _translated(entry, "de")
 
 
 def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_label: str, hint: str | None = None,
@@ -790,6 +796,12 @@ def run_batch(
     """
     summary = BatchSummary()
     started = time.monotonic()
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:     # nothing could be written
+        summary.errors.append(str(exc))
+        summary.stopped_early = True
+        return summary
     stored = alt_images.load_store(ctx)
 
     for index, job in enumerate(queue, start=1):
@@ -899,6 +911,9 @@ DEFAULT_TRANSLATION_MODEL = "sun_leaf/HY-MT:7b"
 
 @dataclass
 class TranslationResult:
+    """A translation of an image's English text into `language` (German unless the backend was asked for
+    another); the `_de` names are the translated fields', whatever the language."""
+
     short_de: str = ""
     long_de: str = ""
     takeaway_de: str = ""
@@ -914,6 +929,7 @@ class TranslationResult:
     # TranslationResult built directly (TranslationResult(error=...) on a
     # request exception, never actually translated from anything).
     source_hash: str = ""
+    language: str = "de"
 
     @property
     def ok(self) -> bool:
@@ -1020,26 +1036,35 @@ class ModelTranslationBackend:
             short_de=short_de, long_de=long_de, takeaway_de=takeaway_de,
             model=self.label, elapsed_s=elapsed,
             error="; ".join(errors) if errors else None,
-            source_hash=source_hash,
+            source_hash=source_hash, language=self.target_lang,
         )
+
+
+def for_language(backend: TranslationBackend, language: str) -> TranslationBackend | None:
+    """`backend` translating into `language`: a copy with that target where it has one (target_lang), the
+    backend itself for German, else None (a route that translates into German only, such as a plugin's from
+    before languages other than German)."""
+    if hasattr(backend, "target_lang"):
+        return dataclasses.replace(backend, target_lang=language) if dataclasses.is_dataclass(backend) else backend
+    return backend if language == "de" else None
 
 
 def apply_one_translation(ctx: ProjectContext, image: str, result: TranslationResult, model_label: str,
                           baseline: tuple[str, str, str] | None = None) -> bool:
-    """Write one image's German translation into the shared store. True if
+    """Write one image's translation (into result.language) into the shared store. True if
     written. Mirrors apply_one_draft()'s update_store()-based atomicity,
     but refuses only when the *English* text has moved on since `result`
     was produced (translated_from_hash mismatch) rather than checking a
     reviewed flag -- there is no separate "German reviewed" gate to
     respect here, translation_state() derives staleness purely from the
-    hash. `baseline`, when given, is the German text (short, long, takeaway) the queue saw:
+    hash. `baseline`, when given, is the translated text (short, long, takeaway) the queue saw:
     a person who wrote something else meanwhile keeps their text and nothing is written."""
     if not result.ok:
         return False
 
     def mutate(entries: dict[str, "alt_images.ImageEntry"]) -> bool:
         entry = entries.get(image)
-        if entry is None or (baseline is not None and _german(entry) != baseline):
+        if entry is None or (baseline is not None and _translated(entry, result.language) != baseline):
             return False
         current_hash = alt_images.en_text_hash(entry)
         # The queue this came from was built against some earlier snapshot
@@ -1057,17 +1082,16 @@ def apply_one_translation(ctx: ProjectContext, image: str, result: TranslationRe
         # the English it claims to translate (2026-09-23 review finding).
         if result.source_hash and result.source_hash != current_hash:
             return False
-        entry.short_de = result.short_de
-        entry.long_de = result.long_de
-        entry.takeaway_default_de = result.takeaway_de
-        entry.translated_from_hash = current_hash
+        text = entry.text(result.language)
+        text.short, text.long, text.takeaway_default = result.short_de, result.long_de, result.takeaway_de
+        text.translated_from, text.from_hash = alt_images.DRAFT_LANGUAGE, current_hash
         return True
 
     return alt_images.update_store(ctx, mutate)
 
 
-def images_needing_translation(ctx: ProjectContext) -> list[str]:
-    """Every image reference (store key) whose German text is missing or
+def images_needing_translation(ctx: ProjectContext, language: str = "de") -> list[str]:
+    """Every image reference (store key) whose text in `language` is missing or
     stale relative to its current English text -- the translation
     counterpart to images_needing_drafts(). Derived fresh from the store
     every call, same resumable-with-no-persisted-state design.
@@ -1085,7 +1109,7 @@ def images_needing_translation(ctx: ProjectContext) -> list[str]:
     return [
         image for image, entry in sorted(entries.items())
         if (entry.short or entry.long)
-        and alt_images.translation_state(entry) != alt_images.STATE_REVIEWED
+        and alt_images.translation_state(entry, language) != alt_images.STATE_REVIEWED
     ]
 
 
@@ -1109,15 +1133,28 @@ def run_translation_batch(
     on_progress=None,
     on_item_done=None,
     should_stop=None,
+    language: str = "de",
 ) -> TranslationBatchSummary:
     """Translate every image in `queue`, writing each one as it completes
     -- same per-image-write, same should_stop cooperative-cancel shape as
     run_batch() above, for the same reason (a run over the whole store can
     take a while, and a stop/crash partway through should keep whatever
-    finished). The outcomes are run_batch()'s: German text a person wrote
+    finished). The outcomes are run_batch()'s: text in `language` a person wrote
     (or English they changed) since the run began is KEPT."""
     summary = TranslationBatchSummary()
     started = time.monotonic()
+    target = for_language(backend, language)
+    if target is None:
+        summary.errors.append(f"This route translates descriptions into German only, not into {language.upper()}.")
+        summary.stopped_early = True
+        return summary
+    backend = target
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:     # nothing could be written
+        summary.errors.append(str(exc))
+        summary.stopped_early = True
+        return summary
     entries = alt_images.load_store(ctx)
 
     for index, image in enumerate(queue, start=1):
@@ -1146,7 +1183,11 @@ def run_translation_batch(
             else:
                 summary.failed += 1
                 outcome = ItemOutcome(FAILED, result.error or "")
-        elif apply_one_translation(ctx, image, result, backend.label, baseline=_german(entry)):
+        elif result.language != language:
+            summary.failed += 1
+            summary.errors.append(f"{image}: translated into {result.language.upper()}, not {language.upper()}")
+            outcome = ItemOutcome(FAILED, summary.errors[-1])
+        elif apply_one_translation(ctx, image, result, backend.label, baseline=_translated(entry, language)):
             summary.written += 1
             outcome = ItemOutcome(DONE)
         else:
@@ -1159,3 +1200,36 @@ def run_translation_batch(
 
     summary.seconds = time.monotonic() - started
     return summary
+
+
+def translation_queues(ctx: ProjectContext, targets: list[str], only: list[str] | None = None) -> dict[str, list[str]]:
+    """{language: the images whose text in it is missing or stale} for each of `targets` that has any; with
+    `only`, just those images."""
+    queues = {language: [image for image in images_needing_translation(ctx, language) if only is None or image in only]
+              for language in targets}
+    return {language: queue for language, queue in queues.items() if queue}
+
+
+def run_translation_batches(ctx: ProjectContext, queues: dict[str, list[str]], backend: TranslationBackend, *,
+                            on_progress=None, on_item_done=None, should_stop=None) -> TranslationBatchSummary:
+    """run_translation_batch() for each language of `queues` ({language: images}) in turn, as one summary: an
+    image's outcome is its worst of the languages (a failure stays visible)."""
+    total = TranslationBatchSummary()
+    done, count = 0, sum(len(queue) for queue in queues.values())
+    rank = {FAILED: 0, CANCELLED: 1, KEPT: 2, DONE: 3}
+    for language, queue in queues.items():
+        progress = None if on_progress is None else (
+            lambda index, _n, image, before=done: on_progress(before + index, count, image))
+        summary = run_translation_batch(ctx, queue, backend, on_progress=progress, on_item_done=on_item_done,
+                                        should_stop=should_stop, language=language)
+        done += len(queue)
+        for name in ("attempted", "written", "skipped", "failed", "seconds"):
+            setattr(total, name, getattr(total, name) + getattr(summary, name))
+        total.errors += summary.errors
+        for image, outcome in summary.outcomes.items():
+            if image not in total.outcomes or rank.get(outcome.kind, 0) < rank.get(total.outcomes[image].kind, 0):
+                total.outcomes[image] = outcome
+        if summary.stopped_early:
+            total.stopped_early = True
+            break
+    return total

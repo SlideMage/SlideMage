@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from . import languages
 from .fileio import read_json, write_json
 from .project import ProjectContext
 
@@ -81,11 +82,11 @@ class PromptConfig:
 _FALLBACK_DEFAULT = PromptConfig(
     prompt=(
         "You translate short image descriptions from a university finance "
-        "course into German. Translate the following text faithfully into "
-        "German -- not a rewrite, not a summary. If it contains a Markdown "
+        "course. Translate the following text faithfully from {source} into "
+        "{target} -- not a rewrite, not a summary. If it contains a Markdown "
         "table, keep the table structure and numbers exactly as they are "
         "and translate only the surrounding prose and column headers. "
-        "Output only the German translation, nothing else."
+        "Output only the {target} translation, nothing else."
     ),
     blank_lines=1,
 )
@@ -189,8 +190,15 @@ def set_default_prompt(ctx: ProjectContext, config: PromptConfig) -> None:
 
 def effective_default_prompt(ctx: ProjectContext) -> PromptConfig:
     """The prompt used for a model/language pair with no entry of its own:
-    the user's default, else the hardcoded last-resort one."""
+    the user's default, else the hardcoded last-resort one. {source} and {target} in it stand for the
+    names of the pair's languages (get_effective_prompt() writes them in)."""
     return get_default_prompt(ctx) or _FALLBACK_DEFAULT
+
+
+def _named(config: PromptConfig, source_lang: str, target_lang: str) -> PromptConfig:
+    """`config` with {source} and {target} in its prompt replaced by the names of the languages."""
+    prompt = config.prompt.replace("{source}", languages.name(source_lang)).replace("{target}", languages.name(target_lang))
+    return PromptConfig(prompt, config.blank_lines)
 
 
 def get_effective_prompt(ctx: ProjectContext, model: str, source_lang: str, target_lang: str) -> PromptConfig:
@@ -199,4 +207,5 @@ def get_effective_prompt(ctx: ProjectContext, model: str, source_lang: str, targ
     else a hardcoded last-resort default for a fresh install that has
     never configured anything at all. Always returns something usable --
     unlike get_prompt(), never None."""
-    return get_prompt(ctx, model, source_lang, target_lang) or effective_default_prompt(ctx)
+    return get_prompt(ctx, model, source_lang, target_lang) or _named(
+        effective_default_prompt(ctx), source_lang, target_lang)

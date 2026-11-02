@@ -80,9 +80,9 @@ def test_the_context_of_a_long_slide_is_cut():
 
 
 def test_a_proofread_request_names_the_language_and_keeps_the_german_address():
-    de = ai_tasks.proofread_selection_request(LF, *SPAN, "DE", "du")
-    assert "German slide" in de and '"du"' in de and "<selection>\nFirst point\n</selection>" in de
-    assert '"S' not in ai_tasks.proofread_selection_request(LF, *SPAN, "EN")
+    de = ai_tasks.proofread_selection_request(LF, *SPAN, "DE", "informal")
+    assert "German slide" in de and "addressed informally" in de and "<selection>\nFirst point\n</selection>" in de
+    assert "addressed formally" in ai_tasks.proofread_selection_request(LF, *SPAN, "EN")
 
 
 # -- check: a rewrite replaces the range only -------------------------------------------------------------

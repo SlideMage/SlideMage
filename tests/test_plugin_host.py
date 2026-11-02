@@ -185,6 +185,21 @@ def test_deck_language(host, pctx):
     assert (host.deck_language(de), host.deck_language(en)) == ("de", "en")
 
 
+def test_a_french_deck_and_slides_in_a_project_with_french(host, pctx):
+    from slidemage import languages
+    assert host.project_languages() == ["en", "de"]
+    with pytest.raises(ValueError, match="one of en, de"):
+        host.insert_slides(snapshot(pctx), host.insert_positions(snapshot(pctx))[0], [("X", "c")], "fr")
+    languages.set_project_languages(pctx, "fr", ["en"])
+    assert host.project_languages() == ["fr", "en"]
+    french = deck_snapshot(deck_scan.read_deck(pctx.decks_dir / "test.tex"))
+    french.text = "\\decklanguage[fr]\n"
+    assert host.deck_language(french) == "fr"
+    made = host.insert_slides(snapshot(pctx), host.insert_positions(snapshot(pctx))[0], [("Bonjour", "c")], "fr")
+    assert made[0].name.endswith("-FR-Bonjour-current.tex")
+    assert host.deck_slides(snapshot(pctx), "instructor", "fr")
+
+
 def test_snapshot(pctx):
     d = snapshot(pctx)
     assert d.name == "test" and d.path == pctx.decks_dir / "test.tex" and d.text == DECK_TEXT

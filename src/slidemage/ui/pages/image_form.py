@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One image of the slide shown on the Images page: its picture and the fields that describe it.
 
-Everything about an image (role, short and long description, source, the German counterparts)
+Everything about an image (role, short and long description, source, and the same in each other language)
 lives once in media/alt-text.json (alt_images.py), shared by every slide that shows the image;
-only the takeaway can differ per slide. The form shows English or German at a time (the page's
-EN/DE switch); both sets of fields keep what was typed. What the form means for the store, which
+only the takeaway can differ per slide. The form has the English fields and those of one other language (its
+`second`, German unless the page's language switch shows another) and shows one of the two at a time; both sets
+of fields keep what was typed. What the form means for the store, which
 fields were changed and how a finished translation merges in, is image_review's (FormEdit,
 apply_translation); the form only holds the text, so a widget never decides what gets saved.
 """
@@ -16,7 +17,7 @@ from typing import Optional
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout
 
-from ... import alt_images, image_review
+from ... import alt_images, image_review, languages
 from ..ai_models import cloud_label
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Field, SegmentedControl, Surface, caption
@@ -38,6 +39,16 @@ DECORATIVE_NOTE = ("Decorative: no description needed. It is marked as a PDF art
 SOURCE_HELP = ("Feeds the automatic \"Image source(s):\" footnote. For an AI-generated image write: AI-generated -- "
                "<engine> <version>, prompt: ``<prompt exactly as entered>''. Any other image just gets its "
                "ordinary credit (e.g. Own illustration.).")
+
+
+def store_writable(parent, ctx) -> bool:
+    """False, with the reason shown, when a newer SlideMage wrote the image store and this one must not change it."""
+    try:
+        alt_images.check_writable(ctx)
+    except alt_images.NewerStoreError as exc:
+        QMessageBox.warning(parent, "Image descriptions", str(exc))
+        return False
+    return True
 
 
 def review_refused(parent, images: list[tuple[str, str, str]]) -> bool:
@@ -124,6 +135,19 @@ GERMAN = (
 )
 
 
+def translation_specs(language: str) -> tuple:
+    """The fields of the form's second language (the `_de` keys, whatever the language): GERMAN for German."""
+    if language == "de":
+        return GERMAN
+    name = languages.name(language)
+    return (
+        ("short_de", f"Short description ({name})", "", 64, "Not translated yet"),
+        ("long_de", f"Long description ({name})", "", 190, "Not translated yet"),
+        ("takeaway_de", f"Takeaway ({name})", "", 64, "Not translated yet"),
+        ("source_de", f"Source ({name}; leave blank to use the English source)", "", 48, ""),
+    )
+
+
 class ImageForm(Surface):
     edited = Signal()
     source_reviewed = Signal()               # the citation was marked reviewed (and stored)
@@ -131,15 +155,18 @@ class ImageForm(Surface):
     tune_clicked = Signal(object)
     translate_clicked = Signal(object, bool)  # this form, whether to save the slide first
 
-    def __init__(self, app, reference: str, entry: alt_images.ImageEntry, slide_id: str, slide_hash: str) -> None:
+    def __init__(self, app, reference: str, entry: alt_images.ImageEntry, slide_id: str, slide_hash: str,
+                 second: str = "de") -> None:
+        """`second` is the language of the form's second group of fields, besides English."""
         super().__init__()
         self.setObjectName(q.PANEL_ROW)   # a hairline under the form
         self.app = app
         self.reference, self.slide_id = reference, slide_id
         self.entry = entry
+        self.second = second
         # Values as the form was first shown. `entry` itself is refreshed by "Set as default", so it
         # cannot serve as the conflict baseline of the other fields at the next save.
-        self.baseline = image_review.form_baseline(entry, slide_id)
+        self.baseline = image_review.form_baseline(entry, slide_id, second)
         self.baseline_en_hash = alt_images.en_text_hash(entry)
         self.provenance: Optional[dict] = None   # of a translation applied to the form
         self.translating = False   # a translation of this form is under way
@@ -191,7 +218,7 @@ class ImageForm(Surface):
         layout.addWidget(self.decorative_note)
 
         english_group = self._group(layout, "en", ENGLISH)
-        self.german_group = self._group(layout, "de", GERMAN)
+        self.german_group = self._group(layout, second, translation_specs(second))
         english_group.layout().addWidget(caption(SOURCE_HELP))
         self.takeaway_state = caption("")
         self.default_button = Button("Set as default", "ghost", compact=True)
@@ -203,6 +230,8 @@ class ImageForm(Surface):
         self.fields["short"].textChanged.connect(self._english_edited)
         self.fields["long"].textChanged.connect(self._english_edited)
         self.fields["takeaway"].textChanged.connect(self._refresh_takeaway_state)
+        for key in ("short", "long", "takeaway"):
+            self.fields[key].textChanged.connect(self._refresh_translate_buttons)
         self.edited.connect(self._show_state)
         self.edited.connect(self._show_source_state)
         self._apply_role()
@@ -244,8 +273,9 @@ class ImageForm(Surface):
     def _build_translation_line(self) -> None:
         self.translation_state = caption("")
         self.translate_button = Button("Translate", "secondary", compact=True)
-        self.translate_button.setToolTip("Translate the English short, long and takeaway into German. It fills "
-                                         "the fields below; nothing is saved until you save.")
+        self._translate_tip = (f"Translate the English short, long and takeaway into {languages.name(self.second)}. "
+                               "It fills the fields below; nothing is saved until you save.")
+        self.translate_button.setToolTip(self._translate_tip)
         self.translate_button.clicked.connect(lambda: self.translate_clicked.emit(self, False))
         self.save_translate_button = Button("Save, then translate", "ghost", compact=True)
         self.save_translate_button.setToolTip("Save this slide's draft (every image on it), then translate this "
@@ -253,7 +283,7 @@ class ImageForm(Surface):
         self.save_translate_button.clicked.connect(lambda: self.translate_clicked.emit(self, True))
         self.german_group.layout().insertWidget(0, self._line(self.translation_state, self.translate_button,
                                                         self.save_translate_button))
-        self._show_translation_state(alt_images.translation_state(self.entry))
+        self._show_translation_state(alt_images.translation_state(self.entry, self.second))
         self.refresh_route()
 
     # -- what the form holds --------------------------------------------------------------------
@@ -279,7 +309,7 @@ class ImageForm(Surface):
 
     def form_edit(self) -> image_review.FormEdit:
         return image_review.FormEdit(self.reference, self.values(), self.baseline, self.baseline_en_hash,
-                                     self.provenance)
+                                     self.provenance, self.second)
 
     # -- showing --------------------------------------------------------------------------------
 
@@ -294,6 +324,8 @@ class ImageForm(Surface):
                               (self.baseline["source"], self.baseline["source_de"]))
 
     def _mark_source_reviewed(self) -> None:
+        if not store_writable(self, self.app.project):
+            return
         entry = alt_images.mark_source_reviewed(self.app.project, self.reference)
         if entry is not None:
             self.refresh_entry(entry)
@@ -305,7 +337,8 @@ class ImageForm(Surface):
             self.state_chip.set_text("Changed, unsaved")
             self.state_chip.set_tone("muted")
         else:
-            self.state_chip.set_text(STATE_TEXT[self._state])
+            self.state_chip.set_text(STATE_TEXT[self._state] if self._state != alt_images.STATE_NONE
+                                     else alt_images.state_label(self._state, [self.entry]))
             self.state_chip.set_tone(STATE_TONES[self._state])
 
     def set_availability(self, busy: bool, can_translate: bool) -> None:
@@ -323,7 +356,7 @@ class ImageForm(Surface):
         """Show what the store holds now (after a save, or when a worker wrote the image) and take
         it as the values the next save compares with."""
         self.entry = entry
-        self.baseline = image_review.form_baseline(entry, self.slide_id)
+        self.baseline = image_review.form_baseline(entry, self.slide_id, self.second)
         self.baseline_en_hash = alt_images.en_text_hash(entry)
         self.provenance = None
         for key, edit in self.fields.items():
@@ -332,7 +365,7 @@ class ImageForm(Surface):
                     edit.setPlainText(self.baseline[key])
         self.roles.set_current(entry.role)
         self._state = alt_images.slide_use_state(entry, self.slide_id, slide_hash)
-        self._show_translation_state(alt_images.translation_state(entry))
+        self._show_translation_state(alt_images.translation_state(entry, self.second))
         self._apply_role()
         self._show_state()
         self._show_source_state()
@@ -347,17 +380,30 @@ class ImageForm(Surface):
         for key, edit in self.fields.items():
             if key not in ("source", "source_de"):   # the source is attribution, whatever the role
                 edit.setEnabled(not decorative)
-        can_translate = not decorative and self.can_translate and not self.busy and not self.translating
-        self.translate_button.setEnabled(can_translate)
-        self.save_translate_button.setEnabled(can_translate)
+        self._refresh_translate_buttons()
         self.tune_button.setEnabled(not self.busy)
         self._refresh_takeaway_state()
 
+    def _refresh_translate_buttons(self) -> None:
+        """Translate needs English text (the fields as typed): an image described only in another language has
+        nothing to translate."""
+        english = any(self.english())
+        can_translate = (self.role != alt_images.ROLE_DECORATIVE and self.can_translate and not self.busy
+                         and not self.translating and english)
+        self.translate_button.setEnabled(can_translate)
+        self.save_translate_button.setEnabled(can_translate)
+        self.translate_button.setToolTip(self._translate_tip if english else "There is no English text to translate.")
+
     def _show_translation_state(self, state: str) -> None:
-        self.translation_state.setText("German: " + TRANSLATION_TEXT[state])
+        name = languages.name(self.second)
+        own = self.entry.texts.get(self.second)
+        if state != alt_images.STATE_STALE and own is not None and not own.translated_from and (own.short or own.long):
+            self.translation_state.setText(f"{name}: written in {name}, not translated from English")
+            return
+        self.translation_state.setText(f"{name}: " + TRANSLATION_TEXT[state])
 
     def _english_edited(self) -> None:
-        """The German no longer matches the short and long text typed (until a translation of it comes
+        """The translation no longer matches the short and long text typed (until a translation of it comes
         in): the two fields that, with the takeaway default, alt_images.en_text_hash() covers."""
         self._show_translation_state(alt_images.STATE_STALE)
 
@@ -369,7 +415,7 @@ class ImageForm(Surface):
 
     def _set_default(self) -> None:
         text = self.fields["takeaway"].toPlainText().strip()
-        if not text:        # would clear the default of every slide that follows it
+        if not text or not store_writable(self, self.app.project):   # empty would clear the default of every slide that follows it
             return
         entry = alt_images.set_takeaway_default(self.app.project, self.reference, self.slide_id, text)
         if entry is None:
@@ -403,7 +449,7 @@ class ImageForm(Surface):
         self.save_translate_button.setText(cloud_label(project, "Save, then translate"))
 
     def end_translation(self, result) -> None:
-        """Put a finished translation (alt_draft.TranslationResult) into the German fields."""
+        """Put a finished translation (alt_draft.TranslationResult) into the fields of the second language."""
         asked_fields, asked_english = self._asked or ({}, self.english())
         self._asked, self.translating = None, False
         self.refresh_route()

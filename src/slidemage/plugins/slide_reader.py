@@ -7,14 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import (
-    alt_blocks, alt_images, compiler, deck_editor, deck_outline, deck_scan, plugin_api, slide_language,
+    alt_blocks, alt_images, compiler, deck_editor, deck_outline, deck_scan, languages, plugin_api, slide_language,
     slide_versioning,
 )
 from ..fileio import read_text_exact
 from ..project import ProjectContext
-
-LANGUAGES = ("de", "en")
-
 
 def core_deck(deck: plugin_api.Deck) -> deck_scan.Deck:
     """The deck as SlideMage's readers want it, parsed from the snapshot's text."""
@@ -35,14 +32,15 @@ def output_folder(ctx: ProjectContext, deck: plugin_api.Deck, view: str) -> Path
 
 def deck_slides(ctx: ProjectContext, deck: plugin_api.Deck, view: str, language: str) -> list[plugin_api.SlideRef]:
     check_view(view)
-    if language not in LANGUAGES:
-        raise ValueError(f"unknown language {language!r}: one of {', '.join(LANGUAGES)}")
+    codes = languages.project_languages(ctx).codes
+    if language.upper() not in codes:
+        raise ValueError(f"unknown language {language!r}: one of {', '.join(code.lower() for code in codes)}")
     source = core_deck(deck)
     refs = []
     for slot in deck_outline.resolve_slots(ctx, source, view, language.upper()):
         call = slot.slot.call
         path = ctx.slides_dir / call.source_filename
-        own = slide_language.own_language(call.id_slug)
+        own = slide_language.own_language(call.id_slug, codes)
         version = call.version
         if version is None:
             try:
@@ -50,7 +48,7 @@ def deck_slides(ctx: ProjectContext, deck: plugin_api.Deck, view: str, language:
             except OSError:
                 parsed = None
             version = slide_versioning.format_hyphen(parsed) if parsed is not None else None
-        title = deck_outline.slide_file_title(path, call.id_slug)
+        title = deck_outline.slide_file_title(ctx, path, call.id_slug)
         chapter = slot.slot.original.chapter
         refs.append(plugin_api.SlideRef(
             id=call.id,
@@ -81,8 +79,8 @@ def slide_source(ctx: ProjectContext, ref: plugin_api.SlideRef) -> plugin_api.Sl
     path = check_slide_path(ctx, ref)
     text = read_text_exact(path)
     entries = alt_images.load_store(ctx)
-    language = ref.language_read or ref.language or slide_language.own_language(path.name)
-    german = language.lower() == "de" if language else False
+    language = ref.language_read or ref.language or slide_language.own_language(path.name, languages.project_languages(ctx).codes)
+    language = (language or alt_images.DRAFT_LANGUAGE).lower()
     media: list[Path] = []
     descriptions: dict[str, plugin_api.MediaDescription] = {}
     for reference in alt_blocks.referenced_images(text):
@@ -92,7 +90,7 @@ def slide_source(ctx: ProjectContext, ref: plugin_api.SlideRef) -> plugin_api.Sl
         entry = alt_images.lookup(entries, reference)
         if entry is not None and entry.image not in descriptions:
             slide_id = slide_language.bare_id(path.name)
-            short, long, takeaway = ((entry.short_de, entry.long_de, entry.takeaway_for_de(slide_id)) if german
-                                     else (entry.short, entry.long, entry.takeaway_for(slide_id)))
+            described = entry.texts.get(language) or alt_images.ImageText()      # the slide's language's own
+            short, long, takeaway = described.short, described.long, entry.takeaway_in(slide_id, language)
             descriptions[entry.image] = plugin_api.MediaDescription(entry.image, entry.is_decorative, short, long, takeaway)
     return plugin_api.SlideSource(text, tuple(media), tuple(descriptions.values()))

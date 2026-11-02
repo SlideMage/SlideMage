@@ -23,6 +23,7 @@ slide (SlideMage_base.tex). Used by the Source view's "Insert QR" dialog
 """
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -493,7 +494,8 @@ def _record(ctx: ProjectContext, image: str, spec: QRSpec, caption_mode: str, ca
         entry = entries.setdefault(image, alt_images.ImageEntry(image=image))
         entry.role, entry.short, entry.status = alt_images.ROLE_INFORMATIVE, alt_text(spec), alt_images.STATUS_REVIEWED
         return True
-    alt_images.update_store(ctx, describe)
+    with contextlib.suppress(alt_images.NewerStoreError):   # the code still works without its description
+        alt_images.update_store(ctx, describe)
 
 
 @dataclass

@@ -47,6 +47,80 @@ precedence = "override"
 SPDX-FileCopyrightText = ["2023-2026 Romain Noël <romainoel@free.fr>", "2026 Stefan Palan, Jürgen Fleiß"]
 SPDX-License-Identifier = "LPPL-1.3c"
 
+# The hyphenation patterns (v0.13.37): hyph-utf8's files, each under one of its own licences
+# (tools/fetch_hyphenation_patterns.py); every file's copyright and original notice is in NOTICES.txt.
+[[annotations]]
+path = ["latex/hyphenation/hyph-de-1996.*.txt", "latex/hyphenation/hyph-fr.*.txt", "latex/hyphenation/hyph-es.*.txt",
+        "latex/hyphenation/hyph-nl.*.txt", "latex/hyphenation/hyph-lt.*.txt", "latex/hyphenation/hyph-da.*.txt",
+        "latex/hyphenation/hyph-el-monoton.*.txt", "latex/hyphenation/hyph-it.*.txt",
+        "latex/hyphenation/hyph-sl.*.txt", "latex/hyphenation/hyph-uk.*.txt", "latex/hyphenation/hyph-pl.*.txt",
+        "latex/hyphenation/hyph-ga.*.txt", "latex/hyphenation/hyph-hi.*.txt", "latex/hyphenation/hyph-et.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-ca.*.txt", "latex/hyphenation/hyph-hr.*.txt", "latex/hyphenation/hyph-sh-cyrl.*.txt",
+        "latex/hyphenation/hyph-tr.*.txt", "latex/hyphenation/hyph-ru.*.txt", "latex/hyphenation/hyph-sv.*.txt",
+        "latex/hyphenation/hyph-is.*.txt", "latex/hyphenation/hyph-th.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LPPL-1.3c+"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-cs.*.txt", "latex/hyphenation/hyph-sk.*.txt", "latex/hyphenation/hyph-lv.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-id.*.txt", "latex/hyphenation/hyph-hu.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-pt.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-gl.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "Unlicense"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-bg.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-bg"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-eu.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-eu"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-fi.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-fi"
+
+[[annotations]]
+path = ["latex/hyphenation/hyph-nb.*.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors, see latex/hyphenation/NOTICES.txt"
+SPDX-License-Identifier = "LicenseRef-hyph-nb"
+
+[[annotations]]
+path = ["latex/hyphenation/NOTICES.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "The hyph-utf8 authors"
+SPDX-License-Identifier = "MIT AND LPPL-1.3c+ AND GPL-2.0-or-later AND GPL-2.0-only AND BSD-3-Clause AND Unlicense AND LicenseRef-hyph-bg AND LicenseRef-hyph-eu AND LicenseRef-hyph-fi AND LicenseRef-hyph-nb"
+
 # Documentation and the example project.
 [[annotations]]
 path = ["README.md", "docs/**", "example/**"]

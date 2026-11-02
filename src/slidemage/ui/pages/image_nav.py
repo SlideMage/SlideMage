@@ -62,6 +62,7 @@ class SlideNav(Card):
         self._restore: Optional[image_review.SlideView] = None
         self.shown: list[image_review.SlideView] = []
         self._counts: list[int] = [0] * len(image_review.FILTERS)
+        self.languages: tuple[str, ...] = ("de",)     # where Missing a translation looks (the page sets them)
         self.setFixedWidth(340)
         layout = self.layout()
         layout.setSpacing(10)
@@ -122,8 +123,8 @@ class SlideNav(Card):
                  preserve=None, row: int = 0) -> Optional[image_review.SlideView]:
         """List the slides of the filter; the one at path `preserve` is current, else the one now at
         `row` (the nearest). Returns it without announcing it."""
-        self.shown = image_review.visible_views(views, entries, self.filter_index, order=order)
-        self._counts = image_review.filter_counts(views, entries)
+        self.shown = image_review.visible_views(views, entries, self.filter_index, order=order, languages=self.languages)
+        self._counts = image_review.filter_counts(views, entries, self.languages)
         self._show_filter()
         self.summary.setText(image_review.summary_text(views))
         self._names.setStringList(sorted(view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX) for view in views))
@@ -140,13 +141,13 @@ class SlideNav(Card):
 
     def lists(self, view: Optional[image_review.SlideView], views, entries, order) -> bool:
         """Whether the filter now chosen lists `view`."""
-        return view is not None and view in image_review.visible_views(views, entries, self.filter_index, order=order)
+        return view is not None and view in image_review.visible_views(views, entries, self.filter_index, order=order, languages=self.languages)
 
     def refresh_items(self, views: list[image_review.SlideView], entries) -> None:
         """New states for the rows; the list is not filtered again, so that no row vanishes under the cursor."""
         for index, view in enumerate(self.shown):
             self._item(view, self.slide_list.item(index))
-        self._counts = image_review.filter_counts(views, entries)
+        self._counts = image_review.filter_counts(views, entries, self.languages)
         self.summary.setText(image_review.summary_text(views))
         self._show_filter()
 

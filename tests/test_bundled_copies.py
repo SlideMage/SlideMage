@@ -170,7 +170,7 @@ def test_manual_offered_to_a_project_without_it(tmp_path, bundle, monkeypatch):
     ids = (root / "slide_ids.csv").read_text().split()
     assert ids == ['"id"', '"abc"', '"1aa"', '"1bb"']
     store = json.loads((root / "media" / "alt-text.json").read_text(encoding="utf-8"))
-    assert store["images"]["media/shot.png"]["short"] == "shot v1"
+    assert store["images"]["media/shot.png"]["text"]["en"]["short"] == "shot v1"
 
 
 def test_image_descriptions_follow_unless_reviewed(tmp_path, bundle):

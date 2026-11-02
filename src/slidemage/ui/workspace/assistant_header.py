@@ -281,7 +281,7 @@ class AssistantHeader(Surface):
         text = path.name
         if path.parent == self.state.project.slides_dir and slide_language.is_current_file(path):
             id_slug = path.name.removesuffix(slide_language.CURRENT_SUFFIX)
-            title = deck_outline.slide_file_title(path, id_slug)
+            title = deck_outline.slide_file_title(self.state.project, path, id_slug)
             text = f"{slide_language.bare_id(id_slug)} · {title}" if title else slide_language.bare_id(id_slug)
         return text + (" · not saved" if centre.is_blocked(path) else "")
 

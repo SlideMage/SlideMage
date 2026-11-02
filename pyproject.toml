@@ -46,6 +46,7 @@ include = ["src/slidemage", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["infer_languages: the test sees what a project without a languages key infers, not English + German"]
 
 [tool.ruff]
 target-version = "py311"

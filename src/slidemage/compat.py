@@ -354,7 +354,17 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "take the default; then set the space you want under the subtitle's last line."),
     detect=_detect_titleframe_bottom_pad,
 ), compat_hooks.CHANGE, compat_bibliography.CHANGE_SHORTEN,
-   compat_project_macros.CHANGE, compat_citation_format.CHANGE]
+   compat_project_macros.CHANGE, compat_citation_format.CHANGE, Change(
+    id="image-descriptions-per-language",
+    since="v0.13.30",
+    severity=LAYOUT,
+    title="Image descriptions are saved per language",
+    description=(
+        "media/alt-text.json keeps each image's descriptions per language (format version 3). SlideMage converts "
+        "it the first time it opens the project and keeps the old file as media/alt-text.v2.json. An older "
+        "SlideMage shows no descriptions in the new file and cannot change them."),
+    fix="Nothing to change in the project. Update SlideMage on every computer before opening the project there.",
+)]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).

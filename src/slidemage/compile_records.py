@@ -48,10 +48,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import languages
 from .fileio import write_json
 from .processes import command_output
 from .project import ProjectContext
-from .slide_language import TRANSLATION_LANGUAGES
 
 RECORD_FORMAT = 1
 RECORDS_DIRNAME = "compile-records"
@@ -260,9 +260,9 @@ def write_record(
             from . import deck_groups, deck_language, deck_scan
             deck = next((d for d in deck_scan.scan_dir(deck_path.parent, False, deck_groups.load(ctx)) if d.path == deck_path), None)
             if deck is not None:
-                # Include dependencies in either language: the wrapper can inline
+                # Include dependencies in every language: the wrapper can inline
                 # a shared slide list instead of having TeX open its original file.
-                for language in TRANSLATION_LANGUAGES:
+                for language in languages.project_languages(ctx).codes:
                     _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
                     inline_inputs.extend(inputs)
         for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:

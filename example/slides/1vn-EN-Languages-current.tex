@@ -6,13 +6,13 @@
 \setSlideVersion{1-1-1+}
 \begin{standardframe}{Languages}
 	\small
-	A slide is written in one language, its file name says which: \SMCode{EN}, \SMCode{DE}, or \SMCode{mult} for a slide that holds more than one. A translation is a slide of its own, with its own ID, linked to the original, so an English and a German deck can share their layout but not their text. Each deck has one language.
+	A project has a main language and others (\emph{Settings} $\rightarrow$ \emph{Project}). A slide is in one of them, its file name says which: \SMCode{EN}, \SMCode{DE}, \SMCode{FR}, \ldots, or \SMCode{mult} for several. A translation is a slide of its own that names its original; together they take one place in a deck. Each deck has one language.
 	\par\medskip
 	\shrinklists{1}
 	\begin{itemize}
-		\item \SMCmd{decklanguage}\SMCode{[en]} or \SMCode{[de]} in the deck also sets the language of its transcript and of the course tables of the CampusOnline plugin; the footer shows each slide's language after its version (\SMCode{v1.2.0EN})
-		\item To translate: \emph{+ Slide} $\rightarrow$ \emph{Translate}, or \emph{Translate slide\ldots} in a row's right-click menu, in another language, machine-translated by a model if a plugin supplies one
-		\item A slide with little text holds both languages: \SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}} gives \emph{\multilingualtext{Hello}{Hallo}} in this deck. For more languages: \SMCmd{multilingualtext}\SMCode{*\{EN=\{Hello\}, FR=\{Bonjour\}, \ldots\}}, here \emph{\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}}
-		\item The \emph{Language} panel renames a slide's files and updates every deck; Housekeeping $\rightarrow$ \emph{Reestablish broken translation links} repairs broken links between translations
+		\item \SMCmd{decklanguage}\SMCode{[fr]} sets the transcript, automatic texts, PDF language and hyphenation (each slide in its own language); the footer shows a slide's language (\SMCode{v1.2.0EN}), the language switch follows the open deck
+		\item The \emph{Language} panel: a row per language, \emph{Translate to \ldots} where one is missing, \emph{Make this the original} on a translation; or \emph{+ Slide} $\rightarrow$ \emph{Translate}, by a model if a plugin supplies one
+		\item Little text: \SMCmd{multilingualtext}\SMCode{*\{EN=\{Hello\}, FR=\{Bonjour\}\}} gives \emph{\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}} here, else the main language's (older: \SMCmd{multilingualtext}\SMCode{\{Hello\}\{Hallo\}})
+		\item Image descriptions have a text per language; Housekeeping $\rightarrow$ \emph{Reestablish broken translation links} repairs links
 	\end{itemize}
 \end{standardframe}

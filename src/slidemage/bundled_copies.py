@@ -300,7 +300,11 @@ def dismiss(project_root: Path, app_version: str) -> None:
 def apply_update(ctx: ProjectContext, part: Part, app_version: str,
                  now: Optional[datetime] = None) -> Path:
     """Carry out `part`; returns the backup folder (created only if anything
-    was replaced or removed)."""
+    was replaced or removed). Raises alt_images.NewerStoreError, before anything is changed, if the manual's
+    image descriptions cannot be merged into the project's store."""
+    if part.name == MANUAL:
+        from . import alt_images
+        alt_images.check_writable(ctx)
     stamp = (now or datetime.now()).strftime("%Y-%m-%d_%H%M%S")
     backup = ctx.root / BACKUP_DIR / stamp / part.name
     for rel in part.update + part.remove:
@@ -384,7 +388,7 @@ def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
                                    and current.status != alt_images.STATUS_REVIEWED):
                 entries[image] = entry
                 if current is not None:   # a replaced entry whose citation differs is to review
-                    alt_images.flag_source_change(entry, (current.source, current.source_de))
+                    alt_images.flag_source_change(entry, alt_images.sources(current))
                 changed = True
         return changed
 

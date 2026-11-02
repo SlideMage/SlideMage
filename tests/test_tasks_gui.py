@@ -339,9 +339,11 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     assert env.window.centre.path == partner
     ((target, *_),) = fake.renders
     assert target.source_path == partner                                  # Check preview rendered the new slide
-    link = slide_language.translation_link(ctx, "abc-EN-Hello")                # found although the source is unsaved
-    assert link is not None and link.partner == new_id_slug and not any(b.label.startswith("Translate") for b in tasks_module._offers(ctx, 
-        tasks_module._focus(env.window), link))
+    links = slide_language.translation_group(ctx, "abc-EN-Hello")                # found although the source is unsaved
+    assert links and links[0].partner == new_id_slug
+    focus = tasks_module._focus(env.window)
+    assert not any(b.label.startswith("Translate") for b in tasks_module._offers(
+        ctx, focus, slide_language.translation_group(ctx, focus.id_slug)))
     env.window.centre.open_file(env.path)
     env.window.assistant.header.schedule()
     wait_until(lambda: env.window.centre.path == env.path and buttons(env) == ["Better title"])
@@ -349,7 +351,7 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     assert slide_file(env).editor.text() == source
     (call,) = fake.calls()
     assert call["request"].startswith("Translate this slide from English to German.\n"
-                                      'Address the audience with "Sie" (formal).\n<slide>\n')
+                                      'Address the audience formally.\n<slide>\n')
     assert "\\setSlideVersion" not in call["request"] and "Included in decks" not in call["request"]
 
 
@@ -409,23 +411,23 @@ def test_a_slide_that_is_not_in_the_deck_still_gets_its_translation(fake):
 
 def test_the_german_address_and_the_glossary_reach_the_request(ctx, fake):
     env = fake.env
-    translation_style.set_de_address(ctx, "du")
+    translation_style.set_address(ctx, "informal")
     (env.root / ".slidemage" / "glossary.md").write_text("slide = Folie\n", encoding="utf-8")
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
     settled(env)
     request = fake.calls()[0]["request"]
-    assert 'Address the audience with "du" (informal).' in request and "slide = Folie" in request
+    assert "Address the audience informally." in request and "slide = Folie" in request
     assert json.loads((env.root / ".slidemage" / "project.json").read_text())["de_address"] == "du"
 
 
 def test_settings_set_the_german_address(ctx, fake):
-    from slidemage.ui.dialogs.settings import AiTab
+    from slidemage.ui.dialogs.settings_languages import LanguagesSection
 
-    tab = AiTab(ctx)
-    assert tab.address.current() == "Sie"
-    tab.address.changed.emit("du")
-    assert translation_style.de_address(ctx) == "du"
+    tab = LanguagesSection(SimpleNamespace(project=ctx))
+    assert tab.address.current() == "formal"
+    tab.address.changed.emit("informal")
+    assert translation_style.address(ctx) == "informal" and translation_style.de_address(ctx) == "du"
 
 
 # -- the model of a task --------------------------------------------------------------------------
@@ -498,9 +500,9 @@ def test_a_slide_without_a_language_is_not_proofread(ctx, fake):
     env = fake.env
     show_text(env, PROSE)
     wait_until(lambda: "Proofread" in buttons(env))
-    assert tasks_module._offers(ctx, tasks_module._focus(env.window), None)[1].label == "Proofread"
+    assert tasks_module._offers(ctx, tasks_module._focus(env.window), [])[1].label == "Proofread"
     legacy = tasks_module._Focus(env.root / "slides" / "xyz-legacy-current.tex", "xyz-legacy", PROSE)
-    assert "Proofread" not in [b.label for b in tasks_module._offers(ctx, legacy, None)]
+    assert "Proofread" not in [b.label for b in tasks_module._offers(ctx, legacy, [])]
 
 
 def test_proofreading_applies_its_edits_into_the_buffer(fake):
@@ -627,7 +629,7 @@ def test_an_update_goes_into_the_open_translation_and_keeps_its_header(outdated)
     assert "Erster Punkt!" not in editor.text()
     request = outdated.calls()[0]["request"]
     assert request.startswith("Update this German translation to match the current English source.\n"
-                              'Address the audience with "Sie" (formal).\n<source>\n')
+                              'Address the audience formally.\n<source>\n')
     source, translation = request.split("<source>\n")[1].split("</source>\n<slide>\n")
     assert "First point" in source and "\\setSlideVersion" not in source and "Included in decks" not in source
     assert translation.startswith("% A note") and "Erster Punkt" in translation and "Translation of" not in translation

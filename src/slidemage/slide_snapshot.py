@@ -68,7 +68,7 @@ from pathlib import Path
 # reads the same either way.
 import pymupdf as fitz
 
-from . import project, slide_language, themes
+from . import languages, project, slide_language, themes
 from .preview_cache import THUMBNAIL_MAX
 from .preview_metrics import measure
 
@@ -404,7 +404,7 @@ def capture_deck(ctx: project.ProjectContext, pdf_path: Path, template: str,
 
 def _own_language_for_bare_id(ctx: project.ProjectContext, bare_id_: str) -> str | None:
     """Resolves a bare id to its current on-disk id-slug and returns that
-    slide's own language segment (EN/DE/mult, slide_language.own_language)
+    slide's own language segment (one of the project's languages or mult, slide_language.own_language)
     -- None for a legacy, not-yet-migrated slide. Used to key the preview
     cache the same way SlideMage_base.tex's own
     \\setSlideLanguageFromSlug derives language at compile time: from the
@@ -415,7 +415,7 @@ def _own_language_for_bare_id(ctx: project.ProjectContext, bare_id_: str) -> str
     id_slug = slide_language.current_id_slug_for_bare_id(ctx, bare_id_)
     if id_slug is None:
         return None
-    return slide_language.own_language(id_slug)
+    return slide_language.own_language(id_slug, languages.project_languages(ctx).codes)
 
 
 def snapshot_path(ctx: project.ProjectContext, slide_id: str, template: str = DEFAULT_TEMPLATE,
@@ -442,7 +442,7 @@ def snapshot_path(ctx: project.ProjectContext, slide_id: str, template: str = DE
     width, height = size
     # `id_slug` (a deck call's own) saves looking the slide up on disk: a
     # whole slide list asks for hundreds of these at once.
-    language = (slide_language.own_language(id_slug) if id_slug
+    language = (slide_language.own_language(id_slug, languages.project_languages(ctx).codes) if id_slug
                 else _own_language_for_bare_id(ctx, slide_id))
     lang_segment = f"-{language}" if language else ""
     return ctx.slide_previews_dir / f"{safe_id}{lang_segment}-{_template_name(template)}-{width}-{height}.png"

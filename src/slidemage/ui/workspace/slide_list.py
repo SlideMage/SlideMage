@@ -172,6 +172,7 @@ class SlideList(QWidget):
         state.deck_changed.connect(lambda _deck: self.rebuild())
         state.view_changed.connect(lambda _view: self.rebuild())
         state.language_changed.connect(lambda _language: self.rebuild())
+        state.languages_changed.connect(lambda _codes: self.rebuild())
         state.focused_slide_changed.connect(self._on_state_focus)
         self.rebuild()
 

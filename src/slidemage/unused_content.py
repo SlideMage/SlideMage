@@ -62,9 +62,9 @@ import shutil
 from pathlib import Path
 from typing import Callable, Iterable
 
-from . import ai_review
+from . import ai_review, languages
 from .project import ProjectContext
-from .slide_language import TRANSLATION_LANGUAGES, current_name
+from .slide_language import current_name
 from .tex_source import COMMENT_RE
 
 
@@ -118,7 +118,7 @@ def slide_filenames_in(ctx: ProjectContext, text: str) -> set[str]:
     calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
     # Keep explicit pins even when a translation call is folded into another slot.
     used.update(call.source_filename for call in calls)
-    for language in TRANSLATION_LANGUAGES:
+    for language in languages.project_languages(ctx).codes:
         for slot in deck_language.slots(ctx, calls, language):
             used.add(slot.call.source_filename)
             if slot.related_ids:

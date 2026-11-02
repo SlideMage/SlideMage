@@ -33,20 +33,19 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ... import alt_draft, alt_images, image_review, slide_language
+from ... import alt_draft, alt_images, image_review, languages, slide_language
 from ...ai import ai_profile, routes
 from ..ai_models import cloud_label, fill_model_combo
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Card, Field, IconButton, SegmentedControl, Surface, caption
 from .image_dialogs import ReplaceImageSheet
-from .image_form import ImageForm, review_refused
+from .image_form import ImageForm, review_refused, store_writable
 from .image_jobs import Job, JobCard
 from .image_nav import SlideNav
 from .image_results import BatchResultView
 from .image_runs import ImageRunsMixin
 
-LANGUAGES = (("en", "EN"), ("de", "DE"))
 DRAFT_TIP = ("Draft every image that still needs one, unattended. Each image is written as it finishes, so it can "
              "be stopped and resumed later.")
 TRANSLATE_TIP = ("Translate the short, long and takeaway text of every image that has English text and no current "
@@ -75,7 +74,11 @@ class ImagesPage(ImageRunsMixin, Surface):
         self._views: list[image_review.SlideView] = []
         self._current: Optional[image_review.SlideView] = None
         self._forms: list[ImageForm] = []
-        self._language = LANGUAGES[0][0]
+        codes = languages.project_languages(app.project).lower
+        self._language = "en"
+        # The language of the forms' second group: the first other language of the project (German in an
+        # English and German one), until the switch shows another.
+        self._second = next((code for code in codes if code != "en"), "de")
         self._job: Optional[Job] = None
         self._on_outcome = None          # what the running job's result is handed to
         self._translating: Optional[ImageForm] = None
@@ -84,6 +87,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
         self.nav = SlideNav(app.theme)
+        self._missing_in()
         self._build_batch_controls(self.nav.layout())
         outer.addWidget(self.nav)
         outer.addWidget(self._build_slide_column(), 1)
@@ -136,10 +140,12 @@ class ImagesPage(ImageRunsMixin, Surface):
         titles.addWidget(self.slide_title)
         titles.addWidget(self.slide_note)
         head.addLayout(titles, 1)
-        self.languages = SegmentedControl(LANGUAGES, current=self._language, mono=True)
-        self.languages.changed.connect(self._set_language)
+        self._head = head
+        self.languages = self._language_switch()
         head.addWidget(self.languages, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(head)
+        # Settings → Languages: the switch lists the project's languages again
+        self.state.languages_changed.connect(lambda _codes: self._rebuild_languages())
 
         actions = QHBoxLayout()
         actions.setSpacing(6)
@@ -220,11 +226,15 @@ class ImagesPage(ImageRunsMixin, Surface):
     def reload(self, preserve: Optional[Path] = None) -> None:
         """Scan the slides again (pending edits are saved as a draft first)."""
         self.flush()
-        report = alt_images.sync_store(self.app.project)
-        if report.added:
-            self.app.log(f"alt-text store: added {len(report.added)} new image row(s).")
-        if report.new_uses:
-            self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
+        try:
+            report = alt_images.sync_store(self.app.project)
+        except alt_images.NewerStoreError as exc:   # still shown: reading the store is allowed
+            QMessageBox.warning(self, "Image descriptions", str(exc))
+        else:
+            if report.added:
+                self.app.log(f"alt-text store: added {len(report.added)} new image row(s).")
+            if report.new_uses:
+                self.app.log(f"alt-text store: {len(report.new_uses)} new slide/image reference(s) found.")
         self._entries = alt_images.load_store(self.app.project)
         self._views = image_review.scan_views(self.app.project, self._entries)
         self._populate(preserve or self._current_path())
@@ -268,7 +278,8 @@ class ImagesPage(ImageRunsMixin, Surface):
     # -- the slide on show -----------------------------------------------------------------------------
 
     def _set_slide_note(self, view: image_review.SlideView) -> None:
-        self.slide_note.setText(f"{view.row.path.name} · {alt_images.STATE_LABELS[view.state]}")
+        found = [alt_images.lookup(self._entries, reference) for reference in view.row.images]
+        self.slide_note.setText(f"{view.row.path.name} · {alt_images.state_label(view.state, found)}")
 
     def _show_slide(self, view: Optional[image_review.SlideView]) -> None:
         self._current = view
@@ -282,7 +293,7 @@ class ImagesPage(ImageRunsMixin, Surface):
             self._set_slide_note(view)
             for reference in row.images:
                 entry = alt_images.lookup(self._entries, reference) or alt_images.ImageEntry(image=reference)
-                form = ImageForm(self.app, reference, entry, row.slide_id, view.slide_hash)
+                form = ImageForm(self.app, reference, entry, row.slide_id, view.slide_hash, self._second)
                 form.set_language(self._language)
                 form.set_availability(self._job is not None, self.translate_model.isEnabled())
                 form.edited.connect(self._edited)
@@ -324,8 +335,8 @@ class ImagesPage(ImageRunsMixin, Surface):
         by leaving the slide."""
         return not self._translation_in_flight() or QMessageBox.question(
             self, "Translation in progress",
-            "A German translation is still being generated for an image on this slide. Switching to another "
-            "slide now discards the result when it finishes. Switch anyway?") == QMessageBox.StandardButton.Yes
+            "A translation is still being generated for an image on this slide. Switching to another "
+            "slide or language now discards the result when it finishes. Switch anyway?") == QMessageBox.StandardButton.Yes
 
     def _on_rescan(self) -> None:
         if self._may_leave_translation():
@@ -345,10 +356,53 @@ class ImagesPage(ImageRunsMixin, Surface):
         self.nav.set_filter(image_review.FILTER_ALL)
         self._populate(match.row.path)
 
+    def _language_switch(self) -> SegmentedControl:
+        """English and the project's other languages, as the switch between the forms' fields."""
+        codes = dict.fromkeys(["en", *languages.project_languages(self.app.project).lower])
+        switch = SegmentedControl([(code, code.upper()) for code in codes], current=self._language, mono=True)
+        switch.changed.connect(self._set_language)
+        return switch
+
+    def _rebuild_languages(self) -> None:
+        """The project's languages changed: a new switch takes the old one's place. A language no longer in the
+        project gives way to English, and to the first other language as the forms' second one."""
+        codes = languages.project_languages(self.app.project).lower
+        if self._language not in ("en", *codes):
+            self._language = "en"
+        old, self.languages = self.languages, self._language_switch()
+        self._head.replaceWidget(old, self.languages)
+        old.deleteLater()
+        if self._second not in codes:
+            self._second = next((code for code in codes if code != "en"), "de")
+            if self._current is not None and self._may_leave_translation():
+                self.flush()
+                self._show_slide(self._current)
+        self._missing_in()
+
     def _set_language(self, language: str) -> None:
-        self._language = language
-        for form in self._forms:
-            form.set_language(language)
+        """Show the English fields or those of `language`. Another language than the forms' second one builds the
+        forms again, after saving what was typed as a draft (as leaving the slide does)."""
+        if language not in ("en", self._second):
+            if not self._may_leave_translation():
+                self.languages.set_current(self._language)
+                return
+            self.flush()
+            self._second = language
+            self._language = language
+            self._show_slide(self._current)
+        else:
+            self._language = language
+            for form in self._forms:
+                form.set_language(language)
+        self._missing_in()
+        if self._loaded:
+            self.nav.refresh_items(self._views, self._entries)
+            self.nav._show_filter()
+
+    def _missing_in(self) -> None:
+        """Missing a translation looks at the language on show, or at every other one while English is."""
+        self.nav.languages = image_review.translation_languages(
+            languages.project_languages(self.app.project).lower, self._language)
 
     def _on_deck_changed(self, _deck) -> None:
         """The order may follow the deck; what was typed belongs to the slide it was typed on."""
@@ -375,7 +429,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         """Store the forms of the slide on show; "reviewed" is refused while an informative image has no
         long description. Returns whether it was saved."""
         view = self._current
-        if view is None:
+        if view is None or not store_writable(self, self.app.project):
             return False
         if reviewed and review_refused(self, [(form.reference, form.role, form.values()["long"])
                                               for form in self._forms]):
@@ -401,7 +455,9 @@ class ImagesPage(ImageRunsMixin, Surface):
         if view is None:
             return
         row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        language = "de" if slide_language.own_language(id_slug) == "DE" else "en"
+        codes = languages.project_languages(self.app.project).codes
+        language = (slide_language.own_language(id_slug, codes) or codes[0]).lower()
+        language = language if language != slide_language.MULT.lower() else codes[0].lower()
         show_transcript_preview(self.app, self.source.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)
 
@@ -427,6 +483,9 @@ class ImagesPage(ImageRunsMixin, Surface):
                                 + warning) != QMessageBox.StandardButton.Yes:
             return
 
+        if not store_writable(self, self.app.project):
+            return
+
         def mutate(store: dict[str, alt_images.ImageEntry]) -> bool:
             changed = False
             for reference in clearable:
@@ -447,7 +506,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         slides using the image) at it. The old file stays; so does its description unless nothing uses
         the image any more and the user agrees to delete it."""
         view = self._current
-        if view is None or view.row.slide_id != form.slide_id:
+        if view is None or view.row.slide_id != form.slide_id or not store_writable(self, self.app.project):
             return
         others = sorted(slide_id for slide_id in form.entry.used_on if slide_id != form.slide_id)
         sheet = ReplaceImageSheet(self, self.app.project, form.reference, others)

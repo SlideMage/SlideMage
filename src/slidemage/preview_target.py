@@ -90,7 +90,7 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     shared = outline if outline is not None and outline.matches(ctx, deck, language or "EN") else None
     if language is not None:
         from .deck_language import resolve_call
-        call = resolve_call(call, language, shared.links if shared else slide_language.TranslationLinks(ctx.slides_dir))
+        call = resolve_call(call, language, shared.links if shared else slide_language.links_for(ctx))
     presenter_frame = None
     if occurrence_key:
         if shared:

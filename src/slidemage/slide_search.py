@@ -21,7 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import alt_blocks
+from . import alt_blocks, languages
+from .project import ProjectContext
 from .slide_language import CURRENT_SUFFIX
 
 # Characters of context kept on each side of the match: a palette row shows one line.
@@ -60,6 +61,7 @@ def search_project(
         return []
     needle = query.lower()
     hits: list[SearchHit] = []
+    codes = languages.project_languages(ProjectContext.at(root)).codes
     for path in project_files(root):
         if cancelled():
             break
@@ -73,7 +75,7 @@ def search_project(
         if index == -1:
             continue
         if path.name.endswith(SLIDE_SUFFIX):
-            slide_id, title = alt_blocks.slide_title(text, path)
+            slide_id, title = alt_blocks.slide_title(text, path, codes)
             title = f"{slide_id} · {title}"
         else:
             title = path.relative_to(root).as_posix()

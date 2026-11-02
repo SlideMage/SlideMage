@@ -5,16 +5,18 @@
 One object that the top bar, the slide list, the centre column and the side
 panels all read and write, instead of reaching into each other: the current
 deck, the focused slide, the view being edited (Instructor / During-course /
-After-course), the language being edited (EN / DE), the selected slides, what the centre shows
+After-course), the language on show (one of the project's), the selected slides, what the centre shows
 (Preview / Split / Source / Details) and whether any source has unsaved edits.
 The AI route (the assistant's Local | Cloud switch and the cloud connection) lives in ai/ai_profile.py; the state
 only mirrors it for the Qt side and tells everything that shows a model, a picker or a conversation when the route
 changed. Each field has a setter and one signal; a setter that would not change the
 value does nothing, so listeners can connect without guarding against loops.
 
-The view, the language and the centre's mode are remembered per deck in the project's app
+The view and the centre's mode are remembered per deck in the project's app
 settings (app_settings.py, the same JSON file as the other UI preferences),
-so reopening a deck brings back the view you left it in.
+so reopening a deck brings back the view you left it in. The language follows the deck (content languages plan,
+2.3): opening a deck, or a change of its \\decklanguage, sets it to the deck's language, and picking another one is
+a short look at the translations, kept until the next deck switch.
 """
 from __future__ import annotations
 
@@ -22,20 +24,17 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from ... import app_settings, deck_outline, deck_settings
+from ... import app_settings, deck_outline, deck_settings, languages
 from ...ai import ai_profile
 from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
 from ...deck_scan import Deck
 from ...project import ProjectContext
-from ...slide_language import TRANSLATION_LANGUAGES
 
 MODES = ("preview", "split", "source", "details")
-# "mult" marks a slide that is the same in every language: not a language to edit in.
-UI_LANGUAGES = TRANSLATION_LANGUAGES
 
 SETTLE_MS = 150   # the focus must rest this long before the side panels and the assistant's offers are worked out afresh
 
-# {deck path: {"view": ..., "language": ..., "mode": ...}} in app_settings.json.
+# {deck path: {"view": ..., "mode": ...}} in app_settings.json; a "language" from an older version is dropped.
 SETTINGS_KEY = "workspace_decks"
 
 
@@ -44,6 +43,7 @@ class WorkspaceState(QObject):
     focused_slide_changed = Signal(object)   # bare slide id | None
     view_changed = Signal(str)
     language_changed = Signal(str)
+    languages_changed = Signal(object)       # tuple of the switch's codes, as languages()
     selection_changed = Signal(object)       # tuple of bare slide ids
     mode_changed = Signal(str)
     dirty_changed = Signal(bool)
@@ -60,7 +60,7 @@ class WorkspaceState(QObject):
         # Preview to read instead of resolving it again; the list sets it, and a write to a slide file drops it.
         self.outline: Optional[deck_outline.Outline] = None
         self.view = VIEW_INSTRUCTOR
-        self.language = UI_LANGUAGES[0]
+        self.language = self.languages()[0]
         self.selection: tuple[str, ...] = ()
         self.mode = MODES[0]
         self.dirty = False   # some source or side panel has unsaved edits
@@ -74,18 +74,25 @@ class WorkspaceState(QObject):
         readers see the new text; it is not a switch and emits nothing.
         Returns whether it was a switch."""
         if deck is not None and self.deck is not None and deck.path == self.deck.path:
+            before = self._deck_language(self.deck)
             self.deck = deck
+            if self._deck_language(deck) != before:     # its settings changed its language: the switch follows
+                self.refresh_languages()
+                self._show_language(self._deck_language(deck))
             return False
         before = (self.focused_slide, self.selection, self.view, self.language, self.mode)
+        shown = self.languages()
         self.deck = deck
         remembered = self._remembered(deck)
+        self._forget_language(deck, remembered)
         self.focused_slide, self.selection = None, ()
         self.focused_occurrence = None
         self.view = remembered["view"] if remembered.get("view") in VIEWS else VIEW_INSTRUCTOR
-        self.language = remembered["language"] if remembered.get("language") in UI_LANGUAGES \
-            else self._deck_language(deck)
+        self.language = self._deck_language(deck) or self.languages()[0]
         self.mode = remembered["mode"] if remembered.get("mode") in MODES else MODES[0]
         self.deck_changed.emit(deck)
+        if self.languages() != shown:
+            self.languages_changed.emit(self.languages())
         if before[0] is not None:
             self.focused_slide_changed.emit(None)
         if before[1]:
@@ -97,6 +104,20 @@ class WorkspaceState(QObject):
         if before[4] != self.mode:
             self.mode_changed.emit(self.mode)
         return True
+
+    def languages(self) -> tuple[str, ...]:
+        """The codes of the language switch: the project's languages, main first, and the deck's own after them when
+        it is not one of them."""
+        codes = languages.project_languages(self.project).codes
+        own = self._deck_language(self.deck)
+        return codes if own is None or own in codes else (*codes, own)
+
+    def refresh_languages(self) -> None:
+        """The project's languages changed (Settings → Languages): the switch is built again, and a language no
+        longer on it gives way to the deck's."""
+        self.languages_changed.emit(self.languages())
+        if self.language not in self.languages():
+            self._show_language(self._deck_language(self.deck) or self.languages()[0])
 
     def current_outline(self) -> Optional[deck_outline.Outline]:
         """`outline` when it describes the deck, view and language on show, else None (resolve afresh)."""
@@ -122,9 +143,13 @@ class WorkspaceState(QObject):
             self.view_changed.emit(view)
 
     def set_language(self, language: str) -> None:
-        if language in UI_LANGUAGES and language != self.language:
+        """A look at the slides in `language`, until the next deck switch (it is not remembered)."""
+        if language in self.languages():
+            self._show_language(language)
+
+    def _show_language(self, language: str) -> None:
+        if language != self.language:
             self.language = language
-            self._remember("language", language)
             self.language_changed.emit(language)
 
     def set_mode(self, mode: str) -> None:
@@ -186,11 +211,20 @@ class WorkspaceState(QObject):
             return {}
         return app_settings.get(self.project, SETTINGS_KEY, {}).get(str(deck.path), {})
 
-    @staticmethod
-    def _deck_language(deck: Optional[Deck]) -> str:
-        """The deck's own \\decklanguage while nothing was chosen yet."""
-        code = deck_settings.read_settings(deck.text).language.upper() if deck else ""
-        return code if code in UI_LANGUAGES else UI_LANGUAGES[0]
+    def _deck_language(self, deck: Optional[Deck]) -> Optional[str]:
+        """The deck's own \\decklanguage, upper case; the main language for a deck that sets none, None without a
+        deck."""
+        if deck is None:
+            return None
+        return deck_settings.read_settings(deck.text).language.upper() or languages.project_languages(self.project).codes[0]
+
+    def _forget_language(self, deck: Optional[Deck], remembered: dict) -> None:
+        """Drop the language an older version remembered for the deck: the switch follows the deck now."""
+        if deck is None or "language" not in remembered:
+            return
+        saved = app_settings.get(self.project, SETTINGS_KEY, {})
+        saved.get(str(deck.path), {}).pop("language", None)
+        app_settings.set(self.project, SETTINGS_KEY, saved)
 
     def _remember(self, field: str, value: str) -> None:
         if self.deck is None:

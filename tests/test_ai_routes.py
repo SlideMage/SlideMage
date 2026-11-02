@@ -123,7 +123,7 @@ def test_route_context_uses_plugin_namespace_and_current_project(ctx, tmp_path, 
     routes.register(route, host)
     other = ProjectContext.at(tmp_path / "other")
     other.root.mkdir()
-    translation_style.set_de_address(other, "du")
+    translation_style.set_address(other, "informal")
     (other.root / ".slidemage" / "glossary.md").write_text("hello = hallo", encoding="utf-8")
     context = routes.context(other, route.id)
     assert context.root == other.root and context.de_address == "du" and context.glossary == "hello = hallo"

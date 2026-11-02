@@ -20,7 +20,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 
-from ... import deck_settings, project
+from ... import deck_settings, languages, project
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
 from ...plugins import session
@@ -39,7 +39,6 @@ MAINTENANCE = (       # (command id, name, what it does, button)
      "Update changed…"),
 )
 log = logging.getLogger(__name__)
-LANGUAGE_LABELS = {"en": "English", "de": "Deutsch"}
 OUTPUT_LABELS = {
     None: "All outputs",
     "instructor": "Instructor",
@@ -152,11 +151,11 @@ class DeckSettingsSheet(ModalSheet):
             "The institution template: colors, logo, title bar and footer. "
             "SlideMage_template_<name>.tex, loaded by the deck's \\input line.")
         self.language_combo = QComboBox()
-        codes = list(LANGUAGE_LABELS)
-        if settings.language not in codes:
+        codes = list(languages.project_languages(project.ProjectContext.at(self._project_root)).lower)
+        if settings.language not in codes:            # the deck's own, should it be another
             codes.append(settings.language)
         for code in codes:
-            self.language_combo.addItem(LANGUAGE_LABELS.get(code, code), code)
+            self.language_combo.addItem(languages.name(code), code)
         self.language_combo.setCurrentIndex(self.language_combo.findData(settings.language))
         self.language_combo.setToolTip(
             "The deck's language (\\decklanguage): hyphenation, automatic texts, "

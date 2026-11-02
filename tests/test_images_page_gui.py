@@ -150,7 +150,7 @@ def test_the_page_lists_the_slides_with_images_and_shows_the_first(make_page, re
 
 def test_the_no_german_filter_lists_slides_whose_image_has_english_but_no_german(make_page):
     page = make_page()
-    no_german = [label for label, _ in image_review.FILTERS].index("No German")
+    no_german = [label for label, _ in image_review.FILTERS].index("Missing a translation")
     page.nav.set_filter(no_german)
     page._populate(None)
     assert page.nav.shown == []
@@ -353,12 +353,27 @@ def test_set_as_default_needs_a_takeaway_on_an_informative_image(make_page):
 def test_the_translate_buttons_of_a_form_follow_the_page_when_no_model_is_there(make_page):
     page = make_page()
     form = page._forms[0]
+    type_into(page, "short", "A chart")
     page.translate_model.setEnabled(True)
     page._update_buttons()
     assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
     page.translate_model.setEnabled(False)          # what fill_model_combo does with no model to offer
     page._update_buttons()
     assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+
+
+def test_translate_needs_english_text_to_translate(make_page):
+    page = make_page()
+    form = page._forms[0]
+    page.translate_model.setEnabled(True)
+    page._update_buttons()
+    assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+    assert form.translate_button.toolTip() == "There is no English text to translate."
+    type_into(page, "takeaway", "Sales rise")                  # any of the three English fields will do
+    assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
+    assert form.translate_button.toolTip().startswith("Translate the English")
+    type_into(page, "takeaway", "")
+    assert not form.translate_button.isEnabled()
 
 
 def test_a_worker_writing_the_store_updates_the_entry_of_a_form_with_edits_only(make_page):
@@ -650,6 +665,8 @@ def test_a_failed_translation_says_so_and_frees_the_form(make_page, monkeypatch)
 
     monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Failing)
     form = page._forms[0]
+    type_into(page, "short", "A chart")
+    monkeypatch.setattr(images.ImagesPage, "_ask_which_english", lambda page: "unsaved")
     page._translate_image(form, False)
     assert warned == ["model unreachable"] and not form.translating and page._job is None
     assert form.translate_button.text() == "Translate" and form.translate_button.isEnabled()
@@ -992,3 +1009,19 @@ def test_tuning_requires_a_provider_on_the_selected_route(make_page, ctx, fake_r
     page._tune(page._forms[0])
     assert len(told) == 1 and "not available on Cloud · Fake cloud" in told[0]
     assert page.app.slots == []
+
+
+def test_the_language_switch_follows_the_projects_languages(make_page, ctx):
+    from slidemage import languages
+    page = make_page()
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE"]
+    languages.set_project_languages(ctx, "en", ["de", "fr"])
+    page.state.refresh_languages()                 # what saving Settings → Languages does
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE", "FR"]
+    page._set_language("fr")
+    assert page._forms and all(form.second == "fr" for form in page._forms)
+    languages.set_project_languages(ctx, "en", ["de"])
+    page.state.refresh_languages()
+    assert [button.text() for button in page.languages.buttons()] == ["EN", "DE"]
+    assert page._language == "en" and all(form.second == "de" for form in page._forms)
+

@@ -99,9 +99,8 @@ UI kit's author before it is merged:
 - The manifest may declare `"languages": ["de"]`; the plugin manager shows it.
 - `plugins/selftest.py` checks a plugin's catalogues the way 2.5 checks SlideMage's (placeholders, `.mo` matches
   `.po`).
-- This is additive: an API-1 plugin keeps working, in English. Whether it bumps `API_VERSION` or is an optional
-  part of version 1 is settled with the content-language plan's plugin change (its 2.9), which bumps to version 2;
-  doing both in one version avoids two bumps.
+- This is additive: an API-1 plugin keeps working, in English. It is an optional part of version 1, as is the
+  content-language plan's plugin change (its 2.9), so `API_VERSION` stays 1.
 
 ### 2.5 Tests
 

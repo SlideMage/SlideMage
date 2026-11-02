@@ -29,7 +29,7 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, slide_language
+from . import alt_blocks, alt_images, bibliography, deck_language, deck_scan, languages, slide_language
 from .project import ProjectContext
 from .deck_editor import VIEW_AFTER, VIEW_DURING, VIEW_INSTRUCTOR, VIEWS
 from .deck_scan import Deck
@@ -47,7 +47,20 @@ VERSION_LABELS_DE = {
     VIEW_DURING: "Semesterbegleitende Version",
     VIEW_AFTER: "Version nach Kursende",
 }
-_VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE}
+VERSION_LABELS_FR = {
+    VIEW_DURING: "version pendant le cours",
+    VIEW_AFTER: "version après le cours",
+}
+VERSION_LABELS_ES = {
+    VIEW_DURING: "versión durante el curso",
+    VIEW_AFTER: "versión posterior al curso",
+}
+VERSION_LABELS_IT = {
+    VIEW_DURING: "versione durante il corso",
+    VIEW_AFTER: "versione dopo il corso",
+}
+_VERSION_LABELS_BY_LANGUAGE = {"en": VERSION_LABELS, "de": VERSION_LABELS_DE, "fr": VERSION_LABELS_FR,
+                               "es": VERSION_LABELS_ES, "it": VERSION_LABELS_IT}
 
 # How each slide-inclusion command behaves, mirrored from the preamble:
 #
@@ -144,6 +157,102 @@ STRINGS = {
         "subsection_agenda_label": "**Die Abschnitte dieses Kapitels:**",
         "chapter_agenda_item": "{title} (Folie {n})",
     },
+    "fr": {
+        "transcript_title": "{deck} — transcription accessible",
+        "deck_label": "**Présentation :** {deck} ({version})  ",
+        "slides_label": "**Diapositives :** {n} sur {total} (les autres ne sont pas dans cette version de la présentation)  ",
+        "intro": (
+            "Cette transcription reproduit le texte de chaque diapositive, avec une "
+            "description écrite de chaque graphique, capture d'écran et photographie. "
+            "Les images purement décoratives sont signalées comme telles et ne sont pas "
+            "décrites. Les numéros de diapositive correspondent au PDF."
+        ),
+        "undescribed_warning": (
+            "> ⚠ **{n} diapositive(s) contiennent une image qui n'a pas encore été "
+            "décrite.** Ces endroits sont signalés ci-dessous."
+        ),
+        "missing_files_warning": "> ⚠ {n} fichier(s) de diapositive n'ont pas pu être lus : {files}.",
+        "summary_label": "**Résumé.**",
+        "decorative_image": (
+            "*[Image décorative ({ref}). Elle n'apporte aucune information au-delà du "
+            "texte de la diapositive et n'est pas décrite davantage.]*"
+        ),
+        "no_description": (
+            "> ⚠ **Pas encore de description** pour `{ref}`. Cette image n'a pas été "
+            "décrite, son contenu manque donc dans cette transcription."
+        ),
+        "figure_label": "### Figure : {caption}",
+        "short_description_label": "**Description courte.**",
+        "full_description_label": "**Description complète.**",
+        "takeaway_label": "**À retenir.**",
+        "chapter_agenda_label": "**Les diapositives de ce chapitre :**",
+        "subsection_agenda_label": "**Les sections de ce chapitre :**",
+        "chapter_agenda_item": "{title} (diapositive {n})",
+    },
+    "es": {
+        "transcript_title": "{deck} — transcripción accesible",
+        "deck_label": "**Presentación:** {deck} ({version})  ",
+        "slides_label": "**Diapositivas:** {n} de {total} (las demás no están en esta versión de la presentación)  ",
+        "intro": (
+            "Esta transcripción reproduce el texto de cada diapositiva junto con una "
+            "descripción escrita de cada gráfico, captura de pantalla y fotografía. "
+            "Las imágenes puramente decorativas se señalan como tales y no se describen. "
+            "Los números de diapositiva coinciden con el PDF."
+        ),
+        "undescribed_warning": (
+            "> ⚠ **{n} diapositiva(s) contienen una imagen que aún no se ha "
+            "descrito.** Esos puntos están marcados más abajo."
+        ),
+        "missing_files_warning": "> ⚠ No se pudieron leer {n} archivo(s) de diapositiva: {files}.",
+        "summary_label": "**Resumen.**",
+        "decorative_image": (
+            "*[Imagen decorativa ({ref}). No aporta información más allá del texto de "
+            "la diapositiva y no se describe más.]*"
+        ),
+        "no_description": (
+            "> ⚠ **Todavía sin descripción** para `{ref}`. Esta imagen no se ha "
+            "descrito, por lo que su contenido falta en esta transcripción."
+        ),
+        "figure_label": "### Figura: {caption}",
+        "short_description_label": "**Descripción breve.**",
+        "full_description_label": "**Descripción completa.**",
+        "takeaway_label": "**Conclusión.**",
+        "chapter_agenda_label": "**Las diapositivas de este capítulo:**",
+        "subsection_agenda_label": "**Las secciones de este capítulo:**",
+        "chapter_agenda_item": "{title} (diapositiva {n})",
+    },
+    "it": {
+        "transcript_title": "{deck} — trascrizione accessibile",
+        "deck_label": "**Presentazione:** {deck} ({version})  ",
+        "slides_label": "**Diapositive:** {n} di {total} (le altre non sono in questa versione della presentazione)  ",
+        "intro": (
+            "Questa trascrizione riproduce il testo di ogni diapositiva insieme a una "
+            "descrizione scritta di ogni grafico, schermata e fotografia. Le immagini "
+            "puramente decorative sono indicate come tali e non vengono descritte. "
+            "I numeri delle diapositive corrispondono al PDF."
+        ),
+        "undescribed_warning": (
+            "> ⚠ **{n} diapositiva/e contengono un'immagine non ancora "
+            "descritta.** Questi punti sono contrassegnati qui sotto."
+        ),
+        "missing_files_warning": "> ⚠ Impossibile leggere {n} file di diapositive: {files}.",
+        "summary_label": "**Riepilogo.**",
+        "decorative_image": (
+            "*[Immagine decorativa ({ref}). Non aggiunge informazioni oltre al testo "
+            "della diapositiva e non viene descritta ulteriormente.]*"
+        ),
+        "no_description": (
+            "> ⚠ **Ancora nessuna descrizione** per `{ref}`. Questa immagine non è stata "
+            "descritta, quindi il suo contenuto manca in questa trascrizione."
+        ),
+        "figure_label": "### Figura: {caption}",
+        "short_description_label": "**Descrizione breve.**",
+        "full_description_label": "**Descrizione completa.**",
+        "takeaway_label": "**Messaggio chiave.**",
+        "chapter_agenda_label": "**Le diapositive di questo capitolo:**",
+        "subsection_agenda_label": "**Le sezioni di questo capitolo:**",
+        "chapter_agenda_item": "{title} (diapositiva {n})",
+    },
 }
 
 # \deckonly / \deckuncover / \deckvisible share one signature:
@@ -219,7 +328,7 @@ def _versions_from(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]
 
 
 def deck_language_of(deck_text: str) -> str:
-    """"en"/"de" from the deck's \\decklanguage[...]; always a concrete
+    """The deck's language code, lower case, from its \\decklanguage[...]; always a concrete
     value, never None: language is fixed per deck
     (not a per-compile-run choice the way version is),
     so "\\decklanguage[\\decklanguageoverride]" (the
@@ -242,8 +351,14 @@ def deck_language_of(deck_text: str) -> str:
     for match in _DECK_LANGUAGE_RE.finditer(text):
         value = match.group(1).strip()
         if value and not value.startswith("\\"):
-            return value if value in STRINGS else "en"
+            return value.lower()
     return "en"
+
+
+def strings_language(language: str, main: str = "en") -> str:
+    """The language the transcript's own texts are written in: the deck's if STRINGS has it, else the project's
+    main language (as the automatic texts of SlideMage_base.tex), else English."""
+    return next((code for code in (language, main) if code in STRINGS), "en")
 
 
 def _document_body(text: str) -> str:
@@ -1319,13 +1434,32 @@ def _expand_local_macros(text: str) -> str:
     return text
 
 
-_MULTILINGUAL_NEEDLE = "\\multilingualtext{"
+_MULTILINGUAL_RE = re.compile(r"\\multilingualtext(\*?)\s*\{")
+_KEY_RE = re.compile(r"\s*([^=,{}\s]+)\s*=\s*")
 
 
-def _resolve_multilingual_text(text: str, language: str) -> str:
+def _keyed_choice(arguments: str, language: str, main: str) -> str:
+    """The value of `\\multilingualtext*{EN={..}, DE={..}}` for `language`, as SlideMage_base.tex picks it: the
+    language's own key, else the project's main language's, else the first. Keys are case-insensitive."""
+    values: dict[str, str] = {}
+    index = 0
+    while match := _KEY_RE.match(arguments, index):
+        if arguments[match.end():match.end() + 1] == "{":
+            value, index = braced_argument(arguments, match.end())
+        else:  # an unbraced value runs to the next comma
+            stop = arguments.find(",", match.end())
+            stop = len(arguments) if stop == -1 else stop
+            value, index = arguments[match.end():stop].strip(), stop
+        values.setdefault(match.group(1).lower(), value)
+        index = arguments.find(",", index) + 1 or len(arguments)
+    return next((values[code] for code in (language, main) if code in values), next(iter(values.values()), ""))
+
+
+def _resolve_multilingual_text(text: str, language: str, main: str = "en") -> str:
     """Replaces every \\multilingualtext{EN}{DE} call with just its EN or
     DE argument, mirroring \\ifSMGerman's own choice at compile time
-    (SlideMage_base.tex) -- brace-matched
+    (SlideMage_base.tex), and every keyed \\multilingualtext*{EN={..}, FR={..}} with the value of `language`
+    (else of `main`, the project's main language, else the first) -- brace-matched
     (braced_argument), not a naive regex, since either argument
     can itself contain a braced macro (e.g. \\textbf{...}).
 
@@ -1338,19 +1472,23 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
     out: list[str] = []
     index = 0
     while True:
-        found = text.find(_MULTILINGUAL_NEEDLE, index)
-        if found == -1:
+        found = _MULTILINGUAL_RE.search(text, index)
+        if found is None:
             out.append(text[index:])
             return "".join(out)
-        out.append(text[index:found])
-        first_open = found + len(_MULTILINGUAL_NEEDLE) - 1
+        out.append(text[index:found.start()])
+        first_open = found.end() - 1
         arg_en, after_first = braced_argument(text, first_open)
         if after_first == first_open:  # unbalanced first arg -- leave the rest untouched
-            out.append(text[found:])
+            out.append(text[found.start():])
             return "".join(out)
+        if found.group(1):
+            out.append(_keyed_choice(arg_en, language, main))
+            index = after_first
+            continue
         arg_de, after_second = braced_argument(text, after_first)
         if after_second == after_first:  # no second {...} immediately following -- malformed
-            out.append(text[found:after_first])
+            out.append(text[found.start():after_first])
             index = after_first
             continue
         out.append(arg_de if language == "de" else arg_en)
@@ -1360,10 +1498,11 @@ def _resolve_multilingual_text(text: str, language: str) -> str:
 def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
                  entries: dict[str, "alt_images.ImageEntry"],
                  slide_notes: dict[str, "alt_images.SlideNotes"] | None = None,
-                 language: str = "en", bib: dict | None = None,
+                 language: str = "en", bib: dict | None = None, deck_language: str | None = None,
                  ) -> TranscriptSlide | None:
     """Turn one slide file into a transcript entry, or None if unreadable. `bib` is the project's
-    parsed .bib (read here when a caller rendering many slides does not hand it in)."""
+    parsed .bib (read here when a caller rendering many slides does not hand it in). `deck_language` is the deck's
+    own language where the transcript's texts are in another (strings_language); it picks multilingual texts."""
     if bib is None:
         bib = bibliography.load(ctx.bibliography_path)
     try:
@@ -1374,7 +1513,7 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
     # Resolved before anything else looks at the text (comment-stripping,
     # title extraction, body conversion all derive from source_text below)
     # so both the title and the body reflect only the requested language.
-    source_text = _resolve_multilingual_text(source_text, language)
+    source_text = _resolve_multilingual_text(source_text, deck_language or language, languages.project_languages(ctx).main)
 
     stripped = COMMENT_RE.sub("", source_text)
     stripped = resolve_deck_conditionals(stripped, version)
@@ -1393,7 +1532,7 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
     agenda_title = (_finish(_inline_markdown(agenda_titles[0], bib).strip())
                     if agenda_titles else "")
 
-    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path)
+    slide_id, title = alt_blocks.slide_title(stripped, deck_slide.path, languages.project_languages(ctx).codes)
     if agenda_title and not (alt_blocks.FRAME_OPEN_RE.search(stripped)
                              or alt_blocks.TITLEFRAME_RE.search(stripped)):
         title = agenda_title  # a title-less frame (\quoteframe, \fullbleedframe)
@@ -1457,20 +1596,12 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
     for reference in alt_blocks.referenced_images(stripped):
         described = alt_images.lookup(entries, reference)
         role = described.role if described else alt_images.ROLE_INFORMATIVE
-        if language == "de" and described:
-            image = TranscriptImage(
-                reference=reference, role=role,
-                short=described.short_de, long=described.long_de,
-                takeaway=described.takeaway_for_de(slide_id),
-            )
-        else:
-            image = TranscriptImage(
-                reference=reference,
-                role=role,
-                short=described.short if described else "",
-                long=described.long if described else "",
-                takeaway=described.takeaway_for(slide_id) if described else "",
-            )
+        # The description in the transcript's own language: an untranslated one counts as missing there.
+        text = (described.texts.get(language) if described else None) or alt_images.ImageText()
+        image = TranscriptImage(
+            reference=reference, role=role, short=text.short, long=text.long,
+            takeaway=described.takeaway_in(slide_id, language) if described else "",
+        )
         image.described = bool(image.long) or role == alt_images.ROLE_DECORATIVE
         if not image.described:
             entry.missing_description = True
@@ -1651,6 +1782,7 @@ def generate_single_slide(
     at all -- no takeaway overrides, no summary, wrong image lookups."""
     if version not in STUDENT_VERSIONS:
         version = VIEW_DURING
+    deck_code, language = language, strings_language(language, languages.project_languages(ctx).main)
 
     entries = alt_images.load_store(ctx)
     slide_notes = alt_images.load_slide_notes(ctx)
@@ -1659,7 +1791,7 @@ def generate_single_slide(
         tmp_path = tmp_dir / slide_language.current_name(bare_id)
         tmp_path.write_text(source_text, encoding="utf-8", newline="")
         deck_slide = DeckSlide(number=1, slide_id=bare_id, path=tmp_path, included=True)
-        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language, deck_language=deck_code)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1698,7 +1830,8 @@ def generate(ctx: ProjectContext, deck_path: Path, version: str) -> TranscriptRe
             f"only, not {version!r}."
         )
 
-    language = deck_language_of(deck_path.read_text(encoding="utf-8"))
+    deck_code = deck_language_of(deck_path.read_text(encoding="utf-8"))
+    language = strings_language(deck_code, languages.project_languages(ctx).main)
     strings = STRINGS[language]
     version_labels = _VERSION_LABELS_BY_LANGUAGE[language]
 
@@ -1714,7 +1847,8 @@ def generate(ctx: ProjectContext, deck_path: Path, version: str) -> TranscriptRe
     for deck_slide in deck_slides:
         if not deck_slide.included:
             continue
-        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language, bib=bib)
+        entry = render_slide(ctx, deck_slide, version, entries, slide_notes, language=language, bib=bib,
+                             deck_language=deck_code)
         if entry is None:
             missing_files.append(deck_slide.path.name)
             continue

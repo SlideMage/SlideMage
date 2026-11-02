@@ -1028,7 +1028,17 @@
 % A dedicated boolean, set right here where the value is still a plain
 % matched string (#2, not a macro), sidesteps the trap entirely.
 \newif\ifSMSlideLanguageMult
+% The codes a slide's language segment may be. SlideMage writes the project's own list after the deck's preamble
+% (deck_language.language_lines): \SMProjectLanguages[<main language>]{EN,DE,FR}. A deck compiled without that
+% line keeps EN and DE (and en as the main language), exactly as before. "mult" is no language: it is read first.
 \makeatletter
+\def\SM@projectlanguages{EN,DE}
+\gdef\SMMainLanguage{en}
+\newcommand{\SMProjectLanguages}[2][en]{\gdef\SMMainLanguage{#1}\gdef\SM@projectlanguages{#2}}
+\ExplSyntaxOn
+\cs_new_protected:Npn \SM@ifprojectlanguage #1
+	{ \clist_if_in:NnTF \SM@projectlanguages {#1} }
+\ExplSyntaxOff
 \newcommand{\setSlideLanguageFromSlug}[1]{%
 	\global\SMSlideLanguageSetfalse
 	\global\SMSlideLanguageMultfalse
@@ -1036,9 +1046,9 @@
 	\expandafter\setSlideLanguageFromSlug@aux\SMTempSlideLangSlug-zzz-zzz\relax
 }
 \def\setSlideLanguageFromSlug@aux#1-#2-#3\relax{%
-	\ifstrequal{#2}{EN}{\renewcommand{\slideLanguage}{EN}\global\SMSlideLanguageSettrue}{%
-	\ifstrequal{#2}{DE}{\renewcommand{\slideLanguage}{DE}\global\SMSlideLanguageSettrue}{%
-	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\SMSlideLanguageSettrue\global\SMSlideLanguageMulttrue}{}}}%
+	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\SMSlideLanguageSettrue\global\SMSlideLanguageMulttrue}{%
+	\SM@ifprojectlanguage{#2}{\renewcommand{\slideLanguage}{#2}\global\SMSlideLanguageSettrue}{}}%
+	\SM@hyphenation@slide
 }
 \makeatother
 
@@ -1257,8 +1267,92 @@
 \newif\ifSMGerman
 \gdef\SMDeckLanguage{en}
 \makeatletter
+% Hyphenation by slide language (2026-11-02). A slide hyphenates in its language, with the hyph-utf8 patterns of
+% latex/hyphenation/ (shipped since v0.13.37, see tools/fetch_hyphenation_patterns.py; a project's own hyphenation/
+% folder comes first, as for every framework file) or else of the TeX distribution, loaded through LuaTeX's lang
+% library rather than babel: \decklanguage also runs after \begin{document} (SlideMage's own language line), where
+% babel can no longer set a language up, babel's Lua state would not survive the preview format (preview_format.py),
+% and babel only finds patterns the TeX format registered. Patterns loaded in the preamble are stored in the format
+% with the rest of TeX's state, and the language's number is a \chardef, so nothing has to be replayed. English is
+% the format's own language 0, as before. A language whose patterns are neither shipped nor installed (Romanian:
+% its patterns have no licence) hyphenates as English, as before, with a warning; one without patterns in hyph-utf8
+% is not hyphenated.
+% \SM@hyph{<code>}{<hyph-utf8 file, without hyph- and .pat.txt>}{<lefthyphenmin>}{<righthyphenmin>} (the minimums of
+% TeX Live's language.dat).
+\def\SM@hyph#1#2#3#4{\@namedef{SM@hyph@#1}{{#2}{#3}{#4}}}
+\SM@hyph{de}{de-1996}{2}{2}  \SM@hyph{fr}{fr}{2}{3}       \SM@hyph{es}{es}{2}{2}    \SM@hyph{it}{it}{2}{2}
+\SM@hyph{pt}{pt}{2}{3}       \SM@hyph{nl}{nl}{2}{3}       \SM@hyph{pl}{pl}{2}{2}    \SM@hyph{cs}{cs}{2}{3}
+\SM@hyph{sk}{sk}{2}{3}       \SM@hyph{sl}{sl}{2}{2}       \SM@hyph{hr}{hr}{2}{2}    \SM@hyph{sr}{sh-cyrl}{2}{2}
+\SM@hyph{hu}{hu}{2}{2}       \SM@hyph{ro}{ro}{2}{2}       \SM@hyph{bg}{bg}{2}{2}    \SM@hyph{el}{el-monoton}{1}{1}
+\SM@hyph{tr}{tr}{2}{2}       \SM@hyph{ru}{ru}{2}{2}       \SM@hyph{uk}{uk}{2}{2}    \SM@hyph{da}{da}{2}{2}
+\SM@hyph{sv}{sv}{2}{2}       \SM@hyph{no}{nb}{2}{2}       \SM@hyph{fi}{fi}{2}{2}    \SM@hyph{is}{is}{2}{2}
+\SM@hyph{et}{et}{2}{3}       \SM@hyph{lv}{lv}{2}{2}       \SM@hyph{lt}{lt}{2}{2}    \SM@hyph{ga}{ga}{2}{3}
+\SM@hyph{ca}{ca}{2}{2}       \SM@hyph{eu}{eu}{2}{2}       \SM@hyph{gl}{gl}{2}{2}    \SM@hyph{hi}{hi}{1}{1}
+\SM@hyph{th}{th}{2}{3}       \SM@hyph{id}{id}{2}{2}       \SM@hyph{ms}{id}{2}{2}
+\SM@hyph{mt}{}{}{}  \SM@hyph{ar}{}{}{}  \SM@hyph{he}{}{}{}  \SM@hyph{fa}{}{}{}  \SM@hyph{zh}{}{}{}  \SM@hyph{ja}{}{}{}
+\SM@hyph{ko}{}{}{}  \SM@hyph{vi}{}{}{}
+% Loads the patterns of #1 (once per format or compile) and defines \SM@hyphlang@#1 (its \language number) and
+% \SM@hyphmins@#1 (its minimums). The Lua avoids ~ and %, which TeX reads before Lua does.
+\newcommand{\SM@hyphenation@load}[4]{%
+	\directlua{
+		local bs, code, file, mins = string.char(92), "\luaescapestring{#1}", "\luaescapestring{#2}", "{#3}{#4}"
+		local path = not (file == "") and (kpse.find_file("hyphenation/hyph-" .. file .. ".pat.txt")
+			or kpse.find_file("hyph-" .. file .. ".pat.txt"))
+		local id
+		if file == "" or path then
+			local l = lang.new()
+			if path then
+				local fh = io.open(path, "r") l:patterns(fh:read("*a")) fh:close()
+				fh = io.open(string.sub(path, 1, -9) .. ".hyp.txt", "r")
+				if fh then l:hyphenation(fh:read("*a")) fh:close() end
+			end
+			id = l:id()
+		else
+			id, mins = 0, "{2}{3}"
+			tex.sprint(bs .. "PackageWarningNoLine{SlideMage}{The hyphenation patterns of the deck language (" .. code
+				.. ", hyph-" .. file .. ".pat.txt) are not installed, so the deck hyphenates as English. Install"
+				.. " them with the TeX distribution's hyphenation package for this language}")
+		end
+		tex.sprint(bs .. "global" .. bs .. "expandafter" .. bs .. "chardef" .. bs .. "csname SM@hyphlang@" .. code
+			.. bs .. "endcsname=" .. id .. bs .. "relax")
+		tex.sprint(bs .. "expandafter" .. bs .. "xdef" .. bs .. "csname SM@hyphmins@" .. code .. bs .. "endcsname{" .. mins .. "}")
+	}%
+}
+% \SM@hyphenation{<code>}{<select>}: loads the patterns of <code> (any case) if they are not loaded yet; with a
+% non-empty <select> (in the document), switches to them. A code without an entry hyphenates as English, as before.
+\ExplSyntaxOn
+\newcommand{\SM@hyphenation}[2]{
+	\edef\SM@hyph@code{\str_casefold:e {#1}}
+	\ifcsname SM@hyph@\SM@hyph@code\endcsname
+		\ifcsname SM@hyphlang@\SM@hyph@code\endcsname\else
+			\edef\SM@hyph@call{\noexpand\SM@hyphenation@load{\SM@hyph@code}\csname SM@hyph@\SM@hyph@code\endcsname}
+			\SM@hyph@call
+		\fi
+		\tl_if_empty:nF {#2} {\SM@hyphenation@use}
+	\else
+		\tl_if_empty:nF {#2} {\global\language=0 ~ \global\lefthyphenmin=2 ~ \global\righthyphenmin=3 ~}
+	\fi
+}
+\ExplSyntaxOff
+\newcommand{\SM@hyphenation@use}{%
+	\global\language=\csname SM@hyphlang@\SM@hyph@code\endcsname
+	\expandafter\expandafter\expandafter\SM@hyphenation@mins\csname SM@hyphmins@\SM@hyph@code\endcsname
+}
+\def\SM@hyphenation@mins#1#2{\ifx\relax#1\relax\else\global\lefthyphenmin=#1 \global\righthyphenmin=#2 \fi}
+% A slide hyphenates in its own language (\setSlideLanguageFromSlug): an English slide in a German deck, one not
+% translated yet, keeps English hyphenation. A multilingual or untagged slide hyphenates in the deck's language.
+\newcommand{\SM@hyphenation@slide}{%
+	\ifSMSlideLanguageSet\ifSMSlideLanguageMult\SM@hyphenation{\SMDeckLanguage}{select}%
+	\else\SM@hyphenation{\slideLanguage}{select}\fi
+	\else\SM@hyphenation{\SMDeckLanguage}{select}\fi
+}
+% English only switches back when another language was chosen first (a preview line after the deck's own): the
+% format's own minimums, or a template's, stay as they are otherwise.
+\AtBeginDocument{\ifx\SMDeckLanguage\SM@hyph@english\else\SM@hyphenation{\SMDeckLanguage}{select}\fi}
+\def\SM@hyph@english{en}
 \newcommand{\decklanguage}[1][en]{%
 	\xdef\SMDeckLanguage{#1}%
+	\ifx\@onlypreamble\@notprerr\SM@hyphenation{\SMDeckLanguage}{select}\else\SM@hyphenation{\SMDeckLanguage}{}\fi
 	\global\SMGermanfalse
 	% \ifstrequal{<macro>}{...} is a trap, not just here but anywhere in this
 	% file: its etoolbox implementation compares via
@@ -1276,14 +1370,64 @@
 		\ifstrequal{##1}{de}{\global\SMGermantrue\gdef\SMPDFLanguage{de-DE}}{}}%
 	\edef\SM@decklanguage@call{\noexpand\do@decklanguage{\SMDeckLanguage}}%
 	\SM@decklanguage@call
-	% Document-level PDF /Lang, independent of (and not blocked by) the
-	% structural PDF/UA tagging this project can't use under beamer -- see
-	% \SMArtifactBegin's own comment above for why full tagging is out;
-	% a screen reader still uses this Catalog-level entry to pick
-	% pronunciation for the whole document.
-	\hypersetup{pdflang=\SMPDFLanguage}%
 }
+% \SMPdfLang{fr-FR} -- the PDF language tag of the project's table (languages.py), for a language whose tag is not
+% the one \decklanguage picks (en-US, de-DE, anything else its own code). SlideMage writes it after \decklanguage.
+\newcommand{\SMPdfLang}[1]{\gdef\SMPDFLanguage{#1}}
+% Document-level PDF /Lang, independent of (and not blocked by) the structural PDF/UA tagging this project can't use
+% under beamer -- see \SMArtifactBegin's own comment above for why full tagging is out; a screen reader still uses
+% this Catalog-level entry to pick pronunciation for the whole document. It is written once, at the end, from
+% \SMPDFLanguage: SlideMage's own \decklanguage and \SMPdfLang lines come after \begin{document}, where
+% \hypersetup{pdflang=...} no longer reaches the PDF (hyperref writes the Catalog at \begin{document}).
+\AtEndDocument{\ifdefined\SMPDFLanguage\pdfextension catalog{/Lang(\SMPDFLanguage)}\fi}
 \makeatother
+
+% \SMSetLanguageStrings{fr}{ImageSource={Source(s) de l'image}, ImagePrefix={Image : }} -- the automatic texts of a
+% language: the label of the image sources footnote (\SMImageSourceLabel) and the prefix of an image's invisible
+% description (\SMAltImagePrefix). Shipped for en, de, fr, es and it; a project adds a language or overrides an entry
+% in SlideMage_project_macros.tex. The text is the deck language's; a missing entry falls back to the project's main
+% language (\SMMainLanguage), then to English, with a warning in the log (once per language and key).
+% \ifSMGerman stays (true for de): templates and slides may test it.
+\ExplSyntaxOn
+\tl_new:N \l__SM_string_lang_tl
+\cs_generate_variant:Nn \str_casefold:n { e }
+\cs_new:Npn \__SM_string_cs:nn #1#2 { g__SM_string_ \str_casefold:e {#1} _ #2 _tl }
+\cs_new_protected:Npn \__SM_string_set:nn #1#2
+  { \tl_gset:cn { \__SM_string_cs:nn { \l__SM_string_lang_tl } {#1} } {#2} }
+\cs_new_protected:Npn \__SM_string_bad:n #1
+  { \msg_warning:nnn { slidemage } { string-without-value } {#1} }
+\msg_new:nnn { slidemage } { string-without-value }
+  { \string\SMSetLanguageStrings:~"#1"~has~no~=~value;~ignored. }
+\msg_new:nnn { slidemage } { string-missing }
+  { No~"#2"~text~for~the~language~"#1";~using~the~project's~main~language~or~English. }
+\NewDocumentCommand{\SMSetLanguageStrings}{m m}
+  {
+    \tl_set:Nn \l__SM_string_lang_tl {#1}
+    \keyval_parse:NNn \__SM_string_bad:n \__SM_string_set:nn {#2}
+  }
+% The text of string #1: the deck language's, else the main language's, else English.
+\cs_new_protected:Npn \__SM_string:n #1
+  {
+    \cs_if_exist:cTF { \__SM_string_cs:nn { \SMDeckLanguage } {#1} }
+      { \tl_use:c { \__SM_string_cs:nn { \SMDeckLanguage } {#1} } }
+      {
+        \cs_if_exist:cF { g__SM_string_warned_ \str_casefold:e { \SMDeckLanguage } _ #1 _tl }
+          {
+            \tl_new:c { g__SM_string_warned_ \str_casefold:e { \SMDeckLanguage } _ #1 _tl }
+            \msg_warning:nnxx { slidemage } { string-missing } { \SMDeckLanguage } {#1}
+          }
+        \cs_if_exist:cTF { \__SM_string_cs:nn { \SMMainLanguage } {#1} }
+          { \tl_use:c { \__SM_string_cs:nn { \SMMainLanguage } {#1} } }
+          { \tl_use:c { \__SM_string_cs:nn { en } {#1} } }
+      }
+  }
+\NewDocumentCommand{\SMLanguageString}{m} { \__SM_string:n {#1} }
+\ExplSyntaxOff
+\SMSetLanguageStrings{en}{ImageSource={Image source(s)}, ImagePrefix={Image: }}
+\SMSetLanguageStrings{de}{ImageSource={Bildquelle(n)}, ImagePrefix={Bild: }}
+\SMSetLanguageStrings{fr}{ImageSource={Source(s) de l'image}, ImagePrefix={Image : }}
+\SMSetLanguageStrings{es}{ImageSource={Fuente(s) de la imagen}, ImagePrefix={Imagen: }}
+\SMSetLanguageStrings{it}{ImageSource={Fonte/i dell'immagine}, ImagePrefix={Immagine: }}
 
 % \multilingualtext{EN text}{DE text} -- for the handful of light,
 % image-only/title-only slides (id-slug's own language segment "mult",
@@ -1296,25 +1440,25 @@
 % (2026-10-05, direct instruction), for any number of languages: one
 % key=value pair per language, the key being the deck's \decklanguage code
 % (upper or lower case: EN = en). The value is picked whose key is the
-% deck's language; a deck in a language the list does not have gets the EN
-% value, or the first one if there is no EN. Commas and equals signs inside a
+% deck's language; a deck in a language the list does not have gets the value of the project's main language
+% (\SMMainLanguage, EN without SlideMage's language line), or the first one if there is no such key. Commas and equals signs inside a
 % value need the braces shown. A deck in another language than en/de just says
 % \decklanguage[fr] (fr, es, ...): \ifSMGerman stays false for it, and the
 % PDF's /Lang is the code itself.
 \ExplSyntaxOn
 \tl_new:N \l__SM_mlt_pick_tl
-\tl_new:N \l__SM_mlt_en_tl
+\tl_new:N \l__SM_mlt_main_tl
 \tl_new:N \l__SM_mlt_first_tl
 \bool_new:N \l__SM_mlt_pick_bool
-\bool_new:N \l__SM_mlt_en_bool
+\bool_new:N \l__SM_mlt_main_bool
 \bool_new:N \l__SM_mlt_first_bool
 \cs_new:Npn \__SM_mlt_pair:nn #1#2 { \ifSMGerman #2 \else #1 \fi }
 \cs_new_protected:Npn \__SM_mlt_item:nn #1#2
   {
     \bool_if:NF \l__SM_mlt_first_bool
       { \tl_set:Nn \l__SM_mlt_first_tl {#2} \bool_set_true:N \l__SM_mlt_first_bool }
-    \str_if_eq:eeT { \str_casefold:n {#1} } { en }
-      { \tl_set:Nn \l__SM_mlt_en_tl {#2} \bool_set_true:N \l__SM_mlt_en_bool }
+    \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMMainLanguage }
+      { \tl_set:Nn \l__SM_mlt_main_tl {#2} \bool_set_true:N \l__SM_mlt_main_bool }
     \str_if_eq:eeT { \str_casefold:n {#1} } { \str_casefold:V \SMDeckLanguage }
       { \tl_set:Nn \l__SM_mlt_pick_tl {#2} \bool_set_true:N \l__SM_mlt_pick_bool }
   }
@@ -1326,14 +1470,14 @@
   {
     \group_begin:
       \bool_set_false:N \l__SM_mlt_pick_bool
-      \bool_set_false:N \l__SM_mlt_en_bool
+      \bool_set_false:N \l__SM_mlt_main_bool
       \bool_set_false:N \l__SM_mlt_first_bool
       \keyval_parse:NNn \__SM_mlt_item_bad:n \__SM_mlt_item:nn {#1}
       \bool_if:NTF \l__SM_mlt_pick_bool
         { \exp_last_unbraced:NV \group_end: \l__SM_mlt_pick_tl }
         {
-          \bool_if:NTF \l__SM_mlt_en_bool
-            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_en_tl }
+          \bool_if:NTF \l__SM_mlt_main_bool
+            { \exp_last_unbraced:NV \group_end: \l__SM_mlt_main_tl }
             { \exp_last_unbraced:NV \group_end: \l__SM_mlt_first_tl }
         }
   }
@@ -1807,11 +1951,10 @@
 % of that. Coexists with a real hand-authored \source{} call elsewhere in
 % the same frame -- both are just separate unmarked footnote-styled lines,
 % stacking the same way multiple real \footnote{}s already do.
-% \SMImageSourceLabel -- the "Image source(s):"/"Bildquelle(n):" label,
-% driven by \ifSMGerman (set from the compiling deck's own
-% \decklanguage) rather than hardcoded, so a German deck's auto-footnote
+% \SMImageSourceLabel -- the "Image source(s):"/"Bildquelle(n):" label, the deck language's text of the string
+% table (\SMSetLanguageStrings above) rather than hardcoded, so a German deck's auto-footnote
 % reads naturally instead of showing an English label on German content.
-\newcommand{\SMImageSourceLabel}{\ifSMGerman Bildquelle(n)\else Image source(s)\fi}
+\newcommand{\SMImageSourceLabel}{\SMLanguageString{ImageSource}}
 % The line lists every image of the frame, also those shown on its first step, so it is shown on
 % every step (v10.12.0): it is emitted at the frame's end, where a \pause earlier in the frame still
 % covers what follows, and a footnote in covered content would be covered with it
@@ -1956,7 +2099,7 @@
 	% \SMAltImagePrefix -- language-conditional counterpart to
 	% \SMImageSourceLabel above, for this invisible layer's own "Image: "/
 	% "Bild: " prefix.
-	\newcommand{\SMAltImagePrefix}{\ifSMGerman Bild: \else Image: \fi}
+	\newcommand{\SMAltImagePrefix}{\SMLanguageString{ImagePrefix}}
 	\newcommand{\SMAltInvisible}[1]{%
 		\begingroup
 		% A long alt string in an unbreakable hbox would otherwise flood the

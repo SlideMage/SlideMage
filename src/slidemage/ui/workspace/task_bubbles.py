@@ -65,7 +65,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
-from ... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, latex_lint, readability,
+from ... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, languages, latex_lint, readability,
                   readability_check, slide_add, slide_ids, slide_language, slide_source, slide_versioning)
 from ...project import ProjectContext
 from ...selection import Selection, SelectionError
@@ -168,7 +168,7 @@ class _Capture:
     eol: str                   # of the file: the line ends of a new slide
     deck_path: Path | None
     span: tuple[int, int] | None = None   # a selection's range in `text`: the task is on that part only
-    instruction: str = ""      # of a rewrite: what it should do
+    instruction: str = ""      # of a rewrite: what it should do; of a translation: the language it goes into
 
 
 def _id_slug(path: Path) -> str:
@@ -207,14 +207,20 @@ def _undescribed(found: dict[str, alt_images.ImageEntry]) -> list[str]:
     return [image for image, entry in found.items() if not (entry.short or entry.long or entry.is_decorative)]
 
 
+def _translation_targets(ctx: ProjectContext) -> list[str]:
+    """The languages image descriptions are translated into: every language of the project but English."""
+    return [code for code in languages.project_languages(ctx).lower if code != alt_images.DRAFT_LANGUAGE]
+
+
 def _slide_images(ctx: ProjectContext, text: str) -> tuple[list[str], list[str]]:
     """The slide's images (store keys) without a description, and those with an English text that has no
-    current German one (alt_draft.images_needing_translation). Whether a model can read the image is only
-    known at the run: a vector file or a missing one drops out there."""
+    current text in some other language of the project (alt_draft.translation_queues). Whether a model can read
+    the image is only known at the run: a vector file or a missing one drops out there."""
     found = _images_of(text, alt_images.load_store(ctx))
     if not found:
         return [], []
-    translate = set(alt_draft.images_needing_translation(ctx))
+    translate = {image for queue in alt_draft.translation_queues(ctx, _translation_targets(ctx)).values()
+                 for image in queue}
     return _undescribed(found), [image for image in found if image in translate]
 
 
@@ -231,24 +237,43 @@ def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
     return rows
 
 
-def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None,
+def _translate_targets(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> list[str]:
+    """The languages of the project that the slide has no translation in, main first; none for a slide of no
+    language."""
+    if own in (None, slide_language.MULT):
+        return []
+    have = {link.language for link in links}
+    return [code for code in languages.project_languages(ctx).codes if code != own and code not in have]
+
+
+def _translate_target(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> str | None:
+    """The first of _translate_targets, None when there is none."""
+    return next(iter(_translate_targets(ctx, own, links)), None)
+
+
+def _outdated(links: list[slide_language.TranslationLink]) -> slide_language.TranslationLink | None:
+    """The first translation of the original (this slide, or its partner) that is out of date: the one Update
+    translation brings up to date from the original."""
+    return next((link for link in links if link.outdated and (link.is_translation or link.is_original)), None)
+
+
+def _text_offers(ctx: ProjectContext, focus: _Focus, links: list[slide_language.TranslationLink],
                  known: readability_check.KnownFindings | None = None) -> list[Bubble]:
-    """The tasks on the text that fit the slide `focus` with its translation partner `link`; Make readable only when
+    """The tasks on the text that fit the slide `focus` with its translations `links`; Make readable only when
     `known` has errors measured on the slide's text."""
-    own = slide_language.own_language(focus.id_slug)
+    own = slide_language.own_language(focus.id_slug, languages.project_languages(ctx).codes)
     found = []
-    if link is None and own in slide_language.TRANSLATION_LANGUAGES:
-        other = next(language for language in slide_language.TRANSLATION_LANGUAGES if language != own)
-        found.append(Bubble(ai_tasks.TRANSLATE, f"Translate to {ai_tasks.LANGUAGE_NAMES[other]}"))
-    if link is not None and link.outdated:
-        language = own if link.is_translation else link.language
-        found.append(Bubble(ai_tasks.UPDATE_TRANSLATION, f"Update {ai_tasks.LANGUAGE_NAMES[language]} translation"))
+    if target := _translate_target(ctx, own, links):
+        found.append(Bubble(ai_tasks.TRANSLATE, f"Translate to {languages.name(target)}"))
+    if (outdated := _outdated(links)) is not None and own not in (None, slide_language.MULT):
+        language = own if outdated.is_translation else outdated.language
+        found.append(Bubble(ai_tasks.UPDATE_TRANSLATION, f"Update {languages.name(language)} translation"))
     if _errors(ctx, focus.text):
         found.append(Bubble(ai_tasks.FIX_LATEX, "Fix LaTeX errors"))
     if known is not None and known.has_errors(focus.path, focus.text):
         found.append(Bubble(ai_tasks.READABLE, "Make readable"))
     text = _has_text(focus.text)
-    if text and own in ai_tasks.LANGUAGE_NAMES:
+    if text and own and languages.get(own):
         found.append(Bubble(ai_tasks.PROOFREAD, "Proofread"))
     if text:
         found.append(Bubble(ai_tasks.CONCISE, "Make more concise"))
@@ -259,10 +284,10 @@ def _text_offers(ctx: ProjectContext, focus: _Focus, link: slide_language.Transl
     return found
 
 
-def _offers(ctx: ProjectContext, focus: _Focus, link: slide_language.TranslationLink | None,
+def _offers(ctx: ProjectContext, focus: _Focus, links: list[slide_language.TranslationLink],
             known: readability_check.KnownFindings | None = None) -> list[Bubble]:
-    """The tasks that fit the slide `focus` with its translation partner `link`."""
-    found = _text_offers(ctx, focus, link, known)
+    """The tasks that fit the slide `focus` with its translations `links`."""
+    found = _text_offers(ctx, focus, links, known)
     describe, translate = _slide_images(ctx, focus.text)
     if describe:
         found.append(Bubble(image_tasks.DESCRIBE, f"Describe images ({len(describe)})"))
@@ -276,7 +301,7 @@ def bubbles(window) -> list[Bubble]:
     focus = _focus(window)
     if focus is None:
         return []
-    found = _offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug), window.readability_known)
+    found = _offers(window.project, focus, slide_language.translation_group(window.project, focus.id_slug), window.readability_known)
     if selection_of(window) is not None:
         found = [Bubble(ai_tasks.REWRITE, "Rewrite selection"), Bubble(ai_tasks.PROOFREAD_SELECTION, "Proofread selection"),
                  *found]
@@ -310,10 +335,10 @@ def deck_bubbles(window) -> list[Bubble]:
     if not paths:
         return []
     fits: dict[str, list[Path]] = {task.name: [] for task in BATCH_TASKS}      # the slides each task fits
-    links = slide_language.TranslationLinks(window.project.slides_dir)
+    links = slide_language.links_for(window.project)
     for path in paths:
         focus = _focus_at(window, path)
-        for bubble in _text_offers(window.project, focus, slide_language.translation_link(window.project, focus.id_slug, links=links)):
+        for bubble in _text_offers(window.project, focus, slide_language.translation_group(window.project, focus.id_slug, links=links)):
             if bubble.task.name in fits:
                 fits[bubble.task.name].append(path)
     labels = ("Translate missing slides ({})", "Update outdated translations ({})", "Fix LaTeX errors ({} slides)")
@@ -350,11 +375,12 @@ def _capture_selection(window, task: ai_tasks.Task, instruction: str) -> _Captur
     chosen = window.centre.source.selection()
     path, text, start, end = chosen.path, chosen.text, chosen.start, chosen.end
     id_slug = _id_slug(path)
+    codes = languages.project_languages(window.project).codes
     if task is ai_tasks.REWRITE:
         request = ai_tasks.rewrite_request(text, start, end, instruction)
     else:
         request = ai_tasks.proofread_selection_request(
-            text, start, end, slide_language.own_language(id_slug) or "EN", translation_style.de_address(window.project))
+            text, start, end, slide_language.own_language(id_slug, codes) or codes[0], translation_style.address(window.project))
     deck = window.state.deck
     return _Capture(task, path, id_slug, text, "", text, request, "", slide_source.read_slide_source(path)[1],
                     deck.path if deck is not None else None, (start, end), instruction)
@@ -366,16 +392,19 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
         return _capture_selection(window, task, instruction)
     if focus is None:
         return None
-    link = slide_language.translation_link(window.project, focus.id_slug)
+    links = slide_language.translation_group(window.project, focus.id_slug)
+    link = _outdated(links)
     known = window.readability_known
     if not (known.fixable(focus.path, focus.text) if task is ai_tasks.READABLE
-            else any(bubble.task is task for bubble in _offers(window.project, focus, link))):
+            else any(bubble.task is task for bubble in _offers(window.project, focus, links))):
         return None
     path, id_slug, text, header, sent, language = focus.path, focus.id_slug, focus.text, "", focus.text, ""
-    own = slide_language.own_language(id_slug)
-    style = (translation_style.de_address(window.project), translation_style.glossary(window.project))
+    codes = languages.project_languages(window.project).codes
+    own = slide_language.own_language(id_slug, codes)
+    style = (translation_style.address(window.project), translation_style.glossary(window.project))
     if task is ai_tasks.TRANSLATE:
-        language = next(code for code in slide_language.TRANSLATION_LANGUAGES if code != own)
+        targets = _translate_targets(window.project, own, links)     # `instruction` may name one: the Language panel's
+        language = instruction if instruction in targets else targets[0]
         sent = slide_versioning.strip_marker(slide_ids.body_of(text))
         request = ai_tasks.translate_request(sent, own, language, *style)
     elif task is ai_tasks.UPDATE_TRANSLATION:
@@ -386,7 +415,7 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
         header, sent = slide_ids.split_header(text)
         request = ai_tasks.update_request(
             slide_versioning.strip_marker(slide_ids.body_of(source)), sent,
-            slide_language.own_language(_id_slug(source_path)), slide_language.own_language(id_slug), *style)
+            slide_language.own_language(_id_slug(source_path), codes), slide_language.own_language(id_slug, codes), *style)
     elif task is ai_tasks.FIX_LATEX:
         request = ai_tasks.fix_request(text, _errors(window.project, text))
     elif task is ai_tasks.PROOFREAD:
@@ -401,7 +430,8 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
         request = ai_tasks.note_request(text)
     deck = window.state.deck
     return _Capture(task, path, id_slug, text, header, sent, request, language,
-                    slide_source.read_slide_source(path)[1], deck.path if deck is not None else None)
+                    slide_source.read_slide_source(path)[1], deck.path if deck is not None else None,
+                    instruction=language if task is ai_tasks.TRANSLATE else "")
 
 
 def _capture_summary(window, paths) -> _Capture:
@@ -502,8 +532,9 @@ class _ImageWorker(QThread):
             summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=self._progress,
                                           should_stop=self.cancel.is_set)
         else:
-            summary = alt_draft.run_translation_batch(self.ctx, capture.images, self.backend, on_progress=self._progress,
-                                                      should_stop=self.cancel.is_set)
+            queues = alt_draft.translation_queues(self.ctx, _translation_targets(self.ctx), capture.images)
+            summary = alt_draft.run_translation_batches(self.ctx, queues, self.backend, on_progress=self._progress,
+                                                        should_stop=self.cancel.is_set)
         self.done.emit(self, summary)
 
 
@@ -686,12 +717,17 @@ class TaskRunner(QObject):
 
     def _new_card(self, capture: _Capture, route: ai_profile.Route, title: str, **fields) -> TaskCard:
         task = capture.task
-        language = capture.language
-        if task is ai_tasks.UPDATE_TRANSLATION:
-            language = slide_language.own_language(capture.id_slug) or ""
+        language, source = capture.language, ""
+        codes = languages.project_languages(self._window.project).codes
+        if task is ai_tasks.TRANSLATE:
+            source = slide_language.own_language(capture.id_slug, codes) or ""
+        elif task is ai_tasks.UPDATE_TRANSLATION:
+            language = slide_language.own_language(capture.id_slug, codes) or ""
+            original = slide_language.links_for(self._window.project).group(capture.id_slug).original
+            source = slide_language.own_language(original, codes) or "" if original else ""
         card = TaskCard(task, title or _NAMES[task.name], route, target=slide_language.bare_id(capture.id_slug),
-                        target_title=deck_outline.slide_file_title(capture.path, capture.id_slug), focus=capture.path,
-                        file=capture.path.name, language=language, t0=time.monotonic(),
+                        target_title=deck_outline.slide_file_title(self._window.project, capture.path, capture.id_slug), focus=capture.path,
+                        file=capture.path.name, language=language, source=source, t0=time.monotonic(),
                         instruction=capture.instruction, **fields)
         if task is ai_tasks.READABLE:
             card.readable = card_model.Readable(tuple(self._window.readability_known.fixable(capture.path, capture.text)))
@@ -1140,7 +1176,7 @@ class TaskRunner(QObject):
         window = self._window
         now = window.centre.slide_text(capture.path)
         return slide_versioning.without_plus(now) == slide_versioning.without_plus(capture.text) and not (
-            capture.language and slide_language.translation_link(window.project, capture.id_slug))
+            capture.language and slide_language.links_for(window.project).find(capture.id_slug, capture.language))
 
     def _write(self, capture: _Capture, result: str) -> EditApplied | None:
         """Put `result` in place of the captured text (after the part of it that was not sent) and show it; None if
@@ -1163,7 +1199,7 @@ class TaskRunner(QObject):
         if not self._fresh(capture):
             return None
         created = slide_add.create_translation(
-            window.project, capture.id_slug, slide_add.slug_of(capture.id_slug), capture.language, translated.replace("\n", capture.eol))
+            window.project, capture.id_slug, slide_add.slug_of(window.project, capture.id_slug), capture.language, translated.replace("\n", capture.eol))
         ai_review.mark(window.project, created.path, "translation", capture.task.name)
         self._workspace.review_changed()
         linked = slide_ids.with_translation_backreference(capture.text, capture.language, created.id_slug)

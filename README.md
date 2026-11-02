@@ -188,7 +188,7 @@ screenshots.
   If `claude` is missing or signed out, an amber card says so and offers to sign in.
 - **Settings** (File → Settings…): General, AI, Presentation, Project, About and Plugins; each tab scrolls when
   it does not fit the screen. Since v8.72 the **AI** tab (there only when an AI plugin is installed) is one
-  tab with a section per service: the German address of translations, Claude's API key, Ollama's models
+  tab with a section per service: Claude's API key, Ollama's models
   (updating, deleting), Prompts (image-description and translation prompts), and sections that plugins add. The
   model of each task is in AI setup, not here. **Extensions** (also Help → Extensions…) is described below.
 
@@ -1114,7 +1114,7 @@ it is moved, copied or archived:
 - **Template**: the institution template the deck loads
   (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
-- **Language**: `\decklanguage[en]` or `[de]`.
+- **Language**: `\decklanguage[..]`, one of the project's languages (see "Languages").
 - **Dark slides** (supported templates, including the SlideMage template):
   a charcoal background, white body text,
   dark cards and gray code panels. Saved in the deck and applied to its previews
@@ -1678,107 +1678,126 @@ artifacts rather than providing visual inspection. Tool renders update the
 visible pane only while its slide, view, language and source still match;
 otherwise the result is cached for its own view without changing your selection.
 
-## Multi-language (EN/DE) slides
+## Languages
 
-Added 2026-08-24 — this section covers the
-day-to-day workflow. Every slide's id-slug now carries a language
-segment as its second hyphen-delimited part —
-`slides/<id>-<LANG>-<slug>-current.tex`, `LANG` one of `EN`, `DE`, or
-`mult` (multilingual, see below) — parsed at compile time by
-`SlideMage_base.tex`'s `\setSlideLanguageFromSlug` and shown
-in the footer appended directly to the tracked version:
-`v1.1.0` becomes `v1.1.0EN`/`v1.1.0DE` (only once a version is tracked at
-all — an untracked slide's footer still shows no `v...` segment).
+Added 2026-08-24 for English and German, any languages since v0.13.25.
 
-A deck's default language is set near the top of the deck file
-next to `\deckversion` (same `\ifdefined`-override pattern, for
-SlideMage's own one-off render preview and ad-hoc testing):
+### The project's languages
+
+A project has a **main language** and any number of **secondary languages**, set in **Settings → Project →
+Languages** and stored in `.slidemage/project.json` (`"languages": {"main": "en", "secondary": ["de", "fr"]}`), so
+everyone who opens the project sees the same ones. Codes are two-letter ISO 639-1 codes; about 40 languages are
+offered. The main language is the default of a new slide and deck, the source a translation starts from, the first
+entry of every language choice, and the fallback of `\multilingualtext*` and of the automatic texts. Changing it
+renames and moves nothing. A project from before v0.13.25 gets the key the first time it is opened: English, plus
+German if it uses German anywhere. Removing a language that slides or decks still use is allowed, with a warning that
+counts them. Adding one checks for old, untagged slides whose slug happens to start with that code
+(`x7k-IT-Governance` when Italian is added) and offers to rename them with their real language.
+
+The same page sets the **form of address** of translations (formal or informal, one for the whole project); the
+model is told which to use and decides what it means in the target language.
+
+### Slides, translations and decks
+
+Every slide's id-slug carries its language as the second hyphen-delimited part:
+`slides/<id>-<LANG>-<slug>-current.tex`, `LANG` a project language in capitals (`EN`, `DE`, `FR`, ...) or `mult`
+(multilingual, see below). `SlideMage_base.tex`'s `\setSlideLanguageFromSlug` reads it at compile time (only the
+project's codes count, which SlideMage tells LaTeX on a line it adds to every compile), and the footer shows it after
+the tracked version: `v1.1.0` becomes `v1.1.0EN` (an untracked slide's footer still shows no `v...` segment).
+
+A translation is a slide of its own, with its own ID, linked to its **original**: the translation's header says
+`%% Translation of: <original id-slug>`, and the original has one `%% <LANG> translation: <id-slug>` line per
+translation. An original and its translations are a **translation group**, every translation naming the original,
+also one made from another translation. In SlideMage:
+
+- The **Language** panel shows a row per project language: the slide itself, each translation (with its outdated
+  mark), and **Translate to <language>** for a language the group lacks. On a translation, **Make this the original**
+  turns the group around (the old original becomes a translation; right afterwards none is outdated), for when the
+  author starts writing in another language. The panel's language choice renames a slide's files (and frozen
+  versions) and rewrites every deck reference, after a confirmation that names how many change.
+- **Translate slide…** in the slide list's right-click menu, or **+ Slide** with the source **Translate**, copies a
+  slide into a language its group lacks, right after it in the open deck, and writes both header comments. If an AI
+  route is set up, a model translates the body from one project language into another (a starting point: a model
+  does not know LaTeX, so review it).
+- **Reestablish broken translation links** (Housekeeping → *Housekeeping…*) rewrites every header comment from the
+  files on disk, turns a chain of translations into a group around one original, and reports links that point at each
+  other.
+
+A deck has one language, set near its top next to `\deckversion` (the same override pattern, for SlideMage's own
+previews):
 
 ```latex
 \ifdefined\decklanguageoverride
 	\decklanguage[\decklanguageoverride]
 \else
-	\decklanguage[en]           % options: en, de
+	\decklanguage[en]
 \fi
 ```
 
-In SlideMage, the top bar's **EN / DE** switch overrides this default for
-the open deck. The slide list, preview, source editor, Details, side panels
-and Compile PDF follow the linked slide in that language. A missing partner
-keeps the called file and shows **No DE version** (or **No EN version**).
-Edits are kept separately for each file when switching languages.
+The deck settings sheet's **Language** offers the project's languages. A deck calls each group once: compiled in a
+language, the call is resolved to the group's member in that language, or keeps the called file if there is none
+(the preview then shows **No FR version**). The call that owns the place (the original's, else the first one into the
+group) controls visibility and reveal steps; an older deck that calls several members of one group shows and
+compiles one slot. Members have independent version histories: an English pin applies in English, the others use
+their current file. SlideMage resolves calls in temporary compile wrappers; compiling the raw deck outside the app
+keeps its literal calls. For a deck that deliberately typesets several languages separately, use independent copies
+without translation links.
 
-A linked translation occupies its original's place in the deck; an older
-deck that also lists the translation elsewhere shows and compiles one slot.
-The original call controls visibility and reveal steps. Translations have
-independent version histories: an English pin still applies in EN, while DE
-uses the German translation's current file. Alternate-language PDFs add
-`-de` or `-en` to their usual name. SlideMage resolves calls in temporary
-compile wrappers; compiling the raw deck outside the app keeps its literal
-calls. For a deck that deliberately typesets both languages separately,
-use independent copies without translation links.
+The language switch above the slide list lists the project's languages and **follows the open deck**: opening a deck
+sets it to the deck's `\decklanguage`, and so does changing the deck's language. Picking another language there is a
+look at the translations (slide list, preview, source, Details, side panels and Compile PDF follow it) until the next
+deck switch; edits are kept separately for each file. A PDF in a language other than the deck's own adds `-<code>`
+to its usual name.
 
-### Creating a German translation of an existing slide
+### What the deck's language sets
 
-A German translation of a slide with real body text gets its **own,
-new slide ID** — not a shared ID, not an inline conditional — since the
-content genuinely differs and this project's whole versioning model
-assumes one ID's `current.tex` is one evolving content stream. In
-SlideMage, choose **Translate slide…** in the slide's right-click menu in the slide
-list (or **+ Slide**, source **Translate**), pick **DE** and the English original: this
-seeds the new file from the English slide's own body (machine-translated by a local or
-cloud model if you choose one, else a starting point to translate from, not a finished
-translation), adds the copy to the open deck right after the original, and writes both
-cross-reference header comments automatically —
-`%% Translation of: <english id-slug>` on the new file, `%% DE
-translation: <german id-slug>` back on the English one. Then just edit
-the new slide's body directly, same as any other slide.
+`\decklanguage[xx]` sets:
 
-If a slide's language needs to change later (including migrating an
-older, not-yet-tagged slide), select it and use the
-**Language** panel's language choice — this renames the file (and any frozen
-versions) and rewrites every deck reference for you; it asks for
-confirmation first, naming how many references will change. **Reestablish broken
-translation links** (Housekeeping → *Housekeeping…*) refreshes every `Translation
-of:`/`... translation:` comment from current disk state — safe to run
-any time, e.g. after a manual rename elsewhere.
+- the automatic texts (*Image source(s)*, the alt-text prefix), from a table per language in `SlideMage_base.tex`
+  (English, German, French, Spanish, Italian); a project adds or changes entries in `SlideMage_project_macros.tex`
+  with `\SMSetLanguageStrings{pt}{ImageSource={Fonte(s) da imagem}, ImagePrefix={Imagem: }}`, and a missing entry
+  falls back to the main language, then English, with a warning in the log;
+- the PDF's language tag (`fr-FR`, from the table in `languages.py`);
+- the transcript's language (below);
+- hyphenation. Each slide hyphenates in **its own** language (an English slide in a German deck stays English), a
+  `mult` or untagged slide in the deck's, with the hyph-utf8 patterns SlideMage ships in `latex/hyphenation/` (33
+  languages; a project's own `hyphenation/` folder comes first, the TeX installation's patterns last). A language
+  without patterns anywhere hyphenates as English, with a warning in the log; one that hyph-utf8 has no patterns for
+  (Arabic, Hebrew, Persian, Chinese, Japanese, Korean, Vietnamese, Maltese) is not hyphenated. Titles and quotes keep
+  hyphenation off. `tools/fetch_hyphenation_patterns.py` fetches the patterns again; their licences are in
+  `latex/hyphenation/NOTICES.txt`.
 
-### Light, bilingual slides (image-only/title-only)
+`\ifSMGerman` is still true in a German deck, for templates and slides that test it.
 
-A slide whose only per-language difference is a short title or caption
-(a figure-only slide, say) doesn't need a second file: give it the
-`mult` language segment and switch its text with
-`\multilingualtext{English text}{German text}`, which reads whichever
-language the *deck* is compiling as. Pick **Multilingual** as the language in the Add
-slide sheet to create one directly.
+### Light, multilingual slides (image-only/title-only)
 
-For more than two languages, or just for readability, use the keyed form:
-`\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}`. One `key={text}`
-pair per language, the key being the deck's `\decklanguage` code (`EN` and
-`en` are the same); the pair whose key is the deck's language is typeset. A
-deck in a language the list lacks gets the `EN` text, or the first one if
-there is no `EN`. Text with a comma or `=` in it needs its braces, as shown.
-A deck in another language than English or German just says
-`\decklanguage[fr]`; its PDF's language is then `fr`. (The two-argument form
-is unchanged: English, then German.)
+A slide whose only per-language difference is a short title or caption (a figure-only slide, say) doesn't need a
+file per language: give it the `mult` language segment and use the keyed form,
+`\multilingualtext*{EN={Hello}, DE={Hallo}, FR={Bonjour}}`. One `key={text}` pair per language, the key being a
+`\decklanguage` code (`EN` and `en` are the same); the pair of the deck's language is typeset, else the main
+language's, else the first. Text with a comma or `=` in it needs its braces, as shown. Pick **Multilingual** as the
+language in the Add slide sheet to create one directly; the editor's "Both languages" insertion writes the keyed form,
+one key per project language, in any project but one of English and German. The older two-argument form `\multilingualtext{English text}{German text}` is
+unchanged: English, then German.
 
-### Translating image descriptions/citations
+### Image descriptions and citations per language
 
-The Images page's per-image form has a **DE** side (short/long
-description, source, takeaway; the **EN | DE** switch at the page's top right) with a
-**Translate** button that machine-translates the current English text via a
-local or cloud model — review and edit before saving, same as any drafted
-description. A German source citation is optional: leave it blank to
-reuse the English one (most citations are proper nouns/publication names
-that don't need translating), or fill it in only where it should read
-differently.
+Each image description has a text per language (short and long description, takeaway, source); the store is
+`media/alt-text.json`, format version 3 since v0.13.30 (SlideMage v0.13.24 to v0.13.29 refuse to write it, so update
+every machine before opening the project; the version-2 file it was converted from is kept as
+`media/alt-text.v2.json`). The Images page's switch at the top right lists the
+project's languages, and the per-image form shows English and the language on show, with a **Translate** button that
+machine-translates the English text (off while there is none) — review and edit before saving, as for any drafted
+description. A source citation in another language is optional: leave it blank to reuse the English one, or fill it
+in only where it should read differently. A text written in another language for an image without English text is
+that language's own, not a translation; such an image says **No English description**.
 
-The page's **Translate with** picker (any
-model installed in Ollama, not just vision-capable ones — translation is
-text-only) and its **Translate all…** button that batch-translates every
-image whose English text is new or has changed since its last German
-translation, same resumable/no-persisted-job-state design as **Draft
-all…**. As of 2026-08-25 every existing image has a German translation.
+**Translate all…** translates every image whose English text is new or has changed since its last translation, into
+the language on show, or into every other project language while the page shows English; the same
+resumable/no-persisted-job-state design as **Draft all…**. The review filter **Missing a translation** looks at the
+language on show, or at every other one while English is.
+
+The page's **Translate with** picker takes any model the route offers — translation is text-only.
 
 Exactly what gets sent to the model — the instruction text, and how many
 blank lines separate it from the text to translate — is configurable per
@@ -3302,12 +3321,12 @@ Markdown + HTML land in `transcripts/` (or the deck's own
   `\conditionalslide`, `\deckonly`/`\deckuncover`/`\deckvisible`), and slide
   numbering matches the PDF — so "slide 34" in the transcript is slide 34 in
   the deck.
-- A German deck (`\decklanguage[de]`, see "Multi-language (EN/DE) slides"
-  above) produces a transcript entirely in German — UI strings, image
-  descriptions/takeaways (the German fields, falling back to English for
-  any not yet translated), and the source citation (German if set,
-  English otherwise) — driven by the deck's own fixed language, not a
-  separate transcript-time choice.
+- A deck in another language (`\decklanguage[de]`, see "Languages" above)
+  produces a transcript in that language — UI strings (English, German, French,
+  Spanish and Italian; others fall back to the main language, then English),
+  image descriptions/takeaways (the language's own text), and the source
+  citation (the language's if set, English otherwise) — driven by the deck's
+  own fixed language, not a separate transcript-time choice.
 - `\note{}` content never reaches it. Citations resolve against
   `SlideMage.bib`.
 - Colour is omitted: `\textcolor{...}{text}`, `\colorbox`, `\fcolorbox`,

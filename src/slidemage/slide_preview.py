@@ -27,6 +27,7 @@ from . import app_settings, compile_log, compiler, open_path, preview_build, pro
 from . import slide_language, slide_snapshot
 from .compiler import build_env
 from .deck_editor import format_call
+from .deck_language import language_lines
 from .preview_metrics import measure
 from .tex_source import COMMENT_RE
 
@@ -307,19 +308,6 @@ def _deck_version_line(deck_version: Optional[str]) -> str:
     return f"\\deckversion[{deck_version}]\n"
 
 
-def _deck_language_line(deck_language: Optional[str]) -> str:
-    """Twin of _deck_version_line above, for the slide-source editor's
-    own one-off render language dropdown (2026-08-24) -- lets a
-    multilingual (\\multilingualtext{}{}) slide be spot-checked in either
-    language without needing a real deck file, mirroring exactly how the
-    version dropdown already previews any deck version on demand. Same
-    "re-set, harmless to call again" reasoning: \\decklanguage[...] simply
-    overrides whichever language the preamble itself defaulted to."""
-    if deck_language is None:
-        return ""
-    return f"\\decklanguage[{deck_language}]\n"
-
-
 def _slide_call(macro: str, id_slug: str, version: Optional[str], conditions: Optional[list], steps: Optional[str] = None) -> str:
     """The call a preview wrapper makes. \\slidestep keeps its own reveal-step restriction, but is shown for every deck
     version: a preview compiles as the instructor deck, which would otherwise render nothing for a call listed only
@@ -327,13 +315,14 @@ def _slide_call(macro: str, id_slug: str, version: Optional[str], conditions: Op
     return format_call(macro, id_slug, version, None if macro == "slidestep" else conditions, steps)
 
 
-def _wrapper_text(preamble: str, deck_version: Optional[str], deck_language: Optional[str], slides: list[tuple],
+def _wrapper_text(ctx: project.ProjectContext, preamble: str, deck_version: Optional[str],
+                  deck_language: Optional[str], slides: list[tuple],
                   overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
                   context_after: str = "") -> str:
     """The wrapper of `slides`, [(frame_number, call)] in order: the preamble, the deck's version and language, the
     overlay selection (once: it patches beamer for the rest of the document), then each call after its page number."""
     calls = "".join(f"{_frame_number_line(frame_number)}\t{call}\n" for frame_number, call in slides)
-    return (f"{preamble}{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
+    return (f"{preamble}{_deck_version_line(deck_version)}{language_lines(ctx, deck_language)}"
             f"{context_before}{_overlay_line(overlay, all_steps)}{calls}{context_after}\\end{{document}}\n")
 
 
@@ -359,14 +348,15 @@ def _text_slide(id_slug: str, slide_body: str, frame_number: Optional[int], step
             f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n{call_state}{slide_body}\n")
 
 
-def _text_wrapper(preamble: str, deck_version: Optional[str], deck_language: Optional[str], slides: str,
+def _text_wrapper(ctx: project.ProjectContext, preamble: str, deck_version: Optional[str],
+                  deck_language: Optional[str], slides: str,
                   overlay: Optional[int] = None, all_steps: bool = False, context_before: str = "",
                   context_after: str = "") -> str:
     """The editor-style wrapper of `slides`, one or several `_text_slide`s: the preamble, the deck's sections before
     them, the overlay selection (once: it patches beamer for the rest of the document), the deck's version and
     language, then the slides."""
     return (f"{preamble}{context_before}{_overlay_line(overlay, all_steps)}"
-            f"{_deck_version_line(deck_version)}{_deck_language_line(deck_language)}"
+            f"{_deck_version_line(deck_version)}{language_lines(ctx, deck_language)}"
             f"{slides}{context_after}\\end{{document}}\n")
 
 
@@ -543,7 +533,7 @@ def render_slide_to_pdf(
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     wrapper_text = _wrapper_text(
-        preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
+        ctx, preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (
         slide_snapshot.detect_template(preamble)
@@ -576,7 +566,7 @@ def render_slides_to_pdf(
     may need its deck's context (a contents or agenda slide shows its links only in a document that holds them)."""
     calls = [(frame_number, _slide_call(macro, id_slug, version, conditions)) for macro, id_slug, version, conditions, frame_number in slides]
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
-    wrapper_text = _wrapper_text(preamble, deck_version, deck_language, calls, all_steps=True)
+    wrapper_text = _wrapper_text(ctx, preamble, deck_version, deck_language, calls, all_steps=True)
     # A short job name: the slide ids in it would make the file name too long.
     job = 'batch-' + hashlib.sha256(''.join(f'{n}{call}' for n, call in calls).encode()).hexdigest()[:12]
     return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, workspace=workspace)
@@ -599,8 +589,8 @@ def render_slide_texts_to_pdf(
     plan 5); the pages are the same pixel for pixel. Raises RuntimeError on failure of any slide. A bare slide id may
     appear once only (the pages of a repeated one cannot be told apart), and no slide may need its deck's context (a
     contents or agenda slide shows its links only in a document that holds them)."""
-    wrapper_text = _text_wrapper(default_preamble(ctx) if preamble_text is None else preamble_text, deck_version,
-                                 deck_language, "".join(_text_slide(*slide) for slide in slides))
+    wrapper_text = _text_wrapper(ctx, default_preamble(ctx) if preamble_text is None else preamble_text,
+                                 deck_version, deck_language, "".join(_text_slide(*slide) for slide in slides))
     # A short job name: the slide ids in it would make the file name too long.
     job = 'batch-' + hashlib.sha256(wrapper_text.encode()).hexdigest()[:12]
     return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True)
@@ -688,7 +678,7 @@ def render_slide_text_to_pdf(
         raise ValueError("Use Instructor instead of Presenter for an element preview")
     preamble, slide_body = _region_source(preamble, slide_body, preview_mode)
     wrapper_text = _text_wrapper(
-        f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
+        ctx, f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
         _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (

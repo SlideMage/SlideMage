@@ -59,7 +59,9 @@ def _confirm_newer_project(root: Path, info: dict) -> bool:
 
 def check_project_format(root: Path, app_version: str) -> bool:
     """False if the user chose not to open a project from a newer
-    SlideMage; otherwise records this open in project.json."""
+    SlideMage; otherwise records this open in project.json and, for a project from before the languages key,
+    writes it (languages.migrate), and converts image descriptions saved by an older SlideMage
+    (alt_images.convert_store, which keeps the old file)."""
     info = project.read_project_info(root)
     if info["format"] > project.PROJECT_FORMAT:
         splash.close()
@@ -71,6 +73,11 @@ def check_project_format(root: Path, app_version: str) -> bool:
         project.record_project_open(root, app_version)
     except OSError:
         pass  # e.g. a read-only project folder -- nothing to record then
+    if info["format"] <= project.PROJECT_FORMAT:
+        from . import alt_images, languages
+        ctx = project.ProjectContext.at(root)
+        languages.migrate(ctx)            # first: it reads what the old store says about German
+        alt_images.convert_store(ctx)
     return True
 
 

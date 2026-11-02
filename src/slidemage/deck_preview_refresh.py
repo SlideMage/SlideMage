@@ -56,7 +56,7 @@ def plan(ctx, deck, *, scope='all', selected_view='instructor', language='EN',
     if selected_view not in VIEWS:
         raise ValueError(f'Unknown course view: {selected_view}')
     views = VIEWS if scope == 'all' else (selected_view,)
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     slots = {view: deck_outline.resolve_slots(ctx, deck, view, language, links=links) for view in views}
     instructor_frames = {row.key: row.frame_number for row in
                          deck_outline.resolve_slots(ctx, deck, 'instructor', language, links=links)}

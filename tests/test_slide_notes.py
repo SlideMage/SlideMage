@@ -95,15 +95,15 @@ def pair(slides):
 
 def test_translation_link_names_the_partner_from_either_side(ctx, slides):
     en, de = pair(slides)
-    link = slide_language.translation_link(ctx, "abc-EN-Demo")
+    (link,) = slide_language.translation_group(ctx, "abc-EN-Demo")
     assert (link.partner, link.language, link.path, link.is_translation, link.outdated) == (
         "abd-DE-Demo", "DE", de, False, False)
-    link = slide_language.translation_link(ctx, "abd-DE-Demo")
+    (link,) = slide_language.translation_group(ctx, "abd-DE-Demo")
     assert (link.partner, link.language, link.path, link.is_translation) == ("abc-EN-Demo", "EN", en, True)
     (slides / "xyz-EN-Alone-current.tex").write_text(FRAME, encoding="utf-8")
-    assert slide_language.translation_link(ctx, "xyz-EN-Alone") is None
+    assert slide_language.translation_group(ctx, "xyz-EN-Alone") == []
     de.unlink()
-    assert slide_language.translation_link(ctx, "abc-EN-Demo") is None      # the partner's file is gone
+    assert slide_language.translation_group(ctx, "abc-EN-Demo") == []      # the partner's file is gone
 
 
 @pytest.mark.parametrize("missing_header", ["abc-EN-Demo", "abd-DE-Demo"])
@@ -114,28 +114,28 @@ def test_one_sided_links_keep_the_partner_role_and_saved_time_rule(ctx, slides, 
     old = datetime(2026, 1, 1).timestamp()
     os.utime(path, (old, old))
     backup(slides, en.name, "20260301-090000")
-    links = slide_language.TranslationLinks(ctx.slides_dir)
+    links = slide_language.links_for(ctx)
     for slug, partner, language, is_translation in (
         ("abc-EN-Demo", "abd-DE-Demo", "DE", False),
         ("abd-DE-Demo", "abc-EN-Demo", "EN", True),
     ):
-        link = slide_language.translation_link(ctx, slug, links=links)
+        (link,) = slide_language.translation_group(ctx, slug, links=links)
         assert (link.partner, link.language, link.is_translation, link.outdated) == (
             partner, language, is_translation, True)
-        assert slide_language.cross_referenced_language(ctx, slug, links=links) == language
+        assert slide_language.translated_languages(ctx, slug, links=links) == (language,)
         assert slide_language.badge_for(ctx, slug, links=links).both
 
 
 def test_a_translation_is_outdated_when_the_original_was_saved_after_it_was_written(ctx, slides):
     en, de = pair(slides)
     backup(slides, en.name, "20260301-090000")                          # the original was saved in March
-    assert slide_language.translation_link(ctx, "abd-DE-Demo").outdated      # the translation's file dates from January
-    assert slide_language.translation_link(ctx, "abc-EN-Demo").outdated      # seen from the original, too
+    assert slide_language.translation_group(ctx, "abd-DE-Demo")[0].outdated      # the translation's file dates from January
+    assert slide_language.translation_group(ctx, "abc-EN-Demo")[0].outdated      # seen from the original, too
     backup(slides, de.name, "20260401-090000")                          # the translation saved in April
-    assert not slide_language.translation_link(ctx, "abd-DE-Demo").outdated
+    assert not slide_language.translation_group(ctx, "abd-DE-Demo")[0].outdated
     later = datetime(2026, 5, 1).timestamp()
     os.utime(en, (later, later))                                        # a header sync touching the original's mtime
-    assert not slide_language.translation_link(ctx, "abd-DE-Demo").outdated  # is not a save
+    assert not slide_language.translation_group(ctx, "abd-DE-Demo")[0].outdated  # is not a save
 
 
 # -- SlideMage.bib ---------------------------------------------------------------------------------

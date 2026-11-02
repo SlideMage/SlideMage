@@ -24,6 +24,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QScrollArea, QStackedWidget, QWidget
 
+from ... import languages
 from ...ai import ai_profile, routes
 from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ...ai.agent_types import EDIT_AUTO
@@ -277,13 +278,17 @@ class AssistantArea(Card):
             self.workspace.show_slide(path)
         self.tasks.start(READABLE, title="Make readable", focus=path)
 
-    def translate_slide(self) -> None:
-        """The Language panel's Translate: the Translate task of the slide in view, on its card."""
+    def translate_slide(self, language: str | None = None) -> None:
+        """The Language panel's Translate to <language>: the Translate task of the slide in view, on its card; without
+        a language, into the first one the slide has no translation in."""
         bubble = next((b for b in self.header.offers(SCOPE_SLIDE) if b.task is TRANSLATE), None)
         if bubble is None:
-            self.app.toast.show_message("This slide cannot be translated: it has a translation, or is not EN or DE.")
-        else:
+            self.app.toast.show_message("This slide cannot be translated: it is in every language of the project, "
+                                        "or has no language.")
+        elif language is None:
             self.run_task(bubble)
+        else:
+            self.tasks.start(TRANSLATE, title=f"Translate to {languages.name(language)}", instruction=language)
 
     def refresh_colors(self) -> None:
         for surface in self.surfaces.values():

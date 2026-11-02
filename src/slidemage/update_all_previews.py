@@ -34,7 +34,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-from . import deck_editor, project, slide_language, slide_snapshot
+from . import deck_editor, languages, project, slide_language, slide_snapshot
 from .compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
 from .slide_preview import template_preamble
@@ -96,7 +96,7 @@ def needed_slides_by_template(ctx: project.ProjectContext, deck: Optional[Deck] 
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(each):
             bucket.add(call.id_slug)
-        for language in slide_language.TRANSLATION_LANGUAGES:
+        for language in languages.project_languages(ctx).codes:
             bucket.update(slot.call.id_slug for slot in deck_language.deck_slots(ctx, each, language))
     return needed
 

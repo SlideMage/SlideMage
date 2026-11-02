@@ -116,7 +116,20 @@ AUDITED_FRAMEWORK = {
     # version, footer-hide or deck-label rule entered the base.
     # v0.13.18: the base sets one more length, \SMContentHeight, from \paperheight and the two content margins.
     # Re-audited: a length only, no version, footer-hide or deck-label rule entered the base.
-    "SlideMage_base.tex": "8e414f16a324c9afe929bea8a110e9bc2ffb77896683cb84673e1e768e92652c",
+    # v0.13.25: the slide language is read from the project's languages (\SMProjectLanguages, default EN,DE), and
+    # \SMPdfLang sets the PDF language tag. Re-audited: the language is the slide's, in the render key, not the view;
+    # no version, footer-hide or deck-label rule entered the base.
+    # v0.13.28: the automatic texts (image source label, alt-text prefix) come from a table per language
+    # (\SMSetLanguageStrings), \multilingualtext* falls back to the main language, and the PDF /Lang is written at the
+    # end of the document from \SMPDFLanguage. Re-audited: texts of the invisible and the footnote layers by language,
+    # no version, footer-hide or deck-label rule entered the base.
+    # v0.13.36: a slide hyphenates in its language (\decklanguage and \setSlideLanguageFromSlug load the hyph-utf8
+    # patterns through LuaTeX's lang library; patterns loaded in the preamble are stored in the format). Re-audited:
+    # the language is the slide's or the deck's, both in the render key, the same in every view; no version,
+    # footer-hide or deck-label rule entered the base.
+    # v0.13.37: the patterns are looked up in hyphenation/ first (the framework ships them, a project may have its
+    # own). Re-audited: where the patterns come from, the same in every view; no rule changed.
+    "SlideMage_base.tex": "e45dfd78af1bb23e90519428015c57193d57141dfb6c188abf3c1b84ab3f969b",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name
@@ -133,7 +146,10 @@ AUDITED_FRAMEWORK = {
     # says so; its code is unchanged). Re-audited: markers only, drawn the same in every view; no version, footer-hide
     # or deck-label rule entered the theme or the setup layer.
     "beamerthemeSlideMage.sty": "9006631fd64bae9062ff54fcf22db8001b4a15887d399005dca932868d22b869",
-    "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
+    # v0.13.30: the image description CSV's columns are read by their header names, one per language (content
+    # languages plan, 2.4). Re-audited: which column is read depends on the deck's language only, the same in every
+    # view; no version, footer-hide or deck-label rule.
+    "SlideMage_alt.lua": "a3d1b99c2f8b7fce28c817878f8412008f2db9bf639d2c89a7014ac90faca853",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
     # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,

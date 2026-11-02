@@ -86,7 +86,7 @@ def test_no_german_filter_lists_slides_with_an_english_only_informative_image(st
     views = [view(slide(store, "1aaa", images=(IMG, "media/c.png")), "none"),
              view(slide(store, "2bbb", images=("media/b.png",)), "none"),
              view(slide(store, "3ccc", images=("media/c.png", "media/d.png", "media/missing.png")), "none")]
-    no_german = [label for label, _ in image_review.FILTERS].index("No German")
+    no_german = [label for label, _ in image_review.FILTERS].index("Missing a translation")
     assert [v.row.slide_id for v in image_review.visible_views(views, entries, no_german)] == ["1aaa"]
 
 

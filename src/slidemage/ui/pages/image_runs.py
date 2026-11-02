@@ -19,14 +19,14 @@ from typing import Optional
 
 from PySide6.QtWidgets import QMessageBox
 
-from ... import alt_draft, alt_images
+from ... import alt_draft, alt_images, image_review, languages
 from ...ai import resolver
 from ...batch_result import DONE, DRAFT, KEPT, TRANSLATE, ItemOutcome
 from ..ai_models import built, picked_route
 from .. import background
 from ..workspace.ai_work import RunningWork
 from .image_dialogs import PromptTuningSheet
-from .image_form import ImageForm
+from .image_form import ImageForm, store_writable
 from .image_jobs import Job, draft_job, translate_job
 from .image_results import confirm
 
@@ -160,7 +160,7 @@ class ImageRunsMixin:
 
     def _draft_slide(self) -> None:
         view = self._current
-        if view is None or self._job is not None:
+        if view is None or self._job is not None or not store_writable(self, self.app.project):
             return
         jobs = alt_draft.slide_jobs(self.app.project, view.row, self._entries)
         if not jobs:
@@ -183,7 +183,7 @@ class ImageRunsMixin:
 
     def _draft_all(self, only: Optional[list[str]] = None) -> None:
         """Draft what still needs it, after asking; with `only` (Retry failed) just those images."""
-        picked = self._draft_backend()
+        picked = self._draft_backend() if store_writable(self, self.app.project) else None
         if picked is None:
             return
         route, backend = picked
@@ -230,7 +230,7 @@ class ImageRunsMixin:
 
     def _tune(self, form: ImageForm) -> None:
         view = self._current
-        if view is None or self._job is not None:
+        if view is None or self._job is not None or not store_writable(self, self.app.project):
             return
         route = picked_route(self, self.app.project, self.draft_model, "image_description",
                              "the slide's text and the image to describe")
@@ -268,7 +268,8 @@ class ImageRunsMixin:
 
     def _translate_all(self, only: Optional[list[str]] = None) -> None:
         """Translate what still needs it, after asking; with `only` (Retry failed) just those images."""
-        picked = self._translation_backend("the descriptions of all untranslated images")
+        picked = (self._translation_backend("the descriptions of all untranslated images")
+                  if store_writable(self, self.app.project) else None)
         if picked is None:
             return
         route, backend = picked
@@ -276,19 +277,23 @@ class ImageRunsMixin:
         if lease is None:
             return
         try:
-            queue = [image for image in alt_draft.images_needing_translation(self.app.project)
-                     if only is None or image in only]
-            if not queue:
+            # Into the language the page shows, or every other language of the project while it shows English.
+            targets = list(image_review.translation_languages(languages.project_languages(self.app.project).lower,
+                                                              self._language))
+            names = ", ".join(languages.name(code) for code in targets) or "another language"
+            queues = alt_draft.translation_queues(self.app.project, targets, only)
+            count = sum(len(queue) for queue in queues.values())
+            if not count:
                 QMessageBox.information(self, "Nothing to translate", "Every image with English text already has a "
-                                        "current (non-stale) German translation.")
+                                        f"current (non-stale) translation into {names}.")
                 lease.release()
                 return
-            go, _again = confirm(self, TRANSLATE, len(queue), self.app.project.root.name, route)
+            go, _again = confirm(self, TRANSLATE, count, self.app.project.root.name, route)
             if not go:
                 lease.release()
                 return
-            job = translate_job("Translating descriptions to German", self.app.project, queue, backend, route)
-            self._start(job, f"{len(queue)} image(s) via {backend.label}", len(queue), self._translated, lease)
+            job = translate_job(f"Translating descriptions to {names}", self.app.project, queues, backend, route)
+            self._start(job, f"{count} translation(s) via {backend.label}", count, self._translated, lease)
         except BaseException:
             lease.release()
             raise
@@ -322,8 +327,8 @@ class ImageRunsMixin:
         return {unsaved: "unsaved", disk: "disk", save: "save"}.get(box.clickedButton())
 
     def _translate_image(self, form: ImageForm, save_first: bool) -> None:
-        """Translate one image's English text into the German fields of its form (nothing is saved)."""
-        if self._job is not None:
+        """Translate one image's English text into the fields of its form's second language (nothing is saved)."""
+        if self._job is not None or not store_writable(self, self.app.project):
             return
         english = form.english()
         if not save_first and english != form.saved_english():
@@ -341,6 +346,10 @@ class ImageRunsMixin:
         if picked is None:
             return
         route, backend = picked
+        backend, name = alt_draft.for_language(backend, form.second), languages.name(form.second)
+        if backend is None:
+            QMessageBox.warning(self, "Translate", f"This route translates descriptions into German only, not into {name}.")
+            return
         lease = self.app.acquire_route_task(route.route, "translating this image")
         if lease is None:
             return
@@ -349,7 +358,7 @@ class ImageRunsMixin:
             entry = alt_images.ImageEntry(image=form.reference, short=short, long=long, takeaway_default=takeaway)
             form.begin_translation(english)
             self._translating = form
-            job = Job("Translating to German", backend.provider, lambda _job: backend.translate(entry), route)
+            job = Job(f"Translating to {name}", backend.provider, lambda _job: backend.translate(entry), route)
             self._start(job, f"{form.reference} via {backend.label}", 1, lambda outcome: self._translated_one(form, outcome), lease)
         except BaseException:
             lease.release()
@@ -363,7 +372,7 @@ class ImageRunsMixin:
             return
         form.end_translation(result)
         if result.ok:
-            self.app.log(f"Translated {form.reference} into German.")
+            self.app.log(f"Translated {form.reference} into {languages.name(form.second)}.")
         else:
             self.app.log(f"*** Translation of {form.reference} failed: {result.error} ***")
             QMessageBox.warning(self, "Translation failed", result.error or "Unknown error")

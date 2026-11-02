@@ -7,7 +7,7 @@ the answer says so, and compile_deck (or the user's Compile) comes first.
 """
 from __future__ import annotations
 
-from ... import readability_check, slide_language
+from ... import languages, readability_check, slide_language
 from ...readability_check import StalePdf
 from .base import ToolContext, ToolError, tool
 from .files import current_revision
@@ -44,8 +44,8 @@ def check_readability(ctx: ToolContext, args: dict) -> str:
             raise ToolError(f"The PDF of {deck.name} could not be read: {exc}") from None
         return f"{deck.name} as {context.view}, {context.language}: " + report.to_text(DECK_SLIDE_LIMIT)
     path = slide_or_file(ctx, args.get("slide"))
-    own = slide_language.own_language(path.name)
-    language = own if own in slide_language.TRANSLATION_LANGUAGES else context.language
+    own = slide_language.own_language(path.name, languages.project_languages(ctx.project).codes)
+    language = own if own not in (None, slide_language.MULT) else context.language
     target = slide_target(ctx.project, open_deck(ctx) if context.deck is not None else None, path, context.view,
                           language)
     if target is None:

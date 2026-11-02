@@ -1,0 +1,3 @@
+The licence of hyph-fi.tex in hyph-utf8 (Copyright (C) 1986, 1988, 1989 Kauko Saarinen), as stated in the file:
+
+Patterns may be freely distributed

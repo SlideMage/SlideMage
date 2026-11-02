@@ -39,9 +39,8 @@ from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_context, deck_editor, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, languages, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning)
-from ...ai.tasks import LANGUAGE_NAMES
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
@@ -49,7 +48,7 @@ from ...preview_target import PreviewTarget
 from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_selection import SelectedImage, legacy_reference, remember_transient, validate_captured, validate_scoped
 from ...preview_metrics import PreviewMetrics
-from ...slide_language import TRANSLATION_LANGUAGES, TranslationLink, own_language, translation_link
+from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
 from ..kit import kit_qss as q
@@ -88,17 +87,18 @@ def short_view(view: str) -> str:
     return VIEW_LABELS[view].replace(" course", "")
 
 
-def partner_link(target: PreviewTarget, link: Optional[TranslationLink]) -> Optional[TranslationLink]:
-    """`link` if it leads to the slide's file in the other language, else None."""
-    return link if link is not None and link.language not in (None, own_language(target.id_slug)) else None
+def partner_link(links: list[TranslationLink]) -> Optional[TranslationLink]:
+    """The link the language chip jumps to: the original when the file shown is a translation, else the first
+    translation; None for a file with no translation."""
+    return next((link for link in links if link.is_translation), links[0] if links else None)
 
 
-def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str,
-              link: Optional[TranslationLink] = None, context_mode: Optional[str] = None,
+def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, language: str, own: Optional[str],
+              links: list[TranslationLink] = (), context_mode: Optional[str] = None,
               rendered: bool = False) -> list[tuple]:
     """(icon, text, tone, tooltip) of the chips above the page. `row` is the
-    slide's row in the open deck, None for a file shown alone; `link` the translation
-    partner of the file shown, if it has one."""
+    slide's row in the open deck, None for a file shown alone; `own` its language; `links` the other
+    members of its translation group."""
     chips = []
     if row is None:
         if target.version:
@@ -119,13 +119,12 @@ def chips_for(target: PreviewTarget, row: Optional[SlideRow], view: str, languag
                           f"The slide has no translation into {language}."))
     if target.needs_context:
         chips.append(context_chip(target, view, context_mode, rendered))
-    if link is not None and link.outdated:
+    if any(link.outdated for link in links):
         chips.append(("translate", "Translation outdated", "warning",
                       "The original was saved after the translation was last written (Language panel)."))
-    own = own_language(target.id_slug)
-    if own and (partner := partner_link(target, link)):
-        chips.append(("language", f"{own} + {partner.language}", "neutral",
-                      f"Go to the {LANGUAGE_NAMES.get(partner.language, partner.language)} "
+    if own and (partner := partner_link(links)):
+        chips.append(("language", LanguageBadge(own, tuple(link.language for link in links)).text().strip("[]"), "neutral",
+                      f"Go to the {languages.name(partner.language)} "
                       f"{'original' if partner.is_translation else 'version'}"))
     elif own:
         chips.append(("language", own, "neutral", "The slide's language; it has no translation."))
@@ -161,10 +160,10 @@ def _shown_occurrence(window, state=None):
 
 def render_context(window, path: Path) -> Optional[tuple[PreviewTarget, str, str]]:
     """(target, view, language) for rendering the slide file `path` as the top bar says: in its own
-    language when that is one of EN and DE, as the open deck calls it. None when `path` is no slide file."""
+    language when that is one of the project's, as the open deck calls it. None when `path` is no slide file."""
     state = window.state
-    language = own_language(path.name)
-    language = language if language in TRANSLATION_LANGUAGES else state.language
+    language = own_language(path.name, languages.project_languages(window.project).codes)
+    language = language if language not in (None, MULT) else state.language
     target = slide_target(window.project, state.deck, path, state.view, language,
                           occurrence_key=_shown_occurrence(window))
     return None if target is None else (target, state.view, language)
@@ -1147,11 +1146,12 @@ class PreviewPane(Surface):
         chips = []
         if target is not None:
             outline = self.state.current_outline()
-            link = translation_link(self.app.project, target.id_slug, links=outline.links if outline else None)
-            partner = partner_link(target, link)
+            own = own_language(target.id_slug, languages.project_languages(self.app.project).codes)
+            links = translation_group(self.app.project, target.id_slug, links=outline.links if outline else None)
+            partner = partner_link(links)
             mode_key = (target.key, view, language)
             for icon, text, tone, tooltip in chips_for(
-                    target, row, view, language, link, self._context_modes.get(mode_key),
+                    target, row, view, language, own, links, self._context_modes.get(mode_key),
                     mode_key in self._context_modes):
                 jump = icon == "language" and partner is not None
                 compile_deck = icon == "warning" and target.needs_context and row is not None

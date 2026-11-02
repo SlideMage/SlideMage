@@ -22,6 +22,10 @@ alongside the existing "%% Included in decks: ..." block
     %% Translation of: <source id-slug>        -- this file IS a translation
     %% <LANG> translation: <target id-slug>     -- this file HAS a translation
 
+A slide and its translations are a translation group, a star: one original (the slide
+that is nobody's translation), each translation naming it, and the original naming each
+translation. Only the project's languages count as a language (languages.py).
+
 Written by slide_add.create_copy() for a translation (both sides at
 once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
@@ -33,18 +37,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import slide_source
+from . import languages, slide_source
 from .project import ProjectContext
 
 
-# Keep in sync with SlideMage_base.tex's own
-# \setSlideLanguageFromSlug@aux fixed keyword set.
-LANGUAGES = ("EN", "DE", "mult")
-# Excludes "mult", which is not a translation target.
-TRANSLATION_LANGUAGES = ("EN", "DE")
+# A multilingual slide: the same in every language, so it is nobody's translation.
+MULT = "mult"
 
 TRANSLATION_OF_RE = re.compile(r"^%% Translation of: (\S+)", re.MULTILINE)
-LANG_TRANSLATION_RE = re.compile(r"^%% (EN|DE|mult) translation: (\S+)", re.MULTILINE)
+# Only the project's codes count as a language (TranslationLinks).
+LANG_TRANSLATION_RE = re.compile(r"^%% ([A-Z]{2}|mult) translation: (\S+)", re.MULTILINE)
 
 CURRENT_SUFFIX = "-current.tex"
 FROZEN_RE = re.compile(r"-v([0-9]+-[0-9]+-[0-9]+)\.tex$")
@@ -57,11 +59,12 @@ def bare_id(id_slug_or_ref: str) -> str:
     return id_slug_or_ref.split("-", 1)[0]
 
 
-def own_language(id_slug: str) -> Optional[str]:
-    """"EN"/"DE"/"mult" parsed from id_slug's own second hyphen segment,
-    or None for a legacy slide with no such segment."""
+def own_language(id_slug: str, codes: tuple[str, ...]) -> Optional[str]:
+    """One of `codes` (the project's languages, upper case: languages.Languages.codes) or "mult", parsed from
+    id_slug's own second hyphen segment, or None for a slide with no such segment. Any other word there
+    ("x7k-IT-Governance" in a project without Italian) is part of the slug."""
     parts = id_slug.split("-", 2)
-    if len(parts) >= 2 and parts[1] in LANGUAGES:
+    if len(parts) >= 2 and (parts[1] in codes or parts[1] == MULT):
         return parts[1]
     return None
 
@@ -105,109 +108,160 @@ def _header(path: Path) -> str:
         return ""
 
 
-class TranslationLinks:
-    """One scan per resolution, including links recorded on only one side."""
+@dataclass(frozen=True)
+class Group:
+    """A slide's translation group: the slide that is nobody's translation and its translations."""
 
-    def __init__(self, slides_dir: Path) -> None:
+    original: Optional[str]      # the original's id-slug; None when the links name none (a cycle, or a tangle)
+    members: dict[str, str]      # language -> id-slug, the original among them; a language two slides claim is left out
+    valid: bool                  # a star: every translation names the original, one slide per language
+
+
+class TranslationLinks:
+    """One scan per resolution, including links recorded on only one side. `codes` are the project's
+    languages (languages.Languages.codes); only they count as a slide's language."""
+
+    def __init__(self, slides_dir: Path, codes: tuple[str, ...]) -> None:
         self.slides_dir = slides_dir
+        self.codes = codes
         self.paths = {bare_id(p.name): p
                       for p in self.slides_dir.glob("*-current.tex")}
         self.headers: dict[str, str] = {}
-        self.reverse: dict[tuple[str, str], set[str]] | None = None
+        self._groups: dict[str, Group] | None = None
 
-    def partner(self, ref: str) -> str | None:
-        path = self.paths.get(bare_id(ref))
-        partner = path.name[:-len(CURRENT_SUFFIX)] if path else None
-        return partner if partner and own_language(partner) in TRANSLATION_LANGUAGES else None
+    def own(self, id_slug: str) -> str | None:
+        return own_language(id_slug, self.codes)
 
     def header(self, id_slug: str) -> str:
         if id_slug not in self.headers:
             self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
         return self.headers[id_slug]
 
-    def find(self, id_slug: str, language: str, path: Path | None = None) -> str | None:
+    def group(self, id_slug: str) -> Group:
+        """The translation group of the slide with this id-slug's bare id. A slide of no language, or with no
+        current file, is its own group. Links count from either side, as "Translation of:" and as
+        "<LANG> translation:"."""
+        if self._groups is None:
+            self._groups = self._scan()
+        return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
+
+    def find(self, id_slug: str, language: str) -> str | None:
+        """The id-slug of the group's member in `language`, None for the slide's own language and for a language
+        the group has no single slide in (conflicting links do not pick an arbitrary one)."""
         language = language.upper()
-        if own_language(id_slug) in (None, "mult", language):
+        if self.own(id_slug) in (None, MULT, language):
             return None
-        text = _header(path) if path else self.header(id_slug)
-        refs = [m.group(1) for m in TRANSLATION_OF_RE.finditer(text)]
-        refs += [m.group(2) for m in LANG_TRANSLATION_RE.finditer(text)
-                 if m.group(1) == language]
-        for ref in refs:
-            partner = self.partner(ref)
-            if partner and partner != id_slug and own_language(partner) == language:
-                return partner
-        if self.reverse is None:
-            self.reverse = {}
-            for file in self.paths.values():
-                slug = file.name[:-len(CURRENT_SUFFIX)]
-                own = own_language(slug)
-                if own not in TRANSLATION_LANGUAGES:
-                    continue
-                header = self.header(slug)
-                refs = [m.group(1) for m in TRANSLATION_OF_RE.finditer(header)]
-                refs += [m.group(2) for m in LANG_TRANSLATION_RE.finditer(header)]
-                for ref in refs:
-                    partner = self.partner(ref)
-                    if partner and own_language(partner) != own:
-                        self.reverse.setdefault((bare_id(partner), own), set()).add(slug)
-        candidates = self.reverse.get((bare_id(id_slug), language), set())
-        # Conflicting reverse links do not pick an arbitrary translation.
-        return next(iter(candidates)) if len(candidates) == 1 else None
+        return self.group(id_slug).members.get(language)
+
+    def _scan(self) -> dict[str, Group]:
+        slugs = {bare: path.name[:-len(CURRENT_SUFFIX)] for bare, path in self.paths.items()}
+        slugs = {bare: slug for bare, slug in slugs.items() if self.own(slug) not in (None, MULT)}
+        parents: dict[str, set[str]] = {bare: set() for bare in slugs}
+        for bare, slug in slugs.items():
+            header = self.header(slug)
+            for m in TRANSLATION_OF_RE.finditer(header):
+                original = bare_id(m.group(1))
+                if original in slugs and self.own(slugs[original]) != self.own(slug):
+                    parents[bare].add(original)
+            for m in LANG_TRANSLATION_RE.finditer(header):
+                translation = bare_id(m.group(2))
+                if translation in slugs and self.own(slugs[translation]) == m.group(1) != self.own(slug):
+                    parents[translation].add(bare)
+        neighbours: dict[str, set[str]] = {bare: set(found) for bare, found in parents.items()}
+        for bare, found in parents.items():
+            for parent in found:
+                neighbours[parent].add(bare)
+        groups: dict[str, Group] = {}
+        for start in slugs:
+            if start in groups:
+                continue
+            component, todo = {start}, [start]
+            while todo:
+                for other in neighbours[todo.pop()] - component:
+                    component.add(other)
+                    todo.append(other)
+            roots = [bare for bare in component if not parents[bare]]
+            rooted = len(roots) == 1 and all(len(parents[bare]) == 1 for bare in component if bare != roots[0])
+            claimed: dict[str, list[str]] = {}
+            for bare in sorted(component):
+                claimed.setdefault(self.own(slugs[bare]), []).append(slugs[bare])
+            members = {language: found[0] for language, found in claimed.items() if len(found) == 1}
+            if rooted:
+                members[self.own(slugs[roots[0]])] = slugs[roots[0]]
+            star = rooted and all(parents[bare] == {roots[0]} for bare in component if bare != roots[0])
+            group = Group(slugs[roots[0]] if rooted else None, members, star and len(members) == len(component))
+            groups.update(dict.fromkeys(component, group))
+        return groups
 
 
-def cross_referenced_language(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> Optional[str]:
-    """The language of this slide's resolved translation partner, or None.
+def links_for(ctx: ProjectContext) -> TranslationLinks:
+    """A fresh scan of the project's slides, with the project's languages."""
+    return TranslationLinks(ctx.slides_dir, languages.project_languages(ctx).codes)
+
+
+def translated_languages(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> tuple[str, ...]:
+    """The languages, in the project's order, of the other slides in this slide's translation group.
 
     Links belong to the current slide, also when a frozen version of it is shown.
     Pass a shared index when building badges for a whole list."""
-    links = links or TranslationLinks(ctx.slides_dir)
-    return next((language for language in TRANSLATION_LANGUAGES
-                 if links.find(id_slug, language)), None)
+    links = links or links_for(ctx)
+    own = links.own(id_slug)
+    if own in (None, MULT):
+        return ()
+    members = links.group(id_slug).members
+    return tuple(code for code in links.codes if code != own and code in members)
 
 
 @dataclass
 class TranslationLink:
-    """A slide and its resolved translation partner."""
+    """A slide and one other member of its translation group."""
 
     partner: str                # the partner's id-slug
     language: Optional[str]     # the partner's language
     path: Path                  # the partner's current file
-    is_translation: bool        # this slide is the translation of `partner` (else `partner` is of this)
+    is_translation: bool        # this slide is the translation of `partner`, the original (else `partner` is of this,
+                                # or both are translations of the group's original)
     outdated: bool              # the original was saved in SlideMage after the translation was last written
+    is_original: bool = False   # this slide is the original and `partner` its translation
 
 
-def translation_link(ctx: ProjectContext, id_slug: str, path: Optional[Path] = None, *,
-                     links: Optional[TranslationLinks] = None) -> Optional[TranslationLink]:
-    """The slide's resolved translation partner, including links recorded on only one side.
-    Links belong to the current slide, even when `path` is a frozen version.
+def translation_group(ctx: ProjectContext, id_slug: str, path: Optional[Path] = None, *,
+                      links: Optional[TranslationLinks] = None) -> list[TranslationLink]:
+    """One link to each other member of the slide's translation group, in the project's language order; empty
+    for a slide with no translations. Links belong to the current slide, even when `path` is a frozen version.
 
     `outdated` measures this and nothing more: the original has been saved through SlideMage
     (slide_source.last_saved(): its newest backup) later than the translation was last written
     (the later of its own newest backup and its file's mtime). It is not a comparison of
-    content, and an edit made outside SlideMage is not noticed."""
-    links = links or TranslationLinks(ctx.slides_dir)
+    content, and an edit made outside SlideMage is not noticed. The translation is the partner, or this slide
+    when the partner is the original."""
+    links = links or links_for(ctx)
+    own = links.own(id_slug)
+    if own in (None, MULT):
+        return []
     path = path or links.slides_dir / current_name(id_slug)
-    partner = next((partner for language in TRANSLATION_LANGUAGES
-                    if (partner := links.find(id_slug, language))), None)
-    if partner is None:
-        return None
-    partner_path = links.paths[bare_id(partner)]
-    text = links.header(id_slug)
-    is_translation = any(links.partner(m.group(1)) == partner
-                         for m in TRANSLATION_OF_RE.finditer(text))
-    if not is_translation and not any(m.group(1) == own_language(partner)
-                                     and links.partner(m.group(2)) == partner
-                                     for m in LANG_TRANSLATION_RE.finditer(text)):
-        # A reverse link carries the opposite role of the partner's comment.
-        is_translation = not any(bare_id(m.group(1)) == bare_id(id_slug)
-                                 for m in TRANSLATION_OF_RE.finditer(links.header(partner)))
-    original, translation = (partner_path, path) if is_translation else (path, partner_path)
-    saved = slide_source.last_saved(ctx, original)
-    written = max(filter(None, (slide_source.last_saved(ctx, translation),
-                                datetime.fromtimestamp(translation.stat().st_mtime))))
-    return TranslationLink(partner, own_language(partner), partner_path, is_translation,
-                           saved is not None and saved > written)
+    group = links.group(id_slug)
+    original = group.original
+    is_original = original is not None and bare_id(original) == bare_id(id_slug)
+    found = []
+    for language in links.codes:
+        partner = group.members.get(language)
+        if language == own or partner is None:
+            continue
+        partner_path = links.paths[bare_id(partner)]
+        is_translation = partner == original
+        if is_translation:
+            original_path, translation = partner_path, path
+        elif is_original:
+            original_path, translation = path, partner_path
+        else:
+            original_path, translation = links.paths.get(bare_id(original or "")), partner_path
+        saved = slide_source.last_saved(ctx, original_path) if original_path else None
+        written = max(filter(None, (slide_source.last_saved(ctx, translation),
+                                    datetime.fromtimestamp(translation.stat().st_mtime))))
+        found.append(TranslationLink(partner, language, partner_path, is_translation,
+                                     saved is not None and saved > written, is_original))
+    return found
 
 
 @dataclass
@@ -219,34 +273,30 @@ class LanguageBadge:
     plain text + bold font, a QLabel)."""
 
     own: Optional[str]
-    cross_referenced: Optional[str]
+    languages: tuple[str, ...]      # the other languages of the slide's translation group
 
     @property
     def both(self) -> bool:
-        """True when this slide's own language *and* a cross-referenced
-        translation into a *different* language both exist -- the case
-        that should be visually highlighted."""
-        return (
-            self.own is not None
-            and self.cross_referenced is not None
-            and self.cross_referenced != self.own
-        )
+        """True when this slide's own language *and* at least one translation into a
+        *different* language exist -- the case that should be visually highlighted."""
+        return self.own is not None and bool(self.languages)
 
     def text(self) -> str:
-        """"" for an untagged slide, "[EN]" for a tagged one, "[EN + DE]"
-        when both() -- callers append/style this however suits their
-        widget."""
+        """"" for an untagged slide, "[EN]" for a tagged one, "[EN + DE]" or "[EN + DE FR]" with
+        translations, "[EN +3]" from four languages on (the tooltip lists them) -- callers append/style
+        this however suits their widget."""
         if self.own is None:
             return ""
-        if self.both:
-            return f"[{self.own} + {self.cross_referenced}]"
-        return f"[{self.own}]"
+        if not self.languages:
+            return f"[{self.own}]"
+        if len(self.languages) >= 3:
+            return f"[{self.own} +{len(self.languages)}]"
+        return f"[{self.own} + {' '.join(self.languages)}]"
 
 
 def badge_for(ctx: ProjectContext, id_slug: str, *, links: Optional[TranslationLinks] = None) -> LanguageBadge:
-    own = own_language(id_slug)
-    cross = cross_referenced_language(ctx, id_slug, links=links) if own is not None else None
-    return LanguageBadge(own=own, cross_referenced=cross)
+    links = links or links_for(ctx)
+    return LanguageBadge(own=links.own(id_slug), languages=translated_languages(ctx, id_slug, links=links))
 
 
 def call_for_slide_path(path: Path) -> tuple[str, str, Optional[str]]:

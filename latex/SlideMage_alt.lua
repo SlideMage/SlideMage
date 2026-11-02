@@ -17,26 +17,28 @@
 
 slidemage_alt = { by_name = {}, by_stem = {} }
 
--- Each entry is { role = "...", short_en = "...", short_de = "...",
--- source_en = "...", source_de = "..." } (widened 2026-08-24 for
--- multi-language -- see LANGUAGE_NOTES.md; role stays a single shared
--- field, since decorative/informative is a property of the picture, not
--- of which language is being read). The short alt is what the
+-- Each entry is { role = "...", short = { en = "...", de = "...", ... },
+-- source = { en = "...", de = "...", ... } }: one short alt text and one
+-- source per language column of the CSV (status_xx, short_alt_xx,
+-- source_xx; en and de always, then the project's other languages --
+-- content languages plan, 2.4). role stays a single shared field, since
+-- decorative/informative is a property of the picture, not of which
+-- language is being read. The short alt is what the
 -- invisible-text layer (phase 5) emits next to an informative image; the
 -- role is what phase 1 uses to mark a decorative one as an /Artifact;
 -- source (added phase 6 step 3) feeds the per-frame "Image source(s):"/
--- "Bildquelle(n):" auto-footnote further below. Which language's pair
--- (_en/_de) actually gets used is decided per-call by slidemage_alt.altText/
+-- "Bildquelle(n):" auto-footnote further below. Which language's text
+-- actually gets used is decided per-call by slidemage_alt.altText/
 -- recordSource's own `language` argument (the compiling deck's
 -- \SMDeckLanguage), not by anything stored here.
 
 -- Minimal RFC-4180-ish field splitter: handles quoted fields with embedded
 -- commas and doubled quotes, because every short_alt/source column can
 -- contain both once the SlideMage review tab writes them. A trailing
--- empty field is not reported, which is fine -- only columns 1 (image),
--- 2 (role), 4/5 (short_alt_en/source_en) and 7/8 (short_alt_de/source_de)
--- are ever read here (3 and 6, status_en/status_de, are for SlideMage's
--- own UI, not compile-time gating -- see alt_images.py's own docstring).
+-- empty field is not reported, which is fine -- a missing column reads as
+-- "". The columns are found by the header's names (image, role,
+-- short_alt_xx, source_xx); the status_xx columns are for SlideMage's own
+-- UI, not compile-time gating -- see alt_images.py's own docstring.
 local function parse_line(line)
 	local fields, pos, len = {}, 1, #line
 	repeat
@@ -86,27 +88,34 @@ function slidemage_alt.load()
 	for _, path in ipairs(CSV_CANDIDATES) do
 		local handle = io.open(path, "r")
 		if handle then
-			local header = true
+			local columns = nil   -- header name -> column number
 			for line in handle:lines() do
 				line = line:gsub("\r$", "")
-				if header then
-					header = false
+				if columns == nil then
+					columns = {}
+					for index, name in ipairs(parse_line(line)) do
+						columns[name] = index
+					end
 				elseif line ~= "" then
 					local fields = parse_line(line)
-					local image, role = fields[1], fields[2]
-					local short_en = fields[4] or ""
-					local source_en = fields[5] or ""
-					local short_de = fields[7] or ""
-					local source_de = fields[8] or ""
+					local image = fields[columns.image or 1]
+					local role = fields[columns.role or 2]
 					if image and role and image ~= "" then
 						local name = image:match("([^/\\]+)$") or image
 						name = name:lower()
 						local stem = name:match("^(.*)%.[^.]*$") or name
-						local entry = {
-							role = role,
-							short_en = short_en, short_de = short_de,
-							source_en = source_en, source_de = source_de,
-						}
+						local entry = { role = role, short = {}, source = {} }
+						for column, index in pairs(columns) do
+							local kind, code = column:match("^(short_alt)_(%a+)$")
+							if kind == nil then
+								kind, code = column:match("^(source)_(%a+)$")
+							end
+							if kind == "short_alt" then
+								entry.short[code] = fields[index] or ""
+							elseif kind == "source" then
+								entry.source[code] = fields[index] or ""
+							end
+						end
 						slidemage_alt.by_name[name] = entry
 						if slidemage_alt.by_stem[stem] == nil then
 							slidemage_alt.by_stem[stem] = entry
@@ -163,19 +172,19 @@ end
 -- still emits the "Image: " prefix, and a screen reader announces an image
 -- and then says nothing about it -- worse than staying silent.
 --
--- `language` ("en"/"de", the compiling deck's own \SMDeckLanguage,
--- passed through by the \includegraphics wrapper) picks which pair to
--- read (2026-08-24). Unlike source below, short_alt has no default+
--- override fallback: an untranslated German short_alt just means no
--- invisible alt text for that image under a German compile, same as an
--- empty English one does today -- real "is this deck's alt text
--- complete" gating belongs in the SlideMage review UI, not here.
+-- `language` (a code such as "en", "de", "fr": the compiling deck's own
+-- \SMDeckLanguage, passed through by the \includegraphics wrapper) picks
+-- which column to read. Unlike source below, short_alt has no fallback:
+-- an untranslated short_alt just means no invisible alt text for that
+-- image in that language, same as an empty English one does today --
+-- real "is this deck's alt text complete" gating belongs in the
+-- SlideMage review UI, not here.
 function slidemage_alt.altText(reference, language)
 	local entry = slidemage_alt.lookup(reference)
 	if entry == nil or entry.role == "decorative" then
 		return
 	end
-	local raw = (language == "de") and entry.short_de or entry.short_en
+	local raw = entry.short[(language or "en"):lower()]
 	local short = (raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if short == "" then
 		return
@@ -224,26 +233,21 @@ function slidemage_alt.resetFrameSources()
 	slidemage_alt.frame_sources_seen = {}
 end
 
--- `language` picks source_en/source_de the same way altText() above picks
--- short_en/short_de -- except source_de *does* fall back to source_en
--- when empty (2026-08-24, mirrors alt_images.ImageEntry.source_for_de()
--- on the Python side exactly): most citations are proper nouns/
+-- `language` picks the source column the same way altText() above picks
+-- the short alt text. SlideMage writes each language's source already
+-- resolved (alt_images.ImageEntry.source_in(): the language's own, else
+-- the one it falls back to), since most citations are proper nouns/
 -- publication names ("KAL, 1989, Baltimore Sun") that don't need
--- translating, so a translator only has to fill in source_de for the
--- genuine exceptions rather than copy every citation by hand.
+-- translating; an empty or missing column falls back to English here,
+-- for a CSV written before a language was added.
 function slidemage_alt.recordSource(reference, language)
 	local entry = slidemage_alt.lookup(reference)
 	if entry == nil then
 		return
 	end
-	local source
-	if language == "de" then
-		source = entry.source_de
-		if source == nil or source == "" then
-			source = entry.source_en
-		end
-	else
-		source = entry.source_en
+	local source = entry.source[(language or "en"):lower()]
+	if source == nil or source == "" then
+		source = entry.source.en
 	end
 	source = (source or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	if source == "" then

@@ -314,11 +314,13 @@ def test_declining_the_cloud_or_having_no_model_starts_nothing(make, project, mo
     assert sheet._worker is None and window.slots == [] and window.edits == [] and sheet.ok.isEnabled()
 
 
-def test_only_english_to_german_can_be_machine_translated(make, project, monkeypatch):
+def test_a_project_language_can_be_machine_translated_but_mult_cannot(make, project, monkeypatch):
     use_provider(monkeypatch, pytest.fail)
     sheet, window = make(source="translate", slide="ccc-DE-Drei")
     assert [sheet.target.itemData(i) for i in range(sheet.target.count())] == ["EN", "mult"]
-    assert not sheet.machine.isEnabled() and not sheet.machine.isChecked() and sheet.machine_box.isHidden()
+    assert sheet.machine.isEnabled() and sheet.machine.isChecked()      # German to English: a model can
+    sheet.machine.setChecked(False)                                     # a copy to translate by hand
+    assert sheet.machine_box.isHidden()
     sheet.ok.click()
     created = next(project.slides.glob("*-EN-Drei-current.tex"))
     assert "Translation of: ccc-DE-Drei" in created.read_text() and window.slots == []

@@ -91,6 +91,7 @@
     "UPDATE_TRANSLATION",
     "UserMessage",
     "Widget",
+    "address",
     "annotations",
     "answer_note",
     "build_prompt",
@@ -1779,6 +1780,13 @@
           },
           {
             "name": "url",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
+        "project_languages": [
+          {
+            "name": "self",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }

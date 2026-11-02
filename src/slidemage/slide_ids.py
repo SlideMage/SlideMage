@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from .fileio import read_text_exact, write_text_exact
-from . import project, slide_language
+from . import languages, project, slide_language
 from .project import ProjectContext
 
 TEMPLATE_RELATIVE = Path(".scripts") / "R_Slidemaster" / "inst" / "templates" / "slide-template.tex"
@@ -219,7 +219,7 @@ def body_of(body_text: str) -> str:
     the whole block, or a dangling "%%" is left behind."""
     body_text = _INCLUDED_IN_DECKS_RE.sub("", body_text)
     body_text = re.sub(r"%% Translation of: [^\r\n]*\r?\n%%\r?\n", "", body_text)
-    body_text = re.sub(r"%% (?:EN|DE|mult) translation: [^\r\n]*\r?\n%%\r?\n", "", body_text)
+    body_text = re.sub(r"%% (?:[A-Z]{2}|mult) translation: [^\r\n]*\r?\n%%\r?\n", "", body_text)
     # Collapse a run of now-orphaned blank lines at the very top down to none, so the new
     # file's own header sits flush against real content, exactly like a template-seeded file.
     return re.sub(r"^(?:[ \t]*\r?\n)+", "", body_text)
@@ -234,7 +234,7 @@ def create_slide_file(
     body: Optional[str] = None,
 ) -> Path:
     """Create slides/<id>-<LANG>-<slug>-current.tex (added 2026-08-24:
-    `language`, one of slide_language.LANGUAGES, is always encoded into
+    `language`, one of the project's languages or "mult", is always encoded into
     the filename itself -- SlideMage_base.tex's own
     \\setSlideLanguageFromSlug parses it back out at compile time).
     The content is `body` when given (e.g. another slide's
@@ -245,8 +245,9 @@ def create_slide_file(
     add_translation_backreference() on the *source* slide separately -- this
     function only ever touches the new file. Raises FileExistsError if the
     file is already there."""
-    if language not in slide_language.LANGUAGES:
-        raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
+    allowed = (*languages.project_languages(ctx).codes, slide_language.MULT)
+    if language not in allowed:
+        raise ValueError(f"language must be one of {allowed}, got {language!r}")
     dest = ctx.slides_dir / slide_language.current_name(f"{slide_id}-{language}-{slug}")
     if dest.exists():
         raise FileExistsError(f"{dest} already exists")
@@ -284,8 +285,6 @@ def add_translation_backreference(source_path: Path, language: str, new_id_slug:
     one other language) each add their own line rather than overwriting;
     slide_rename.regenerate_translation_links() already tolerates more
     than one "%% <LANG> translation: ..." line per file."""
-    if language not in slide_language.LANGUAGES:
-        raise ValueError(f"language must be one of {slide_language.LANGUAGES}, got {language!r}")
     text = read_text_exact(source_path)
     write_text_exact(source_path, with_translation_backreference(text, language, new_id_slug))
 
@@ -294,12 +293,15 @@ def with_translation_backreference(text: str, language: str, new_id_slug: str) -
     """`text` of a slide file with the "%% <language> translation: <new_id_slug>" block added (see
     add_translation_backreference)."""
     eol = "\r\n" if "\r\n" in text else "\n"
-    new_line = f"%% {language} translation: {new_id_slug}{eol}%%{eol}"
+    insert_at = header_insert_point(text)
+    return text[:insert_at] + f"%% {language} translation: {new_id_slug}{eol}%%{eol}" + text[insert_at:]
 
+
+def header_insert_point(text: str) -> int:
+    """Where a new header block of `text` goes: right after the "Included in decks" block if there is one,
+    else after the first blank line, else at the very top."""
     m = _INCLUDED_IN_DECKS_RE.search(text)
     if m:
-        insert_at = m.end()
-    else:
-        m2 = re.search(r"\r?\n\r?\n", text)
-        insert_at = m2.end() if m2 else 0
-    return text[:insert_at] + new_line + text[insert_at:]
+        return m.end()
+    m = re.search(r"\r?\n\r?\n", text)
+    return m.end() if m else 0

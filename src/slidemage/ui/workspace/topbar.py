@@ -25,7 +25,7 @@ from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
 from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
-from .state import MODES, UI_LANGUAGES, VIEWS
+from .state import MODES, VIEWS
 
 LOGO_PATH = FONT_DIR.parent / "icon.svg"
 # Its dark front card would vanish on the dark theme's bar; this variant has a light front card.
@@ -113,9 +113,7 @@ class TopBar(QWidget):
             [(view, VIEW_LABELS[view]) for view in VIEWS], current=state.view, tones=VIEW_TONES, roving=True)
         self._views.changed.connect(state.set_view)
         add(self._views)
-        self._languages = SegmentedControl(
-            [(lang, lang) for lang in UI_LANGUAGES], current=state.language, mono=True, roving=True)
-        self._languages.changed.connect(state.set_language)
+        self._languages = self._language_switch()
         add(self._languages)
 
         layout.addStretch()
@@ -149,7 +147,8 @@ class TopBar(QWidget):
         state.view_changed.connect(self._on_view_changed)
         state.selection_changed.connect(lambda _ids: self.refresh_compile_menu())
         state.focused_slide_changed.connect(lambda _id: self.refresh_compile_menu())
-        state.language_changed.connect(self._languages.set_current)
+        state.language_changed.connect(lambda language: self._languages.set_current(language))
+        state.languages_changed.connect(lambda _codes: self._rebuild_languages())
         state.mode_changed.connect(self._modes.set_current)
         state.lint_errors_changed.connect(self._on_lint_errors_changed)
         state.dirty_changed.connect(self._on_dirty_changed)
@@ -159,6 +158,22 @@ class TopBar(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._available_width = event.size().width()
+        self._update_density()
+
+    def _language_switch(self) -> SegmentedControl:
+        """The language switch: the codes of the project's languages, main first (state.languages())."""
+        switch = SegmentedControl([(code, code) for code in self._state.languages()], current=self._state.language,
+                                  mono=True, roving=True)
+        switch.changed.connect(self._state.set_language)
+        return switch
+
+    def _rebuild_languages(self) -> None:
+        """The project's languages or the deck's own changed: a new switch takes the old one's place."""
+        old, self._languages = self._languages, self._language_switch()
+        self._row_layout.replaceWidget(old, self._languages)
+        old.deleteLater()
+        self._set_tab_order()
+        self._density = None
         self._update_density()
 
     def _set_tab_order(self) -> None:
@@ -198,7 +213,7 @@ class TopBar(QWidget):
         self._view_as.setVisible(full)
         self._views.setToolTip("View as")
         self._views.set_labels(VIEW_LABELS if full else SHORT_VIEWS, tooltips=VIEW_LABELS, compact=not full)
-        self._languages.set_labels({lang: lang for lang in UI_LANGUAGES}, compact=not full)
+        self._languages.set_labels({code: code for code in self._state.languages()}, compact=not full)
         self._modes.set_labels(MODE_LABELS if full else SHORT_MODES, tooltips=MODE_LABELS, compact=not full)
         if self._autosave is not None:
             # Only the full bar has room for it: below, it is in Settings and Ctrl+K; "Unsaved changes" stays.

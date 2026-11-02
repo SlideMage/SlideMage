@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The AI tab of the Settings sheet (PLUGINS_REMAINING_PLAN.md, step 3c): one page for everything about AI.
 
-From top to bottom: the German address and the glossary; the project's Local | Cloud policy and which cloud route
+From top to bottom: the glossary; the project's Local | Cloud policy and which cloud route
 Cloud means; the model of each task on the local route and on the chosen cloud route (every registered route offers
 its own models); the prompts (ui/dialogs/settings_prompts.py); then one section per service of the registered AI
 routes (ai/routes.py) that have a `settings_section`, titled by the service, then the plugins' sections
@@ -24,7 +24,6 @@ from PySide6.QtWidgets import QComboBox, QGridLayout, QLabel, QVBoxLayout, QWidg
 
 from ...ai import ai_profile, routes, translation_style
 from ...ai.ai_profile import CHAT, CLAUDE_CODE, CLOUD, LOCAL, TASKS, TASK_LABELS
-from ...project import ProjectContext
 from ..kit.widgets import Field, Page, SegmentedControl, caption
 from .settings_prompts import PromptsTab
 
@@ -47,21 +46,6 @@ def building() -> AiPage:
     if _building is None:
         raise RuntimeError("a settings section is built only by the AI tab")
     return _building
-
-
-class LanguageBlock(Page):
-    """How Claude Code translations address the audience in German, and the glossary."""
-
-    def __init__(self, project: ProjectContext) -> None:
-        super().__init__()
-        layout = self.body
-        self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
-                                        current=translation_style.de_address(project))
-        self.address.changed.connect(lambda value: translation_style.set_de_address(project, value))
-        layout.addWidget(Field("German address in Claude Code translations (this project)", self.address))
-        layout.addWidget(caption(
-            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
-            "German\" per line; every translation request carries the file as it is."))
 
 
 class ModelsGrid(QWidget):
@@ -166,8 +150,11 @@ class AiPage(Page):
         layout.addWidget(caption(
             "A cloud route receives whatever its task sends: slide text, images, notes. Which side the project "
             "uses is the Local | Cloud switch at the top of the assistant; the settings below are its defaults."))
-        self.language = LanguageBlock(self.project)
-        layout.addWidget(self.language)
+        layout.addWidget(caption(
+            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, as a table "
+            "with one column per language (| EN | DE |) or as \"English = German\" lines; a translation request "
+            "carries the rows for its languages. The form of address is "
+            "set with the project's languages (Project)."))
 
         self.policy = SegmentedControl(POLICIES, current=ai_profile.policy(self.project))
         self.policy.setAccessibleName("Project setting")

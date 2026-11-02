@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QPlainTextEdit
 from .... import alt_images, transcript
 from ....slide_language import bare_id
 from ...kit import kit_qss as q
+from ...pages.image_form import store_writable
 from ...kit.widgets import Button
 from ..menus import VIEW_LABELS
 from .base import Row, SidePanel, box, empty_row, text
@@ -102,7 +103,7 @@ class TranscriptEntry(SidePanel):
 
     def flush(self) -> None:
         """Save a pending summary (it has no Discard: leaving the slide or the deck saves it)."""
-        if self._summary is None or not self.dirty:
+        if self._summary is None or not self.dirty or not store_writable(self, self.app.project):
             return
         slide_id, summary = self._slide, self._summary.toPlainText().strip()
 

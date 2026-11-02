@@ -25,7 +25,10 @@ def edits(*pairs: tuple[str, str]) -> dict:
 
 # -- requests ---------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("address, line", [("Sie", 'with "Sie" (formal)'), ("du", 'with "du" (informal)')])
+@pytest.mark.parametrize("address, line", [("formal", "Address the audience formally."),
+                                           ("informal", "Address the audience informally."),
+                                           ("Sie", "Address the audience formally."),
+                                           ("du", "Address the audience informally.")])
 def test_a_translation_into_german_says_how_to_address_the_audience(address, line):
     request = ai_tasks.translate_request("Open the file.", "EN", "DE", address)
     assert "from English to German" in request and line in request
@@ -37,9 +40,12 @@ def ctx(root):
     return ProjectContext.at(root)
 
 
-def test_a_translation_into_english_has_no_form_of_address():
-    request = ai_tasks.translate_request("Datei öffnen.", "DE", "EN", "Sie")
-    assert "from German to English" in request and "Sie" not in request
+def test_a_translation_into_any_language_says_how_to_address_the_audience():
+    request = ai_tasks.translate_request("Datei öffnen.", "DE", "FR", "informal")
+    assert request == ("Translate this slide from German to French.\nAddress the audience informally.\n"
+                       "<slide>\nDatei öffnen.\n</slide>")
+    request = ai_tasks.translate_request("Ouvrir.", "FR", "EN")
+    assert request.startswith("Translate this slide from French to English.\nAddress the audience formally.\n")
 
 
 def test_the_glossary_goes_into_the_request_as_it_is():
@@ -145,15 +151,16 @@ def test_every_task_has_a_schema_that_names_its_answer():
 def test_an_update_request_has_the_source_the_translation_and_the_rules():
     request = ai_tasks.update_request("New text.", "Alter Text.", "EN", "DE", "du", "slide = Folie")
     assert request.startswith("Update this German translation to match the current English source.\n")
-    assert 'with "du" (informal)' in request and "slide = Folie\n<source>\nNew text.\n</source>" in request
+    assert "Address the audience informally." in request and "slide = Folie\n<source>\nNew text.\n</source>" in request
     assert request.endswith("<slide>\nAlter Text.\n</slide>")
-    assert "Address" not in ai_tasks.update_request("Neu.", "New.", "DE", "EN")
+    assert "Update this French translation to match the current German source." in ai_tasks.update_request(
+        "Neu.", "Nouveau.", "DE", "FR")
 
 
 def test_a_proofread_request_names_the_language_and_keeps_the_german_address():
-    german = ai_tasks.proofread_request("Text.", "DE", "du")
-    assert "German slide" in german and '"du"' in german and german.endswith("<slide>\nText.\n</slide>")
-    assert '"Sie"' not in ai_tasks.proofread_request("Text.", "EN") and "English slide" in ai_tasks.proofread_request("T", "EN")
+    german = ai_tasks.proofread_request("Text.", "DE", "informal")
+    assert "German slide" in german and "addressed informally" in german and german.endswith("<slide>\nText.\n</slide>")
+    assert "French slide" in ai_tasks.proofread_request("Texte.", "FR") and "English slide" in ai_tasks.proofread_request("T", "EN")
 
 
 def test_title_and_note_requests_carry_the_slide_and_the_current_title():

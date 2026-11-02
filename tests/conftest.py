@@ -146,6 +146,20 @@ def _fresh_example_state():
 
 
 @pytest.fixture(autouse=True)
+def _english_and_german_by_default(request, monkeypatch):
+    """A test project that states no languages is English + German, the project the tests were written for: a real
+    project gets its languages when SlideMage opens it (languages.migrate). Tests of what a project without the key
+    infers are marked `infer_languages`."""
+    from slidemage import languages
+
+    languages._cache.clear()
+    if request.node.get_closest_marker("infer_languages") is None:
+        monkeypatch.setattr(languages, "infer", lambda ctx: languages.Languages("en", ("de",)))
+    yield
+    languages._cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _fresh_ai_session():
     """Every test starts with no AI mode chosen in this session (it then starts from the project's policy)."""
     from slidemage.ai import ai_profile
@@ -183,7 +197,8 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
 
     from slidemage.ui.workspace.actions import build_registry
 
-    state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
+    state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected),
+                            languages=lambda: ("EN", "DE"), language="EN")
     return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks),
                            left_column_hidden=False, right_column_hidden=False)
 
