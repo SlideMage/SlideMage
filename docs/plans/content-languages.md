@@ -446,11 +446,10 @@ merged or released:
 Each plugin raises requires_slidemage to v0.13.31 (CampusOnline excepted); coordinate with the plugin UI kit's author
 before releasing them.
 
-Next:
+Next (the rebased branches are force-pushed to the fork):
 
-1. The owner force-pushes the rebased SlideMage branches to the fork (steps 1, 2a, 3, 5a, 2b and 4 were rebased onto
-   the guard, and step 4 was amended, after their first push), and tries steps 4 and 6 in the app on a copy of a real
-   project (the conversion of the image store and its backup).
-2. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
-3. **7**, the manual and docs.
-4. PRs into `develop` in the order of the table, after testing; the plugin branches after SlideMage's.
+1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
+2. **7**, the manual and docs.
+3. The owner tests everything in the app on a copy of a real project, once 5b and 7 are done (among others the
+   conversion of the image store and its backup).
+4. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
