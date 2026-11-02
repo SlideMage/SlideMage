@@ -34,7 +34,7 @@ from ...ai.focus_scope import DECK as DECK_SCOPE, SLIDE as SLIDE_SCOPE
 from .selection_tasks import REWRITE_CHOICES
 from .source_file import REPLACE_KEY, autosave_on
 from .task_bubbles import DECK_TASKS, SLIDE_TASKS, selection_of
-from .state import MODES, UI_LANGUAGES, VIEWS
+from .state import MODES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
 AI = "AI"
@@ -218,10 +218,12 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         add(f"view:{view}", f"View as {VIEW_LABELS[view]}", VIEW_AND_BUILD,
             lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v),
             shortcut=f"Ctrl+{number}")
-    for language in UI_LANGUAGES:
+    # One command per known language; the palette and the menu show those on the switch (state.languages()).
+    for language in (entry.code.upper() for entry in languages.TABLE):
         add(f"language:{language}", f"Show {languages.name(language)} ({language})", VIEW_AND_BUILD,
             lambda w, lang=language: w.state.set_language(lang), icon="translate",
-            meta=lambda w, lang=language: _current(w.state.language == lang))
+            meta=lambda w, lang=language: _current(w.state.language == lang),
+            visible=lambda w, lang=language: lang in w.state.languages())
     for mode in MODES:
         add(f"mode:{mode}", f"Show {mode.capitalize()}", VIEW_AND_BUILD,
             lambda w, m=mode: w.state.set_mode(m), icon="tab", meta=lambda w, m=mode: _current(w.state.mode == m),

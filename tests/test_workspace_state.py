@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import app_settings
+from slidemage import app_settings, languages
 from slidemage.deck_scan import Deck
+from slidemage.project import ProjectContext
 from slidemage.ui.workspace.state import SETTINGS_KEY, WorkspaceState
 from conftest import EXAMPLE_PROJECT
 
@@ -79,7 +80,7 @@ def test_switching_decks_resets_focus_and_selection_but_a_rescan_keeps_them():
 
 
 @pytest.mark.parametrize("same_name", [False, True], ids=["distinct-names", "same-name-different-folders"])
-def test_view_language_and_mode_are_remembered_per_deck(same_name):
+def test_view_and_mode_are_remembered_per_deck_and_the_language_is_the_decks(same_name):
     state = WorkspaceState(EXAMPLE_PROJECT)
     state.set_view("after-course")
     state.set_deck(None)
@@ -97,7 +98,7 @@ def test_view_language_and_mode_are_remembered_per_deck(same_name):
 
     views, modes = record(state.view_changed), record(state.mode_changed)
     state.set_deck(first)
-    assert (state.view, state.language, state.mode) == ("after-course", "DE", "split")
+    assert (state.view, state.language, state.mode) == ("after-course", "EN", "split")     # the deck's language
     assert views == ["after-course"] and modes == ["split"]
     state.set_deck(second)
     assert state.view == "during-course"
@@ -105,8 +106,8 @@ def test_view_language_and_mode_are_remembered_per_deck(same_name):
     # ... and across a restart: a new state reads the same settings file
     reopened = WorkspaceState(EXAMPLE_PROJECT)
     reopened.set_deck(first)
-    assert (reopened.view, reopened.language, reopened.mode) == ("after-course", "DE", "split")
-    assert app_settings.get(EXAMPLE_PROJECT, SETTINGS_KEY)[str(first.path)] == {"view": "after-course", "language": "DE", "mode": "split"}
+    assert (reopened.view, reopened.language, reopened.mode) == ("after-course", "EN", "split")
+    assert app_settings.get(EXAMPLE_PROJECT, SETTINGS_KEY)[str(first.path)] == {"view": "after-course", "mode": "split"}
 
 
 def test_a_deck_without_a_saved_language_starts_in_its_own():
@@ -115,6 +116,70 @@ def test_a_deck_without_a_saved_language_starts_in_its_own():
     assert state.language == "DE"
     state.set_deck(make_deck("english", text="\\decklanguage[en]\n\\begin{document}\n"))
     assert state.language == "EN"
+
+
+def language_deck(name: str, code: str) -> Deck:
+    return make_deck(name, text=f"\\decklanguage[{code}]\n\\begin{{document}}\n")
+
+
+@pytest.fixture
+def french_project(tmp_path) -> ProjectContext:
+    ctx = ProjectContext.at(tmp_path)
+    languages.set_project_languages(ctx, "en", ["de", "fr"])
+    return ctx
+
+
+def test_the_switch_follows_the_deck_also_after_a_look_at_another_language(french_project):
+    state = WorkspaceState(french_project)
+    english, german = language_deck("english", "en"), language_deck("german", "de")
+    assert state.languages() == ("EN", "DE", "FR")
+    state.set_deck(english)
+    state.set_language("FR")
+    assert state.language == "FR"
+    state.set_deck(german)
+    assert state.language == "DE"
+    state.set_deck(english)
+    assert state.language == "EN"
+    state.set_language("IT")                        # not a language of the project
+    assert state.language == "EN"
+    state.set_deck(None)
+    assert state.language == "EN"                   # the main language, without a deck
+
+
+def test_changing_the_decks_language_moves_the_switch(french_project):
+    state = WorkspaceState(french_project)
+    state.set_deck(language_deck("deck", "en"))
+    shown = record(state.language_changed)
+    assert state.set_deck(language_deck("deck", "fr")) is False       # the same deck, scanned again
+    assert state.language == "FR" and shown == ["FR"]
+
+
+def test_a_stored_per_deck_language_is_ignored_and_dropped(french_project):
+    deck = language_deck("deck", "en")
+    app_settings.set(french_project, SETTINGS_KEY, {str(deck.path): {"view": "after-course", "language": "DE"}})
+    state = WorkspaceState(french_project)
+    state.set_deck(deck)
+    assert (state.view, state.language) == ("after-course", "EN")
+    assert app_settings.get(french_project, SETTINGS_KEY)[str(deck.path)] == {"view": "after-course"}
+
+
+def test_a_deck_in_another_language_adds_it_to_the_switch(french_project):
+    state = WorkspaceState(french_project)
+    changed = record(state.languages_changed)
+    state.set_deck(language_deck("italian", "it"))
+    assert state.languages() == ("EN", "DE", "FR", "IT") and state.language == "IT"
+    state.set_deck(language_deck("english", "en"))
+    assert state.languages() == ("EN", "DE", "FR") and changed == [("EN", "DE", "FR", "IT"), ("EN", "DE", "FR")]
+
+
+def test_the_projects_languages_rebuild_the_switch(french_project):
+    state = WorkspaceState(french_project)
+    state.set_deck(language_deck("deck", "en"))
+    state.set_language("FR")
+    changed = record(state.languages_changed)
+    languages.set_project_languages(french_project, "en", ["de"])
+    state.refresh_languages()
+    assert changed == [("EN", "DE")] and state.language == "EN"
 
 
 def test_the_selection_falls_back_to_the_focus():

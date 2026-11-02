@@ -106,7 +106,7 @@ class TaskCard:
     focus: Path | None = None          # the file it was started on: Run again starts there
     file: str = ""                     # the file the change goes into
     language: str = ""                 # of a translation: the language it is written in ("DE")
-    source: str = ""                   # of a translation: the language it is made from ("EN"; "" for the other one)
+    source: str = ""                   # of a translation: the language it is made from ("EN")
     t0: float = 0.0                    # time.monotonic() at the start
     elapsed: int = 0                   # seconds, while it generates
     auto: bool = False                 # "Edit automatically": Review is skipped
@@ -122,7 +122,7 @@ class TaskCard:
     where: str = ""                    # what Check preview renders: "1y8 · Instructor · DE"
     preview_skipped: bool = False      # Check preview was stopped
     preview_error: str = ""            # the first line of the compile error
-    instruction: str = ""              # of a rewrite of a selection: what it should do
+    instruction: str = ""              # of a rewrite of a selection: what it should do; of a translation: its language
     readable: Readable | None = None   # Make readable: what was measured before and after
     remark: str = ""                   # the model's remark on its answer (Make readable: how to split the slide)
     hidden: bool = False               # "Back to conversation": only the pill in the header shows it
@@ -155,10 +155,6 @@ class TaskCard:
         return f"New {self.language} slide, translated from {self.file}" if self.is_translation else self.file
 
 
-def other_language(code: str) -> str:
-    return "DE" if code == "EN" else "EN"
-
-
 def changed_lines(before: str, after: str) -> int:
     """How many lines of `before` the change touches (an added or removed line counts too)."""
     old, new = before.splitlines(), after.splitlines()
@@ -180,7 +176,7 @@ def first_error(log: str) -> str:
 
 def state_text(card: TaskCard) -> str:
     """The state line of the card's phase (the handoff's table)."""
-    source, target = languages.name(card.source or other_language(card.language)), languages.name(card.language)
+    source, target = languages.name(card.source), languages.name(card.language)
     phase, file = card.phase, card.file
     if phase == GENERATE:
         return _GENERATING[card.task.name].format(id=card.target, src=source, dst=target)

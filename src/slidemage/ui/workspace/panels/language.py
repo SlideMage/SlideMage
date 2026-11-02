@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Language: the focused slide's language, its translation partner and whether that is outdated.
+"""Language: the focused slide's translation group, one row per language of the project.
 
 The facts are slide_language's (the id-slug's language segment and the "Translation of" /
 "<LANG> translation" header comments); "outdated" is slide_language.translation_group()'s, which
-says exactly what it measures. Translate runs the assistant's Translate task on the slide: its task
-card shows the proposed slide, and creates it on Apply. Set language moved here from the Details view."""
+says exactly what it measures. Each language the slide has no translation in has its Translate to <language>,
+which runs the assistant's Translate task on the slide: its task card shows the proposed slide, and creates it on
+Apply. A translation has Make this the original (slide_rename.make_original). Set language moved here from the
+Details view."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox
@@ -24,8 +26,7 @@ LABELS = {"mult": "Multilingual"}      # a language code is its own label
 class Language(SidePanel):
     key = "language"
     title = "Language"
-    translate_button: Button | None = None      # while the slide has no translation: the one that sends its text
-    translate_text = ""
+    translate_buttons: dict[str, Button] = {}   # language -> its Translate to <language>, which sends the slide's text
 
     def meta(self) -> str:
         slide = self.id_slug()
@@ -41,7 +42,7 @@ class Language(SidePanel):
         return languages.project_languages(self.app.project).codes
 
     def build(self, id_slug: str) -> None:
-        self.translate_button = None
+        self.translate_buttons = {}
         own = slide_language.own_language(id_slug, self._codes())
         path = self.slide_path()
         listed = own not in (None, slide_language.MULT)
@@ -51,26 +52,35 @@ class Language(SidePanel):
         for link in links:
             self._add_language(layout, link.language or "?", link.partner, link.path, self._partner_caption(link),
                                open_it=True)
-        missing = next((code for code in self._codes() if code != own and code not in {l.language for l in links}), None)
-        if listed and missing:
-            row = Row(layout)
-            line = QHBoxLayout()
-            line.addWidget(text(missing, q.PANEL_MONO))
-            line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
-            self.translate_text = f"Translate to {missing}"
-            translate = self.translate_button = Button(cloud_label(self.app.project, self.translate_text), "primary", compact=True)
-            translate.setToolTip("Translate this slide with the model chosen in AI setup (the ▾ of the AI switch): "
-                                 "the assistant shows the proposed slide, and creates it linked to this one when you apply it.")
-            translate.clicked.connect(lambda: self.actions.translate())
-            line.addWidget(translate)
-            row.body.addLayout(line)
+        have = {link.language for link in links}
+        for code in (code for code in self._codes() if listed and code != own and code not in have):
+            self._add_missing(layout, code)
         self.body.addWidget(frame)
+        if listed and any(link.is_translation for link in links):
+            self._add_make_original(id_slug)
         self._add_set_language(id_slug, own)
         self.body.addStretch(1)
 
+    def _add_missing(self, layout, code: str) -> None:
+        row = Row(layout)
+        line = QHBoxLayout()
+        line.addWidget(text(code, q.PANEL_MONO))
+        line.addWidget(text("No translation yet", q.DETAILS_LABEL), 1)
+        translate = self.translate_buttons[code] = Button(
+            cloud_label(self.app.project, self._translate_text(code)), "primary", compact=True)
+        translate.setToolTip("Translate this slide with the model chosen in AI setup (the ▾ of the AI switch): "
+                             "the assistant shows the proposed slide, and creates it linked to this one when you apply it.")
+        translate.clicked.connect(lambda: self.actions.translate(code))
+        line.addWidget(translate)
+        row.body.addLayout(line)
+
+    @staticmethod
+    def _translate_text(code: str) -> str:
+        return f"Translate to {languages.name(code)}"
+
     def refresh_route(self) -> None:
-        if self.translate_button is not None:
-            self.translate_button.setText(cloud_label(self.app.project, self.translate_text))
+        for code, button in self.translate_buttons.items():
+            button.setText(cloud_label(self.app.project, self._translate_text(code)))
 
     @staticmethod
     def _own_caption(own, links) -> str:
@@ -109,6 +119,30 @@ class Language(SidePanel):
             QMessageBox.warning(self, title, SAVE_FIRST)
             return False
         return True
+
+    # -- Make this the original ---------------------------------------------------------------
+
+    def _add_make_original(self, id_slug: str) -> None:
+        line = QHBoxLayout()
+        line.addWidget(text("Writing in this language from now on?", q.DETAILS_LABEL), 1)
+        button = Button("Make this the original", "secondary", compact=True)
+        button.setToolTip("The other languages become translations of this slide; right afterwards none is outdated.")
+        button.clicked.connect(lambda: self._make_original(id_slug))
+        line.addWidget(button)
+        self.body.addLayout(line)
+
+    def _make_original(self, id_slug: str) -> None:
+        links = slide_language.translation_group(self.app.project, id_slug)
+        if any(self.actions.is_dirty(path) for path in (self.slide_path(), *(link.path for link in links)) if path):
+            QMessageBox.warning(self, "Make this the original", SAVE_FIRST)
+            return
+        try:
+            slide_rename.make_original(self.app.project, id_slug)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Make this the original failed", str(exc))
+            return
+        self.app.log(f"Made {id_slug} the original of its translations")
+        self.app.refresh_open_deck_editors()
 
     # -- Set language ----------------------------------------------------------------------
 

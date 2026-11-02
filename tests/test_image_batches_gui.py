@@ -435,9 +435,9 @@ def test_the_side_panels_say_cloud_while_the_switch_is_on_cloud(fake):  # noqa: 
     panels.set_panel("language")
     pump(0.1)
     translate = next(b for b in panels.panels["language"].findChildren(Button) if b.text().startswith("Translate to"))
-    assert translate.text() == "Translate to DE · cloud"
+    assert translate.text() == "Translate to German · cloud"
     env.window.state.set_ai_route(ai_profile.LOCAL)
-    assert translate.text() == "Translate to DE"
+    assert translate.text() == "Translate to German"
     panels.set_panel("images")
     pump(0.1)
     redraft = [b for b in panels.panels["images"].findChildren(Button) if b.text().startswith("Redraft")]

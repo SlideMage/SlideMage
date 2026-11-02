@@ -313,6 +313,8 @@ class ProjectTab(Page):
             app, leave, "project_compat", "Project compatibility",
             "Whether this project's files fit this version of SlideMage.", "Check…")[0])
         self.languages = LanguagesSection(app)
+        if (state := getattr(app, "state", None)) is not None:     # the switch, the badges and the panels follow
+            self.languages.changed.connect(state.refresh_languages)
         layout.addWidget(self.languages)
         self.deck_groups = DeckGroupsSection(app)
         layout.addWidget(self.deck_groups)

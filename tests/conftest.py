@@ -197,7 +197,8 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
 
     from slidemage.ui.workspace.actions import build_registry
 
-    state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected))
+    state = SimpleNamespace(deck=deck, focused_slide=None, selected_or_focused=lambda: tuple(selected),
+                            languages=lambda: ("EN", "DE"), language="EN")
     return SimpleNamespace(commands=build_registry(), state=state, compiling=compiling, decks=list(decks),
                            left_column_hidden=False, right_column_hidden=False)
 

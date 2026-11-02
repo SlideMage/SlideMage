@@ -168,7 +168,7 @@ class _Capture:
     eol: str                   # of the file: the line ends of a new slide
     deck_path: Path | None
     span: tuple[int, int] | None = None   # a selection's range in `text`: the task is on that part only
-    instruction: str = ""      # of a rewrite: what it should do
+    instruction: str = ""      # of a rewrite: what it should do; of a translation: the language it goes into
 
 
 def _id_slug(path: Path) -> str:
@@ -231,14 +231,18 @@ def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
     return rows
 
 
-def _translate_target(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> str | None:
-    """The first language of the project that the slide has no translation in, None when there is none or the slide
-    has no language."""
+def _translate_targets(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> list[str]:
+    """The languages of the project that the slide has no translation in, main first; none for a slide of no
+    language."""
     if own in (None, slide_language.MULT):
-        return None
+        return []
     have = {link.language for link in links}
-    return next((code for code in languages.project_languages(ctx).codes
-                 if code != own and code not in have), None)
+    return [code for code in languages.project_languages(ctx).codes if code != own and code not in have]
+
+
+def _translate_target(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> str | None:
+    """The first of _translate_targets, None when there is none."""
+    return next(iter(_translate_targets(ctx, own, links)), None)
 
 
 def _outdated(links: list[slide_language.TranslationLink]) -> slide_language.TranslationLink | None:
@@ -393,7 +397,8 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
     own = slide_language.own_language(id_slug, codes)
     style = (translation_style.address(window.project), translation_style.glossary(window.project))
     if task is ai_tasks.TRANSLATE:
-        language = _translate_target(window.project, own, links)
+        targets = _translate_targets(window.project, own, links)     # `instruction` may name one: the Language panel's
+        language = instruction if instruction in targets else targets[0]
         sent = slide_versioning.strip_marker(slide_ids.body_of(text))
         request = ai_tasks.translate_request(sent, own, language, *style)
     elif task is ai_tasks.UPDATE_TRANSLATION:
@@ -419,7 +424,8 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
         request = ai_tasks.note_request(text)
     deck = window.state.deck
     return _Capture(task, path, id_slug, text, header, sent, request, language,
-                    slide_source.read_slide_source(path)[1], deck.path if deck is not None else None)
+                    slide_source.read_slide_source(path)[1], deck.path if deck is not None else None,
+                    instruction=language if task is ai_tasks.TRANSLATE else "")
 
 
 def _capture_summary(window, paths) -> _Capture:
