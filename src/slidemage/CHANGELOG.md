@@ -3446,3 +3446,8 @@ v0.13.36 (2026-11-02, content languages plan, step 5b): A slide hyphenates in it
 NEW: Slides hyphenate in their own language.
 - German, French and the other languages of your project break words by their own rules, if your TeX installation has their hyphenation patterns (TeX Live: the language packages, for example texlive-lang-german).
 - Line breaks in decks that are not in English can change, so check the slides that fill their frame.
+
+v0.13.37 (2026-11-02, direct request: ship the hyphenation patterns): The framework ships the hyph-utf8 patterns of the languages SlideMage knows, in latex/hyphenation/ (33 languages, 1.9 MB, from hyph-utf8's tag CTAN-2024.12.31; tools/fetch_hyphenation_patterns.py fetches them again). SlideMage_base.tex looks a language up in hyphenation/ first (a project's own folder, then the framework's) and only then in the TeX installation, so hyphenation no longer needs the distribution's language packages and breaks the same on every machine. Each file is distributed under one of its own licences (MIT, LPPL-1.3c+, GPL-2.0-or-later, GPL-2.0-only, BSD-3-Clause, Unlicense, or the file's own for Bulgarian, Basque, Finnish and Norwegian Bokmål); latex/hyphenation/NOTICES.txt has every file's original header, and REUSE.toml, LICENSES/ and THIRD_PARTY_NOTICES.md name them. Romanian is not shipped (its patterns state no licence) and still comes from the TeX installation. Tests: test_language_tex.py.
+
+NEW: Hyphenation works without extra TeX packages.
+- SlideMage brings the hyphenation patterns of 33 languages, so German, French and the others hyphenate even where the TeX installation has only English.

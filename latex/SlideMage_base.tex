@@ -1267,13 +1267,16 @@
 \newif\ifSMGerman
 \gdef\SMDeckLanguage{en}
 \makeatletter
-% Hyphenation by deck language (2026-11-02). A deck hyphenates in its one language, with the hyph-utf8 patterns of
-% the TeX distribution, loaded through LuaTeX's lang library rather than babel: \decklanguage also runs after
-% \begin{document} (SlideMage's own language line), where babel can no longer set a language up, and babel's Lua
-% state would not survive the preview format (preview_format.py). Patterns loaded in the preamble are stored in the
-% format with the rest of TeX's state, and the language's number is a \chardef, so nothing has to be replayed.
-% English is the format's own language 0, as before. A language whose patterns are not installed hyphenates as
-% English, as before, with a warning; one without patterns in hyph-utf8 is not hyphenated.
+% Hyphenation by slide language (2026-11-02). A slide hyphenates in its language, with the hyph-utf8 patterns of
+% latex/hyphenation/ (shipped since v0.13.37, see tools/fetch_hyphenation_patterns.py; a project's own hyphenation/
+% folder comes first, as for every framework file) or else of the TeX distribution, loaded through LuaTeX's lang
+% library rather than babel: \decklanguage also runs after \begin{document} (SlideMage's own language line), where
+% babel can no longer set a language up, babel's Lua state would not survive the preview format (preview_format.py),
+% and babel only finds patterns the TeX format registered. Patterns loaded in the preamble are stored in the format
+% with the rest of TeX's state, and the language's number is a \chardef, so nothing has to be replayed. English is
+% the format's own language 0, as before. A language whose patterns are neither shipped nor installed (Romanian:
+% its patterns have no licence) hyphenates as English, as before, with a warning; one without patterns in hyph-utf8
+% is not hyphenated.
 % \SM@hyph{<code>}{<hyph-utf8 file, without hyph- and .pat.txt>}{<lefthyphenmin>}{<righthyphenmin>} (the minimums of
 % TeX Live's language.dat).
 \def\SM@hyph#1#2#3#4{\@namedef{SM@hyph@#1}{{#2}{#3}{#4}}}
@@ -1293,14 +1296,15 @@
 \newcommand{\SM@hyphenation@load}[4]{%
 	\directlua{
 		local bs, code, file, mins = string.char(92), "\luaescapestring{#1}", "\luaescapestring{#2}", "{#3}{#4}"
-		local path = not (file == "") and kpse.find_file("hyph-" .. file .. ".pat.txt")
+		local path = not (file == "") and (kpse.find_file("hyphenation/hyph-" .. file .. ".pat.txt")
+			or kpse.find_file("hyph-" .. file .. ".pat.txt"))
 		local id
 		if file == "" or path then
 			local l = lang.new()
 			if path then
 				local fh = io.open(path, "r") l:patterns(fh:read("*a")) fh:close()
-				local exceptions = kpse.find_file("hyph-" .. file .. ".hyp.txt")
-				if exceptions then fh = io.open(exceptions, "r") l:hyphenation(fh:read("*a")) fh:close() end
+				fh = io.open(string.sub(path, 1, -9) .. ".hyp.txt", "r")
+				if fh then l:hyphenation(fh:read("*a")) fh:close() end
 			end
 			id = l:id()
 		else

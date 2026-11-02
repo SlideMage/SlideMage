@@ -160,10 +160,15 @@ def render_hyphenation(ctx, language: str, slide: str | None = None):
         return " ".join(doc[0].get_text().split()), "".join(log.splitlines())
 
 
+def fake_french(ctx):
+    (ctx.root / "hyphenation").mkdir(exist_ok=True)
+    (ctx.root / "hyphenation" / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
+
+
 def test_a_deck_hyphenates_in_its_language(ctx):
-    # The project's own folder is searched first, so these made-up French patterns win over installed ones: break
-    # after every z.
-    (ctx.root / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
+    # The project's own hyphenation/ folder is searched first, so these made-up French patterns win over the shipped
+    # ones: break after every z.
+    fake_french(ctx)
     languages.set_project_languages(ctx, "en", ["fr"])
     text, _log = render_hyphenation(ctx, "fr")
     assert "mins [2/3]" in text and "Language: [0]" not in text
@@ -175,7 +180,7 @@ def test_a_deck_hyphenates_in_its_language(ctx):
 
 
 def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_decks(ctx):
-    (ctx.root / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
+    fake_french(ctx)
     languages.set_project_languages(ctx, "en", ["fr"])
     text, _log = render_hyphenation(ctx, "fr", "EN")             # not translated yet: English, also in a French deck
     assert "Language: [0] mins [2/3]" in text and "xqz- xqz-" not in text
@@ -185,11 +190,23 @@ def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_de
     assert "xqz- xqz-" in text
 
 
-def test_a_language_without_installed_patterns_hyphenates_as_english_with_a_warning(ctx, monkeypatch):
-    monkeypatch.setenv("TEXINPUTS", "")
-    languages.set_project_languages(ctx, "en", ["it", "ja"])
-    text, log = render_hyphenation(ctx, "it")
-    if "Language: [0]" in text:                                  # (a TeX installation without Italian patterns)
-        assert "mins [2/3]" in text and "hyph-it.pat.txt) are not installed" in log
+def test_the_shipped_patterns_hyphenate_without_the_distributions(ctx):
+    body = ("\\begin{standardframe}{Shipped}\n\\parbox{1pt}{\\hspace{0pt}Donaudampfschifffahrt}\n"
+            "\\directlua{texio.write_nl('PATTERNS ' .. (kpse.find_file('hyphenation/hyph-de-1996.pat.txt') or ''))}\n"
+            "\\end{standardframe}\n")
+    pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-DE-Test", body, deck_version="instructor",
+                                                 deck_language="de", capture_snapshot=False)
+    logs = ctx.build_dir.glob("preview-cache/*/*.log")
+    log = "".join(max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8").splitlines())
+    with pymupdf.open(pdf) as doc:                                    # every break taken: German's, not English's
+        assert "Do- nau- dampf- schiff- fahrt" in " ".join(doc[0].get_text().split())
+    assert "latex/hyphenation/hyph-de-1996.pat.txt" in log
+
+
+def test_a_language_without_patterns_hyphenates_as_english_with_a_warning(ctx):
+    languages.set_project_languages(ctx, "en", ["ro", "ja"])
+    text, log = render_hyphenation(ctx, "ro")
+    if "Language: [0]" in text:                                  # (Romanian is not shipped: a TeX without it)
+        assert "mins [2/3]" in text and "hyph-ro.pat.txt) are not installed" in log
     text, log = render_hyphenation(ctx, "ja")                    # no patterns in hyph-utf8: not hyphenated
     assert "Language: [0]" not in text and "not installed" not in log and "xqzxqzxqzxqzxqz" in text

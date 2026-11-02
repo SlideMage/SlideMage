@@ -127,7 +127,9 @@ AUDITED_FRAMEWORK = {
     # patterns through LuaTeX's lang library; patterns loaded in the preamble are stored in the format). Re-audited:
     # the language is the slide's or the deck's, both in the render key, the same in every view; no version,
     # footer-hide or deck-label rule entered the base.
-    "SlideMage_base.tex": "d3c545ca75a20bc1e3f10b791254c22ee62a7c03cbdc24091475fca92c55db47",
+    # v0.13.37: the patterns are looked up in hyphenation/ first (the framework ships them, a project may have its
+    # own). Re-audited: where the patterns come from, the same in every view; no rule changed.
+    "SlideMage_base.tex": "e45dfd78af1bb23e90519428015c57193d57141dfb6c188abf3c1b84ab3f969b",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name
