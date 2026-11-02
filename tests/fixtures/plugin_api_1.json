@@ -1784,6 +1784,13 @@
             "required": true
           }
         ],
+        "project_languages": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ],
         "project_root": [
           {
             "name": "self",

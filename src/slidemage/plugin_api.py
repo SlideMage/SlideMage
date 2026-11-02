@@ -719,11 +719,12 @@ class Host(Protocol):
         ...
 
     def insert_slides(
-        self, deck: Deck, position: InsertPosition, slides: list[tuple[str, str]], language: Literal["de", "en"],
+        self, deck: Deck, position: InsertPosition, slides: list[tuple[str, str]], language: str,
     ) -> list[Path]:
         """Create one new slide per (id_suffix, frame) (frame is the slide's LaTeX body; SlideMage adds its file
-        header and version), named <new id>-<DE|EN>-<id_suffix>, and add their calls to the deck at position as one
-        edit, in order. Returns the new slide files. All or nothing: on any failure the new files are removed and
+        header and version), named <new id>-<LANG>-<id_suffix> with `language` (a code of project_languages(), such
+        as "en" or "fr") in capitals, and add their calls to the deck at position as one edit, in order. A language
+        the project does not have raises ValueError. Returns the new slide files. All or nothing: on any failure the new files are removed and
         the deck is untouched (the deck is replaced atomically, and checked against deck.text at that moment).
         Raises StaleFileError if the deck changed, EditRefusedError while the Deck settings sheet of the deck has
         unsaved changes, OSError if a file cannot be written.
@@ -738,8 +739,14 @@ class Host(Protocol):
         in SlideMage's deck history. change must be pure: no I/O."""
         ...
 
-    def deck_language(self, deck: Deck) -> Literal["de", "en"]:
-        """The language a compile of the deck uses. Reads deck.text only."""
+    def deck_language(self, deck: Deck) -> str:
+        """The language a compile of the deck uses: a lowercase code such as "en", "de" or "fr" (any language of
+        the project, or the deck's own should it be another). Reads deck.text only."""
+        ...
+
+    def project_languages(self) -> list[str]:
+        """The project's languages as lowercase codes, the main language first (["en", "de"] for a project in
+        English and German). May be called any time, from a worker too."""
         ...
 
     def project_root(self) -> Path:
@@ -754,9 +761,9 @@ class Host(Protocol):
         only; may be called from a worker. An unknown view raises ValueError."""
         ...
 
-    def deck_slides(self, deck: Deck, view: str, language: Literal["de", "en"]) -> list[SlideRef]:
+    def deck_slides(self, deck: Deck, view: str, language: str) -> list[SlideRef]:
         """The deck's slides in the order SlideMage lists them for `view` ("instructor", "during-course" or
-        "after-course") read in `language`: one ref per slide call, hidden ones included (SlideRef.hidden), and a
+        "after-course") read in `language` (a code of project_languages()): one ref per slide call, hidden ones included (SlideRef.hidden), and a
         slide with a translation into `language` as that translation. A slide without one is the slide in its own
         language: compare SlideRef.language. Reads deck.text and the slide files as they are now and changes
         nothing; may be called from a worker. Slides in included fragments are not listed.

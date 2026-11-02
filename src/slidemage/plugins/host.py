@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 from urllib.parse import urlparse
 
-from .. import (app_settings, deck_editor, deck_scan, diagnostics, open_path, plugin_api, project, slide_ids, slide_language,
-               transcript)
+from .. import (app_settings, deck_editor, deck_scan, diagnostics, languages, open_path, plugin_api, project, slide_ids,
+               slide_language, transcript)
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
 from ..fileio import atomic_write, read_text_exact
@@ -202,9 +202,12 @@ class PluginHost(Registrar):
 
     def insert_slides(
         self, deck: plugin_api.Deck, position: plugin_api.InsertPosition, slides: list[tuple[str, str]],
-        language: Literal["de", "en"],
+        language: str,
     ) -> list[Path]:
         ctx = self.ctx
+        codes = languages.project_languages(ctx).codes
+        if language.upper() not in codes:
+            raise ValueError(f"unknown language {language!r}: one of {', '.join(code.lower() for code in codes)}")
         self._check_editable(deck)
         self._check_fresh(deck)
         csv = ctx.slide_ids_csv
@@ -214,7 +217,7 @@ class PluginHost(Registrar):
         try:
             for id_suffix, frame in slides:
                 slide_id = slide_ids.mint_slide_id(ctx)
-                id_slug = f"{slide_id}-{'EN' if language == 'en' else 'DE'}-{id_suffix}"
+                id_slug = f"{slide_id}-{language.upper()}-{id_suffix}"
                 path = ctx.slides_dir / slide_language.current_name(id_slug)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 if path.exists():
@@ -249,8 +252,11 @@ class PluginHost(Registrar):
             self._edited(deck, f"Edited {deck.name} ({self.manifest.name})")
         return new
 
-    def deck_language(self, deck: plugin_api.Deck) -> Literal["de", "en"]:
-        return "de" if transcript.deck_language_of(deck.text) == "de" else "en"
+    def deck_language(self, deck: plugin_api.Deck) -> str:
+        return transcript.deck_language_of(deck.text).lower()
+
+    def project_languages(self) -> list[str]:
+        return list(languages.project_languages(self.ctx).lower)
 
     def project_root(self) -> Path:
         return self.ctx.root
@@ -258,7 +264,7 @@ class PluginHost(Registrar):
     def deck_output_folder(self, deck: plugin_api.Deck, view: str = "instructor") -> Path:
         return slide_reader.output_folder(self.ctx, deck, view)
 
-    def deck_slides(self, deck: plugin_api.Deck, view: str, language: Literal["de", "en"]) -> list[plugin_api.SlideRef]:
+    def deck_slides(self, deck: plugin_api.Deck, view: str, language: str) -> list[plugin_api.SlideRef]:
         return slide_reader.deck_slides(self.ctx, deck, view, language)
 
     def slide_source(self, ref: plugin_api.SlideRef) -> plugin_api.SlideSource:
