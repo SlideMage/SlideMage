@@ -335,7 +335,8 @@ class ImageForm(Surface):
             self.state_chip.set_text("Changed, unsaved")
             self.state_chip.set_tone("muted")
         else:
-            self.state_chip.set_text(STATE_TEXT[self._state])
+            self.state_chip.set_text(STATE_TEXT[self._state] if self._state != alt_images.STATE_NONE
+                                     else alt_images.state_label(self._state, [self.entry]))
             self.state_chip.set_tone(STATE_TONES[self._state])
 
     def set_availability(self, busy: bool, can_translate: bool) -> None:

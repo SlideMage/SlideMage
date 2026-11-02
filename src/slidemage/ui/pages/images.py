@@ -278,7 +278,8 @@ class ImagesPage(ImageRunsMixin, Surface):
     # -- the slide on show -----------------------------------------------------------------------------
 
     def _set_slide_note(self, view: image_review.SlideView) -> None:
-        self.slide_note.setText(f"{view.row.path.name} · {alt_images.STATE_LABELS[view.state]}")
+        found = [alt_images.lookup(self._entries, reference) for reference in view.row.images]
+        self.slide_note.setText(f"{view.row.path.name} · {alt_images.state_label(view.state, found)}")
 
     def _show_slide(self, view: Optional[image_review.SlideView]) -> None:
         self._current = view

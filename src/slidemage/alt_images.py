@@ -866,6 +866,16 @@ def translation_state(entry: ImageEntry, language: str = "de") -> str:
     return STATE_REVIEWED
 
 
+def state_label(state: str, entries) -> str:
+    """STATE_LABELS[state] for the images `entries` (ImageEntry or None); "No English description" for one without
+    English text that has a description in another language (the state follows the English text)."""
+    if state == STATE_NONE and any(entry is not None and any(
+            code != DRAFT_LANGUAGE and (text.short or text.long) for code, text in entry.texts.items())
+            for entry in entries):
+        return "No English description"
+    return STATE_LABELS[state]
+
+
 def image_state(entry: ImageEntry) -> str:
     """Draft/reviewed state of the image's own content (role/short/long),
     independent of any one slide's use of it."""

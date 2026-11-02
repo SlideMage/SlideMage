@@ -72,7 +72,7 @@ class ImageForm(Row):
         info = text(reference, q.PANEL_MONO)
         info.setToolTip(reference)
         head.addWidget(info, 1)
-        self.state_chip = Chip(alt_images.STATE_LABELS[state], STATE_TONES[state])
+        self.state_chip = Chip(alt_images.state_label(state, [entry]), STATE_TONES[state])
         head.addWidget(self.state_chip, 0, Qt.AlignmentFlag.AlignTop)
         self.body.addLayout(head)
 

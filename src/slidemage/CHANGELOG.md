@@ -3435,3 +3435,8 @@ v0.13.34 (2026-11-02, bug report: a French description written for an image with
 
 NEW: A description written directly in another language is kept as its own.
 - An image described only in French is no longer shown as a translation of an English text it does not have.
+
+v0.13.35 (2026-11-02, direct request: "No description" is unclear for an image described only in another language): An image without English text that has a description in another language says "No English description" instead of "No description" (alt_images.state_label), on the form's chip, under the slide title on the Images page and in the side panel; the state itself still follows the English text. Tests: test_image_languages.py.
+
+NEW: An image described only in another language says that its English description is missing.
+- Its label reads No English description instead of No description.

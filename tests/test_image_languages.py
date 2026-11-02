@@ -185,3 +185,11 @@ def test_a_text_written_without_english_is_its_own_not_a_translation():
     entry.short, entry.long = "A chart.", "Long."           # English written later: the French stays its own
     assert alt_images.translation_state(entry, "fr") == alt_images.STATE_REVIEWED
 
+
+def test_an_image_described_only_in_another_language_says_its_english_is_missing():
+    none = alt_images.STATE_NONE
+    assert alt_images.state_label(none, [ImageEntry(IMG), None]) == "No description"
+    assert alt_images.state_label(none, [ImageEntry(IMG, texts={"fr": ImageText("Un graphique.")})]) == (
+        "No English description")
+    assert alt_images.state_label(alt_images.STATE_DRAFT, [ImageEntry(IMG, short="A chart.")]) == "Draft, unreviewed"
+
