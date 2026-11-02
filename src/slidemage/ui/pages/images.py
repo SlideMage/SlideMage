@@ -46,7 +46,6 @@ from .image_nav import SlideNav
 from .image_results import BatchResultView
 from .image_runs import ImageRunsMixin
 
-LANGUAGES = (("en", "EN"), ("de", "DE"))
 DRAFT_TIP = ("Draft every image that still needs one, unattended. Each image is written as it finishes, so it can "
              "be stopped and resumed later.")
 TRANSLATE_TIP = ("Translate the short, long and takeaway text of every image that has English text and no current "
@@ -75,7 +74,11 @@ class ImagesPage(ImageRunsMixin, Surface):
         self._views: list[image_review.SlideView] = []
         self._current: Optional[image_review.SlideView] = None
         self._forms: list[ImageForm] = []
-        self._language = LANGUAGES[0][0]
+        codes = languages.project_languages(app.project).lower
+        self._language = "en"
+        # The language of the forms' second group: the first other language of the project (German in an
+        # English and German one), until the switch shows another.
+        self._second = next((code for code in codes if code != "en"), "de")
         self._job: Optional[Job] = None
         self._on_outcome = None          # what the running job's result is handed to
         self._translating: Optional[ImageForm] = None
@@ -84,6 +87,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
         self.nav = SlideNav(app.theme)
+        self._missing_in()
         self._build_batch_controls(self.nav.layout())
         outer.addWidget(self.nav)
         outer.addWidget(self._build_slide_column(), 1)
@@ -136,7 +140,9 @@ class ImagesPage(ImageRunsMixin, Surface):
         titles.addWidget(self.slide_title)
         titles.addWidget(self.slide_note)
         head.addLayout(titles, 1)
-        self.languages = SegmentedControl(LANGUAGES, current=self._language, mono=True)
+        self.languages = SegmentedControl(
+            [(code, code.upper()) for code in dict.fromkeys(["en", *languages.project_languages(self.app.project).lower])],
+            current=self._language, mono=True)
         self.languages.changed.connect(self._set_language)
         head.addWidget(self.languages, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(head)
@@ -286,7 +292,7 @@ class ImagesPage(ImageRunsMixin, Surface):
             self._set_slide_note(view)
             for reference in row.images:
                 entry = alt_images.lookup(self._entries, reference) or alt_images.ImageEntry(image=reference)
-                form = ImageForm(self.app, reference, entry, row.slide_id, view.slide_hash)
+                form = ImageForm(self.app, reference, entry, row.slide_id, view.slide_hash, self._second)
                 form.set_language(self._language)
                 form.set_availability(self._job is not None, self.translate_model.isEnabled())
                 form.edited.connect(self._edited)
@@ -328,8 +334,8 @@ class ImagesPage(ImageRunsMixin, Surface):
         by leaving the slide."""
         return not self._translation_in_flight() or QMessageBox.question(
             self, "Translation in progress",
-            "A German translation is still being generated for an image on this slide. Switching to another "
-            "slide now discards the result when it finishes. Switch anyway?") == QMessageBox.StandardButton.Yes
+            "A translation is still being generated for an image on this slide. Switching to another "
+            "slide or language now discards the result when it finishes. Switch anyway?") == QMessageBox.StandardButton.Yes
 
     def _on_rescan(self) -> None:
         if self._may_leave_translation():
@@ -350,9 +356,29 @@ class ImagesPage(ImageRunsMixin, Surface):
         self._populate(match.row.path)
 
     def _set_language(self, language: str) -> None:
-        self._language = language
-        for form in self._forms:
-            form.set_language(language)
+        """Show the English fields or those of `language`. Another language than the forms' second one builds the
+        forms again, after saving what was typed as a draft (as leaving the slide does)."""
+        if language not in ("en", self._second):
+            if not self._may_leave_translation():
+                self.languages.set_current(self._language)
+                return
+            self.flush()
+            self._second = language
+            self._language = language
+            self._show_slide(self._current)
+        else:
+            self._language = language
+            for form in self._forms:
+                form.set_language(language)
+        self._missing_in()
+        if self._loaded:
+            self.nav.refresh_items(self._views, self._entries)
+            self.nav._show_filter()
+
+    def _missing_in(self) -> None:
+        """Missing a translation looks at the language on show, or at every other one while English is."""
+        self.nav.languages = image_review.translation_languages(
+            languages.project_languages(self.app.project).lower, self._language)
 
     def _on_deck_changed(self, _deck) -> None:
         """The order may follow the deck; what was typed belongs to the slide it was typed on."""
@@ -405,7 +431,9 @@ class ImagesPage(ImageRunsMixin, Surface):
         if view is None:
             return
         row, id_slug = view.row, view.row.path.name.removesuffix(slide_language.CURRENT_SUFFIX)
-        language = "de" if slide_language.own_language(id_slug, languages.project_languages(self.app.project).codes) == "DE" else "en"
+        codes = languages.project_languages(self.app.project).codes
+        language = (slide_language.own_language(id_slug, codes) or codes[0]).lower()
+        language = language if language != slide_language.MULT.lower() else codes[0].lower()
         show_transcript_preview(self.app, self.source.slide_text(row.path), row.slide_id, id_slug,
                                 self.state.view, language)
 

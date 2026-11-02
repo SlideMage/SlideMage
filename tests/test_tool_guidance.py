@@ -8,7 +8,7 @@ from slidemage.ai.tools import CLAUDE_CODE_TOOLS, TOOLS
 
 
 # Guide topic and alt-text fields, not tools.
-NON_TOOLS = {"images_and_text", "short_de", "long_de", "takeaway_de"}
+NON_TOOLS = {"images_and_text", "takeaway_default", "used_on"}
 SNAKE_CASE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
 
 

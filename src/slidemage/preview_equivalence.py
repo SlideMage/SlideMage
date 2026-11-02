@@ -140,7 +140,10 @@ AUDITED_FRAMEWORK = {
     # says so; its code is unchanged). Re-audited: markers only, drawn the same in every view; no version, footer-hide
     # or deck-label rule entered the theme or the setup layer.
     "beamerthemeSlideMage.sty": "9006631fd64bae9062ff54fcf22db8001b4a15887d399005dca932868d22b869",
-    "SlideMage_alt.lua": "f07491335b836762daf485b6e7fb94f435217fadf6b48b9b0d6f3dd9fbed465c",
+    # v0.13.30: the image description CSV's columns are read by their header names, one per language (content
+    # languages plan, 2.4). Re-audited: which column is read depends on the deck's language only, the same in every
+    # view; no version, footer-hide or deck-label rule.
+    "SlideMage_alt.lua": "a3d1b99c2f8b7fce28c817878f8412008f2db9bf639d2c89a7014ac90faca853",
     "SlideMage_measure.lua": "387d13345772d5945671c235eb61a7aa79e8579f7f613d786f6b8f21a72a7a00",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
     # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,

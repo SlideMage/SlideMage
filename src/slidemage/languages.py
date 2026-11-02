@@ -148,10 +148,19 @@ def _decks_use_german(ctx: ProjectContext) -> bool:
 
 def _descriptions_use_german(ctx: ProjectContext) -> bool:
     images = read_json(ctx.media_dir / "alt-text.json").get("images")
-    german = ("short_de", "long_de", "source_de", "takeaway_default_de")
-    return any(isinstance(image, dict) and (any(image.get(key) for key in german) or any(
-        isinstance(use, dict) and use.get("takeaway_de") for use in (image.get("used_on") or {}).values()))
-        for image in (images.values() if isinstance(images, dict) else ()))
+    german = ("short_de", "long_de", "source_de", "takeaway_default_de")      # version 2 of the store
+
+    def uses_german(image: dict) -> bool:
+        text = image.get("text")
+        own = text.get("de") if isinstance(text, dict) else None          # version 3
+        return bool(any(image.get(key) for key in german) or (isinstance(own, dict) and any(
+            own.get(key) for key in ("short", "long", "source", "takeaway_default"))) or any(
+            isinstance(use, dict) and (use.get("takeaway_de") or (isinstance(use.get("takeaway"), dict)
+                                                                   and use["takeaway"].get("de")))
+            for use in (image.get("used_on") or {}).values()))
+
+    return any(isinstance(image, dict) and uses_german(image)
+               for image in (images.values() if isinstance(images, dict) else ()))
 
 
 def infer(ctx: ProjectContext) -> Languages:

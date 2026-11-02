@@ -24,7 +24,9 @@ FILTER_ALL = 1   # index of "All slides with images" in FILTERS
 _STATE_RANK = {alt_images.STATE_NONE: 0, alt_images.STATE_DRAFT: 1,
                alt_images.STATE_STALE: 2, alt_images.STATE_REVIEWED: 3}
 
-# What a form holds per image; `role` is the image's, the takeaways are as this slide shows them.
+# What a form holds per image; `role` is the image's, the takeaways are as this slide shows them. The plain fields
+# are the English text's; the `_de` ones are those of the form's second language (FormEdit.language, German unless
+# the Images page shows another).
 FIELDS = ("role", "short", "long", "source", "takeaway", "short_de", "long_de", "source_de", "takeaway_de")
 
 
@@ -38,15 +40,19 @@ class SlideView:
 Entries = dict[str, alt_images.ImageEntry]
 
 
-def lacks_german(entry: alt_images.ImageEntry) -> bool:
-    """An informative image with English text and no German text at all (a stale translation is
-    translation_state() STALE, not NONE: the German exists, it only needs another look)."""
+def lacks_translation(entry: alt_images.ImageEntry, language: str = "de") -> bool:
+    """An informative image with English text and no text at all in `language` (a stale translation is
+    translation_state() STALE, not NONE: the translation exists, it only needs another look)."""
     return (not entry.is_decorative and bool(entry.short or entry.long)
-            and alt_images.translation_state(entry) == alt_images.STATE_NONE)
+            and alt_images.translation_state(entry, language) == alt_images.STATE_NONE)
 
 
-def _in_states(*states: str) -> Callable[[SlideView, Entries], bool]:
-    return lambda view, entries: view.state in states
+def lacks_german(entry: alt_images.ImageEntry) -> bool:
+    return lacks_translation(entry, "de")
+
+
+def _in_states(*states: str) -> Callable[[SlideView, Entries, tuple[str, ...]], bool]:
+    return lambda view, entries, languages: view.state in states
 
 
 def _images_of(view: SlideView, entries: Entries) -> list[alt_images.ImageEntry]:
@@ -54,26 +60,26 @@ def _images_of(view: SlideView, entries: Entries) -> list[alt_images.ImageEntry]
     return [entry for entry in found if entry is not None]
 
 
-def _lacks_german(view: SlideView, entries: Entries) -> bool:
-    """Whether some image of the slide has no German text yet."""
-    return any(lacks_german(entry) for entry in _images_of(view, entries))
+def _lacks_translation(view: SlideView, entries: Entries, languages: tuple[str, ...]) -> bool:
+    """Whether some image of the slide has no text yet in one of `languages`."""
+    return any(lacks_translation(entry, language) for entry in _images_of(view, entries) for language in languages)
 
 
-def _source_to_review(view: SlideView, entries: Entries) -> bool:
+def _source_to_review(view: SlideView, entries: Entries, languages: tuple[str, ...] = ()) -> bool:
     """Whether the citation of some image of the slide is to review. Not part of the slide's state or
     of "Needs attention": the state is about the description and this slide's use of it."""
     return any(alt_images.source_state(entry) == alt_images.SOURCE_TO_REVIEW for entry in _images_of(view, entries))
 
 
-# (label, whether a slide is listed: (view, store entries) -> bool)
+# (label, whether a slide is listed: (view, store entries, the languages a translation is looked for in) -> bool)
 FILTERS = [
     ("Needs attention", _in_states(alt_images.STATE_NONE, alt_images.STATE_DRAFT, alt_images.STATE_STALE)),
-    ("All slides with images", lambda view, entries: True),
+    ("All slides with images", lambda view, entries, languages: True),
     ("No description", _in_states(alt_images.STATE_NONE)),
     ("Draft, unreviewed", _in_states(alt_images.STATE_DRAFT)),
     ("Needs re-check", _in_states(alt_images.STATE_STALE)),
     ("Reviewed", _in_states(alt_images.STATE_REVIEWED)),
-    ("No German", _lacks_german),
+    ("Missing a translation", _lacks_translation),
     ("Source to review", _source_to_review),
 ]
 
@@ -105,19 +111,28 @@ def sort_order(deck: Deck) -> dict[str, int]:
 
 
 def visible_views(views: list[SlideView], entries: Entries, filter_index: int, *,
-                  order: dict[str, int] | None = None) -> list[SlideView]:
+                  order: dict[str, int] | None = None, languages: tuple[str, ...] = ("de",)) -> list[SlideView]:
     """The views FILTERS[filter_index] lists, ordered by `order` (slide id -> position; slides
-    missing from it keep their order, at the end)."""
+    missing from it keep their order, at the end). `languages` are those Missing a translation looks at."""
     _, wanted = FILTERS[filter_index]
-    shown = [view for view in views if wanted(view, entries)]
+    shown = [view for view in views if wanted(view, entries, languages)]
     if order:
         shown = sorted(shown, key=lambda view: order.get(view.row.slide_id, len(order)))
     return shown
 
 
-def filter_counts(views: list[SlideView], entries: Entries) -> list[int]:
+def filter_counts(views: list[SlideView], entries: Entries, languages: tuple[str, ...] = ("de",)) -> list[int]:
     """How many slides each of FILTERS lists."""
-    return [sum(1 for view in views if wanted(view, entries)) for _, wanted in FILTERS]
+    return [sum(1 for view in views if wanted(view, entries, languages)) for _, wanted in FILTERS]
+
+
+def translation_languages(project_codes: tuple[str, ...], shown: str) -> tuple[str, ...]:
+    """The languages Missing a translation looks at: the one the Images page shows, or every language other than
+    English while it shows English (codes in lower case)."""
+    shown = shown.lower()
+    if shown != alt_images.DRAFT_LANGUAGE:
+        return (shown,)
+    return tuple(code for code in project_codes if code != alt_images.DRAFT_LANGUAGE)
 
 
 def state_counts(views: list[SlideView]) -> dict[str, int]:
@@ -151,20 +166,24 @@ def needs_long_description(role: str, long: str) -> bool:
 @dataclass
 class FormEdit:
     """One image's form: `values` as typed and `baseline` as it was shown (both keyed by FIELDS),
-    `baseline_en_hash` the English text it was shown with, and `provenance` the exact source hash
-    and German values of a translation applied to it (None when there is none)."""
+    `baseline_en_hash` the English text it was shown with, `provenance` the exact source hash
+    and translated values of a translation applied to it (None when there is none), and `language` the
+    language of the form's second group (the `_de` fields)."""
 
     reference: str
     values: dict[str, str]
     baseline: dict[str, str]
     baseline_en_hash: str
     provenance: dict | None = None
+    language: str = "de"
 
 
-def form_baseline(entry: alt_images.ImageEntry, slide_id: str) -> dict[str, str]:
+def form_baseline(entry: alt_images.ImageEntry, slide_id: str, language: str = "de") -> dict[str, str]:
+    """The form's fields as the store has them; the `_de` ones in `language`."""
+    text = entry.texts.get(language) or alt_images.ImageText()
     return {"role": entry.role, "short": entry.short, "long": entry.long, "source": entry.source,
-            "takeaway": entry.takeaway_for(slide_id), "short_de": entry.short_de, "long_de": entry.long_de,
-            "source_de": entry.source_de, "takeaway_de": entry.takeaway_for_de(slide_id)}
+            "takeaway": entry.takeaway_for(slide_id), "short_de": text.short, "long_de": text.long,
+            "source_de": text.source, "takeaway_de": entry.takeaway_in(slide_id, language)}
 
 
 def _promote_takeaway(typed: str, default: str) -> tuple[str, str]:
@@ -182,41 +201,51 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
     open (draft and translation workers write each image as they finish), and every untouched value
     stays at its newest persisted value. Returns this slide's use of the image."""
     changed = {key for key in FIELDS if edit.values[key] != edit.baseline[key]}
-    values = edit.values
-    for key in ("role", "short", "long", "short_de", "long_de"):
+    values, language = edit.values, edit.language
+    for key in ("role", "short", "long"):
         if key in changed:
             setattr(entry, key, values[key])
-    alt_images.set_source(entry, **{key: values[key] for key in ("source", "source_de") if key in changed})
+    for key in ("short_de", "long_de"):
+        if key in changed:
+            setattr(entry.text(language), key.removesuffix("_de"), values[key])
+    alt_images.set_sources(entry, {code: values[key] for code, key in (("en", "source"), (language, "source_de"))
+                                   if key in changed})
     use = entry.used_on.setdefault(slide_id, alt_images.SlideUse())
     if "takeaway" in changed:
         entry.takeaway_default, use.takeaway = _promote_takeaway(values["takeaway"], entry.takeaway_default)
     if "takeaway_de" in changed:
-        entry.takeaway_default_de, use.takeaway_de = _promote_takeaway(
-            values["takeaway_de"], entry.takeaway_default_de)
+        text = entry.text(language)
+        text.takeaway_default, taken = _promote_takeaway(values["takeaway_de"], text.takeaway_default)
+        use.set_takeaway(language, taken)
 
+    text = entry.text(language) if changed & {"short_de", "long_de", "takeaway_de"} or edit.provenance else None
     provenance = edit.provenance or {}
     fields = provenance.get("fields", {})
     provenance_matches = (
         bool(provenance)
-        and fields.get("short_de") == entry.short_de
-        and fields.get("long_de") == entry.long_de
-        and fields.get("takeaway_de") == entry.takeaway_for_de(slide_id)
+        and fields.get("short_de") == text.short
+        and fields.get("long_de") == text.long
+        and fields.get("takeaway_de") == entry.takeaway_in(slide_id, language)
         and provenance.get("source_hash") == alt_images.en_text_hash(entry)
     )
+    if text is not None:
+        text.translated_from = alt_images.DRAFT_LANGUAGE
     if provenance_matches:
-        entry.translated_from_hash = str(provenance["source_hash"])
+        text.from_hash = str(provenance["source_hash"])
     elif changed & {"short_de", "long_de", "takeaway_de"}:
-        if not entry.short_de and not entry.long_de:
-            entry.translated_from_hash = ""
+        if not text.short and not text.long:
+            text.from_hash = ""
         elif alt_images.en_text_hash(entry) == edit.baseline_en_hash:
-            # A manual German edit is in sync only while the latest English text still matches
-            # the form's original source.
-            entry.translated_from_hash = alt_images.en_text_hash(entry)
+            # A manual edit of the translation is in sync only while the latest English text still
+            # matches the form's original source.
+            text.from_hash = alt_images.en_text_hash(entry)
         else:
-            # The German was edited against an older form, but the live English text has since
+            # The translation was edited against an older form, but the live English text has since
             # changed (possibly alongside a worker translation); an empty source hash keeps the
-            # pair visibly stale instead of blessing the edited German against the newer English.
-            entry.translated_from_hash = ""
+            # pair visibly stale instead of blessing the edited translation against the newer English.
+            text.from_hash = ""
+    if text is not None and not (text.short or text.long or text.takeaway_default or text.source):
+        entry.texts.pop(language, None)          # nothing left in that language
     return use
 
 

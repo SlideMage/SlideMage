@@ -388,7 +388,7 @@ def _merge_image_descriptions(ctx: ProjectContext, part: Part) -> None:
                                    and current.status != alt_images.STATUS_REVIEWED):
                 entries[image] = entry
                 if current is not None:   # a replaced entry whose citation differs is to review
-                    alt_images.flag_source_change(entry, (current.source, current.source_de))
+                    alt_images.flag_source_change(entry, alt_images.sources(current))
                 changed = True
         return changed
 

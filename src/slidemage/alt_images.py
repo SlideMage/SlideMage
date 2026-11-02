@@ -28,23 +28,31 @@ the image itself is not:
   (its context, its takeaway) is right is a separate, per-slide check
   (`SlideUse.reviewed`). A slide is only fully done when both are true.
 
-On-disk shape (sorted by image path, and by slide_id within `used_on`, so
-diffs stay readable):
+On-disk shape, format version 3 (content languages plan, 2.4; sorted by image path, and by slide_id within
+`used_on`, so diffs stay readable). The texts are per language; the role, the hint, `drafted_by` and the reviewed
+stamp are shared:
 
     {
       "media/chart-index-scale-illusion-linear.png": {
         "role": "informative",
-        "status": "reviewed",
-        "short": "Line chart of the S&P 500 index level, 1975-2025.",
-        "long": "A line chart titled \\"S&P 500\\"...",
-        "source": "Source: Own illustration of Yahoo Finance data.",
-        "takeaway_default": "On a linear vertical axis...",
+        "text": {
+          "en": {"short": "Line chart of the S&P 500 index level, 1975-2025.", "long": "A line chart titled...",
+                 "source": "Source: Own illustration of Yahoo Finance data.",
+                 "takeaway_default": "On a linear vertical axis...", "status": "reviewed"},
+          "de": {"short": "Liniendiagramm...", "long": "...", "source": "", "takeaway_default": "...",
+                 "status": "auto", "translated_from": "en", "from_hash": "a1b2c3d4e5f6"}
+        },
         "drafted_by": "qwen3-vl:32b",
         "used_on": {
-          "3px": {"takeaway": "", "reviewed": "2026-08-20", "hash": "3f9c21ea77b0"}
+          "3px": {"takeaway": {"en": "..."}, "reviewed": "2026-08-20", "hash": "3f9c21ea77b0"}
         }
       }
     }
+
+Version 2 had the English text in plain fields (short, long, ...) and the German one in `_de` fields; it is read
+as `en` and `de` (translated from `en`), and converted to version 3 when the project is opened (convert_store,
+which keeps the old file as media/alt-text.v2.json). SlideMage before version 3 never overwrites a version-3 store
+(NewerStoreError).
 
 `used_on`'s *keys* (which slides reference this image) are a derived cache,
 rebuilt additively on every `sync_store()` scan -- like the old CSV's
@@ -57,7 +65,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
@@ -66,7 +74,9 @@ from .fileio import read_json, write_json
 from .project import ProjectContext
 from .tex_source import COMMENT_RE
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
+# The language of a version-2 store's plain fields, and the one vision models draft descriptions in.
+DRAFT_LANGUAGE = "en"
 
 NEWER_STORE_MESSAGE = ("This project's image descriptions were saved by a newer SlideMage. "
                        "Update SlideMage to change them.")
@@ -90,7 +100,7 @@ ROLE_INFORMATIVE = "informative"
 STATUS_AUTO = "auto"
 STATUS_REVIEWED = "reviewed"
 
-# Review state of the citation (`source` and `source_de` together), apart from the description's `status`:
+# Review state of the citation (the `source` of every language together), apart from the description's `status`:
 # any change to either source puts it back to SOURCE_TO_REVIEW (flag_source_change(), the one place that
 # decides it), and only a person marks it reviewed again (mark_source_reviewed()).
 SOURCE_REVIEWED = "reviewed"
@@ -126,19 +136,38 @@ STATE_LABELS = {
     STATE_REVIEWED: "Reviewed",
 }
 
-@dataclass
+@dataclass(init=False)
 class SlideUse:
-    """One slide's use of one image -- the per-slide half of the record."""
+    """One slide's use of one image -- the per-slide half of the record.
 
-    takeaway: str = ""   # "" = follows the image's takeaway_default
-    reviewed: str = ""   # ISO date; "" = never reviewed
-    stored_hash: str = ""  # slide-context hash as of `reviewed`
-    # German counterpart to `takeaway` (2026-08-24) -- "" follows
-    # takeaway_default_de the same way `takeaway` follows takeaway_default.
-    # One `reviewed` stamp covers both languages: reviewing a slide's
-    # takeaway means looking at both language versions in one sitting, so
-    # there is deliberately no separate reviewed_de/stored_hash_de.
-    takeaway_de: str = ""
+    `takeaways` is {language: this slide's own takeaway}; a language without one follows the image's
+    takeaway_default in that language. One `reviewed` stamp covers every language: reviewing a slide's takeaway
+    means looking at its language versions in one sitting."""
+
+    reviewed: str        # ISO date; "" = never reviewed
+    stored_hash: str     # slide-context hash as of `reviewed`
+    takeaways: dict[str, str]
+
+    def __init__(self, takeaway: str = "", reviewed: str = "", stored_hash: str = "", takeaway_de: str = "",
+                 takeaways: dict[str, str] | None = None) -> None:
+        self.reviewed, self.stored_hash = reviewed, stored_hash
+        self.takeaways = {code: text for code, text in (takeaways or {}).items() if text}
+        if takeaway:
+            self.takeaways["en"] = takeaway
+        if takeaway_de:
+            self.takeaways["de"] = takeaway_de
+
+    def takeaway_in(self, language: str) -> str:
+        return self.takeaways.get(language, "")
+
+    def set_takeaway(self, language: str, text: str) -> None:
+        if text:
+            self.takeaways[language] = text
+        else:
+            self.takeaways.pop(language, None)
+
+    takeaway = property(lambda self: self.takeaway_in("en"), lambda self, text: self.set_takeaway("en", text))
+    takeaway_de = property(lambda self: self.takeaway_in("de"), lambda self, text: self.set_takeaway("de", text))
 
     @property
     def has_override(self) -> bool:
@@ -150,54 +179,92 @@ class SlideUse:
 
 
 @dataclass
-class ImageEntry:
-    """Everything known about one image, shared across every slide using it."""
+class ImageText:
+    """An image's description in one language."""
 
-    image: str  # forward-slash path relative to the project root
-    role: str = ROLE_INFORMATIVE
-    status: str = STATUS_AUTO
     short: str = ""
     long: str = ""
     takeaway_default: str = ""
-    # Free-text citation ("Source: ...", "Image source: ...") -- who this
-    # image is from, not what it shows (that's short/long). Independent of
-    # role: a decorative Midjourney illustration still needs attribution
-    # even though it carries no alt text, confirmed directly against a real
-    # slide (dh6-Private-Equity-Categorization) that already hand-authors
-    # exactly that combination. Auto-pulled into a compiled slide's own
-    # footnote wherever this image is used.
+    # In a translation, "" means the same citation as the language it falls back to (source_in): most citations
+    # are proper nouns or publication names that need no translation.
     source: str = ""
-    # Whether the citation (source and source_de) was confirmed since it last changed. A store
-    # written before this field existed loads as reviewed; it is written only when it is to_review.
-    source_status: str = SOURCE_REVIEWED
-    # Which vision model produced the current short/long, when one did.
-    # Cleared on human review -- once checked, the text is yours.
-    drafted_by: str = ""
-    # A stored per-image correction from prompt-tuning ("the y-axis maximum
-    # is 6800, not 250"), reused by a later redraft instead of the user
-    # rediscovering it. Same purpose alt_blocks.AltImage.hint served.
-    hint: str = ""
-    used_on: dict[str, SlideUse] = field(default_factory=dict)
+    status: str = STATUS_AUTO
+    translated_from: str = ""   # the language this text was translated from; "" for one written in its own
+    from_hash: str = ""         # text_hash of that language's text when it was translated (translation_state)
 
-    # German counterparts (2026-08-24), produced by translating the
-    # already-finalized English text (alt_draft.translate_to_german())
-    # rather than an independent vision-model draft, per direct
-    # instruction. `source_de` is a genuine
-    # default+override, the same shape takeaway_default/SlideUse.takeaway
-    # already use: "" means "same citation in both languages" (most
-    # citations are proper nouns/publication names that don't translate),
-    # a non-empty value is an explicit German-specific override.
-    short_de: str = ""
-    long_de: str = ""
-    source_de: str = ""
-    takeaway_default_de: str = ""
-    status_de: str = STATUS_AUTO
-    # sha256 (12 hex chars, same truncation as every other hash in this
-    # module) of the EN short+long+takeaway_default text as of the last
-    # translation -- see en_text_hash()/translation_state() below. A
-    # later edit to the English text changes this hash, so a stale German
-    # copy is visibly flagged instead of silently drifting out of sync.
-    translated_from_hash: str = ""
+    @property
+    def is_blank(self) -> bool:
+        return self == ImageText()
+
+
+def _text_field(language: str, name: str) -> property:
+    """A field of the entry's text in `language`, as the attribute the entry had before texts were per language
+    (`short` is texts["en"].short, `short_de` texts["de"].short)."""
+    return property(lambda self: getattr(self.texts.get(language) or ImageText(), name),
+                    lambda self, value: setattr(self.text(language), name, value))
+
+
+@dataclass(init=False)
+class ImageEntry:
+    """Everything known about one image, shared across every slide using it. Its descriptions are per language
+    (`texts`); the role, the hint, the model that drafted it and the slides it is used on are shared. The
+    attributes `short`, `long`, `takeaway_default`, `source` and `status` are the English text's, and their `_de`
+    forms the German one's, as before texts were per language; the readers that work in any language use
+    text_for()/source_in()/takeaway_in()."""
+
+    image: str  # forward-slash path relative to the project root
+    role: str
+    # Whether the citation (every language's source) was confirmed since it last changed. A store written before
+    # this field existed loads as reviewed; it is written only when it is to_review.
+    source_status: str
+    # Which vision model produced the current short/long, when one did. Cleared on human review -- once checked,
+    # the text is yours.
+    drafted_by: str
+    # A stored per-image correction from prompt-tuning ("the y-axis maximum is 6800, not 250"), reused by a later
+    # redraft instead of the user rediscovering it.
+    hint: str
+    used_on: dict[str, SlideUse]
+    texts: dict[str, ImageText]   # language code -> its text
+
+    def __init__(self, image: str, role: str = ROLE_INFORMATIVE, status: str = STATUS_AUTO, short: str = "",
+                 long: str = "", takeaway_default: str = "", source: str = "", source_status: str = SOURCE_REVIEWED,
+                 drafted_by: str = "", hint: str = "", used_on: dict[str, SlideUse] | None = None,
+                 short_de: str = "", long_de: str = "", source_de: str = "", takeaway_default_de: str = "",
+                 status_de: str = STATUS_AUTO, translated_from_hash: str = "",
+                 texts: dict[str, ImageText] | None = None) -> None:
+        self.image, self.role, self.source_status = image, role, source_status
+        self.drafted_by, self.hint = drafted_by, hint
+        self.used_on = dict(used_on or {})
+        self.texts = {code: replace(text) for code, text in (texts or {}).items()}     # copies: never shared
+        # The fields of the English and German text by their former names, on top of `texts` (as
+        # dataclasses.replace(entry, short_de=...) passes both); a default value leaves the text as it is.
+        given = [(language, name, value) for language, name, value, default in (
+            ("en", "short", short, ""), ("en", "long", long, ""), ("en", "takeaway_default", takeaway_default, ""),
+            ("en", "source", source, ""), ("en", "status", status, STATUS_AUTO),
+            ("de", "short", short_de, ""), ("de", "long", long_de, ""),
+            ("de", "takeaway_default", takeaway_default_de, ""), ("de", "source", source_de, ""),
+            ("de", "status", status_de, STATUS_AUTO), ("de", "from_hash", translated_from_hash, "")) if value != default]
+        for language, name, value in given:
+            setattr(self.text(language), name, value)
+        german = self.texts.get("de")
+        if german is not None and not german.translated_from and texts is None:
+            german.translated_from = "en"            # a version-2 German text is a translation of the English one
+
+    def text(self, language: str) -> ImageText:
+        """The entry's own text in `language`, created empty if it has none yet: for writing."""
+        return self.texts.setdefault(language, ImageText())
+
+    short = _text_field("en", "short")
+    long = _text_field("en", "long")
+    takeaway_default = _text_field("en", "takeaway_default")
+    source = _text_field("en", "source")
+    status = _text_field("en", "status")
+    short_de = _text_field("de", "short")
+    long_de = _text_field("de", "long")
+    takeaway_default_de = _text_field("de", "takeaway_default")
+    source_de = _text_field("de", "source")
+    status_de = _text_field("de", "status")
+    translated_from_hash = _text_field("de", "from_hash")
 
     @property
     def is_decorative(self) -> bool:
@@ -224,10 +291,35 @@ class ImageEntry:
 
     @property
     def has_content_de(self) -> bool:
-        """German counterpart to has_content -- decorative still counts
-        (role has no language of its own), an untranslated informative
-        image does not."""
-        return bool(self.short_de or self.long_de or self.is_decorative)
+        return self.has_content_in("de")
+
+    def has_content_in(self, language: str) -> bool:
+        """has_content in `language` -- decorative still counts (role has no language of its own), an
+        untranslated informative image does not."""
+        text = self.texts.get(language)
+        return bool(text and (text.short or text.long)) or self.is_decorative
+
+    def _chain(self, language: str, main: str) -> list[str]:
+        """Where the text in `language` comes from when it has none of its own: the language it was translated
+        from, then the main language, then English."""
+        own = self.texts.get(language)
+        return list(dict.fromkeys([language, *([own.translated_from] if own and own.translated_from else []),
+                                   main, DRAFT_LANGUAGE]))
+
+    def text_for(self, language: str, main: str = DRAFT_LANGUAGE) -> ImageText:
+        """The text a reader in `language` sees: its own when it has a short or long text, else that of the first
+        language in its chain (_chain) that has one; empty when none has."""
+        for code in self._chain(language, main):
+            text = self.texts.get(code)
+            if text and (text.short or text.long):
+                return text
+        return ImageText()
+
+    def source_in(self, language: str, main: str = DRAFT_LANGUAGE) -> str:
+        """The citation in `language`: its own source, else the first one along its chain ("" means the same
+        citation)."""
+        return next((text.source for code in self._chain(language, main)
+                     if (text := self.texts.get(code)) and text.source), "")
 
     def takeaway_for(self, slide_id: str) -> str:
         """The effective takeaway text a slide shows: its own override, or
@@ -238,15 +330,20 @@ class ImageEntry:
         return self.takeaway_default
 
     def takeaway_for_de(self, slide_id: str) -> str:
+        return self.takeaway_in(slide_id, "de")
+
+    def takeaway_in(self, slide_id: str, language: str) -> str:
+        """The takeaway a slide shows in `language`: its own override in that language, or the image's default in
+        it ("" when it has none: a takeaway does not fall back to another language)."""
         use = self.used_on.get(slide_id)
-        if use and use.has_override_de:
-            return use.takeaway_de
-        return self.takeaway_default_de
+        if use and use.takeaway_in(language):
+            return use.takeaway_in(language)
+        text = self.texts.get(language)
+        return text.takeaway_default if text else ""
 
     def source_for_de(self) -> str:
-        """source_de if set, else the English source -- the default+
-        override fallback described on source_de above."""
-        return self.source_de or self.source
+        """source_de if set, else the English source (source_in)."""
+        return self.source_in("de")
 
     def is_override_for(self, slide_id: str) -> bool:
         use = self.used_on.get(slide_id)
@@ -257,14 +354,21 @@ class ImageEntry:
 # Serialization
 # --------------------------------------------------------------------------
 
+def _text_to_dict(text: ImageText) -> dict:
+    d = {"short": text.short, "long": text.long, "source": text.source, "takeaway_default": text.takeaway_default,
+         "status": text.status}
+    if text.translated_from:
+        d["translated_from"] = text.translated_from
+    if text.from_hash:
+        d["from_hash"] = text.from_hash
+    return d
+
+
 def _entry_to_dict(entry: ImageEntry) -> dict:
     d = {
         "role": entry.role,
-        "status": entry.status,
-        "short": entry.short,
-        "long": entry.long,
-        "source": entry.source,
-        "takeaway_default": entry.takeaway_default,
+        "text": {language: _text_to_dict(text) for language, text in sorted(entry.texts.items())
+                 if not text.is_blank},
     }
     if entry.source_status != SOURCE_REVIEWED:
         d["source_status"] = entry.source_status
@@ -272,29 +376,12 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
         d["drafted_by"] = entry.drafted_by
     if entry.hint:
         d["hint"] = entry.hint
-    # German fields (2026-08-24) written only when there's something to
-    # write -- same optional-key pattern as drafted_by/hint above, so an
-    # untranslated entry (the vast majority, at first) doesn't bloat every
-    # row in the store with five empty keys.
-    if entry.short_de:
-        d["short_de"] = entry.short_de
-    if entry.long_de:
-        d["long_de"] = entry.long_de
-    if entry.source_de:
-        d["source_de"] = entry.source_de
-    if entry.takeaway_default_de:
-        d["takeaway_default_de"] = entry.takeaway_default_de
-    if entry.status_de != STATUS_AUTO:
-        d["status_de"] = entry.status_de
-    if entry.translated_from_hash:
-        d["translated_from_hash"] = entry.translated_from_hash
     d["used_on"] = {
         slide_id: {
             k: v for k, v in (
-                ("takeaway", use.takeaway),
+                ("takeaway", dict(sorted(use.takeaways.items()))),
                 ("reviewed", use.reviewed),
                 ("hash", use.stored_hash),
-                ("takeaway_de", use.takeaway_de),
             ) if v
         }
         for slide_id, use in sorted(entry.used_on.items())
@@ -302,34 +389,46 @@ def _entry_to_dict(entry: ImageEntry) -> dict:
     return d
 
 
+def _text_from_dict(d: dict) -> ImageText:
+    return ImageText(short=d.get("short") or "", long=d.get("long") or "",
+                     takeaway_default=d.get("takeaway_default") or "", source=d.get("source") or "",
+                     status=d.get("status") or STATUS_AUTO, translated_from=d.get("translated_from") or "",
+                     from_hash=d.get("from_hash") or "")
+
+
+def _use_from_dict(u: dict) -> SlideUse:
+    takeaway = u.get("takeaway")
+    if isinstance(takeaway, dict):         # version 3
+        return SlideUse(reviewed=u.get("reviewed") or "", stored_hash=u.get("hash") or "",
+                        takeaways={code: text for code, text in takeaway.items() if isinstance(text, str)})
+    return SlideUse(takeaway=takeaway or "", reviewed=u.get("reviewed") or "", stored_hash=u.get("hash") or "",
+                    takeaway_de=u.get("takeaway_de") or "")
+
+
 def entry_from_dict(image: str, d: dict) -> ImageEntry:
-    used_on = {
-        slide_id: SlideUse(
-            takeaway=(u.get("takeaway") or ""),
-            reviewed=(u.get("reviewed") or ""),
-            stored_hash=(u.get("hash") or ""),
-            takeaway_de=(u.get("takeaway_de") or ""),
-        )
-        for slide_id, u in (d.get("used_on") or {}).items()
-    }
+    """An entry of either format: version 3's "text" per language, or version 2's plain (English) and `_de`
+    (German) fields."""
+    used_on = {slide_id: _use_from_dict(u or {}) for slide_id, u in (d.get("used_on") or {}).items()}
+    shared = dict(role=(d.get("role") or ROLE_INFORMATIVE),
+                  source_status=SOURCE_TO_REVIEW if d.get("source_status") == SOURCE_TO_REVIEW else SOURCE_REVIEWED,
+                  drafted_by=(d.get("drafted_by") or ""), hint=(d.get("hint") or ""), used_on=used_on)
+    if isinstance(d.get("text"), dict):
+        texts = {code: _text_from_dict(text) for code, text in d["text"].items() if isinstance(text, dict)}
+        return ImageEntry(image=image, texts=texts, **shared)
     return ImageEntry(
         image=image,
-        role=(d.get("role") or ROLE_INFORMATIVE),
         status=(d.get("status") or STATUS_AUTO),
         short=(d.get("short") or ""),
         long=(d.get("long") or ""),
         source=(d.get("source") or ""),
-        source_status=SOURCE_TO_REVIEW if d.get("source_status") == SOURCE_TO_REVIEW else SOURCE_REVIEWED,
         takeaway_default=(d.get("takeaway_default") or ""),
-        drafted_by=(d.get("drafted_by") or ""),
-        hint=(d.get("hint") or ""),
         short_de=(d.get("short_de") or ""),
         long_de=(d.get("long_de") or ""),
         source_de=(d.get("source_de") or ""),
         takeaway_default_de=(d.get("takeaway_default_de") or ""),
         status_de=(d.get("status_de") or STATUS_AUTO),
         translated_from_hash=(d.get("translated_from_hash") or ""),
-        used_on=used_on,
+        **shared,
     )
 
 
@@ -481,8 +580,9 @@ def save_store(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
 # SlideMage_alt.lua reads it directly at compile time with a hand-rolled
 # CSV parser, and LuaTeX has no JSON library to switch it to one -- rewriting
 # the compile-time side was a much larger change than just keeping the one
-# file format it already reads working. Same header/column shape the old
-# store wrote, so nothing on the Lua side needed to change at all.
+# file format it already reads working. The en and de columns stay where they always were; each further language
+# appends status_xx, short_alt_xx and source_xx (content languages plan, 2.4), so an older framework copy that reads
+# the columns by position keeps working, and SlideMage_alt.lua reads them by the header's names.
 
 
 def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> None:
@@ -507,18 +607,53 @@ def _write_compile_csv(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> N
         # \SMDeckLanguage. `role` stays a single shared column: it's
         # language-independent (decorative/informative is a property of
         # the picture, not of which language is being read).
-        writer.writerow([
-            "image", "role",
-            "status_en", "short_alt_en", "source_en",
-            "status_de", "short_alt_de", "source_de",
-        ])
+        codes = csv_languages(ctx, entries)
+        writer.writerow(["image", "role", *(f"{column}_{code}" for code in codes
+                                             for column in ("status", "short_alt", "source"))])
+        main = _main_language(ctx)
         for image in sorted(entries):
             entry = entries[image]
-            writer.writerow([
-                entry.image, entry.role,
-                entry.status, _clean(entry.short), _clean(entry.source),
-                entry.status_de, _clean(entry.short_de), _clean(entry.source_for_de()),
-            ])
+            row = [entry.image, entry.role]
+            for code in codes:
+                # The short alt text is the language's own (an untranslated one means no alt text in that
+                # language); the source follows the chain (source_in), as most citations need no translation.
+                text = entry.texts.get(code) or ImageText()
+                row += [text.status, _clean(text.short), _clean(entry.source_in(code, main))]
+            writer.writerow(row)
+
+
+def _main_language(ctx: ProjectContext) -> str:
+    from . import languages
+    return languages.project_languages(ctx).main
+
+
+def csv_languages(ctx: ProjectContext, entries: dict[str, ImageEntry]) -> list[str]:
+    """The languages of the compile CSV's columns: en and de first (where an older framework reads them), then
+    the project's other languages and any other language the descriptions have."""
+    from . import languages
+    found = {code for entry in entries.values() for code in entry.texts}
+    return list(dict.fromkeys(["en", "de", *languages.project_languages(ctx).lower, *sorted(found)]))
+
+
+def convert_store(ctx: ProjectContext) -> bool:
+    """Write the store in this version's format if an older SlideMage wrote it, keeping the old file next to it
+    as media/alt-text.v<version>.json (not overwritten if it is there). Called when a project is opened; a store
+    that cannot be written is left as it is (it reads the same). Whether it was converted."""
+    path = _store_path(ctx)
+    if not path.is_file():
+        return False
+    raw = _read_raw(ctx)
+    version = raw.get("version", 0)
+    if not isinstance(version, int) or version >= FORMAT_VERSION:
+        return False
+    backup = path.with_name(f"alt-text.v{version}.json")
+    try:
+        if not backup.exists():
+            backup.write_bytes(path.read_bytes())
+        save_store(ctx, _entries_from_raw(raw))
+    except OSError:
+        return False
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -693,16 +828,20 @@ def slide_context_hash(slide_path: Path) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
-def en_text_hash(entry: ImageEntry) -> str:
-    """sha256 (12 hex chars, same truncation as content_hash()/
-    slide_context_hash()) of the EN short+long+takeaway_default text --
-    what ImageEntry.translated_from_hash is compared against to tell
-    whether a German translation is still current."""
-    combined = f"{entry.short}\n{entry.long}\n{entry.takeaway_default}"
+def text_hash(entry: ImageEntry, language: str) -> str:
+    """sha256 (12 hex chars, same truncation as content_hash()/slide_context_hash()) of the short+long+
+    takeaway_default text in `language` -- what a translation's from_hash is compared against to tell whether it
+    is still current."""
+    text = entry.texts.get(language) or ImageText()
+    combined = f"{text.short}\n{text.long}\n{text.takeaway_default}"
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()[:12]
 
 
-def translation_state(entry: ImageEntry) -> str:
+def en_text_hash(entry: ImageEntry) -> str:
+    return text_hash(entry, "en")
+
+
+def translation_state(entry: ImageEntry, language: str = "de") -> str:
     """Reuses image_state()'s STATE_NONE/STATE_STALE/STATE_REVIEWED
     vocabulary for the same shape of problem (draft/stale/current), keyed
     off translated_from_hash instead of a human-review timestamp:
@@ -711,9 +850,10 @@ def translation_state(entry: ImageEntry) -> str:
     STATE_REVIEWED (German text exists and matches the English text it
     was translated from -- "reviewed" here means "in sync with English",
     not necessarily human-proofread)."""
-    if not entry.has_content_de:
+    if not entry.has_content_in(language):
         return STATE_NONE
-    if entry.translated_from_hash != en_text_hash(entry):
+    text = entry.texts.get(language) or ImageText()
+    if text.from_hash != text_hash(entry, text.translated_from or DRAFT_LANGUAGE):
         return STATE_STALE
     return STATE_REVIEWED
 
@@ -791,37 +931,49 @@ def set_takeaway_default(ctx: ProjectContext, image: str, slide_id: str, text: s
 # -- the source's review state -----------------------------------------------------------------------------
 
 
+def sources(entry: ImageEntry | None) -> dict[str, str]:
+    """{language: its own source} of every language that has one: what flag_source_change() compares."""
+    return {code: text.source for code, text in (entry.texts.items() if entry else ()) if text.source}
+
+
 def source_state(entry: ImageEntry) -> str:
-    """SOURCE_TO_REVIEW or SOURCE_REVIEWED; "" when the image has no source in either language (nothing
+    """SOURCE_TO_REVIEW or SOURCE_REVIEWED; "" when the image has no source in any language (nothing
     to review)."""
-    return entry.source_status if entry.source or entry.source_de else ""
+    return entry.source_status if sources(entry) else ""
 
 
-def flag_source_change(entry: ImageEntry, before: tuple[str, str]) -> bool:
-    """The one rule: if (source, source_de) differs from `before`, the citation is to review and its
-    reviewed state is gone. Every writer of a source ends here (set_source(), and the writes of a file
+def flag_source_change(entry: ImageEntry, before: dict[str, str]) -> bool:
+    """The one rule: if the sources (sources()) differ from `before`, the citation is to review and its
+    reviewed state is gone. Every writer of a source ends here (set_sources(), and the writes of a file
     that cannot go through it). Returns whether it changed."""
-    if (entry.source, entry.source_de) == before:
+    if sources(entry) == before:
         return False
     entry.source_status = SOURCE_TO_REVIEW
     return True
 
 
-def set_source(entry: ImageEntry, source: str | None = None, source_de: str | None = None) -> bool:
-    """Set the source and/or source_de (None leaves one as it is) of `entry` in memory, with the
-    consequence of flag_source_change(). Returns whether a source changed."""
-    before = (entry.source, entry.source_de)
-    if source is not None:
-        entry.source = source
-    if source_de is not None:
-        entry.source_de = source_de
+def set_sources(entry: ImageEntry, changes: dict[str, str]) -> bool:
+    """Set the source of each language in `changes` of `entry` in memory, with the consequence of
+    flag_source_change(). Returns whether a source changed."""
+    before = sources(entry)
+    for language, text in changes.items():
+        entry.text(language).source = text
     return flag_source_change(entry, before)
 
 
-def save_source(ctx: ProjectContext, image: str, source: str | None = None, source_de: str | None = None) -> ImageEntry | None:
-    """Store a new source and/or source_de of `image` (None leaves one as it is) as to review. Returns
-    the updated entry, None if the image has no entry or nothing changed."""
-    return _update_entry(ctx, image, lambda entry: set_source(entry, source, source_de))
+def set_source(entry: ImageEntry, source: str | None = None, source_de: str | None = None) -> bool:
+    """set_sources() of the English source and/or the German one (None leaves one as it is)."""
+    return set_sources(entry, {code: text for code, text in (("en", source), ("de", source_de)) if text is not None})
+
+
+def save_source(ctx: ProjectContext, image: str, source: str | None = None, source_de: str | None = None, *,
+                changes: dict[str, str] | None = None) -> ImageEntry | None:
+    """Store a new English and/or German source of `image` (None leaves one as it is), or the sources of
+    `changes` ({language: source}), as to review. Returns the updated entry, None if the image has no entry or
+    nothing changed."""
+    changes = {**{code: text for code, text in (("en", source), ("de", source_de)) if text is not None},
+               **(changes or {})}
+    return _update_entry(ctx, image, lambda entry: set_sources(entry, changes))
 
 
 def mark_source_reviewed(ctx: ProjectContext, image: str) -> ImageEntry | None:
@@ -853,7 +1005,7 @@ def flag_edited_sources(ctx: ProjectContext, path: Path, before: str) -> bool:
         changed = False
         for image, entry in entries.items():
             old = previous.get(image)
-            changed |= flag_source_change(entry, (old.source, old.source_de) if old else ("", ""))
+            changed |= flag_source_change(entry, sources(old))
         return changed
 
     try:

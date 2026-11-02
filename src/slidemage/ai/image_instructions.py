@@ -4,9 +4,10 @@
 
 IMAGE_DESCRIPTION_RULES = (
     "Image descriptions (alt text) in media/alt-text.json must use the slide's language "
-    "(the EN/DE segment in its filename), or the deck's editing language for multilingual slides "
-    "or deck-wide work. For German (DE), write both the short and long descriptions in German "
-    "in short_de and long_de (and takeaway_de if supplied). For English (EN), use short and long "
-    "(and takeaway). Preserve existing descriptions in the other language and unrelated image "
-    "metadata; never put English text in the German fields. The conversation's language does "
-    "not override the slide/deck language.")
+    "(the language segment in its filename, such as EN, DE or FR), or the deck's editing language for "
+    "multilingual slides or deck-wide work. Each image keeps its text per language under \"text\", keyed by "
+    "the language code in lower case: write the short and long descriptions (and the takeaway_default, if "
+    "supplied) of that language in that language, in text.<code>.short, text.<code>.long and "
+    "text.<code>.takeaway_default; a slide's own takeaway goes in used_on.<slide>.takeaway.<code>. Preserve the "
+    "texts of the other languages and unrelated image metadata; never put text of one language under another "
+    "language's code. The conversation's language does not override the slide/deck language.")

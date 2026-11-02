@@ -1596,20 +1596,12 @@ def render_slide(ctx: ProjectContext, deck_slide: DeckSlide, version: str,
     for reference in alt_blocks.referenced_images(stripped):
         described = alt_images.lookup(entries, reference)
         role = described.role if described else alt_images.ROLE_INFORMATIVE
-        if language == "de" and described:
-            image = TranscriptImage(
-                reference=reference, role=role,
-                short=described.short_de, long=described.long_de,
-                takeaway=described.takeaway_for_de(slide_id),
-            )
-        else:
-            image = TranscriptImage(
-                reference=reference,
-                role=role,
-                short=described.short if described else "",
-                long=described.long if described else "",
-                takeaway=described.takeaway_for(slide_id) if described else "",
-            )
+        # The description in the transcript's own language: an untranslated one counts as missing there.
+        text = (described.texts.get(language) if described else None) or alt_images.ImageText()
+        image = TranscriptImage(
+            reference=reference, role=role, short=text.short, long=text.long,
+            takeaway=described.takeaway_in(slide_id, language) if described else "",
+        )
         image.described = bool(image.long) or role == alt_images.ROLE_DECORATIVE
         if not image.described:
             entry.missing_description = True

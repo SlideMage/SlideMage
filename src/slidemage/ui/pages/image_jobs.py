@@ -66,12 +66,13 @@ def draft_job(title: str, ctx: ProjectContext, queue: list[alt_draft.ImageJob], 
         on_item_done=job.image_done.emit, should_stop=job.should_stop), route, DRAFT, [image.image for image in queue])
 
 
-def translate_job(title: str, ctx: ProjectContext, queue: list[str], backend: alt_draft.TranslationBackend,
+def translate_job(title: str, ctx: ProjectContext, queues: dict[str, list[str]], backend: alt_draft.TranslationBackend,
                   route: Route) -> Job:
-    """The batch that translates the descriptions of `queue` on `route`, as draft_job."""
-    return Job(title, backend.provider, lambda job: alt_draft.run_translation_batch(
-        ctx, queue, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image),
-        on_item_done=job.image_done.emit, should_stop=job.should_stop), route, TRANSLATE, queue)
+    """The batch that translates the descriptions of `queues` ({language: images}) on `route`, as draft_job."""
+    images = list(dict.fromkeys(image for queue in queues.values() for image in queue))
+    return Job(title, backend.provider, lambda job: alt_draft.run_translation_batches(
+        ctx, queues, backend, on_progress=lambda i, n, image: job.progress.emit(i, n, image),
+        on_item_done=job.image_done.emit, should_stop=job.should_stop), route, TRANSLATE, images)
 
 
 class JobCard(QFrame):

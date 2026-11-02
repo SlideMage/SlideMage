@@ -230,7 +230,7 @@ def run_on(monkeypatch, page, route, backend, *images):
     monkeypatch.setattr(resolver, "translation_backend", lambda _ctx, _route: backend)
     monkeypatch.setattr(alt_draft, "build_context", lambda _ctx, path, reference: SimpleContext(reference))
     monkeypatch.setattr(alt_draft, "images_needing_drafts", lambda _ctx, **_kwargs: jobs_for(page, *images))
-    monkeypatch.setattr(alt_draft, "images_needing_translation", lambda _ctx: list(images))
+    monkeypatch.setattr(alt_draft, "images_needing_translation", lambda _ctx, _language="de": list(images))
     for image in images:
         page.store.setdefault(image, alt_images.ImageEntry(image=image, short="s", long="l"))
 

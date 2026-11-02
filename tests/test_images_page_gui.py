@@ -150,7 +150,7 @@ def test_the_page_lists_the_slides_with_images_and_shows_the_first(make_page, re
 
 def test_the_no_german_filter_lists_slides_whose_image_has_english_but_no_german(make_page):
     page = make_page()
-    no_german = [label for label, _ in image_review.FILTERS].index("No German")
+    no_german = [label for label, _ in image_review.FILTERS].index("Missing a translation")
     page.nav.set_filter(no_german)
     page._populate(None)
     assert page.nav.shown == []

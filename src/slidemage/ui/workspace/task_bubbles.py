@@ -207,14 +207,20 @@ def _undescribed(found: dict[str, alt_images.ImageEntry]) -> list[str]:
     return [image for image, entry in found.items() if not (entry.short or entry.long or entry.is_decorative)]
 
 
+def _translation_targets(ctx: ProjectContext) -> list[str]:
+    """The languages image descriptions are translated into: every language of the project but English."""
+    return [code for code in languages.project_languages(ctx).lower if code != alt_images.DRAFT_LANGUAGE]
+
+
 def _slide_images(ctx: ProjectContext, text: str) -> tuple[list[str], list[str]]:
     """The slide's images (store keys) without a description, and those with an English text that has no
-    current German one (alt_draft.images_needing_translation). Whether a model can read the image is only
-    known at the run: a vector file or a missing one drops out there."""
+    current text in some other language of the project (alt_draft.translation_queues). Whether a model can read
+    the image is only known at the run: a vector file or a missing one drops out there."""
     found = _images_of(text, alt_images.load_store(ctx))
     if not found:
         return [], []
-    translate = set(alt_draft.images_needing_translation(ctx))
+    translate = {image for queue in alt_draft.translation_queues(ctx, _translation_targets(ctx)).values()
+                 for image in queue}
     return _undescribed(found), [image for image in found if image in translate]
 
 
@@ -526,8 +532,9 @@ class _ImageWorker(QThread):
             summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=self._progress,
                                           should_stop=self.cancel.is_set)
         else:
-            summary = alt_draft.run_translation_batch(self.ctx, capture.images, self.backend, on_progress=self._progress,
-                                                      should_stop=self.cancel.is_set)
+            queues = alt_draft.translation_queues(self.ctx, _translation_targets(self.ctx), capture.images)
+            summary = alt_draft.run_translation_batches(self.ctx, queues, self.backend, on_progress=self._progress,
+                                                        should_stop=self.cancel.is_set)
         self.done.emit(self, summary)
 
 
