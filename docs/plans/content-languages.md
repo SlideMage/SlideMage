@@ -398,3 +398,48 @@ built-in table (2.1, 2.6).
 
 Still to find out during implementation (no decision needed): whether the current release already refuses to
 overwrite an image store of a newer format (2.4), and whether babel survives the preview formats (2.10).
+
+## 6. Status (2026-11-02)
+
+The branches are stacked, each on the one before, in this order; each ends with the suite green apart from three
+failures that `develop` has too or that come from the worktree path (the zip fixtures of `test_citations.py` and
+`test_theme_sources.py`, and the LuaTeX log line `test_the_default_is_loaded_...` searches for, which a longer path
+wraps):
+
+| Version | Branch | Step |
+|---|---|---|
+| v0.13.24 | `fix/alt-store-version-guard` (on `develop`) | an older SlideMage never overwrites a newer image store |
+| v0.13.25 | `feat/content-languages-1-registry` | 1 and 1b |
+| v0.13.26 | `feat/content-languages-2a-groups` | 2a, and a test commit: a test project without the key is EN + DE (`infer_languages` marks the tests of the inference) |
+| v0.13.27 | `feat/content-languages-3-ai` | 3 |
+| v0.13.28 | `feat/content-languages-5a-texts` | 5a |
+| v0.13.29 | `feat/content-languages-2b-ui` | 2b (tried in the app) |
+| v0.13.30 | `feat/content-languages-4-images` | a fix (a new project no longer copies the example's `.slidemage` state), then 4 |
+| v0.13.31 | `feat/content-languages-6-plugin-api` | 6, SlideMage's part |
+
+Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6` (and the empty `cl-5b-spike`).
+
+Decided while implementing, differing from the text above:
+
+- The image store's new format is **version 3** (version 2 was the current one); the backup is
+  `media/alt-text.v2.json`. The v0.13.24 guard refuses to write anything above 2. Step 4's CHANGELOG has a
+  BREAKING paragraph and a `compat.CHANGES` entry: every machine needs the new version before it opens the project.
+- The short alt text has **no fallback** in the PDF (an untranslated language has none, as German today); only the
+  source follows the chain. The transcript and `slide_reader` use the language's own text.
+- `alt_draft.TranslationResult` keeps its `short_de`/`long_de`/`takeaway_de` names and has a `language`; a backend
+  without `target_lang` (the Claude plugin today) translates into German only and says so for another language.
+  Core's `image_tasks.TRANSLATE` schema has `short`, `long`, `takeaway` since step 6.
+- `insert_slides` refuses a language the project does not have.
+- The Images page builds its language list when it is built; a language added in Settings shows after the page is
+  built again.
+
+Next:
+
+1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
+2. **6, the plugins** in their own repositories, each raising `requires_slidemage` to v0.13.31: Exam Forge (sources
+   with any project code, the drafting dialog's languages, the main language as fallback, the exam HTML's `lang`),
+   CampusOnline (English as the fallback everywhere), Claude (`claude/code/images.py`: the translation backend gets
+   `target_lang`, its schema `short`/`long`/`takeaway`, its result the `language`). Coordinate with the plugin UI
+   kit's author first.
+3. **7**, the manual and docs.
+4. PRs into `develop` in the order of the table, after testing.
