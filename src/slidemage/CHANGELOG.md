@@ -3430,3 +3430,8 @@ v0.13.33 (2026-11-02, bug report: a language added in Settings did not appear on
 
 NEW: The Images page shows a language as soon as you add it.
 - A language added in Settings, Languages appears on the Images page's switch at once.
+
+v0.13.34 (2026-11-02, bug report: a French description written for an image without English text showed "matches the current English text"): A description saved in another language while the image has no English text is that language's own, not a translation: image_review.apply_form_edit leaves translated_from and from_hash empty then, alt_images.translation_state counts such a text as current (nothing to fall behind), and the form says "written in French, not translated from English". The German attributes of ImageEntry (short_de, ...) still write a translation of the English text. Tests: test_image_languages.py.
+
+NEW: A description written directly in another language is kept as its own.
+- An image described only in French is no longer shown as a translation of an English text it does not have.

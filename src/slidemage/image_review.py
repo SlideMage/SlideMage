@@ -228,9 +228,13 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
         and fields.get("takeaway_de") == entry.takeaway_in(slide_id, language)
         and provenance.get("source_hash") == alt_images.en_text_hash(entry)
     )
+    english = bool(entry.short or entry.long)
     if text is not None:
-        text.translated_from = alt_images.DRAFT_LANGUAGE
-    if provenance_matches:
+        # A translation of the English text; with no English text, a text of its own in its language.
+        text.translated_from = alt_images.DRAFT_LANGUAGE if english else ""
+    if text is not None and not english:
+        text.from_hash = ""
+    elif provenance_matches:
         text.from_hash = str(provenance["source_hash"])
     elif changed & {"short_de", "long_de", "takeaway_de"}:
         if not text.short and not text.long:

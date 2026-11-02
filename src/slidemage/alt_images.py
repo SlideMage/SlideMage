@@ -199,9 +199,15 @@ class ImageText:
 
 def _text_field(language: str, name: str) -> property:
     """A field of the entry's text in `language`, as the attribute the entry had before texts were per language
-    (`short` is texts["en"].short, `short_de` texts["de"].short)."""
-    return property(lambda self: getattr(self.texts.get(language) or ImageText(), name),
-                    lambda self, value: setattr(self.text(language), name, value))
+    (`short` is texts["en"].short, `short_de` texts["de"].short). The German attributes write a translation of the
+    English text, as German always was then."""
+    def write(self, value) -> None:
+        text = self.text(language)
+        setattr(text, name, value)
+        if language == "de" and not text.translated_from:
+            text.translated_from = "en"
+
+    return property(lambda self: getattr(self.texts.get(language) or ImageText(), name), write)
 
 
 @dataclass(init=False)
@@ -853,7 +859,9 @@ def translation_state(entry: ImageEntry, language: str = "de") -> str:
     if not entry.has_content_in(language):
         return STATE_NONE
     text = entry.texts.get(language) or ImageText()
-    if text.from_hash != text_hash(entry, text.translated_from or DRAFT_LANGUAGE):
+    if not text.translated_from:          # written in its own language, no translation: nothing to fall behind
+        return STATE_REVIEWED
+    if text.from_hash != text_hash(entry, text.translated_from):
         return STATE_STALE
     return STATE_REVIEWED
 

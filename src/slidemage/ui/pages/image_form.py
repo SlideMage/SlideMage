@@ -384,7 +384,12 @@ class ImageForm(Surface):
         self._refresh_takeaway_state()
 
     def _show_translation_state(self, state: str) -> None:
-        self.translation_state.setText(f"{languages.name(self.second)}: " + TRANSLATION_TEXT[state])
+        name = languages.name(self.second)
+        own = self.entry.texts.get(self.second)
+        if state != alt_images.STATE_STALE and own is not None and not own.translated_from and (own.short or own.long):
+            self.translation_state.setText(f"{name}: written in {name}, not translated from English")
+            return
+        self.translation_state.setText(f"{name}: " + TRANSLATION_TEXT[state])
 
     def _english_edited(self) -> None:
         """The translation no longer matches the short and long text typed (until a translation of it comes
