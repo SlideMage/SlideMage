@@ -1048,6 +1048,7 @@
 \def\setSlideLanguageFromSlug@aux#1-#2-#3\relax{%
 	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\SMSlideLanguageSettrue\global\SMSlideLanguageMulttrue}{%
 	\SM@ifprojectlanguage{#2}{\renewcommand{\slideLanguage}{#2}\global\SMSlideLanguageSettrue}{}}%
+	\SM@hyphenation@slide
 }
 \makeatother
 
@@ -1266,8 +1267,88 @@
 \newif\ifSMGerman
 \gdef\SMDeckLanguage{en}
 \makeatletter
+% Hyphenation by deck language (2026-11-02). A deck hyphenates in its one language, with the hyph-utf8 patterns of
+% the TeX distribution, loaded through LuaTeX's lang library rather than babel: \decklanguage also runs after
+% \begin{document} (SlideMage's own language line), where babel can no longer set a language up, and babel's Lua
+% state would not survive the preview format (preview_format.py). Patterns loaded in the preamble are stored in the
+% format with the rest of TeX's state, and the language's number is a \chardef, so nothing has to be replayed.
+% English is the format's own language 0, as before. A language whose patterns are not installed hyphenates as
+% English, as before, with a warning; one without patterns in hyph-utf8 is not hyphenated.
+% \SM@hyph{<code>}{<hyph-utf8 file, without hyph- and .pat.txt>}{<lefthyphenmin>}{<righthyphenmin>} (the minimums of
+% TeX Live's language.dat).
+\def\SM@hyph#1#2#3#4{\@namedef{SM@hyph@#1}{{#2}{#3}{#4}}}
+\SM@hyph{de}{de-1996}{2}{2}  \SM@hyph{fr}{fr}{2}{3}       \SM@hyph{es}{es}{2}{2}    \SM@hyph{it}{it}{2}{2}
+\SM@hyph{pt}{pt}{2}{3}       \SM@hyph{nl}{nl}{2}{3}       \SM@hyph{pl}{pl}{2}{2}    \SM@hyph{cs}{cs}{2}{3}
+\SM@hyph{sk}{sk}{2}{3}       \SM@hyph{sl}{sl}{2}{2}       \SM@hyph{hr}{hr}{2}{2}    \SM@hyph{sr}{sh-cyrl}{2}{2}
+\SM@hyph{hu}{hu}{2}{2}       \SM@hyph{ro}{ro}{2}{2}       \SM@hyph{bg}{bg}{2}{2}    \SM@hyph{el}{el-monoton}{1}{1}
+\SM@hyph{tr}{tr}{2}{2}       \SM@hyph{ru}{ru}{2}{2}       \SM@hyph{uk}{uk}{2}{2}    \SM@hyph{da}{da}{2}{2}
+\SM@hyph{sv}{sv}{2}{2}       \SM@hyph{no}{nb}{2}{2}       \SM@hyph{fi}{fi}{2}{2}    \SM@hyph{is}{is}{2}{2}
+\SM@hyph{et}{et}{2}{3}       \SM@hyph{lv}{lv}{2}{2}       \SM@hyph{lt}{lt}{2}{2}    \SM@hyph{ga}{ga}{2}{3}
+\SM@hyph{ca}{ca}{2}{2}       \SM@hyph{eu}{eu}{2}{2}       \SM@hyph{gl}{gl}{2}{2}    \SM@hyph{hi}{hi}{1}{1}
+\SM@hyph{th}{th}{2}{3}       \SM@hyph{id}{id}{2}{2}       \SM@hyph{ms}{id}{2}{2}
+\SM@hyph{mt}{}{}{}  \SM@hyph{ar}{}{}{}  \SM@hyph{he}{}{}{}  \SM@hyph{fa}{}{}{}  \SM@hyph{zh}{}{}{}  \SM@hyph{ja}{}{}{}
+\SM@hyph{ko}{}{}{}  \SM@hyph{vi}{}{}{}
+% Loads the patterns of #1 (once per format or compile) and defines \SM@hyphlang@#1 (its \language number) and
+% \SM@hyphmins@#1 (its minimums). The Lua avoids ~ and %, which TeX reads before Lua does.
+\newcommand{\SM@hyphenation@load}[4]{%
+	\directlua{
+		local bs, code, file, mins = string.char(92), "\luaescapestring{#1}", "\luaescapestring{#2}", "{#3}{#4}"
+		local path = not (file == "") and kpse.find_file("hyph-" .. file .. ".pat.txt")
+		local id
+		if file == "" or path then
+			local l = lang.new()
+			if path then
+				local fh = io.open(path, "r") l:patterns(fh:read("*a")) fh:close()
+				local exceptions = kpse.find_file("hyph-" .. file .. ".hyp.txt")
+				if exceptions then fh = io.open(exceptions, "r") l:hyphenation(fh:read("*a")) fh:close() end
+			end
+			id = l:id()
+		else
+			id, mins = 0, "{2}{3}"
+			tex.sprint(bs .. "PackageWarningNoLine{SlideMage}{The hyphenation patterns of the deck language (" .. code
+				.. ", hyph-" .. file .. ".pat.txt) are not installed, so the deck hyphenates as English. Install"
+				.. " them with the TeX distribution's hyphenation package for this language}")
+		end
+		tex.sprint(bs .. "global" .. bs .. "expandafter" .. bs .. "chardef" .. bs .. "csname SM@hyphlang@" .. code
+			.. bs .. "endcsname=" .. id .. bs .. "relax")
+		tex.sprint(bs .. "expandafter" .. bs .. "xdef" .. bs .. "csname SM@hyphmins@" .. code .. bs .. "endcsname{" .. mins .. "}")
+	}%
+}
+% \SM@hyphenation{<code>}{<select>}: loads the patterns of <code> (any case) if they are not loaded yet; with a
+% non-empty <select> (in the document), switches to them. A code without an entry hyphenates as English, as before.
+\ExplSyntaxOn
+\newcommand{\SM@hyphenation}[2]{
+	\edef\SM@hyph@code{\str_casefold:e {#1}}
+	\ifcsname SM@hyph@\SM@hyph@code\endcsname
+		\ifcsname SM@hyphlang@\SM@hyph@code\endcsname\else
+			\edef\SM@hyph@call{\noexpand\SM@hyphenation@load{\SM@hyph@code}\csname SM@hyph@\SM@hyph@code\endcsname}
+			\SM@hyph@call
+		\fi
+		\tl_if_empty:nF {#2} {\SM@hyphenation@use}
+	\else
+		\tl_if_empty:nF {#2} {\global\language=0 ~ \global\lefthyphenmin=2 ~ \global\righthyphenmin=3 ~}
+	\fi
+}
+\ExplSyntaxOff
+\newcommand{\SM@hyphenation@use}{%
+	\global\language=\csname SM@hyphlang@\SM@hyph@code\endcsname
+	\expandafter\expandafter\expandafter\SM@hyphenation@mins\csname SM@hyphmins@\SM@hyph@code\endcsname
+}
+\def\SM@hyphenation@mins#1#2{\ifx\relax#1\relax\else\global\lefthyphenmin=#1 \global\righthyphenmin=#2 \fi}
+% A slide hyphenates in its own language (\setSlideLanguageFromSlug): an English slide in a German deck, one not
+% translated yet, keeps English hyphenation. A multilingual or untagged slide hyphenates in the deck's language.
+\newcommand{\SM@hyphenation@slide}{%
+	\ifSMSlideLanguageSet\ifSMSlideLanguageMult\SM@hyphenation{\SMDeckLanguage}{select}%
+	\else\SM@hyphenation{\slideLanguage}{select}\fi
+	\else\SM@hyphenation{\SMDeckLanguage}{select}\fi
+}
+% English only switches back when another language was chosen first (a preview line after the deck's own): the
+% format's own minimums, or a template's, stay as they are otherwise.
+\AtBeginDocument{\ifx\SMDeckLanguage\SM@hyph@english\else\SM@hyphenation{\SMDeckLanguage}{select}\fi}
+\def\SM@hyph@english{en}
 \newcommand{\decklanguage}[1][en]{%
 	\xdef\SMDeckLanguage{#1}%
+	\ifx\@onlypreamble\@notprerr\SM@hyphenation{\SMDeckLanguage}{select}\else\SM@hyphenation{\SMDeckLanguage}{}\fi
 	\global\SMGermanfalse
 	% \ifstrequal{<macro>}{...} is a trap, not just here but anywhere in this
 	% file: its etoolbox implementation compares via

@@ -142,3 +142,54 @@ def test_a_keyed_multilingual_text_falls_back_to_the_main_language(ctx):
                                                      deck_language=language, capture_snapshot=False)
         with pymupdf.open(pdf) as doc:
             assert expected in " ".join(doc[0].get_text().split())
+
+
+HYPHENATION = ("\\begin{standardframe}{Hyphenation}\nLanguage: [\\the\\language] mins [\\the\\lefthyphenmin/"
+               "\\the\\righthyphenmin]\n\n\\parbox{1.2cm}{xqzxqzxqzxqzxqz}\n\\end{standardframe}\n")
+
+
+def render_hyphenation(ctx, language: str, slide: str | None = None):
+    """The page text and the TeX log (its lines joined as TeX wrapped them) of a slide with one long word in a narrow
+    box, in a deck in `language`; the slide's own language is `slide`, by default the deck's."""
+    pdf = slide_preview.render_slide_text_to_pdf(ctx, f"zz7-{slide or language.upper()}-Test", HYPHENATION,
+                                                 deck_version="instructor", deck_language=language,
+                                                 capture_snapshot=False)
+    logs = ctx.build_dir.glob("preview-cache/*/*.log")
+    log = max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8", errors="replace")
+    with pymupdf.open(pdf) as doc:
+        return " ".join(doc[0].get_text().split()), "".join(log.splitlines())
+
+
+def test_a_deck_hyphenates_in_its_language(ctx):
+    # The project's own folder is searched first, so these made-up French patterns win over installed ones: break
+    # after every z.
+    (ctx.root / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
+    languages.set_project_languages(ctx, "en", ["fr"])
+    text, _log = render_hyphenation(ctx, "fr")
+    assert "mins [2/3]" in text and "Language: [0]" not in text
+    assert "xqz- xqz-" in text
+    text, _log = render_hyphenation(ctx, "en")                   # back to English: the format's own language 0
+    assert "Language: [0] mins [2/3]" in text and "xqz- xqz-" not in text
+    text, _log = render_hyphenation(ctx, "fr")                   # again, through the preview format
+    assert "xqz- xqz-" in text
+
+
+def test_a_slide_hyphenates_in_its_own_language_and_a_multilingual_one_in_the_decks(ctx):
+    (ctx.root / "hyph-fr.pat.txt").write_text("z1x\n", encoding="utf-8")
+    languages.set_project_languages(ctx, "en", ["fr"])
+    text, _log = render_hyphenation(ctx, "fr", "EN")             # not translated yet: English, also in a French deck
+    assert "Language: [0] mins [2/3]" in text and "xqz- xqz-" not in text
+    text, _log = render_hyphenation(ctx, "fr", "mult")
+    assert "xqz- xqz-" in text
+    text, _log = render_hyphenation(ctx, "en", "FR")             # a French slide in an English deck
+    assert "xqz- xqz-" in text
+
+
+def test_a_language_without_installed_patterns_hyphenates_as_english_with_a_warning(ctx, monkeypatch):
+    monkeypatch.setenv("TEXINPUTS", "")
+    languages.set_project_languages(ctx, "en", ["it", "ja"])
+    text, log = render_hyphenation(ctx, "it")
+    if "Language: [0]" in text:                                  # (a TeX installation without Italian patterns)
+        assert "mins [2/3]" in text and "hyph-it.pat.txt) are not installed" in log
+    text, log = render_hyphenation(ctx, "ja")                    # no patterns in hyph-utf8: not hyphenated
+    assert "Language: [0]" not in text and "not installed" not in log and "xqzxqzxqzxqzxqz" in text
