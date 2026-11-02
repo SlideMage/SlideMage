@@ -2,7 +2,8 @@
 
 Status: draft (2026-11-02), not started. Decided 2026-11-02: languages are per project (2.1); multilingual slides
 are kept and extended lightly (2.8); hyphenation by deck language is part of this task (2.10); old untagged slugs
-get a light check (2.1); the image store is converted automatically (2.4). Asked for: "generalizing the language treatment in SlideMage. [...] retain
+get a light check (2.1); the image store is converted automatically (2.4); the main window's language switch
+follows the deck's language (2.3). Asked for: "generalizing the language treatment in SlideMage. [...] retain
 one language as a main language, but [...] leave the choice of main language up to the user. Furthermore, they
 should be able to use multiple secondary languages, so that where SlideMage for example offers to translate to
 German, it should offer to translate to any language of the user's choosing. The language selector then should
@@ -133,7 +134,16 @@ Only listed codes are ever read as a language, so a code the project does not us
 - "The other language" becomes "the other project languages": `compiler.deck_pdfs` and
   `frames.candidate_jobnames` look for the PDFs of every project language.
 - The topbar language switch lists the project's languages, main first; a segmented control up to three, a
-  dropdown above that. `state.language` remembers the last one per deck as now.
+  dropdown above that.
+- **The switch follows the deck** (decided 2026-11-02). Today `WorkspaceState.set_deck` restores the language last
+  chosen for that deck (`_remember("language", ...)` in `app_settings`) and uses the deck's `\decklanguage` only
+  while nothing was chosen. Instead: opening a deck or switching to another one always sets the switch to that
+  deck's `\decklanguage`; changing the deck's language in its settings sheet moves the switch along; picking
+  another language on the switch is a temporary look at the translations, kept only until the next deck switch or
+  restart, and no longer remembered per deck (`set_language` stops writing it; a stored value is ignored and
+  dropped). A deck whose language is not one of the project's still shows it, as an extra entry on the switch.
+- Background previews take the deck's language as their first language (`languages_for` uses `\decklanguage`
+  instead of the usage record's `last_language`).
 - Background previews: `bg_previews_second_language` (bool) becomes `bg_previews_languages` (a list, default empty,
   the old `true` read as "all secondary languages"); the setting says how many more renders each language costs.
 - `compile_records`, `deck_headers`, `unused_content`, `update_all_previews`, `render_key`: iterate over the
@@ -288,6 +298,9 @@ them.
 
 - A fixture project with main `de` and secondary `en, fr`: slide list badges, Language panel rows, translation of a
   translation, deck PDFs found for all three languages, background preview languages.
+- Language switch: switching from an English deck to a German one shows DE, back shows EN, also after picking FR
+  on the first deck; changing a deck's language in its settings moves the switch; a stored per-deck language from
+  an older version is ignored.
 - A legacy fixture with no `languages` key and version-1 image store: identical output to today (compile, CSV,
   transcript, badges).
 - Slug collision: adding `it` to a project with `x7k-IT-Governance` lists it and renames it correctly; without `it`
