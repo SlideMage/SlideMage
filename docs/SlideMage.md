@@ -46,8 +46,9 @@ deck switcher offers the rest). From top to bottom and left to right:
 
 - **Top bar** (`ui/workspace/topbar.py`, menus in `menus.py`): the **deck switcher**
   (active decks under their group headings, archived decks at the foot), *View as*
-  **Instructor / During course / After course** and **EN / DE** (the version and language
-  the Preview shows and the slide list judges "hidden" and "no DE" by), the save state,
+  **Instructor / During course / After course** and the project's languages (the version and language
+  the Preview shows and the slide list judges "hidden" and "no FR version" by; since v0.13.29 the language
+  follows the open deck's `\decklanguage`, and another one is a look until the next deck switch), the save state,
   **Preview | Split | Source | Details** and the **Compile PDF** split button.
 - **Menu bar** (v8.57, `menus.py` `MENU_BAR`, `build_menu_bar`): File, Edit, Deck, Slide, View, Build, AI,
   Housekeeping and Help list every command of the registry (Deck → Switch deck is a submenu of the decks), each
@@ -474,7 +475,7 @@ What matters when touching *this code*:
   now returns `(id, options, body)` triples and `find_tikz_illustration()`
   `(path, options, body)` accordingly.
 - [`alt_draft.py`](../src/slidemage/alt_draft.py) -- vision-model drafting, plus (2026-08-25)
-  English-to-German translation of drafted text. Slide-context extraction
+  translation of drafted text (into German at first, into any project language since v0.13.30). Slide-context extraction
   (tikz layout stripped, `\note{}` excluded so instructor notes can never
   reach a student), the prompt, a pluggable `DraftBackend`, an Ollama
   backend, the batch runner, and the bake-off harness. stdlib only.
@@ -541,12 +542,23 @@ What matters when touching *this code*:
   otherwise renders at native size and gets silently clipped by a real
   slide's own small `aspectratio=169` page before the auto-crop step ever
   sees the missing part.
+- [`languages.py`](../src/slidemage/languages.py) -- the project's languages (v0.13.25): the table of about 40
+  languages (code, English and native name, PDF tag), `project_languages(ctx)` (main first, from
+  `.slidemage/project.json`'s `languages` key, written once from the project's use of German when missing), and
+  what Settings → Project → Languages changes. `deck_language.language_lines()` hands them to LaTeX on every compile
+  (`\SMProjectLanguages[main]{EN,DE,FR}`, `\decklanguage[xx]`, `\SMPdfLang{..}`), after `\begin{document}`.
+  Hyphenation (v0.13.36) is LaTeX's alone: `SlideMage_base.tex` loads the hyph-utf8 patterns of a slide's language
+  through LuaTeX's `lang` library (not babel, which cannot set a language up after `\begin{document}` and whose Lua
+  state the preview format loses), from `latex/hyphenation/` first (shipped since v0.13.37,
+  `tools/fetch_hyphenation_patterns.py`), then the TeX installation.
 - [`slide_language.py`](../src/slidemage/slide_language.py) -- multi-language parsing
   primitives (2026-08-24), the Python-side twin of
   `SlideMage_base.tex`'s `\setSlideLanguageFromSlug`: a slide's
   language lives in its own id-slug's *second* hyphen segment
-  (`<id>-<LANG>-<slug>`, `LANG` one of `EN`/`DE`/`mult`), so `own_language()`
-  is pure string parsing, no file I/O. `cross_referenced_language()` reads
+  (`<id>-<LANG>-<slug>`, `LANG` one of the project's codes or `mult`; `own_language(id_slug, codes)`
+  takes them, so an old slug like `x7k-IT-Governance` is a language only in a project with Italian), so `own_language()`
+  is pure string parsing, no file I/O. Translations are groups since v0.13.26: every translation names the original,
+  `translation_group()` lists the members, and `TranslationLinks` resolves the member of a language. `cross_referenced_language()` reads
   a slide's `%% Translation of: ...`/`%% <LANG> translation: ...` header
   comment (alongside `deck_headers.py`'s existing `%% Included in decks:`
   block) to find its translation partner's language. `LanguageBadge`/
@@ -573,7 +585,8 @@ What matters when touching *this code*:
   `\slide`-family reference across every deck **including** `#workdeck.tex`
   (unlike `deck_headers.py`'s own header regeneration, which deliberately
   excludes it), then re-runs `deck_headers.regenerate_headers()` and this
-  module's own `regenerate_translation_links()`. `set_slide_languages_bulk()`
+  module's own `regenerate_translation_links()`. `make_original()` (v0.13.26) points every member of a translation
+  group at another member and rewrites the links, so right afterwards none is outdated. `set_slide_languages_bulk()`
   is the batched sibling used for one-time migrations (e.g. the 2026-08-24
   "tag all 641 untagged slides as EN" pass, see LANGUAGE_NOTES.md) -- reads
   and writes each deck file **once** with every applicable rename applied
@@ -648,7 +661,7 @@ What matters when touching *this code*:
   with, and the **Updates** group -- since v4.1.0 the update mode and the GitHub token for
   update checks, both stored per user in `project.config_dir()`, never in the project
   folder), **AI** (since v8.72 one tab, present only when an AI plugin is installed, with a section per service:
-  the German address of Claude Code translations; Claude's API key, Ollama's host URL and models, the Prompts
+  Claude's API key, Ollama's host URL and models, the Prompts
   and the sections that plugins add, each scrolling in the tab; the
   default model of each task, what Cloud means and the project's Local | Cloud setting are
   **AI setup**, the ▾ of the AI switch in the top bar, `ui/workspace/ai_setup.py`: every
@@ -699,9 +712,9 @@ What matters when touching *this code*:
   slide's own body -- ahead of the content, not after, so a reader gets
   oriented before the bullet points rather than as an afterthought.
   `deck_language_of()` (2026-08-24) parses a deck's own `\decklanguage[...]`
-  to render the whole transcript in German where applicable (UI strings via
-  a `STRINGS` EN/DE table, image text from the `_de` fields with English
-  fallback) -- uses `finditer()` and picks the first value that isn't a
+  to render the whole transcript in the deck's language (UI strings via
+  the `STRINGS` table, en/de/fr/es/it, falling back to the main language, then English;
+  image text the language's own) -- uses `finditer()` and picks the first value that isn't a
   bare `\decklanguageoverride` macro reference, not `.search()`, since a
   plain `.search()` always matches the `\ifdefined\decklanguageoverride`
   branch first (a macro name, not a literal value) and so always read as

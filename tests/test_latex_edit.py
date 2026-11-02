@@ -97,9 +97,11 @@ def test_multilingual_puts_the_selection_in_the_first_braces():
     assert le.insert_multilingual("Hi", "ml") == le.Edit("\\ml{Hi}{}", 8)
 
 
-def test_both_languages_is_keyed_with_one_key_per_language_for_more_than_two():
+def test_both_languages_is_keyed_with_one_key_per_language_but_for_english_and_german():
     both = next(i for i in le.INSERT_COMMANDS if i.kind == "wrap_multilingual")
     assert le.multilingual_for(both, ("EN", "DE")) is both
+    assert le.multilingual_for(both, ("EN",)) is both
+    assert le.multilingual_for(both, ("EN", "FR")).hint == "\\multilingualtext*{EN={...}, FR={...}}"   # not EN/DE
     keyed = le.multilingual_for(both, ("FR", "EN", "DE"))
     assert keyed.hint == "\\multilingualtext*{FR={...}, EN={...}, DE={...}}"
     empty = le.insert_edit(keyed, "", "")

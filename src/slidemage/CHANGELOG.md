@@ -3456,3 +3456,9 @@ v0.13.38 (2026-11-02, bug report from the owner's test: Translate stays clickabl
 
 NEW: Translate waits for English text.
 - On the Images page, Translate is off for an image that has no English description yet.
+
+v0.13.39 (2026-11-02, content languages plan, step 7: the manual and docs): The manual's Languages slide (1vn) describes the project's languages (Settings → Project), translation groups, the Language panel's Translate to and Make this the original, what \decklanguage sets (hyphenation included), the language switch that follows the deck, the keyed \multilingualtext* with its fallback to the main language, and image descriptions per language; the quick reference (1uw) lists the keyed form. README's "Multi-language (EN/DE) slides" is now "Languages", for any languages; docs/SlideMage.md has languages.py and the hyphenation, and its passages on the language switch, the transcript, slide_language and slide_rename follow. Two fixes found while writing: Insert → Both languages wrote the English/German form \multilingualtext{EN}{DE} in any project of two languages, so a project of English and French got a form that prints English in a French deck; it writes the keyed form in every project but one of English and German (latex_edit.multilingual_for). The Add slide sheet's tooltip on a slide no model can translate said that a model translates English to German only; it says that a model translates from one project language into another. Tests: test_latex_edit.py.
+
+NEW: The manual and the README describe the project's languages.
+- Insert, Both languages writes the right form in a project of English and French.
+

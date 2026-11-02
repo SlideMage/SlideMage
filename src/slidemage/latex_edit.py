@@ -205,9 +205,9 @@ def insert_multilingual_keyed(selected: str, macro: str, codes: tuple[str, ...])
 
 
 def multilingual_for(insert: "Insert", codes: tuple[str, ...]) -> "Insert":
-    """The "Both languages" entry for a project with the language `codes`: the two-argument form EN/DE for two
-    languages, the keyed form for more."""
-    if insert.kind != "wrap_multilingual" or len(codes) <= 2:
+    """The "Both languages" entry for a project with the language `codes`: the two-argument form, which is English
+    then German, for a project of those two, the keyed form for any other (English and French too)."""
+    if insert.kind != "wrap_multilingual" or {code.upper() for code in codes} <= {"EN", "DE"}:
         return insert
     return Insert(insert.label, "wrap_multilingual_keyed", ",".join(codes),
                   f"\\{insert.payload}*{{{', '.join(f'{code}={{...}}' for code in codes)}}}")

@@ -449,7 +449,8 @@ class AddSlideSheet(ModalSheet):
             self.machine.setEnabled(can_translate)
             self.machine.setChecked(can_translate)    # on whenever it is possible, as asked for
         self.machine.setToolTip("" if can_translate else
-                                "A model translates English to German, and the pairs with a prompt of their own in Settings; the copy is linked all the same.")
+                                "A model translates from one of the project's languages into another; a multilingual "
+                                "slide has none to translate from. The copy is linked all the same.")
         self.machine_box.setVisible(self.wants_translation())
         frame = self.frames.current()
         self.frame_note.setText("Replace the picture in the new slide before you compile it."
