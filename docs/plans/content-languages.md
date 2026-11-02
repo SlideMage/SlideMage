@@ -302,35 +302,54 @@ Coordinate with the plugin UI kit's author before merging, since each updated pl
 `requires_slidemage`. The UI translation plan adds plugin translation to the API (ui-translation.md, 2.6), also as an
 addition to version 1.
 
-### 2.10 Hyphenation by deck language
+### 2.10 Hyphenation by slide language
 
-Decided: in this task. Today every deck hyphenates with the format's default US English patterns, whatever its
-`\decklanguage`.
+Decided: in this task. Until v0.13.36 every deck hyphenates with the format's default US English patterns, whatever
+its `\decklanguage`.
 
-- A deck hyphenates in one language, so only that language is loaded. `SlideMage_base.tex` loads `babel` for
-  LuaLaTeX with the ini-based setup, no shorthands (so `"` in German slides keeps meaning what it does now), and no
-  babel captions or date formats (beamer's own texts and the string table of 2.6 stay in charge).
-- `\decklanguage[xx]` only records the code, and the deck's one language is set up and selected for the document
-  body when the preamble ends (`\babelprovide[import]{xx}`, English and German without it). So the last
-  `\decklanguage` wins, as now, and the line SlideMage appends after the preamble (`deck_language.language_line`)
-  still decides. Babel needs no list of the project's languages.
-- `\multilingualtext*` and `mult` slides hyphenate in the deck's language, which is the language they print.
+Built in step 5b (v0.13.36), changed from the first draft after the spike (2026-11-02):
+
+- **LuaTeX's `lang` library, not babel.** `\decklanguage` and `\setSlideLanguageFromSlug` load the language's
+  hyph-utf8 patterns (`hyph-de-1996.pat.txt`, ...) found on the TeX search path and switch `\language` to them.
+  babel was dropped for three reasons found in the spike: SlideMage's language line comes *after*
+  `\begin{document}` (`deck_language.language_lines`, so that it overrides the deck's own setting), where babel can
+  no longer set a language up; babel's Lua state is lost in the preview format and would need a replay; and babel
+  only uses patterns registered in the TeX format (`language.dat`, filled by the distribution's language packages),
+  so a missing language falls back to English with an Info line only, and SlideMage cannot do anything about it.
+- **Per slide, not per deck.** A slide hyphenates in its own language, so an English slide in a German deck (one
+  not translated yet) keeps English hyphenation; a `mult` or untagged slide hyphenates in the deck's.
+- A table in `SlideMage_base.tex` maps each code of `languages.py` to its pattern file and TeX Live's minimum word
+  parts (`\lefthyphenmin`/`\righthyphenmin`). English stays the format's language 0. A language whose patterns are
+  not installed hyphenates as English, as before, with a SlideMage warning in the log naming the file; a language
+  without patterns in hyph-utf8 (ar, he, fa, zh, ja, ko, vi, mt) is not hyphenated.
+- **Preview formats**: patterns loaded in the preamble (the deck's own `\decklanguage`) are stored in the format
+  with the rest of TeX's state, and the language number is a `\chardef`, so nothing needs a replay. Another
+  language costs one load per run (German, the largest common one, about 80 ms).
+- `\multilingualtext*` on a `mult` slide hyphenates in the deck's language, which is the language it prints.
 - Places that switch hyphenation off on purpose (titles, quotes: `\hyphenpenalty=10000`) are unaffected.
 
-Risks, checked before anything else in step 5 (a spike on a copy of the example project):
+Measured (spike, 2026-11-02), on a copy of the owner's course project, three German decks (264 pages), compiled
+with and without the change, with German patterns on the search path:
 
-- **Preview formats.** babel's LuaTeX pattern loading keeps state in Lua, which a precompiled format loses
-  (`preview_format.py`). It may need its own replay through `\SMLuaOnce`, or the patterns must be loaded at format
-  build time; since a compile loads only its deck's language, that means one format per language. The preview must still typeset exactly like the final compile (the equivalence contract,
-  `docs/PREVIEW_RENDER_EQUIVALENCE_CONTRACT.md`).
-- **Changed line breaks in existing decks.** German decks will hyphenate differently, and a slide that fitted may
-  now break a line elsewhere, or the reverse. Before merging: compile every non-English deck of the example
-  project and of the owner's course project with and without the change, compare per page with the render store,
-  and list the slides whose layout changed (overfull boxes, more lines, different reveal-step height). The owner
-  reviews that list; the change ships with it in the CHANGELOG.
-- **Compile time**: measured on a large deck before and after.
+- **Layout**: 6 pages changed (3 slides, each in two decks), none with more or fewer lines, no overfull box, no
+  page count changed. All three are slides tagged DE whose text is still English (`ure-DE-Enabling-Environments-...`,
+  `bpp-DE-Data-Sources-Summary`, `pjz-DE-From-Data-to-Knowledge`), now broken by German rules ("va-riables",
+  "Characte-ristics"): right for the tag, and gone once they are translated. Same result per deck and per slide.
+- **Compile time**: unchanged (24/24 s, 75/76 s, 48/49 s).
+- The owner's machine (Debian TeX Live) has no hyphenation patterns but English (`texlive-lang-german` is not
+  installed), which is why the patterns are shipped (below).
 
-The deck settings tooltip ("hyphenation, automatic texts, ...") becomes true; until then it is corrected.
+**The framework ships the patterns** (decided by the owner 2026-11-02, v0.13.37): `latex/hyphenation/` holds the
+`.pat.txt`/`.hyp.txt` files of 33 languages (1.9 MB) from hyph-utf8's tag `CTAN-2024.12.31`, fetched by
+`tools/fetch_hyphenation_patterns.py`. They are looked up before the TeX installation's (a project's own
+`hyphenation/` folder first), so hyphenation needs no language package and breaks the same on every machine, which
+babel could not offer. Each file is distributed under one of its own licences (where it offers a choice, MIT, else
+LPPL-1.3c+ through its "or later"; GPL-2.0 for cs, sk, lv, id, hu; BSD-3-Clause pt; Unlicense gl; the files' own
+for bg, eu, fi, nb), with every original header in `latex/hyphenation/NOTICES.txt`, entries in REUSE.toml,
+LICENSES/ and THIRD_PARTY_NOTICES.md (`reuse lint`: clean apart from an older test file's string). Romanian is not
+shipped: its header says "licence: [None]"; it still comes from the installation.
+
+The deck settings tooltip ("hyphenation, automatic texts, ...") is true from v0.13.36.
 
 ## 3. Steps
 
@@ -348,7 +367,7 @@ Each step ends with the test suite green (`pytest -n 8`) and nothing changed for
    review filters, image instructions.
 5. **LaTeX texts, PDF language, transcript, multilingual slides, hyphenation** — string table, PDF tag, fallback
    to main language, transcript strings; then the hyphenation spike (preview formats,
-   layout comparison, compile time) and, once it holds, `babel` per deck language (2.10).
+   layout comparison, compile time) and hyphenation by slide language through LuaTeX's `lang` library (2.10).
 6. **Plugin API and plugins** — `str` languages and `project_languages()` in version 1, Exam Forge,
    CampusOnline, Claude.
 7. **Manual and docs** — the manual deck's language slides (1vn "Languages" and the quick reference 1uw), README,
@@ -397,7 +416,8 @@ not from a generated file (2.7); background previews keep their yes/no setting (
 built-in table (2.1, 2.6).
 
 Still to find out during implementation (no decision needed): whether the current release already refuses to
-overwrite an image store of a newer format (2.4), and whether babel survives the preview formats (2.10).
+overwrite an image store of a newer format (2.4), and whether hyphenation survives the preview formats (2.10:
+it does, with the `lang` library).
 
 ## 6. Status (2026-11-02)
 
@@ -420,8 +440,11 @@ wraps):
 | v0.13.33 | the same branch | the Images page shows a language added in Settings at once (found in the owner's test) |
 | v0.13.34 | the same branch | a description written without English text is its own, not a translation (found in the owner's test) |
 | v0.13.35 | the same branch | an image described only in another language says "No English description" |
+| v0.13.36 | `spike/hyphenation-babel-2` (on v0.13.35) | 5b: hyphenation by slide language (2.10) |
+| v0.13.37 | the same branch | the framework ships the hyphenation patterns (2.10) |
 
-Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6` (and the empty `cl-5b-spike`).
+Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6`, `cl-5b-spike` (branch
+`spike/hyphenation-babel-2`; the old `spike/hyphenation-babel` holds only a pre-rebase copy of step 1).
 
 Decided while implementing, differing from the text above:
 
@@ -434,6 +457,8 @@ Decided while implementing, differing from the text above:
   without `target_lang` (the Claude plugin today) translates into German only and says so for another language.
   Core's `image_tasks.TRANSLATE` schema has `short`, `long`, `takeaway` since step 6.
 - `insert_slides` refuses a language the project does not have.
+- Hyphenation uses LuaTeX's `lang` library instead of babel, and follows the slide's language, not only the deck's
+  (2.10).
 - The image state (No description, Needs attention) follows the English text: an image described only in another
   language counts as undescribed (decided in the owner's test, 2026-11-02). A text written in another language
   while the image has no English text is that language's own (`translated_from` empty), not a translation.
@@ -457,7 +482,7 @@ fixed in v0.13.33 and v0.13.34, the rest worked.
 
 Next (the rebased branches are force-pushed to the fork):
 
-1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
+1. **5b**, hyphenation (2.10): done, v0.13.36 and v0.13.37.
 2. **7**, the manual and docs.
 3. PRs into `develop` in the order of the table; the plugin branches after SlideMage's.
 
