@@ -3473,9 +3473,7 @@ v0.13.41 (2026-11-01, direct request: remove the visual touch on opening): The o
 NEW: The one-time visual touch when SlideMage opens is gone.
 - SlideMage opens straight to its window again.
 
-v0.14.0 (2026-11-02, direct request: the release with the new image store raises the minor version): No code changes beyond v0.13.41. v0.13.24 changed media/alt-text.json to format version 3 within the patch numbers, while the version scheme says a release that breaks with the past raises the minor. This version number says so, and the updater and release notes then treat it as breaking. It replaces the release v0.13.41, which was tagged and taken back the same evening.
-
-BREAKING: The image descriptions are saved in a new form the first time this version opens a project (the old file is kept as media/alt-text.v2.json). Update SlideMage on every computer before opening the project there: an older version shows no descriptions and cannot change them.
+v0.14.0 (2026-11-02, direct request: the release with the new image store raises the minor version): No code changes beyond v0.13.41. v0.13.24 changed media/alt-text.json to format version 3 within the patch numbers, while the version scheme says a release that breaks with the past raises the minor. This version number says so, and the BREAKING: paragraph and the compat entry stay with v0.13.30, where the change came in. It replaces the release v0.13.41, which was tagged and taken back the same evening.
 
 NEW: Version 0.14 marks the new form of the image descriptions.
 - Update SlideMage on every computer before opening a project with this version.
