@@ -235,9 +235,11 @@ def with_run_xml_note(wrapper_text: str) -> str:
     return wrapper_text.replace('\\begin{document}', '\\begin{document}' + RUN_XML_NOTE, 1)
 
 
-# The view and language lines of a slide wrapper (slide_preview._deck_version_line, _deck_language_line). Instructor
-# writes no .ovl, the student views do, so a view change flips helper files and makes latexmk run LuaLaTeX again.
-_VIEW_LINES = re.compile(r'^\\deck(?:version|language)\[[^\]\n]*\]$', re.M)
+# The view and language lines of a slide wrapper (slide_preview._deck_version_line, deck_language.language_lines).
+# Instructor writes no .ovl, the student views do, so a view change flips helper files and makes latexmk run LuaLaTeX
+# again. A project with languages of its own has two more lines: \SMProjectLanguages[en]{EN,DE,FR} and \SMPdfLang{fr-FR}.
+_VIEW_LINES = re.compile(r'^\\(?:deck(?:version|language)\[[^\]\n]*\]|SMProjectLanguages\[[^\]\n]*\]\{[^}\n]*\}'
+                         r'|SMPdfLang\{[^}\n]*\})$', re.M)
 
 
 def view_variant(wrapper_text: str) -> str:

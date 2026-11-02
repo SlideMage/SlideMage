@@ -1028,7 +1028,17 @@
 % A dedicated boolean, set right here where the value is still a plain
 % matched string (#2, not a macro), sidesteps the trap entirely.
 \newif\ifSMSlideLanguageMult
+% The codes a slide's language segment may be. SlideMage writes the project's own list after the deck's preamble
+% (deck_language.language_lines): \SMProjectLanguages[<main language>]{EN,DE,FR}. A deck compiled without that
+% line keeps EN and DE (and en as the main language), exactly as before. "mult" is no language: it is read first.
 \makeatletter
+\def\SM@projectlanguages{EN,DE}
+\gdef\SMMainLanguage{en}
+\newcommand{\SMProjectLanguages}[2][en]{\gdef\SMMainLanguage{#1}\gdef\SM@projectlanguages{#2}}
+\ExplSyntaxOn
+\cs_new_protected:Npn \SM@ifprojectlanguage #1
+	{ \clist_if_in:NnTF \SM@projectlanguages {#1} }
+\ExplSyntaxOff
 \newcommand{\setSlideLanguageFromSlug}[1]{%
 	\global\SMSlideLanguageSetfalse
 	\global\SMSlideLanguageMultfalse
@@ -1036,9 +1046,8 @@
 	\expandafter\setSlideLanguageFromSlug@aux\SMTempSlideLangSlug-zzz-zzz\relax
 }
 \def\setSlideLanguageFromSlug@aux#1-#2-#3\relax{%
-	\ifstrequal{#2}{EN}{\renewcommand{\slideLanguage}{EN}\global\SMSlideLanguageSettrue}{%
-	\ifstrequal{#2}{DE}{\renewcommand{\slideLanguage}{DE}\global\SMSlideLanguageSettrue}{%
-	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\SMSlideLanguageSettrue\global\SMSlideLanguageMulttrue}{}}}%
+	\ifstrequal{#2}{mult}{\renewcommand{\slideLanguage}{mult}\global\SMSlideLanguageSettrue\global\SMSlideLanguageMulttrue}{%
+	\SM@ifprojectlanguage{#2}{\renewcommand{\slideLanguage}{#2}\global\SMSlideLanguageSettrue}{}}%
 }
 \makeatother
 
@@ -1283,6 +1292,9 @@
 	% pronunciation for the whole document.
 	\hypersetup{pdflang=\SMPDFLanguage}%
 }
+% \SMPdfLang{fr-FR} -- the PDF language tag of the project's table (languages.py), for a language whose tag is not
+% the one \decklanguage picks (en-US, de-DE, anything else its own code). SlideMage writes it after \decklanguage.
+\newcommand{\SMPdfLang}[1]{\gdef\SMPDFLanguage{#1}\hypersetup{pdflang=\SMPDFLanguage}}
 \makeatother
 
 % \multilingualtext{EN text}{DE text} -- for the handful of light,

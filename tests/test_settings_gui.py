@@ -7,9 +7,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
-from slidemage import alt_draft, app_settings, draft_prompts, slide_snapshot, updater, version
+from slidemage import alt_draft, app_settings, draft_prompts, languages, slide_snapshot, updater, version
 from slidemage import translation_prompts as tp
 from slidemage.ai import ai_profile
 from slidemage.ui.kit.theme import ThemeManager
@@ -153,9 +154,8 @@ def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):
 
 # -- AI --------------------------------------------------------------------------------------
 
-def test_the_ai_tab_has_the_address_and_the_model_of_each_task(qapp):
+def test_the_ai_tab_has_the_model_of_each_task(qapp):
     sheet = open_sheet(qapp, tab=AI)
-    assert sheet.ai.language.address.current() == "Sie"
     assert len(sheet.ai.models.findChildren(QComboBox)) == 2 * len(ai_profile.TASKS)
 
 
@@ -446,3 +446,99 @@ def test_about_switches_the_debug_log_and_offers_its_folder_and_a_report(qapp, t
         next(b for b in sheet.about.findChildren(Button) if b.text() == text).click()
         sheet.after()
     assert [c[0] for c in app.calls[-2:]] == ["open_logs", "debug_report"]
+
+
+# -- Languages (Project) ---------------------------------------------------------------------
+
+def languages_page(tmp_path, qapp, **files):
+    """The Languages section of a project with the given slide files and decks (name: text)."""
+    project = ProjectContext.at(tmp_path / "project")
+    for folder in ("slides", "decks"):
+        (project.root / folder).mkdir(parents=True)
+    for name, text in files.items():
+        (project.root / name).write_text(text, encoding="utf-8")
+    app = FakeApp(project)
+    return open_sheet(qapp, app, tab=PROJECT).project_tab.languages, app
+
+
+def shown(page):
+    return [page.list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(page.list.count())]
+
+
+def test_the_languages_page_shows_english_and_german_by_default_and_writes_nothing(tmp_path, qapp):
+    page, app = languages_page(tmp_path, qapp)
+    assert page.main.currentData() == "en" and shown(page) == ["de"]
+    assert page.address.current() == "Sie"
+    assert not (app.project.root / ".slidemage" / "project.json").exists()
+
+
+def test_another_main_language_keeps_the_old_one_as_a_secondary_language(tmp_path, qapp):
+    page, app = languages_page(tmp_path, qapp)
+    page.main.activated.emit(page.main.findData("fr"))
+    assert languages.project_languages(app.project) == languages.Languages("fr", ("en", "de"))
+    assert page.main.currentData() == "fr" and shown(page) == ["en", "de"]
+    page.main.activated.emit(page.main.findData("de"))          # a secondary one becomes the main language
+    assert languages.project_languages(app.project) == languages.Languages("de", ("fr", "en"))
+    assert app.logged[-1] == "Main language of the project: German"
+
+
+def test_adding_a_language_appends_it_and_moving_reorders(tmp_path, qapp):
+    page, app = languages_page(tmp_path, qapp)
+    assert page.add_language("fr") and page.add_language("it")
+    assert shown(page) == ["de", "fr", "it"] and page.selected() == "it"
+    page.move(-1)
+    assert languages.project_languages(app.project).secondary == ("de", "it", "fr") and page.selected() == "it"
+    page.move(-1)
+    page.move(-1)                                               # already first: nothing
+    assert languages.project_languages(app.project).secondary == ("it", "de", "fr")
+    assert not page.up_button.isEnabled() and page.down_button.isEnabled()
+
+
+def test_adding_a_language_that_names_slides_asks_what_language_they_are_in(tmp_path, qapp, monkeypatch):
+    from slidemage.ui.dialogs.settings_languages import UntaggedSlugsSheet
+
+    page, app = languages_page(tmp_path, qapp, **{
+        "slides/x7k-IT-Governance-current.tex": "x\n", "slides/y8m-EN-Other-current.tex": "y\n",
+        "decks/course.tex": "\\documentclass{beamer}\n\\begin{document}\n\\slide{x7k-IT-Governance}\n\\end{document}\n"})
+    seen = []
+
+    def answer(sheet):
+        seen.append((sheet.windowTitle(), sorted(sheet.combos), [c.currentData() for c in sheet.combos.values()]))
+        sheet.combos["x7k-IT-Governance"].setCurrentIndex(sheet.combos["x7k-IT-Governance"].findData("DE"))
+        return 1
+
+    monkeypatch.setattr(UntaggedSlugsSheet, "exec", lambda sheet: 0)
+    assert not page.add_language("it")                          # cancelled: nothing renamed, nothing added
+    assert (app.project.slides_dir / "x7k-IT-Governance-current.tex").is_file() and shown(page) == ["de"]
+    monkeypatch.setattr(UntaggedSlugsSheet, "exec", answer)
+    assert page.add_language("it")
+    assert seen == [("Slides named like Italian", ["x7k-IT-Governance"], ["EN"])]       # the main language to start
+    assert (app.project.slides_dir / "x7k-DE-IT-Governance-current.tex").is_file()
+    assert "\\slide{x7k-DE-IT-Governance}" in (app.project.decks_dir / "course.tex").read_text(encoding="utf-8")
+    assert shown(page) == ["de", "it"]
+
+
+def test_removing_a_language_in_use_asks_with_the_counts(tmp_path, qapp, monkeypatch):
+    deck = "\\documentclass{beamer}\n\\decklanguage[de]\n\\begin{document}\n\\end{document}\n"
+    page, app = languages_page(tmp_path, qapp, **{
+        "slides/aaa-DE-Eins-current.tex": "x\n", "slides/bbb-DE-Zwei-current.tex": "x\n",
+        "slides/ccc-EN-Three-current.tex": "x\n", "decks/kurs.tex": deck})
+    asked = []
+
+    def question(_parent, _title, text, *_args):
+        asked.append(text)
+        return QMessageBox.StandardButton.No if len(asked) == 1 else QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    page.list.setCurrentRow(0)
+    assert not page.remove_language() and shown(page) == ["de"]
+    assert page.remove_language() and shown(page) == [] and languages.project_languages(app.project).secondary == ()
+    assert asked == ["2 slides and 1 deck are in German; they stay as they are, but SlideMage no longer offers "
+                     "German. Remove it?"] * 2
+
+
+def test_removing_a_language_nothing_uses_asks_nothing(tmp_path, qapp, monkeypatch):
+    page, app = languages_page(tmp_path, qapp)
+    page.add_language("fr")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: pytest.fail("asked"))
+    assert page.remove_language() and shown(page) == ["de"]

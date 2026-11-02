@@ -5,7 +5,7 @@
 * General: dark mode, the Source editor's tab width, live rendering after an autosave, whether leaving a changed slide asks
   about Update Version, the template single slides render with, when single-slide renders are deleted, how updates are
   handled and the GitHub token for them.
-* AI (ui/dialogs/settings_ai.py; only when an AI route is registered): the German address and glossary, the
+* AI (ui/dialogs/settings_ai.py; only when an AI route is registered): the glossary, the
   project's Local | Cloud setting and which cloud route, the model of each task, the prompts
   (settings_prompts.py), then one section per AI service: Ollama (address, installed models:
   settings_ollama.py), Claude (the Anthropic API key, whether Claude Code is found), a plugin route's, and the
@@ -13,8 +13,9 @@
   section.
 * Presentation: layout, laser and pen colours, links, timer and clock, projector screen:
   ui/presentation/settings_page.py.
-* Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check and the
-  project's deck groups (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
+* Project: the .bib file and test-slides.tex (Edit opens them in Source), the project compatibility check, the
+  project's languages and the German address (ui/dialogs/settings_languages.py) and the project's deck groups
+  (ui/dialogs/settings_deck_groups.py; `SettingsSheet(app, PROJECT, focus=DECK_GROUPS)`, the
   window's `open_deck_groups()`).
 * About: the version, the version history and the check for updates.
 * Extensions: the installed theme and citation format packages, then the plugins: installed (enable, update, remove)
@@ -48,7 +49,8 @@ from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, act
 from ..workspace import debug_log_ui
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
-from .settings_ai import PROMPTS_KEY, AiPage, LanguageBlock as AiTab  # noqa: F401
+from .settings_ai import PROMPTS_KEY, AiPage
+from .settings_languages import LanguagesSection
 from .settings_plugins import PluginsTab
 from ..presentation.settings_page import PresentationTab
 
@@ -310,6 +312,8 @@ class ProjectTab(Page):
         layout.addWidget(_command_row(
             app, leave, "project_compat", "Project compatibility",
             "Whether this project's files fit this version of SlideMage.", "Check…")[0])
+        self.languages = LanguagesSection(app)
+        layout.addWidget(self.languages)
         self.deck_groups = DeckGroupsSection(app)
         layout.addWidget(self.deck_groups)
         layout.addStretch(1)

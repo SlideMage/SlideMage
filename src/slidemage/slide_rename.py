@@ -153,6 +153,31 @@ def set_slide_language(ctx: ProjectContext, id_slug: str, language: str) -> str:
     return _apply_id_slug_rename(ctx, id_slug, compute_new_id_slug(id_slug, language))
 
 
+def untagged_slugs_matching(ctx: ProjectContext, code: str) -> list[str]:
+    """The id-slugs of the slides that carry no language, but whose slug starts with `code` as a capital word
+    ("x7k-IT-Governance" for "it"): once `code` is one of the project's languages, that word would be read as the
+    slide's language. Ask before adding the code to the project; a slide tagged with a language already
+    ("x7k-EN-IT-Governance") is never listed."""
+    code = code.upper()
+    found = []
+    for path in ctx.slides_dir.glob(f"*{slide_language.CURRENT_SUFFIX}"):
+        id_slug = path.name[:-len(slide_language.CURRENT_SUFFIX)]
+        parts = id_slug.split("-", 2)
+        if len(parts) >= 2 and parts[1] == code and slide_language.own_language(id_slug) is None:
+            found.append(id_slug)
+    return sorted(found)
+
+
+def tag_untagged(ctx: ProjectContext, id_slug: str, language: str) -> str:
+    """Give the untagged slide `id_slug` the language segment `language` ("EN"): "x7k-IT-Governance" becomes
+    "x7k-EN-IT-Governance". The rename is set_slide_language's: files, deck calls, headers, translation links.
+    Returns the new id-slug."""
+    if not re.fullmatch(r"[A-Z]{2}|mult", language):
+        raise ValueError(f"language must be a code like 'EN' or 'mult', got {language!r}")
+    bare_id, _, slug = id_slug.partition("-")
+    return _apply_id_slug_rename(ctx, id_slug, f"{bare_id}-{language}-{slug}")
+
+
 _SLUG_RE = re.compile(r"[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*")
 
 

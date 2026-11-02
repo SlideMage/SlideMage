@@ -633,8 +633,9 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
-    if job.language and preamble:
-        preamble += "\n" + deck_language.language_line(language)
+    language_lines = deck_language.language_lines(ctx, language if job.language else None)
+    if language_lines and preamble:
+        preamble += "\n" + language_lines
 
     if job.chapter is not None:
         lines.append(preamble)
@@ -659,7 +660,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         lines.append(appendix_toc.generate_appendix_tex(
             ctx, resolved_deck, template, job.version or "instructor"))
         lines.append("\\end{document}")
-    elif job.language or resolved != job.deck.text:
+    elif language_lines or resolved != job.deck.text:
         lines.append(preamble)
         lines.append(resolved[job.deck.preamble_end:])
     else:
