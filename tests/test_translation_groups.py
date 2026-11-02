@@ -16,7 +16,6 @@ import pytest
 
 from slidemage import (
     background_renders, compiler, deck_language, deck_outline, deck_scan, slide_add, slide_language, slide_rename,
-    translation_prompts,
 )
 from slidemage.project import ProjectContext
 
@@ -277,11 +276,8 @@ def test_the_languages_a_slide_can_be_translated_into(ctx):
     assert slide_add.slug_of(ctx, CCC) == "Un" and slide_add.slug_of(ctx, "ggg-ES-Tres") == "ES-Tres"
 
 
-def test_a_pair_without_a_prompt_of_its_own_is_not_offered_to_a_model(ctx):
-    assert not slide_add.can_machine_translate(ctx, AAA, "FR")
-    assert not slide_add.can_machine_translate(ctx, CCC, "DE")
-    translation_prompts.set_prompt(ctx, "model", "fr", "de", translation_prompts.PromptConfig("Traduire"))
-    assert slide_add.can_machine_translate(ctx, CCC, "DE") and not slide_add.can_machine_translate(ctx, AAA, "FR")
+def test_a_model_is_offered_every_pair_of_project_languages(ctx):
+    assert slide_add.can_machine_translate(ctx, AAA, "FR") and slide_add.can_machine_translate(ctx, CCC, "DE")
     assert not slide_add.can_machine_translate(ctx, CCC, "ES") and not slide_add.can_machine_translate(ctx, CCC, "FR")
     assert not slide_add.can_machine_translate(ctx, "eee-mult-All", "DE")
 

@@ -22,7 +22,7 @@ from typing import Optional
 
 from . import (
     alt_draft, deck_editor, deck_language, deck_outline, fileio, languages, slide_ids, slide_language, slide_rename,
-    slide_versioning, translation_prompts,
+    slide_versioning,
 )
 from .ai.providers import ChatProvider
 from .deck_scan import Deck
@@ -161,16 +161,12 @@ def other_languages(ctx: ProjectContext, id_slug: str) -> list[str]:
 
 
 def can_machine_translate(ctx: ProjectContext, id_slug: str, target: str) -> bool:
-    """Whether a model can translate the slide into `target`: from one language of the project into another.
-    English to German always (the default prompt is worded for it); another pair only when
-    translation_prompts.json has a prompt of its own for it, because the last-resort prompt says "into
-    German" and would silently produce a mistranslation instead of an honest refusal."""
+    """Whether a model can translate the slide into `target`: from one language of the project into another (the
+    last-resort prompt names both languages, translation_prompts.effective_default_prompt; whether a local model
+    handles the pair is the user's call)."""
     codes = languages.project_languages(ctx).codes
     own = slide_language.own_language(id_slug, codes)
-    if own in (None, slide_language.MULT) or target not in codes or target == own:
-        return False
-    return (own, target) == ("EN", "DE") or any(
-        (source, to) == (own.lower(), target.lower()) for _, source, to, _ in translation_prompts.list_configs(ctx))
+    return own not in (None, slide_language.MULT) and target in codes and target != own
 
 
 def translate_body(ctx: ProjectContext, provider: ChatProvider, body: str, source: str = "en",

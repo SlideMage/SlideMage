@@ -157,7 +157,7 @@ def test_the_languages_a_slide_can_be_translated_into(ctx, files):
     assert slide_add.other_languages(ctx, "abc-DE-Demo") == ["EN", "mult"]
     assert slide_add.other_languages(ctx, "abc-Demo") == ["EN", "DE", "mult"]
     assert slide_add.can_machine_translate(ctx, "abc-EN-Demo", "DE")
-    assert not slide_add.can_machine_translate(ctx, "abc-DE-Demo", "EN")
+    assert slide_add.can_machine_translate(ctx, "abc-DE-Demo", "EN")
     assert not slide_add.can_machine_translate(ctx, "abc-EN-Demo", "mult")
     assert slide_add.slug_of(ctx, "abc-EN-Demo-Two") == "Demo-Two" and slide_add.slug_of(ctx, "abc-Demo") == "Demo"
 

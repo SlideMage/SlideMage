@@ -3420,3 +3420,8 @@ v0.13.31 (2026-11-02, direct request: any main and secondary languages, step 6 o
 
 NEW: Plugins can work with every language of the project.
 - A plugin sees a deck's own language and the project's languages; a slide it adds gets the language it asks for.
+
+v0.13.32 (2026-11-02, direct request: any main and secondary languages, the rest of 2.5 of the content languages plan): The Add slide sheet offers a model translation between any two languages of the project. slide_add.can_machine_translate allowed English to German and the pairs with a prompt of their own, because the last-resort prompt said "into German"; since v0.13.27 it names both languages (translation_prompts.effective_default_prompt), so any pair is offered, and whether a local model handles it is the user's call. Tests: test_translation_groups.py, test_slide_add.py, test_add_slide_gui.py.
+
+NEW: Add slide translates with a model between any languages of your project.
+- Copy as translation offers the model for every pair, not only English to German.
