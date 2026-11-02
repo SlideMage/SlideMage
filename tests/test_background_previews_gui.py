@@ -375,6 +375,21 @@ def test_the_dial_sits_at_the_bottom_left_and_a_click_opens_the_status_window(wi
     dialog.reject()
 
 
+def test_a_refresh_leaves_the_chip_as_the_status_row_laid_it_out(window):
+    # adjustSize() shrank the chip until the layout ran again: a repaint in between showed its text higher up.
+    window.resize(1200, 800)
+    window.show()
+    controller = window.background
+    controller.renderer.progress = progress_of(DeckProgress("a", total=4, fresh=1))
+    controller.refresh()
+    for _ in range(4):                                                       # the status row settles after a few rounds
+        QApplication.processEvents()
+    laid_out = controller.chip.geometry()
+    assert laid_out.height() > controller.chip.sizeHint().height()           # stretched to the dial's height
+    controller.refresh()
+    assert controller.chip.geometry() == laid_out                            # no event has run: nothing has put it back
+
+
 def test_the_status_window_lists_every_deck_with_its_versions_and_state(window):
     controller = window.background
     ready = DeckProgress("ready", total=6, fresh=6, views={"instructor": [2, 2, 0], "during-course": [2, 2, 0], "after-course": [2, 2, 0]})

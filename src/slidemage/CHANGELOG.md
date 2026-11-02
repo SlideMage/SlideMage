@@ -3462,3 +3462,8 @@ v0.13.39 (2026-11-02, content languages plan, step 7: the manual and docs): The 
 NEW: The manual and the README describe the project's languages.
 - Insert, Both languages writes the right form in a project of English and French.
 
+
+v0.13.40 (2026-11-02, direct request: the rendering status text sometimes jumps upwards a bit on a refresh, step 1 of docs/plans/render-store-cleanup.md): BackgroundPreviews.refresh called adjustSize on the chip every second. In the centre column's status row the layout sizes the chip, 34 px high beside the dial; adjustSize shrank it to 20 px until the layout ran again, so a repaint in between showed its text about 7 px higher. The call now runs only for the floating placement without a status row. Test in tests/test_background_previews_gui.py.
+
+NEW: The rendering status text stays still.
+- It no longer jumps upwards for a moment when the status refreshes.
