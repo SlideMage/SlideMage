@@ -436,7 +436,8 @@ Decided while implementing, differing from the text above:
 Next:
 
 1. **5b**, the hyphenation spike (2.10), in `cl-5b-spike`.
-2. **6, the plugins** in their own repositories, each raising `requires_slidemage` to v0.13.31: Exam Forge (sources
+2. **6, the plugins** (Exam Forge done as 0.9.0 on `feature/any-language`, on top of `feature/ui-redesign`, pushed to
+   JuergenFleiss/slidemage-plugin-exam-forge) in their own repositories, each raising `requires_slidemage` to v0.13.31: Exam Forge (sources
    with any project code, the drafting dialog's languages, the main language as fallback, the exam HTML's `lang`),
    CampusOnline (done as CampusOnline 1.0.2, committed only locally on branch `feature/any-language` in
    `~/github/slidemage-plugin-campusonline-langs`; no new API, so its requires_slidemage stays), Claude (done as Claude 1.2.0, committed only locally on branch
