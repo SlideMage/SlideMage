@@ -91,6 +91,7 @@
     "UPDATE_TRANSLATION",
     "UserMessage",
     "Widget",
+    "address",
     "annotations",
     "answer_note",
     "build_prompt",

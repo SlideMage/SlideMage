@@ -232,20 +232,19 @@ def _describe_rows(window, paths) -> list[alt_blocks.SlideRow]:
 
 
 def _translate_target(ctx: ProjectContext, own: str | None, links: list[slide_language.TranslationLink]) -> str | None:
-    """The first language of the project that the slide has no translation in and the AI tasks can translate it
-    into (ai_tasks.LANGUAGE_NAMES), None when there is none."""
-    if own not in ai_tasks.LANGUAGE_NAMES:
+    """The first language of the project that the slide has no translation in, None when there is none or the slide
+    has no language."""
+    if own in (None, slide_language.MULT):
         return None
     have = {link.language for link in links}
     return next((code for code in languages.project_languages(ctx).codes
-                 if code != own and code not in have and code in ai_tasks.LANGUAGE_NAMES), None)
+                 if code != own and code not in have), None)
 
 
 def _outdated(links: list[slide_language.TranslationLink]) -> slide_language.TranslationLink | None:
     """The first translation of the original (this slide, or its partner) that is out of date: the one Update
     translation brings up to date from the original."""
-    return next((link for link in links if link.outdated and (link.is_translation or link.is_original)
-                 and link.language in ai_tasks.LANGUAGE_NAMES), None)
+    return next((link for link in links if link.outdated and (link.is_translation or link.is_original)), None)
 
 
 def _text_offers(ctx: ProjectContext, focus: _Focus, links: list[slide_language.TranslationLink],
@@ -256,7 +255,7 @@ def _text_offers(ctx: ProjectContext, focus: _Focus, links: list[slide_language.
     found = []
     if target := _translate_target(ctx, own, links):
         found.append(Bubble(ai_tasks.TRANSLATE, f"Translate to {languages.name(target)}"))
-    if (outdated := _outdated(links)) is not None and own in ai_tasks.LANGUAGE_NAMES:
+    if (outdated := _outdated(links)) is not None and own not in (None, slide_language.MULT):
         language = own if outdated.is_translation else outdated.language
         found.append(Bubble(ai_tasks.UPDATE_TRANSLATION, f"Update {languages.name(language)} translation"))
     if _errors(ctx, focus.text):
@@ -264,7 +263,7 @@ def _text_offers(ctx: ProjectContext, focus: _Focus, links: list[slide_language.
     if known is not None and known.has_errors(focus.path, focus.text):
         found.append(Bubble(ai_tasks.READABLE, "Make readable"))
     text = _has_text(focus.text)
-    if text and own in ai_tasks.LANGUAGE_NAMES:
+    if text and own and languages.get(own):
         found.append(Bubble(ai_tasks.PROOFREAD, "Proofread"))
     if text:
         found.append(Bubble(ai_tasks.CONCISE, "Make more concise"))
@@ -371,7 +370,7 @@ def _capture_selection(window, task: ai_tasks.Task, instruction: str) -> _Captur
         request = ai_tasks.rewrite_request(text, start, end, instruction)
     else:
         request = ai_tasks.proofread_selection_request(
-            text, start, end, slide_language.own_language(id_slug, codes) or codes[0], translation_style.de_address(window.project))
+            text, start, end, slide_language.own_language(id_slug, codes) or codes[0], translation_style.address(window.project))
     deck = window.state.deck
     return _Capture(task, path, id_slug, text, "", text, request, "", slide_source.read_slide_source(path)[1],
                     deck.path if deck is not None else None, (start, end), instruction)
@@ -392,7 +391,7 @@ def _capture(window, task: ai_tasks.Task, focus: _Focus | None, instruction: str
     path, id_slug, text, header, sent, language = focus.path, focus.id_slug, focus.text, "", focus.text, ""
     codes = languages.project_languages(window.project).codes
     own = slide_language.own_language(id_slug, codes)
-    style = (translation_style.de_address(window.project), translation_style.glossary(window.project))
+    style = (translation_style.address(window.project), translation_style.glossary(window.project))
     if task is ai_tasks.TRANSLATE:
         language = _translate_target(window.project, own, links)
         sent = slide_versioning.strip_marker(slide_ids.body_of(text))

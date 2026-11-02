@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 from dataclasses import replace
 
-from ... import ai_review
+from ... import ai_review, languages
 from ...deck_scan import TAG_MANUAL
 from ...transcript import STUDENT_VERSIONS
 from ..commands import Command, CommandRegistry
@@ -38,7 +38,6 @@ from .state import MODES, UI_LANGUAGES, VIEWS
 
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
 AI = "AI"
-LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
 # On a Mac, where Qt reads Ctrl as ⌘: ⌘, is the app's settings, so Deck settings moves to ⌥⌘,; F5 needs the fn key,
 # so Present is Keynote's ⌥⌘P; F1 is not help there (the Help menu has its own search); Quit (⌘Q) comes with QuitRole.
 MAC_KEYS = {
@@ -220,7 +219,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
             lambda w, v=view: w.state.set_view(v), icon="visibility", meta=lambda w, v=view: _current(w.state.view == v),
             shortcut=f"Ctrl+{number}")
     for language in UI_LANGUAGES:
-        add(f"language:{language}", f"Show {LANGUAGE_NAMES.get(language, language)} ({language})", VIEW_AND_BUILD,
+        add(f"language:{language}", f"Show {languages.name(language)} ({language})", VIEW_AND_BUILD,
             lambda w, lang=language: w.state.set_language(lang), icon="translate",
             meta=lambda w, lang=language: _current(w.state.language == lang))
     for mode in MODES:

@@ -29,7 +29,7 @@ Conventions of all calls:
   proofread_selection_request, note_request, summarise_request, fix_request, readable_request, answer_note,
   repair_request and check build requests and validate answers. SlideContext, DraftResult, TranslationResult, build_prompt, draft_from_fields,
   effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash, PromptConfig and get_effective_prompt provide
-  image drafting and translation data and prompts. de_address and glossary read translation style.
+  image drafting and translation data and prompts. address, de_address and glossary read translation style.
   IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED describe image rules and Claude Code's allowed tools.
   Outcome is the neutral task result. CancelToken supports process-aware cancellation for ai_tools. These names
   load their implementation on first access; importing plugin_api itself uses only the standard library.
@@ -68,7 +68,7 @@ if TYPE_CHECKING:       # for type checkers only: at run time these load on firs
     )
     from .alt_images import ImageEntry, en_text_hash  # noqa: F401
     from .translation_prompts import PromptConfig, get_effective_prompt  # noqa: F401
-    from .ai.translation_style import de_address, glossary  # noqa: F401
+    from .ai.translation_style import address, de_address, glossary  # noqa: F401
     from .ai.image_instructions import IMAGE_DESCRIPTION_RULES  # noqa: F401
     from .ai.tools import CLAUDE_CODE_PRE_APPROVED  # noqa: F401
     from .compiler import CancelToken  # noqa: F401
@@ -1146,7 +1146,7 @@ class AiChat(Protocol):
 # Lazy additions: Task, TRANSLATE, answer_note, repair_request, translate_request, check are the task
 # definition, prompts and validation; SlideContext, DraftResult, TranslationResult, build_prompt,
 # draft_from_fields, effective_system_prompt, IMAGE_DESCRIPTION_SCHEMA, ImageEntry, en_text_hash and
-# get_effective_prompt define image drafting and translation. de_address and glossary read project translation
+# get_effective_prompt define image drafting and translation. address, de_address and glossary read project translation
 # style. IMAGE_DESCRIPTION_RULES and CLAUDE_CODE_PRE_APPROVED supply Claude launch instructions. CancelToken
 # is the process-aware cancellation token accepted by ai_tools. Outcome is the task runner result.
 # Re-exported from SlideMage's modules, which are not standard library, so they load on first use: importing this
@@ -1182,6 +1182,7 @@ _LAZY = {
     "en_text_hash": "slidemage.alt_images",
     "PromptConfig": "slidemage.translation_prompts",
     "get_effective_prompt": "slidemage.translation_prompts",
+    "address": "slidemage.ai.translation_style",
     "de_address": "slidemage.ai.translation_style",
     "glossary": "slidemage.ai.translation_style",
     "IMAGE_DESCRIPTION_RULES": "slidemage.ai.image_instructions",

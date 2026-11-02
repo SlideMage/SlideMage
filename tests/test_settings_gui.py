@@ -471,7 +471,7 @@ def shown(page):
 def test_the_languages_page_of_a_project_without_the_key_shows_what_it_uses_and_writes_nothing(tmp_path, qapp):
     page, app = languages_page(tmp_path, qapp, stated=None, **{"slides/aaa-DE-Eins-current.tex": "x\n"})
     assert page.main.currentData() == "en" and shown(page) == ["de"]
-    assert page.address.current() == "Sie"
+    assert page.address.current() == "formal"
     assert not (app.project.root / ".slidemage" / "project.json").exists()
 
 

@@ -20,12 +20,12 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 
-from .. import latex_lint, slide_source
+from .. import languages, latex_lint, slide_source
 from ..project import ProjectContext
 from ..selection import CONTEXT_CHARS
 from .tools.edits import protected_problem
+from .translation_style import glossary_for
 
-LANGUAGE_NAMES = {"EN": "English", "DE": "German"}
 SLIDE_CHARS, DECK_CHARS = 1500, 60000      # what a summary request carries: per slide, and in all
 
 
@@ -173,36 +173,39 @@ PROOFREAD_SELECTION = Task("proofread_selection", (
     "Answer with the JSON result only."), _EDITS)
 
 
-def translate_request(text: str, source: str, target: str, address: str = "Sie", glossary: str = "") -> str:
-    """Translate `text` from `source` to `target` (codes of LANGUAGE_NAMES). `address` ("Sie" or "du") is
-    told to the model for German, never left to it; `glossary` is the project's "EN = DE" lines, as they are."""
-    lines = [f"Translate this slide from {LANGUAGE_NAMES[source]} to {LANGUAGE_NAMES[target]}.",
-             *_style(target, address, glossary)]
+def _manner(address: str) -> str:
+    """"formally" or "informally"; "Sie" and "du" (plugin API version 1) are the German words for them."""
+    return "informally" if address in ("informal", "du") else "formally"
+
+
+def translate_request(text: str, source: str, target: str, address: str = "formal", glossary: str = "") -> str:
+    """Translate `text` from `source` to `target` (language codes). `address` ("formal" or "informal") is told
+    to the model for every target, never left to it; what it means in the language is the model's to know.
+    `glossary` is the project's glossary file, of which the request carries the part for the pair."""
+    lines = [f"Translate this slide from {languages.name(source)} to {languages.name(target)}.",
+             *_style(source, target, address, glossary)]
     return "\n".join([*lines, "<slide>", text, "</slide>"])
 
 
-def _style(target: str, address: str, glossary: str) -> list[str]:
-    """The request lines on the German form of address and the glossary."""
-    lines = [f'Address the audience with "{address}" ({"formal" if address == "Sie" else "informal"}).'] \
-        if target == "DE" else []
-    return lines + (["Glossary, one term per line:", glossary.strip()] if glossary.strip() else [])
+def _style(source: str, target: str, address: str, glossary: str) -> list[str]:
+    """The request lines on the form of address and the glossary."""
+    terms = glossary_for(glossary, source, target)
+    return [f"Address the audience {_manner(address)}."] + (["Glossary, one term per line:", terms] if terms else [])
 
 
-def update_request(source: str, translation: str, source_language: str, target: str, address: str = "Sie",
+def update_request(source: str, translation: str, source_language: str, target: str, address: str = "formal",
                    glossary: str = "") -> str:
     """Bring `translation` (into `target`) up to date with `source` (in `source_language`); `address` and
     `glossary` as in translate_request."""
-    lines = [f"Update this {LANGUAGE_NAMES[target]} translation to match the current {LANGUAGE_NAMES[source_language]} "
-             "source.", *_style(target, address, glossary)]
+    lines = [f"Update this {languages.name(target)} translation to match the current {languages.name(source_language)} "
+             "source.", *_style(source_language, target, address, glossary)]
     return "\n".join([*lines, "<source>", source, "</source>", "<slide>", translation, "</slide>"])
 
 
-def proofread_request(text: str, language: str, address: str = "Sie") -> str:
-    """Proofread `text`, a slide in `language` (a code of LANGUAGE_NAMES); the German form of `address` stays."""
-    lines = [f"Proofread this {LANGUAGE_NAMES[language]} slide with the spelling rules of its language; keep the "
-             "variant of the language that it uses."]
-    if language == "DE":
-        lines.append(f'The audience is addressed with "{address}": keep it.')
+def proofread_request(text: str, language: str, address: str = "formal") -> str:
+    """Proofread `text`, a slide in `language` (a language code); its form of address stays."""
+    lines = [f"Proofread this {languages.name(language)} slide with the spelling rules of its language; keep the "
+             "variant of the language that it uses.", f"The audience is addressed {_manner(address)}: keep it."]
     return "\n".join([*lines, "<slide>", text, "</slide>"])
 
 
@@ -228,12 +231,11 @@ def rewrite_request(text: str, start: int, end: int, instruction: str) -> str:
     return _selection_request(["Rewrite the selection of this slide. Instruction: " + instruction.strip()], text, start, end)
 
 
-def proofread_selection_request(text: str, start: int, end: int, language: str, address: str = "Sie") -> str:
-    """Proofread the range `start`..`end` of the slide `text`, written in `language` (a code of LANGUAGE_NAMES)."""
-    lines = [f"Proofread the selection of this {LANGUAGE_NAMES[language]} slide with the spelling rules of its "
-             "language; keep the variant of the language that it uses."]
-    if language == "DE":
-        lines.append(f'The audience is addressed with "{address}": keep it.')
+def proofread_selection_request(text: str, start: int, end: int, language: str, address: str = "formal") -> str:
+    """Proofread the range `start`..`end` of the slide `text`, written in `language` (a language code)."""
+    lines = [f"Proofread the selection of this {languages.name(language)} slide with the spelling rules of its "
+             "language; keep the variant of the language that it uses.",
+             f"The audience is addressed {_manner(address)}: keep it."]
     return _selection_request(lines, text, start, end)
 
 

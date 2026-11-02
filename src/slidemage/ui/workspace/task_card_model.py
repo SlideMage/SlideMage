@@ -13,7 +13,7 @@ import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ... import readability
+from ... import languages, readability
 from ...ai import ai_profile, tasks as ai_tasks
 from ..text import plural
 
@@ -180,9 +180,7 @@ def first_error(log: str) -> str:
 
 def state_text(card: TaskCard) -> str:
     """The state line of the card's phase (the handoff's table)."""
-    names = ai_tasks.LANGUAGE_NAMES
-    source = names.get(card.source or other_language(card.language), card.source or other_language(card.language))
-    target = names.get(card.language, card.language)
+    source, target = languages.name(card.source or other_language(card.language)), languages.name(card.language)
     phase, file = card.phase, card.file
     if phase == GENERATE:
         return _GENERATING[card.task.name].format(id=card.target, src=source, dst=target)

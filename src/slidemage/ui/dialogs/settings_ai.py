@@ -151,8 +151,9 @@ class AiPage(Page):
             "A cloud route receives whatever its task sends: slide text, images, notes. Which side the project "
             "uses is the Local | Cloud switch at the top of the assistant; the settings below are its defaults."))
         layout.addWidget(caption(
-            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, one \"English = "
-            "German\" per line; every translation request carries the file as it is. The form of address is "
+            f"Put terms that must be translated one way in {translation_style.GLOSSARY_PATH}, as a table "
+            "with one column per language (| EN | DE |) or as \"English = German\" lines; a translation request "
+            "carries the rows for its languages. The form of address is "
             "set with the project's languages (Project)."))
 
         self.policy = SegmentedControl(POLICIES, current=ai_profile.policy(self.project))

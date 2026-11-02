@@ -152,10 +152,10 @@ class LanguagesSection(Surface):
         layout.addWidget(caption("The languages are stored with the project (.slidemage/project.json), so everyone "
                                  "who opens it sees the same ones."))
 
-        self.address = SegmentedControl(tuple((a, a) for a in translation_style.ADDRESSES),
-                                        current=translation_style.de_address(self.project))
-        self.address.changed.connect(lambda value: translation_style.set_de_address(self.project, value))
-        layout.addWidget(Field("German address in Claude Code translations (this project)", self.address))
+        self.address = SegmentedControl(tuple((a, a.capitalize()) for a in translation_style.ADDRESSES),
+                                        current=translation_style.address(self.project))
+        self.address.changed.connect(lambda value: translation_style.set_address(self.project, value))
+        layout.addWidget(Field("Form of address in Claude Code translations (this project)", self.address))
         self.fill()
 
     # -- what the page shows -------------------------------------------------------------------------------------

@@ -351,7 +351,7 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     assert slide_file(env).editor.text() == source
     (call,) = fake.calls()
     assert call["request"].startswith("Translate this slide from English to German.\n"
-                                      'Address the audience with "Sie" (formal).\n<slide>\n')
+                                      'Address the audience formally.\n<slide>\n')
     assert "\\setSlideVersion" not in call["request"] and "Included in decks" not in call["request"]
 
 
@@ -411,13 +411,13 @@ def test_a_slide_that_is_not_in_the_deck_still_gets_its_translation(fake):
 
 def test_the_german_address_and_the_glossary_reach_the_request(ctx, fake):
     env = fake.env
-    translation_style.set_de_address(ctx, "du")
+    translation_style.set_address(ctx, "informal")
     (env.root / ".slidemage" / "glossary.md").write_text("slide = Folie\n", encoding="utf-8")
     fake.reply({"answer": GERMAN})
     click(env, "Translate to German")
     settled(env)
     request = fake.calls()[0]["request"]
-    assert 'Address the audience with "du" (informal).' in request and "slide = Folie" in request
+    assert "Address the audience informally." in request and "slide = Folie" in request
     assert json.loads((env.root / ".slidemage" / "project.json").read_text())["de_address"] == "du"
 
 
@@ -425,9 +425,9 @@ def test_settings_set_the_german_address(ctx, fake):
     from slidemage.ui.dialogs.settings_languages import LanguagesSection
 
     tab = LanguagesSection(SimpleNamespace(project=ctx))
-    assert tab.address.current() == "Sie"
-    tab.address.changed.emit("du")
-    assert translation_style.de_address(ctx) == "du"
+    assert tab.address.current() == "formal"
+    tab.address.changed.emit("informal")
+    assert translation_style.address(ctx) == "informal" and translation_style.de_address(ctx) == "du"
 
 
 # -- the model of a task --------------------------------------------------------------------------
@@ -629,7 +629,7 @@ def test_an_update_goes_into_the_open_translation_and_keeps_its_header(outdated)
     assert "Erster Punkt!" not in editor.text()
     request = outdated.calls()[0]["request"]
     assert request.startswith("Update this German translation to match the current English source.\n"
-                              'Address the audience with "Sie" (formal).\n<source>\n')
+                              'Address the audience formally.\n<source>\n')
     source, translation = request.split("<source>\n")[1].split("</source>\n<slide>\n")
     assert "First point" in source and "\\setSlideVersion" not in source and "Included in decks" not in source
     assert translation.startswith("% A note") and "Erster Punkt" in translation and "Translation of" not in translation
