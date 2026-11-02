@@ -416,6 +416,7 @@ wraps):
 | v0.13.29 | `feat/content-languages-2b-ui` | 2b (tried in the app) |
 | v0.13.30 | `feat/content-languages-4-images` | a fix (a new project no longer copies the example's `.slidemage` state), then 4 |
 | v0.13.31 | `feat/content-languages-6-plugin-api` | 6, SlideMage's part |
+| v0.13.32 | the same branch | the rest of 2.5: Add slide offers a model translation between any two project languages |
 
 Worktrees: `.worktrees/cl-1`, `cl-2a`, `cl-3`, `cl-5a`, `cl-2b`, `cl-4`, `cl-6` (and the empty `cl-5b-spike`).
 
