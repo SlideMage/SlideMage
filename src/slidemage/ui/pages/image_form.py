@@ -230,6 +230,8 @@ class ImageForm(Surface):
         self.fields["short"].textChanged.connect(self._english_edited)
         self.fields["long"].textChanged.connect(self._english_edited)
         self.fields["takeaway"].textChanged.connect(self._refresh_takeaway_state)
+        for key in ("short", "long", "takeaway"):
+            self.fields[key].textChanged.connect(self._refresh_translate_buttons)
         self.edited.connect(self._show_state)
         self.edited.connect(self._show_source_state)
         self._apply_role()
@@ -271,9 +273,9 @@ class ImageForm(Surface):
     def _build_translation_line(self) -> None:
         self.translation_state = caption("")
         self.translate_button = Button("Translate", "secondary", compact=True)
-        self.translate_button.setToolTip(f"Translate the English short, long and takeaway into "
-                                         f"{languages.name(self.second)}. It fills the fields below; nothing is "
-                                         "saved until you save.")
+        self._translate_tip = (f"Translate the English short, long and takeaway into {languages.name(self.second)}. "
+                               "It fills the fields below; nothing is saved until you save.")
+        self.translate_button.setToolTip(self._translate_tip)
         self.translate_button.clicked.connect(lambda: self.translate_clicked.emit(self, False))
         self.save_translate_button = Button("Save, then translate", "ghost", compact=True)
         self.save_translate_button.setToolTip("Save this slide's draft (every image on it), then translate this "
@@ -378,11 +380,19 @@ class ImageForm(Surface):
         for key, edit in self.fields.items():
             if key not in ("source", "source_de"):   # the source is attribution, whatever the role
                 edit.setEnabled(not decorative)
-        can_translate = not decorative and self.can_translate and not self.busy and not self.translating
-        self.translate_button.setEnabled(can_translate)
-        self.save_translate_button.setEnabled(can_translate)
+        self._refresh_translate_buttons()
         self.tune_button.setEnabled(not self.busy)
         self._refresh_takeaway_state()
+
+    def _refresh_translate_buttons(self) -> None:
+        """Translate needs English text (the fields as typed): an image described only in another language has
+        nothing to translate."""
+        english = any(self.english())
+        can_translate = (self.role != alt_images.ROLE_DECORATIVE and self.can_translate and not self.busy
+                         and not self.translating and english)
+        self.translate_button.setEnabled(can_translate)
+        self.save_translate_button.setEnabled(can_translate)
+        self.translate_button.setToolTip(self._translate_tip if english else "There is no English text to translate.")
 
     def _show_translation_state(self, state: str) -> None:
         name = languages.name(self.second)

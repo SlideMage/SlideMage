@@ -353,12 +353,27 @@ def test_set_as_default_needs_a_takeaway_on_an_informative_image(make_page):
 def test_the_translate_buttons_of_a_form_follow_the_page_when_no_model_is_there(make_page):
     page = make_page()
     form = page._forms[0]
+    type_into(page, "short", "A chart")
     page.translate_model.setEnabled(True)
     page._update_buttons()
     assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
     page.translate_model.setEnabled(False)          # what fill_model_combo does with no model to offer
     page._update_buttons()
     assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+
+
+def test_translate_needs_english_text_to_translate(make_page):
+    page = make_page()
+    form = page._forms[0]
+    page.translate_model.setEnabled(True)
+    page._update_buttons()
+    assert not form.translate_button.isEnabled() and not form.save_translate_button.isEnabled()
+    assert form.translate_button.toolTip() == "There is no English text to translate."
+    type_into(page, "takeaway", "Sales rise")                  # any of the three English fields will do
+    assert form.translate_button.isEnabled() and form.save_translate_button.isEnabled()
+    assert form.translate_button.toolTip().startswith("Translate the English")
+    type_into(page, "takeaway", "")
+    assert not form.translate_button.isEnabled()
 
 
 def test_a_worker_writing_the_store_updates_the_entry_of_a_form_with_edits_only(make_page):
@@ -650,6 +665,8 @@ def test_a_failed_translation_says_so_and_frees_the_form(make_page, monkeypatch)
 
     monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Failing)
     form = page._forms[0]
+    type_into(page, "short", "A chart")
+    monkeypatch.setattr(images.ImagesPage, "_ask_which_english", lambda page: "unsaved")
     page._translate_image(form, False)
     assert warned == ["model unreachable"] and not form.translating and page._job is None
     assert form.translate_button.text() == "Translate" and form.translate_button.isEnabled()

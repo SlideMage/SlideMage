@@ -3451,3 +3451,8 @@ v0.13.37 (2026-11-02, direct request: ship the hyphenation patterns): The framew
 
 NEW: Hyphenation works without extra TeX packages.
 - SlideMage brings the hyphenation patterns of 33 languages, so German, French and the others hyphenate even where the TeX installation has only English.
+
+v0.13.38 (2026-11-02, bug report from the owner's test: Translate stays clickable on an image without English text): An image form's Translate and Save, then translate are off while its English short, long and takeaway fields are all empty (as typed), with the tooltip "There is no English text to translate."; typing any of them turns them on again (image_form._refresh_translate_buttons). Before, an image described only in another language offered a translation of nothing. Tests: test_images_page_gui.py.
+
+NEW: Translate waits for English text.
+- On the Images page, Translate is off for an image that has no English description yet.
