@@ -435,6 +435,21 @@ class SlideTree(QTreeWidget):
         else:
             super().keyPressEvent(event)
 
+    def moveCursor(self, action, modifiers) -> QModelIndex:
+        """Up, Down and the keys like them step from slide to slide: a section heading on the way is passed, and where
+        no slide is left the row stays. Left still goes up to a slide's heading, for what acts on a section."""
+        Action = QAbstractItemView.CursorAction
+        index = super().moveCursor(action, modifiers)
+        if action in (Action.MoveUp, Action.MovePageUp, Action.MoveEnd):
+            step = self.indexAbove
+        elif action in (Action.MoveDown, Action.MovePageDown, Action.MoveHome):
+            step = self.indexBelow
+        else:
+            return index
+        while index.isValid() and not index.parent().isValid():
+            index = step(index)
+        return index if index.isValid() else self.currentIndex()
+
     def dropEvent(self, event) -> None:
         """Report the drop instead of letting Qt move the items: the deck file
         is what changes, and the list is rebuilt from it."""
