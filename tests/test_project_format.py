@@ -20,6 +20,7 @@ def _write(root, data):
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
+@pytest.mark.infer_languages
 @pytest.mark.parametrize("previous", [None, "v4.0.0"])
 def test_project_format_is_recorded_and_upgraded(tmp_path, monkeypatch, previous):
     if previous is not None:

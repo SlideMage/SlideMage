@@ -10,6 +10,8 @@ import pytest
 from slidemage import languages, project
 from slidemage.project import ProjectContext
 
+pytestmark = pytest.mark.infer_languages
+
 
 @pytest.fixture
 def ctx(tmp_path):

@@ -103,6 +103,7 @@ def test_every_wrapper_is_what_develop_wrote_plus_the_languages_line(ctx, second
     assert wrappers(ctx) == with_line(GOLDEN, line)
 
 
+@pytest.mark.infer_languages
 def test_the_lines_of_a_project_without_a_key_follow_what_it_uses():
     ctx = ProjectContext.at(Path("/nonexistent/project"))
     assert deck_language.language_lines(ctx, "DE") == "\\SMProjectLanguages[en]{EN}\n\\decklanguage[de]\n"
