@@ -3509,3 +3509,8 @@ v0.14.5 (2026-11-03, step 3 of docs/plans/render-store-cleanup.md: the double re
 
 NEW: Slides shown twice in a deck are no longer rendered again and again.
 - A slide called twice in a deck keeps one preview, so the background work ends when the status says it is done.
+
+v0.14.7 (2026-11-03, direct instruction: the active tab in the centre column's tab strip): its underline was the generic dark "inverse" accent; it is now the same SlideMage blue the selected deck version (Instructor) uses. kit_qss.py's QFrame#TAB[active="true"] rule reads t.view_instructor instead of t.inverse.
+
+NEW: The open tab stands out in the usual SlideMage blue.
+- A tab's underline, when it is the one shown, is the same blue as the selected deck version instead of a plain dark line.
