@@ -12,6 +12,7 @@ import json
 import shutil
 import sys
 import urllib.error
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -102,8 +103,18 @@ def install_newest(**kwargs):
 
 # -- the fixture asset
 
+
+def _members(path):
+    """name -> content with line endings normalised to LF (the checkout's eol setting must not matter)."""
+    with zipfile.ZipFile(path) as zf:
+        infos = zf.infolist()
+        return {i.filename: zf.read(i).replace(b"\r\n", b"\n") for i in infos}, [i.filename for i in infos]
+
+
 def test_the_fixture_asset_is_the_packed_fixture_folder_and_installs(tmp_path):
-    assert make_theme_package.pack(FIXTURE, tmp_path).read_bytes() == ASSET.read_bytes()
+    # Compared member by member with line endings normalised: .gitattributes checks text files out as CRLF
+    # (the packer stores the working copy's bytes), while the stored asset was packed from either ending.
+    assert _members(make_theme_package.pack(FIXTURE, tmp_path)) == _members(ASSET)
     expected = (FIXTURES / "sample-theme-1.0.0.smtheme.sha256").read_text(encoding="utf-8").split()[0]
     assert hashlib.sha256(ASSET.read_bytes()).hexdigest() == expected
     assert themes.install_file(ASSET, expected_sha256=expected).id == "sample-theme"
