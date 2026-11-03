@@ -3485,3 +3485,8 @@ NEW: A plain notice when SlideMage updated the project itself.
 - The image descriptions' new format no longer opens the compatibility sheet with a disabled Update project button.
 - If a deck's template is missing, because its theme is not installed on this computer and the project has no copy, the preview status turns red and says so; clicking it explains which decks are held back and how to fix it.
 - Once the template is found, those decks' previews are rendered without retrying failed slides by hand.
+
+v0.14.2 (2026-11-03, the manual failed its layout test): The German divider tks is no longer called at the end of both manual decks, where its chapter agenda listed the appendix and its last entry reached under the footer. The slide stays as the translation of 1f8.
+
+NEW: The manual's last page no longer runs into the footer.
+- The German Installation divider is no longer called at the end of the SlideMage manual.
