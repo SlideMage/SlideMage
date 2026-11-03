@@ -586,7 +586,8 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         row = next(r for s in outline for r in s.rows if r.call.source_filename == units[0].source_path.name)
         target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number)
         assert controller.stored_page(target, "instructor", "EN", deck.name)     # the Preview's page
-        assert controller.stored_pages(target, "instructor", "EN", deck.name) is None      # not a list of steps
+        pages = controller.stored_pages(target, "instructor", "EN", deck.name)
+        assert pages is not None and len(pages) == 2      # a plain \slide call: the compile already has every step
         result = preview_thumbnails.for_outline(ctx, deck, outline, "instructor", "EN",
                                                 stored_page=controller.stored_page_path)
         shown = next(r for s in result for r in s.rows if r.key == row.key)

@@ -689,11 +689,18 @@ class BackgroundRenderer:
         return name
 
     def ingest_compile(self, job, pdf: Path, record: dict) -> int:
-        """Keep the slides of a whole-deck compile in the store: the last page of every slide the PDF shows, for the
-        view and language the deck was compiled in, so the Preview shows it as a current render, with no note, for as
-        long as what the slide depends on is unchanged. The dependencies are the compile record's (compile_records.py):
-        every file the compile read, with its SHA-256, except the other slides, and media or snippets this slide
-        does not mention. Returns how many slides were stored. Run off the GUI thread."""
+        """Keep the slides of a whole-deck compile in the store: every page of each slide's run (every reveal step
+        the PDF shows), for the view and language the deck was compiled in, so the Preview shows it as a finished
+        render, with no note, for as long as what the slide depends on is unchanged -- the background sweep then has
+        nothing left to do for it (render_key.Lookup.final). That also covers a slide that needs its deck (a contents
+        or agenda slide, a section divider, docs/plans/render-store-cleanup.md D2: `deck_units` is asked for them
+        too, this compile being their context) and one with \\SMFinalStateForStudents (D1): its run in a student
+        view is one page already, the macro's own doing, so it is stored, and is finished, like any other.
+        A `\\slidestep` or `\\slidefinal` call is left out: its run is only a selection of the slide's steps (a
+        \\slidestep's own restriction, or \\slidefinal's single collapsed page), never every one, so it stays with
+        the sweep. The dependencies are the compile record's (compile_records.py): every file the compile read, with
+        its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
+        slides were stored. Run off the GUI thread."""
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
             return 0
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
@@ -714,25 +721,26 @@ class BackgroundRenderer:
         finally:
             doc.close()
         raster, stored = self._raster or self._shared_raster(), 0
-        for unit in deck_units(self.ctx, job.deck, view, language):
+        for unit in deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True):
             pages = runs.get(slide_language.bare_id(unit.id_slug))
             known = recorded.get(norm(unit.source_path))
-            if unit.macro == "slidestep" or not pages or known is None:
+            if unit.macro in ("slidestep", "slidefinal") or not pages or known is None:
                 continue
             key = self.resolver.fast_key(unit)
             if key is None or self.hashes.hash(unit.source_path) != known[1]:
                 continue                                # the slide changed since the compile
-            if self.resolver.lookup(unit, key).usable:
-                continue                                # a render of it is current already
+            found = self.resolver.lookup(unit, key)
+            if found.final:
+                continue                                # nothing more for the sweep, or this compile, to do for it
             entries = self._compile_manifest(recorded, unit)
-            response = raster.read_document(pdf, "pdf_images", pages[-1] + 1, 1, width=STORE_WIDTH)
-            if not response["images"]:
+            response = raster.read_document(pdf, "pdf_images", pages[0] + 1, len(pages), width=STORE_WIDTH)
+            if len(response["images"]) != len(pages):
                 continue
             meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=entries, tex_digest="",
                         machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp,
-                        frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH, partial=True)
-            self.store.put(key, ORIGIN_COMPILE, None, [response["images"][0]], meta,
-                           decks=[unit.deck] if unit.deck else [])
+                        frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
+            self.store.put(key, ORIGIN_COMPILE, None, response["images"], meta,
+                           decks=[unit.deck] if unit.deck else [], replace=bool((found.record or {}).get("partial")))
             self._drop_stale(unit, key)
             stored += 1
         return stored
