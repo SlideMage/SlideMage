@@ -209,7 +209,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   entry is a registered command. A list of slides or text matches that is cut short ends with **Show all**.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
   settings (the CampusOnline plugin adds its Admin slides tab), Housekeeping, Snapshots, Tags, Import PPTX/ODP, About and
-  the project-compatibility sheets.
+  the project-compatibility sheets (a change SlideMage made itself when it opened the project, such as the
+  image descriptions' format 3, gets a one-time *Project updated* notice with an OK instead).
 
 Archiving a deck (see below) asks for confirmation before moving anything; so do the
 Housekeeping tools that empty `pdf/` or `.build/` (refused mid-compile, since a running

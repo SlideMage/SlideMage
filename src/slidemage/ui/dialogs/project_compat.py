@@ -7,7 +7,8 @@ Start-up (something breaking is pending): Update project / Show report / Not now
 again. *Not now* leaves everything as it is, so the sheet comes back on the next open; *Don't ask
 again* remembers it per change. ⋮ -> Project compatibility (review): the same list including the
 quiet (appearance-only) changes, with Update project / Show report / Mark all as read / Close.
-After either, `choice` says which button closed it.
+After either, `choice` says which button closed it. Changes SlideMage made itself (Change.automatic) are not on
+the start-up sheet: ProjectUpdatedSheet tells about them once, with an OK.
 """
 from __future__ import annotations
 
@@ -126,6 +127,9 @@ class CompatSheet(ModalSheet):
             layout.addWidget(_label(f"{where}: {finding.message}", q.PANEL_MONO))
         if len(item.findings) > len(shown):
             layout.addWidget(_label(f"… and {len(item.findings) - len(shown)} more (see the report).", q.PANEL_CAPTION))
+        if change.automatic:
+            layout.addWidget(_label("SlideMage updated the project itself when it opened it.", q.PANEL_CAPTION))
+            return card
         if change.fix:
             layout.addWidget(_label(f"<b>Fix by hand:</b> {escape(change.fix)}", rich=True))
         if change.severity in compat.LOUD:
@@ -136,3 +140,29 @@ class CompatSheet(ModalSheet):
     def _finish(self, choice: str) -> None:
         self.choice = choice
         self.accept()
+
+
+class ProjectUpdatedSheet(ModalSheet):
+    """The one-time notice for changes SlideMage made itself when it opened the project (Change.automatic):
+    what it updated, and that older versions can no longer read the project. Only an OK."""
+
+    def __init__(self, parent: Optional[QWidget], evaluation: compat.Evaluation, app_version: str,
+                 project_name: str) -> None:
+        super().__init__("Project updated", parent, width=560)
+        body = Surface()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(_label(f"SlideMage {escape(app_version.lstrip('v'))} updated <b>{escape(project_name)}</b> "
+                                "when it opened it. Nothing more needs to be done.", rich=True))
+        for item in evaluation.applied:
+            layout.addWidget(_label(f"<b>{escape(item.change.title)}</b>", rich=True))
+            layout.addWidget(_label(item.change.description, q.PANEL_CAPTION))
+        oldest = evaluation.readable_from.lstrip("v")
+        layout.addWidget(_label(f"SlideMage versions before {oldest} can no longer read the project. Update "
+                                "SlideMage on every computer that opens it." if oldest else
+                                "Older SlideMage versions can no longer read the project. Update SlideMage on "
+                                "every computer that opens it."))
+        self.add_tab("", body)
+        ok = self.add_button("OK", kind="primary", role="accept")
+        ok.setDefault(True)

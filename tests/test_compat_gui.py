@@ -12,10 +12,10 @@ from slidemage import compat
 from slidemage.project import ProjectContext
 from slidemage import version as version_mod
 from slidemage.ui.dialogs import project_compat
-from slidemage.ui.dialogs.project_compat import CompatSheet
+from slidemage.ui.dialogs.project_compat import CompatSheet, ProjectUpdatedSheet
 from slidemage.ui.workspace import maintenance
 
-from test_compat import BREAKING, LOOK, MANUAL_FIX, make_project
+from test_compat import AUTO, BREAKING, LOOK, MANUAL_FIX, make_project
 
 
 def click(dialog, text):
@@ -65,6 +65,7 @@ def window(root, monkeypatch, changes, choice, logged):
             return 1
 
     monkeypatch.setattr(maintenance, "CompatSheet", FakeDialog)
+    monkeypatch.setattr(maintenance, "ProjectUpdatedSheet", FakeDialog)
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
     return SimpleNamespace(
@@ -106,3 +107,33 @@ def test_update_is_refused_while_a_source_has_edits_that_could_not_be_saved(tmp_
     win.centre.source.dirty_files = lambda: [object()]
     maintenance.check_project_compat(win)
     assert b"\\old" in (root / "decks" / "course.tex").read_bytes()
+
+
+def converted_project(tmp_path):
+    root = make_project(tmp_path)
+    (root / "media").mkdir()
+    (root / "media" / "store.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+def test_project_updated_notice_says_what_changed_and_from_which_version(tmp_path, qapp):
+    ev = compat.evaluate(converted_project(tmp_path), "v5.30.0", [AUTO])
+    sheet = ProjectUpdatedSheet(None, ev, "v5.30.0", "finance-2025")
+    assert [b.text() for b in sheet.findChildren(QPushButton)] == ["OK"]
+    text = texts(sheet)
+    assert "finance-2025" in text and "The store has a new format" in text
+    assert "SlideMage versions before 5.29.0 can no longer read the project" in text
+    review = texts(CompatSheet(None, ev, "v5.30.0", "finance-2025", review=True))
+    assert "SlideMage updated the project itself" in review and "Fix by hand" not in review
+
+
+def test_an_applied_change_is_told_once_without_the_compatibility_sheet(tmp_path, monkeypatch, qapp):
+    root = converted_project(tmp_path)
+    shown, logged = [], []
+    win = window(root, monkeypatch, [AUTO], project_compat.NOT_NOW, logged)
+    monkeypatch.setattr(maintenance, "CompatSheet", lambda *a, **k: shown.append("sheet"))
+    maintenance.check_project_compat(win)
+    assert not shown and logged == ["Project updated by SlideMage: The store has a new format."]
+    assert not compat.evaluate(root, "v5.30.0", [AUTO]).everything                 # not told again
+    maintenance.check_project_compat(win)
+    assert len(logged) == 1

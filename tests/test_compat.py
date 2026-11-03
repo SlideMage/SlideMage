@@ -52,6 +52,14 @@ MANUAL_FIX = Change("manual-only", "v5.30.0", compat.LAYOUT, "Layout", "Hand wor
 LOOK = Change("looks", "v5.30.0", APPEARANCE, "Looks different", "Bars are lower.")
 
 
+def converted(root: Path) -> list[Finding]:
+    return [Finding("media/store.json", 0, "converted")] if (root / "media" / "store.json").is_file() else []
+
+
+AUTO = Change("store-format", "v5.29.0", compat.LAYOUT, "The store has a new format", "Converted on open.",
+              detect=converted, automatic=True)
+
+
 @pytest.mark.parametrize("last_version, app_version", [
     ("v5.30.0", "v5.30.0"),
     ("v5.28.1", "v5.29.0"),
@@ -358,3 +366,39 @@ def test_version_order_across_the_renumbering():
     from slidemage.updater import parse_version as p
     assert p("v0.10.19.0") < p("v0.11.0") < p("v0.11.1") < p("v0.12.0") < p("v1.0.0")
     assert p("v10.19.0") == p("v0.10.19.0") and p("v0.9.4.0") > p("v8.69.0")
+
+
+def test_changes_slidemage_made_itself_are_a_notice_not_an_update(tmp_path):
+    root = make_project(tmp_path)
+    assert not compat.evaluate(root, "v5.30.0", [AUTO, BREAKING]).applied      # not converted: nothing to tell
+    (root / "media").mkdir()
+    (root / "media" / "store.json").write_text("{}", encoding="utf-8")
+    ev = compat.evaluate(root, "v5.30.0", [AUTO, MANUAL_FIX, LOOK])
+    assert [p.change.id for p in ev.applied] == ["store-format"]
+    assert [p.change.id for p in ev.loud] == ["manual-only"] and not ev.can_update
+    assert [p.change.id for p in ev.everything] == ["manual-only", "store-format", "looks"]
+    assert ev.readable_from == "v5.29.0"
+    assert "automatic update: done by SlideMage" in compat.report_markdown(root, ev, "v5.30.0")
+    assert compat.report_data(ev, "v5.30.0")["changes"][1]["applied_by_slidemage"] is True
+    compat.dismiss(root, ["store-format"])
+    assert not compat.evaluate(root, "v5.30.0", [AUTO]).everything
+
+
+@pytest.mark.parametrize("files, found", [
+    ({}, False),                                                                   # no image descriptions
+    ({"alt-text.json": '{"version": 3, "images": {}}'}, False),                    # made in format 3
+    ({"alt-text.json": '{"version": 2, "images": {}}'}, False),                    # not converted (yet)
+    ({"alt-text.json": "not json", "alt-text.v2.json": "{}"}, False),
+    ({"alt-text.json": '{"version": 3, "images": {}}', "alt-text.v2.json": "{}"}, True),
+])
+def test_image_descriptions_change_is_applied_once_the_store_was_converted(tmp_path, files, found):
+    root = make_project(tmp_path, "v0.13.22")
+    (root / "media").mkdir()
+    for name, text in files.items():
+        (root / "media" / name).write_text(text, encoding="utf-8")
+    change = next(c for c in compat.CHANGES if c.id == "image-descriptions-per-language")
+    ev = compat.evaluate(root, "v0.14.1", [change])
+    assert change.automatic and not ev.loud
+    assert [p.change.id for p in ev.applied] == (["image-descriptions-per-language"] if found else [])
+    if found:
+        assert ev.applied[0].findings[0].message.endswith("media/alt-text.v2.json.")

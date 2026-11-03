@@ -3477,3 +3477,9 @@ v0.14.0 (2026-11-02, direct request: the release with the new image store raises
 
 NEW: Version 0.14 marks the new form of the image descriptions.
 - Update SlideMage on every computer before opening a project with this version.
+
+v0.14.1 (2026-11-03, direct request: a change SlideMage makes itself gets a notice, not the compatibility sheet): v0.14.0 opened the Project compatibility sheet for the image descriptions' format 3 although SlideMage had already converted media/alt-text.json; Update project stayed disabled, since there was nothing to update, and only Don't ask again ended the sheet. A compat.py change can now be marked automatic: SlideMage made it itself when it opened the project, and its detector finds it done. Such a change is not on the start-up sheet; the new Project updated notice (ProjectUpdatedSheet in ui/dialogs/project_compat.py) says what was updated and that SlideMage versions before the change's version can no longer read the project, with an OK, and is shown once. The review under Project compatibility and the report say SlideMage made the change itself. The image descriptions change is the first: it is told once media/alt-text.json is in format 3 next to the old media/alt-text.v2.json, so a project without image descriptions or one made in format 3 hears nothing. docs/SlideMage.md names the notice; no manual slide describes the compatibility sheet, so the manual is unchanged. It replaces the release v0.14.0, which is taken back. Tests in tests/test_compat.py and tests/test_compat_gui.py.
+
+NEW: A plain notice when SlideMage updated the project itself.
+- When SlideMage converts something in a project on its own, it says so once, with an OK, and that older versions can no longer read the project.
+- The image descriptions' new format no longer opens the compatibility sheet with a disabled Update project button.
