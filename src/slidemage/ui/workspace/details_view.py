@@ -50,6 +50,7 @@ def _label(text: str, name: str) -> QLabel:
 class DetailsPane(Surface):
     duplicate_requested = Signal(str)   # the id-slug of the slide to duplicate into a deck
     open_requested = Signal(object)     # the Path of a slide file (a translation, a frozen version) to open in the Source view
+    renamed = Signal(str, str)          # (old, new id-slug) of a slide renamed here: its tabs follow its files
 
     def __init__(self, app, state: WorkspaceState, is_dirty: Callable[[Path], bool]) -> None:
         """`is_dirty(path)`: whether the Source view holds edits of that file that could not be saved (writing the others first)."""
@@ -242,6 +243,7 @@ class DetailsPane(Surface):
             QMessageBox.critical(self, "Rename slide failed", str(exc))
             return
         self.app.log(f"Renamed slide {old} -> {new} ({n_refs} deck reference(s) updated)")
+        self.renamed.emit(old, new)                  # a tab of the slide follows it (D11)
         self.app.refresh_open_deck_editors()
 
     def _duplicate(self) -> None:

@@ -140,6 +140,7 @@ class CentreColumn(QFrame):
         self.details = DetailsPane(app, state, self.unsaved)
         self.details.duplicate_requested.connect(self.duplicate_requested)
         self.details.open_requested.connect(self._open_from_details)
+        self.details.renamed.connect(self.retarget_slide)
         ratio = layout_settings.get(SPLIT_SETTING)
         self._split_ratio = (ratio if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
                              and 0.1 <= ratio <= 0.9 else DEFAULT_SPLIT)
@@ -323,6 +324,35 @@ class CentreColumn(QFrame):
     def shown_occurrence(self) -> Optional[tuple]:
         return self.shown_slide[1]
 
+    def tab_slide(self) -> Optional[tuple[Path, Optional[deck_outline.SlideRow]]]:
+        """(path, row) of the slide file tab on show, which the side panels follow (D9); None for the slide tab and the
+        tabs of files that are no slide, where they follow the focused slide. The row is `_tab_row`'s."""
+        tab = self.tabs.active
+        return (tab.path, self._tab_row(tab)) if tab.slide else None
+
+    def retarget_file(self, old: Path, new: Path) -> None:
+        """The file `old` was renamed to `new` (Rename in Details, Set language): its tab, if it has one, follows it
+        with its hold, instead of being closed as a tab whose file is gone (D11). The caller refreshes."""
+        tab = self.tabs.tab_for(old)
+        if tab is None or old == new:
+            return
+        tab.path = new
+        self.source.hold(new)
+        self.source.unhold(old)
+        self._update_strip()
+
+    def retarget_slide(self, old_id_slug: str, new_id_slug: str) -> None:
+        """A slide's id-slug changed and its files with it (slide_rename): every tab of its current file or a frozen
+        version follows its file (`retarget_file`)."""
+        for tab in self.tabs.tabs:
+            if tab.kind != FILE or not tab.slide or tab.path.parent != self.state.project.slides_dir:
+                continue
+            id_slug, version = self._file_slide(tab.path)
+            if id_slug == old_id_slug:
+                name = (slide_language.current_name(new_id_slug) if version is None
+                        else slide_language.frozen_name(new_id_slug, version))
+                self.retarget_file(tab.path, tab.path.parent / name)
+
     @property
     def slide_file_shown(self) -> bool:
         """A slide file tab is on show: its slide is not necessarily the focused one."""
@@ -400,8 +430,8 @@ class CentreColumn(QFrame):
         current = self.source.current
         if not show and (current is None or current.path != path):
             return self.source.edit_off_stage(path, change)
-        if show:
-            self.show_slide_tab()      # the slide is the Source view's, so it is the tab on show
+        if show and self._path != path:
+            self.show_slide_tab()      # the slide is the Source view's, so it is the tab on show (unless that has it)
         self.source.show_path(path)
         file = self.source.current
         if file is None or file.editor.is_read_only():
@@ -439,7 +469,10 @@ class CentreColumn(QFrame):
             + (f"; the previous content is archived as {archived.name}" if archived else ""))
         if open_current is not None:
             open_current.reload()
-        self.open_file(current)
+        if self.tabs.active.slide and self.tabs.tab_for(current) is not None:
+            self._show_file(current)   # from a slide file tab (the Versions panel follows it): that file's own tab
+        else:
+            self.open_file(current)
         self.versions_changed.emit()
 
     def _written(self, file) -> bool:

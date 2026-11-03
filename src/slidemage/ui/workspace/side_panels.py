@@ -89,6 +89,7 @@ class SidePanels(QWidget):
         self.setMaximumWidth(MAX_WIDTH)
         self.project = state.project
         self._state = state
+        self._actions = actions
         self._stale = False     # the shown panel is behind the state, as the card was hidden when it was due
         self._built_for: tuple | None = None    # the state the shown panel was last built for
         # Laid over the shown panel while its rebuild waits: it takes the clicks meant for the content of the slide
@@ -243,6 +244,11 @@ class SidePanels(QWidget):
         self._shield.show()
         self._rebuild.start()
 
+    def follow_tab(self) -> None:
+        """The centre shows another tab (the window connects it): a slide file tab's slide is the panels' (D9), so it
+        is handled as a change of slide; a tab that changes nothing for them (a .bib) rebuilds nothing."""
+        self._defer()
+
     def refresh(self) -> None:
         """Bring the shown panel up to date (at once; a hidden card is brought up to date when it is shown)."""
         self._rebuild.stop()
@@ -263,7 +269,8 @@ class SidePanels(QWidget):
 
     def _panel_state(self) -> tuple:
         s = self._state
-        return s.deck, s.focused_slide, s.focused_occurrence, s.view, s.language
+        tab = self._actions.tab_slide()
+        return s.deck, s.focused_slide, s.focused_occurrence, s.view, s.language, tab[0] if tab is not None else None
 
     def _open_menu(self) -> None:
         menu = PopoverMenu(self, min_width=270)

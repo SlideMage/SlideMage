@@ -387,7 +387,7 @@ def test_the_versions_panel_lists_current_and_frozen_versions_with_their_decks(c
     buttons(panel, "Open")[1].click()
     buttons(panel, "Make current")[0].click()
     slides = project.decks.parent / "slides"
-    assert window.opened == [slides / "abc-EN-Demo-v1-0-0.tex"]
+    assert window.opened == [(slides / "abc-EN-Demo-v1-0-0.tex", {"tab": True})]     # a tab of its own (D10)
     assert window.centre.restored == [slides / "abc-EN-Demo-v1-0-0.tex"]
 
 

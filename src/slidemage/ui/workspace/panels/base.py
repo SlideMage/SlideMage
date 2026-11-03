@@ -3,7 +3,7 @@
 """What every side panel is, and the few pieces its content is built from.
 
 A panel shows one aspect of the focused slide (WorkspaceState.focused_slide in the
-open deck): where it is used, its versions, its visibility. The host
+open deck), or of the slide file tab on show in the centre (PanelActions.tab_slide): where it is used, its versions, its visibility. The host
 (side_panels.py) calls `refresh()` when the deck, the slide, the view or the
 language changed, or an edit was made, and only for the panel that is shown, so
 a panel reads what it needs from the project when asked and keeps no copy.
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 
 from ....deck_editor import SlideCall
 from .... import deck_outline
-from ....slide_language import current_id_slug_for_bare_id, current_path_for_bare_id
+from ....slide_language import bare_id, call_for_slide_path, current_id_slug_for_bare_id, current_path_for_bare_id
 from ...kit import kit_qss as q
 from ...kit.widgets import ClickFrame, Surface, clear_layout
 from ..state import WorkspaceState
@@ -45,6 +45,11 @@ class PanelActions(NamedTuple):
     add_slide: Callable[..., object]                      # SlideList.add_slide
     translate: Callable[..., object]                      # the assistant's Translate task, on its task card (a language: into that)
     add_reference: Callable[[str], object]
+    # (path, row) of the slide file tab on show in the centre (row: CentreColumn._tab_row, None when the deck does not
+    # use the slide or the file is a frozen version); None for the slide tab, a file that is no slide, or no centre yet.
+    # The panels then show that slide instead of the focused one (centre-tabs.md, D9).
+    tab_slide: Callable[[], Optional[tuple]] = lambda: None
+    slide_renamed: Callable[[str, str], object] = lambda old, new: None   # (old, new id-slug): the slide's tabs follow it
 
 
 def text(string: str, name: str = q.DETAILS_VALUE) -> QLabel:
@@ -161,11 +166,20 @@ class SidePanel(Surface):
         """Fill `self.body` for the slide `id_slug` (the full id-slug, e.g. "1y8-EN-Intro")."""
         raise NotImplementedError
 
-    # -- the focused slide ----------------------------------------------------------
+    # -- the slide: the focused one, or the slide file tab's on show ----------------------
+
+    def _tab(self) -> Optional[tuple]:
+        """(path, row) of the slide file tab on show, None when the panels follow the focused slide."""
+        return self.actions.tab_slide()
+
+    def _slide_id(self) -> Optional[str]:
+        """The bare id of the slide the panel is for."""
+        tab = self._tab()
+        return bare_id(tab[0].name) if tab is not None else self.state.focused_slide
 
     def deck_calls(self) -> list[tuple[int, SlideCall]]:
-        """(1-based place, call) of every call of the focused slide in the open deck."""
-        state, slide = self.state, self.state.focused_slide
+        """(1-based place, call) of every call of the slide in the open deck."""
+        state, slide = self.state, self._slide_id()
         if state.deck is None or state.deck.is_test_deck or slide is None:
             return []
         return [(r.position, r.deck_call)
@@ -173,9 +187,13 @@ class SidePanel(Surface):
                 if r.matches(slide)]
 
     def _focused_row(self):
-        """The focused occurrence's row (the one a refresh resolved, while it builds)."""
+        """The row of the slide in the open deck (the one a refresh resolved, while it builds): the focused occurrence's,
+        or the slide file tab's."""
         if self._row_now is not None:
             return self._row_now[0]
+        tab = self._tab()
+        if tab is not None:
+            return tab[1]
         state = self.state
         if state.deck is None or state.deck.is_test_deck or state.focused_slide is None:
             return None
@@ -183,19 +201,30 @@ class SidePanel(Surface):
                                       occurrence_key=state.focused_occurrence, outline=state.outline)
 
     def id_slug(self) -> str:
-        """The focused slide's full id-slug: as the open deck calls it, else its current file's; "" for none."""
+        """The slide's full id-slug: as the open deck calls it, else its file's (the tab's, or the focused slide's
+        current file); "" for none."""
         row = self._focused_row()
         if row is not None:
             return row.call.id_slug
+        tab = self._tab()
+        if tab is not None:
+            try:
+                return call_for_slide_path(tab[0])[1]
+            except ValueError:
+                return ""
         slide = self.state.focused_slide
         return current_id_slug_for_bare_id(self.app.project, slide) or "" if slide else ""
 
     def slide_path(self) -> Optional[Path]:
-        """The file of the focused slide: what the open deck calls (a pinned version is its own
-        file), else the slide's current file."""
-        row = self._focused_row()
-        slide = self.state.focused_slide
-        path = self.app.project.slides_dir / row.call.source_filename if row else (current_path_for_bare_id(self.app.project, slide) if slide else None)
+        """The file of the slide: the slide file tab's, else what the open deck calls for the focused slide (a pinned
+        version is its own file), else the slide's current file."""
+        tab = self._tab()
+        if tab is not None:
+            path = tab[0]
+        else:
+            row = self._focused_row()
+            slide = self.state.focused_slide
+            path = self.app.project.slides_dir / row.call.source_filename if row else (current_path_for_bare_id(self.app.project, slide) if slide else None)
         return path if path is not None and path.is_file() else None
 
     def slide_text(self) -> str:
