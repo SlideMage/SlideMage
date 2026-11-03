@@ -140,8 +140,18 @@ def test_hidden_files_are_skipped_only_when_asked(folder):
 
 # -- packing and installing
 
+
+def _members(path):
+    """name -> content with line endings normalised to LF (the checkout's eol setting must not matter)."""
+    with zipfile.ZipFile(path) as zf:
+        infos = zf.infolist()
+        return {i.filename: zf.read(i).replace(b"\r\n", b"\n") for i in infos}, [i.filename for i in infos]
+
+
 def test_the_fixture_asset_is_the_packed_fixture_folder(tmp_path):
-    assert make_citation_package.pack(FIXTURE, tmp_path).read_bytes() == ASSET.read_bytes()
+    # Compared member by member with line endings normalised: .gitattributes checks text files out as CRLF
+    # (the packer stores the working copy's bytes), while the stored asset was packed from either ending.
+    assert _members(make_citation_package.pack(FIXTURE, tmp_path)) == _members(ASSET)
     expected = (FIXTURES / "sample-1.0.0.smcite.sha256").read_text(encoding="utf-8").split()[0]
     assert hashlib.sha256(ASSET.read_bytes()).hexdigest() == expected
 
@@ -430,6 +440,11 @@ def _compile(tmp_path: Path, deck: str, extra_texinputs: list[Path]) -> str:
     return (work / "deck.log").read_text(encoding="utf-8", errors="replace")
 
 
+def _unwrapped(log: str) -> str:
+    """The log with TeX's 79-column line wrapping undone (a long checkout path splits file names across lines)."""
+    return log.replace("\r", "").replace("\n", "")
+
+
 DECK = (BS + "documentclass[aspectratio=169]{beamer}\n" + BS + "input{SlideMage_template_greyscale}\n"
         + "%s" + BS + "SMUseBibliography\n" + BS + "newcommand{" + BS + "FooterText}{x}\n" + BS + "begin{document}\n" + BS + "begin{frame}x" + BS + "end{frame}\n"
         + BS + "end{document}\n")
@@ -448,10 +463,10 @@ def test_a_deck_chooses_an_installed_format_which_is_loaded_and_applied_once(pac
 def test_the_default_is_loaded_for_a_plain_deck_and_a_legacy_input_changes_nothing(tmp_path):
     plain = _compile(tmp_path, DECK % "", [])
     assert "SM-CITATION-SAMPLE" not in plain and not compiler.FATAL_ERROR_RE.search(plain), plain[-1500:]
-    assert "SlideMage_citation_default.tex" in plain
+    assert "SlideMage_citation_default.tex" in _unwrapped(plain)
     legacy = _compile(tmp_path, DECK % (BS + "input{SlideMage_bibliography_default}\n"), [])
     assert not compiler.FATAL_ERROR_RE.search(legacy), legacy[-1500:]
-    assert "SlideMage_bibliography_default.tex" in legacy
+    assert "SlideMage_bibliography_default.tex" in _unwrapped(legacy)
 
 
 @needs_tex
