@@ -1811,3 +1811,81 @@ def test_the_chat_and_the_tasks_act_on_the_slide_on_show(centre, files):
     assert centre.shown_slide == ("ccc", _row_key(centre, "ccc")) and centre.shown_occurrence == _row_key(centre, "ccc")
     centre.open_file(files.bib)
     assert centre.shown_slide[0] == "aaa" and not centre.slide_file_shown     # a file that is no slide: the focus
+
+
+# -- the side panels follow the slide file tab; a rename keeps the tab (centre-tabs.md, step 2b) ---------------------
+
+def test_tab_slide_is_the_slide_file_tab_on_show_and_none_elsewhere(centre, files):
+    assert centre.tab_slide() is None                                          # the slide tab
+    centre.open_file(files.ccc, tab=True, occurrence=_row_key(centre, "ccc"))
+    path, row = centre.tab_slide()
+    assert path == files.ccc and row is not None and row.call.id_slug == "ccc-DE-Drei"
+    centre.open_file(files.bib)
+    assert centre.tab_slide() is None                                          # a file that is no slide
+    frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
+    centre.open_file(frozen, tab=True)
+    assert centre.tab_slide() == (frozen, None)                               # a frozen version previews alone
+
+
+def test_save_notes_on_a_slide_file_tab_stays_on_that_tab(centre, files):
+    centre.open_file(files.ccc, tab=True)
+    tab = centre.tabs.active
+    assert centre.edit_slide_text(files.ccc, lambda text: text + "% from a panel\n", show=True)
+    assert centre.tabs.active is tab and centre.source.current.path == files.ccc
+    assert centre._slide_path == files.aaa                                    # the slide tab keeps its slide
+    assert "% from a panel" in centre.source.current.editor.text()
+    assert centre.edit_slide_text(files.aaa, lambda text: text + "% other\n", show=True)
+    assert centre.tabs.active is centre.tabs.slide_tab                         # another file: the slide tab's, as before
+
+
+def test_restoring_a_version_from_a_slide_file_tab_shows_that_files_tab(centre, files, project, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    current, frozen = project / "bbb-EN-Two-current.tex", project / "bbb-EN-Two-v1-0-0.tex"
+    current.write_text("\\setSlideVersion{1-1-0}\n" + FRAME % "Second now", encoding="utf-8")
+    centre.open_file(current, tab=True)
+    tab = centre.tabs.active
+    centre.open_file(files.bib)
+    centre.tabs.activate(tab)
+    centre.restore_version(frozen)                                             # the Versions panel's Make current
+    assert centre.tabs.active is tab and centre.state.focused_slide == "aaa"
+    assert "Second then" in current.read_text(encoding="utf-8")
+
+
+def test_a_renamed_slide_keeps_its_tab_and_its_hold(centre, files, project):
+    centre.open_file(files.ccc, tab=True)
+    tab = centre.tabs.active
+    new = project / "ccc-DE-Vier-current.tex"
+    files.ccc.rename(new)
+    centre.retarget_slide("ccc-DE-Drei", "ccc-DE-Vier")
+    centre.refresh()                                                           # would close a tab whose file is gone
+    assert tab in centre.tabs.tabs and centre.tabs.active is tab and tab.path == new and centre.path == new
+    assert centre.source.is_held(new) and not centre.source.is_held(files.ccc)
+    assert centre.tab_strip.tab_buttons()[1].label.toolTip() == str(new)
+
+
+def test_rename_in_details_on_a_slide_file_tab_keeps_the_tab(centre, files, project, monkeypatch):
+    from slidemage import slide_rename
+    from slidemage.ui.workspace import details_view
+
+    frozen = project / "ccc-DE-Drei-v1-0-0.tex"
+    frozen.write_text(FRAME % "Dritte damals", encoding="utf-8")
+
+    def rename(_ctx, old, slug):
+        for path in (files.ccc, frozen):
+            path.rename(path.with_name(path.name.replace("Drei", slug)))
+        return f"ccc-DE-{slug}"
+
+    monkeypatch.setattr(slide_rename, "count_references", lambda _ctx, id_slug: 1)
+    monkeypatch.setattr(slide_rename, "rename_slide_slug", rename)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(details_view.QInputDialog, "getText", lambda *a, **k: ("Vier", True))
+    centre.open_file(frozen, tab=True)
+    frozen_tab = centre.tabs.active
+    centre.open_file(files.ccc, tab=True)
+    tab = centre.tabs.active
+    centre.app.refresh_open_deck_editors = centre.refresh
+    centre.state.set_mode("details")
+    centre.details._rename()
+    assert centre.tabs.tabs == [centre.tabs.slide_tab, frozen_tab, tab] and centre.tabs.active is tab
+    assert tab.path == project / "ccc-DE-Vier-current.tex" and frozen_tab.path == project / "ccc-DE-Vier-v1-0-0.tex"
+    assert centre.state.focused_slide == "aaa"

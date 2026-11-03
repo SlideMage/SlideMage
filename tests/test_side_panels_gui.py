@@ -387,7 +387,7 @@ def test_the_versions_panel_lists_current_and_frozen_versions_with_their_decks(c
     buttons(panel, "Open")[1].click()
     buttons(panel, "Make current")[0].click()
     slides = project.decks.parent / "slides"
-    assert window.opened == [slides / "abc-EN-Demo-v1-0-0.tex"]
+    assert window.opened == [(slides / "abc-EN-Demo-v1-0-0.tex", {"tab": True})]     # a tab of its own (D10)
     assert window.centre.restored == [slides / "abc-EN-Demo-v1-0-0.tex"]
 
 
@@ -1173,3 +1173,140 @@ def test_a_pending_note_of_a_file_in_conflict_is_not_lost(window):
     file = window.centre.source.file_for(abc)
     assert file is not None and file.conflicted and "\\note{Panel note}" in file.editor.text()
     assert "Panel note" not in abc.read_text(encoding="utf-8") and window.state.dirty    # kept, and reported
+
+
+# -- the panels follow the slide file tab on show (docs/plans/centre-tabs.md, step 2b) ---------------------------------
+
+def settle(window):
+    wait_until(lambda: not window.side_panels._rebuild.isActive())
+
+
+def open_tab(window, name):
+    window.open_slide_editor(window.root / "slides" / name, keep_mode=True, tab=True)
+    settle(window)
+
+
+def test_the_panels_follow_a_slide_file_tab_and_leave_the_focus_alone(window):
+    abc, abd = (window.root / "slides" / f"{n}-current.tex" for n in ("abc-EN-Hello", "abd-EN-Second"))
+    panels = window.side_panels
+    assert panels.panels["notes"]._path == abc
+    open_tab(window, "abd-EN-Second-current.tex")
+    assert window.state.focused_slide == "abc" and window.centre.tab_slide()[0] == abd
+    assert panels.panels["notes"]._path == abd
+    panels.set_panel("versions")
+    versions = panels.panels["versions"]
+    assert versions.id_slug() == "abd-EN-Second" and versions.meta() == "none frozen"      # abc has one
+    panels.set_panel("visibility")
+    assert [c.id_slug for _, c in panels.panels["visibility"].deck_calls()] == ["abd-EN-Second"]
+    window.centre.show_slide_tab()                              # back on the slide tab: the focused slide again
+    settle(window)
+    assert panels.panels["visibility"].id_slug() == "abc-EN-Hello"
+
+
+def test_a_bib_tab_keeps_the_focused_slide_and_rebuilds_nothing(window, monkeypatch):
+    panels = window.side_panels
+    built = panels._built_for
+    rebuilt = []
+    monkeypatch.setattr(panels.panels["notes"], "build", lambda id_slug: rebuilt.append(id_slug))
+    window.open_slide_editor(window.project.bibliography_path, tab=True)
+    assert window.centre.tab_slide() is None and panels._panel_state() == built
+    assert not panels._rebuild.isActive() and not panels._shield.isVisible()
+    QTest.qWait(50)
+    assert rebuilt == []
+
+
+def test_a_frozen_version_tab_shows_its_own_file(window):
+    frozen = window.root / "slides" / "abc-EN-Hello-v1-0-0.tex"
+    window.open_slide_editor(frozen, tab=True)
+    settle(window)
+    notes = window.side_panels.panels["notes"]
+    assert window.centre.tab_slide() == (frozen, None)
+    assert notes.slide_path() == frozen and notes.id_slug() == "abc-EN-Hello" and notes._path == frozen
+
+
+def test_a_pending_note_is_written_to_its_own_slide_when_the_tab_changes(window):
+    abc, abd = (window.root / "slides" / f"{n}-current.tex" for n in ("abc-EN-Hello", "abd-EN-Second"))
+    abd_before = abd.read_bytes()
+    window.side_panels.panels["notes"]._new.setPlainText("Typed for abc")
+    open_tab(window, "abd-EN-Second-current.tex")
+    assert "\\note{Typed for abc}" in abc.read_text(encoding="utf-8") and abd.read_bytes() == abd_before
+    notes = window.side_panels.panels["notes"]
+    notes._new.setPlainText("Typed for abd")
+    window.centre.close_active_tab()                            # closing the tab is leaving its slide too
+    assert "\\note{Typed for abd}" in abd.read_text(encoding="utf-8")
+    assert "Typed for abd" not in abc.read_text(encoding="utf-8") and not window.state.dirty
+
+
+def test_save_notes_on_a_slide_file_tab_stays_on_the_tab(window):
+    abd = window.root / "slides" / "abd-EN-Second-current.tex"
+    open_tab(window, "abd-EN-Second-current.tex")
+    tab = window.centre.tabs.active
+    notes = window.side_panels.panels["notes"]
+    notes._new.setPlainText("Saved on the tab")
+    notes._save.click()
+    assert window.centre.tabs.active is tab and window.centre.path == abd
+    assert "\\note{Saved on the tab}" in abd.read_text(encoding="utf-8")
+    assert window.state.focused_slide == "abc" and window.centre._slide_path.name == "abc-EN-Hello-current.tex"
+
+
+def test_a_deck_edit_from_a_panel_on_a_tab_leaves_the_slide_lists_selection(window):
+    open_tab(window, "abd-EN-Second-current.tex")
+    window.side_panels.set_panel("visibility")
+    visibility = window.side_panels.panels["visibility"]
+    ((_place, call),) = visibility.deck_calls()
+    assert call.id_slug == "abd-EN-Second"
+    visibility._set(call, "instructor", False)                 # Hide abd in the instructor view
+    settle(window)
+    deck = window.state.deck.path.read_text(encoding="utf-8")
+    assert "{abd-EN-Second}" in deck and "\\slide{abc-EN-Hello}" in deck and "\\slide{abd-EN-Second}" not in deck
+    assert window.state.focused_slide == "abc" and window.centre.tab_slide()[0].name == "abd-EN-Second-current.tex"
+
+
+def test_versions_open_of_a_frozen_version_always_gives_it_a_tab(window):
+    frozen = window.root / "slides" / "abc-EN-Hello-v1-0-0.tex"
+    window.side_panels.set_panel("versions")
+    buttons(window.side_panels.panels["versions"], "Open")[1].click()        # from the slide tab, too (D10)
+    tab = window.centre.tabs.active
+    assert tab.kind == "file" and tab.path == frozen and window.state.focused_slide == "abc"
+
+
+def test_rename_and_set_language_keep_the_slide_file_tab(window, monkeypatch):
+    from slidemage.ui.workspace import details_view
+
+    slides = window.root / "slides"
+    monkeypatch.setattr(QMessageBox, "question", lambda *a: QMessageBox.StandardButton.Yes)
+    monkeypatch.setattr(details_view.QInputDialog, "getText", lambda *a, **k: ("Zweite", True))
+    open_tab(window, "abd-EN-Second-current.tex")
+    tab = window.centre.tabs.active
+    window.state.set_mode("details")
+    window.centre.details._rename()
+    renamed = slides / "abd-EN-Zweite-current.tex"
+    assert renamed.is_file() and tab in window.centre.tabs.tabs and tab.path == renamed
+    assert window.centre.tabs.active is tab and window.centre.path == renamed
+    settle(window)
+    language = window.side_panels.panels["language"]
+    window.side_panels.set_panel("language")
+    assert language.id_slug() == "abd-EN-Zweite"
+    language._set_language("abd-EN-Zweite", "DE")
+    settle(window)
+    german = slides / "abd-DE-Zweite-current.tex"
+    assert german.is_file() and tab in window.centre.tabs.tabs and tab.path == german
+    assert window.centre.tabs.active is tab and language.id_slug() == "abd-DE-Zweite"
+    assert window.state.focused_slide == "abc"
+
+
+def test_language_open_gives_the_other_language_a_tab_only_from_a_slide_file_tab(column, project):
+    panels, state, window = column
+    slides = project.decks.parent / "slides"
+    german = slides / "ddd-DE-Beispiel-current.tex"
+    (slides / "abc-EN-Demo-current.tex").write_text("%% DE translation: ddd-DE-Beispiel\n" + FRAME)
+    german.write_text("%% Translation of: abc-EN-Demo\n" + FRAME.replace("Demo", "Beispiel"))
+    state.set_focused_slide("abc")
+    panel = shown(panels, "language")
+    buttons(panel, "Open")[0].click()
+    assert window.opened == [german]                                           # the slide tab: as before
+    row = panel._focused_row()
+    panel.actions = panel.actions._replace(tab_slide=lambda: (slides / "abc-EN-Demo-current.tex", row))
+    panel.refresh()
+    buttons(panel, "Open")[0].click()
+    assert window.opened[1] == (german, {"tab": True, "occurrence": row.key})

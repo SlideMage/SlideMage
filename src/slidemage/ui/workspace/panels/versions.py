@@ -99,7 +99,13 @@ class SlideVersions(SidePanel):
 
     def _open(self, path: Path) -> None:
         if path.is_file():
-            self.app.open_slide_editor(path)
+            # A frozen version always gets a tab of its own, so that it and the current slide can be compared by
+            # switching (D10, as Details' Open); the file of the slide file tab on show stays in that tab.
+            tab = self._tab()
+            if not slide_language.is_current_file(path) or (tab is not None and tab[0] == path):
+                self.app.open_slide_editor(path, tab=True)
+            else:
+                self.app.open_slide_editor(path)
         else:
             QMessageBox.warning(self, "Version not found", f"{path.name} no longer exists.")
             self.refresh()
