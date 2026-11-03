@@ -119,10 +119,11 @@ class DeckProgress:
     failed: int = 0
     off: bool = False                               # the deck is left out of the background work
     views: dict = field(default_factory=dict)       # view -> [total, fresh, failed]
+    blocked: int = 0                                # its template is nowhere to be found: not rendered (see scan)
 
     @property
     def left(self) -> int:
-        return self.total - self.fresh - self.failed
+        return self.total - self.fresh - self.failed - self.blocked
 
     @property
     def percent(self) -> float:
@@ -130,7 +131,7 @@ class DeckProgress:
 
     @property
     def up_to_date(self) -> bool:
-        return not self.off and self.left == 0 and self.failed == 0
+        return not self.off and self.left == 0 and self.failed == 0 and self.blocked == 0
 
     def count(self, view: str, kind: int) -> None:
         """Count one unit of `view`: kind 0 = seen, 1 = fresh, 2 = failed."""
@@ -144,6 +145,12 @@ class Progress:
     paused_because: Optional[str] = None            # why nothing runs (the gate's reason), if anything is left
     failures: int = 0
     scanned_at: float = 0.0
+    missing_templates: dict = field(default_factory=dict)   # template key -> decks using it that cannot find it
+
+    @property
+    def blocked(self) -> int:
+        """Renders held back because their deck's template is missing (not counted as left or failed)."""
+        return sum(d.blocked for d in self.decks if not d.off)
 
     @property
     def left(self) -> int:
@@ -176,6 +183,12 @@ class Progress:
 
 class Cancelled(RuntimeError):
     pass
+
+
+def _template_was_missing(failure: Optional[dict], template: str) -> bool:
+    """Whether a stored failure is TeX not finding the template's file (the template is there now)."""
+    error = (failure or {}).get("error") or ""
+    return f"\\input{{{slide_snapshot.TEMPLATE_PREFIX}{template}}}" in error and "Emergency stop" in error
 
 
 class BackgroundRenderer:
@@ -388,6 +401,11 @@ class BackgroundRenderer:
         single: set[str] = set()
         counted: set[str] = set()
         usage = {u["deck"]: u for u in self.store.deck_usage()}
+        # A deck whose template file is in neither the project, the framework nor an installed theme fails every
+        # render at its \input (a theme installed on another computer, a template file deleted): its units are held
+        # back and the template is named, instead of piling up failures (v0.14.1).
+        templates = set(slide_snapshot.available_templates(self.ctx.root))
+        missing: dict[str, list[str]] = {}
         for deck_rank, deck in enumerate(self.ordered_decks()):
             progress = DeckProgress(deck.name)
             decks_progress.append(progress)
@@ -405,7 +423,16 @@ class BackgroundRenderer:
                             single.add(unit.label)      # typeset in its deck's compile, not in a batch with the others
                         progress.total += 1
                         progress.count(view, 0)
+                        if unit.template not in templates:
+                            progress.blocked += 1
+                            decks = missing.setdefault(unit.template, [])
+                            if deck.name not in decks:
+                                decks.append(deck.name)
+                            continue
                         found = self.resolver.lookup(unit)
+                        if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
+                            self.store.forget_failure(found.key)       # it failed only for want of the template
+                            found = self.resolver.lookup(unit)
                         if found.final and found.state is not render_key.Freshness.FAILED:
                             progress.fresh += 1
                             progress.count(view, 1)
@@ -448,7 +475,7 @@ class BackgroundRenderer:
             # ended during the scan stayed "working" until the next one started, and in front of the window none does:
             # the chip said "Preparing previews" with nothing running (v8.52.4).
             self.progress = Progress(decks_progress, self._working[0] if self._working else None, None,
-                                     failures, self._clock())
+                                     failures, self._clock(), missing)
         return plan
 
     def store_failures_count(self) -> int:

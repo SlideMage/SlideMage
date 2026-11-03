@@ -1617,6 +1617,11 @@ with its three versions and what is outstanding, the disk space the stored previ
 its background previews on or off, and **Pause**, **Render now** and **Try failed slides again**. The status text
 says how many are left (it can leave the open deck out), "Preview rendering paused" with the reason while paused,
 and once every preview is rendered "All previews are up to date." as plain green text; on battery nothing runs.
+If a deck's template is nowhere to be found (its theme is not installed on this computer and the project has no
+copy of its `SlideMage_template_<key>.tex`), the status text turns red, "Template <key> not found · previews can't
+be rendered", and the window says which decks it holds back and how to fix it: install the theme under Settings →
+Plugins → Themes (themes are installed per computer) or put the template file in the project folder. Those decks'
+previews are rendered once the template is found.
 Contents, agenda and section slides, which depend on the whole deck, get their preview when you select them and,
 once the deck has been compiled, in the background too.
 

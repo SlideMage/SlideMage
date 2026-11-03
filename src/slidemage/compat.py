@@ -20,7 +20,10 @@ one :class:`Change` in :data:`CHANGES`, added in the same commit as the change
   old name with ``None``. The update is all or nothing: if a file cannot be
   written, everything already written is put back. It must be idempotent.
   decks/#workdeck.tex is not exempt;
-- ``fix``: how to fix it by hand (before/after), for the report.
+- ``fix``: how to fix it by hand (before/after), for the report;
+- ``automatic``: SlideMage made the change itself when it opened the project (v0.14.1), so there is nothing to
+  update or fix: ``detect`` finds it done, and the user gets a one-time notice that the project was updated and
+  that older versions can no longer read it, instead of the dialog below.
 
 State lives in the project's .slidemage/project.json, key "compat":
 ``checked_version`` (the version whose changes the user has dealt with; starts
@@ -78,6 +81,20 @@ def _detect_omitslide(root: Path) -> list[Finding]:
                                         text.count("\n", 0, match.start()) + 1,
                                         "Instructor-only slide is skipped in student deck versions."))
     return findings
+
+
+def _detect_converted_image_descriptions(root: Path) -> list[Finding]:
+    """v0.13.30: media/alt-text.json in format 3 next to the older file alt_images.convert_store kept."""
+    media = root / "media"
+    try:
+        version = json.loads((media / "alt-text.json").read_text(encoding="utf-8")).get("version")
+    except (OSError, ValueError, AttributeError):
+        return []
+    if not isinstance(version, int) or version < 3:
+        return []
+    kept = sorted(media.glob("alt-text.v[12].json"))
+    return [Finding("media/alt-text.json", 0, f"Converted to format 3; the old file is media/{kept[0].name}.")
+            ] if kept else []
 
 
 # v10.7.0: these names are derived by the base from the hooks and the font, and the setup layer stops a
@@ -364,6 +381,8 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
         "it the first time it opens the project and keeps the old file as media/alt-text.v2.json. An older "
         "SlideMage shows no descriptions in the new file and cannot change them."),
     fix="Nothing to change in the project. Update SlideMage on every computer before opening the project there.",
+    detect=_detect_converted_image_descriptions,
+    automatic=True,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
@@ -381,12 +400,19 @@ class Pending:
 class Evaluation:
     loud: list[Pending] = field(default_factory=list)      # shown in the dialog
     quiet: list[Pending] = field(default_factory=list)     # appearance only
+    applied: list[Pending] = field(default_factory=list)   # Change.automatic, done: a one-time notice
     newer_notice: str = ""     # "vX": the project was used by a newer SlideMage
     environment_notes: list[str] = field(default_factory=list)   # old environment variables still set
 
     @property
     def everything(self) -> list[Pending]:
-        return self.loud + self.quiet
+        return self.loud + self.applied + self.quiet
+
+    @property
+    def readable_from(self) -> str:
+        """The oldest SlideMage that still reads the project after the applied changes ("" for none)."""
+        versions = [p.change.since for p in self.applied if _tuple(p.change.since) is not None]
+        return max(versions, key=_tuple, default="")
 
     @property
     def can_update(self) -> bool:
@@ -461,7 +487,10 @@ def evaluate(root: Path, app_version: str, changes: Optional[list[Change]] = Non
             if not findings:
                 continue                       # nothing in this project is affected
         pending = Pending(change, findings)
-        (result.loud if change.severity in LOUD else result.quiet).append(pending)
+        if change.automatic:
+            result.applied.append(pending)
+        else:
+            (result.loud if change.severity in LOUD else result.quiet).append(pending)
 
     highest = project.read_project_json(root).get("highest_app_version", "")
     top, ignored = _tuple(highest), _tuple(_state(root).get("ignore_newer", ""))
@@ -567,7 +596,8 @@ def report_markdown(root: Path, evaluation: Evaluation, app_version: str) -> str
         c = item.change
         lines += [f"## {c.title}", "",
                   f"- id: `{c.id}`, since {c.since}, {SEVERITY_LABELS.get(c.severity, c.severity)}",
-                  f"- automatic update: {'yes (Update project)' if c.migrate else 'no, fix by hand'}",
+                  "- automatic update: " + ("done by SlideMage when it opened the project" if c.automatic
+                                            else "yes (Update project)" if c.migrate else "no, fix by hand"),
                   "", c.description, ""]
         if c.fix:
             lines += ["**Fix**", "", c.fix, ""]
@@ -587,6 +617,7 @@ def report_data(evaluation: Evaluation, app_version: str) -> dict:
             "id": p.change.id, "since": p.change.since, "severity": p.change.severity,
             "title": p.change.title, "description": p.change.description, "fix": p.change.fix,
             "automatic_update": p.change.migrate is not None,
+            "applied_by_slidemage": p.change.automatic,
             "findings": [{"file": f.file, "line": f.line, "message": f.message} for f in p.findings],
         } for p in evaluation.everything],
     }

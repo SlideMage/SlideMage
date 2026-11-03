@@ -196,7 +196,11 @@ deck switcher offers the rest). From top to bottom and left to right:
   stored previews, a tick per deck that turns its background previews on or off, Pause, Render now and Try failed
   slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
   done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
-  slides on selection and in the background).
+  slides on selection and in the background). A deck whose template key is not among
+  `slide_snapshot.available_templates()` (no installed theme, no copy in the project) is held back by
+  `BackgroundRenderer.scan` (`DeckProgress.blocked`, `Progress.missing_templates`) instead of failing every render;
+  the status text turns red and the window explains it, and a failure stored for want of the template is forgotten
+  once the template is found (v0.14.1).
 - **Plugins** (v8.71, `plugins/`, `ui/dialogs/settings_plugins.py`, `plugin_offer.py`): Settings → Extensions and Help →
   Extensions… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
   **Install from file…**); the first-start sheet offers them once, preselecting a plugin for a feature the user
@@ -209,7 +213,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   entry is a registered command. A list of slides or text matches that is cut short ends with **Show all**.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
   settings (the CampusOnline plugin adds its Admin slides tab), Housekeeping, Snapshots, Tags, Import PPTX/ODP, About and
-  the project-compatibility sheets.
+  the project-compatibility sheets (a change SlideMage made itself when it opened the project, such as the
+  image descriptions' format 3, gets a one-time *Project updated* notice with an OK instead).
 
 Archiving a deck (see below) asks for confirmation before moving anything; so do the
 Housekeeping tools that empty `pdf/` or `.build/` (refused mid-compile, since a running

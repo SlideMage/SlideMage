@@ -13,7 +13,8 @@
 On start, when a change of this SlideMage that may break the project is
 pending: Update project / Show report / Not now (asks again next time) /
 Don't ask again (per change). Appearance-only changes never pop up; they are
-listed under ⋮ → Project compatibility.
+listed under ⋮ → Project compatibility. Changes SlideMage made itself when it
+opened the project get a one-time notice with an OK instead (ProjectUpdatedSheet).
 
 Plain functions of the window: each takes the WorkspaceWindow (window.py) first, which
 provides `project`, `log`, `update_check_done`, `compiling` and `relaunch_with_project()`.
@@ -41,7 +42,7 @@ from ..dialogs.about import AboutSheet
 from ..dialogs.housekeeping import ARCHIVE_PAGE, LIST_PAGE, HousekeepingJobs, HousekeepingSheet
 from ..dialogs.open_project import NewerProjectSheet
 from ..dialogs.plugin_offer import PluginOfferSheet
-from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet
+from ..dialogs.project_compat import DONT_ASK, MARK_READ, UPDATE, CompatSheet, ProjectUpdatedSheet
 from ..dialogs.settings_plugins import ask_citation_update, ask_theme_update, download_release, install_downloaded
 from . import compile_actions
 
@@ -84,6 +85,8 @@ def check_project_compat(window) -> None:
         window.log(note)
     if evaluation.newer_notice:
         compat_newer_notice(window, evaluation.newer_notice, app_version)
+    if evaluation.applied:
+        compat_applied_notice(window, evaluation, app_version)
     if evaluation.loud:
         show_compat(window, evaluation, review=False)
 
@@ -104,6 +107,13 @@ def compat_newer_notice(window, highest: str, app_version: str) -> None:
     sheet.exec()
     if sheet.choice == NewerProjectSheet.NEVER:
         compat.ignore_newer(window.project.root, highest)
+
+
+def compat_applied_notice(window, evaluation, app_version: str) -> None:
+    """Tell once what SlideMage updated by itself; however the notice is closed, it is not shown again."""
+    ProjectUpdatedSheet(window, evaluation, app_version, window.project.root.name).exec()
+    compat.dismiss(window.project.root, [p.change.id for p in evaluation.applied])
+    window.log("Project updated by SlideMage: " + "; ".join(p.change.title for p in evaluation.applied) + ".")
 
 
 def compat_report(window, evaluation) -> None:

@@ -30,3 +30,6 @@ class Change:
     fix: str = ""
     detect: Optional[Callable[[Path], list[Finding]]] = None
     migrate: Optional[Callable[[Path], dict[Path, Optional[bytes]]]] = None
+    # SlideMage made the change itself when it opened the project and nothing is left to do: a one-time notice
+    # that older versions can no longer read the project, not the compatibility sheet. `detect` finds it done.
+    automatic: bool = False
