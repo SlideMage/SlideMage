@@ -3504,3 +3504,8 @@ v0.14.4 (2026-11-03, step 2 of docs/plans/render-store-cleanup.md: stale renders
 NEW: Old previews no longer pile up.
 - When a slide or a deck's preamble is edited and its preview rendered again, the old preview is deleted.
 - Previews left over from earlier edits are cleared once after the update.
+
+v0.14.5 (2026-11-03, step 3 of docs/plans/render-store-cleanup.md: the double renders stop): A slide called twice in one view of a deck with one key, two \slidestep calls say, has two units with one key and two page numbers. The render of one was fresh but for its page number for the other, so the sweep refreshed it last, which made the first one out of step, and each idle pass rendered both again, for ever and unseen, since the status counts such a slide as fresh and stayed at 100 %. BackgroundRenderer.scan now counts the units of each key and refreshes a page number only when no other unit of the scan has the same key. Such a slide keeps one render, with whichever page number it was rendered with, decision D3 of the plan; the footer number of the other call may be off in the Preview. A slide alone with its key still has a moved page number refreshed after everything else. Tests in tests/test_background_renders.py.
+
+NEW: Slides shown twice in a deck are no longer rendered again and again.
+- A slide called twice in a deck keeps one preview, so the background work ends when the status says it is done.

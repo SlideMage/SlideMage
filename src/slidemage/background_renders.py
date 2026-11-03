@@ -393,8 +393,11 @@ class BackgroundRenderer:
 
     def scan(self) -> list:
         """Everything outstanding, in the order it is rendered: [(sort key, unit)], and the progress counts.
-        Units that are only out of step in their page number come after all the others. A slide that failed and is
-        not tried again by itself is tried once more, on its own, when nothing else is outstanding.
+        Units that are only out of step in their page number come after all the others, unless another unit has the
+        same key: a slide called twice in one deck with one key keeps one render, with whichever page number it has
+        (docs/plans/render-store-cleanup.md, D3); refreshing it would make the other call's render out of step, and so
+        on for ever. A slide that failed and is not tried again by itself is tried once more, on its own, when nothing
+        else is outstanding.
 
         It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
         longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
@@ -406,6 +409,7 @@ class BackgroundRenderer:
         decks_progress: list[DeckProgress] = []
         first: list = []
         numbering: list = []
+        key_count: dict[str, int] = {}      # how many units of the scan have each key
         last: list = []                     # failed, not tried after the others yet: (rank, unit, progress, view)
         single: set[str] = set()
         counted: set[str] = set()
@@ -446,6 +450,8 @@ class BackgroundRenderer:
                         if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
                             self.store.forget_failure(found.key)       # it failed only for want of the template
                             found = self.resolver.lookup(unit)
+                        if found.key is not None:
+                            key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable and found.record is not None and found.record.get("key") == found.key
                         deck_clean = self._note_key(unit, found.key, own, keys_now, rendered) and deck_clean
                         if found.final and found.state is not render_key.Freshness.FAILED:
@@ -465,7 +471,7 @@ class BackgroundRenderer:
                             progress.fresh += 1                  # right, apart from its page number: refreshed last
                             progress.count(view, 1)
                             counted.add(unit.label)
-                            numbering.append(((deck_rank, language_rank, view_rank, order), unit))
+                            numbering.append(((deck_rank, language_rank, view_rank, order), unit, found.key))
                         else:
                             first.append(((deck_rank, language_rank, view_rank, order), unit))
             if deck_clean:
@@ -476,7 +482,7 @@ class BackgroundRenderer:
         off = self.decks_off()
         decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
                            if not d.archived and not d.is_test_deck and d.name in off]
-        plan = first + [((1000 + k[0],) + k[1:], u) for k, u in numbering]
+        plan = first + [((1000 + k[0],) + k[1:], u) for k, u, key in numbering if key_count.get(key) == 1]
         last_try: set[str] = set()
         for rank, unit, progress, view in last:
             if plan:                        # the others first: until then it counts as failed

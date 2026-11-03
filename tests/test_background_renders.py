@@ -1083,3 +1083,42 @@ def test_drop_stale_keeps_every_key_it_is_told_to_and_whatever_was_rendered_afte
     assert store.drop_stale(lambda unit: True, {"1" * 64, "2" * 64}, {"deck"}, time.time(), label=label) == 1
     assert store._exists(one) and store._exists(two) and not store._exists(old) and store._exists(young)
     assert store.drop_stale(lambda unit: True, set(), {"another deck"}, time.time()) == 0      # not a deck read in full
+
+
+# -- the double renders stop (docs/plans/render-store-cleanup.md, step 3) ----------------------------------------------
+
+def _one_pass(r, label):
+    """Render what a scan plans for `label`, as the sweep would; returns how many units it planned."""
+    planned = [unit for _, unit in r.scan() if unit.label == label]
+    for unit in planned:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    return len(planned)
+
+
+def test_a_slide_called_twice_with_one_key_has_nothing_outstanding_after_one_pass(project, store, raster):
+    # Two \slidestep calls of one slide in one view: one key, two page numbers. Each render was out of step in its
+    # page number for the other call, so each pass rendered it again, for ever, with the status at 100 %.
+    tex = FakeTeX(project, pages=1)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    twins = [u for u in background_renders.deck_units(project, deck, "instructor", "EN") if u.id_slug == "1mu-EN-Slidestep-Demo"]
+    assert len(twins) == 2 and twins[0].frame_number != twins[1].frame_number
+    assert r.resolver.fast_key(twins[0]) == r.resolver.fast_key(twins[1])
+    label = twins[0].label
+    assert _one_pass(r, label) >= 1
+    rendered = len(tex.calls)
+    for _ in range(3):
+        assert _one_pass(r, label) == 0
+    assert len(tex.calls) == rendered
+    assert len(store.find(r.resolver.fast_key(twins[0]))) == 1          # one render, whichever page number it has
+    states = sorted(r.resolver.lookup(u).state.value for u in twins)
+    assert states == sorted([Freshness.FRESH.value, Freshness.FRESH_NUMBERING_DIFFERS.value])
+
+
+def test_a_slide_alone_with_its_key_still_has_a_moved_page_number_refreshed(project, store, raster):
+    from dataclasses import replace
+    r = make(project, store, raster, tex=FakeTeX(project, pages=1))
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[3]
+    r.render_unit(replace(unit, frame_number=unit.frame_number + 1), background_renders.ORIGIN_BACKGROUND, CancelToken())
+    planned = [(rank, u) for rank, u in r.scan() if u.label == unit.label]
+    assert len(planned) == 1 and planned[0][0][0] >= 1000                 # refreshed, after everything else
