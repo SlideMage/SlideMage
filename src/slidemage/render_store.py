@@ -41,6 +41,7 @@ ORIGIN_COMPILE = "compile"      # the last page of a slide, taken from a deck co
 BG_SUFFIX = ".bg"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30
+LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of drop_stale(None, ...) ran in this store
 THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
 
 SCHEMA = """
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS texsets (digest TEXT PRIMARY KEY, files TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS deck_usage (
     deck TEXT PRIMARY KEY, last_opened REAL NOT NULL, open_count INTEGER NOT NULL,
     last_slide TEXT, last_view TEXT, last_language TEXT);
+CREATE TABLE IF NOT EXISTS store_flags (name TEXT PRIMARY KEY, done_at REAL NOT NULL);
 """
 
 DETERMINISTIC = "deterministic"
@@ -290,6 +292,48 @@ class RenderStore:
             self.db.execute("DELETE FROM deck_usage WHERE deck=?", (deck,))
             self.db.commit()
         return removed
+
+    def drop_stale(self, in_scope: Callable[[str], bool], keep_keys: set, clean_decks: set, before: float,
+                   label: Optional[str] = None) -> int:
+        """Delete the renders whose key no deck uses any more (docs/plans/render-store-cleanup.md, step 2), of the units
+        `in_scope(label)` says the caller knows every current key of (`label`: only that unit's). `keep_keys` are the keys
+        the last scan found for every unit of the decks in `clean_decks`, the decks it read in full. A render is deleted
+        only when its key is not in `keep_keys`, it was rendered before `before` (the scan's start: a render stored after
+        it may be of a key the scan did not see yet), and every deck it belongs to is in `clean_decks` (a deck that could
+        not be read, is switched off or is not swept keeps what it has; a render of no deck is left to the disk limit).
+
+        Never by label alone: a slide called twice in a deck in two ways has one label and two current keys, and both
+        are in `keep_keys`. Returns how many were deleted."""
+        deleted = 0
+        with self._lock:
+            columns = "SELECT name, fast_key, unit, rendered_at, decks FROM renders"
+            rows = (self.db.execute(columns + " WHERE unit=?", (label,)) if label is not None
+                    else self.db.execute(columns)).fetchall()
+            for name, key, unit, rendered_at, decks in rows:
+                if key in keep_keys or rendered_at >= before or not in_scope(unit):
+                    continue
+                try:
+                    deck_list = json.loads(decks)
+                except ValueError:
+                    continue
+                if not deck_list or not set(deck_list) <= clean_decks:
+                    continue
+                shutil.rmtree(object_dir(self.root, name), ignore_errors=True)
+                self.db.execute("DELETE FROM renders WHERE name=?", (name,))
+                deleted += 1
+            if deleted:
+                self.db.commit()
+        return deleted
+
+    def flag(self, name: str) -> bool:
+        """Whether the one-off task `name` ran in this store (set_flag)."""
+        with self._lock:
+            return self.db.execute("SELECT 1 FROM store_flags WHERE name=?", (name,)).fetchone() is not None
+
+    def set_flag(self, name: str) -> None:
+        with self._lock:
+            self.db.execute("INSERT OR REPLACE INTO store_flags VALUES (?,?)", (name, self._clock()))
+            self.db.commit()
 
     def clear(self) -> None:
         with self._lock:

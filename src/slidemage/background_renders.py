@@ -233,6 +233,7 @@ class BackgroundRenderer:
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
         self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
         self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
+        self._current: Optional[_CurrentKeys] = None    # what the last scan found current (stale renders go, _drop_stale)
 
     def _soon(self, deck: Deck) -> bool:
         """A loaded plugin's rule (a session soon, say)."""
@@ -393,7 +394,15 @@ class BackgroundRenderer:
     def scan(self) -> list:
         """Everything outstanding, in the order it is rendered: [(sort key, unit)], and the progress counts.
         Units that are only out of step in their page number come after all the others. A slide that failed and is
-        not tried again by itself is tried once more, on its own, when nothing else is outstanding."""
+        not tried again by itself is tried once more, on its own, when nothing else is outstanding.
+
+        It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
+        longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
+        started = time.time()               # the renders' own clock (meta "rendered_at"), not the injected one
+        keys_now: set[str] = set()          # every unit's key, of the decks read in full
+        clean_decks: set[str] = set()       # the decks read in full: every view and language, every unit's key
+        rendered: dict[str, bool] = {}      # label -> each of its units has a render of its own current key
+        scopes: set[tuple] = set()          # (deck, view, language) read
         decks_progress: list[DeckProgress] = []
         first: list = []
         numbering: list = []
@@ -410,6 +419,7 @@ class BackgroundRenderer:
             progress = DeckProgress(deck.name)
             decks_progress.append(progress)
             start_at = usage.get(deck.name, {}).get("last_slide")
+            deck_clean = True
             for language_rank, language in enumerate(self.languages_for(deck)):
                 for view_rank, view in enumerate(self.versions_for(deck)):
                     ready = _Once(lambda deck=deck, view=view, language=language:
@@ -417,13 +427,16 @@ class BackgroundRenderer:
                     try:
                         units = deck_units(self.ctx, deck, view, language, start_at, ready)
                     except Exception:  # noqa: BLE001 -- a deck that cannot be read now is tried again next time
+                        deck_clean = False          # and none of its renders is deleted
                         continue
+                    scopes.add((deck.name, view, language))
                     for order, unit in enumerate(units):
                         if unit.context:
                             single.add(unit.label)      # typeset in its deck's compile, not in a batch with the others
                         progress.total += 1
                         progress.count(view, 0)
                         if unit.template not in templates:
+                            deck_clean = self._note_key(unit, self.resolver.fast_key(unit), False, keys_now, rendered) and deck_clean
                             progress.blocked += 1
                             decks = missing.setdefault(unit.template, [])
                             if deck.name not in decks:
@@ -433,6 +446,8 @@ class BackgroundRenderer:
                         if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
                             self.store.forget_failure(found.key)       # it failed only for want of the template
                             found = self.resolver.lookup(unit)
+                        own = found.usable and found.record is not None and found.record.get("key") == found.key
+                        deck_clean = self._note_key(unit, found.key, own, keys_now, rendered) and deck_clean
                         if found.final and found.state is not render_key.Freshness.FAILED:
                             progress.fresh += 1
                             progress.count(view, 1)
@@ -453,6 +468,11 @@ class BackgroundRenderer:
                             numbering.append(((deck_rank, language_rank, view_rank, order), unit))
                         else:
                             first.append(((deck_rank, language_rank, view_rank, order), unit))
+            if deck_clean:
+                clean_decks.add(deck.name)
+        self._clear_stale(_CurrentKeys(frozenset(keys_now), frozenset(clean_decks), frozenset(rendered),
+                                       frozenset(scopes), started),
+                          rendered, all_clean=len(clean_decks) == len(decks_progress))
         off = self.decks_off()
         decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
                            if not d.archived and not d.is_test_deck and d.name in off]
@@ -477,6 +497,50 @@ class BackgroundRenderer:
             self.progress = Progress(decks_progress, self._working[0] if self._working else None, None,
                                      failures, self._clock(), missing)
         return plan
+
+    @staticmethod
+    def _note_key(unit: render_key.Unit, key: Optional[str], own: bool, keys_now: set, rendered: dict) -> bool:
+        """Note the current `key` of `unit` for _clear_stale; `own`: a render of that key is stored. False when the key
+        cannot be known now (the slide file is being written): then its deck counts as not read in full."""
+        if key is None:
+            return False
+        keys_now.add(key)
+        rendered[unit.label] = rendered.get(unit.label, True) and own
+        return True
+
+    def _clear_stale(self, current: "_CurrentKeys", rendered: dict, all_clean: bool) -> None:
+        """After a scan: remember what it found current, for the renders stored until the next scan (_drop_stale),
+        and delete the renders the decks read in full no longer use, of every label each of whose units has a render
+        of its own current key (until then the old one is the Preview's "outdated" image). Once per store, when every
+        deck was read in full, also every render no current key needs of a deck, view and language the scan read: of slides
+        no longer in it, and of every label as above (renders left over from before v0.14.2). Nothing here may stop
+        the scan."""
+        self._current = current
+        keep, decks = set(current.keys), set(current.decks)
+        try:
+            done = {label for label, ok in rendered.items() if ok}
+            self.store.drop_stale(done.__contains__, keep, decks, current.at)
+            if all_clean and current.decks and not self.store.flag(render_store.LEFTOVERS_CLEARED):
+                # A slide still in its deck keeps its old render as the "outdated" image until the new one is stored.
+                removed = self.store.drop_stale(lambda label: _scope_of(label) in current.scopes and rendered.get(label, True),
+                                                keep, decks, current.at)
+                self.store.set_flag(render_store.LEFTOVERS_CLEARED)
+                _trace_log.info("render store: %d renders no deck uses any more were deleted", removed)
+        except Exception:  # noqa: BLE001 -- a store that cannot be written now is cleaned at a later scan
+            _trace_log.debug("render store: stale renders not cleared", exc_info=True)
+
+    def _drop_stale(self, unit: render_key.Unit, key: str) -> None:
+        """A render of `unit` under `key` was stored: delete the renders of its label whose key its deck no longer uses,
+        by what the last scan found (render_store.RenderStore.drop_stale). Nothing for a deck that scan could not read,
+        nor for a unit it did not see (a language or view it does not sweep: their other current keys are unknown)."""
+        current = self._current
+        if current is None or unit.deck not in current.decks or unit.label not in current.labels:
+            return
+        try:
+            self.store.drop_stale(lambda label: True, set(current.keys) | {key}, set(current.decks), current.at,
+                                  label=unit.label)
+        except Exception:  # noqa: BLE001 -- the render is stored; the next scan clears what is left
+            _trace_log.debug("render store: stale renders of %s not cleared", unit.label, exc_info=True)
 
     def store_failures_count(self) -> int:
         return len(self.store.failures())
@@ -613,8 +677,10 @@ class BackgroundRenderer:
         meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=manifest.entries,
                     tex_digest=manifest.tex_digest, tex_files=manifest.tex_files, machine=render_key.machine_id(),
                     engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
-        return self.store.put(key, ORIGIN_REVEAL, pdf, pages, meta, decks=[unit.deck] if unit.deck else [],
+        name = self.store.put(key, ORIGIN_REVEAL, pdf, pages, meta, decks=[unit.deck] if unit.deck else [],
                               replace=bool((found.record or {}).get("partial")))        # the page of a compile gives way
+        self._drop_stale(unit, key)
+        return name
 
     def ingest_compile(self, job, pdf: Path, record: dict) -> int:
         """Keep the slides of a whole-deck compile in the store: the last page of every slide the PDF shows, for the
@@ -661,6 +727,7 @@ class BackgroundRenderer:
                         frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH, partial=True)
             self.store.put(key, ORIGIN_COMPILE, None, [response["images"][0]], meta,
                            decks=[unit.deck] if unit.deck else [])
+            self._drop_stale(unit, key)
             stored += 1
         return stored
 
@@ -775,7 +842,9 @@ class BackgroundRenderer:
                    and found.record.get("origin") == origin)
         if found.state is render_key.Freshness.FAILED or self.store.failure(key) is not None:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
-        return self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
+        name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
+        self._drop_stale(unit, key)
+        return name
 
     @staticmethod
     def _recorded_inputs(pdf: Path) -> list[str]:
@@ -922,6 +991,23 @@ class BackgroundRenderer:
             self._on_change()
         except Exception:  # noqa: BLE001 -- a broken indicator must not stop the work
             pass
+
+
+@dataclass(frozen=True)
+class _CurrentKeys:
+    """What one scan found: the keys of every unit of the decks it read in full, those decks, the labels of those
+    units, the (deck, view, language) it read, and when it began."""
+    keys: frozenset
+    decks: frozenset
+    labels: frozenset
+    scopes: frozenset
+    at: float
+
+
+def _scope_of(label: str) -> tuple:
+    """(deck, view, language) of a unit's label (render_key.Unit.label: "deck:id-slug:view:language")."""
+    head, view, language = (label.rsplit(":", 2) + ["", ""])[:3]
+    return head.rsplit(":", 1)[0], view, language
 
 
 class _Once:

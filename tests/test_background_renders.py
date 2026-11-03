@@ -895,3 +895,191 @@ def test_a_failure_for_want_of_the_template_is_forgotten_once_the_template_is_fo
     plan = r.scan()                       # the template is found now: tried again, not counted as failed
     assert unit.label in [u.label for _, u in plan]
     assert r.resolver.lookup(unit).state is not Freshness.FAILED and not r.progress.missing_templates
+
+
+# -- stale renders go (docs/plans/render-store-cleanup.md, step 2) ----------------------------------------------------
+
+def _edit(path, text="\n% edited\n"):
+    """Change a file as a user would, with an mtime old enough that it is not "being written"."""
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+    old = time.time() - 60
+    os.utime(path, (old, old))
+
+
+def _keys_of(store, label):
+    return sorted(row[0] for row in store.db.execute("SELECT fast_key FROM renders WHERE unit=?", (label,)))
+
+
+def _png():
+    return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 4, 4)).tobytes("png")
+
+
+def _leftover(store, label, deck, key, age=3600.0):
+    """A render stored long ago under `key` (a key no deck uses now)."""
+    meta = dict(unit=label, rendered_at=time.time() - age, manifest=[], tex_digest="", frame_number=1, unstable=False)
+    return store.put(key, render_store.ORIGIN_BACKGROUND, None, [_png()], meta, decks=[deck])
+
+
+def _call_twice(project, slide="1cx-EN-Slide-IDs"):
+    """The manual calls `slide` a second time, as \\slidefinal: one label, two calls, two current keys."""
+    deck = project.root / "decks" / "slidemage-manual.tex"
+    text = deck.read_text(encoding="utf-8").replace(f"\\slide{{{slide}}}", f"\\slide{{{slide}}}\n\t\\slidefinal{{{slide}}}")
+    deck.write_text(text, encoding="utf-8")
+    old = time.time() - 3600
+    os.utime(deck, (old, old))
+
+
+def test_a_slide_edited_and_rendered_again_leaves_one_render_and_the_old_one_is_shown_until_then(project, store, raster):
+    r = make(project, store, raster)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    old_key = r.resolver.fast_key(unit)
+    _edit(unit.source_path)
+    r.scan()
+    assert _keys_of(store, unit.label) == [old_key]                  # nothing new yet: the old one is "outdated"
+    assert r.resolver.lookup(unit).state is Freshness.STALE
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)] != [old_key]
+
+
+def test_a_render_stored_before_the_scan_saw_the_edit_has_its_old_one_cleared_by_the_next_scan(project, store, raster):
+    r = make(project, store, raster)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    r.scan()
+    _edit(unit.source_path)
+    r.render_unit(unit, background_renders.ORIGIN_REVEAL, CancelToken())     # the Preview's render, before any scan
+    assert len(_keys_of(store, unit.label)) == 2                    # the last scan still had the old key as current
+    r.scan()
+    assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]
+
+
+def test_a_preamble_edit_clears_the_old_renders_of_every_slide_rendered_again(project, store, raster):
+    r = make(project, store, raster)
+    units = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[3:6]
+    for unit in units:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    old = {unit.label: r.resolver.fast_key(unit) for unit in units}
+    deck_file = project.root / "decks" / "slidemage-manual.tex"
+    text = deck_file.read_text(encoding="utf-8").replace("{SlideMage Manual}", "{SlideMage Manual, edited}")
+    deck_file.write_text(text, encoding="utf-8")
+    os.utime(deck_file, (time.time() - 60, time.time() - 60))
+    decks = deck_scan.scan_decks(project)
+    r._decks = lambda: decks
+    r.scan()
+    edited_deck = next(d for d in decks if d.name == "slidemage-manual")
+    edited = [u for u in background_renders.deck_units(project, edited_deck, "instructor", "EN") if u.label in old]
+    assert len(edited) == 3 and all(r.resolver.fast_key(u) != old[u.label] for u in edited)
+    for unit in edited:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]
+
+
+def test_a_slide_called_twice_in_two_ways_keeps_both_current_renders_whichever_is_stored(project, store, raster):
+    # One label, two current keys (a \slide and a \slidefinal of one slide): deleting by label alone would have each
+    # render delete the other, for ever.
+    _call_twice(project)
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
+    deck = deck_named(r, "slidemage-manual")
+    both = [u for u in background_renders.deck_units(project, deck, "instructor", "EN") if u.id_slug == "1cx-EN-Slide-IDs"]
+    assert len({u.label for u in both}) == 1 and len({r.resolver.fast_key(u) for u in both}) == 2
+    keys = sorted(r.resolver.fast_key(u) for u in both)
+    r.render_unit(both[0], background_renders.ORIGIN_BACKGROUND, CancelToken())
+    r.scan()                                            # the one-off clearing runs here too
+    r.render_unit(both[1], background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert _keys_of(store, both[0].label) == keys
+    for unit in both:                                   # storing either again (the reveal bar's render) keeps the other
+        store.delete(r.resolver.fast_key(unit) + render_store.BG_SUFFIX)
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        assert _keys_of(store, unit.label) == keys
+        r.scan()
+        assert _keys_of(store, unit.label) == keys
+    assert all(r.resolver.lookup(u).final for u in both)
+    calls = len(tex.calls)
+    plan = r.scan()
+    assert not [u for _, u in plan if u.label == both[0].label] and len(tex.calls) == calls
+
+
+def test_a_slide_reverted_to_its_old_text_is_rendered_again_and_accepted(project, store, raster):
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[4]
+    original = unit.source_path.read_bytes()
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    first_key = r.resolver.fast_key(unit)
+    _edit(unit.source_path)
+    r.scan()
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)] != [first_key]
+    unit.source_path.write_bytes(original)
+    os.utime(unit.source_path, (time.time() - 30, time.time() - 30))
+    assert r.resolver.fast_key(unit) == first_key
+    plan = r.scan()
+    assert unit.label in [u.label for _, u in plan]                 # its old render was deleted: rendered again
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert _keys_of(store, unit.label) == [first_key] and r.resolver.lookup(unit).final
+
+
+def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, raster, monkeypatch):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[2:4]
+    for unit in units:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    gone = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "f" * 64)
+    real = background_renders.deck_units
+
+    def unreadable(ctx, d, view, *args, **kwargs):
+        if d.name == deck.name and view == "during-course":
+            raise ValueError("cannot read the deck now")
+        return real(ctx, d, view, *args, **kwargs)
+
+    monkeypatch.setattr(background_renders, "deck_units", unreadable)
+    before = store.count()
+    for unit in units:
+        _edit(unit.source_path)
+    r.scan()
+    assert store.count() == before and store._exists(gone)          # neither the scan nor the one-off clearing
+    assert not store.flag(render_store.LEFTOVERS_CLEARED)           # left for a scan that reads every deck
+    for unit in units:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        assert len(_keys_of(store, unit.label)) == 2                # the new render, and the old one kept
+    monkeypatch.setattr(background_renders, "deck_units", real)
+    r.scan()
+    assert not store._exists(gone) and store.flag(render_store.LEFTOVERS_CLEARED)
+    assert all(_keys_of(store, u.label) == [r.resolver.fast_key(u)] for u in units)
+
+
+def test_the_leftovers_in_a_store_are_cleared_once_and_only_what_the_scan_read(project, store, raster):
+    background_renders.app_settings.set(project, background_renders.DECKS_OFF_KEY, ["slidemage-manual-copy"])
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    unit = background_renders.deck_units(project, deck, "instructor", "EN")[1]
+    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    current = r.resolver.fast_key(unit)
+    stale = _leftover(store, unit.label, deck.name, "a" * 64)                                   # an old key
+    removed = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "b" * 64)   # not in the deck
+    german = _leftover(store, "slidemage-manual:1jh-EN-Title-Slide:instructor:DE", deck.name, "c" * 64)  # not swept
+    off = _leftover(store, "slidemage-manual-copy:zzz-EN-Gone:instructor:EN", "slidemage-manual-copy", "d" * 64)
+    shared = _leftover(store, "slidemage-manual:zzz-EN-Gone:during-course:EN", deck.name, "e" * 64)
+    store.link_decks(shared, ["slidemage-manual-copy"])                     # also a render of the deck switched off
+    no_deck = store.put("9" * 64, render_store.ORIGIN_REVEAL, None, [_png()],
+                        dict(unit="-:zzz-EN-Gone:instructor:EN", rendered_at=time.time() - 3600, manifest=[]))
+    r.scan()
+    assert not store._exists(stale) and not store._exists(removed)
+    assert all(store._exists(name) for name in (german, off, shared, no_deck))
+    assert _keys_of(store, unit.label) == [current]
+    assert store.flag(render_store.LEFTOVERS_CLEARED)
+    later = _leftover(store, "slidemage-manual:zzz-EN-Other:instructor:EN", deck.name, "8" * 64)
+    r.scan()
+    assert store._exists(later)                         # once per store: after that, only by label, when stored
+
+
+def test_drop_stale_keeps_every_key_it_is_told_to_and_whatever_was_rendered_after_the_scan(project, store):
+    label = "deck:1cx-EN-Slide-IDs:instructor:EN"
+    one, two, old = (_leftover(store, label, "deck", k * 64) for k in "123")
+    young = _leftover(store, label, "deck", "4" * 64, age=-10)
+    assert store.drop_stale(lambda unit: True, {"1" * 64, "2" * 64}, {"deck"}, time.time(), label=label) == 1
+    assert store._exists(one) and store._exists(two) and not store._exists(old) and store._exists(young)
+    assert store.drop_stale(lambda unit: True, set(), {"another deck"}, time.time()) == 0      # not a deck read in full
