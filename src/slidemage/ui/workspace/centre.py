@@ -339,7 +339,7 @@ class CentreColumn(QFrame):
         tab.path = new
         self.source.hold(new)
         self.source.unhold(old)
-        self._update_strip()
+        self.tab_strip.set_label(tab, *self._tab_label(tab))
 
     def retarget_slide(self, old_id_slug: str, new_id_slug: str) -> None:
         """A slide's id-slug changed and its files with it (slide_rename): every tab of its current file or a frozen

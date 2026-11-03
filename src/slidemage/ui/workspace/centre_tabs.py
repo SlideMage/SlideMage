@@ -308,7 +308,7 @@ class TabStrip(Surface):
 
     def set_label(self, tab: CentreTab, text: str, tooltip: str = "") -> None:
         button = self._buttons.get(tab)
-        if button is not None and button.label.full_text() != text:
+        if button is not None and (button.label.full_text() != text or button.label.toolTip() != (tooltip or text)):
             button.set_label(text, tooltip)
             self._settle.start()
 
