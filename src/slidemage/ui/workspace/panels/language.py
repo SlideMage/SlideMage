@@ -106,10 +106,19 @@ class Language(SidePanel):
         line.addWidget(text(slide_file_title(self.app.project, path, id_slug) if path else id_slug, q.DETAILS_VALUE), 1)
         if open_it:
             open_button = Button("Open", "secondary", compact=True)
-            open_button.clicked.connect(lambda: self.app.open_slide_editor(path))
+            open_button.clicked.connect(lambda: self._open(path))
             line.addWidget(open_button)
         row.body.addLayout(line)
         row.add_text(caption, q.PANEL_CAPTION)
+
+    def _open(self, path) -> None:
+        """Open the slide in the other language: in a tab of its own while a slide file tab is on show, so that tab
+        keeps its slide (D10, as the Preview's language chip), else as the slide tab's."""
+        tab = self._tab()
+        if tab is None:
+            self.app.open_slide_editor(path)
+        else:
+            self.app.open_slide_editor(path, tab=True, occurrence=tab[1].key if tab[1] is not None else None)
 
     def _saved(self, title: str) -> bool:
         """Whether the slide's file may be moved: not while the Source view holds
@@ -179,4 +188,5 @@ class Language(SidePanel):
             QMessageBox.critical(self, "Set language failed", str(exc))
             return
         self.app.log(f"Set language of {old} -> {new} ({n_refs} deck reference(s) updated)")
+        self.actions.slide_renamed(old, new)         # a tab of the slide follows it (D11)
         self.app.refresh_open_deck_editors()

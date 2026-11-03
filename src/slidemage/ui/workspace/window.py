@@ -182,7 +182,10 @@ class WorkspaceWindow(QMainWindow):
             freeze_version=lambda id_slug, level: self.centre.freeze_version(id_slug, level),
             edit_deck=self.slide_list.edit, add_slide=self.slide_list.add_slide,
             translate=lambda language=None: self.assistant.translate_slide(language),
-            add_reference=lambda key: self.centre.source.add_reference(key)))
+            add_reference=lambda key: self.centre.source.add_reference(key),
+            # The panels follow the slide file tab on show (D9); SidePanels refreshes before the centre is built.
+            tab_slide=lambda: self.centre.tab_slide() if getattr(self, "centre", None) is not None else None,
+            slide_renamed=lambda old, new: self.centre.retarget_slide(old, new)))
         self.assistant = self.side_panels.assistant
         # Centre: the views of the focused slide, or the Images page. Its first scan reads every
         # slide that includes an image, hashes those images' bytes (~1s) and syncs the store --
@@ -265,6 +268,8 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
+        # Another tab on show is another slide for the panels: a pending edit is saved against its own slide first.
+        self.centre.tabs.active_changed.connect(lambda _tab: self.side_panels.follow_tab())
         self.centre.source.reference_added.connect(self.side_panels.refresh)
         # Ctrl+S writes the file open in the Source view now and renders it, whichever view has the focus.
         QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.centre.save)
