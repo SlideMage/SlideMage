@@ -866,3 +866,32 @@ def test_a_lookup_during_the_rescan_finds_an_indexed_record_and_a_render_stored_
     assert not errors and results and all(results)             # always found, never half-way
     assert store.count() == 31 and all(store._exists(name) for name in later)
     assert store.rescan(lambda: True) == 0 and store.count() == 31      # a stopped rescan forgets nothing
+
+
+def test_a_deck_whose_template_is_nowhere_is_held_back_and_named_not_failed(project, store, raster, monkeypatch):
+    # The project's template file deleted for a theme that is installed on another computer only (v0.14.1): every
+    # render stopped at \input{SlideMage_template_<key>} and was stored as a failure, and the chip never said why.
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
+    monkeypatch.setattr(background_renders.slide_snapshot, "available_templates", lambda root: ["somewhere-else"])
+    assert r.scan() == []
+    counted = r.progress.deck("slidemage-manual")
+    assert counted.blocked == counted.total > 0 and counted.left == 0 and counted.failed == 0
+    assert not counted.up_to_date
+    assert "slidemage-manual" in r.progress.missing_templates[unit.template]
+    assert r.progress.blocked >= counted.total and r.progress.left == 0
+
+
+def test_a_failure_for_want_of_the_template_is_forgotten_once_the_template_is_found(project, store, raster):
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    tex.fail[unit.id_slug] = (f"Render failed for x:\nl.16 \\input{{SlideMage_template_{unit.template}}}\n"
+                              "! Emergency stop.\n")
+    with pytest.raises(RuntimeError):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert r.resolver.lookup(unit).state is Freshness.FAILED
+    plan = r.scan()                       # the template is found now: tried again, not counted as failed
+    assert unit.label in [u.label for _, u in plan]
+    assert r.resolver.lookup(unit).state is not Freshness.FAILED and not r.progress.missing_templates

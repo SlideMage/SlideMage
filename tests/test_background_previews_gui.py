@@ -176,6 +176,31 @@ def test_the_chip_says_what_is_going_on_and_when_all_is_done(window):
     assert controller.summary()[0] == ""
 
 
+def test_a_missing_template_turns_the_chip_red_and_the_status_window_says_why(window):
+    controller = window.background
+    window.show()
+    blocked = DeckProgress("t-Uni-IA2", total=8, blocked=8, views={"instructor": [8, 0, 0]})
+    controller.renderer.progress = Progress([blocked, DeckProgress("b", total=4, fresh=1)], scanned_at=1.0,
+                                            missing_templates={"uni-graz": ["t-Uni-IA2"]})
+    rendering(controller.renderer, True)
+    assert controller.summary() == ("Template uni-graz not found · previews can't be rendered", "error")
+    assert "No theme for the template \"uni-graz\" is installed" in controller.hover_text()
+    rendering(controller.renderer, False)
+    controller.refresh()
+    assert controller.chip.isVisible() and "uni-graz" in controller.chip.text()
+    from slidemage.ui.workspace.background_previews import StatusDialog
+    dialog = StatusDialog(controller, window)
+    row = next(dialog.tree.topLevelItem(i) for i in range(dialog.tree.topLevelItemCount())
+               if dialog.tree.topLevelItem(i).text(0) == "t-Uni-IA2")
+    assert row.text(4) == "template not found"
+    assert "SlideMage_template_uni-graz.tex" in dialog.note.text() and "Settings → Plugins → Themes" in dialog.note.text()
+    dialog.reject()
+    controller.renderer.progress = Progress([DeckProgress("t-Uni-IA2", total=8, blocked=8)], scanned_at=1.0,
+                                            missing_templates={"uni-graz": ["t-Uni-IA2"], "mci": ["x"]})
+    assert controller.summary()[0].startswith("Templates mci, uni-graz not found")
+    assert controller.dial_state() == "failed"
+
+
 def test_the_chip_opens_the_status_window_which_pauses_renders_now_and_leaves_decks_out(window, monkeypatch):
     # The chip had a menu of its own that said less than the window; both open the window now (v8.66.0).
     controller = window.background

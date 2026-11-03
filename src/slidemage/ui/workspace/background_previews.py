@@ -6,8 +6,9 @@ small chip, and stops everything when the window closes.
 
 The chip stands over the bottom left of the workspace and is there only while there is something to say: previews
 being prepared (with how many are left), prepared previews waiting for the user to stop working (and why), or
-slides that cannot be rendered; once everything is rendered it says so in green. Clicking it, or the dial beside
-it, opens the status window: the decks in the order they are worked through, which ones are prepared at all, the
+slides that cannot be rendered; once everything is rendered it says so in green. A deck whose template is nowhere
+to be found (no installed theme, no copy in the project) turns it red, and the status window says why. Clicking it,
+or the dial beside it, opens the status window: the decks in the order they are worked through, which ones are prepared at all, the
 renders running now, the disk space used and the controls: pause, render now, retry the failed slides.
 """
 from __future__ import annotations
@@ -45,6 +46,25 @@ BIG_DIAL_SIZE = 88      # the status window's, top right
 def waiting_text(reason: str) -> str:
     """Why nothing renders now, for the dial's tooltip and the status window."""
     return idle_gate.IN_USE_EXPLAINED if reason == idle_gate.IN_USE else f"Waiting: {reason}."
+
+
+def missing_template_chip(missing: dict) -> str:
+    """The chip's text when decks cannot find their template (Progress.missing_templates)."""
+    keys = sorted(missing)
+    named = f"Template {keys[0]} not found" if len(keys) == 1 else f"Templates {', '.join(keys)} not found"
+    return f"{named} · previews can't be rendered"
+
+
+def missing_template_text(missing: dict) -> str:
+    """Why the decks of a missing template get no background previews, and what to do (status window, tooltip)."""
+    lines = []
+    for key in sorted(missing):
+        decks = missing[key]
+        lines.append(f"No theme for the template \"{key}\" is installed and the project includes no "
+                     f"SlideMage_template_{key}.tex, so background previews of {', '.join(decks)} cannot be rendered.")
+    lines.append("Install the theme under Settings → Plugins → Themes (it is installed per computer), or put the "
+                 "template file in the project folder. The previews are rendered once it is found.")
+    return "\n".join(lines)
 
 
 class Dial(QWidget):
@@ -203,6 +223,8 @@ class StatusDialog(QDialog):
                 status = "left out"
             elif deck.total == 0:
                 status = "no slides"
+            elif deck.blocked:
+                status = "template not found"
             elif deck.up_to_date:
                 status = "up to date"
             elif deck.left == 0:
@@ -220,7 +242,9 @@ class StatusDialog(QDialog):
         self.tree.blockSignals(False)
         self._refresh_running(renderer)
         reason = renderer.waiting_because()
-        self.note.setText(waiting_text(reason) if reason and progress.left else "")
+        notes = [missing_template_text(progress.missing_templates)] if progress.missing_templates else []
+        notes += [waiting_text(reason)] if reason and progress.left else []
+        self.note.setText("\n\n".join(notes))
         self.pause.setText("Resume" if renderer.gate.paused else "Pause")
         self.failures.setVisible(bool(progress.failures))
         self.retry.setVisible(bool(progress.failures))
@@ -540,6 +564,8 @@ class BackgroundPreviews(QObject):
         if renderer is None or not renderer.enabled:
             return "", "muted"
         progress = renderer.progress
+        if progress.missing_templates:
+            return missing_template_chip(progress.missing_templates), "error"
         left = progress.left
         if left > 0:
             if renderer.sweeping():
@@ -568,11 +594,13 @@ class BackgroundPreviews(QObject):
             lines.append(f"{progress.left} outstanding, most recently used decks first, instructor version first.")
         if progress.failures:
             lines.append(f"{progress.failures} slide{'s' if progress.failures != 1 else ''} cannot be rendered.")
+        if progress.missing_templates:
+            lines.append(missing_template_text(progress.missing_templates))
         if renderer.sweeping():
             lines.append("Rendering now.")
         elif progress.left and renderer.waiting_because():
             lines.append(waiting_text(renderer.waiting_because()))
-        elif not progress.left:
+        elif not progress.left and not progress.blocked:
             lines.append("Everything is ready.")
         return "\n".join(lines)
 
@@ -581,7 +609,7 @@ class BackgroundPreviews(QObject):
         if self.renderer.sweeping():
             return "working"
         if progress.left == 0:
-            return "failed" if progress.failures else "done"
+            return "failed" if progress.failures or progress.missing_templates else "done"
         return "waiting"
 
     def refresh(self) -> None:

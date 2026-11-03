@@ -196,7 +196,11 @@ deck switcher offers the rest). From top to bottom and left to right:
   stored previews, a tick per deck that turns its background previews on or off, Pause, Render now and Try failed
   slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
   done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
-  slides on selection and in the background).
+  slides on selection and in the background). A deck whose template key is not among
+  `slide_snapshot.available_templates()` (no installed theme, no copy in the project) is held back by
+  `BackgroundRenderer.scan` (`DeckProgress.blocked`, `Progress.missing_templates`) instead of failing every render;
+  the status text turns red and the window explains it, and a failure stored for want of the template is forgotten
+  once the template is found (v0.14.1).
 - **Plugins** (v8.71, `plugins/`, `ui/dialogs/settings_plugins.py`, `plugin_offer.py`): Settings → Extensions and Help →
   Extensions… list installed plugins and those on https://slidemage.org/plugins/ (install, update, disable, remove,
   **Install from file…**); the first-start sheet offers them once, preselecting a plugin for a feature the user
