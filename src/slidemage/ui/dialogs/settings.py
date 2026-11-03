@@ -339,8 +339,9 @@ class AboutTab(Page):
         layout.addWidget(Field("Troubleshooting", self.debug_check))
         layout.addWidget(caption(
             "For finding out what went wrong: what SlideMage does, in files in its log folder, until you turn it "
-            "off here or in the Help menu. It holds file names and paths, but no slide text and no API keys. "
-            "Warnings and errors are always kept, in a small error log."))
+            "off here or in the Help menu. It holds file names and paths; slide text and API keys are left out "
+            "on purpose, but a traceback or a compile line can still carry a fragment, so skim a log before you "
+            "share it. Warnings and errors are always kept, in a small error log."))
         layout.addWidget(_command_row(
             app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open")[0])
         layout.addWidget(_command_row(
