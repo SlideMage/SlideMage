@@ -1122,6 +1122,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{TAB} {{
             background-color: transparent;
             border: none;
+            border-right: 1px solid {t.line};
             border-bottom: 2px solid transparent;
         }}
         QFrame#{TAB}:hover {{ background-color: {t.hover}; }}

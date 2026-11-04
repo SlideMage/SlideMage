@@ -3519,3 +3519,8 @@ v0.14.8 (2026-11-03, direct instruction: the active tab in the centre column's t
 
 NEW: The open tab stands out in the usual SlideMage blue.
 - A tab's background, when it is the one shown, fills with the same blue as the selected deck version.
+
+v0.14.9 (2026-11-04, direct instruction: inactive tabs had no visible edge in dark mode): QFrame#TAB had no border at all besides its bottom underline, so two inactive tabs next to each other had nothing between them; in dark mode, where the tab strip and the tabs share nearly the same dark background, this made the strip read as one blank bar. A 1px right border in the usual hairline color (t.line, the same one the tab strip's own bottom edge and other dividers use) now marks where one tab ends and the next begins.
+
+NEW: Tabs in the centre column now show where one ends and the next begins.
+- A thin line now separates adjacent tabs, visible in both light and dark mode.
