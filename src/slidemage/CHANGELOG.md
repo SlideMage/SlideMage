@@ -3510,7 +3510,12 @@ v0.14.5 (2026-11-03, step 3 of docs/plans/render-store-cleanup.md: the double re
 NEW: Slides shown twice in a deck are no longer rendered again and again.
 - A slide called twice in a deck keeps one preview, so the background work ends when the status says it is done.
 
-v0.14.7 (2026-11-03, direct instruction: the active tab in the centre column's tab strip): its underline was the generic dark "inverse" accent; it is now the same SlideMage blue the selected deck version (Instructor) uses. kit_qss.py's QFrame#TAB[active="true"] rule reads t.view_instructor instead of t.inverse.
+v0.14.6 (2026-11-03, debug-log wrap-up: Settings overclaimed what the debug log leaves out): Settings → About → Troubleshooting said the debug log holds no slide text and no API keys, an absolute claim; README's Logs and problem reports section and the manual are more careful, since a traceback or a compile line can still carry a fragment. The caption now says slide text and API keys are left out on purpose, but a traceback or a compile line can still carry a fragment, so skim a log before you share it, matching the manual and README.
+
+NEW: The debug log's note under Settings → About no longer overclaims.
+- It now says slide text and API keys are left out on purpose, not left out outright, and asks you to skim a log before sharing it.
+
+v0.14.8 (2026-11-03, direct instruction: the active tab in the centre column's tab strip): its underline was the generic dark "inverse" accent; it is now the same SlideMage blue the selected deck version (Instructor) uses. kit_qss.py's QFrame#TAB[active="true"] rule reads t.view_instructor instead of t.inverse.
 
 NEW: The open tab stands out in the usual SlideMage blue.
 - A tab's underline, when it is the one shown, is the same blue as the selected deck version instead of a plain dark line.
