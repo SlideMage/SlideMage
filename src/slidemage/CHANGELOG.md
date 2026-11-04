@@ -3520,3 +3520,13 @@ v0.14.7 (2026-11-03, step 4 of docs/plans/render-store-cleanup.md: a deck compil
 NEW: Previews and the reveal bar no longer treat a slide as fully rendered just because some page of it exists.
 - A deck compile now finishes the rest of its slides at once: the contents, agenda and section slides, and slides that show students only their last step.
 - A slide built up with \slidestep or finished with \slidefinal still needs its own background render before it counts as done; a compile's page of it is only a selection of its steps.
+
+v0.14.8 (2026-11-03, direct instruction: the active tab in the centre column's tab strip): the tab shown now fills with the same SlideMage blue the selected deck version (Instructor) uses, label text turning white for contrast; its underline stays the plain dark accent, unchanged. kit_qss.py's QFrame#TAB[active="true"] rule gains a background-color of t.view_instructor and its label a color of t.on_solid.
+
+NEW: The open tab stands out in the usual SlideMage blue.
+- A tab's background, when it is the one shown, fills with the same blue as the selected deck version.
+
+v0.14.9 (2026-11-04, direct instruction: inactive tabs had no visible edge in dark mode): QFrame#TAB had no border at all besides its bottom underline, so two inactive tabs next to each other had nothing between them; in dark mode, where the tab strip and the tabs share nearly the same dark background, this made the strip read as one blank bar. A 1px right border in the usual hairline color (t.line, the same one the tab strip's own bottom edge and other dividers use) now marks where one tab ends and the next begins.
+
+NEW: Tabs in the centre column now show where one ends and the next begins.
+- A thin line now separates adjacent tabs, visible in both light and dark mode.
