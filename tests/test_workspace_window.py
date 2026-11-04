@@ -120,6 +120,28 @@ def test_the_centres_tabs_are_restored_once_at_startup_and_saved_on_close(monkey
     assert saved == [True]
 
 
+def test_resume_tabs_setting_skips_restore_but_not_save(monkeypatch):
+    """Direct instruction 2026-11-04: a "Reopen the tabs..." setting (Settings -> General), on by default. Off,
+    restore_tabs() does not run at startup; save_tabs() still runs on close regardless, so turning the setting
+    back on later still has something to restore."""
+    from slidemage.ui.workspace.centre import CentreColumn
+
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, COURSE, MANUAL, TEST, OLD])
+    restored, saved = [], []
+    monkeypatch.setattr(CentreColumn, "restore_tabs", lambda self: restored.append(True))
+    monkeypatch.setattr(CentreColumn, "save_tabs", lambda self: saved.append(True))
+
+    layout_settings.set(window_module.RESUME_TABS_SETTING, False)
+    built = build_window(monkeypatch)
+    assert restored == []                           # the setting is off: no restore at startup
+    built.close()
+    assert saved == [True]                           # closing still saves, regardless of the setting
+
+    layout_settings.set(window_module.RESUME_TABS_SETTING, True)
+    again = build_window(monkeypatch)
+    assert restored == [True]                        # back on: restore runs again
+
+
 def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     window.topbar._on_deck_picked(deck_key(TEST))
     assert window.state.deck is TEST

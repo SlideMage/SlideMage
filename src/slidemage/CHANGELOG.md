@@ -3538,3 +3538,9 @@ NEW: Tabs remember more, and a mode-remembering bug is fixed.
 - Ctrl+PgDown and Ctrl+PgUp switch to the next or previous tab left to right in the strip, instead of the most recently used order Ctrl+Tab follows.
 - The file tabs a project had open, and the mode each was shown in, come back when the project opens again.
 - Quitting with a file tab on show, or switching a slide file tab's own view, no longer makes the deck reopen in the wrong view the next time it is opened.
+
+v0.14.11 (2026-11-04, direct instruction: a setting to turn off reopening a project's tabs): Settings -> General gets "Reopen the tabs a project had open, when it opens again" (on by default, layout_settings' new RESUME_TABS_SETTING, this user and machine, not the project). Off, window.py's startup skips the call to CentreColumn.restore_tabs(); save_tabs() still runs on close regardless, so turning the setting back on later still has a last session to restore. Tests in tests/test_workspace_window.py and tests/test_settings_gui.py.
+
+NEW: Reopening a project's tabs can be turned off.
+- Settings -> General -> "Reopen the tabs a project had open, when it opens again", on by default.
+- Off, a project opens with just its deck, no slide selected; your tabs are still remembered for whenever you turn it back on.

@@ -59,6 +59,10 @@ DEFAULT_SPLIT = 0.5
 # app_settings key (per project, D7 of the plan): the open file tabs' paths relative to the project, each one's
 # mode and which was active, so they come back when the project opens again.
 CENTRE_TABS_SETTING = "centre_tabs"
+# layout_settings key (this user and machine, not the project, direct instruction 2026-11-04): whether restore_tabs()
+# runs at startup at all. On by default; save_tabs() always runs regardless, so switching this back on later still
+# has the last session's tabs to restore.
+RESUME_TABS_SETTING = "resume_tabs"
 
 
 class _ResetHandle(QSplitterHandle):

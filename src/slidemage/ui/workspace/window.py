@@ -60,7 +60,7 @@ from .actions import build_registry
 from .ai_fix import AiFixPanel
 from .ai_route import AiRoute
 from .ai_work import RunningWork
-from .centre import CentreColumn
+from .centre import RESUME_TABS_SETTING, CentreColumn
 from .chat.view import ChatView
 from . import maintenance
 from .build_options import BuildOptionsDialog
@@ -283,7 +283,8 @@ class WorkspaceWindow(QMainWindow):
         # A deck compile's pages reach the store after the compile ended: the thumbnails take them then.
         self.background.ingested.connect(self.slide_list._refresh_all_preview_rows)
         self.reload_decks()
-        self.centre.restore_tabs()      # once, at startup (D7 of centre-tabs.md): reload_decks() alone may run again
+        if layout_settings.get(RESUME_TABS_SETTING, True):
+            self.centre.restore_tabs()  # once, at startup (D7 of centre-tabs.md): reload_decks() alone may run again
         self._restore_window_geometry()
 
     def _restore_window_geometry(self) -> None:
