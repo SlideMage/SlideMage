@@ -16,7 +16,7 @@ import json
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
@@ -217,7 +217,13 @@ class TerminalWidget(QWidget):
         copy = menu.addAction("Copy", lambda: self.bridge.copy_text(self.bridge.selected))
         copy.setEnabled(bool(self.bridge.selected))
         menu.addAction("Paste", self.bridge.paste_requested)
-        menu.exec(self.view.mapToGlobal(position))
+        # Deferred a tick (reported bug: right-click pasted immediately, before the menu could be
+        # clicked): exec()-ing a popup menu synchronously, from the very mouse release that asked
+        # for it, lets Windows read that same release as a click on whatever item is now under the
+        # cursor -- here, "Paste", since "Copy" is disabled (and so skipped) whenever nothing is
+        # selected, which is the common case on a first right-click. Showing the menu on the next
+        # event-loop turn instead lets that release finish being the right-click it was.
+        QTimer.singleShot(0, lambda: menu.exec(self.view.mapToGlobal(position)))
 
     def shutdown(self) -> None:
         """Free the page before its profile (Qt wants it in that order), and take the widget out of its layout."""
