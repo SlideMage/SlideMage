@@ -3544,3 +3544,8 @@ v0.14.11 (2026-11-04, direct instruction: a setting to turn off reopening a proj
 NEW: Reopening a project's tabs can be turned off.
 - Settings -> General -> "Reopen the tabs a project had open, when it opens again", on by default.
 - Off, a project opens with just its deck, no slide selected; your tabs are still remembered for whenever you turn it back on.
+
+v0.14.12 (2026-11-04, step 4 of docs/plans/centre-tabs.md: the manual slide on the workspace): "The workspace" (1ub) gets a 13th numbered callout on the tab strip, and a matching legend item; the screenshot (tools/manual/make_screenshots.py) and its image description (alt-text.json/.csv, short and long) are regenerated and updated to match. The Keyboard shortcuts sheet (ui/dialogs/shortcuts.py) needed no change: it lists every command's shortcut straight from the registry, and the tab commands (Next/Previous tab, Next/Previous tab in order, Close tab) were already registered there with their keys, confirmed by reading the generated rows directly. A tighter itemsep on the slide's enumerate (0pt, was the catalog default) keeps the longer legend inside the frame under every template; tests/test_manual_fits_templates.py passes for uni-graz, slidemage and greyscale (opt-in, SLIDEMAGE_TEX_TESTS=1).
+
+NEW: The manual's workspace overview shows the tab strip.
+- "The workspace" now points out the open-file tab strip, with the same numbered-legend style as the rest of the window.
