@@ -348,6 +348,17 @@ def test_asking_about_update_version_on_leaving_is_off_by_default_and_saved(tmp_
     assert app_settings.get(context, slide_versioning.ASK_ON_LEAVE_SETTING_KEY) is True
 
 
+def test_resuming_tabs_is_on_by_default_and_turning_it_off_is_saved(tmp_path, qapp):
+    from slidemage.ui import layout_settings
+    from slidemage.ui.workspace.centre import RESUME_TABS_SETTING
+
+    context = ProjectContext.at(tmp_path / "project")
+    check = open_sheet(qapp, FakeApp(context)).general.resume_tabs_check
+    assert check.isChecked()                        # on by default
+    check.setChecked(False)
+    assert layout_settings.get(RESUME_TABS_SETTING) is False
+
+
 # -- Project and About -------------------------------------------------------------------------
 
 def project_with_files(tmp_path, *names):

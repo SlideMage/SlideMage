@@ -44,9 +44,11 @@ from ... import app_settings, diagnostics, slide_preview, slide_snapshot, slide_
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
+from .. import layout_settings
 from ..ai_models import add_route_badge
 from ..kit.widgets import Button, Field, ModalSheet, Page, SegmentedControl, action_row, caption, columns, row
 from ..workspace import debug_log_ui
+from ..workspace.centre import RESUME_TABS_SETTING
 from ..workspace.source_file import autosave_on
 from .settings_deck_groups import DeckGroupsSection
 from .settings_ai import PROMPTS_KEY, AiPage
@@ -128,6 +130,16 @@ class GeneralTab(Page):
             "snapshot or PowerPoint export shows that last version, and the changes stay in the slide until you "
             "use Update version. On, it shows the slide as it is now. The slide's own Preview always shows "
             "it as it is now."))
+
+        self.resume_tabs_check = QCheckBox("Reopen the tabs a project had open, when it opens again")
+        self.resume_tabs_check.setChecked(bool(layout_settings.get(RESUME_TABS_SETTING, True)))
+        self.resume_tabs_check.toggled.connect(lambda on: layout_settings.set(RESUME_TABS_SETTING, bool(on)))
+        layout.addWidget(Field("Tabs", self.resume_tabs_check))
+        layout.addWidget(caption(
+            "On by default: each file tab a project had open, its view (Preview, Split, Source or Details) and "
+            "which was active come back the next time the project opens. Off, a project opens with just its "
+            "deck, no slide selected; its tabs are still remembered, so turning this back on picks up where you "
+            "left off."))
 
         self.template_combo = QComboBox()
         current = slide_snapshot.render_template(self.app.project)
