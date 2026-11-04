@@ -37,7 +37,7 @@ from .preview_cache import thumbnail_png
 STORE_FORMAT = 1
 ORIGIN_BACKGROUND = "background"
 ORIGIN_REVEAL = "reveal"
-ORIGIN_COMPILE = "compile"      # the last page of a slide, taken from a deck compile (no slide PDF)
+ORIGIN_COMPILE = "compile"      # a slide's own pages, taken from a deck compile (no slide PDF of its own)
 BG_SUFFIX = ".bg"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30

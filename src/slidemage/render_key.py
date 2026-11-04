@@ -366,6 +366,12 @@ class Lookup:
     @property
     def final(self) -> bool:
         """Nothing more for the background sweep to do for this unit now (a render by the reveal slider is
-        provisional, a render with another page number is refreshed last)."""
-        return (self.state is Freshness.FRESH and self.record is not None and self.record.get("origin") == "background") \
-            or self.state is Freshness.FAILED
+        provisional, a render with another page number is refreshed last, and a deck compile's page of a
+        \\slidestep or \\slidefinal call -- still marked `partial`, docs/plans/render-store-cleanup.md step 4 --
+        is only a selection of its steps, not every one)."""
+        if self.state is Freshness.FAILED:
+            return True
+        if self.state is not Freshness.FRESH or self.record is None:
+            return False
+        origin = self.record.get("origin")
+        return origin == "background" or (origin == "compile" and not self.record.get("partial"))
