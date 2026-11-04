@@ -9,8 +9,9 @@ source, SlideMage.bib, test-slides.tex, or a slide's file), until it is closed. 
 Source, ...) it was last shown in; a file tab of a file that is no slide shows the Source view alone, a slide's file
 tab has every mode.
 
-`TabStrip` draws the tabs and says what the user did to them (activate, close with the "x" or the middle button);
-what that means is the centre's (centre.py).
+`TabStrip` draws the tabs and says what the user did to them (activate, close with the "x", the middle button or a
+tab's right-click menu: Close, Close others, Close all to the right, Reveal in Explorer, D5 of the plan); what that
+means is the centre's (centre.py).
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from PySide6.QtGui import QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QSizePolicy
 
 from ..kit import kit_qss as q
-from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, Surface
+from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, PopoverMenu, Surface
 
 SLIDE, FILE = "slide", "file"
 TAB_HEIGHT = 34
@@ -124,6 +125,21 @@ class CentreTabs(QObject):
         self._set_active(self._mru[0], touch=False)
         return self._active
 
+    def step(self, direction: int) -> CentreTab:
+        """Ctrl+PgDn (`direction` 1) and Ctrl+PgUp (-1): the next (previous) tab in strip order, wrapping past
+        either end; shown and made the most recently used, as a click does."""
+        index = self._tabs.index(self._active)
+        self.activate(self._tabs[(index + direction) % len(self._tabs)])
+        return self._active
+
+    def close_others(self, tab: CentreTab) -> list[CentreTab]:
+        """The other closable tabs (the tab strip's context menu's Close others), in strip order."""
+        return [t for t in self._tabs if t.closable and t is not tab]
+
+    def close_right(self, tab: CentreTab) -> list[CentreTab]:
+        """The closable tabs after `tab` in strip order (Close all to the right)."""
+        return [t for t in self._tabs[self._tabs.index(tab) + 1:] if t.closable]
+
     def cycle(self, step: int = 1) -> CentreTab:
         """Ctrl+Tab (`step` 1) and Ctrl+Shift+Tab (-1): show the next (previous) tab in most-recently-used order.
         A series of calls walks on through that order; end_cycle() (Ctrl released) makes the tab it stopped at the
@@ -158,6 +174,9 @@ class _TabButton(ClickFrame):
     middle button closes a file tab."""
 
     close_requested = Signal()
+    close_others_requested = Signal()
+    close_right_requested = Signal()
+    reveal_requested = Signal()
 
     def __init__(self, tab: CentreTab) -> None:
         super().__init__()
@@ -221,6 +240,31 @@ class _TabButton(ClickFrame):
         else:
             super().keyPressEvent(event)
 
+    def _menu(self) -> PopoverMenu:
+        """Close, Close others, Close all to the right, Reveal in Explorer (D5 of the plan)."""
+        menu = PopoverMenu(self, min_width=200)
+        menu.add_item("close", "Close", enabled=self.tab.closable)
+        menu.add_item("close_others", "Close others")
+        menu.add_item("close_right", "Close all to the right")
+        menu.add_separator()
+        menu.add_item("reveal", "Reveal in Explorer")
+        menu.triggered.connect(self._on_menu_action)
+        return menu
+
+    def contextMenuEvent(self, event) -> None:
+        menu = self._menu()
+        menu.closed.connect(menu.deleteLater)
+        menu.popup_at(self.mapToGlobal(event.pos()))
+        event.accept()
+
+    def _on_menu_action(self, key: str) -> None:
+        {
+            "close": self.close_requested,
+            "close_others": self.close_others_requested,
+            "close_right": self.close_right_requested,
+            "reveal": self.reveal_requested,
+        }[key].emit()
+
 
 class _TabScroll(QScrollArea):
     """The tabs' row: the wheel moves it sideways."""
@@ -238,6 +282,9 @@ class TabStrip(Surface):
 
     activate_requested = Signal(object)     # the CentreTab clicked
     close_requested = Signal(object)        # the CentreTab whose "x" or middle button was pressed
+    close_others_requested = Signal(object)     # its context menu's Close others
+    close_right_requested = Signal(object)      # its context menu's Close all to the right
+    reveal_requested = Signal(object)           # its context menu's Reveal in Explorer
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -295,6 +342,9 @@ class TabStrip(Surface):
                 button.set_label(*labels(tab))
                 button.clicked.connect(lambda t=tab: self.activate_requested.emit(t))
                 button.close_requested.connect(lambda t=tab: self.close_requested.emit(t))
+                button.close_others_requested.connect(lambda t=tab: self.close_others_requested.emit(t))
+                button.close_right_requested.connect(lambda t=tab: self.close_right_requested.emit(t))
+                button.reveal_requested.connect(lambda t=tab: self.reveal_requested.emit(t))
                 self._row.insertWidget(index, button)
         self._buttons = {tab: self._buttons[tab] for tab in tabs}
         self.set_active(self._active)

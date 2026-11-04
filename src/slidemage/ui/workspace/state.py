@@ -20,7 +20,7 @@ a short look at the translations, kept until the next deck switch.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -63,6 +63,10 @@ class WorkspaceState(QObject):
         self.language = self.languages()[0]
         self.selection: tuple[str, ...] = ()
         self.mode = MODES[0]
+        # set_mode() remembers the mode for the deck only while this says True: CentreColumn narrows it to "the
+        # slide tab is on show" (centre-tabs.md, step 3), so a file tab's own mode (D2), shown through `mode` too,
+        # is never remembered as the deck's.
+        self.remember_mode: Callable[[], bool] = lambda: True
         self.dirty = False   # some source or side panel has unsaved edits
         self._dirty_by: dict[str, bool] = {}
         self.lint_errors = 0   # errors the static check finds in the source being edited
@@ -155,7 +159,8 @@ class WorkspaceState(QObject):
     def set_mode(self, mode: str) -> None:
         if mode in MODES and mode != self.mode:
             self.mode = mode
-            self._remember("mode", mode)
+            if self.remember_mode():
+                self._remember("mode", mode)
             self.mode_changed.emit(mode)
 
     def set_dirty(self, dirty: bool, source: str = "source") -> None:

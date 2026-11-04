@@ -16,14 +16,14 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from slidemage import alt_images, deck_outline, preview_target, slide_snapshot
+from slidemage import alt_images, app_settings, deck_outline, open_path, preview_target, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view, render_check, source_file
-from slidemage.ui.workspace.centre import CentreColumn
-from slidemage.ui.workspace.state import WorkspaceState
+from slidemage.ui.workspace.centre import CENTRE_TABS_SETTING, CentreColumn
+from slidemage.ui.workspace.state import SETTINGS_KEY, WorkspaceState
 
 
 FRAME = "\\begin{standardframe}{%s}\nText\n\\end{standardframe}\n"
@@ -1889,3 +1889,134 @@ def test_rename_in_details_on_a_slide_file_tab_keeps_the_tab(centre, files, proj
     assert centre.tabs.tabs == [centre.tabs.slide_tab, frozen_tab, tab] and centre.tabs.active is tab
     assert tab.path == project / "ccc-DE-Vier-current.tex" and frozen_tab.path == project / "ccc-DE-Vier-v1-0-0.tex"
     assert centre.state.focused_slide == "aaa"
+
+
+# -- the tab strip's context menu, keyboard order and tabs restored at start (step 3) -----------------------
+
+def _entry(menu, key):
+    return next(e for e in menu._entries if e[0] == "item" and e[1] == key)
+
+
+def test_the_context_menu_disables_close_for_the_slide_tab_only(centre, files):
+    centre.open_file(files.deck)
+    slide_button, deck_button = centre.tab_strip.tab_buttons()
+    assert not _entry(slide_button._menu(), "close")[6]
+    assert _entry(deck_button._menu(), "close")[6]
+    for button in (slide_button, deck_button):
+        menu = button._menu()
+        assert _entry(menu, "close_others")[6] and _entry(menu, "close_right")[6] and _entry(menu, "reveal")[6]
+
+
+def test_choosing_close_others_closes_every_other_closable_tab(centre, files):
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    deck_tab, bib_tab = centre.tabs.tab_for(files.deck), centre.tabs.tab_for(files.bib)
+    deck_button = centre.tab_strip.tab_buttons()[1]
+    deck_button._menu().triggered.emit("close_others")
+    assert centre.tabs.tabs == [centre.tabs.slide_tab, deck_tab] and centre.tabs.active is deck_tab
+    assert centre.tabs.tab_for(files.bib) is None and bib_tab not in centre.tabs.tabs
+
+
+def test_choosing_close_all_to_the_right_closes_the_tabs_after_it(centre, files):
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    slide_button = centre.tab_strip.tab_buttons()[0]
+    slide_button._menu().triggered.emit("close_right")
+    assert centre.tabs.tabs == [centre.tabs.slide_tab]                  # the slide tab is always first in the strip
+
+
+def test_reveal_in_explorer_opens_the_folder_of_the_tabs_file(centre, files, monkeypatch):
+    opened = []
+    monkeypatch.setattr(open_path, "open_in_default_app", lambda path: opened.append(path))
+    centre.open_file(files.deck)
+    deck_button, = [b for b in centre.tab_strip.tab_buttons() if b.tab is centre.tabs.tab_for(files.deck)]
+    deck_button._menu().triggered.emit("reveal")
+    assert opened == [files.deck.parent]
+    slide_button = centre.tab_strip.tab_buttons()[0]
+    slide_button._menu().triggered.emit("reveal")                      # the slide tab: the focused slide's folder
+    assert opened == [files.deck.parent, files.aaa.parent]
+
+
+def test_reveal_in_explorer_reports_a_failure_to_open_the_folder(centre, files, monkeypatch):
+    monkeypatch.setattr(open_path, "open_in_default_app", lambda path: (_ for _ in ()).throw(OSError("nope")))
+    told = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: told.append(args[2]))
+    centre.open_file(files.deck)
+    centre.tab_strip.tab_buttons()[1]._menu().triggered.emit("reveal")
+    assert told and "nope" in told[0]
+
+
+def test_ctrl_pgdown_and_pgup_switch_tabs_in_strip_order_wrapping(centre, files):
+    centre.open_file(files.deck)
+    centre.open_file(files.bib)
+    slide, deck_tab, bib_tab = centre.tabs.slide_tab, centre.tabs.tab_for(files.deck), centre.tabs.tab_for(files.bib)
+    assert centre.tabs.active is bib_tab
+    centre.step_tab(1)
+    assert centre.tabs.active is slide and centre.state.mode == "preview"      # wraps past the end of the strip
+    centre.step_tab(-1)
+    assert centre.tabs.active is bib_tab                                      # wraps past the start
+    centre.step_tab(-1)
+    assert centre.tabs.active is deck_tab
+
+
+def test_ctrl_pgdown_does_nothing_with_only_the_slide_tab(centre):
+    centre.step_tab(1)
+    centre.step_tab(-1)
+    assert centre.tabs.tabs == [centre.tabs.slide_tab] and centre.tabs.active is centre.tabs.slide_tab
+
+
+def test_showing_a_file_tab_does_not_clobber_the_decks_remembered_mode(centre, files, deck):
+    state = centre.state
+    state.set_mode("split")                                     # the slide tab's own mode, remembered for the deck
+    centre.open_file(files.ccc, line=2, tab=True)                # a slide file tab opened at a line starts in Source
+    assert state.mode == "source" and centre.tabs.active.slide
+    assert app_settings.get(state.project, SETTINGS_KEY)[str(deck.path)]["mode"] == "split"
+    centre.show_slide_tab()
+    assert state.mode == "split"                                 # the slide tab's own mode is unaffected
+
+
+def _reopened(ctx, deck, monkeypatch):
+    """A fresh CentreColumn over the same project, as if the project were opened again."""
+    monkeypatch.setattr(render_check, "confirm_render", lambda *a, **k: True)
+    app = FakeApp(ctx)
+    state = WorkspaceState(ctx)
+    other = CentreColumn(app, state)
+    app.centre = other
+    state.set_deck(deck)
+    return other
+
+
+def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, files, ctx, deck, monkeypatch):
+    centre.open_file(files.deck)
+    centre.open_file(files.ccc, tab=True)
+    centre.state.set_mode("preview")                          # the slide file tab's own mode (D2)
+    centre.tabs.activate(centre.tabs.tab_for(files.deck))     # the deck source tab is active when the project closes
+    centre.save_tabs()
+    saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
+    assert saved == {"tabs": [{"path": "course.tex", "mode": "source"},
+                              {"path": "slides/ccc-DE-Drei-current.tex", "mode": "preview"}],
+                     "active": "course.tex"}
+
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert [t.path for t in reopened.tabs.tabs if t.kind == "file"] == [files.deck, files.ccc]
+    assert reopened.tabs.tab_for(files.deck).mode == "source"            # a deck source stays Source-only
+    assert reopened.tabs.tab_for(files.ccc).mode == "preview"
+    assert reopened.tabs.active is reopened.tabs.tab_for(files.deck)
+
+
+def test_restoring_tabs_skips_a_file_that_no_longer_exists(centre, files, ctx, deck, monkeypatch):
+    centre.open_file(files.bib)
+    centre.open_file(files.deck)                              # the active tab when the project closes
+    centre.save_tabs()
+    files.deck.unlink()                                       # gone since this project was last open
+
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert [t.path for t in reopened.tabs.tabs if t.kind == "file"] == [files.bib]
+    assert reopened.tabs.active is reopened.tabs.slide_tab    # the remembered active tab's file was gone too
+
+
+def test_restoring_tabs_does_nothing_without_anything_saved(centre):
+    centre.restore_tabs()
+    assert centre.tabs.tabs == [centre.tabs.slide_tab]

@@ -47,6 +47,8 @@ MAC_KEYS = {
     "open_manual": {"shortcut": ""},
     "tab:next": {"shortcut": "Meta+Tab"},               # Qt reads Ctrl as the Command key there, and Command+Tab is the system's
     "tab:previous": {"shortcut": "Meta+Shift+Tab"},
+    "tab:next_in_order": {"shortcut": "Meta+PgDown"},    # the physical Control+Page Down other Mac apps switch tabs with
+    "tab:previous_in_order": {"shortcut": "Meta+PgUp"},
     "exit": {"hint": ""},
 }
 
@@ -268,6 +270,10 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
         meta="most recently used first", enabled=_several_tabs)
     add("tab:previous", "Previous tab", VIEW_AND_BUILD, lambda w: w.centre.cycle_tabs(-1), icon="tab",
         shortcut="Ctrl+Shift+Tab", meta="least recently used first", enabled=_several_tabs)
+    add("tab:next_in_order", "Next tab in order", VIEW_AND_BUILD, lambda w: w.centre.step_tab(1), icon="tab",
+        shortcut="Ctrl+PgDown", meta="strip order", enabled=_several_tabs)
+    add("tab:previous_in_order", "Previous tab in order", VIEW_AND_BUILD, lambda w: w.centre.step_tab(-1), icon="tab",
+        shortcut="Ctrl+PgUp", meta="strip order", enabled=_several_tabs)
     add("tab:close", "Close tab", VIEW_AND_BUILD, lambda w: w.centre.close_active_tab(), icon="close", shortcut="Ctrl+W",
         meta="not the slide tab", enabled=_several_tabs)
     add("save", "Save source", VIEW_AND_BUILD, lambda w: w.centre.save(), icon="save", hint="Ctrl+S")
