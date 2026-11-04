@@ -1126,10 +1126,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{TAB}:hover {{ background-color: {t.hover}; }}
         QFrame#{TAB}:focus {{ border-bottom: 2px solid {t.focus}; }}
-        /* The usual SlideMage blue, the same one the selected deck version (Instructor) uses, not the generic inverse accent. */
-        QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.view_instructor}; }}
+        QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}
+        /* The tab shown gets the usual SlideMage blue fill, the same one the selected deck version (Instructor) uses. */
+        QFrame#{TAB}[active="true"] {{ background-color: {t.view_instructor}; }}
         {text(f"QLabel#{TAB_LABEL}", 12.5, t.text_3, 500)}
-        QFrame#{TAB}:hover QLabel#{TAB_LABEL}, QFrame#{TAB}[active="true"] QLabel#{TAB_LABEL} {{ color: {t.text}; }}
+        QFrame#{TAB}:hover QLabel#{TAB_LABEL} {{ color: {t.text}; }}
+        QFrame#{TAB}[active="true"] QLabel#{TAB_LABEL} {{ color: {t.on_solid}; }}
         QPlainTextEdit#{SOURCE} {{
             {mono}
             font-size: 13px;
