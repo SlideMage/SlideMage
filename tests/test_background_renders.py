@@ -374,12 +374,12 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
 # -- the slides of a deck compile ------------------------------------------------------------
 
 
-def _compiled_pdf(tmp_path, units):
-    """A deck PDF as a compile makes it: every slide's pages (two steps each) with their slide id in the footer."""
+def _compiled_pdf(tmp_path, units, steps=2):
+    """A deck PDF as a compile makes it: every slide's pages (`steps` of them) with their slide id in the footer."""
     pdf = tmp_path / "deck.pdf"
     doc = pymupdf.open()
     for unit in units:
-        for step in (1, 2):
+        for step in range(1, steps + 1):
             page = doc.new_page(width=453, height=255)
             page.insert_text((20, 40), f"slide id: {unit.id_slug.split('-')[0]}  step {step}")
     doc.save(pdf)
@@ -406,9 +406,9 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert r.ingest_compile(job, pdf, _record(pdf, deck, units, project)) >= 1
     unit = units[0]
     found = r.resolver.lookup(unit)
-    assert found.usable and found.record["partial"] and found.record["origin"] == render_store.ORIGIN_COMPILE
-    assert store.page(found.record, 1) is not None and found.record["pages"] == 1
-    assert not found.final                     # the idle sweep still renders it in full
+    assert found.usable and not found.record.get("partial") and found.record["origin"] == render_store.ORIGIN_COMPILE
+    assert store.page(found.record, 1) is not None and found.record["pages"] == 2
+    assert found.final                          # a plain \slide call: the compile already has every one of its steps
     # another slide changing does not change this slide's page ...
     other = units[1].source_path
     other.write_text(other.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
@@ -418,17 +418,85 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert not r.resolver.lookup(unit).usable
 
 
-def test_a_compile_page_is_not_a_list_of_steps_and_gives_way_to_the_steps_render(project, store, raster, tmp_path):
+def test_a_slidestep_call_is_left_to_the_sweep_not_finished_by_a_compile(project, store, raster, tmp_path):
+    """\\slidestep and \\slidefinal calls stay with the sweep (docs/plans/render-store-cleanup.md, step 4): their
+    page in a deck compile is only a selection of the slide's steps, never every one, so the compile stores nothing
+    for them, and the unit is not finished until the sweep's own all-steps render lands."""
+    from slidemage.compiler import CompileJob
+
+    r = make(project, store, raster, tex=FakeTeX(project))
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN", context_ready=lambda: True)
+    unit = next(u for u in units if u.macro == "slidestep")
+    pdf = _compiled_pdf(tmp_path, [unit])
+    job = CompileJob(deck, "instructor", None)
+    assert r.ingest_compile(job, pdf, _record(pdf, deck, [unit], project)) == 0
+    found = r.resolver.lookup(unit)
+    assert not found.usable and not found.final
+    r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken())
+    assert r.resolver.lookup(unit).final            # finished once the sweep's own all-steps render lands
+
+
+def test_a_final_state_for_students_slide_is_finished_from_the_compile_with_one_page_for_students(project, store, raster, tmp_path):
+    """\\SMFinalStateForStudents (D1): a student view's compile already shows only the slide's last step, so that one
+    page is the whole of it and the unit is finished; the instructor view's compile shows every step, so it is
+    finished too, with all of them."""
     from slidemage.compiler import CompileJob
 
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")[:3]
-    pdf = _compiled_pdf(tmp_path, units)
-    assert r.ingest_compile(CompileJob(deck, "instructor", None), pdf, _record(pdf, deck, units, project)) >= 1
-    unit = units[0]
-    assert r.resolver.lookup(unit).record["partial"]
-    steps_pdf = _compiled_pdf(tmp_path / "x", [unit]) if (tmp_path / "x").mkdir() is None else None
+    instructor_units = background_renders.deck_units(project, deck, "instructor", "EN")
+    student_units = background_renders.deck_units(project, deck, "during-course", "EN")
+    i_unit = next(u for u in instructor_units if "Final-State" in u.id_slug)
+    s_unit = next(u for u in student_units if "Final-State" in u.id_slug)
+
+    (tmp_path / "i").mkdir()
+    i_pdf = _compiled_pdf(tmp_path / "i", [i_unit], steps=3)
+    assert r.ingest_compile(CompileJob(deck, "instructor", None), i_pdf, _record(i_pdf, deck, [i_unit], project)) == 1
+    i_found = r.resolver.lookup(i_unit)
+    assert i_found.final and i_found.record["pages"] == 3
+
+    (tmp_path / "s").mkdir()
+    s_pdf = _compiled_pdf(tmp_path / "s", [s_unit], steps=1)
+    assert r.ingest_compile(CompileJob(deck, "during-course", None), s_pdf, _record(s_pdf, deck, [s_unit], project)) == 1
+    s_found = r.resolver.lookup(s_unit)
+    assert s_found.final and s_found.record["pages"] == 1
+
+
+def test_a_contents_slide_is_finished_from_the_compile_that_is_its_context(project, store, raster, tmp_path):
+    """A slide that needs its deck (a contents or agenda slide, a section divider, D2) is typeset in this very
+    compile, so it is included (deck_units' `context_ready`) and finished from it like any other slide."""
+    from slidemage.compiler import CompileJob
+
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN", context_ready=lambda: True)
+    unit = next(u for u in units if "Contents" in u.id_slug)
+    assert unit.context                                  # needs its deck
+    pdf = _compiled_pdf(tmp_path, [unit], steps=1)
+    job = CompileJob(deck, "instructor", None)
+    assert r.ingest_compile(job, pdf, _record(pdf, deck, [unit], project)) == 1
+    found = r.resolver.lookup(unit)
+    assert found.final and found.record["pages"] == 1
+
+
+def test_an_old_partial_compile_record_still_gives_way_to_the_steps_render(project, store, raster, tmp_path):
+    """A render stored before this step, marked `partial` (a last-page-only compile record), is not finished -- the
+    idle sweep still renders it in full -- and the reveal bar's own all-steps render still replaces it
+    (docs/plans/render-store-cleanup.md, step 4: `stored_pages` and `store_reveal` keep their `partial` tests)."""
+    from slidemage import render_key
+
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
+    key = r.resolver.fast_key(unit)
+    old_meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=[], tex_digest="",
+                    machine=render_key.machine_id(), engine_fp=r.resolver.engine_fp,
+                    frame_number=unit.frame_number, unstable=False, width=background_renders.STORE_WIDTH, partial=True)
+    store.put(key, render_store.ORIGIN_COMPILE, None, [b"png1"], old_meta, decks=[unit.deck])
+    found = r.resolver.lookup(unit)
+    assert found.usable and found.record["partial"] and not found.final
+    steps_pdf = _compiled_pdf(tmp_path, [unit])
     pages = [b"png1", b"png2"]
     r.store_reveal(unit, steps_pdf, pages)
     record = r.resolver.lookup(unit).record
