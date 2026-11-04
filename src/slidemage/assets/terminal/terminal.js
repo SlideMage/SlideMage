@@ -1,6 +1,8 @@
 // The glue between xterm.js and SlideMage (ui/workspace/terminal/web.py). Python owns the process: this page
 // only draws what it is sent (base64 of the raw bytes), reports keystrokes, its size and selections, and
-// takes colours from the app theme. Copy/paste: Ctrl+Shift+C / Ctrl+Shift+V (Cmd+C / Cmd+V on macOS).
+// takes colours from the app theme. Copy: Ctrl+Shift+C (Cmd+C on macOS). Paste: Ctrl+V or Ctrl+Shift+V
+// (Cmd+V on macOS) -- Ctrl+Shift+V matches the terminal-emulator convention, Ctrl+V matches every other
+// text field in the OS, so both work.
 "use strict";
 
 let term = null;
@@ -37,7 +39,10 @@ function keyHandler(event) {
   const mac = navigator.platform.toLowerCase().includes("mac");
   const copy = (event.ctrlKey && event.shiftKey && key === "c") || (mac && event.metaKey && key === "c")
     || (event.ctrlKey && key === "insert");
-  const paste = (event.ctrlKey && event.shiftKey && key === "v") || (mac && event.metaKey && key === "v")
+  // Plain Ctrl+V pastes too, not just Ctrl+Shift+V: readline's own "insert next character literally"
+  // binding for it is a power-user feature few people know, and every other text field in the OS
+  // treats Ctrl+V as paste, so leaving it unbound here reads as "paste does nothing" (reported bug).
+  const paste = (event.ctrlKey && key === "v") || (mac && event.metaKey && key === "v")
     || (event.shiftKey && key === "insert");
   if (copy && term.hasSelection()) { bridge.copy_text(term.getSelection()); return false; }
   if (paste) { bridge.paste_requested(); return false; }

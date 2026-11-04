@@ -37,7 +37,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import languages, slide_source
 from .project import ProjectContext
 
 
@@ -77,6 +76,15 @@ def current_name(id_slug: str) -> str:
 def frozen_name(id_slug: str, version: str) -> str:
     """The frozen file name for a version in its file form ("1-0-0")."""
     return f"{id_slug}-v{version}.tex"
+
+
+# Below current_name()/frozen_name(), not up with the other imports: deck_editor (by way of
+# deck_settings) needs FROZEN_RE and those two names, and imports them through this same module's
+# own `languages` import below -- languages -> deck_settings -> deck_editor -> back here, while
+# this module is still mid-initialization. Nothing above this line touches `languages` or
+# `slide_source` at module-execution time (both are only used inside function bodies further
+# down), so the import is safe to make here instead, after the names the cycle needs exist.
+from . import languages, slide_source
 
 
 def is_current_file(path: Path) -> bool:
