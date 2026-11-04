@@ -120,7 +120,29 @@ file tab means that slide. Check each in step 1 and list them in the PR.
 Per project, in `layout_settings` (`centre_tabs`: the file tabs' paths relative to the project, the active one, their
 modes); files that no longer exist are skipped silently.
 
-Step 2 as built (decided while building, 2026-11-01):
+Step 3 as built (2026-11-03):
+
+* **Where it lives.** `layout_settings` turned out to be the wrong store: it is per machine (the window geometry, the
+  Source/Preview split), not per project, so two projects would have fought over one remembered tab set. `app_settings`
+  (`CentreColumn.CENTRE_TABS_SETTING = "centre_tabs"`) is per project already, the same file `WorkspaceState`'s own
+  per-deck view/mode memory lives in. `CentreColumn.save_tabs()`/`restore_tabs()` read and write it; the window calls
+  `save_tabs()` from `closeEvent` and `restore_tabs()` once, right after the first `reload_decks()` in `__init__` (a
+  later rescan must not reopen closed tabs).
+* **The context menu** (D5) is `_TabButton._menu()`/`contextMenuEvent()` in `centre_tabs.py`, three more signals on
+  `TabStrip` next to `close_requested` (`close_others_requested`, `close_right_requested`, `reveal_requested`); what
+  they mean is `CentreColumn.close_other_tabs`/`close_tabs_to_the_right`/`reveal_tab`. Reveal in Explorer opens the
+  tab's folder with `open_path.open_in_default_app` (already used for the debug log's folder); on the slide tab it is
+  the focused slide's folder, since the slide tab has no path of its own.
+* **Ctrl+PgDn/PgUp** are `CentreTabs.step()` (wraps, becomes the most recently used, like a click) and
+  `CentreColumn.step_tab`, registered as `tab:next_in_order`/`tab:previous_in_order` next to `tab:next`/`tab:previous`
+  -- each press its own switch in strip order, not a Ctrl-held series as Ctrl+Tab's MRU order is.
+* **A related bug, fixed alongside this** (live on develop before this step, not one of D5/D7): showing a file tab
+  called `state.set_mode(...)` to keep the top bar's mode buttons in step, which `WorkspaceState` remembered as the
+  *deck's* mode -- quitting with a file tab on show, or even just clicking Preview on a slide file tab, could silently
+  overwrite the slide tab's own remembered mode, so the deck reopened in the wrong view next time. `WorkspaceState`
+  now has a `remember_mode` hook (default: always remember, so other `WorkspaceState` tests are unaffected);
+  `CentreColumn.__init__` narrows it to "the slide tab is the one on show", so a file tab's own mode (D2) is shown
+  through `state.mode` but never remembered as the deck's.
 
 * **Which tab shows what.** A slide file tab has every mode; it opens in the Source view when it has a line to go to or is a
   frozen version, else in the mode of the tab it was asked from (Open in new tab from Preview opens in Preview). Opening

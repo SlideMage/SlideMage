@@ -103,6 +103,23 @@ def test_window_opens_the_first_active_deck_then_the_one_left_open(window, monke
     assert again.state.deck.name == "slidemage-manual"
 
 
+def test_the_centres_tabs_are_restored_once_at_startup_and_saved_on_close(monkeypatch):
+    """docs/plans/centre-tabs.md step 3, D7: restore_tabs() runs once, right after the first reload_decks(), not on
+    a later rescan; save_tabs() runs from closeEvent."""
+    from slidemage.ui.workspace.centre import CentreColumn
+
+    monkeypatch.setattr(window_module, "scan_decks", lambda _ctx: [WORK, COURSE, MANUAL, TEST, OLD])
+    restored, saved = [], []
+    monkeypatch.setattr(CentreColumn, "restore_tabs", lambda self: restored.append(True))
+    monkeypatch.setattr(CentreColumn, "save_tabs", lambda self: saved.append(True))
+    built = build_window(monkeypatch)
+    assert restored == [True] and saved == []
+    built.reload_decks()
+    assert restored == [True]                      # a later rescan does not reopen closed tabs
+    built.close()
+    assert saved == [True]
+
+
 def test_picking_a_deck_updates_the_state_the_label_and_the_page(window):
     window.topbar._on_deck_picked(deck_key(TEST))
     assert window.state.deck is TEST

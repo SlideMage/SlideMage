@@ -283,6 +283,7 @@ class WorkspaceWindow(QMainWindow):
         # A deck compile's pages reach the store after the compile ended: the thumbnails take them then.
         self.background.ingested.connect(self.slide_list._refresh_all_preview_rows)
         self.reload_decks()
+        self.centre.restore_tabs()      # once, at startup (D7 of centre-tabs.md): reload_decks() alone may run again
         self._restore_window_geometry()
 
     def _restore_window_geometry(self) -> None:
@@ -549,6 +550,7 @@ class WorkspaceWindow(QMainWindow):
         self.palette.stop_search(5000)
         self.compile.shutdown()
         self.background.stop()
+        self.centre.save_tabs()
         layout_settings.set("window_geometry", self.saveGeometry().toBase64().data().decode("ascii"))
         super().closeEvent(event)
 

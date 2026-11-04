@@ -110,6 +110,22 @@ def test_view_and_mode_are_remembered_per_deck_and_the_language_is_the_decks(sam
     assert app_settings.get(EXAMPLE_PROJECT, SETTINGS_KEY)[str(first.path)] == {"view": "after-course", "mode": "split"}
 
 
+def test_set_mode_remembers_for_the_deck_only_while_remember_mode_says_so():
+    """The centre narrows this to "the slide tab is on show" (centre-tabs.md step 3): a file tab's own mode must
+    never clobber the deck's remembered one."""
+    state = WorkspaceState(EXAMPLE_PROJECT)
+    deck = make_deck("remember-mode")
+    state.set_deck(deck)
+    modes = record(state.mode_changed)
+    state.remember_mode = lambda: False
+    state.set_mode("source")
+    assert state.mode == "source" and modes == ["source"]            # shown, but not remembered
+    assert app_settings.get(EXAMPLE_PROJECT, SETTINGS_KEY, {}).get(str(deck.path), {}).get("mode") is None
+    state.remember_mode = lambda: True
+    state.set_mode("split")
+    assert app_settings.get(EXAMPLE_PROJECT, SETTINGS_KEY)[str(deck.path)]["mode"] == "split"
+
+
 def test_a_deck_without_a_saved_language_starts_in_its_own():
     state = WorkspaceState(EXAMPLE_PROJECT)
     state.set_deck(make_deck("german", text="\\decklanguage[de]\n\\begin{document}\n"))

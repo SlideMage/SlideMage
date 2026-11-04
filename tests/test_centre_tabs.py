@@ -147,6 +147,28 @@ def test_a_click_or_a_close_ends_a_series(tabs):
     assert not tabs.cycling
 
 
+def test_step_moves_to_the_next_or_previous_tab_in_strip_order_and_wraps(tabs):
+    slide = tabs.slide_tab
+    deck, bib, test = tabs.add_file(DECK), tabs.add_file(BIB), tabs.add_file(TEST)
+    tabs.activate(bib)                                                                  # bib, deck, test, slide
+    shown = []
+    tabs.active_changed.connect(shown.append)
+    assert tabs.step(1) is test and tabs.step(1) is slide and tabs.step(1) is deck      # wraps past the end
+    assert tabs.step(-1) is slide and tabs.step(-1) is test                             # wraps past the start
+    assert shown == [test, slide, deck, slide, test]
+    assert tabs.mru[0] is test                                                          # each step is its own switch
+
+
+def test_close_others_and_close_right_are_the_closable_tabs_in_strip_order(tabs):
+    slide = tabs.slide_tab
+    deck, bib, test = tabs.add_file(DECK), tabs.add_file(BIB), tabs.add_file(TEST)
+    assert tabs.close_others(bib) == [deck, test]
+    assert tabs.close_others(slide) == [deck, bib, test]
+    assert tabs.close_right(deck) == [bib, test]
+    assert tabs.close_right(test) == []
+    assert tabs.close_right(slide) == [deck, bib, test]                                 # the slide tab is always first
+
+
 def test_a_slide_file_tab_has_every_mode_and_starts_where_it_is_told_to(tabs):
     slide = tabs.add_file(BIB.with_name("aaa-EN-One-current.tex"), slide=True, occurrence=("k", 1), mode="preview")
     assert slide.kind == FILE and slide.closable and slide.slide and not slide.source_only

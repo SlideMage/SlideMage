@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout,
     QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, languages, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, languages, open_path, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
@@ -49,12 +49,16 @@ from .details_view import DetailsPane
 from .preview_view import PreviewPane
 from .source_file import NEW_SLIDE, OVERWRITE, RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
-from .state import WorkspaceState
+from .state import MODES, WorkspaceState
 
 
 # Settings key of the share of the width the Source view gets in the Split view.
 SPLIT_SETTING = "source_preview_split"
 DEFAULT_SPLIT = 0.5
+
+# app_settings key (per project, D7 of the plan): the open file tabs' paths relative to the project, each one's
+# mode and which was active, so they come back when the project opens again.
+CENTRE_TABS_SETTING = "centre_tabs"
 
 
 class _ResetHandle(QSplitterHandle):
@@ -127,6 +131,9 @@ class CentreColumn(QFrame):
         self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
         self._holding = 0                   # > 0: showing another tab does not refresh, the caller does
         self.tabs = CentreTabs(state.mode, self)
+        # A file tab's mode (D2) is shown through state.mode too (_on_tab_active), but is never the deck's own:
+        # only the slide tab's mode is remembered for it (the bug fix of centre-tabs.md step 3).
+        state.remember_mode = lambda: self.tabs.active is self.tabs.slide_tab
         self._shown = self.tabs.active      # the tab the views show (to write its file when it is left)
         self._ctrl = _CtrlWatch(self)       # watches for the end of a Ctrl+Tab series
         self._ctrl.released.connect(self.end_tab_cycle)
@@ -185,6 +192,9 @@ class CentreColumn(QFrame):
         self.preview.partner_requested.connect(self._open_partner)
         self.tab_strip.activate_requested.connect(self.tabs.activate)
         self.tab_strip.close_requested.connect(self.close_tab)
+        self.tab_strip.close_others_requested.connect(self.close_other_tabs)
+        self.tab_strip.close_right_requested.connect(self.close_tabs_to_the_right)
+        self.tab_strip.reveal_requested.connect(self.reveal_tab)
         self.tabs.tabs_changed.connect(self._update_strip)
         self.tabs.active_changed.connect(self._on_tab_active)
         self._update_strip()
@@ -814,6 +824,28 @@ class CentreColumn(QFrame):
         """Ctrl+W: close the tab on show unless it is the slide tab."""
         return self.close_tab(self.tabs.active)
 
+    def close_other_tabs(self, tab: CentreTab) -> None:
+        """The tab strip's context menu's Close others: every other closable tab, each asked about as close_tab()
+        asks."""
+        for other in self.tabs.close_others(tab):
+            self.close_tab(other)
+
+    def close_tabs_to_the_right(self, tab: CentreTab) -> None:
+        """Close all to the right: the closable tabs after `tab` in strip order."""
+        for other in self.tabs.close_right(tab):
+            self.close_tab(other)
+
+    def reveal_tab(self, tab: CentreTab) -> None:
+        """Reveal in Explorer: open the folder of the tab's file (the focused slide's for the slide tab) in the
+        OS's file manager."""
+        path = tab.path if tab.kind == FILE else self._slide_path
+        if path is None:
+            return
+        try:
+            open_path.open_in_default_app(path.parent)
+        except OSError as exc:
+            QMessageBox.warning(self.app, "Cannot open the folder", f"Could not open {path.parent}: {exc}")
+
     def _remove_tab(self, tab: CentreTab) -> None:
         self.tabs.close(tab)                   # shows the tab used before when this was on show
         self.source.release(tab.path)          # the file goes (and `file_closed` tells the window), edits kept aside
@@ -847,6 +879,55 @@ class CentreColumn(QFrame):
         """The Ctrl+Tab series is over: the tab it stopped at is the most recently used."""
         QApplication.instance().removeEventFilter(self._ctrl)
         self.tabs.end_cycle()
+
+    def step_tab(self, direction: int) -> None:
+        """Ctrl+PgDn (`direction` 1) and Ctrl+PgUp (-1): the next (previous) tab in strip order, unlike Ctrl+Tab's
+        most-recently-used order -- each press is its own switch, not a series."""
+        if len(self.tabs.tabs) > 1:
+            self.tabs.step(direction)
+
+    def save_tabs(self) -> None:
+        """Remember the open file tabs for this project (D7 of the plan): each one's path relative to the project,
+        the mode it was last shown in, and which was active, so they come back when the project opens again.
+        Called when the window closes."""
+        project = self.state.project
+        saved, active_rel = [], None
+        for tab in self.tabs.tabs:
+            if tab.kind != FILE:
+                continue
+            try:
+                rel = tab.path.relative_to(project.root).as_posix()
+            except ValueError:
+                continue       # not under the project (should not happen): nothing to restore it from
+            saved.append({"path": rel, "mode": tab.mode})
+            if tab is self.tabs.active:
+                active_rel = rel
+        app_settings.set(project, CENTRE_TABS_SETTING, {"tabs": saved, "active": active_rel})
+
+    def restore_tabs(self) -> None:
+        """Reopen the file tabs this project had last time (D7), each in the mode it was shown in; a file that no
+        longer exists is skipped silently. Called once, after the first deck has opened."""
+        project = self.state.project
+        remembered = app_settings.get(project, CENTRE_TABS_SETTING, {})
+        entries = remembered.get("tabs") if isinstance(remembered, dict) else None
+        if not entries:
+            return
+        active_rel = remembered.get("active")
+        active_tab = None
+        for entry in entries:
+            rel = entry.get("path") if isinstance(entry, dict) else None
+            if not rel:
+                continue
+            path = project.root / rel
+            if not path.is_file():
+                continue       # skipped silently: gone since this project was last open
+            tab = self.tabs.add_file(path, slide=_is_slide_file(path),
+                                     mode=entry.get("mode") if entry.get("mode") in MODES else "source")
+            self.source.hold(path)
+            if rel == active_rel:
+                active_tab = tab
+        if active_tab is not None:
+            self.tabs.activate(active_tab)      # refreshes (_on_tab_active)
 
     def _ask_save(self, name: str) -> Optional[str]:
         """"save", "discard" or None (Cancel) for the unsaved changes of the file `name`."""
