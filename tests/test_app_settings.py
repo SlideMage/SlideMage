@@ -51,3 +51,23 @@ def test_a_project_s_old_ai_settings_move_out_of_it_once_and_this_machine_s_win(
     assert read_json(app_settings.MACHINE_STORE_PATH)["anthropic_api_key"] == "sk-x"
 
 
+
+
+def test_a_project_folder_that_refuses_new_files_does_not_stop_a_setting_change(tmp_path, monkeypatch, caplog):
+    """A synced folder whose client is not running refuses every new file ("[Errno 22] Invalid argument" with
+    Nextcloud's virtual files); the deck switch or window close that saved a preference raised it (2026-11-05)."""
+    from slidemage import fileio
+
+    ctx = _project(tmp_path)
+    real = fileio.atomic_write
+
+    def refusing(path, *args, **kwargs):
+        if ctx.settings_dir in path.parents:
+            raise OSError(22, "Invalid argument")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(fileio, "atomic_write", refusing)
+    app_settings.set(ctx, "last_deck", "course")                       # no exception
+    app_settings.set_ollama_host(ctx, "http://gpu-box:11434")          # this machine's file is still written
+    assert read_json(app_settings.MACHINE_STORE_PATH)["ollama_host"] == "http://gpu-box:11434"
+    assert "couldn't save settings" in caplog.text

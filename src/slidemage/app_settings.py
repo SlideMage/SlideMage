@@ -80,18 +80,32 @@ def load(ctx: ProjectContext) -> dict[str, Any]:
     moved = {key: project_settings.pop(key) for key in MACHINE_KEYS if key in project_settings}
     if moved:
         machine = {**moved, **machine}
-        write_json(MACHINE_STORE_PATH, machine)
-        write_json(_store_path(ctx), project_settings)
+        if _write(MACHINE_STORE_PATH, machine):     # never drop the project's copy before this machine has one
+            _write(_store_path(ctx), project_settings)
     return {**project_settings, **{key: value for key, value in machine.items() if key in MACHINE_KEYS}}
 
 
 def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
     """`settings` as load() gave it, changed: MACHINE_KEYS to this machine's file (one left out is removed), the
-    rest to the project's."""
+    rest to the project's. A file that cannot be written is logged and left as it was (_write)."""
     machine = {key: value for key, value in read_json(MACHINE_STORE_PATH).items() if key not in MACHINE_KEYS}
     machine.update({key: value for key, value in settings.items() if key in MACHINE_KEYS})
-    write_json(MACHINE_STORE_PATH, machine)
-    write_json(_store_path(ctx), {key: value for key, value in settings.items() if key not in MACHINE_KEYS})
+    _write(MACHINE_STORE_PATH, machine)
+    _write(_store_path(ctx), {key: value for key, value in settings.items() if key not in MACHINE_KEYS})
+
+
+def _write(path: Path, data: dict) -> bool:
+    """write_json(), or a warning in the log when the folder cannot be written: these are preferences (the last
+    deck, the open tabs, ...), and a project folder whose sync client is not running refuses every new file
+    (2026-11-05, Nextcloud's virtual files gave "[Errno 22] Invalid argument"). Raised from a deck switch or
+    from closing the window, that error left the workspace half updated; the window says once that the
+    project folder cannot be written (project_access.py)."""
+    try:
+        write_json(path, data)
+        return True
+    except OSError as exc:
+        _log.warning("couldn't save settings to %s: %s", path, exc)
+        return False
 
 
 def get(ctx: ProjectContext, key: str, default: Any = None) -> Any:

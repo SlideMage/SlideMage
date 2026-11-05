@@ -26,6 +26,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import hashlib
+import logging
 from threading import Thread
 import shutil
 import time
@@ -77,6 +78,11 @@ PRELOAD_PAUSE = 0.01     # seconds the read-ahead worker rests before each store
 PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is asked again
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
 LOADING = "Loading…"
+_log = logging.getLogger("slidemage.preview")
+# Checks of one slide in a row that saw an input change while they ran (preview_cache.ValidationPass.stable) before
+# the pane stops asking again: a file that cannot be read at all (a synced folder whose client is not running) reads
+# as changing every time, and the slide stayed on "Loading…" for good (2026-11-05).
+UNSTABLE_RETRIES = 20
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
 BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
@@ -456,6 +462,7 @@ class PreviewPane(Surface):
         self._selection_validated_at = 0.0
         self._selection_metrics = {}
         self._selection_gui_latency = 0.0
+        self._unstable = (None, 0)            # the key of the last check that was unstable, and how often in a row
         self._background_validation = True
         self._selection_finished.connect(self._on_selection_finished)
         # The render store's lookups, page reads and PNG decodes run here, not in the selection executor: a lookup
@@ -748,8 +755,15 @@ class PreviewPane(Surface):
             self._refresh()  # recapture the editor/disk revision after a mid-validation edit
             return
         if metrics.get('unstable'):
-            QTimer.singleShot(150, self._refresh)
-            return
+            count = self._unstable[1] + 1 if self._unstable[0] == key else 1
+            self._unstable = (key, count)
+            if count < UNSTABLE_RETRIES:
+                QTimer.singleShot(150, self._refresh)
+                return
+            _log.warning("preview check of %s gave up after %d unstable checks", target.key, count)
+            metrics = {**metrics, 'error': "the slide's inputs could not be read consistently"}
+        else:
+            self._unstable = (None, 0)
         self._selection_result_key = key
         self._selection_result = selected
         self._selection_validated_at = time.monotonic()
