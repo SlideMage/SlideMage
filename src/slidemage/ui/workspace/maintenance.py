@@ -31,7 +31,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
-from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, slide_preview, slide_rename, updater
+from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
+from ... import slide_preview, slide_rename, updater
 from ... import citation_sources, citations, diagnostics, slide_snapshot, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
@@ -64,7 +65,51 @@ COURSE_HINT_TEXT = ("This project uses CampusOnline course links. Install or ena
 # The project compatibility check (compat.py): static scans of the project, a
 # local comparison -- shown before the framework/manual update offer.
 COMPAT_CHECK_DELAY_MS = 1000
+# Whether the project's own folders take new files (project_access.py): soon after start, then this often, so a sync
+# client that stops (or starts again) while the window is open is noticed too.
+ACCESS_CHECK_DELAY_MS = 500
+ACCESS_CHECK_INTERVAL_MS = 60_000
 _logged = diagnostics.logged("maintenance")     # a debug line when a check at startup has run
+
+
+def schedule_access_check(window) -> None:
+    window.project_access_checked.connect(partial(on_access_checked, window))
+    timer = QTimer(window)
+    timer.setInterval(ACCESS_CHECK_INTERVAL_MS)
+    timer.timeout.connect(partial(check_project_access, window))
+    timer.start()
+    QTimer.singleShot(ACCESS_CHECK_DELAY_MS, partial(check_project_access, window))
+
+
+def check_project_access(window) -> None:
+    if project.is_snapshot(window.project.root):
+        return  # opened read-only: nothing is written there anyway
+    ctx = window.project
+
+    def work() -> None:
+        try:
+            found = project_access.problems(ctx)
+        except Exception as exc:  # noqa: BLE001 -- a broken probe must not stop the app
+            found = [(ctx.root, str(exc))]
+        try:
+            window.project_access_checked.emit(found)
+        except RuntimeError:
+            pass        # the window is gone
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def on_access_checked(window, found) -> None:
+    """Tell once per outage: when folders start refusing new files, and when they take them again."""
+    was = window.project_access_problems
+    window.project_access_problems = found
+    if found and not was:
+        text = project_access.message(window.project, found)
+        window.log(f"*** {text} ***")
+        window.toast.show_message(text, error=True, timeout_ms=20_000)
+    elif was and not found:
+        window.log("The project folder can be written to again.")
+        window.toast.show_message("The project folder can be written to again.")
 
 
 def schedule_compat_check(window) -> None:
@@ -75,6 +120,11 @@ def schedule_compat_check(window) -> None:
 def check_project_compat(window) -> None:
     if project.is_snapshot(window.project.root):
         return  # a deck snapshot is frozen: nothing to migrate
+    if project_access.problems(window.project):
+        # Without .slidemage/ its project.json reads as empty: the project would look new to every check, and
+        # nothing it decides could be saved. Checked again at the next start.
+        window.log("Project compatibility not checked: the project folder can't be written to.")
+        return
     app_version = version_mod.VERSION_NUMBER
     try:
         evaluation = compat.evaluate(window.project.root, app_version)

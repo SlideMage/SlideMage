@@ -122,6 +122,7 @@ class WorkspaceWindow(QMainWindow):
     update_check_done = Signal(object)   # the startup update check's result (updater.UpdatePlan or UpdateError)
     citation_updates_done = Signal(object)  # citation_sources.check_updates's (offers, errors), or the Exception
     theme_updates_done = Signal(object)  # theme_sources.check_updates's (offers, errors), or the Exception
+    project_access_checked = Signal(object)  # project_access.problems(): (folder, reason) of those that refuse new files
     deck_groups: tuple[DeckGroup, ...] = DEFAULT_GROUPS   # the project's, read by reload_decks
 
     def __init__(self, theme: ThemeManager, project_context: project.ProjectContext) -> None:
@@ -252,6 +253,7 @@ class WorkspaceWindow(QMainWindow):
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         debug_log_ui.log_state_changes(self.state)
         self.state.deck_changed.connect(self._remember_deck)
+        self.project_access_problems: list = []     # what maintenance.check_project_access last found
         self.state.dirty_changed.connect(self._on_dirty_changed)
         # An autosave changes lint errors, stale previews and versions, but a rebuild per write while
         # typing is wasted work: the refresh waits for a pause (Ctrl+S and a file switch are writes too).

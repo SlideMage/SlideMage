@@ -1828,3 +1828,34 @@ def test_another_view_drops_the_pages_read_ahead_and_the_farthest_give_way_at_th
     assert set(view._compressed) == {"near", "far"} and view._compressed_bytes == 7
     view._keep_compressed("farther", b"1234", "g")                # the farthest, with no room: not kept
     assert set(view._compressed) == {"near", "far"}
+
+
+def test_a_check_that_is_never_stable_gives_up_instead_of_loading_forever(pane, monkeypatch, qapp):
+    """A slide whose inputs cannot be read (a synced folder whose client is not running) reads as changing on every
+    check; the pane stops asking after UNSTABLE_RETRIES, and its "Loading…" goes."""
+    import time
+
+    view, _target, _ = pane
+    calls = []
+
+    def validate(_specs, _reference):
+        calls.append(1)
+        return None, {'unstable': True}
+
+    monkeypatch.setattr(preview_view, 'validate_captured', validate)
+    monkeypatch.setattr(preview_view, 'UNSTABLE_RETRIES', 3)
+    view._buffer = lambda: None
+    view._background_validation = True
+    view._refresh()
+    deadline = time.monotonic() + 5
+    while (view._selection_result_key is None or view._selection_pending is not None) and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(.01)
+    assert len(calls) == 3
+    assert view._selection_result_key is not None and view._selection_result is None
+    assert 'error' in view._selection_metrics
+    for _ in range(30):                              # within the 5 s a published answer is reused: no new check
+        qapp.processEvents()
+        time.sleep(.01)
+    assert len(calls) == 3 and not view._checking()
+    assert view._page.message != preview_view.LOADING
