@@ -3687,3 +3687,8 @@ v0.14.33 (2026-11-06, code review plan of 2026-11-06, step 4.2: the image form's
 
 NEW: Nothing changes for you; the image forms look and save as before.
 - Internal clean-up: the image form's second-language fields are no longer named after German.
+
+v0.14.34 (2026-11-06, code review plan of 2026-11-06, the rest of phase 1: unused background-render code): Removed what the background-render fix had held back and nothing calls: RenderStore._read_meta, background_renders.JOB_TIMEOUT, BackgroundRenderer.submit_neighbours (the reveal bar stores its renders with store_reveal; the scheduler's P_NEIGHBOURS class stays) and RenderScheduler.cancel_priority. The test of submit_neighbours goes; the scheduler tests keep covering the neighbours class, and the store-limit test clears the queue with cancel_group.
+
+NEW: Nothing changes for you; background previews work as before.
+- Internal clean-up: unused code in the background renderer is gone.

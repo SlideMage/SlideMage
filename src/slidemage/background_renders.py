@@ -32,7 +32,7 @@ from .dep_hash import HashCache, norm
 from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
-from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
+from .render_scheduler import P_IDLE, Job, RenderScheduler
 from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
@@ -41,7 +41,6 @@ QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
 MIN_REPLAN_SECONDS = 15.0
-JOB_TIMEOUT = 180.0
 
 ENABLED_KEY = "bg_previews_enabled"
 ONLY_MAINS_KEY = "bg_previews_only_on_mains"
@@ -674,10 +673,6 @@ class BackgroundRenderer:
                                  is_orphan=lambda decks: bool(decks) and not set(decks) & names)
 
     # -- foreground helpers ------------------------------------------------------------------
-
-    def submit_neighbours(self, unit: render_key.Unit, rank: tuple = ()) -> None:
-        """The reveal slider's render of a unit (class P_NEIGHBOURS): it runs before any idle job and never waits for one."""
-        self.scheduler.submit(unit.label, ((unit,), ORIGIN_REVEAL), P_NEIGHBOURS, rank, group="reveal")
 
     def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
         """Keep the all-steps render the reveal bar made (its PDF and page images) as a provisional store object, so

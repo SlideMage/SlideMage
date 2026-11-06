@@ -323,6 +323,10 @@ def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_wai
     def queued_decks():
         return {job.group for job in r.scheduler._queue.values()}
 
+    def drop_queued():
+        for group in queued_decks():
+            r.scheduler.cancel_group(group)
+
     r.tick()                                     # no deck opened yet: rendering any would push another one out
     assert queued_decks() == set() and r.progress.left > 0
     assert r.progress.paused_because == background_renders.STORE_FULL and not r.sweeping()
@@ -330,12 +334,12 @@ def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_wai
     r.replan()
     r.tick()                                     # the deck in use may push out the others' renders
     assert queued_decks() == {manual.name} and r.progress.paused_because is None
-    r.scheduler.cancel_priority(P_IDLE)
+    drop_queued()
     background_renders.app_settings.set(project, background_renders.LIMIT_GB_KEY, 1.0)
     r.replan()
     r.tick()                                     # room again: the sweep goes on with every deck, nothing was pushed out
     assert r.progress.paused_because is None and store.count() == 1
-    r.scheduler.cancel_priority(P_IDLE)
+    drop_queued()
     with r._plan_lock:
         r._plan = [item for item in r._plan if item[1].deck == copy.name]
     r._top_up()
@@ -352,18 +356,6 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
     deck.archived = True
     r.deck_archived(deck)
     assert store.count() == 0 and deck.name not in [d.name for d in r.ordered_decks()]
-
-
-def test_the_slider_goes_before_the_sweep(project, store, raster):
-    tex = FakeTeX(project, pages=1)
-    r = make(project, store, raster, tex=tex)
-    deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")
-    r.tick()
-    r.submit_neighbours(units[7])
-    assert r.scheduler.queued_keys()[0] == units[7].label
-    r.scheduler.run_next()
-    assert tex.calls[0][0] == units[7].id_slug and r.resolver.lookup(units[7]).record["origin"] == "reveal"
 
 
 def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(project, store, raster):
