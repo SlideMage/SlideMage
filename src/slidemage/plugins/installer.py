@@ -18,7 +18,6 @@ keeps its original import and resource paths. Failed publication restores the pr
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import re
@@ -33,6 +32,7 @@ import zipfile
 from http.client import HTTPException
 from pathlib import Path, PurePosixPath
 
+from .. import fileio
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .loader import plugins_dir
@@ -58,11 +58,7 @@ class InstallError(Exception):
 
 
 def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return fileio.sha256_file(path)
 
 
 def read_sha256_file(path: Path) -> str | None:

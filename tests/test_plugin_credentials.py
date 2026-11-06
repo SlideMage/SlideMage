@@ -63,6 +63,26 @@ def test_the_file_is_owner_only(config):
     assert not list(path.parent.glob("*.tmp"))
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX permission bits")
+def test_the_secret_is_owner_only_before_replacement(config, monkeypatch):
+    c = PluginCredentials("claude")
+    real_replace = os.replace
+    modes = []
+
+    def replace(source, target):
+        modes.append(stat.S_IMODE(os.stat(source).st_mode))
+        assert modes[-1] == 0o600
+        real_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", replace)
+    c.set("sk-1")
+    c.path.chmod(0o644)      # A replacement must be private even if an older file was not.
+    c.set("sk-2")
+    assert modes == [0o600, 0o600]
+    assert stat.S_IMODE(c.path.stat().st_mode) == 0o600
+    assert c.get() == "sk-2"
+
+
 def test_plugins_do_not_share_secrets(config):
     PluginCredentials("claude").set("a")
     PluginCredentials("ollama").set("b")

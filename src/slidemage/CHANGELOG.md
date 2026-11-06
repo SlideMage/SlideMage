@@ -3627,3 +3627,8 @@ v0.14.25 (2026-11-06, code review plan of 2026-11-06, phase 1: delete unused cod
 
 NEW: Rename a slide id from the command line.
 - `slidemage rename-slide-id OLD NEW` renames a slide id across the project and lists what it changed; add --reserved for a manual or demo slide.
+
+v0.14.26 (2026-11-06, code review plan of 2026-11-06, steps 2.1 and 2.2: one file hasher, atomic writes through fileio): fileio.sha256_file hashes a file in 1 MiB chunks and replaces compile_records.sha256 (now an alias of it), dep_hash.file_sha256 and bundled_copies.file_hash, which read the whole file into memory; plugins/installer.sha256_of calls it. The plugin settings, the plugins' on/off state and the plugin credentials file are written with fileio.write_json and fileio.atomic_write instead of their own temporary-file-and-rename code, so each write is flushed to disk before the rename; the credentials file still never exists with anything but owner-only permissions. The tolerant JSON reads in the plugin loader, host, credentials and upgrade code, compile_passes and diagnostics use fileio.read_json. Tests in tests/test_fileio.py and tests/test_plugin_credentials.py.
+
+NEW: Nothing changes for you; settings and keys are saved as before.
+- Plugin settings and saved keys are flushed to disk before they replace the old file, so a crash cannot leave a half-written one.

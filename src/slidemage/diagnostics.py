@@ -35,6 +35,8 @@ from functools import wraps
 from pathlib import Path
 from typing import Optional
 
+from .fileio import read_json
+
 LOGGER = "slidemage"
 DIR_ENV = "SLIDEMAGE_LOG_DIR"
 ERROR_LOG = "slidemage.log"
@@ -90,12 +92,7 @@ def forced() -> Optional[bool]:
 
 def saved() -> bool:
     """The setting: on until it is turned off (decision D1), for this computer's SlideMage, every project."""
-    import json
-
-    try:
-        return json.loads(settings_path().read_text(encoding="utf-8")).get("debug") is True
-    except (OSError, ValueError, AttributeError):
-        return False
+    return read_json(settings_path()).get("debug") is True
 
 
 def wanted() -> bool:

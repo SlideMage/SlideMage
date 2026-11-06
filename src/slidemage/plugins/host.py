@@ -12,7 +12,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-import os
 import types
 from collections.abc import Callable
 from pathlib import Path
@@ -23,7 +22,7 @@ from .. import (app_settings, deck_editor, deck_scan, diagnostics, languages, op
                slide_language, transcript)
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
-from ..fileio import atomic_write, read_text_exact
+from ..fileio import atomic_write, read_json, read_text_exact, write_json
 from ..project import ProjectContext
 from .credentials import PluginCredentials
 from .manifest import Manifest
@@ -89,13 +88,7 @@ class PluginSettings:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._data: dict[str, Any] = {}
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                self._data = data
-        except (OSError, ValueError):
-            pass
+        self._data: dict[str, Any] = read_json(path)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)
@@ -105,13 +98,7 @@ class PluginSettings:
         self._data[key] = value
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        try:
-            tmp.write_text(json.dumps(self._data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            os.replace(tmp, self.path)
-        finally:
-            tmp.unlink(missing_ok=True)
+        write_json(self.path, self._data, sort_keys=False)
 
 
 # -- the host --------------------------------------------------------------------------------------------------
