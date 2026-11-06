@@ -199,7 +199,7 @@ def test_the_built_in_profiles_are_valid_and_the_owners_has_the_current_slide_la
 
 def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_and_the_strip():
     profile = layout.NEXT_LARGE_CLOCK
-    assert profile.name == "Next large, clock" and profile.builtin and profile in layout.BUILTINS
+    assert profile.name == "Mirror and clock" and profile.builtin and profile in layout.BUILTINS
     body, strip = profile.tree.a, profile.tree.b
     assert profile.tree.orient == "v" and strip.is_strip and strip.elements == ("counter", "timer", "toolbar")
     left, right = body.a, body.b
@@ -209,7 +209,7 @@ def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_a
     assert "current" not in layout.elements_of(profile.tree)
     again = layout.profile_from_dict(layout.profile_to_dict(profile))
     assert again.tree == profile.tree and again.name == profile.name
-    assert layout.profile_named("Next large, clock") is profile
+    assert layout.profile_named("Mirror and clock") is profile
 
 
 def test_the_big_clock_is_a_big_element_and_old_profiles_stay_valid():
@@ -223,7 +223,7 @@ def test_the_big_clock_is_a_big_element_and_old_profiles_stay_valid():
 def test_a_profile_survives_json_and_bad_ones_are_refused():
     data = layout.profile_to_dict(layout.CURRENT_LARGE)
     again = layout.profile_from_dict(data)
-    assert again.tree == layout.CURRENT_LARGE.tree and again.name == "Current large"
+    assert again.tree == layout.CURRENT_LARGE.tree and again.name == "Standard"
     assert layout.profile_from_dict({"name": "x", "tree": {"leaf": "next"}}).tree == layout.Leaf(("next",))   # next alone is enough
     with pytest.raises(ValueError, match="slide is missing"):
         layout.profile_from_dict({"name": "x", "tree": {"leaf": "notes"}})                 # neither slide
@@ -235,7 +235,7 @@ def test_a_profile_survives_json_and_bad_ones_are_refused():
         layout.parse_node({"leaf": "weather"})
     clamped = layout.parse_node({"split": "h", "ratio": 5, "a": {"leaf": "current"}, "b": {"leaf": "next"}})
     assert clamped.ratio == layout.MAX_RATIO
-    assert layout.profile_named("nope").name == "Current large"
+    assert layout.profile_named("nope").name == "Standard"
 
 
 # -- the timer ---------------------------------------------------------------------------
@@ -434,3 +434,12 @@ def test_the_doubled_labels_of_an_older_presenter_pdf_are_not_used(tmp_path, qap
         assert deck.page_labels() is None and deck.frame_map() is None
     finally:
         deck.close()
+
+
+def test_the_builtins_have_new_names_and_the_old_ones_still_resolve():
+    assert [p.name for p in layout.BUILTINS] == ["Standard", "Look ahead", "Mirror and clock"]
+    assert all(layout.DESCRIPTIONS[p.name] for p in layout.BUILTINS)
+    assert layout.profile_named("Current large") is layout.CURRENT_LARGE
+    assert layout.profile_named("Next large") is layout.NEXT_LARGE
+    assert layout.profile_named("Next large, clock") is layout.NEXT_LARGE_CLOCK
+    assert layout.profile_named("Standard") is layout.CURRENT_LARGE

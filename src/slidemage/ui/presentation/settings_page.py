@@ -4,6 +4,7 @@
 other tabs, a control applies and is saved when it changes."""
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QPushButton, QSpinBox, QVBoxLayout
 
@@ -30,7 +31,9 @@ class PresentationTab(Page):
         self.profile_combo = QComboBox()
         for profile in layout.BUILTINS:
             self.profile_combo.addItem(profile.name)
-        self.profile_combo.setCurrentIndex(max(self.profile_combo.findText(values.profile), 0))
+            self.profile_combo.setItemData(self.profile_combo.count() - 1, layout.DESCRIPTIONS[profile.name],
+                                           Qt.ItemDataRole.ToolTipRole)
+        self.profile_combo.setCurrentIndex(max(self.profile_combo.findText(layout.current_name(values.profile)), 0))
         self.profile_combo.currentTextChanged.connect(lambda text: self._set("profile", text))
         body.addWidget(Field("Presenter window layout", self.profile_combo))
         body.addWidget(caption(

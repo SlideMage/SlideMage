@@ -3585,3 +3585,10 @@ v0.14.18 (2026-11-06, the framework's last unclassified lengths get a class): St
 
 NEW: Three more layout lengths are guarded against being set by a template.
 - A template or a layout profile that sets \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign or \SMSectionframeBarBottom now gets a clear error: they follow from the paddings and the section bar's height.
+
+v0.14.21 (2026-11-06, direct instruction: draw and point on the presenter window itself, and a list of named layouts behind Profile): The presenter layouts have names that say what they do, and the Profile button lists them. "Current large" is now "Standard", "Next large" is "Look ahead" and "Next large, clock" is "Mirror and clock"; a layout saved under an old name opens as its new one. In the Mirror and clock layout, which has no current slide, the projector window takes the mouse and shows the cursor, so with the projector mirrored onto a screen of your own you draw, point with the laser (Ctrl and the left button) and click links right there; the drawings and the laser appear on the projector as before. Any layout with a current slide takes the mouse away from the projector again, at once and without a restart. With one screen nothing changes. Tests in tests/test_presentation_core.py and tests/test_presentation_gui.py.
+
+NEW: Named presenter layouts, a layout menu and drawing on the mirrored projector.
+- The layouts are renamed: "Current large" is "Standard", "Next large" is "Look ahead", "Next large, clock" is "Mirror and clock"; saved choices carry over.
+- Profile opens a menu of the three layouts with the active one checked and a short description of each; P still switches to the next one.
+- In "Mirror and clock" you can draw, erase, use the laser and click links on the projector window itself, for example on a screen that mirrors it.

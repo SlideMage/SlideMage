@@ -15,7 +15,7 @@ TIMER_END, TIMER_DURATION = "end", "duration"
 
 @dataclass
 class PresentationSettings:
-    profile: str = "Current large"
+    profile: str = "Standard"          # layout.profile_named also accepts the names up to v0.14.20
     laser_color: str = "#ff2020"
     laser_size: float = 0.02           # the dot's radius, as a fraction of the slide height
     pen_color: str = "#c0ffd400"       # a translucent yellow: a highlighter

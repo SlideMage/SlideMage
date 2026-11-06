@@ -42,6 +42,16 @@ class SlideCanvas(QWidget):
         if slide_input is not None:
             self.setMouseTracking(True)
 
+    def set_input(self, slide_input: Optional[SlideInput]) -> None:
+        """Gives the canvas the mouse (draw, laser, links) or takes it away, live. Taking it away ends a laser or
+        stroke in progress and drops the arrow or hand cursor the canvas set itself, so the parent's cursor shows."""
+        if self.input is not None and slide_input is not self.input:
+            self.input.leave()
+        self.input = slide_input
+        self.setMouseTracking(slide_input is not None)
+        if slide_input is None:
+            self.unsetCursor()
+
     # -- geometry ---------------------------------------------------------------------
 
     def target(self) -> QRect:

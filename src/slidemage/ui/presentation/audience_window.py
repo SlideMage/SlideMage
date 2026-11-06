@@ -63,7 +63,17 @@ class AudienceWindow(ControlledWindow):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(canvas)
-        if not interactive:
+        self.set_interactive(interactive)
+
+    def set_interactive(self, interactive: bool, slide_input=None) -> None:
+        """The mouse works on the projector's canvas (one screen, or a presenter layout with no current slide) or
+        it is hidden. With `slide_input` the canvas is given it; without, a canvas that has one keeps it."""
+        if slide_input is not None or not interactive:
+            self.canvas.set_input(slide_input if interactive else None)
+        if interactive:
+            self.unsetCursor()
+            self.canvas.unsetCursor()
+        else:
             self.setCursor(Qt.CursorShape.BlankCursor)
 
 
