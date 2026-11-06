@@ -3585,3 +3585,8 @@ v0.14.18 (2026-11-06, the framework's last unclassified lengths get a class): St
 
 NEW: Three more layout lengths are guarded against being set by a template.
 - A template or a layout profile that sets \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign or \SMSectionframeBarBottom now gets a clear error: they follow from the paddings and the section bar's height.
+
+v0.14.19 (2026-11-06, a project with no framework beside it uses the one SlideMage bundles): SlideMage found the LaTeX framework only through $SLIDEMAGE_LATEX, ../latex or ../SlideMage/latex next to the project, as the project's .latexmkrc does. A project set up next to a SlideMage checkout lost it when the checkout moved: the background previews said "Template slidemage not found" and the compiles had no framework. With none of the three, compiler.build_env now puts the bundled framework on $SLIDEMAGE_LATEX, which the .latexmkrc reads first, and slide_snapshot.framework_dirs lists it, so the template lists, render keys and previews see it too. A framework beside the project or in $SLIDEMAGE_LATEX still wins. Tests in tests/test_framework_fallback.py.
+
+NEW: A project keeps compiling when the folder it found its framework in goes away.
+- If no LaTeX framework sits next to the project and SLIDEMAGE_LATEX is not set, SlideMage uses the framework it brings itself, so the decks compile and the previews render instead of reporting a missing template.
