@@ -3597,3 +3597,9 @@ NEW: A layout menu in the presenter, and drawing on the mirrored projector.
 - "Next large, clock" is now called "Mirror and clock"; a saved choice carries over.
 - Profile opens a menu of the three layouts with the active one checked and a short description of each; P still switches to the next one.
 - In "Mirror and clock" you can draw, erase, use the laser and click links on the projector window itself, for example on a screen that mirrors it.
+
+v0.14.22 (2026-11-06, the catalogue lists citation formats): The website's catalogue has an optional "citations" list beside "plugins" (schema 1 stays; the website added it with APA 7, Chicago author-date and Harvard). SlideMage reads it: plugins/catalogue.py parses the entries into CatalogueCitation and CitationRelease (a release without api_version; an entry that breaks a rule is left out, as a plugin is; a catalogue without the key has none), and best_citation_release picks the newest release whose requires_slidemage this SlideMage accepts. Settings -> Extensions -> Citation formats shows an Available list under the installed formats, filled from the same cached catalogue that "Check for plugins" refreshes; Install downloads the .smcite, checks its SHA-256 against the catalogue's and installs it with citations.install_file, like a catalogue plugin (no question first: the catalogue vouches for it). A format of the bundled keys is never offered. A format installed this way has no source.json, so it is not updated from GitHub; Add from GitHub still does that. Themes are still not in the app's catalogue client.
+
+NEW: Install citation formats from SlideMage's list.
+- Settings, Extensions, Citation formats now shows the available formats (APA 7, Chicago author-date and Harvard to begin with) after you press Check for plugins; Install adds one in a click.
+- Choose an installed format in a template or deck with \renewcommand{\SMCitationFormat}{key}.

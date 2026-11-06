@@ -46,7 +46,8 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLi
 
 from ... import citation_sources, citations, theme_sources, themes
 from ...plugins import catalogue, installer, loader, session, updates
-from ...plugins.catalogue import Catalogue, CataloguePlugin, CatalogueError, CatalogueTooNew, Release
+from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
+                                  CitationRelease, Release)
 from ...plugins.loader import LoadedPlugin
 from ...plugins.manifest import Manifest, parse_version
 from .. import background
@@ -102,6 +103,21 @@ def download_release(release: Release) -> Path:
     folder = Path(tempfile.mkdtemp(prefix="slidemage-plugin-"))
     try:
         installer.download(release.url, folder / "plugin.smplugin", expected_size=release.size)
+    except BaseException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return folder
+
+
+CATALOGUE_ARCHIVE = "citation.smcite"
+
+
+def download_citation(release: CitationRelease) -> Path:
+    """Download the catalogue's citation `release` into a folder of its own (a worker thread's job); the caller
+    installs it and deletes the folder."""
+    folder = Path(tempfile.mkdtemp(prefix="slidemage-citation-"))
+    try:
+        installer.download(release.url, folder / CATALOGUE_ARCHIVE, expected_size=release.size)
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
@@ -521,6 +537,28 @@ class CitationRow(_ListRow):
             layout.addWidget(caption(_sentence(f"not usable: {item.problem}"), "error"))
 
 
+class AvailableCitationRow(_ListRow):
+    """One catalogue citation format that is not installed (AvailableRow's twin)."""
+
+    def __init__(self, tab: PluginsTab, entry: CatalogueCitation, release: CitationRelease | None) -> None:
+        super().__init__()
+        self.key = entry.id
+        layout = self.layout()
+        title = QLabel(f"{entry.name}  {release.version}" if release else entry.name)
+        title.setObjectName(q.ROW_NAME)
+        self.install_button = Button("Install", compact=True)
+        self.installable = release is not None
+        self.add_title_line([title, caption(f"format {entry.id}"),
+                             *([Chip("Recommended", "info")] if entry.recommended else [])], [self.install_button])
+        layout.addWidget(caption(entry.summary))
+        layout.addWidget(caption(f"{entry.maintainer}, {entry.license} · A TeX file; it runs no program"))
+        if release is None:
+            self.install_button.setEnabled(False)
+            layout.addWidget(caption("No release of this citation format works with this SlideMage."))
+        else:
+            self.install_button.clicked.connect(partial(tab.install_citation_release, entry, release))
+
+
 class PluginsTab(Page):
     """`app` is the window (its project and relaunch_with_project); `leave(action)` closes the sheet and then runs
     `action` (SettingsSheet.close_then), which is how "Restart now" gets the modal sheet out of the way first."""
@@ -568,6 +606,14 @@ class PluginsTab(Page):
         self._citations_box = QVBoxLayout()
         self._citations_box.setSpacing(LIST_GAP)
         layout.addLayout(self._citations_box)
+        self.citation_available_heading = caption("Available")
+        layout.addWidget(self.citation_available_heading)
+        self._citations_available_box = QVBoxLayout()
+        self._citations_available_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._citations_available_box)
+        self.citation_available_note = caption("")
+        layout.addWidget(self.citation_available_note)
+        self.available_citations: dict[str, AvailableCitationRow] = {}
 
         layout.addSpacing(SECTION_GAP)
         self.page_button = Button("See all plugins and what they do", kind="ghost", compact=True)
@@ -764,6 +810,45 @@ class PluginsTab(Page):
             self._citations_box.addWidget(caption(
                 "No citation formats are installed; the house format is built in. A citation format is a way "
                 "references look, packaged on its own (.smcite)."))
+        clear_layout(self._citations_available_box)
+        self.available_citations.clear()
+        bundled = citations.bundled_keys()
+        listed = [] if self.catalogue is None else [c for c in self.catalogue.citations if c.id not in bundled]
+        todo = [c for c in listed if c.id not in self.citation_rows]
+        for entry in sorted(todo, key=lambda c: (not c.recommended, c.name.lower())):
+            available_row = AvailableCitationRow(self, entry, catalogue.best_citation_release(entry))
+            self.available_citations[entry.id] = available_row
+            self._citations_available_box.addWidget(available_row)
+        if self.catalogue is None:
+            note = "The list has not been loaded yet. Check for plugins to see the available citation formats."
+        else:
+            note = "" if todo else ("Every citation format of the list is installed." if listed
+                                    else "The list has no citation formats.")
+        self.citation_available_note.setText(note)
+        self.citation_available_note.setVisible(bool(note))
+        self.citation_available_heading.setVisible(bool(todo))
+
+    def install_citation_release(self, entry: CatalogueCitation, release: CitationRelease) -> None:
+        """Download the catalogue's `release` of a citation format and install it when its SHA-256 is the one the
+        catalogue promised (the catalogue vouches for it, as for plugins, so there is no question first)."""
+        def done(archive: Path | None, error: Exception | None) -> None:
+            if error is not None:
+                self._citation_failed(error)
+                return self.refresh_citations()
+            try:
+                manifest = citations.install_file(archive / CATALOGUE_ARCHIVE, expected_sha256=release.sha256)
+            except citations.CitationError as exc:
+                self._say(str(exc), error=True)
+            else:
+                self._say(_citation_installed(manifest))
+                installed = getattr(self.app, "citation_installed", None)
+                if installed is not None:
+                    installed(manifest.id)
+            finally:
+                shutil.rmtree(archive, ignore_errors=True)
+            self.refresh_citations()
+
+        self._start(partial(download_citation, release), done, f"Downloading {entry.name}…")
 
     def remove_citation(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove citation format", f"Remove the citation format {name}? Decks that "
@@ -908,6 +993,8 @@ class PluginsTab(Page):
                 theme_row.update_button.setEnabled(not busy)
         for available_row in self.available.values():
             available_row.install_button.setEnabled(not busy and available_row.installable)
+        for citation_row in self.available_citations.values():
+            citation_row.install_button.setEnabled(not busy and citation_row.installable)
         for installed_row in self.rows.values():
             if installed_row.update_button is not None:
                 installed_row.update_button.setEnabled(not busy)
