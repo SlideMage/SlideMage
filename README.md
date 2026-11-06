@@ -162,8 +162,8 @@ screenshots.
   slide or the whole deck with tools (read, search, edit, lint, render a preview, add a
   slide or a bibliography entry, compile, refresh cached previews). Edits wait for **Apply** / **Reject** in
   *Ask before edits* mode, or apply at once with **Undo** in *Edit automatically* mode; a
-  slide's header comment, `\setSlideVersion` line, `\vbox to 0pt` blocks and frozen
-  versions can never be edited. The model is a local Ollama model that can call tools or,
+  slide's `%%` header lines (such as `%% Included in decks:`), its `\setSlideVersion` line and frozen
+  versions can never be edited; the ordinary `%` notes at the top of a slide can. The model is a local Ollama model that can call tools or,
   with an Anthropic API key, a Claude model. Every AI request goes through one setting,
   the **Local | Cloud** switch at the top of the assistant, with every other AI control
   (in the top bar until v8.61.0; it asks before it

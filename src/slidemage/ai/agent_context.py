@@ -56,8 +56,9 @@ details (slides, frames, layout, reveals, citations, images_and_text): read the 
 write something you are not sure of.
 
 ## Protected parts
-SlideMage manages these and your edits to them are refused: the comment block at the top of a slide \
-("%% Included in decks: ..."), and the \\setSlideVersion{{...}} line. \
+SlideMage manages these and your edits to them are refused: the '%%' lines at the top of a slide \
+("%% Included in decks: ...", "%% Translation of: ..."), and the \\setSlideVersion{{...}} line. \
+The ordinary '%' notes at the top (sources, the user's instructions, layout notes) are the slide's own text and may be edited. \
 Work around them. Overlay blocks (\\vbox to 0pt{{...}}) may be edited, but they hold measured page \
 coordinates: change those only when asked and check the result with render_preview. \
 Do not rename slides, change deck calls or touch other tool-managed lines unless the user asked for exactly that.

@@ -11,9 +11,9 @@ from .project import ProjectContext
 from .protected_regions import mask_protected_regions
 
 PROTECTED_MESSAGE = (
-    "That edit would change a protected part of the slide: the comment block at the top of the file "
-    "or the \\setSlideVersion line. SlideMage manages those; leave "
-    "them as they are and change only the rest of the slide.")
+    "That edit would change a protected part of the slide: the '%%' lines at the top of the file "
+    "(such as '%% Included in decks:') or the \\setSlideVersion line. SlideMage manages those; leave "
+    "them as they are and change only the rest of the slide. The ordinary '%' notes at the top may be edited.")
 
 
 def slide_kind(ctx: ProjectContext, path: Path) -> str | None:
@@ -29,13 +29,11 @@ def slide_kind(ctx: ProjectContext, path: Path) -> str | None:
 
 def protected_problem(before: str, after: str) -> str | None:
     """The message to give the model when `after` differs from `before` in a protected part.
-    Guaranteed: the protected texts are unchanged and in the same order, and a header comment
-    that started the file still does (BOM aside). Where a version line sits
-    among the ordinary text is not checked."""
-    def parts(text: str) -> tuple[list[str], bool]:
-        masked = mask_protected_regions(text)
-        first = next(iter(masked.placeholders), None)
-        return list(masked.placeholders.values()), first is not None and \
-            masked.masked_text.lstrip("\ufeff").startswith(first)
+    Guaranteed: the protected texts are unchanged and in the same order. The `%%` lines are found only inside the
+    leading comment block (protected_regions), so moving them out of it, or putting a non-comment line above them,
+    loses them and is refused too; the ordinary `%` notes around them may change (v0.14.25). Where a version line
+    sits among the ordinary text is not checked."""
+    def parts(text: str) -> list[str]:
+        return list(mask_protected_regions(text).placeholders.values())
 
     return None if parts(before) == parts(after) else PROTECTED_MESSAGE
