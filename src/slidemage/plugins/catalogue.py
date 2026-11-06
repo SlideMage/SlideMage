@@ -23,7 +23,7 @@ import os
 import re
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import HTTPException
 
 from .. import diagnostics
@@ -86,10 +86,38 @@ class CataloguePlugin:
 
 
 @dataclass(frozen=True)
+class CitationRelease:
+    """A release of a citation format: a Release without api_version (a format runs no Python)."""
+    version: str
+    requires_slidemage: str
+    url: str
+    sha256: str
+    size: int
+    published: str
+    notes_url: str = ""
+
+
+@dataclass(frozen=True)
+class CatalogueCitation:
+    """A citation format of the catalogue's optional "citations" list (docs/CITATION_PACKAGE.md; .smcite)."""
+    id: str
+    name: str
+    summary: str
+    homepage: str
+    source: str
+    preview: str | None
+    license: str
+    maintainer: str
+    recommended: bool
+    releases: tuple[CitationRelease, ...]
+
+
+@dataclass(frozen=True)
 class Catalogue:
     generated: str
     plugins_page: str
     plugins: list[CataloguePlugin]
+    citations: list[CatalogueCitation] = field(default_factory=list)
 
 
 class _Bad(Exception):
@@ -183,9 +211,43 @@ def _plugin(data: dict) -> CataloguePlugin:
     )
 
 
+_CITATION_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
+
+
+def _citation_release(data: dict) -> CitationRelease:
+    release = _release({**data, "api_version": 1})
+    return CitationRelease(release.version, release.requires_slidemage, release.url, release.sha256, release.size,
+                           release.published, release.notes_url)
+
+
+def _citation(data: dict) -> CatalogueCitation:
+    key = data.get("id")
+    if not isinstance(key, str) or not _CITATION_ID_RE.match(key):
+        raise _Bad("id")
+    recommended = data.get("recommended")
+    if not isinstance(recommended, bool):
+        raise _Bad("recommended")
+    releases = data.get("releases")
+    if not isinstance(releases, list) or not releases or not all(isinstance(r, dict) for r in releases):
+        raise _Bad("releases")
+    return CatalogueCitation(
+        id=key,
+        name=_text(data, "name", 1, 40),
+        summary=_text(data, "summary", 1, 120),
+        homepage=_https(data, "homepage"),
+        source=_https(data, "source"),
+        preview=_https(data, "preview") if data.get("preview") is not None else None,
+        license=_text(data, "license"),
+        maintainer=_text(data, "maintainer"),
+        recommended=recommended,
+        releases=tuple(_citation_release(r) for r in releases),
+    )
+
+
 def parse(data: dict) -> Catalogue:
     """The catalogue in `data` (the decoded JSON), checked. Raises CatalogueTooNew for a schema other than 1,
-    CatalogueError when the top level is broken. A plugin entry that fails a check is left out."""
+    CatalogueError when the top level is broken. A plugin (or citation format) entry that fails a check is left
+    out. "citations" is optional: a catalogue without it has no citation formats."""
     if not isinstance(data, dict):
         raise CatalogueError("The plugin catalogue is not a JSON object.")
     schema = data.get("schema")
@@ -209,7 +271,15 @@ def parse(data: dict) -> Catalogue:
             plugins.append(_plugin(entry))
         except _Bad:
             continue
-    return Catalogue(generated=generated, plugins_page=plugins_page, plugins=plugins)
+    formats: list[CatalogueCitation] = []
+    for entry in data.get("citations") if isinstance(data.get("citations"), list) else []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            formats.append(_citation(entry))
+        except _Bad:
+            continue            # a citation format that breaks a rule is left out, as a plugin is
+    return Catalogue(generated=generated, plugins_page=plugins_page, plugins=plugins, citations=formats)
 
 
 def _cache_file():
@@ -262,6 +332,20 @@ def best_release(
     for release in plugin.releases:
         if release.api_version not in api_versions:
             continue
+        try:
+            if matches(release.requires_slidemage, app_version):
+                return release
+        except ValueError:
+            continue
+    return None
+
+
+def best_citation_release(
+    entry: CatalogueCitation, app_version: str = VERSION_NUMBER,
+) -> CitationRelease | None:
+    """The newest release of the citation format `entry` whose requires_slidemage matches `app_version`, in the
+    order the catalogue gives them (newest first); None when no release fits."""
+    for release in entry.releases:
         try:
             if matches(release.requires_slidemage, app_version):
                 return release

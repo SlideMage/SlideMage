@@ -308,3 +308,47 @@ def test_legacy_cache_is_migrated_once():
     assert catalogue.cached().plugins[0].id == "hello"
     assert (base / catalogue.CACHE_NAME).is_file()
     assert not (base / "catalogue.json").exists()
+
+
+# --- citation formats (the optional "citations" list) -----------------------------------------------------
+
+
+def _citation_entry(**changes) -> dict:
+    entry = {"id": "apa", "name": "APA 7", "summary": "A format.", "homepage": "https://slidemage.org/citations/apa/",
+             "source": "https://github.com/SlideMage/slidemage-citation-apa", "license": "LPPL-1.3c-or-later",
+             "maintainer": "Stefan Palan", "recommended": False,
+             "preview": "https://slidemage.org/citations/apa/preview.png",
+             "releases": [{"version": "1.0.0", "requires_slidemage": ">=0.13.0", "sha256": "a" * 64,
+                           "url": "https://github.com/SlideMage/slidemage-citation-apa/releases/download/v1.0.0/"
+                                  "apa-1.0.0.smcite", "size": 70195, "published": "2026-11-06"}]}
+    entry.update(changes)
+    return entry
+
+
+def test_a_catalogue_without_citations_has_none():
+    assert parse(_json("index-test.json")).citations == []
+
+
+def test_citation_formats_are_read_and_a_broken_entry_is_left_out():
+    data = copy.deepcopy(_json("index-test.json"))
+    data["citations"] = [_citation_entry(), _citation_entry(id="Bad"), _citation_entry(id="x", releases=[]),
+                         _citation_entry(id="chicago", preview=None, name="Chicago"), "nope",
+                         _citation_entry(id="http", homepage="http://x")]
+    found = parse(data).citations
+    assert [c.id for c in found] == ["apa", "chicago"]
+    apa = found[0]
+    assert apa.name == "APA 7" and apa.preview.endswith("preview.png") and found[1].preview is None
+    release = apa.releases[0]
+    assert (release.version, release.size, release.sha256) == ("1.0.0", 70195, "a" * 64)
+    assert not hasattr(release, "api_version")
+    data["citations"] = "not a list"
+    assert parse(data).citations == []
+
+
+def test_best_citation_release_is_the_newest_that_this_slidemage_accepts():
+    newer = {**_citation_entry()["releases"][0], "version": "2.0.0", "requires_slidemage": ">=99.0.0"}
+    entry = parse({**_json("index-test.json"),
+                   "citations": [_citation_entry(releases=[newer, *_citation_entry()["releases"]])]}).citations[0]
+    assert catalogue.best_citation_release(entry, "v0.14.20").version == "1.0.0"
+    assert catalogue.best_citation_release(entry, "v100.0.0").version == "2.0.0"
+    assert catalogue.best_citation_release(entry, "v0.12.0") is None
