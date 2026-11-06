@@ -855,8 +855,8 @@ def test_the_images_panel_edits_the_source_like_the_full_editor(ctx, content):
     panel = shown(panels, "images")
     form = panel._forms[0]
     field = form.source_edit.parentWidget()
-    assert field.label.text() == image_form.SOURCE_SPECS["source"][1] == "Source (citation or attribution)"
-    assert form.source_edit.placeholderText() == image_form.SOURCE_SPECS["source"][4]
+    assert field.label.text() == image_form.SOURCE_SPEC[1] == "Source (citation or attribution)"
+    assert form.source_edit.placeholderText() == image_form.SOURCE_SPEC[4]
     assert form.source_status.isHidden()                                  # no source: nothing to review
     form.source_edit.setPlainText("Photo: Smith")
     assert panel.dirty and form.source_status.chip.text() == "To review" and not form.source_status.button.isEnabled()
@@ -901,7 +901,7 @@ def test_the_source_of_the_panels_language_is_shown_and_saved(ctx, content):
     state.set_language("DE")
     form = panel._forms[0]
     assert form.source_edit.toPlainText() == "Eigene Grafik"
-    assert form.source_edit.parentWidget().label.text() == image_form.SOURCE_SPECS["source_de"][1]
+    assert form.source_edit.parentWidget().label.text() == image_form.translation_specs("de")[3][1]
     form.source_edit.setPlainText("Foto: Smith")
     panel.flush()                                                         # a pending edit is saved as a draft
     entry = alt_images.load_store(ctx)["media/pic.png"]

@@ -368,7 +368,7 @@ What matters when touching *this code*:
   still share the page's underlying store and lock (`alt_images.py`,
   `slide_snapshot.py`) -- see those modules' own entries in the module map
   below. The Image descriptions *panel* and the page are the only writers of the
-  image forms. Both show the citation field (`image_form.SOURCE_SPECS`,
+  image forms. Both show the citation field (`image_form.SOURCE_SPEC`, `translation_specs`,
   `labelled_edit()`, `SourceStatus`: the same label, placeholder, review
   badge and *Mark reviewed*; the panel shows the language of the top bar).
   They are never visible together: `WorkspaceWindow._on_page_changed` saves the

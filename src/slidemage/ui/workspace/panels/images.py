@@ -29,7 +29,7 @@ from ...ai_models import built, cloud_label, task_route
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
-from ...pages.image_form import (ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused, store_writable,
+from ...pages.image_form import (ROLES, SOURCE_SPEC, STATE_TONES, SourceStatus, labelled_edit, review_refused, store_writable,
                                  translation_specs)
 from ...text import plural
 from .base import Row, SidePanel, box, empty_row, text
@@ -72,7 +72,7 @@ class ImageForm(Row):
         self.short_edit = self._edit("Short description (the figure's caption)", self.baseline[1], 48)
         self.long_edit = self._edit("Long description (what a student who cannot see it needs to know)",
                                     self.baseline[2], 110)
-        spec = SOURCE_SPECS["source"] if self.language == alt_images.DRAFT_LANGUAGE else translation_specs(self.language)[3]
+        spec = SOURCE_SPEC if self.language == alt_images.DRAFT_LANGUAGE else translation_specs(self.language)[3]
         self.source_edit, source_field = labelled_edit(spec, self.source_baseline)
         self.body.addWidget(source_field)
         self.source_status = SourceStatus()

@@ -54,7 +54,7 @@ def test_no_routes_hides_ai_controls_but_keeps_image_fields(qapp, tmp_path, monk
     form = page._forms[0]
     assert form.translate_button.isHidden() and form.save_translate_button.isHidden()
     form.fields["short"].setPlainText("A hand-written description")
-    form.fields["short_de"].setPlainText("Eine Beschreibung")
+    form.fields["short_tr"].setPlainText("Eine Beschreibung")
     assert page._save(reviewed=False)
     saved = alt_images.load_store(ctx)["media/pic.png"]
     assert saved.short == "A hand-written description"

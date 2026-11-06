@@ -3677,3 +3677,13 @@ v0.14.32 (2026-11-06, code review plan of 2026-11-06, step 4.4: template discove
 
 NEW: Nothing changes for you; templates are found as before.
 - Internal clean-up: finding a deck's template has its own module.
+
+v0.14.31 (2026-11-06, code review plan of 2026-11-06, step 4.2: the image form's second language without _de names): The Images page form and image_review called the fields of the form's second language short_de, long_de, takeaway_de and source_de, whatever the language. They are short_tr, long_tr, takeaway_tr and source_tr now (image_review.FIELDS, form_baseline, apply_form_edit, apply_translation, and the form's field keys), and GERMAN_FIELDS is TRANSLATION_FIELDS. image_form's separate GERMAN spec is a per-language label table in translation_specs (German keeps its labels word for word), and SOURCE_SPECS is SOURCE_SPEC, the English source field, with SOURCE_KEYS naming both source fields. alt_draft.TranslationResult keeps its short_de, long_de and takeaway_de fields and alt_images keeps its _de properties and constructor keywords: the Claude plugins build and read them, so they go with the next plugin API version. Reading version 2 of media/alt-text.json is unchanged. Tests in tests/test_image_review.py, tests/test_images_page_gui.py, tests/test_image_source.py and the other image tests.
+
+NEW: Nothing changes for you; the image forms look and save as before.
+- Internal clean-up: the image form's second-language fields are no longer named after German.
+
+v0.14.33 (2026-11-06, code review plan of 2026-11-06, step 4.2: the image form's second language without _de names): The Images page form and image_review called the fields of the form's second language short_de, long_de, takeaway_de and source_de, whatever the language. They are short_tr, long_tr, takeaway_tr and source_tr now (image_review.FIELDS, form_baseline, apply_form_edit, apply_translation, and the form's field keys), and GERMAN_FIELDS is TRANSLATION_FIELDS. image_form's separate GERMAN spec is a per-language label table in translation_specs (German keeps its labels word for word), and SOURCE_SPECS is SOURCE_SPEC, the English source field, with SOURCE_KEYS naming both source fields. alt_draft.TranslationResult keeps its short_de, long_de and takeaway_de fields and alt_images keeps its _de properties and constructor keywords: the Claude plugins build and read them, so they go with the next plugin API version. Reading version 2 of media/alt-text.json is unchanged. Tests in tests/test_image_review.py, tests/test_images_page_gui.py, tests/test_image_source.py and the other image tests.
+
+NEW: Nothing changes for you; the image forms look and save as before.
+- Internal clean-up: the image form's second-language fields are no longer named after German.

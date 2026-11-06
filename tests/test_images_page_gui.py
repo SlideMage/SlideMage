@@ -277,7 +277,7 @@ def test_set_default_keeps_worker_fields_and_invalidates_stale_human_translation
 
     type_into(page, "takeaway", "human's chosen default")
     page._forms[0]._set_default()
-    type_into(page, "short_de", "human German edit based on old form")
+    type_into(page, "short_tr", "human German edit based on old form")
     page._save(reviewed=False)
 
     saved = page.store[CHART]
@@ -320,7 +320,7 @@ def test_decorative_images_keep_only_the_source_editable(make_page):
     form._on_role(alt_images.ROLE_DECORATIVE)
     assert {key: edit.isEnabled() for key, edit in form.fields.items()} == {
         "short": False, "long": False, "takeaway": False, "source": True,
-        "short_de": False, "long_de": False, "takeaway_de": False, "source_de": True}
+        "short_tr": False, "long_tr": False, "takeaway_tr": False, "source_tr": True}
     assert form.changed and page.dirty
 
 
@@ -589,7 +589,7 @@ def test_unsaved_english_translation_tracks_edits_after_completion(make_page, mo
     assert page.app.slots == ["took", "gave"]
     translated_hash = form.provenance["source_hash"]
     if edited:
-        type_into(page, "long_de", "HUMAN GERMAN EDIT AFTER TRANSLATION")
+        type_into(page, "long_tr", "HUMAN GERMAN EDIT AFTER TRANSLATION")
     page._save(reviewed=False)
     saved = page.store[CHART]
     assert saved.long == "UNSAVED ENGLISH TO TRANSLATE"
@@ -613,9 +613,9 @@ def test_translation_completion_keeps_newer_english_and_human_german_stale(make_
     page._translate_image(form, False)
     asked = alt_images.ImageEntry(image=CHART, long="ENGLISH AT REQUEST TIME")
     type_into(page, "long", "NEWER ENGLISH AFTER REQUEST")
-    type_into(page, "short_de", "HUMAN GERMAN EDIT DURING REQUEST")
+    type_into(page, "short_tr", "HUMAN GERMAN EDIT DURING REQUEST")
     page._on_job_result(started[0], translation_for(asked))
-    assert form.fields["short_de"].toPlainText() == "HUMAN GERMAN EDIT DURING REQUEST"
+    assert form.fields["short_tr"].toPlainText() == "HUMAN GERMAN EDIT DURING REQUEST"
     page._save(reviewed=False)
     saved = page.store[CHART]
     assert saved.long == "NEWER ENGLISH AFTER REQUEST" and saved.short_de == "HUMAN GERMAN EDIT DURING REQUEST"
@@ -626,12 +626,12 @@ def test_individual_translation_keeps_fields_typed_after_request(make_page):
     page = make_page()
     form = page._forms[0]
     form.begin_translation(form.english())
-    type_into(page, "long_de", "NEW HUMAN GERMAN TEXT")
+    type_into(page, "long_tr", "NEW HUMAN GERMAN TEXT")
     form.end_translation(alt_draft.TranslationResult(short_de="translated short", long_de="translated long",
                                                      takeaway_de="translated takeaway"))
-    assert form.fields["short_de"].toPlainText() == "translated short"
-    assert form.fields["long_de"].toPlainText() == "NEW HUMAN GERMAN TEXT"
-    assert form.fields["takeaway_de"].toPlainText() == "translated takeaway"
+    assert form.fields["short_tr"].toPlainText() == "translated short"
+    assert form.fields["long_tr"].toPlainText() == "NEW HUMAN GERMAN TEXT"
+    assert form.fields["takeaway_tr"].toPlainText() == "translated takeaway"
 
 
 def test_save_then_translate_translates_what_was_just_saved(make_page, monkeypatch):
@@ -649,7 +649,7 @@ def test_save_then_translate_translates_what_was_just_saved(make_page, monkeypat
     monkeypatch.setattr(alt_draft, "ModelTranslationBackend", Translator)
     page._translate_image(page._forms[0], True)
     assert page.store[CHART].long == "ENGLISH TO SAVE FIRST" and sent == ["ENGLISH TO SAVE FIRST"]
-    assert page._forms[0].fields["long_de"].toPlainText() == "translated long"
+    assert page._forms[0].fields["long_tr"].toPlainText() == "translated long"
 
 
 def test_a_failed_translation_says_so_and_frees_the_form(make_page, monkeypatch):

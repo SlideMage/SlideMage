@@ -124,7 +124,7 @@ def test_the_descriptions_review_and_the_sources_are_independent(ctx, tmp_path):
     assert entry.status == alt_images.STATUS_REVIEWED and entry.used_on["1aaa"].reviewed
     save(False, short="new short")                            # an edit of the description leaves the source
     assert stored(ctx).source_status == SOURCE_REVIEWED
-    save(False, source_de="Foto: Smith")
+    save(False, source_tr="Foto: Smith")
     assert stored(ctx).source_status == SOURCE_TO_REVIEW
 
 

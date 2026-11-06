@@ -55,7 +55,7 @@ def test_the_page_form_shows_the_citation_state_and_marks_it_reviewed(window):
     statuses = form._source_status
     assert len(statuses) == 2                                        # under the English and the German field
     assert [s.chip.text() for s in statuses] == ["Reviewed", "Reviewed"] and not any(s.button.isVisible() for s in statuses)
-    form.fields["source_de"].setPlainText("Foto: Smith")
+    form.fields["source_tr"].setPlainText("Foto: Smith")
     assert [s.chip.text() for s in statuses] == ["To review", "To review"]
     assert not any(s.button.isEnabled() for s in statuses)           # save the change first
     window.images_page._save(reviewed=False)
@@ -72,11 +72,10 @@ def test_the_page_form_shows_the_citation_state_and_marks_it_reviewed(window):
 def test_the_page_form_uses_the_same_field_as_the_panel(window):
     open_images(window)
     form = page_form(window)
-    for key in ("source", "source_de"):
-        spec = image_form.SOURCE_SPECS[key]
+    for key, spec in (("source", image_form.SOURCE_SPEC), ("source_tr", image_form.translation_specs("de")[3])):
         field = form.fields[key].parentWidget()
         assert (field.label.text(), form.fields[key].placeholderText()) == (spec[1], spec[4])
-    assert panel_form(window).source_edit.parentWidget().label.text() == image_form.SOURCE_SPECS["source"][1]
+    assert panel_form(window).source_edit.parentWidget().label.text() == image_form.SOURCE_SPEC[1]
 
 
 def test_a_citation_saved_in_the_panel_shows_on_the_page_and_back(window):
