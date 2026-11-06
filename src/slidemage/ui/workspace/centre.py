@@ -1048,9 +1048,12 @@ class CentreColumn(QFrame):
             target, row, title, language = self._preview_context()
             self.preview.show_slide(target, row, title, message, language)
         if mode == "details":
+            tab_slide = self.tabs.active.slide
             row = self._shown_row()
             id_slug = row.call.id_slug if row else self._file_slide(self._path)[0]
-            self.details.show_slide(id_slug, row, message)
+            path = self._path
+            version = self._file_slide(path)[1] if tab_slide else None
+            self.details.show_slide(id_slug, row, message, frozen=path if version is not None else None)
         self.tab_strip.set_label(self.tabs.slide_tab, self._slide_label())
         for tab in self.tabs.tabs:
             if tab.slide:

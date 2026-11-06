@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, alt_blocks, languages, slide_language, slide_rename, slide_source, slide_versioning
+from ... import ai_review, deck_outline, alt_blocks, languages, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_outline import SlideRow
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Surface
@@ -60,6 +60,7 @@ class DetailsPane(Surface):
         self._is_dirty = is_dirty
         self._id_slug = ""
         self._row: Optional[SlideRow] = None
+        self._frozen: Optional[Path] = None   # the frozen version a slide file tab shows (centre-tabs.md, D10), else None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -77,9 +78,11 @@ class DetailsPane(Surface):
     def current_path(self) -> Path:
         return self.app.project.slides_dir / slide_language.current_name(self._id_slug)
 
-    def show_slide(self, id_slug: str, row: Optional[SlideRow], message: str = "") -> None:
-        """Show the slide `id_slug` ("" with a `message`: no slide), in the open deck as `row`."""
+    def show_slide(self, id_slug: str, row: Optional[SlideRow], message: str = "", frozen: Optional[Path] = None) -> None:
+        """Show the slide `id_slug` ("" with a `message`: no slide), in the open deck as `row`. With `frozen` (the file of a
+        frozen version) its own details are shown, read-only: none of the slide-level actions, which act on the live slide."""
         self._id_slug, self._row = id_slug, row
+        self._frozen = frozen if id_slug and frozen is not None and slide_language.FROZEN_RE.search(frozen.name) else None
         page = Surface()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 24, 32, 24)
@@ -91,7 +94,8 @@ class DetailsPane(Surface):
             layout.addWidget(self._build_header())
             layout.addWidget(self._build_facts())
             layout.addWidget(self._build_related())
-            layout.addLayout(self._build_actions())
+            if self._frozen is None:
+                layout.addLayout(self._build_actions())
             layout.addStretch(1)
         self._scroll.setWidget(page)
 
@@ -106,6 +110,17 @@ class DetailsPane(Surface):
 
     def _build_header(self) -> QWidget:
         row = QHBoxLayout()
+        if self._frozen is not None:
+            title = deck_outline.slide_file_title(self.app.project, self._frozen, self._id_slug) or self._id_slug
+            row.addWidget(_label(title, q.DETAILS_TITLE), 1)
+            row.addWidget(_label(slide_language.bare_id(self._id_slug), q.PREVIEW_ID))
+            version = slide_language.FROZEN_RE.search(self._frozen.name).group(1)
+            chip = Chip(f"Frozen {slide_versioning.version_label(version)}", "muted", "lock")
+            chip.setToolTip("A past version of the slide, shown on its own. Read-only.")
+            row.addWidget(chip)
+            holder = Surface()
+            holder.setLayout(row)
+            return holder
         title = self._row.title if self._row else self._id_slug
         row.addWidget(_label(title, q.DETAILS_TITLE), 1)
         row.addWidget(_label(slide_language.bare_id(self._id_slug), q.PREVIEW_ID))
@@ -124,26 +139,32 @@ class DetailsPane(Surface):
         return holder
 
     def _build_facts(self) -> QWidget:
-        path = self.current_path
+        codes = languages.project_languages(self.app.project).codes
+        path = self._frozen if self._frozen is not None else self.current_path
         text = slide_source.read_slide_source(path)[0] if path.is_file() else ""
         version = slide_versioning.version_text(text)
-        badge = slide_language.badge_for(self.app.project, self._id_slug)
-        _language, _, slug = slide_rename.parse_id_slug(self._id_slug, languages.project_languages(self.app.project).codes)
+        if self._frozen is not None:
+            version = version or slide_language.FROZEN_RE.search(path.name).group(1).replace("-", ".")
+            language = slide_language.own_language(self._id_slug, codes) or "untagged"
+        else:
+            language = slide_language.badge_for(self.app.project, self._id_slug).text().strip("[]") or "untagged"
+        _language, _, slug = slide_rename.parse_id_slug(self._id_slug, codes)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(6)
         rows = [("File", path.name), ("Frame", alt_blocks.frame_type(text) or "none found"),
                 ("Version", f"v{version}" if version else "untracked"),
-                ("Language", badge.text().strip("[]") or "untagged"), ("Slug", slug)]
+                ("Language", language), ("Slug", slug)]
         for i, (name, value) in enumerate(rows):
             grid.addWidget(_label(name, q.DETAILS_LABEL), i, 0, Qt.AlignmentFlag.AlignTop)
             grid.addWidget(_label(value, q.DETAILS_VALUE), i, 1)
-        rename = Button("Rename…", "secondary", compact=True)
-        rename.setToolTip("Change the slide's descriptive slug (the id and the language stay). "
-                          "Rewrites every deck reference to match.")
-        rename.clicked.connect(self._rename)
-        grid.addWidget(rename, 4, 2)
+        if self._frozen is None:    # a frozen version is read-only; Rename would act on the live slide
+            rename = Button("Rename…", "secondary", compact=True)
+            rename.setToolTip("Change the slide's descriptive slug (the id and the language stay). "
+                              "Rewrites every deck reference to match.")
+            rename.clicked.connect(self._rename)
+            grid.addWidget(rename, 4, 2)
         grid.setColumnStretch(1, 1)
         layout.addLayout(grid)
         return panel
@@ -181,7 +202,14 @@ class DetailsPane(Surface):
             match = slide_language.FROZEN_RE.search(path.name)
             if match and path.name[:match.start()] == self._id_slug:
                 frozen.append((tuple(int(part) for part in match.group(1).split("-")), match.group(1), path))
+        if self._frozen is not None:
+            current = project.slides_dir / slide_language.current_name(self._id_slug)
+            if current.is_file():
+                self._related_row(grid, index, "Current", current.name, current)
+                index += 1
         for _key, version, path in sorted(frozen, reverse=True):
+            if path == self._frozen:
+                continue
             self._related_row(grid, index, slide_versioning.version_label(version), path.name, path)
             index += 1
         if index == 0:

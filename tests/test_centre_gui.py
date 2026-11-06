@@ -2020,3 +2020,35 @@ def test_restoring_tabs_skips_a_file_that_no_longer_exists(centre, files, ctx, d
 def test_restoring_tabs_does_nothing_without_anything_saved(centre):
     centre.restore_tabs()
     assert centre.tabs.tabs == [centre.tabs.slide_tab]
+
+
+def test_a_frozen_tabs_details_show_the_frozen_file_with_its_chip_and_no_changing_actions(centre, project):
+    from PySide6.QtWidgets import QLabel
+
+    from slidemage.ui.kit.widgets import Button, Chip
+    frozen, current = project / "bbb-EN-Two-v1-0-0.tex", project / "bbb-EN-Two-current.tex"
+    current.write_text("\\setSlideVersion{1-0-1}\n" + FRAME % "Second now", encoding="utf-8")
+    details = centre.details
+
+    def facts():
+        texts = [label.text() for label in details.findChildren(QLabel)]
+        buttons = [b.text() for b in details.findChildren(Button)]
+        return texts, buttons, [c.text() for c in details.findChildren(Chip)]
+
+    centre.open_file(current, tab=True)                                       # the live slide's own Details
+    centre.state.set_mode("details")
+    texts, buttons, chips = facts()
+    assert "bbb-EN-Two-current.tex" in texts and "v1.0.1" in texts and chips == []
+    assert {"Rename…", "Duplicate slide…", "Delete slide…"} <= set(buttons)
+    centre.open_file(frozen, tab=True)                                        # the frozen version's
+    centre.state.set_mode("details")
+    texts, buttons, chips = facts()
+    assert "bbb-EN-Two-v1-0-0.tex" in texts and "v1.0.0" in texts and "v1.0.1" not in texts
+    assert "EN" in texts and "Two" in texts and chips == ["Frozen v1.0.0"]
+    assert "Current" in texts and "bbb-EN-Two-current.tex" in texts          # the live version is one to open
+    assert not {"Rename…", "Duplicate slide…", "Delete slide…"} & set(buttons) and "Open" in buttons
+    centre.details.open_requested.emit(current)                               # opening the live one: the slide's tab
+    assert centre.path == current and centre.tabs.tab_for(frozen) is not None    # the frozen tab stays
+    centre.tabs.activate(centre.tabs.tab_for(frozen))
+    centre.state.set_mode("details")
+    assert "Frozen v1.0.0" in facts()[2]
