@@ -218,6 +218,72 @@ def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(pr
     assert r.resolver.lookup(unit).state is not Freshness.FAILED
 
 
+@pytest.mark.parametrize("repair", ["edit dependency", "restore missing input"])
+def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(project, store, raster, monkeypatch, repair):
+    from slidemage import compiler
+
+    r = make(project, store, raster)
+    r._render = r._render_pdf
+    monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    dependency = project.root / "preview-shared.tex"
+    dependency.write_text("broken dependency")
+    os.utime(dependency, (time.time() - 60,) * 2)
+    missing = project.root / "preview-restored.tex"
+    unrelated = project.root / "unrelated.tex"
+    unrelated.write_text("another concurrent job")
+    calls = []
+
+    def fail(command, *, jobname, outdir, **kwargs):
+        calls.append(command)
+        (outdir / (jobname + ".fls")).write_text(
+            f"PWD {project.decks_dir}\nINPUT {unit.source_path}\nINPUT {dependency}\n")
+        other = store.work_dir / "build/preview-cache/other/other.fls"
+        other.parent.mkdir(parents=True, exist_ok=True)
+        other.write_text(f"INPUT {unrelated}\n")
+        # The useful error may be long before the stored tail of the log.
+        log = "! LaTeX Error: File `preview-restored.tex' not found.\n" + "memory statistics\n" * 30
+        return compiler.Build(1, outdir / (jobname + ".pdf"), outdir / (jobname + ".log"), log, False)
+
+    monkeypatch.setattr(compiler, "run_latexmk", fail)
+    with pytest.raises(RuntimeError, match="Render failed"):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    failure = r.resolver.lookup(unit).failure
+    assert failure is not None
+    assert any(entry[1] == dependency.name for entry in failure["manifest"])
+    assert not any(entry[1] == unrelated.name for entry in failure["manifest"])
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert len(calls) == 1
+    if repair == "edit dependency":
+        _edit(dependency, "\nfixed dependency")
+    else:
+        missing.write_text("restored dependency")
+        os.utime(missing, (time.time() - 60,) * 2)
+    assert r.resolver.lookup(unit).state is not Freshness.FAILED
+    with pytest.raises(RuntimeError, match="Render failed"):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert len(calls) == 2
+    assert r.resolver.lookup(unit).state is Freshness.FAILED
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+
+
+def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, store, raster):
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    tex.fail[unit.id_slug] = "Render failed for x:\n! Bad dependency."
+    store.record_failure("obsolete", render_store.DETERMINISTIC, "an old request", [])
+    with pytest.raises(RuntimeError):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    r.scan()
+    assert r.progress.failures == 1
+    assert [f["key"] for f in r.current_failures()] == [r.resolver.fast_key(unit)]
+    _edit(unit.source_path)
+    r.scan()
+    assert r.progress.failures == 0 and r.current_failures() == []
+    assert len(store.failures()) == 2                     # historical records do not affect the warning
+
+
 def test_the_planner_feeds_the_scheduler_and_the_progress_goes_down(project, store, raster):
     tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)

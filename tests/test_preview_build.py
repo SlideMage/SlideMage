@@ -66,6 +66,33 @@ def test_cached_build_retains_aux_and_rejects_stale_pdf(tmp_path, monkeypatch):
         preview_build.compile_cached(two + '%broken', 'abc', print, **kwargs)
 
 
+def test_repaired_missing_input_forces_latexmk_to_forget_its_cached_error(tmp_path, monkeypatch):
+    ctx = ProjectContext.at(tmp_path)
+    restored = tmp_path / 'SlideMage_setup.tex'
+    commands = []
+
+    def run(command, *, jobname, outdir, **kwargs):
+        commands.append(command)
+        pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
+        remembered_error = log.is_file() and 'not found' in log.read_text()
+        failed = not restored.is_file() or (remembered_error and '-g' not in command)
+        text = "! LaTeX Error: File `SlideMage_setup.tex' not found." if failed else 'Success'
+        log.write_text(text)
+        if not failed:
+            pdf.write_bytes(b'%PDF fresh')
+        return compiler.Build(int(failed), pdf, log, text, False)
+
+    monkeypatch.setattr(compiler, 'run_latexmk', run)
+    text = r'\begin{document}Unchanged slide\end{document}'
+    with pytest.raises(RuntimeError, match='not found'):
+        preview_build.compile_cached(text, 'abc', lambda line: None, ctx=ctx, env={})
+    restored.write_text('repaired dependency')
+    preview_build.compile_cached(text, 'abc', lambda line: None, ctx=ctx, env={})
+    assert '-g' in commands[-1]
+    preview_build.compile_cached(text, 'abc', lambda line: None, ctx=ctx, env={})
+    assert '-g' not in commands[-1]                 # ordinary successful builds keep incremental reuse
+
+
 def test_unused_preview_wrappers_are_pruned(tmp_path):
     build = tmp_path / '.build'
     decks = tmp_path / 'decks'
