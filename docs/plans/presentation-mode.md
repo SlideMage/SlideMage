@@ -181,7 +181,7 @@ Stored as JSON:
 **Built-in profiles** (code, read-only):
 1. **Current large** (the owner's): current slide large on the left, next slide smaller at top right, notes at bottom right, info strip along the bottom.
 2. **Next large**: next slide large on the left (about 65%), current slide small at top right, notes below it, info strip at the bottom (the originally planned layout).
-3. **Next large, clock** (v0.14.16, built): next slide large on the left (65%) with a thin strip under it (counter, timer, toolbar), notes at the top right (70% of the height) and a large HH:MM clock (24-hour) at the bottom right. No current slide: a profile needs the current *or* the next slide. The clock is the BIG element `bigclock` (`ui/presentation/big_clock.py`), whose font fills its area; the small `clock` stays a strip element.
+3. **Next large, clock** (v0.14.16, built): next slide large on the left (65%), notes at the top right (70% of the height) and a large HH:MM clock (24-hour) below them, the info strip (counter, timer, toolbar; no small clock) full width along the bottom: a strip in the 65% column would squeeze the right column on a 1366 px screen. No current slide: a profile needs the current *or* the next slide. The clock is the BIG element `bigclock` (`ui/presentation/big_clock.py`), whose font fills its area; the small `clock` stays a strip element.
 4. **Notes focus**: notes large, current and next small (M3).
 5. **Slide only**: current slide with the toolbar strip, nothing else (M3; handy for a lone laptop).
 

@@ -108,11 +108,13 @@ CURRENT_LARGE = Profile("Current large", Split("v", 0.9, Split(
 NEXT_LARGE = Profile("Next large", Split("v", 0.9, Split(
     "h", 0.65, Leaf(("next",)), Split("v", 0.35, Leaf(("current",)), Leaf(("notes",)))), STRIP), builtin=True)
 
-# The next slide large, the notes above a large clock on the right, a thin strip (counter, timer, toolbar) under the
-# slide. No current slide, and the clock element is the big one, so "clock" is not in the strip.
-NEXT_LARGE_CLOCK = Profile("Next large, clock", Split("h", 0.65, Split(
-    "v", 0.9, Leaf(("next",)), Leaf(("counter", "timer", "toolbar"))),
-    Split("v", 0.7, Leaf(("notes",)), Leaf(("bigclock",)))), builtin=True)
+# The next slide large on the left, the notes above a large clock on the right, the info strip (counter, timer,
+# toolbar) along the bottom like the other profiles. No current slide, and the big clock stands in for "clock".
+# The strip is full width on purpose: the toolbar needs about 700 px, which a 65 % column on a 1366 px laptop
+# screen does not have, and the right column would have been squeezed away.
+NEXT_LARGE_CLOCK = Profile("Next large, clock", Split("v", 0.9, Split(
+    "h", 0.65, Leaf(("next",)), Split("v", 0.7, Leaf(("notes",)), Leaf(("bigclock",)))),
+    Leaf(("counter", "timer", "toolbar"))), builtin=True)
 
 BUILTINS = (CURRENT_LARGE, NEXT_LARGE, NEXT_LARGE_CLOCK)
 

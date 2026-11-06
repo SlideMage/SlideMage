@@ -197,13 +197,13 @@ def test_the_built_in_profiles_are_valid_and_the_owners_has_the_current_slide_la
     assert layout.NEXT_LARGE.tree.a.a.elements == ("next",)
 
 
-def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_and_a_thin_strip():
+def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_and_the_strip():
     profile = layout.NEXT_LARGE_CLOCK
     assert profile.name == "Next large, clock" and profile.builtin and profile in layout.BUILTINS
-    left, right = profile.tree.a, profile.tree.b
-    assert profile.tree.orient == "h" and profile.tree.ratio == layout.NEXT_LARGE.tree.a.ratio
-    assert left.orient == "v" and left.a.elements == ("next",) and left.b.is_strip
-    assert left.b.elements == ("counter", "timer", "toolbar")
+    body, strip = profile.tree.a, profile.tree.b
+    assert profile.tree.orient == "v" and strip.is_strip and strip.elements == ("counter", "timer", "toolbar")
+    left, right = body.a, body.b
+    assert body.orient == "h" and body.ratio == layout.NEXT_LARGE.tree.a.ratio and left.elements == ("next",)
     assert right.orient == "v" and right.a.elements == ("notes",) and right.b.elements == ("bigclock",)
     assert right.ratio >= 0.6 and not right.b.is_strip              # the notes get most of the height
     assert "current" not in layout.elements_of(profile.tree)
