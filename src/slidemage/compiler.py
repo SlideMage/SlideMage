@@ -618,23 +618,32 @@ def build_env(ctx: project.ProjectContext) -> dict:
     return project.snapshot_compile_env(ctx.root, env)
 
 
-def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
-    from . import deck_language
+def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_link: bool,
+                   saved_versions: bool = True) -> list[str]:
+    """Keep full and page compiles on the same settings and frozen slide sources. Previews opt out of
+    saved versions because they always show current edits, even when they use a page compile for context."""
     lines: list[str] = []
     if job.version:
         lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
     if job.presenter:
         lines.append("\\def\\SMPresenterModeOverride{1}")
-    if job._appendix_applies:
+    if appendix_link:
         lines.append("\\def\\SMAppendixTocOverride{1}")
     if job.run_id:
         lines.append(compile_records.run_id_line(job.run_id))
     if job.language:
         lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
 
+    if saved_versions and not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
+        from . import deck_language
+        lines += slide_versioning.saved_version_lines(ctx, job.deck, deck_language.language_for_job(job))
+    return lines
+
+
+def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
+    from . import deck_language
+    lines = override_lines(ctx, job, appendix_link=job._appendix_applies)
     language = deck_language.language_for_job(job)
-    if not app_settings.get(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, False):
-        lines += slide_versioning.saved_version_lines(ctx, job.deck, language)
     resolved_deck, _dependencies = (deck_language.compile_deck(ctx, job.deck, language)
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text
