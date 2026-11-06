@@ -3562,3 +3562,8 @@ NEW: SlideMage tells you when it can't write to the project folder.
 - If the project is in a synced folder whose sync client isn't running (Nextcloud, OneDrive, ...), a message now says which folders SlideMage can't write to, and says so again once they work.
 - Switching decks or closing the window no longer fails while that is the case; your settings just aren't saved until the folder works again.
 - A slide whose files can't be read no longer stays on "Loading…" forever.
+
+v0.14.15 (2026-11-06, the debug log note in Settings and the manual match the README): The Settings note says slide text and API keys are left out on purpose, and asks you to look through a log before you share it. The manual's slide t8w said "No slide text, prompts or API keys are written on purpose"; it now says they are left out on purpose, and its report bullet adds that a traceback can still carry a fragment. The test tests/test_manual_fits_templates.py passes under all three templates.
+
+NEW: The debug log note in Settings is more careful about what a log can hold.
+- It says slide text and API keys are left out on purpose, and asks you to look through a log before you share it, since a traceback or a compile line can still carry a fragment.
