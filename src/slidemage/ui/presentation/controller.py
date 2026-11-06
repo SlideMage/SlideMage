@@ -23,6 +23,7 @@ from ...presentation.settings import PresentationSettings
 from ...presentation.timer import PresentationTimer
 from .audience_window import AudienceWindow, PresenterWindow
 from .layout_view import build_layout
+from .big_clock import BigClock
 from .slide_canvas import SlideCanvas
 from .slide_input import SlideInput
 from .timer_widget import TimerButton
@@ -177,6 +178,8 @@ class PresentationController(QObject):
             tick.start(1000)
             label.setText(self._clock_text())
             return label
+        if name == "bigclock":
+            return BigClock()
         if name == "timer":
             return TimerButton(self.timer, self.settings)
         return self._toolbar()

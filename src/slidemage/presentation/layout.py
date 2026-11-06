@@ -3,7 +3,7 @@
 """Layout profiles of the presenter window (plan 4.10): a split tree whose leaves hold the elements.
 
 A node is a split ("h": a left of b, "v": a above b) with a ratio for `a`, or a leaf: one big element
-(current, next, notes) or an info strip of the small ones (counter, clock, timer, toolbar). It maps onto
+(current, next, notes, bigclock) or an info strip of the small ones (counter, clock, timer, toolbar). It maps onto
 nested splitters, always fills the window and is easy to validate and store as JSON.
 """
 from __future__ import annotations
@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Union
 
-BIG = ("current", "next", "notes")
+# "bigclock" is the clock alone in its area: HH:MM, the font filling the area. "clock" is the small one in the strip.
+BIG = ("current", "next", "notes", "bigclock")
 SMALL = ("counter", "clock", "timer", "toolbar")
 MIN_RATIO, MAX_RATIO = 0.1, 0.9
 
@@ -72,8 +73,8 @@ def problems(profile: Profile) -> list[str]:
     """Why a profile cannot be used (empty when it can)."""
     found = []
     names = elements_of(profile.tree)
-    if "current" not in names:
-        found.append("the current slide is missing")
+    if "current" not in names and "next" not in names:
+        found.append("a slide is missing: the profile needs the current or the next slide")
     found += [f"{n} appears twice" for n in sorted(set(names)) if names.count(n) > 1]
 
     def check(node: Node) -> None:
@@ -107,7 +108,15 @@ CURRENT_LARGE = Profile("Current large", Split("v", 0.9, Split(
 NEXT_LARGE = Profile("Next large", Split("v", 0.9, Split(
     "h", 0.65, Leaf(("next",)), Split("v", 0.35, Leaf(("current",)), Leaf(("notes",)))), STRIP), builtin=True)
 
-BUILTINS = (CURRENT_LARGE, NEXT_LARGE)
+# The next slide large on the left, the notes above a large clock on the right, the info strip (counter, timer,
+# toolbar) along the bottom like the other profiles. No current slide, and the big clock stands in for "clock".
+# The strip is full width on purpose: the toolbar needs about 700 px, which a 65 % column on a 1366 px laptop
+# screen does not have, and the right column would have been squeezed away.
+NEXT_LARGE_CLOCK = Profile("Next large, clock", Split("v", 0.9, Split(
+    "h", 0.65, Leaf(("next",)), Split("v", 0.7, Leaf(("notes",)), Leaf(("bigclock",)))),
+    Leaf(("counter", "timer", "toolbar"))), builtin=True)
+
+BUILTINS = (CURRENT_LARGE, NEXT_LARGE, NEXT_LARGE_CLOCK)
 
 
 def profile_named(name: str, custom: Optional[list[Profile]] = None) -> Profile:

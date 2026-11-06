@@ -188,19 +188,45 @@ def test_the_preferred_audience_screen_wins_and_a_missing_one_falls_back():
 def test_the_built_in_profiles_are_valid_and_the_owners_has_the_current_slide_large():
     for profile in layout.BUILTINS:
         assert layout.problems(profile) == []
-        assert sorted(layout.elements_of(profile.tree)) == sorted(
-            ["current", "next", "notes", "counter", "clock", "timer", "toolbar"])
+        everything = ["current", "next", "notes", "counter", "clock", "timer", "toolbar"]
+        if profile is layout.NEXT_LARGE_CLOCK:
+            everything = ["next", "notes", "counter", "timer", "toolbar", "bigclock"]    # no current slide, big clock
+        assert sorted(layout.elements_of(profile.tree)) == sorted(everything)
     tree = layout.CURRENT_LARGE.tree.a
     assert tree.a.elements == ("current",) and tree.b.a.elements == ("next",) and tree.b.b.elements == ("notes",)
     assert layout.NEXT_LARGE.tree.a.a.elements == ("next",)
+
+
+def test_next_large_clock_has_the_next_slide_large_the_notes_above_a_big_clock_and_the_strip():
+    profile = layout.NEXT_LARGE_CLOCK
+    assert profile.name == "Next large, clock" and profile.builtin and profile in layout.BUILTINS
+    body, strip = profile.tree.a, profile.tree.b
+    assert profile.tree.orient == "v" and strip.is_strip and strip.elements == ("counter", "timer", "toolbar")
+    left, right = body.a, body.b
+    assert body.orient == "h" and body.ratio == layout.NEXT_LARGE.tree.a.ratio and left.elements == ("next",)
+    assert right.orient == "v" and right.a.elements == ("notes",) and right.b.elements == ("bigclock",)
+    assert right.ratio >= 0.6 and not right.b.is_strip              # the notes get most of the height
+    assert "current" not in layout.elements_of(profile.tree)
+    again = layout.profile_from_dict(layout.profile_to_dict(profile))
+    assert again.tree == profile.tree and again.name == profile.name
+    assert layout.profile_named("Next large, clock") is profile
+
+
+def test_the_big_clock_is_a_big_element_and_old_profiles_stay_valid():
+    assert "bigclock" in layout.BIG and "bigclock" not in layout.SMALL
+    with pytest.raises(ValueError):
+        layout.profile_from_dict({"name": "x", "tree": {"leaf": ["current", "bigclock"]}})   # not alone
+    old = {"name": "old", "tree": {"split": "h", "a": {"leaf": "current"}, "b": {"leaf": ["clock", "timer"]}}}
+    assert layout.profile_from_dict(old).tree.b.is_strip         # a small "clock" stays a strip element
 
 
 def test_a_profile_survives_json_and_bad_ones_are_refused():
     data = layout.profile_to_dict(layout.CURRENT_LARGE)
     again = layout.profile_from_dict(data)
     assert again.tree == layout.CURRENT_LARGE.tree and again.name == "Current large"
-    with pytest.raises(ValueError):
-        layout.profile_from_dict({"name": "x", "tree": {"leaf": "next"}})                  # no current slide
+    assert layout.profile_from_dict({"name": "x", "tree": {"leaf": "next"}}).tree == layout.Leaf(("next",))   # next alone is enough
+    with pytest.raises(ValueError, match="slide is missing"):
+        layout.profile_from_dict({"name": "x", "tree": {"leaf": "notes"}})                 # neither slide
     with pytest.raises(ValueError):
         layout.profile_from_dict({"name": "x", "tree": {"split": "h", "a": {"leaf": "current"}, "b": {"leaf": "current"}}})
     with pytest.raises(ValueError):
