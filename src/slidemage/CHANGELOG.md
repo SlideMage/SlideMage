@@ -3568,6 +3568,19 @@ v0.14.15 (2026-11-06, the debug log note in Settings and the manual match the RE
 NEW: The debug log note in Settings is more careful about what a log can hold.
 - It says slide text and API keys are left out on purpose, and asks you to look through a log before you share it, since a traceback or a compile line can still carry a fragment.
 
+v0.14.16 (2026-11-06, direct instruction: a presenter layout with the upcoming slide large, the notes on the right and a large clock): SlideMage Presenter has a third layout, "Next large, clock": the next slide large on the left, the notes at the top right and a large digital clock (hours:minutes, 24-hour) at the bottom right, with the usual bar (slide counter, timer, buttons) along the bottom. The clock is a new layout element, "bigclock": alone in its area it fills the area, its font follows the window when you resize it, and it changes on the minute. A layout no longer needs the current slide, the next slide is enough; saved layouts stay valid. P cycles through all three layouts, and the Presentation settings list it. This layout has no current-slide view, so there is nothing on the presenter screen to draw or point on; the buttons still work on the projector. Tests in tests/test_presentation_core.py and tests/test_presentation_gui.py.
+
+NEW: A presenter layout with the next slide, the notes and a large clock.
+- "Next large, clock": the next slide large on the left, the notes top right, a large HH:MM clock bottom right.
+- Press P in the presenter window to switch between the three layouts, or choose one in Settings, Presentation.
+
+v0.14.17 (2026-11-06, a frozen version's tab shows that version's details): The Details view of a tab that holds a frozen version showed the live slide's file and version. It now shows the frozen file's own file name, version, language and slug, the same Frozen lock chip as the Source and Preview views, and the other languages and earlier versions with the current version among them. Rename, Duplicate and Delete are not offered there, since they would act on the live slide. Tests in tests/test_centre_gui.py.
+
+NEW: A frozen version's Details describe that version.
+- The tab shows the frozen file's name, version, language and slug, and a Frozen chip with its version.
+- The list of other languages and earlier versions includes the current version, which opens in the slide's own tab.
+- Rename, Duplicate and Delete are left out on a frozen version, as editing is in its Source view.
+
 v0.14.18 (2026-11-06, the framework's last unclassified lengths get a class): Step 5 of the framework redesign left a few names and numbers without a class. \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign and \SMSectionframeBarBottom are now derived, like \SMContentTopAlign: slides still read them, and a template or a layout profile that sets one gets an error instead of a number the next change would contradict. The footer's 2em, 4em and 0.4ex and the side footnotes' 2.1pt, 3.1pt and 2.31pt stay internal, with comments saying why. Nothing renders differently.
 
 NEW: Three more layout lengths are guarded against being set by a template.
