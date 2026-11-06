@@ -214,6 +214,25 @@ def _old_target(plugin_id: str) -> Path:
     return plugins_dir() / ".old" / f"{plugin_id}-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
+def swap_into_place(staging: Path, final: Path, old_dir: Path) -> None:
+    """Publish a checked folder, restoring the old one if publication fails. `old_dir` is a unique backup path;
+    the caller owns staging/backup cleanup and translates OSError into its own user-facing message."""
+    old = None
+    try:
+        if final.exists():
+            old = old_dir
+            old.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(final, old)
+        os.replace(staging, final)
+    except OSError:
+        if old is not None and old.exists() and not final.exists():
+            try:
+                os.replace(old, final)
+            except OSError:
+                log.exception("Could not restore %s", final)
+        raise
+
+
 def install(archive: Path, *, expected_sha256: str | None = None, app_version: str = VERSION_NUMBER) -> Manifest:
     """Check and install a new plugin, or stage an update for the next start. Raises InstallError."""
     archive = Path(archive)
@@ -225,8 +244,6 @@ def install(archive: Path, *, expected_sha256: str | None = None, app_version: s
         if actual != expected_sha256.strip().lower():
             raise InstallError("The download does not match its checksum (SHA-256); nothing was installed.")
     staging = plugins_dir() / ".staging" / uuid.uuid4().hex
-    old: Path | None = None
-    final: Path | None = None
     try:
         try:
             staging.mkdir(parents=True)
@@ -241,17 +258,8 @@ def install(archive: Path, *, expected_sha256: str | None = None, app_version: s
         final = plugins_dir() / ".pending" / manifest.id if installed.exists() else installed
         try:
             final.parent.mkdir(parents=True, exist_ok=True)
-            if final.exists():
-                old = _old_target(manifest.id)
-                old.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(final, old)
-            os.replace(staging, final)
+            swap_into_place(staging, final, _old_target(manifest.id))
         except OSError as e:
-            if old is not None and old.exists() and not final.exists():
-                try:
-                    os.replace(old, final)
-                except OSError:
-                    log.exception("Could not restore %s", final)
             raise InstallError(f"The plugin could not be put in place: {e}") from None
         mark_changed(manifest.id)
         return manifest
