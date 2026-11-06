@@ -326,6 +326,9 @@ def test_a_translation_creates_the_partner_after_the_source_and_links_both(ctx, 
     new_id_slug = partner.name.removesuffix("-current.tex")
     assert status == (f"Applied automatically (Edit automatically is on). Created {new_id_slug}-current.tex. "
                       "It stays linked to the English slide. The preview is current.")
+    # The translation writes the new file with "Included in decks: (none)". The deck edit starts the header sync
+    # on its own thread, which writes "test" into that header a moment later; settled() does not wait for it.
+    wait_until(lambda: partner.read_bytes().startswith(b"%% Included in decks: test\r\n"))
     text = partner.read_bytes().decode()
     assert text.startswith(f"%% Included in decks: test\r\n%%\r\n\r\n%% Translation of: abc-EN-Hello\r\n%%\r\n\r\n")
     assert "Hallo" in text and "Erster Punkt" in text and "\\setSlideVersion" not in text and "\r\n" in text
