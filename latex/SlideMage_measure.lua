@@ -824,4 +824,115 @@ function slidemage_measure.top_emit()
   end
 end
 
+---------------------------------------------------------------------------
+-- besidefigure (v0.14.24): how far below the Top Margin the text column's
+-- first ink is. The column is typeset into a box first, and this walks the
+-- box. Two things are found:
+--   the first line: the first line box (hlist) in the column's vertical
+--     order that is not empty. The framework puts a first line on the Top
+--     Margin by its line box, which starts `ascender` (\SMFontAscender em)
+--     above the line's baseline, or at the line's own top when the line is
+--     taller than that (a table). That line-box top is where the Top
+--     Margin is.
+--   the first ink: the top of the topmost visible thing in the column: a
+--     letter (a glyph's height is its ink, as luaotfload sets it), a rule
+--     (a table's \toprule), an image. Colour, transparency and drawing
+--     literals carry no size and are passed over; invisible overlay text
+--     (\uncover) counts, as it is where the text will be.
+-- The figure is lowered by the distance between the two, so its top meets
+-- whatever starts the column: the tops of the letters, or a table's rule.
+-- That replaces a fixed 0.2em, which suits a line of letters at one font
+-- size only.
+---------------------------------------------------------------------------
+
+local GLYPH, RULE = node.id("glyph"), node.id("rule")
+local HLIST, VLIST = node.id("hlist"), node.id("vlist")
+local GLUE, KERN, WHATSIT = node.id("glue"), node.id("kern"), node.id("whatsit")
+local RUNNING = -1073741824
+
+local state                -- {ink = <y of the topmost ink>, line = {baseline, height}} for one walk
+
+local function ink_at(y)
+  if state.ink == nil or y < state.ink then state.ink = y end
+end
+
+local walk_v
+
+-- an hlist whose baseline lies `baseline` below the outer box's top
+local function walk_h(head, baseline, box_height)
+  for n in node.traverse(head) do
+    local id = n.id
+    if id == GLYPH then
+      if n.height > 0 and n.width > 0 then ink_at(baseline - n.height) end
+      if state.line and state.line.size == nil then
+        local f = font.getfont(n.font)
+        state.line.size = f and f.size or nil        -- the first line's first letter: its font sets the ascender
+      end
+    elseif id == RULE then
+      local h = n.height == RUNNING and box_height or n.height
+      local d = n.depth == RUNNING and 0 or n.depth
+      if n.width ~= 0 and h + d > 0 then ink_at(baseline - h) end
+    elseif id == HLIST then
+      if n.head then walk_h(n.head, baseline + n.shift, n.height) end
+    elseif id == VLIST then
+      if n.head then walk_v(n.head, baseline + n.shift - n.height, n) end
+    elseif id == WHATSIT and node.has_field(n, "height") and (n.height or 0) > 0 and (n.width or 0) > 0 then
+      ink_at(baseline - n.height)                     -- an image as a whatsit (older engines)
+    end
+  end
+end
+
+-- a vlist whose top lies `top` below the outer box's top
+walk_v = function(head, top, parent)
+  local y = top
+  for n in node.traverse(head) do
+    local id = n.id
+    if id == HLIST then
+      if n.head then
+        if state.line == nil and n.height + n.depth > 0 then
+          state.line = {baseline = y + n.height, height = n.height}
+        end
+        walk_h(n.head, y + n.height, n.height)
+      end
+      y = y + n.height + n.depth
+    elseif id == VLIST then
+      if n.head then walk_v(n.head, y, n) end
+      y = y + n.height + n.depth
+    elseif id == RULE then
+      local h = n.height == RUNNING and 0 or n.height
+      local d = n.depth == RUNNING and 0 or n.depth
+      if n.width ~= 0 and h + d > 0 then ink_at(y) end
+      y = y + h + d
+    elseif id == GLUE then
+      y = y + node.effective_glue(n, parent)
+    elseif id == KERN then
+      y = y + n.kern
+    end
+  end
+end
+
+-- (the first ink, the first line) of \box<number>, in sp below the box's top; either may be nil.
+function slidemage_measure.column_ink(number)
+  local box = tex.box[number]
+  state = {}
+  if box ~= nil and box.head ~= nil then
+    if box.id == VLIST then walk_v(box.head, 0, box) else walk_h(box.head, box.height, box.height) end
+  end
+  local found = state
+  state = nil
+  return found.ink, found.line
+end
+
+-- Sets the dimen register `name` to how far besidefigure lowers its figure (at least 0), or to -1sp when the
+-- column has no ink or no line to measure from.
+-- `ratio` is \SMFontAscender (the ascender in em); the em is that of the first line's first letter, as a column
+-- often switches to \small inside besidefigure. `fallback` (sp) is the ascender of the surrounding text.
+function slidemage_measure.set_ink_top(number, name, ratio, fallback)
+  local ink, line = slidemage_measure.column_ink(number)
+  if ink == nil or line == nil then tex.setdimen(name, -1); return end
+  local ascender = line.size and math.floor(ratio * line.size + 0.5) or fallback or 0
+  local margin = line.baseline - math.max(ascender, line.height)
+  tex.setdimen(name, math.max(0, ink - margin))
+end
+
 return slidemage_measure

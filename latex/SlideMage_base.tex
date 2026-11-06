@@ -4699,18 +4699,52 @@
 % much (\SMBesideFigureTopGap, default 0.2em of the surrounding text), so the
 % figure's top edge meets the top of the first line's letters. Give
 % yshift=0pt among the keys to put the figure on the margin again.
+% Measured top (v0.14.24): a fixed 0.2em suits only a first line of letters
+% at one font size. A column that starts with a table put the figure about
+% 2pt under its \toprule (slide h5z), and under a template with another font
+% the letters' tops are elsewhere. With \SMBesideFigureTopGap at its default
+% "auto", the column is typeset into a box first and SlideMage_measure.lua
+% (ink_top) finds how far below the box's top its first ink lies: the tallest
+% letter of a first line of text, a rule, an image. The figure is lowered by
+% exactly that, so its top meets whatever starts the column. A column with no
+% ink at all falls back to 0.2em. A template that sets \SMBesideFigureTopGap to
+% a length keeps that fixed amount, and yshift= among the keys still wins.
+% The figure is placed where it always was, right before the column.
 \newlength{\SM@bf@width}
+\newsavebox{\SM@bf@box}
+\newdimen\SM@bf@ink
+\def\SM@bf@auto{auto}
+% Only a figure in a top corner (ne, nw: the default) meets the column's first ink; one in another corner
+% (se, sw, or e and w, centred vertically) keeps the 0.2em it always had, so its place does not change.
+\def\SM@bf@measure{%
+	\edef\SM@bf@given{\SMBesideFigureTopGap}%
+	\edef\SM@bf@where{,\SM@bf@corner,}%
+	\ifx\SM@bf@given\SM@bf@auto
+		\expandafter\in@\expandafter{\SM@bf@where}{,ne,nw,}%
+		\ifin@
+			\directlua{slidemage_measure.set_ink_top(\number\SM@bf@box, "SM@bf@ink", \SMFontAscender,
+				\number\dimexpr\SMFontAscender em\relax)}%
+			\ifdim\SM@bf@ink<\z@ \setlength{\SM@bf@ink}{0.2em}\fi
+		\else
+			\setlength{\SM@bf@ink}{0.2em}%
+		\fi
+	\else
+		\setlength{\SM@bf@ink}{\SMBesideFigureTopGap}%
+	\fi}
 \NewDocumentEnvironment{besidefigure}{O{} +m}{%
 	\SM@cf@setkeys{#1}%
+	\let\SM@bf@corner\SM@cf@corner
 	\SM@cf@makecontent{#2}%
 	\settowidth{\SM@bf@width}{\SM@cf@content}%
 	\ifSM@cf@border\addtolength{\SM@bf@width}{\SMImageBorderWidth}\fi
-	\cornerfigure[yshift=-\SMBesideFigureTopGap,#1]{#2}%
 	% text column: from the text's left edge to the figure's left edge minus gap
 	\setlength{\SM@bf@width}{\dimexpr\linewidth+\beamer@rightmargin-\SMFrametitleRightPadding-\SM@bf@width-\SM@bf@gap\relax}%
-	\begin{minipage}[t]{\SM@bf@width}%
+	\begin{lrbox}{\SM@bf@box}\begin{minipage}[t]{\SM@bf@width}%
 }{%
-	\end{minipage}%
+	\end{minipage}\end{lrbox}%
+	\SM@bf@measure
+	\cornerfigure[yshift=-\SM@bf@ink,#1]{#2}%
+	\usebox{\SM@bf@box}%
 }
 
 % \fitfigure[keys]{image file} (2026-09-30) -- an image as large as it fits,
