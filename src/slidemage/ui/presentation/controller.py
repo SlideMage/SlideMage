@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QLocale, QObject, QRect, QTime, QTimer, QUrl, Qt, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication, QScreen
+from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplication, QScreen
 from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSlider,
                                QToolButton, QWidget, QWidgetAction)
 
@@ -98,6 +98,7 @@ class PresentationController(QObject):
             presenter_info, presenter_screen = self._screens[self.plan.presenter]
             self.presenter = PresenterWindow(self, self._build_profile)
             self.presenter.apply_profile(self.profile)
+            self._sync_audience_input()
             self._place(self.presenter, presenter_info, presenter_screen, fullscreen=False)
         self._place(self.audience, audience_info, audience_screen, fullscreen=True)
         if not self.dual:
@@ -254,7 +255,10 @@ class PresentationController(QObject):
         button("Clear", "Clear the drawings of this page (Delete; Shift: all pages)", self.clear_drawings)
         button("Black", "Black out the projector (B)", session.toggle_black, lambda: session.black)
         button("Freeze", "Freeze the projector on this slide (F)", self.toggle_freeze, lambda: session.frozen)
-        button("Profile", "Next layout (P)", self.next_profile)
+        def profile_clicked() -> None:
+            self._profile_menu(profile).popup(profile.mapToGlobal(profile.rect().bottomLeft()))
+
+        profile = button("Profile", "Choose the layout; P switches to the next one", profile_clicked)
         button("End", "End the presentation (Esc)", self.end)
         return bar
 
@@ -326,11 +330,48 @@ class PresentationController(QObject):
             return
         names = [p.name for p in layout.BUILTINS]
         position = names.index(self.profile.name) if self.profile.name in names else -1
-        self.profile = layout.BUILTINS[(position + 1) % len(layout.BUILTINS)]
-        self.settings.profile = self._stored.profile = self.profile.name
-        self.presenter.apply_profile(self.profile)
+        self.set_profile(layout.BUILTINS[(position + 1) % len(layout.BUILTINS)])
+
+    def set_profile(self, profile: layout.Profile) -> None:
+        """Applies a layout: remembered in the settings, shown in the presenter window, and the projector's mouse
+        follows (see `_sync_audience_input`)."""
+        if not self.dual:
+            return
+        self.profile = profile
+        self.settings.profile = self._stored.profile = profile.name
+        self.presenter.apply_profile(profile)
+        self._sync_audience_input()
         if self._save_settings is not None:
             self._save_settings(self._stored)
+
+    def _sync_audience_input(self) -> None:
+        """With two screens the projector takes no mouse, because the presenter's current-slide view does. A layout
+        without that view (Mirror and clock) leaves nothing to draw on, so the projector's canvas (typically
+        mirrored on a screen of the presenter's own) gets the mouse: pen, eraser, laser and links, through the same
+        session as the current-slide view, and the cursor shows. Any layout with a current slide takes it away."""
+        if not self.dual or self.audience is None:
+            return
+        wanted = "current" not in layout.elements_of(self.profile.tree)
+        has = self.audience.canvas.input is not None
+        if wanted and not has:
+            self.audience.set_interactive(True, SlideInput(self.session, self.deck, self.settings))
+        elif not wanted and has:
+            self.audience.set_interactive(False)
+
+    def _profile_menu(self, parent: QWidget) -> QMenu:
+        """The layouts by name, the active one checked; a choice applies like P does."""
+        menu = QMenu(parent)
+        menu.setToolTipsVisible(True)
+        group = QActionGroup(menu)
+        for profile in layout.BUILTINS:
+            action = menu.addAction(profile.name)
+            action.setCheckable(True)
+            action.setChecked(profile.name == self.profile.name)
+            action.setToolTip(layout.DESCRIPTIONS.get(profile.name, ""))
+            action.setStatusTip(layout.DESCRIPTIONS.get(profile.name, ""))
+            group.addAction(action)
+            action.triggered.connect(lambda _checked=False, p=profile: self.set_profile(p))
+        return menu
 
     def _toast(self, text: str, milliseconds: int = 4000) -> None:
         window = self.presenter or self.audience
