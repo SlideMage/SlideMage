@@ -23,7 +23,7 @@ from ...deck_groups import DEFAULT_GROUPS, DeckGroup
 from ...deck_scan import Deck
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
-from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
+from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton, _repolish
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
 from .state import MODES, VIEWS
 
@@ -47,11 +47,6 @@ MODE_LABELS = {mode: mode.capitalize() for mode in MODES}
 SHORT_MODES = {"preview": "Prev.", "split": "Split", "source": "Src.", "details": "Info"}
 SOURCE_ONLY_TIP = ("This tab shows a file that is no slide, so it has only the Source view. "
                    "Switch to the slide tab for Preview, Split and Details.")
-
-
-def _repolish(widget: QWidget) -> None:
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
 
 
 class TopBar(QWidget):

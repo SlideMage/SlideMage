@@ -12,7 +12,7 @@ from typing import Optional
 from PySide6.QtWidgets import QCheckBox, QLineEdit, QVBoxLayout
 
 from ... import slide_add, slide_versioning
-from ..kit.widgets import Field, ModalSheet, Surface, caption, set_property
+from ..kit.widgets import Field, ModalSheet, Surface, caption, show_problem
 
 
 class NewSlideVersionSheet(ModalSheet):
@@ -33,7 +33,7 @@ class NewSlideVersionSheet(ModalSheet):
         layout.addWidget(intro)
         self.name_edit = QLineEdit(slug)
         self.name_edit.selectAll()
-        self.name_edit.textChanged.connect(lambda _text: self._show_problem(""))
+        self.name_edit.textChanged.connect(lambda _text: show_problem(self.problem, ""))
         layout.addWidget(Field("Name of the new slide (letters and digits, joined by hyphens)", self.name_edit))
         self._boxes: dict[str, QCheckBox] = {}
         if decks:
@@ -63,15 +63,10 @@ class NewSlideVersionSheet(ModalSheet):
         self.slug = ""
         self.decks: list[str] = []
 
-    def _show_problem(self, text: str) -> None:
-        self.problem.setText(text)
-        set_property(self.problem, "tone", "error")
-        self.problem.setVisible(bool(text))
-
     def _on_ok(self) -> None:
         slug = self.name_edit.text().strip()
         if not slide_add.SLUG_RE.match(slug):
-            self._show_problem("Use letters and digits, joined by single hyphens, e.g. Demo-revised.")
+            show_problem(self.problem, "Use letters and digits, joined by single hyphens, e.g. Demo-revised.")
             return
         self.slug = slug
         self.decks = [name for name, box in self._boxes.items() if box.isChecked()]

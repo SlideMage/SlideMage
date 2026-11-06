@@ -490,12 +490,7 @@ def update_store(ctx: ProjectContext, mutate) -> bool:
     """Atomically load, let `mutate(entries) -> bool` change it in place,
     and save only if it returned True. Single-entry edits use this path;
     sync_store() takes the same lock around its full scan and bulk update."""
-    with _store_lock:
-        entries = load_store(ctx)
-        changed = mutate(entries)
-        if changed:
-            save_store(ctx, entries)
-        return changed
+    return _update(ctx, mutate, load_store, save_store)
 
 
 def delete_entry(ctx: ProjectContext, image: str) -> bool:
@@ -516,11 +511,15 @@ def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
     "slides" section instead of "images" -- same shared file, same lock,
     so a slide-notes save and an image save can never interleave and lose
     each other's change."""
+    return _update(ctx, mutate, load_slide_notes, _save_slide_notes)
+
+
+def _update(ctx: ProjectContext, mutate, load, save) -> bool:
     with _store_lock:
-        notes = load_slide_notes(ctx)
-        changed = mutate(notes)
+        data = load(ctx)
+        changed = mutate(data)
         if changed:
-            _save_slide_notes(ctx, notes)
+            save(ctx, data)
         return changed
 
 

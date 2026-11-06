@@ -3642,3 +3642,8 @@ v0.14.27 (2026-11-06, code review plan of 2026-11-06, step 2.3; fix: a page comp
 
 NEW: Deck PDFs keep frozen slide versions after a quick update.
 - When only some pages of a deck are recompiled after an edit, slides marked "+" now stay at their last frozen version there too, as in a full compile, unless "Render slide changes in decks" is on.
+
+v0.14.28 (2026-11-06, code review plan of 2026-11-06, step 2.4: small exact duplicates): compat_citation_format and compat_project_macros share their template reading and line removal through the new compat_util.py (template_paths, read_template_lines, drop_template_lines); each keeps its own patterns. The four sheets that showed an error line with their own _show_problem call kit.widgets.show_problem. The source/preview and side-panel splitters share kit.widgets.ResetSplitterHandle for the double-click that restores their sizes. The top bar uses the kit's _repolish. alt_images.update_store and update_slide_notes share one locked load-change-save helper.
+
+NEW: Nothing changes for you; the sheets, splitters and project checks work as before.
+- Internal clean-up: duplicated code in the project checks and a few dialogs now lives in one place.
