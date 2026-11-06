@@ -21,7 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QEvent, QSize, QThread, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -62,25 +62,11 @@ THUMB = (56, 32)   # the preview of a slide in the Existing list
 MARGINS = 48     # of the sheet
 
 
-class _TranslateWorker(QThread):
-    """One translation of a slide body off the GUI thread, so that Cancel can end it. `translator` is a
-    ChatProvider (slide_add.translate_body) or a route-provided translator; either has is_local and abort()."""
-
-    translated = Signal(object, str, object)     # this worker, the text, the error (None if none)
-
-    def __init__(self, ctx: ProjectContext, translator, body: str, source: str = "en", target: str = "de") -> None:
-        super().__init__()
-        self.ctx = ctx
-        self.translator = translator
-        self.body = body
-        self.source, self.target = source, target
-
-    def run(self) -> None:
-        translate = getattr(self.translator, "translate", None)
-        if translate is None:
-            translate = lambda body: slide_add.translate_body(self.ctx, self.translator, body, self.source, self.target)
-        text, error = translate(self.body)
-        self.translated.emit(self, text, error)
+def _translate(ctx: ProjectContext, translator, body: str, source: str = "en", target: str = "de"):
+    """A route translator may implement translate directly; providers use the checked body translation."""
+    translate = getattr(translator, "translate", None)
+    return (translate(body) if translate is not None
+            else slide_add.translate_body(ctx, translator, body, source, target))
 
 
 class AddSlideSheet(ModalSheet):
@@ -101,7 +87,7 @@ class AddSlideSheet(ModalSheet):
         self._context = slide
         self._slug_edited = False
         self._models_filled = False
-        self._worker: Optional[_TranslateWorker] = None
+        self._worker: Optional[background.Handle] = None
         self._route: Optional[ai_profile.Route] = None      # of the running translation
         self._translator = None                            # the running translator, including abort()
         self._slides = slide_add.project_slides(self.app.project)
@@ -540,13 +526,15 @@ class AddSlideSheet(ModalSheet):
             return
         self._route, self._translator, self._lease = route, translator, lease
         try:
-            self._worker = _TranslateWorker(
-                self.app.project, translator, slide_add.source_body(self.app.project, self.picked()),
-                slide_language.own_language(self.picked(), languages.project_languages(self.app.project).codes).lower(),
-                self.chosen_target().lower())
-            self._worker.translated.connect(self._on_translated)
+            ctx, body = self.app.project, slide_add.source_body(self.app.project, self.picked())
+            source = slide_language.own_language(self.picked(), languages.project_languages(ctx).codes).lower()
+            target = self.chosen_target().lower()
+            self._worker = worker = background.run_in_background(
+                lambda: _translate(ctx, translator, body, source, target),
+                lambda result, error: self._on_translated(worker, *result) if error is None else None,
+                parent=self)
+            worker.finished.connect(lambda: lease.release())
             self._busy(f"Translating with {translator.label}…")
-            self._worker.start()
         except BaseException:
             self._worker = None
             lease.release()
@@ -563,12 +551,10 @@ class AddSlideSheet(ModalSheet):
         if running:
             self._set_status(text, error=False)
 
-    def _on_translated(self, worker: _TranslateWorker, text: str, error: Optional[str]) -> None:
+    def _on_translated(self, worker: background.Handle, text: str, error: Optional[str]) -> None:
         if worker is not self._worker:      # the sheet was closed meanwhile: nobody waits for this
             return
         self._worker = None
-        worker.wait()
-        worker.deleteLater()
         self._lease.release()
         self._busy("")
         if error:
@@ -597,9 +583,9 @@ class AddSlideSheet(ModalSheet):
         return handled
 
     def done(self, result: int) -> None:
-        """Closing the sheet ends a running translation: its thread must not outlive the sheet."""
+        """Closing the sheet aborts a running translation; its thread is kept until it has ended."""
         worker, self._worker = self._worker, None
         if worker is not None:
             translator = self._translator
-            background.stop_worker(worker, translator.abort, on_done=self._lease.release)
+            worker.stop(translator.abort)
         super().done(result)

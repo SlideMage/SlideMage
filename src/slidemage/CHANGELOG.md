@@ -3657,3 +3657,8 @@ v0.14.29 (2026-11-06, code review plan of 2026-11-06, phase 3: one package store
 
 NEW: Nothing changes for you; themes and citation formats install, update and remove as before.
 - Internal clean-up: themes and citation formats share one installer.
+
+v0.14.30 (2026-11-06, code review plan of 2026-11-06, step 4.1: one background-work helper for the UI): ui/background.py gains run_in_background(work, done) and run_in_background_with_progress(work, progress, done), moved from the plugin host's own worker: work runs off the GUI thread, done(result, error) and the queued progress values run on it through start_detached, and the returned Handle offers cancel() (a threading.Event that work may take), stop() for a closing sheet and wait() for tests; once the owning widget is gone its callbacks are dropped. The plugin host's run_in_background methods call it, and so do the workers that only ran a function and reported its result: the readability panel, the rendered comparison, the task bubbles' three workers, the AI fix check, the add-slide translation, the images panel's draft and the housekeeping archive. The palette search, the compile controller and the AI chat keep their own threads, which stream signals or use requestInterruption. Tests in tests/test_background.py.
+
+NEW: Nothing changes for you; background work in panels and sheets runs as before.
+- Internal clean-up: the panels and sheets that work in the background share one helper.

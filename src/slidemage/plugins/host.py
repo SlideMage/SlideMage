@@ -156,31 +156,8 @@ class PluginHost(Registrar):
     def run_in_background(
         self, work: Callable[[], T], done: Callable[[T | None, BaseException | None], None],
     ) -> None:
-        from PySide6.QtCore import QThread
-
-        from ..ui.background import start_detached
-
-        class Worker(QThread):
-            result: Any = None
-            error: BaseException | None = None
-
-            def run(self) -> None:
-                try:
-                    self.result = work()
-                except BaseException as e:      # handed to done(), never lost on the thread
-                    self.error = e
-
-        thread = Worker()
-
-        def finished() -> None:
-            try:
-                done(thread.result, thread.error)
-            except Exception:
-                self._logger.exception("done() of run_in_background raised")
-            finally:
-                thread.deleteLater()
-
-        start_detached(thread, finished)
+        from ..ui.background import run_in_background
+        run_in_background(lambda: work(), done, logger=self._logger)
 
     def insert_positions(self, deck: plugin_api.Deck) -> list[plugin_api.InsertPosition]:
         view = types.SimpleNamespace(text=deck.text, chapters=deck_scan.parse_chapters(deck.text))
@@ -323,43 +300,8 @@ class PluginHost(Registrar):
         return peek_ollama_host(self.ctx)
 
     def run_in_background_with_progress(self, work, progress, done) -> None:
-        from PySide6.QtCore import QObject, QThread, Signal
-
-        from ..ui.background import start_detached
-
-        class Worker(QThread):
-            reported = Signal(object)
-            result = None
-            error = None
-
-            def run(self) -> None:
-                try:
-                    self.result = work(self.reported.emit)
-                except BaseException as exc:
-                    self.error = exc
-
-        class Receiver(QObject):
-            def report(self, value) -> None:
-                try:
-                    progress(value)
-                except Exception:
-                    self_logger.exception("progress callback raised")
-
-        self_logger = self._logger
-        thread = Worker()
-        receiver = Receiver()
-        thread.reported.connect(receiver.report)
-
-        def finished() -> None:
-            try:
-                done(thread.result, thread.error)
-            except Exception:
-                self._logger.exception("done callback raised")
-            finally:
-                receiver.deleteLater()
-                thread.deleteLater()
-
-        start_detached(thread, finished)
+        from ..ui.background import run_in_background_with_progress
+        run_in_background_with_progress(work, progress, done, logger=self._logger)
 
     def ai_tools(
         self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,

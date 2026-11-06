@@ -656,9 +656,9 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
             return alt_draft.DraftResult(short="Drafted short", long="Drafted long", model="qwen3 · local")
 
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(images.background, "start_detached", lambda worker, on_done: (worker.run(), on_done()))
     form = panel._forms[0]
     form.redraft_button.click()
+    wait_until(lambda: window.busy is None)
     assert drafted[0] == (paths.path, "media/pic.png")
     form = panel._forms[0]
     assert (form.short_edit.toPlainText(), form.long_edit.toPlainText()) == ("Drafted short", "Drafted long")
