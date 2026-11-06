@@ -1008,7 +1008,7 @@ def test_a_deck_whose_template_is_nowhere_is_held_back_and_named_not_failed(proj
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
-    monkeypatch.setattr(background_renders.slide_snapshot, "available_templates", lambda root: ["somewhere-else"])
+    monkeypatch.setattr(background_renders.slide_templates, "available_templates", lambda root: ["somewhere-else"])
     assert r.scan() == []
     counted = r.progress.deck("slidemage-manual")
     assert counted.blocked == counted.total > 0 and counted.left == 0 and counted.failed == 0

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, deck_language, deck_settings, languages, render_key, render_store, slide_language
-from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
+from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
@@ -188,7 +188,7 @@ class Cancelled(RuntimeError):
 def _template_was_missing(failure: Optional[dict], template: str) -> bool:
     """Whether a stored failure is TeX not finding the template's file (the template is there now)."""
     error = (failure or {}).get("error") or ""
-    return f"\\input{{{slide_snapshot.TEMPLATE_PREFIX}{template}}}" in error and "Emergency stop" in error
+    return f"\\input{{{slide_templates.TEMPLATE_PREFIX}{template}}}" in error and "Emergency stop" in error
 
 
 class BackgroundRenderer:
@@ -419,7 +419,7 @@ class BackgroundRenderer:
         # A deck whose template file is in neither the project, the framework nor an installed theme fails every
         # render at its \input (a theme installed on another computer, a template file deleted): its units are held
         # back and the template is named, instead of piling up failures (v0.14.1).
-        templates = set(slide_snapshot.available_templates(self.ctx.root))
+        templates = set(slide_templates.available_templates(self.ctx.root))
         missing: dict[str, list[str]] = {}
         for deck_rank, deck in enumerate(self.ordered_decks()):
             progress = DeckProgress(deck.name)

@@ -8,12 +8,12 @@ import time
 
 import pytest
 
-from slidemage import slide_snapshot, update_all_previews
+from slidemage import slide_snapshot, slide_templates, update_all_previews
 from slidemage.deck_scan import scan_decks
 from slidemage.project import ProjectContext
 
 OTHER_DECK = "\\documentclass{beamer}\n\\begin{document}\n\\slide{abd-EN-Second}\n\\slide{zzz-EN-Zed}\n\\end{document}\n"
-TEMPLATE = slide_snapshot.DEFAULT_TEMPLATE      # what a deck without an \input of a template detects
+TEMPLATE = slide_templates.DEFAULT_TEMPLATE      # what a deck without an \input of a template detects
 
 
 @pytest.fixture

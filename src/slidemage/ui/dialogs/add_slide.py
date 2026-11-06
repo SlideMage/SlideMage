@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, alt_draft, deck_editor, languages, slide_add, slide_import, slide_language, slide_snapshot, slide_versioning
+from ... import ai_review, alt_draft, deck_editor, languages, slide_add, slide_import, slide_language, slide_snapshot, slide_templates, slide_versioning
 from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
 from ...project import ProjectContext
@@ -91,7 +91,7 @@ class AddSlideSheet(ModalSheet):
         self._route: Optional[ai_profile.Route] = None      # of the running translation
         self._translator = None                            # the running translator, including abort()
         self._slides = slide_add.project_slides(self.app.project)
-        self._template = slide_snapshot.detect_template(deck.preamble_text)
+        self._template = slide_templates.detect_template(deck.preamble_text)
 
         body = Surface()
         self._layout = QVBoxLayout(body)

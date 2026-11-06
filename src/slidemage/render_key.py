@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, deck_language, slide_snapshot
+from . import compile_records, deck_language, slide_templates
 from .dep_hash import HashCache, norm
 from .preview_target import PreviewTarget
 from .project import ProjectContext
@@ -39,7 +39,7 @@ from .project import ProjectContext
 RENDER_SCHEMA = 3     # 2: every reveal step (all_steps) whatever the slide restricts; 3: pages 1920 px wide
 
 KIND_PROJECT = "project"        # under the project folder: rel path from the root
-KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it
+KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_templates.framework_dirs): rel path from it
 KIND_ALT_TEXT = "alt-text"      # a project alt-text file: the hash of its rows for the render's pictures (v8.69.0)
 KIND_MISSING_INPUT = "missing-input"   # a failed run's missing file: retry when it appears in a search folder
 
@@ -188,7 +188,7 @@ class Resolver:
     # -- manifests ---------------------------------------------------------------
 
     def _relative(self, path: Path) -> Optional[tuple[str, str]]:
-        for root, kind in [(self.ctx.root, KIND_PROJECT), *[(d, KIND_FRAMEWORK) for d in slide_snapshot.framework_dirs(self.ctx.root)]]:
+        for root, kind in [(self.ctx.root, KIND_PROJECT), *[(d, KIND_FRAMEWORK) for d in slide_templates.framework_dirs(self.ctx.root)]]:
             try:
                 rel = Path(os.path.normpath(path)).relative_to(os.path.normpath(root))
             except ValueError:
@@ -230,14 +230,14 @@ class Resolver:
     def _resolve(self, kind: str, rel: str) -> Optional[Path]:
         if kind in (KIND_PROJECT, KIND_ALT_TEXT):
             return self.ctx.root / rel
-        for folder in slide_snapshot.framework_dirs(self.ctx.root):
+        for folder in slide_templates.framework_dirs(self.ctx.root):
             if (folder / rel).is_file():
                 return folder / rel
         return None
 
     def missing_input_entry(self, name: str) -> list:
         """Remember even a dependency TeX could not read, so restoring it invalidates a stored failure."""
-        paths = {folder / name for folder in [self.ctx.decks_dir, *slide_snapshot.template_dirs(self.ctx.root)]}
+        paths = {folder / name for folder in [self.ctx.decks_dir, *slide_templates.template_dirs(self.ctx.root)]}
         state = [[str(path), self.hashes.hash(path)] for path in sorted(paths)]
         return [KIND_MISSING_INPUT, name, _json_hash(state)]
 

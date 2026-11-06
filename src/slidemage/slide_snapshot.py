@@ -67,7 +67,7 @@ from pathlib import Path
 # reads the same either way.
 import pymupdf as fitz
 
-from . import languages, project, slide_language, themes
+from . import languages, project, slide_language
 from .preview_cache import THUMBNAIL_MAX
 from .preview_metrics import measure
 
@@ -85,135 +85,8 @@ _PNG_LOCK = threading.RLock()
 # captured regardless of that flag.
 SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 
-# Every institution template is a one-line \input{} swap on top of an
-# otherwise-shared preamble, so detecting which one a deck uses is one regex
-# against its own preamble text, not a whole-file diff. A template is any
-# SlideMage_template_<key>.tex the project (or the framework next to it)
-# holds; the app knows none by name except its own, "slidemage", the generic
-# template shipped in latex/. It is also the default when detection finds
-# nothing (a deck with a preamble this regex doesn't recognize at all).
-TEMPLATE_PREFIX = "SlideMage_template_"
-TEMPLATE_RE = re.compile(r"\\input\{SlideMage_template_([A-Za-z0-9_-]+)\}")
-DEFAULT_TEMPLATE = "slidemage"
-_LABEL_RE = re.compile(r"^%+\s*SlideMage template name:\s*(.+?)\s*$", re.MULTILINE)
-
-
-def template_name(key: str) -> str:
-    """The name a template has in cached preview file names: "my-template" -> "MyTemplate" (each hyphen-separated part
-    capitalised), the app's own "slidemage" -> "SlideMage"."""
-    return "SlideMage" if key == DEFAULT_TEMPLATE else "".join(part.capitalize() for part in key.split("-"))
-
-
-class _TemplateNames:
-    """TEMPLATES[key] / TEMPLATES.get(key, default): the file-name form of any template key."""
-
-    def __getitem__(self, key: str) -> str:
-        return template_name(key)
-
-    def get(self, key: str, default: str = "") -> str:
-        return template_name(key) if key else default
-
-
-TEMPLATES = _TemplateNames()
-
-
-def template_label(key: str, root: Path | None = None) -> str:
-    """How the dialogs name a template: the `% SlideMage template name: ...` line in the first lines of its preamble
-    file when it has one, else its key read as words ("my-template" -> "My Template")."""
-    if root is not None:
-        try:
-            head = "\n".join(preamble_file(key, root).read_text(encoding="utf-8", errors="replace").splitlines()[:30])
-        except OSError:
-            head = ""
-        found = _LABEL_RE.search(head)
-        if found:
-            return found.group(1)
-    return "SlideMage" if key == DEFAULT_TEMPLATE else " ".join(part.capitalize() for part in key.split("-"))
-
-
-def detect_template(preamble_text: str) -> str:
-    """The template key a deck's own preamble selects, defaulting to DEFAULT_TEMPLATE when the pattern isn't found."""
-    match = TEMPLATE_RE.search(preamble_text)
-    return match.group(1) if match else DEFAULT_TEMPLATE
-
-
-def _template_name(template: str) -> str:
-    return template_name(template)
-
-
-# The template a slide is rendered in when no deck is involved -- the slide
-# editor's Render to PDF and Preview, tikz illustration renders (2026-10-03,
-# direct instruction: chosen in Settings -> General, out of the box the
-# generic SlideMage template). Only a template whose preamble file a deck of
-# this project can find is offered; otherwise the choice falls back to the
-# SlideMage template, then the default one, then whichever template there is.
-RENDER_TEMPLATE_SETTING_KEY = "default_template"
-OUT_OF_THE_BOX_RENDER_TEMPLATE = "slidemage"
-
-
-def framework_dirs(root: Path) -> list[Path]:
-    """The LaTeX framework folders a project's decks search (its .latexmkrc
-    puts one on TEXINPUTS): $SLIDEMAGE_LATEX, else ../latex (a project
-    next to the framework, like example/) or ../SlideMage/latex (a project
-    next to a SlideMage checkout). Only folders holding
-    SlideMage_base.tex count. With none of them, the framework SlideMage
-    bundles (v0.14.19), which compiler.build_env then puts on
-    $SLIDEMAGE_LATEX for the compiles."""
-    found = project.sibling_framework_dirs(root)
-    if found:
-        return found
-    fallback = project.fallback_framework_dir(root)
-    return [fallback] if fallback is not None else []
-
-
-def template_dirs(root: Path) -> list[Path]:
-    """The folders a deck's \\input{SlideMage_template_<key>} is found in, in TeX's order (the project's .latexmkrc
-    and compiler.build_env's TEXINPUTS): the project root, the framework, then the installed theme packages
-    (themes.py; not for a deck snapshot, whose compiles search only its own copies). The first one holding a key's
-    file wins."""
-    installed = [] if project.is_snapshot(root) else themes.installed_dirs()
-    return [root, *framework_dirs(root), *installed]
-
-
-def preamble_file(template: str, root: Path) -> Path:
-    """The template's preamble file, SlideMage_template_<key>.tex: the
-    project's own (institution layers live in the project root), else the
-    framework's (the SlideMage template, since v5.9.0), else an installed
-    theme's. The project-root path when none exists."""
-    name = f"SlideMage_template_{template}.tex"
-    for folder in template_dirs(root):
-        if (folder / name).is_file():
-            return folder / name
-    return root / name
-
-
-def available_templates(root: Path) -> list[str]:
-    """The keys of the templates whose preamble file a deck of the project can find (project root, framework or an
-    installed theme): the app's own first, then the others alphabetically."""
-    keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in template_dirs(root)
-            for file in folder.glob(f"{TEMPLATE_PREFIX}*.tex")}
-    return sorted(keys, key=lambda key: (key != DEFAULT_TEMPLATE, key))
-
-
-def render_template(ctx: project.ProjectContext) -> str:
-    """The template single-slide renders use (see RENDER_TEMPLATE_SETTING_KEY)."""
-    from . import app_settings  # app settings live in the project too
-
-    available = available_templates(ctx.root)
-    for key in (app_settings.get(ctx, RENDER_TEMPLATE_SETTING_KEY),
-                OUT_OF_THE_BOX_RENDER_TEMPLATE, DEFAULT_TEMPLATE):
-        if key in available:
-            return key
-    return available[0] if available else DEFAULT_TEMPLATE
-
-
-def set_render_template(ctx: project.ProjectContext, key: str) -> None:
-    """Choose the template single-slide renders use (a template key)."""
-    from . import app_settings
-
-    if key not in available_templates(ctx.root):
-        raise ValueError(f"'{key}' is not a template.")
-    app_settings.set(ctx, RENDER_TEMPLATE_SETTING_KEY, key)
+# Template discovery lives in slide_templates.py.
+from .slide_templates import DEFAULT_TEMPLATE, _template_name
 
 
 # Full HD, requested directly rather than picked via a DPI value: this

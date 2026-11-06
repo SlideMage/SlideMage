@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QLabel, QMessageBox, QWidget
 
-from slidemage import alt_draft, app_settings, draft_prompts, languages, slide_snapshot, updater, version
+from slidemage import alt_draft, app_settings, draft_prompts, languages, slide_templates, updater, version
 from slidemage import translation_prompts as tp
 from slidemage.ai import ai_profile
 from slidemage.ui.kit.theme import ThemeManager
@@ -129,8 +129,8 @@ def test_the_render_template_offers_the_project_templates_and_saves_the_choice(t
     assert [combo.itemData(i) for i in range(combo.count())] == ["slidemage", "acme", "beta", "gamma", "greyscale"]
     assert combo.currentData() == "slidemage"           # out of the box
     combo.setCurrentIndex(combo.findData("acme"))
-    assert app_settings.get(context, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY) == "acme"
-    assert slide_snapshot.render_template(context) == "acme"
+    assert app_settings.get(context, slide_templates.RENDER_TEMPLATE_SETTING_KEY) == "acme"
+    assert slide_templates.render_template(context) == "acme"
 
 
 def test_the_update_mode_and_the_github_token_are_saved_when_changed(qapp):

@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
 from conftest import build_window, make_project, wait_until
-from slidemage import app_settings, deck_scan, languages, slide_snapshot
+from slidemage import app_settings, deck_scan, languages, slide_templates
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
 from slidemage.ui import plugin_ui
@@ -1125,7 +1125,7 @@ def test_clicking_the_second_use_of_a_slide_in_another_deck_focuses_that_occurre
 @pytest.fixture
 def window(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
+    monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

@@ -3672,3 +3672,8 @@ v0.14.31 (2026-11-06, code review plan of 2026-11-06, step 5.3: latex_lint._lex 
 
 NEW: Nothing changes for you; the source checker reports the same problems as before.
 - Internal clean-up: the checker's lexer is split into small parts.
+
+v0.14.32 (2026-11-06, code review plan of 2026-11-06, step 4.4: template discovery out of slide_snapshot): About 30 modules imported slide_snapshot only to find templates. The template helpers (TEMPLATE_PREFIX, TEMPLATE_RE, DEFAULT_TEMPLATE, TEMPLATES, template_name, template_label, detect_template, framework_dirs, template_dirs, preamble_file, available_templates, render_template, set_render_template and the render-template setting key) moved to the new slide_templates.py, and every importer uses it. The module is called slide_templates rather than templates because several modules have local variables of that name. slide_snapshot keeps the flat Instructor-snapshot cache. No behaviour change.
+
+NEW: Nothing changes for you; templates are found as before.
+- Internal clean-up: finding a deck's template has its own module.

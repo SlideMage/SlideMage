@@ -197,7 +197,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
   done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
   slides on selection and in the background). A deck whose template key is not among
-  `slide_snapshot.available_templates()` (no installed theme, no copy in the project) is held back by
+  `slide_templates.available_templates()` (no installed theme, no copy in the project) is held back by
   `BackgroundRenderer.scan` (`DeckProgress.blocked`, `Progress.missing_templates`) instead of failing every render;
   the status text turns red and the window explains it, and a failure stored for want of the template is forgotten
   once the template is found (v0.14.1).
@@ -791,7 +791,7 @@ What matters when touching *this code*:
   finds (active *and* archived -- an archived deck's own editor tab still
   shows cached previews) and groups every `\slide{}`-family call's own
   full `id_slug` by that deck's own detected template
-  (`slide_snapshot.detect_template()`), giving `{template key: {full
+  (`slide_templates.detect_template()`), giving `{template key: {full
   id_slugs}}`. `run()` then compiles one throwaway deck per template
   (`_run_one_template()`, same `compiler.run_job()` mechanics the
   original single-template version always used, just scoped to that
@@ -802,7 +802,7 @@ What matters when touching *this code*:
   `\slide{}` directly, so their own template detects with nothing of its
   own -- confirmed directly, not assumed, when it first showed up as a
   test failure). `_prune_stale_snapshots()` then deletes every cached
-  file (`_SNAPSHOT_FILENAME_RE`, anchored to `slide_snapshot.TEMPLATES`'
+  file (`_SNAPSHOT_FILENAME_RE`, anchored to `slide_templates.TEMPLATES`'
   own display names) whose (template, bare id) isn't in that scan's
   result any more -- skipped if the run was cancelled partway through, so
   an aborted "Stop creation" doesn't delete caches based on a scan

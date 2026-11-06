@@ -47,7 +47,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot
+from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot, slide_templates
 from . import citations, diagnostics, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
@@ -669,7 +669,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         body = resolved[job.deck.preamble_end :]
         end_match = DOCUMENT_END_RE.search(body)
         body_without_end = body[: end_match.start()] if end_match else body
-        template = slide_snapshot.detect_template(job.deck.preamble_text)
+        template = slide_templates.detect_template(job.deck.preamble_text)
         lines.append(preamble)
         lines.append(body_without_end)
         lines.append(appendix_toc.generate_appendix_tex(
@@ -857,11 +857,11 @@ def _relocate_pdf_and_finish(
     if (job.version in (None, "instructor") and not job.presenter
             and _is_latest_output_success(destination_key, generation)):
         try:
-            template = slide_snapshot.detect_template(job.deck.preamble_text)
+            template = slide_templates.detect_template(job.deck.preamble_text)
             n = slide_snapshot.capture_deck(ctx, pdf_source, template)
             if n:
                 log(f"    (refreshed {n} slide preview snapshot(s), "
-                    f"{slide_snapshot.TEMPLATES[template]})")
+                    f"{slide_templates.TEMPLATES[template]})")
         except Exception as exc:
             log(f"    (preview snapshots not updated: {exc})")
 
