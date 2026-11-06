@@ -11,15 +11,19 @@ from ..ui import layout_settings
 
 SETTINGS_KEY = "presentation"
 TIMER_END, TIMER_DURATION = "end", "duration"
+# The colours that were the defaults until v0.14.21. save() writes every field, so anyone who saved any setting has
+# them in layout.json as if chosen; load() reads exactly these values as the current defaults.
+OLD_DEFAULTS = {"laser_color": "#ff2020", "pen_color": "#c0ffd400"}
 
 
 @dataclass
 class PresentationSettings:
     profile: str = "Current large"     # layout.profile_named also accepts "Next large, clock", its name in v0.14.16-v0.14.20
-    laser_color: str = "#ff2020"
+    laser_color: str = "#ff0000"
     laser_size: float = 0.02           # the dot's radius, as a fraction of the slide height
-    pen_color: str = "#c0ffd400"       # a translucent yellow: a highlighter
+    pen_color: str = "#ff0055ff"       # opaque blue (ARGB, as QColor.name(HexArgb) writes it)
     pen_width: float = 0.012           # fraction of the slide height
+    eraser_size: float = 0.02          # the eraser circle's radius, as a fraction of the slide height
     confirm_links: bool = True
     offer_resume: bool = True          # ask to continue where the last talk on this deck stopped
     audience_screen: str = ""          # ScreenInfo.key; "" is automatic
@@ -37,7 +41,7 @@ class PresentationSettings:
         settings = cls()
         for field in fields(cls):
             value = stored.get(field.name)
-            if isinstance(value, type(getattr(settings, field.name))):
+            if isinstance(value, type(getattr(settings, field.name))) and value != OLD_DEFAULTS.get(field.name):
                 setattr(settings, field.name, value)
         return settings
 

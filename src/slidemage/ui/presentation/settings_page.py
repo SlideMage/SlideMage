@@ -56,11 +56,18 @@ class PresentationTab(Page):
         self.laser_size.setSuffix(" % of the slide height")
         self.laser_size.setValue(values.laser_size * 100)
         self.laser_size.valueChanged.connect(lambda v: self._set("laser_size", round(v / 100, 4)))
+        self.eraser_size = QDoubleSpinBox()
+        self.eraser_size.setRange(0.5, 10.0)
+        self.eraser_size.setSingleStep(0.5)
+        self.eraser_size.setSuffix(" % of the slide height")
+        self.eraser_size.setValue(values.eraser_size * 100)
+        self.eraser_size.valueChanged.connect(lambda v: self._set("eraser_size", round(v / 100, 4)))
         body.addWidget(columns(Field("Laser pointer colour", self.laser_button), Field("Laser pointer size", self.laser_size)))
         body.addWidget(columns(Field("Pen colour", self.pen_button), Field("Pen width", self.pen_width)))
+        body.addWidget(columns(Field("Eraser size (radius)", self.eraser_size)))
         body.addWidget(caption("The laser shows while you hold Ctrl and the left mouse button on the current slide. "
-                               "While presenting, the Pen button changes the pen's colour and width for that "
-                               "presentation only."))
+                               "While presenting, the Pen, Laser and Eraser buttons change their colour and size for "
+                               "that presentation only; a circle shows the eraser's reach."))
 
         self.confirm_links = QCheckBox("Ask before opening a web link")
         self.confirm_links.setChecked(values.confirm_links)
@@ -145,6 +152,7 @@ class PresentationTab(Page):
         _swatch(self.pen_button, defaults.pen_color)
         self.pen_width.setValue(defaults.pen_width * 100)
         self.laser_size.setValue(defaults.laser_size * 100)
+        self.eraser_size.setValue(defaults.eraser_size * 100)
         self.confirm_links.setChecked(defaults.confirm_links)
         self.offer_resume.setChecked(defaults.offer_resume)
         self.timer_mode.setCurrentIndex(self.timer_mode.findData(defaults.timer_mode))

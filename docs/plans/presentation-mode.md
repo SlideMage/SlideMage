@@ -199,7 +199,7 @@ The **Profile** button (v0.14.21) opens a menu of the layouts by name, the activ
 ### 4.11 Presentation settings (one page)
 All presentation options live in one **"Presentation"** page of the existing settings dialog (`ui/dialogs/settings.py`, new `ui/presentation/settings_page.py`), stored in `PresentationSettings`:
 * **Layout:** active profile (drop-down), profile list with New / Copy / Rename / Delete and the preview editor (M3).
-* **Pointer and drawing:** laser colour (default red), pen colour (default yellow highlighter), pen width.
+* **Pointer and drawing:** laser colour (default red, #ff0000), pen colour (default blue, #0055ff; a translucent yellow highlighter until v0.14.21), pen width, laser size and eraser size (the eraser shows a circle of its reach).
 * **Timer:** default mode (end time of day, default; or duration), default duration, start on first slide change (on), flash when time is up (on, or solid red only), amber warning at 5 min (on). Clock format (system / 12 h / 24 h).
 * **Links:** confirm before opening external links (default on); internal jumps never ask.
 * **Screens:** audience screen (Automatic, or a named screen), keep the computer awake while presenting (M3).

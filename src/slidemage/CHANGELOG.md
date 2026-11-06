@@ -3603,3 +3603,11 @@ v0.14.22 (2026-11-06, the catalogue lists citation formats): The website's catal
 NEW: Install citation formats from SlideMage's list.
 - Settings, Extensions, Citation formats now shows the available formats (APA 7, Chicago author-date and Harvard to begin with) after you press Check for plugins; Install adds one in a click.
 - Choose an installed format in a template or deck with \renewcommand{\SMCitationFormat}{key}.
+
+v0.14.23 (2026-11-06, direct instruction: Shift+F5 presents from the selected slide, blue pen and red laser by default, an eraser size with a circle, and colours that apply without pressing OK): Deck has a new command, Present from current slide (Shift+F5), and the presenter's pen, laser and eraser are easier to set.
+
+NEW: Present from the selected slide, an eraser size, and colours that apply when you click on the slide.
+- Present from current slide (Shift+F5; Ctrl+Alt+Shift+P on a Mac) starts the presentation at the first page of the slide selected in the slide list and does not offer to continue an earlier talk; a slide the presenter PDF does not contain starts at the next one that it does, and a PDF that does not fit the deck starts at the beginning with a short message.
+- The pen is blue (#0055ff) and the laser red (#ff0000) by default; colours you chose yourself are kept, and the old defaults (yellow pen, #ff2020 laser) saved with other settings become the new ones.
+- The Eraser button opens a size slider like the Pen's, the Presentation settings have an eraser size, and a circle of the eraser's size follows the mouse on the slide while the eraser is on.
+- A colour chosen in the pen or laser colour window applies at once; clicking on the slide closes the window as OK, and Cancel or Esc restores the earlier colour.

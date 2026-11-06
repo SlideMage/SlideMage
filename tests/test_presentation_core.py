@@ -316,7 +316,31 @@ def test_settings_have_defaults_survive_the_store_and_ignore_bad_values(ctx):
     assert app_settings.get(ctx, "presentation") is None            # per user, not in the project
     layout_settings.set("presentation", {"laser_color": 5, "pen_width": "wide", "confirm_links": False})
     loaded = PresentationSettings.load()
-    assert loaded.laser_color == "#ff2020" and loaded.pen_width == 0.012 and loaded.confirm_links is False
+    assert loaded.laser_color == "#ff0000" and loaded.pen_width == 0.012 and loaded.confirm_links is False
+
+
+def test_the_default_pen_is_opaque_blue_and_the_laser_pure_red():
+    defaults = PresentationSettings()
+    assert defaults.pen_color == "#ff0055ff" and defaults.laser_color == "#ff0000" and defaults.eraser_size == 0.02
+
+
+def test_saved_colours_are_kept_but_the_old_defaults_saved_with_every_other_setting_become_the_new_ones(ctx):
+    layout_settings.set("presentation", {"laser_color": "#ff2020", "pen_color": "#c0ffd400", "confirm_links": False})
+    old = PresentationSettings.load()
+    assert (old.laser_color, old.pen_color, old.confirm_links) == ("#ff0000", "#ff0055ff", False)
+    layout_settings.set("presentation", {"laser_color": "#00ff00", "pen_color": "#ffffd400"})
+    chosen = PresentationSettings.load()
+    assert (chosen.laser_color, chosen.pen_color) == ("#00ff00", "#ffffd400")        # a choice stays, even a near miss
+
+
+def test_the_eraser_reaches_a_circle_of_its_size_in_slide_heights(qapp):
+    session = PresentationSession(1)
+    session.begin_stroke("#fff", 0.01, (0.5, 0.5))
+    session.end_stroke()
+    session.erase_at((0.6, 0.5), 0.05, 16 / 9)                  # 0.1 of the width is 0.178 heights away
+    assert len(session.strokes[0]) == 1
+    session.erase_at((0.6, 0.5), 0.2, 16 / 9)
+    assert session.strokes[0] == []
 
 
 class FakeBackend:

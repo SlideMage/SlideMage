@@ -39,11 +39,12 @@ from .state import MODES, VIEWS
 VIEW_AND_BUILD, SLIDE, SECTION, DECK, PROJECT = "View & build", "Slide", "Section", "Deck", "Project"
 AI = "AI"
 # On a Mac, where Qt reads Ctrl as ⌘: ⌘, is the app's settings, so Deck settings moves to ⌥⌘,; F5 needs the fn key,
-# so Present is Keynote's ⌥⌘P; F1 is not help there (the Help menu has its own search); Quit (⌘Q) comes with QuitRole.
+# so Present is Keynote's ⌥⌘P and Present from current slide ⇧⌥⌘P; F1 is not help there (the Help menu has its own search); Quit (⌘Q) comes with QuitRole.
 MAC_KEYS = {
     "settings": {"shortcut": "Ctrl+,"},
     "deck_settings": {"shortcut": "Ctrl+Alt+,"},
     "present": {"shortcut": "Ctrl+Alt+P"},
+    "present_here": {"shortcut": "Ctrl+Alt+Shift+P"},
     "open_manual": {"shortcut": ""},
     "tab:next": {"shortcut": "Meta+Tab"},               # Qt reads Ctrl as the Command key there, and Command+Tab is the system's
     "tab:previous": {"shortcut": "Meta+Shift+Tab"},
@@ -337,6 +338,8 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     # Deck -----------------------------------------------------------------------------
     add("present", "Present deck", DECK, lambda w: launch.on_present(w, w.state.deck), icon="slideshow", shortcut="F5",
         meta="full-screen, with notes", enabled=_active_deck)
+    add("present_here", "Present from current slide", DECK, lambda w: launch.on_present_here(w, w.state.deck),
+        icon="slideshow", shortcut="Shift+F5", meta="starts at the selected slide", enabled=_active_deck)
     add("open_pdf", "Open latest PDF", DECK, lambda w: deck_actions.on_open_latest_pdf(w, w.state.deck), enabled=_active_deck)
     add("deck_settings", "Deck settings…", DECK, lambda w: deck_actions.on_deck_settings(w, w.state.deck),
         shortcut="Ctrl+,", enabled=lambda w: _has_deck(w) and not _keeps_group(w))
