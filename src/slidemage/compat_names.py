@@ -43,7 +43,7 @@ CHANGE_ID = "slidemage-names-and-setup-layer"
 
 OLD_TEMPLATE_PREFIX = "Slidemaster_preamble_"
 NEW_TEMPLATE_PREFIX = "SlideMage_template_"
-OLD_BASE, NEW_BASE = "Slidemaster_preamble_base", "SlideMage_base"
+NEW_BASE = "SlideMage_base"
 OLD_MACROS, NEW_MACROS = "Slidemaster_project_macros", "SlideMage_project_macros"
 OLD_BIB, NEW_BIB = "Slidemaster.bib", "SlideMage.bib"
 

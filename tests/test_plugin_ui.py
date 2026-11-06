@@ -32,7 +32,7 @@ from slidemage.ui.kit.widgets import PopoverMenu
 from slidemage.ui.workspace import deck_actions
 from slidemage.ui.workspace.actions import build_registry
 from slidemage.ui.workspace.panels.plugin_box import PluginBoxPanel
-from slidemage.ui.workspace.menus import menu_bar_ids
+from conftest import menu_bar_ids
 from slidemage.ui.workspace.palette import command_entries
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plugins"

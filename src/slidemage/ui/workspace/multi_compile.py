@@ -71,10 +71,6 @@ class MultiCompileSheet(ModalSheet):
         self.add_button("Cancel", role="reject")
         self.add_button("Compile", kind="primary", role="accept")
 
-    def boxes_of(self, deck: Deck, kind: str) -> list[QCheckBox]:
-        """The boxes of `deck`'s rows for `kind`: one per section the deck is listed in."""
-        return self._twins.get((deck.name, kind), [])
-
     def _set_all(self, checked: bool) -> None:
         for box in self.boxes.values():
             box.setChecked(checked)

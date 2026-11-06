@@ -265,7 +265,7 @@ def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resol
 def test_a_framework_file_is_found_again_through_the_framework_folders(ctx, resolver, store, monkeypatch, tmp_path):
     framework = tmp_path / "fw"
     base = write(framework / "SlideMage_base.tex", "base")
-    monkeypatch.setattr(render_key.slide_snapshot, "framework_dirs", lambda root: [framework])
+    monkeypatch.setattr(render_key.slide_templates, "framework_dirs", lambda root: [framework])
     unit = unit_for(ctx)
     write(unit.source_path, "s")
     key, meta = make_record(resolver, ctx, unit, [unit.source_path, base])
@@ -405,6 +405,32 @@ def test_failures_are_remembered_for_the_input_state_and_backed_off(ctx, resolve
     store.record_failure(k2, render_store.TRANSIENT, "timeout", m2)
     clock[0] += 10 * 3600
     assert not store.may_retry(store.failure(k2))
+
+
+def test_legacy_failures_are_retried_once_without_discarding_renders(ctx, tmp_path):
+    folder = tmp_path / "legacy-store"
+    with_store = render_store.RenderStore(ctx, folder)
+    try:
+        with_store.put("good", render_store.ORIGIN_REVEAL, None, [], {"unit": "deck:slide:instructor:EN"})
+        with_store.record_failure("bad", render_store.DETERMINISTIC, "missing setup", [])
+        with_store.note_last_try("bad")
+        with_store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.FAILURE_INPUTS_TRACKED,))
+        with_store.db.commit()
+    finally:
+        with_store.close()
+    upgraded = render_store.RenderStore(ctx, folder)
+    try:
+        assert upgraded.failures() == [] and not upgraded.tried_last("bad")
+        assert upgraded.find("good")
+        upgraded.record_failure("new", render_store.DETERMINISTIC, "still broken", [])
+    finally:
+        upgraded.close()
+    reopened = render_store.RenderStore(ctx, folder)
+    try:
+        assert [f["key"] for f in reopened.failures()] == ["new"]
+        assert reopened.find("good")
+    finally:
+        reopened.close()
 
 
 def test_deck_usage_orders_decks_by_recency(store):

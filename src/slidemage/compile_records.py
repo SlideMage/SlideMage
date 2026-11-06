@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import languages
-from .fileio import write_json
+from .fileio import sha256_file as sha256, write_json
 from .processes import command_output
 from .project import ProjectContext
 
@@ -88,14 +88,6 @@ def is_within(path: Path | str, root: Path | str) -> bool:
     insensitive on Windows, where .fls paths also mix "d:" and "D:")."""
     p, r = norm(path), norm(root)
     return p == r or p.startswith(r.rstrip("\\/") + os.sep)
-
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def text_sha256(text: str) -> str:

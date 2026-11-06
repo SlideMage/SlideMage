@@ -25,14 +25,14 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, deck_language, deck_settings, languages, render_key, render_store, slide_language
-from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot
+from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
 from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
-from .render_scheduler import P_IDLE, P_NEIGHBOURS, Job, RenderScheduler
+from .render_scheduler import P_IDLE, Job, RenderScheduler
 from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
@@ -41,7 +41,6 @@ QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
 MIN_REPLAN_SECONDS = 15.0
-JOB_TIMEOUT = 180.0
 
 ENABLED_KEY = "bg_previews_enabled"
 ONLY_MAINS_KEY = "bg_previews_only_on_mains"
@@ -188,7 +187,7 @@ class Cancelled(RuntimeError):
 def _template_was_missing(failure: Optional[dict], template: str) -> bool:
     """Whether a stored failure is TeX not finding the template's file (the template is there now)."""
     error = (failure or {}).get("error") or ""
-    return f"\\input{{{slide_snapshot.TEMPLATE_PREFIX}{template}}}" in error and "Emergency stop" in error
+    return f"\\input{{{slide_templates.TEMPLATE_PREFIX}{template}}}" in error and "Emergency stop" in error
 
 
 class BackgroundRenderer:
@@ -233,6 +232,7 @@ class BackgroundRenderer:
         self._single: set[str] = set()          # labels of the units whose last render failed: each is rendered on its own
         self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
         self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
+        self._failure_keys: set[str] = set()    # failures that the current decks still use, with unchanged inputs
         self._current: Optional[_CurrentKeys] = None    # what the last scan found current (stale renders go, _drop_stale)
 
     def _soon(self, deck: Deck) -> bool:
@@ -413,11 +413,12 @@ class BackgroundRenderer:
         last: list = []                     # failed, not tried after the others yet: (rank, unit, progress, view)
         single: set[str] = set()
         counted: set[str] = set()
+        failure_keys: set[str] = set()
         usage = {u["deck"]: u for u in self.store.deck_usage()}
         # A deck whose template file is in neither the project, the framework nor an installed theme fails every
         # render at its \input (a theme installed on another computer, a template file deleted): its units are held
         # back and the template is named, instead of piling up failures (v0.14.1).
-        templates = set(slide_snapshot.available_templates(self.ctx.root))
+        templates = set(slide_templates.available_templates(self.ctx.root))
         missing: dict[str, list[str]] = {}
         for deck_rank, deck in enumerate(self.ordered_decks()):
             progress = DeckProgress(deck.name)
@@ -459,6 +460,7 @@ class BackgroundRenderer:
                             progress.count(view, 1)
                             counted.add(unit.label)
                         elif found.state is render_key.Freshness.FAILED:
+                            failure_keys.add(found.key)
                             if found.failure and self.store.may_retry(found.failure):
                                 first.append(((deck_rank, language_rank, view_rank, order), unit))
                                 single.add(unit.label)          # a batch holding it would fail again
@@ -495,6 +497,8 @@ class BackgroundRenderer:
         self._last_try = last_try
         self._single = single
         self._counted = counted
+        with self._working_lock:
+            self._failure_keys = failure_keys
         failures = self.store_failures_count()
         with self._working_lock:
             # What runs now, from the workers' own list under their lock: copied from the old progress, a render that
@@ -548,8 +552,14 @@ class BackgroundRenderer:
         except Exception:  # noqa: BLE001 -- the render is stored; the next scan clears what is left
             _trace_log.debug("render store: stale renders of %s not cleared", unit.label, exc_info=True)
 
+    def current_failures(self) -> list[dict]:
+        """Failures still used by the current decks, rather than every failure ever stored."""
+        with self._working_lock:
+            keys = self._failure_keys.copy()
+        return [failure for failure in self.store.failures() if failure['key'] in keys]
+
     def store_failures_count(self) -> int:
-        return len(self.store.failures())
+        return len(self.current_failures())
 
     # -- planner thread --------------------------------------------------------------------
 
@@ -663,10 +673,6 @@ class BackgroundRenderer:
                                  is_orphan=lambda decks: bool(decks) and not set(decks) & names)
 
     # -- foreground helpers ------------------------------------------------------------------
-
-    def submit_neighbours(self, unit: render_key.Unit, rank: tuple = ()) -> None:
-        """The reveal slider's render of a unit (class P_NEIGHBOURS): it runs before any idle job and never waits for one."""
-        self.scheduler.submit(unit.label, ((unit,), ORIGIN_REVEAL), P_NEIGHBOURS, rank, group="reveal")
 
     def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
         """Keep the all-steps render the reveal bar made (its PDF and page images) as a provisional store object, so
@@ -840,7 +846,7 @@ class BackgroundRenderer:
         except BaseException as exc:
             if cancel.is_set():
                 raise
-            self._record_failure(key, exc, started, unit)
+            self._record_failure(key, exc, unit, pdf)
             raise
         finally:
             if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
@@ -856,6 +862,9 @@ class BackgroundRenderer:
                    and found.record.get("origin") == origin)
         if found.state is render_key.Freshness.FAILED or self.store.failure(key) is not None:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
+        with self._working_lock:
+            self._failure_keys.discard(key)
+        self.progress.failures = self.store_failures_count()
         name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
         self._drop_stale(unit, key)
         return name
@@ -973,23 +982,17 @@ class BackgroundRenderer:
             self._own_raster = RasterClient()
         return self._own_raster
 
-    def _record_failure(self, key: str, exc: BaseException, started: float, unit: render_key.Unit) -> None:
+    def _record_failure(self, key: str, exc: BaseException, unit: render_key.Unit, pdf: Optional[Path] = None) -> None:
         kind = getattr(exc, "kind", None) or (render_store.DETERMINISTIC if str(exc).startswith("Render failed") else render_store.TRANSIENT)
-        inputs = [str(unit.source_path)] + self._failed_inputs(started)
+        inputs = [str(unit.source_path)] + list(getattr(exc, "preview_inputs", ()))
+        if pdf is not None:
+            inputs += self._recorded_inputs(pdf)
         manifest = self.resolver.build_manifest(inputs).entries
+        manifest += [self.resolver.missing_input_entry(name) for name in set(getattr(exc, "missing_inputs", ()))]
         self.store.record_failure(key, kind, str(exc), manifest)
-
-    def _failed_inputs(self, started: float) -> list[str]:
-        """The files the failed run read, from the newest recorder file of the preview builds since `started`."""
-        try:
-            newest = max((p for p in (self.ctx.build_dir / "preview-cache").glob("*/*.fls") if p.stat().st_mtime >= started - 1),
-                         key=lambda p: p.stat().st_mtime, default=None)
-            if newest is None:
-                return []
-            return preview_build.recorded_inputs(newest, newest.with_suffix(".fdb_latexmk"), project_root=self.ctx.root,
-                                                 cache=newest.parent)
-        except OSError:
-            return []
+        with self._working_lock:
+            if self._current is None or key in self._current.keys:
+                self._failure_keys.add(key)
 
     def _failed(self, job: Job, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()

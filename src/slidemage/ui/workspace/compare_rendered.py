@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QScrollArea, QStackedWidget, QVBoxLayout
 
@@ -48,24 +48,10 @@ def can_compare(window, path: Path) -> bool:
     return preview_target.for_path(window.project, path) is not None
 
 
-class _Worker(QThread):
-    done = Signal(object)              # this worker
-
-    def __init__(self, request, cancel: threading.Event, project_root: Path) -> None:
-        super().__init__()
-        self.request, self.cancel, self.project_root = request, cancel, project_root
-        self.pages: list[bytes] = []
-        self.error = ""
-
-    def run(self) -> None:
-        try:
-            artifact = self.request.wait(self.cancel)
-            pages = preview_pages.sequence_images(self.request, count=MAX_PAGES, dpi=PAGE_DPI)
-            self.pages = pages if pages is not None else read_pages(artifact[0], self.project_root)
-        except Exception as exc:  # noqa: BLE001 -- whatever the render raised is this side's message
-            self.error = str(exc) or type(exc).__name__
-        if not self.cancel.is_set():
-            self.done.emit(self)
+def _pages(request, cancel: threading.Event, project_root: Path) -> list[bytes]:
+    artifact = request.wait(cancel)
+    pages = preview_pages.sequence_images(request, count=MAX_PAGES, dpi=PAGE_DPI)
+    return pages if pages is not None else read_pages(artifact[0], project_root)
 
 
 @dataclass
@@ -76,7 +62,7 @@ class _Side:
     pages: list[QPixmap] = field(default_factory=list)
     error: str = ""
     busy: bool = True
-    worker: Optional[_Worker] = None
+    worker: Optional[background.Handle] = None
 
 
 class CompareRendered(QDialog):
@@ -179,21 +165,22 @@ class CompareRendered(QDialog):
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(lambda delta=delta: self.step(delta))
 
+        self._show()
         for side in self._sides:
             request = self._renders.request(self.target, self.texts[side.name], self.view, self.language,
                                             app.log, require_pdf=True)
-            side.worker = _Worker(request, self._cancel, app.project.root)
-            side.worker.done.connect(self._on_done)
-        self._show()
-        for side in self._sides:
-            background.start_detached(side.worker)
+            cancel, root = self._cancel, app.project.root
+            side.worker = background.run_in_background(
+                lambda request=request: _pages(request, cancel, root),
+                lambda pages, error, side=side: self._on_done(side, pages, error), parent=self, cancel=cancel)
 
     # -- the pages ---------------------------------------------------------------------------
 
-    def _on_done(self, worker: _Worker) -> None:
-        side = next(side for side in self._sides if side.worker is worker)
-        side.busy, side.error = False, worker.error
-        for data in worker.pages:
+    def _on_done(self, side: _Side, pages: list[bytes] | None, error: BaseException | None) -> None:
+        if self._cancel.is_set():
+            return
+        side.busy, side.error = False, (str(error) or type(error).__name__) if error is not None else ""
+        for data in pages or []:
             pixmap = QPixmap()
             if pixmap.loadFromData(data):
                 side.pages.append(pixmap)
@@ -253,7 +240,7 @@ class CompareRendered(QDialog):
         self._cancel.set()
         self._renders.close()
         for side in self._sides:
-            side.worker.done.disconnect(self._on_done)
+            side.worker.stop(wait_ms=0)
         super().done(result)
         self.deleteLater()
 

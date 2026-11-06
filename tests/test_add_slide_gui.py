@@ -422,14 +422,10 @@ def test_a_translation_sheet_takes_the_views_of_the_source_call(make, project):
 
 def test_route_provided_translator_is_used_directly(qapp, tmp_path):
     """A plugin translator need not inherit a built-in implementation."""
-    from slidemage.ui.dialogs.add_slide import _TranslateWorker
+    from slidemage.ui.dialogs.add_slide import _translate
 
     class PluginTranslator:
         def translate(self, body):
             return f"translated {body}", None
 
-    worker = _TranslateWorker(ProjectContext.at(tmp_path), PluginTranslator(), "source")
-    results = []
-    worker.translated.connect(lambda _worker, text, error: results.append((text, error)))
-    worker.run()
-    assert results == [("translated source", None)]
+    assert _translate(ProjectContext.at(tmp_path), PluginTranslator(), "source") == ("translated source", None)

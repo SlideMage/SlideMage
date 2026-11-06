@@ -203,11 +203,29 @@ def command_context(deck=None, *, compiling=False, selected=(), decks=()):
                            left_column_hidden=False, right_column_hidden=False)
 
 
-def menu_bar_ids() -> list[str]:
-    """Every command id the menu bar can show (menus.py MENU_BAR), its submenus included."""
-    from slidemage.ui.workspace.menus import menu_bar_ids as ids
+def menu_bar_ids(ctx=None) -> list[str]:
+    """Every command id the menu bar can show, submenus included (DECKS is not a command)."""
+    from slidemage.ui.workspace.menus import DECKS, Submenu, expand, menu_bar
 
-    return ids(command_context())
+    if ctx is None:
+        ctx = command_context()
+    ids = []
+    for _title, sections in menu_bar(ctx):
+        for _header, entries in sections:
+            for entry in expand(ctx, entries):
+                if isinstance(entry, Submenu):
+                    ids += expand(ctx, entry.ids)
+                elif entry != DECKS:
+                    ids.append(entry)
+    return ids
+
+
+def preview_png(pdf, width=1920):
+    """PNG fixture from the same final-page renderer the preview uses."""
+    from slidemage.slide_snapshot import prepare_preview_images
+
+    images, _ = prepare_preview_images(pdf, False, (width,))
+    return images[0]
 
 
 _FILLED_MENUS: list = []     # kept, so the actions a test holds on to outlive the expression that built their menu

@@ -279,10 +279,6 @@ class RevealBar(QWidget):
     def expanded(self) -> bool:
         return self._expanded
 
-    @property
-    def deck_steps_only(self) -> bool:
-        return self.deck_only.isChecked()
-
     def set_expanded(self, expanded: bool) -> None:
         if expanded != self._expanded:
             self._expanded = expanded

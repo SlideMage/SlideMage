@@ -694,7 +694,7 @@ class BackgroundPreviews(QObject):
         self.renderer.replan()
 
     def show_failures(self) -> None:
-        lines = [f"{f['error'].strip().splitlines()[0] if f['error'].strip() else f['kind']}" for f in self.store.failures()[:20]]
+        lines = [f"{f['error'].strip().splitlines()[0] if f['error'].strip() else f['kind']}" for f in self.renderer.current_failures()[:20]]
         QMessageBox.information(self.window, "Slides that cannot be rendered", "\n".join(lines) or "None.")
 
     def retry_failed(self) -> None:

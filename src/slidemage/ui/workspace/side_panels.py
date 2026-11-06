@@ -26,7 +26,7 @@ from ...plugins import session
 from ...project import ProjectContext
 from .. import layout_settings
 from ..kit import kit_qss as q
-from ..kit.widgets import Card, DropdownButton, PopoverMenu, Surface
+from ..kit.widgets import Card, DropdownButton, PopoverMenu, ResetSplitterHandle, Surface
 from .assistant import AssistantArea
 from .panels import PANELS
 from .panels.base import PanelActions, SidePanel
@@ -65,21 +65,12 @@ def remembered_width(project: ProjectContext) -> int:
     return min(max(value, MIN_WIDTH), MAX_WIDTH) if isinstance(value, int) else WIDTH
 
 
-class _ResetHandle(QSplitterHandle):
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.splitter().reset_requested.emit()
-            event.accept()
-        else:
-            super().mouseDoubleClickEvent(event)
-
-
 class _ColumnSplit(QSplitter):
     """The panels' card above the assistant; a double-click on the divider gives each its default height again."""
     reset_requested = Signal()
 
     def createHandle(self) -> QSplitterHandle:
-        return _ResetHandle(self.orientation(), self)
+        return ResetSplitterHandle(self.orientation(), self)
 
 
 class SidePanels(QWidget):

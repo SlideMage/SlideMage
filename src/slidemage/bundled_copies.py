@@ -58,7 +58,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .fileio import read_json, write_json
+from .fileio import read_json, sha256_file, write_json
 from .project import ProjectContext
 
 MANIFEST_PATH = Path(".slidemage") / "bundled_copies.json"
@@ -78,10 +78,6 @@ _SKIP_DIRS = {"__pycache__", "pdf"}
 
 def _skipped(rel: Path) -> bool:
     return any(part in _SKIP_DIRS or part.startswith(".") for part in rel.parts)
-
-
-def file_hash(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 # SlideMage itself keeps the "%% Included in decks: ..." line of every slide
@@ -108,7 +104,7 @@ def _hash_with_header_of(path: Path, source: Path) -> str:
 
 
 def _hashes(root: Path, relpaths: list[str]) -> dict[str, str]:
-    return {rel: file_hash(root / rel) for rel in relpaths}
+    return {rel: sha256_file(root / rel) for rel in relpaths}
 
 
 def framework_files(latex_dir: Path) -> list[str]:
@@ -219,7 +215,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
     part = Part(name, source, target, adopted, bundle_hashes=_hashes(source, files))
     if adopted and name == FRAMEWORK:
         # the files as they are count as the baseline: whatever differs is replaced
-        baseline = {rel: file_hash(target / rel) for rel in files if (target / rel).is_file()}
+        baseline = {rel: sha256_file(target / rel) for rel in files if (target / rel).is_file()}
     for rel, bundled in part.bundle_hashes.items():
         on_disk = target / rel
         known = (baseline or {}).get(rel)
@@ -227,7 +223,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
             if known is None:
                 part.add.append(rel)            # new upstream (or a new install)
             continue                            # else deleted by the user: stays deleted
-        current = file_hash(on_disk)
+        current = sha256_file(on_disk)
         if current == bundled:
             continue
         as_bundled = _hash_with_header_of(on_disk, source / rel) if _is_slide_file(rel) else None
@@ -240,7 +236,7 @@ def _plan_part(name: str, source: Path, target: Path, files: list[str],
     if baseline:
         for rel, known in baseline.items():
             if rel not in part.bundle_hashes and (target / rel).is_file():
-                if file_hash(target / rel) == known:
+                if sha256_file(target / rel) == known:
                     part.remove.append(rel)     # dropped upstream, unchanged here
                 else:
                     part.kept.append(rel)       # dropped upstream, changed here: left in place (v10.1.0)

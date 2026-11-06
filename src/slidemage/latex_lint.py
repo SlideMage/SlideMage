@@ -190,236 +190,285 @@ def _mask_comments_and_verbatim(text: str) -> tuple[str, list[tuple[int, str]]]:
     return "\n".join(out_lines), percent_hits
 
 
-@lru_cache(maxsize=4096)
-def _lex(text: str) -> tuple[LintIssue, ...]:
-    issues: list[LintIssue] = []
+class _Lexer:
+    """Keep scan state together so each token handler can preserve the original lexical rules."""
 
-    def add(code: str, line: int, message: str) -> None:
-        issues.append(LintIssue(code, message, line))
+    def __init__(self, text: str) -> None:
+        self.issues: list[LintIssue] = []
+        self.masked, self.percent_hits = _mask_comments_and_verbatim(text)
+        self.blank_lines = {number for number, raw in enumerate(text.split("\n"), 1) if not raw.strip()}
+        self.brace_stack: list[tuple[int, Optional[str]]] = []   # (line, owner command)
+        self.env_stack: list[tuple[str, int]] = []
+        self.dollar_open: Optional[int] = None
+        self.dd_open: Optional[int] = None
+        self.paren_open: Optional[int] = None
+        self.bracket_open: Optional[int] = None
+        self.left_count = self.right_count = 0
+        self.left_line = 1
+        self.pending: Optional[str] = None     # command whose arguments we may be inside
+        self.opt_depth = 0
+        self.code_region = False               # \ExplSyntaxOn / \makeatletter
+        # [brace depth at command, groups expected, groups closed, start line, opened]
+        self.def_stack: list[list[int]] = []
+        self.line = 1
 
-    # -- encoding ----------------------------------------------------------------
-    for number, raw in enumerate(text.split("\n"), 1):
-        for ch in raw:
-            if ch == "\ufffd":
-                add("encoding", number, "invalid UTF-8 (U+FFFD replacement character) -- the file's encoding is damaged here")
-                break
-            if ord(ch) < 32 and ch not in "\t\r":
-                add("encoding", number, f"control character U+{ord(ch):04X} in the source (LuaTeX: \"Text line contains an invalid character\")")
-                break
+    def add(self, code: str, line: int, message: str) -> None:
+        self.issues.append(LintIssue(code, message, line))
 
-    masked, percent_hits = _mask_comments_and_verbatim(text)
-    blank_lines = {number for number, raw in enumerate(text.split("\n"), 1) if not raw.strip()}
-    for number, message in percent_hits:
-        add("percent", number, message)
+    def _check_encoding(self, text: str) -> None:
+        for number, raw in enumerate(text.split("\n"), 1):
+            for ch in raw:
+                if ch == "\ufffd":
+                    self.add("encoding", number, "invalid UTF-8 (U+FFFD replacement character) -- "
+                             "the file's encoding is damaged here")
+                    break
+                if ord(ch) < 32 and ch not in "\t\r":
+                    self.add("encoding", number, f"control character U+{ord(ch):04X} in the source "
+                             "(LuaTeX: \"Text line contains an invalid character\")")
+                    break
 
-    brace_stack: list[tuple[int, Optional[str]]] = []   # (line, owner command)
-    env_stack: list[tuple[str, int]] = []
-    dollar_open: Optional[int] = None
-    dd_open: Optional[int] = None
-    paren_open: Optional[int] = None
-    bracket_open: Optional[int] = None
-    left_count = right_count = 0
-    left_line = 1
-
-    pending: Optional[str] = None     # command whose arguments we may be inside
-    opt_depth = 0
-    code_region = False               # \ExplSyntaxOn / \makeatletter
-    def_stack: list[list[int]] = []   # [brace depth at command, groups expected, groups closed, start line, opened]
-
-    line = 1
-    i, n = 0, len(masked)
-    while i < n:
-        c = masked[i]
-        if c == "\n":
-            line += 1
-            # A blank line (empty in the *source*, not merely comment-only)
-            # ends any open inline math, and any definition command that
-            # never got its braces (a \let-like use).
-            if line in blank_lines:
-                if dollar_open is not None:
-                    add("math-dollar", dollar_open, "$ opened here is not closed before the next blank line")
-                    dollar_open = None
-                def_stack[:] = [e for e in def_stack if e[4]]
-            i += 1
-            continue
-        if c == "\\":
-            m = _BEGIN_END_RE.match(masked, i)
-            if m:
-                kind, name = m.group(1), m.group(2).strip()
-                if kind == "begin":
-                    env_stack.append((name, line))
-                else:
-                    if not env_stack:
-                        add("environments", line, f"\\end{{{name}}} without a matching \\begin{{{name}}}")
-                    elif env_stack[-1][0] == name:
-                        env_stack.pop()
-                    elif any(e[0] == name for e in env_stack):
-                        while env_stack and env_stack[-1][0] != name:
-                            top = env_stack.pop()
-                            add("environments", top[1], f"\\begin{{{top[0]}}} is not closed before \\end{{{name}}} on line {line}")
-                        if env_stack:
-                            env_stack.pop()
-                    else:
-                        add("environments", line, f"\\end{{{name}}} does not match the open \\begin{{{env_stack[-1][0]}}} (line {env_stack[-1][1]})")
-                pending = None
-                i = m.end()
-                continue
-            cm = _CMD_RE.match(masked, i)
-            if cm:
-                name = cm.group(1).rstrip("*")
-                if name == "left":
-                    left_count += 1
-                    left_line = line
-                elif name == "right":
-                    right_count += 1
-                if name in _CODE_REGION_ON:
-                    code_region = True
-                elif name in _CODE_REGION_OFF:
-                    code_region = False
-                if name in _DEF_COMMANDS and _DEF_COMMANDS[name] > 0:
-                    def_stack.append([len(brace_stack), _DEF_COMMANDS[name], 0, line, 0])
-                pending = name
-                i = cm.end()
-                continue
-            # control symbol: \{ \} \$ \& \% \# \_ \\ \[ \] \( \) \, ...
-            nxt = masked[i + 1] if i + 1 < n else ""
-            if nxt == "[":
-                if bracket_open is not None:
-                    add("math-delims", bracket_open, "\\[ opened again before the previous one was closed")
-                bracket_open = line
-            elif nxt == "]":
-                if bracket_open is None:
-                    add("math-delims", line, "\\] without a matching \\[")
-                bracket_open = None
-            elif nxt == "(":
-                paren_open = line
-            elif nxt == ")":
-                if paren_open is None:
-                    add("math-delims", line, "\\) without a matching \\(")
-                paren_open = None
-            if nxt == "\n":
+    def scan(self) -> None:
+        for number, message in self.percent_hits:
+            self.add("percent", number, message)
+        handlers = {
+            "\n": self._newline, "\\": self._backslash,
+            "{": self._open_group, "}": self._close_group,
+            "<": self._overlay, "[": self._option, "]": self._option,
+        }
+        i, n = 0, len(self.masked)
+        while i < n:
+            c = self.masked[i]
+            if c in " \t\r":
                 i += 1
                 continue
-            pending = None
-            i += 2
-            continue
+            i = handlers.get(c, self._ordinary)(i)
 
-        if c == "{":
-            for entry in def_stack:
-                if len(brace_stack) == entry[0]:
-                    entry[4] = 1
-            brace_stack.append((line, pending))
-            i += 1
-            continue
-        if c == "}":
-            if not brace_stack:
-                add("braces", line, "closing } without a matching {")
-            else:
-                brace_stack.pop()
-            for entry in reversed(def_stack):
-                if len(brace_stack) <= entry[0]:
-                    entry[2] += 1
-                    break
-            while def_stack and def_stack[-1][2] >= def_stack[-1][1]:
-                def_stack.pop()
-            i += 1
-            continue
-        if c == "<" and pending is not None and opt_depth == 0:
+    def _newline(self, i: int) -> int:
+        self.line += 1
+        # A blank line (empty in the *source*, not merely comment-only)
+        # ends any open inline math, and any definition command that
+        # never got its braces (a \let-like use).
+        if self.line in self.blank_lines:
+            if self.dollar_open is not None:
+                self.add("math-dollar", self.dollar_open, "$ opened here is not closed before the next blank line")
+                self.dollar_open = None
+            self.def_stack[:] = [e for e in self.def_stack if e[4]]
+        return i + 1
+
+    def _backslash(self, i: int) -> int:
+        m = _BEGIN_END_RE.match(self.masked, i)
+        if m:
+            self._environment(m.group(1), m.group(2).strip())
+            self.pending = None
+            return m.end()
+        cm = _CMD_RE.match(self.masked, i)
+        if cm:
+            self._command(cm.group(1).rstrip("*"))
+            return cm.end()
+        return self._control_symbol(i)
+
+    def _environment(self, kind: str, name: str) -> None:
+        if kind == "begin":
+            self.env_stack.append((name, self.line))
+        else:
+            self._end_environment(name)
+
+    def _end_environment(self, name: str) -> None:
+        if not self.env_stack:
+            self.add("environments", self.line, f"\\end{{{name}}} without a matching \\begin{{{name}}}")
+        elif self.env_stack[-1][0] == name:
+            self.env_stack.pop()
+        elif any(e[0] == name for e in self.env_stack):
+            while self.env_stack and self.env_stack[-1][0] != name:
+                top = self.env_stack.pop()
+                self.add("environments", top[1],
+                         f"\\begin{{{top[0]}}} is not closed before \\end{{{name}}} on line {self.line}")
+            if self.env_stack:
+                self.env_stack.pop()
+        else:
+            self.add("environments", self.line, f"\\end{{{name}}} does not match the open "
+                     f"\\begin{{{self.env_stack[-1][0]}}} (line {self.env_stack[-1][1]})")
+
+    def _command(self, name: str) -> None:
+        if name == "left":
+            self.left_count += 1
+            self.left_line = self.line
+        elif name == "right":
+            self.right_count += 1
+        if name in _CODE_REGION_ON:
+            self.code_region = True
+        elif name in _CODE_REGION_OFF:
+            self.code_region = False
+        if name in _DEF_COMMANDS and _DEF_COMMANDS[name] > 0:
+            self.def_stack.append([len(self.brace_stack), _DEF_COMMANDS[name], 0, self.line, 0])
+        self.pending = name
+
+    def _control_symbol(self, i: int) -> int:
+        # control symbol: \{ \} \$ \& \% \# \_ \\ \[ \] \( \) \, ...
+        nxt = self.masked[i + 1] if i + 1 < len(self.masked) else ""
+        if nxt == "[":
+            if self.bracket_open is not None:
+                self.add("math-delims", self.bracket_open, "\\[ opened again before the previous one was closed")
+            self.bracket_open = self.line
+        elif nxt == "]":
+            if self.bracket_open is None:
+                self.add("math-delims", self.line, "\\] without a matching \\[")
+            self.bracket_open = None
+        elif nxt == "(":
+            self.paren_open = self.line
+        elif nxt == ")":
+            if self.paren_open is None:
+                self.add("math-delims", self.line, "\\) without a matching \\(")
+            self.paren_open = None
+        if nxt == "\n":
+            return i + 1
+        self.pending = None
+        return i + 2
+
+    def _open_group(self, i: int) -> int:
+        for entry in self.def_stack:
+            if len(self.brace_stack) == entry[0]:
+                entry[4] = 1
+        self.brace_stack.append((self.line, self.pending))
+        return i + 1
+
+    def _close_group(self, i: int) -> int:
+        if not self.brace_stack:
+            self.add("braces", self.line, "closing } without a matching {")
+        else:
+            self.brace_stack.pop()
+        for entry in reversed(self.def_stack):
+            if len(self.brace_stack) <= entry[0]:
+                entry[2] += 1
+                break
+        while self.def_stack and self.def_stack[-1][2] >= self.def_stack[-1][1]:
+            self.def_stack.pop()
+        return i + 1
+
+    def _overlay(self, i: int) -> int:
+        if self.pending is not None and self.opt_depth == 0:
             # overlay specification right after a command: \only<2->{...}
-            close = masked.find(">", i)
-            newline = masked.find("\n", i)
+            close = self.masked.find(">", i)
+            newline = self.masked.find("\n", i)
             if close != -1 and (newline == -1 or close < newline):
-                i = close + 1
-                continue
-        if c == "[" and pending is not None:
-            opt_depth += 1
-            i += 1
-            continue
-        if c == "]" and opt_depth:
-            opt_depth -= 1
-            i += 1
-            continue
-        if c in " \t\r":
-            i += 1
-            continue
+                return close + 1
+        return self._ordinary(i)
 
-        # -- ordinary character ------------------------------------------------
-        if opt_depth == 0:
-            pending = None if c not in "<*" else pending
+    def _option(self, i: int) -> int:
+        if self.masked[i] == "[" and self.pending is not None:
+            self.opt_depth += 1
+        elif self.masked[i] == "]" and self.opt_depth:
+            self.opt_depth -= 1
+        else:
+            return self._ordinary(i)
+        return i + 1
 
-        in_tikz = any(e[0] in _TIKZ_ENVS for e in env_stack) or any(
-            o in ("tikz", "node", "draw", "path", "foreach", "tikzset") for _, o in brace_stack if o)
-        in_math = (dollar_open is not None or dd_open is not None or paren_open is not None
-                   or bracket_open is not None or any(e[0] in _MATH_ENVS for e in env_stack))
-        in_def = bool(def_stack) or code_region
-
+    def _ordinary(self, i: int) -> int:
+        c = self.masked[i]
+        if self.opt_depth == 0:
+            self.pending = None if c not in "<*" else self.pending
         if c == "$":
-            if masked.startswith("$$", i):
-                dd_open = None if dd_open is not None else line
-                i += 2
-                continue
-            dollar_open = None if dollar_open is not None else line
-            i += 1
-            continue
-        if c == "&" and not in_def and not in_tikz:
-            if not any(e[0] in _COLUMN_ENVS for e in env_stack) and not in_math and not any(
-                    o in _URL_OWNERS for _, o in brace_stack if o):
-                add("ampersand", line, "unescaped & in running text -- write \\& (or put it inside a table/align)")
-            i += 1
-            continue
-        if c == "#" and not in_def and not in_tikz:
-            if not any(o in _URL_OWNERS for _, o in brace_stack if o):
-                add("hash", line, "unescaped # -- write \\# (a macro parameter outside a definition is an error)")
-            i += 1
-            continue
-        if c == "_" and not in_math and not in_tikz and not in_def:
-            prev_c = masked[i - 1] if i > 0 else ""
-            next_c = masked[i + 1] if i + 1 < n else ""
-            if prev_c.isalnum() and next_c.isalnum() and not any(
-                    o in _NON_TYPESET_OWNERS or o.lower().endswith("color")
-                    for _, o in brace_stack if o):
-                add("underscore", line, "'_' in running text outside math -- write \\_ (LaTeX: \"Missing $ inserted\")")
-        if c == "^" and not in_math and not in_tikz and not in_def:
-            if not any(o in _NON_TYPESET_OWNERS or o.lower().endswith("color")
-                       for _, o in brace_stack if o):
-                add("caret", line, "'^' in running text outside math -- put the exponent in $...$ or write \\textasciicircum (LaTeX: \"Missing $ inserted\")")
-        i += 1
+            return self._dollar(i)
+        # Only these characters need context checks; running text just clears pending.
+        if c not in "&#_^":
+            return i + 1
+        if self.def_stack or self.code_region or self._in_tikz():
+            return i + 1
+        if c == "&":
+            self._ampersand()
+        elif c == "#":
+            self._hash()
+        elif not self._in_math():
+            self._script(i, c)
+        return i + 1
 
-    # -- end of file ------------------------------------------------------------
-    for ln, _owner in brace_stack:
-        add("braces", ln, "opening { is never closed")
-    for name, ln in env_stack:
-        add("environments", ln, f"\\begin{{{name}}} is never closed")
-    if dollar_open is not None:
-        add("math-dollar", dollar_open, "$ opened here is never closed")
-    if dd_open is not None:
-        add("math-dollar", dd_open, "$$ opened here is never closed")
-    if paren_open is not None:
-        add("math-delims", paren_open, "\\( opened here is never closed by \\)")
-    if bracket_open is not None:
-        add("math-delims", bracket_open, "\\[ opened here is never closed by \\]")
-    if left_count != right_count:
-        add("math-delims", left_line, f"{left_count} \\left but {right_count} \\right in this file")
+    def _in_tikz(self) -> bool:
+        return any(e[0] in _TIKZ_ENVS for e in self.env_stack) or any(
+            o in ("tikz", "node", "draw", "path", "foreach", "tikzset") for _, o in self.brace_stack if o)
 
-    # -- overlay specs ----------------------------------------------------------
-    for m in _OVERLAY_OPEN_RE.finditer(masked):
-        add("overlay", masked.count("\n", 0, m.start()) + 1, "overlay specification '<' is never closed with '>'")
+    def _in_math(self) -> bool:
+        return (self.dollar_open is not None or self.dd_open is not None or self.paren_open is not None
+                or self.bracket_open is not None or any(e[0] in _MATH_ENVS for e in self.env_stack))
 
-    # -- \item[ label ----------------------------------------------------------
-    for number, ln_text in enumerate(masked.split("\n"), 1):
-        for m in re.finditer(r"\\item\s*\[", ln_text):
-            depth = 0
-            for ch in ln_text[m.end():]:
-                if ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                elif ch == "]" and depth <= 0:
-                    break
-            else:
-                add("optional-arg", number, "\\item[ label has no closing ] on this line")
-    issues.sort(key=lambda x: (x.line, x.code))
-    return tuple(issues)
+    def _dollar(self, i: int) -> int:
+        if self.masked.startswith("$$", i):
+            self.dd_open = None if self.dd_open is not None else self.line
+            return i + 2
+        self.dollar_open = None if self.dollar_open is not None else self.line
+        return i + 1
+
+    def _ampersand(self) -> None:
+        if not any(e[0] in _COLUMN_ENVS for e in self.env_stack) and not self._in_math() and not any(
+                o in _URL_OWNERS for _, o in self.brace_stack if o):
+            self.add("ampersand", self.line,
+                     "unescaped & in running text -- write \\& (or put it inside a table/align)")
+
+    def _hash(self) -> None:
+        if not any(o in _URL_OWNERS for _, o in self.brace_stack if o):
+            self.add("hash", self.line, "unescaped # -- write \\# (a macro parameter outside a definition is an error)")
+
+    def _script(self, i: int, c: str) -> None:
+        if any(o in _NON_TYPESET_OWNERS or o.lower().endswith("color")
+               for _, o in self.brace_stack if o):
+            return
+        if c == "_":
+            prev_c = self.masked[i - 1] if i > 0 else ""
+            next_c = self.masked[i + 1] if i + 1 < len(self.masked) else ""
+            if prev_c.isalnum() and next_c.isalnum():
+                self.add("underscore", self.line, "'_' in running text outside math -- "
+                         "write \\_ (LaTeX: \"Missing $ inserted\")")
+        else:
+            self.add("caret", self.line, "'^' in running text outside math -- put the exponent in $...$ "
+                     "or write \\textasciicircum (LaTeX: \"Missing $ inserted\")")
+
+    def finish(self) -> None:
+        # -- end of file ------------------------------------------------------------
+        for ln, _owner in self.brace_stack:
+            self.add("braces", ln, "opening { is never closed")
+        for name, ln in self.env_stack:
+            self.add("environments", ln, f"\\begin{{{name}}} is never closed")
+        if self.dollar_open is not None:
+            self.add("math-dollar", self.dollar_open, "$ opened here is never closed")
+        if self.dd_open is not None:
+            self.add("math-dollar", self.dd_open, "$$ opened here is never closed")
+        if self.paren_open is not None:
+            self.add("math-delims", self.paren_open, "\\( opened here is never closed by \\)")
+        if self.bracket_open is not None:
+            self.add("math-delims", self.bracket_open, "\\[ opened here is never closed by \\]")
+        if self.left_count != self.right_count:
+            self.add("math-delims", self.left_line,
+                     f"{self.left_count} \\left but {self.right_count} \\right in this file")
+
+    def _check_line_arguments(self) -> None:
+        # -- overlay specs ----------------------------------------------------------
+        for m in _OVERLAY_OPEN_RE.finditer(self.masked):
+            self.add("overlay", self.masked.count("\n", 0, m.start()) + 1,
+                     "overlay specification '<' is never closed with '>'")
+
+        # -- \item[ label ----------------------------------------------------------
+        for number, ln_text in enumerate(self.masked.split("\n"), 1):
+            for m in re.finditer(r"\\item\s*\[", ln_text):
+                depth = 0
+                for ch in ln_text[m.end():]:
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                    elif ch == "]" and depth <= 0:
+                        break
+                else:
+                    self.add("optional-arg", number, "\\item[ label has no closing ] on this line")
+
+
+@lru_cache(maxsize=4096)
+def _lex(text: str) -> tuple[LintIssue, ...]:
+    lexer = _Lexer(text)
+    lexer._check_encoding(text)
+    lexer.scan()
+    lexer.finish()
+    lexer._check_line_arguments()
+    lexer.issues.sort(key=lambda x: (x.line, x.code))
+    return tuple(lexer.issues)
 
 
 # --------------------------------------------------------------------------

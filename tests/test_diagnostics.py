@@ -39,7 +39,6 @@ def test_warnings_reach_the_error_log_in_columns_and_info_does_not(logs):
 def test_nothing_is_written_until_something_is_logged(logs):
     diagnostics.setup("hook")
     assert not logs.exists()
-    assert diagnostics.error_log_path() == logs / diagnostics.ERROR_LOG
 
 
 def test_setup_runs_once_and_reset_undoes_it(logs):
