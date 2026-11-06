@@ -406,6 +406,28 @@ def template_dir(name: str) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
+def sibling_framework_dirs(root: Path) -> list[Path]:
+    """The LaTeX framework folders a project's .latexmkrc searches, in its order: $SLIDEMAGE_LATEX, else ../latex (a
+    project next to the framework, like example/) or ../SlideMage/latex (a project next to a SlideMage checkout).
+    Only folders holding SlideMage_base.tex count."""
+    candidates = []
+    if os.environ.get(LATEX_ENV_VAR):
+        candidates.append(Path(os.environ[LATEX_ENV_VAR]))
+    candidates += [root.parent / "latex", root.parent / "SlideMage" / "latex"]
+    return [d for d in candidates if (d / "SlideMage_base.tex").is_file()]
+
+
+def fallback_framework_dir(root: Path) -> Path | None:
+    """The framework SlideMage brings itself, when the project has none of its own to find (v0.14.19): no
+    $SLIDEMAGE_LATEX and no framework next to it. Then the compiles and the template lists use the bundled copy, so a
+    project that was set up next to a checkout keeps compiling after the checkout moves, and an installed SlideMage
+    never needs a framework folder beside the project. None while the project finds one, or when this run has none."""
+    if sibling_framework_dirs(root):
+        return None
+    bundled = template_dir("latex")
+    return bundled if bundled is not None and (bundled / "SlideMage_base.tex").is_file() else None
+
+
 def has_example_template() -> bool:
     """Whether init_project(..., copy_example=True) actually has
     something to copy -- both the example project and the LaTeX

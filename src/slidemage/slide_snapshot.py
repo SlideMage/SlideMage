@@ -157,12 +157,14 @@ def framework_dirs(root: Path) -> list[Path]:
     puts one on TEXINPUTS): $SLIDEMAGE_LATEX, else ../latex (a project
     next to the framework, like example/) or ../SlideMage/latex (a project
     next to a SlideMage checkout). Only folders holding
-    SlideMage_base.tex count."""
-    candidates = []
-    if os.environ.get("SLIDEMAGE_LATEX"):
-        candidates.append(Path(os.environ["SLIDEMAGE_LATEX"]))
-    candidates += [root.parent / "latex", root.parent / "SlideMage" / "latex"]
-    return [d for d in candidates if (d / "SlideMage_base.tex").is_file()]
+    SlideMage_base.tex count. With none of them, the framework SlideMage
+    bundles (v0.14.19), which compiler.build_env then puts on
+    $SLIDEMAGE_LATEX for the compiles."""
+    found = project.sibling_framework_dirs(root)
+    if found:
+        return found
+    fallback = project.fallback_framework_dir(root)
+    return [fallback] if fallback is not None else []
 
 
 def template_dirs(root: Path) -> list[Path]:

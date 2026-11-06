@@ -12,6 +12,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 
 from presentation_fixtures import JUMP_SPOT, URI_SPOT, make_pdf
+from slidemage.presentation import layout
 from slidemage.presentation.keep_awake import KeepAwake
 from slidemage.presentation.pdf_source import PresentationDeck
 from slidemage.presentation.screens import ScreenInfo
@@ -254,7 +255,7 @@ def test_switching_the_layout_profile_rebuilds_the_presenter_and_is_saved(make):
     assert controller.profile.name == "Next large" and saved == ["Next large"]
     assert len(controller.presenter.findChildren(SlideCanvas)) == 3
     press_key(controller, Qt.Key.Key_P)
-    assert controller.profile.name == "Next large, clock" and saved[-1] == "Next large, clock"
+    assert controller.profile.name == "Mirror and clock" and saved[-1] == "Mirror and clock"
     press_key(controller, Qt.Key.Key_P)
     assert controller.profile.name == "Current large"
 
@@ -411,7 +412,7 @@ def test_next_large_clock_shows_the_next_slide_notes_and_a_big_clock_but_no_curr
     controller = make()
     press_key(controller, Qt.Key.Key_P)
     press_key(controller, Qt.Key.Key_P)
-    assert controller.profile.name == "Next large, clock"
+    assert controller.profile.name == "Mirror and clock"
     canvases = controller.presenter.findChildren(SlideCanvas)
     assert sorted(c.name for c in canvases if c.name) == ["Next"]            # next + notes, no "Current"
     assert len(canvases) == 2 and not any(isinstance(c.view, CurrentView) for c in canvases)
@@ -441,3 +442,62 @@ def test_the_big_clock_reads_hh_mm_and_its_font_grows_with_its_area(qapp):
     assert clock.font().pixelSize() < large
     assert clock._timer.isActive() and clock._timer.interval() <= 31_000      # wakes up for the next minute
     clock.close()
+
+
+def test_the_profile_menu_lists_the_layouts_with_the_active_one_checked_and_applies_a_choice(make):
+    saved = []
+    controller = make(save_settings=lambda s: saved.append(s.profile))
+    menu = controller._profile_menu(controller.presenter)
+    assert [a.text() for a in menu.actions()] == ["Current large", "Next large", "Mirror and clock"]
+    assert [a.isChecked() for a in menu.actions()] == [True, False, False]
+    assert all(a.toolTip() for a in menu.actions())
+    menu.actions()[1].trigger()
+    assert controller.profile.name == "Next large" and saved == ["Next large"]
+    assert controller.settings.profile == "Next large"
+    assert [a.isChecked() for a in controller._profile_menu(controller.presenter).actions()] == [False, True, False]
+    press_key(controller, Qt.Key.Key_P)                                   # P still cycles from the chosen one
+    assert controller.profile.name == "Mirror and clock"
+
+
+def test_an_old_saved_profile_name_opens_the_new_layout(make):
+    controller = make(settings=PresentationSettings(profile="Next large, clock"))
+    assert controller.profile.name == "Mirror and clock"
+    assert controller.audience.canvas.input is not None
+
+
+def test_the_projector_takes_the_mouse_while_the_layout_has_no_current_slide(make):
+    controller = make()
+    audience = controller.audience
+    session = controller.session
+    assert audience.canvas.input is None and audience.cursor().shape() == Qt.CursorShape.BlankCursor
+    controller.set_profile(layout.NEXT_LARGE_CLOCK)
+    assert audience.canvas.input is not None and audience.cursor().shape() != Qt.CursorShape.BlankCursor
+    canvas = audience.canvas
+    press_key(controller, Qt.Key.Key_D)
+    start, end = spot(canvas, (0.3, 0.3)), spot(canvas, (0.6, 0.6))
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(canvas, end)
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+    assert len(session.strokes[0]) == 1 and len(session.strokes[0][0].points) >= 2
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, start)
+    assert session.pointer is not None
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier, start)
+    assert session.pointer is None
+    controller.set_profile(layout.CURRENT_LARGE)                          # a current slide again: back to the blank cursor
+    assert audience.canvas.input is None and audience.cursor().shape() == Qt.CursorShape.BlankCursor
+    assert canvases(controller.presenter, CurrentView)[0].input is not None
+    n = len(session.strokes[0])
+    QTest.mousePress(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
+    assert len(session.strokes[0]) == n                                   # the projector no longer draws
+    press_key(controller, Qt.Key.Key_P)
+    press_key(controller, Qt.Key.Key_P)                                   # Next large, then Mirror and clock
+    assert audience.canvas.input is not None
+
+
+def test_one_screen_stays_interactive_and_the_profile_does_not_change_it(make):
+    controller = make(two_screens=False)
+    assert controller.audience.canvas.input is not None
+    controller.next_profile()
+    controller.set_profile(layout.NEXT_LARGE_CLOCK)
+    assert controller.audience.canvas.input is not None
