@@ -254,6 +254,8 @@ def test_switching_the_layout_profile_rebuilds_the_presenter_and_is_saved(make):
     assert controller.profile.name == "Next large" and saved == ["Next large"]
     assert len(controller.presenter.findChildren(SlideCanvas)) == 3
     press_key(controller, Qt.Key.Key_P)
+    assert controller.profile.name == "Next large, clock" and saved[-1] == "Next large, clock"
+    press_key(controller, Qt.Key.Key_P)
     assert controller.profile.name == "Current large"
 
 
@@ -402,3 +404,40 @@ def test_the_footer_bar_is_taller_with_larger_text(make):
     strips = [w for w in controller.presenter.findChildren(QWidget) if w.styleSheet() == layout_view.STRIP_STYLE]
     assert strips and all(strip.height() == layout_view.STRIP_HEIGHT == 58 for strip in strips)
     assert "font-size: 16px" in layout_view.STRIP_STYLE
+
+
+def test_next_large_clock_shows_the_next_slide_notes_and_a_big_clock_but_no_current_slide(make):
+    from slidemage.ui.presentation.big_clock import BigClock
+    controller = make()
+    press_key(controller, Qt.Key.Key_P)
+    press_key(controller, Qt.Key.Key_P)
+    assert controller.profile.name == "Next large, clock"
+    canvases = controller.presenter.findChildren(SlideCanvas)
+    assert sorted(c.name for c in canvases if c.name) == ["Next"]            # next + notes, no "Current"
+    assert len(canvases) == 2 and not any(isinstance(c.view, CurrentView) for c in canvases)
+    clocks = controller.presenter.findChildren(BigClock)
+    assert len(clocks) == 1
+    before = controller.session.page
+    press_key(controller, Qt.Key.Key_Right)                                   # navigation does not need a current view
+    assert controller.session.page == before + 1
+    assert controller.counter_text().startswith(("Page", "Slide"))
+    controller.next_profile()                                                 # and the cycle goes on
+
+
+def test_the_big_clock_reads_hh_mm_and_its_font_grows_with_its_area(qapp):
+    from datetime import datetime
+    from slidemage.ui.presentation.big_clock import BigClock, clock_text
+    assert clock_text(datetime(2026, 11, 6, 7, 5, 59)) == "07:05"
+    assert clock_text(datetime(2026, 11, 6, 23, 59, 0)) == "23:59"
+    clock = BigClock(now=lambda: datetime(2026, 11, 6, 9, 3, 30))
+    assert clock.text() == "09:03"
+    clock.show()                                                              # a hidden widget is not laid out
+    clock.resize(300, 150)
+    small = clock.font().pixelSize()
+    clock.resize(900, 450)
+    large = clock.font().pixelSize()
+    assert large > 2 * small >= 16
+    clock.resize(900, 100)                                                    # a flat area: the height limits it
+    assert clock.font().pixelSize() < large
+    assert clock._timer.isActive() and clock._timer.interval() <= 31_000      # wakes up for the next minute
+    clock.close()

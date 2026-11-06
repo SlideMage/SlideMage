@@ -181,8 +181,9 @@ Stored as JSON:
 **Built-in profiles** (code, read-only):
 1. **Current large** (the owner's): current slide large on the left, next slide smaller at top right, notes at bottom right, info strip along the bottom.
 2. **Next large**: next slide large on the left (about 65%), current slide small at top right, notes below it, info strip at the bottom (the originally planned layout).
-3. **Notes focus**: notes large, current and next small (M3).
-4. **Slide only**: current slide with the toolbar strip, nothing else (M3; handy for a lone laptop).
+3. **Next large, clock** (v0.14.16, built): next slide large on the left (65%), notes at the top right (70% of the height) and a large HH:MM clock (24-hour) below them, the info strip (counter, timer, toolbar; no small clock) full width along the bottom: a strip in the 65% column would squeeze the right column on a 1366 px screen. No current slide: a profile needs the current *or* the next slide. The clock is the BIG element `bigclock` (`ui/presentation/big_clock.py`), whose font fills its area; the small `clock` stays a strip element.
+4. **Notes focus**: notes large, current and next small (M3).
+5. **Slide only**: current slide with the toolbar strip, nothing else (M3; handy for a lone laptop).
 
 **Storage:** per user, not per project: the layout depends on the presenter's screen and taste, not on the deck, and project folders may be shared or synced. Custom profiles in one JSON file next to the application settings (`presentation_profiles.json` in the same directory `app_settings.py` uses; the implementer checks the exact helper), the chosen profile name in `PresentationSettings`. Built-ins are never written to disk; "copy" creates an editable custom profile. A deleted or invalid active profile falls back to "Current large". Optional (open question 4): a per-deck override stored in the deck's settings.
 
