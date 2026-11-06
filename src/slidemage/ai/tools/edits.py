@@ -9,9 +9,10 @@
   in slides/.backups/ first, the file's own line ends kept, nothing written if the file
   changed since it was read. A slide's current file written that way gets the "+" on its
   version line (slide_versioning.save_slide()); making a version stays the user's decision.
-* A slide's protected parts are never edited: the leading header comment, the
-  \\setSlideVersion line -- the parts protected_regions masks from a rewrite (\\vbox to 0pt{...}
-  overlay blocks are editable since 2026-10-30) -- and a frozen version (-vX-Y-Z.tex) is a historical record and read-only.
+* A slide's protected parts are never edited: the `%%` lines of its leading comment block (the ordinary `%` notes
+  there are editable since v0.14.25), the \\setSlideVersion line -- the parts protected_regions masks from a rewrite
+  (\\vbox to 0pt{...} overlay blocks are editable since 2026-10-30) -- and a frozen version (-vX-Y-Z.tex) is a
+  historical record and read-only.
 * Mode "ask": every change is shown (EditProposed, Workspace.confirm_edit) and waits for the
   user; a rejection is reported to the model. Mode "auto": applied at once. Either way an
   applied change is announced with its before and after text (EditApplied), which is what the

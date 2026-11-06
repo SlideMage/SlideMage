@@ -159,8 +159,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   `provider_tasks.run_task` on Local and the API) and task cards like the other single-slide tasks. The selection is
   captured when the button is clicked (`SourcePane.selection()` -> `selection.capture`: the file, its whole text and the
   range as Python offsets, since Qt counts UTF-16 units): a blank selection, a frozen version and a selection that
-  touches a protected part (`protected_regions.protected_spans`: the header comment, `\setSlideVersion`, a `\vbox to 0pt`
-  block) are refused with a message, nothing sent. The request carries the instruction, 800 characters of context on
+  touches a protected part (`protected_regions.protected_spans`: the `%%` lines of the leading comment block,
+  `\setSlideVersion`) are refused with a message, nothing sent. The request carries the instruction, 800 characters of context on
   either side (`<before>`, `<after>`, never returned) and the selection between `<selection>` tags. **Rewrite** answers
   `{"text": ...}`, the replacement for the selection only (the whitespace at its ends is kept by the check); its
   instruction is chosen before generation: Simplify, Shorten (`REWRITE_PRESETS`) or Custom..., which asks in a popover
