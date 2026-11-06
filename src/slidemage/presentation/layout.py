@@ -103,9 +103,9 @@ def profile_to_dict(profile: Profile) -> dict:
 
 STRIP = Leaf(("counter", "clock", "timer", "toolbar"))
 
-CURRENT_LARGE = Profile("Standard", Split("v", 0.9, Split(
+CURRENT_LARGE = Profile("Current large", Split("v", 0.9, Split(
     "h", 0.62, Leaf(("current",)), Split("v", 0.35, Leaf(("next",)), Leaf(("notes",)))), STRIP), builtin=True)
-NEXT_LARGE = Profile("Look ahead", Split("v", 0.9, Split(
+NEXT_LARGE = Profile("Next large", Split("v", 0.9, Split(
     "h", 0.65, Leaf(("next",)), Split("v", 0.35, Leaf(("current",)), Leaf(("notes",)))), STRIP), builtin=True)
 
 # The next slide large on the left, the notes above a large clock on the right, the info strip (counter, timer,
@@ -120,12 +120,12 @@ BUILTINS = (CURRENT_LARGE, NEXT_LARGE, NEXT_LARGE_CLOCK)
 
 # One line per built-in, for the Profile menu's tooltips.
 DESCRIPTIONS = {
-    "Standard": "Current slide large, next slide and notes beside it",
-    "Look ahead": "Next slide large, current slide and notes beside it",
+    "Current large": "Current slide large, next slide and notes beside it",
+    "Next large": "Next slide large, current slide and notes beside it",
     "Mirror and clock": "Next slide, notes and a large clock; draw and point on the projector's mirror",
 }
 # The names up to v0.14.20; a saved choice may still hold one, and maps to the new name.
-OLD_NAMES = {"Current large": "Standard", "Next large": "Look ahead", "Next large, clock": "Mirror and clock"}
+OLD_NAMES = {"Next large, clock": "Mirror and clock"}
 
 
 def current_name(name: str) -> str:

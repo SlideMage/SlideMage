@@ -169,7 +169,7 @@ Rules: each big element at most once; an element absent from the tree is simply 
 
 Stored as JSON:
 ```json
-{"name": "Standard", "version": 1,
+{"name": "Current large", "version": 1,
  "tree": {"split": "v", "ratio": 0.94,
    "a": {"split": "h", "ratio": 0.62,
          "a": {"leaf": "current"},
@@ -179,22 +179,22 @@ Stored as JSON:
 ```
 
 **Built-in profiles** (code, read-only):
-1. **Standard** (formerly "Current large"; the owner's): current slide large on the left, next slide smaller at top right, notes at bottom right, info strip along the bottom.
-2. **Look ahead** (formerly "Next large"): next slide large on the left (about 65%), current slide small at top right, notes below it, info strip at the bottom (the originally planned layout).
+1. **Current large** (the owner's): current slide large on the left, next slide smaller at top right, notes at bottom right, info strip along the bottom.
+2. **Next large**: next slide large on the left (about 65%), current slide small at top right, notes below it, info strip at the bottom (the originally planned layout).
 3. **Mirror and clock** (formerly "Next large, clock"; v0.14.16, built): next slide large on the left (65%), notes at the top right (70% of the height) and a large HH:MM clock (24-hour) below them, the info strip (counter, timer, toolbar; no small clock) full width along the bottom: a strip in the 65% column would squeeze the right column on a 1366 px screen. No current slide: a profile needs the current *or* the next slide. The clock is the BIG element `bigclock` (`ui/presentation/big_clock.py`), whose font fills its area; the small `clock` stays a strip element.
 
 The **Profile** button (v0.14.21) opens a menu of the layouts by name, the active one checked, each with a one-line tooltip; P still cycles. Because "Mirror and clock" has no current slide, the audience window's canvas takes the mouse while it is the active layout (a `SlideInput` through `SlideCanvas.set_input`, cursor shown): the presenter who mirrors the projector onto a screen of their own draws, lases and clicks links there, through the session, so every canvas that shows the slide follows. Any layout with a current slide takes it away again and the cursor is hidden; with one screen the projector is interactive throughout.
 4. **Notes focus**: notes large, current and next small (M3).
 5. **Slide only**: current slide with the toolbar strip, nothing else (M3; handy for a lone laptop).
 
-**Storage:** per user, not per project: the layout depends on the presenter's screen and taste, not on the deck, and project folders may be shared or synced. Custom profiles in one JSON file next to the application settings (`presentation_profiles.json` in the same directory `app_settings.py` uses; the implementer checks the exact helper), the chosen profile name in `PresentationSettings`. Built-ins are never written to disk; "copy" creates an editable custom profile. A deleted or invalid active profile falls back to "Standard". Saved choices that hold the names up to v0.14.20 ("Current large", "Next large", "Next large, clock") map to the new ones in `layout.profile_named` (v0.14.21). Optional (open question 4): a per-deck override stored in the deck's settings.
+**Storage:** per user, not per project: the layout depends on the presenter's screen and taste, not on the deck, and project folders may be shared or synced. Custom profiles in one JSON file next to the application settings (`presentation_profiles.json` in the same directory `app_settings.py` uses; the implementer checks the exact helper), the chosen profile name in `PresentationSettings`. Built-ins are never written to disk; "copy" creates an editable custom profile. A deleted or invalid active profile falls back to "Current large". Saved choices that hold the names up to v0.14.20 ("Current large", "Next large", "Next large, clock") map to the new ones in `layout.profile_named` (v0.14.21). Optional (open question 4): a per-deck override stored in the deck's settings.
 
 **Operations:** create (from a built-in or blank), copy, rename, delete (custom only). **Editing:**
 * Live, in the presenter window: the splitter handles are always draggable. Dragging on a custom profile updates its ratios (saved on exit or profile switch); dragging on a built-in profile shows a small "Save as my profile…" prompt the first time and then edits the copy. This is cheap (QSplitter does the work) and fits the "keep it simple" goal.
 * In the settings page (4.11): which element sits where, with a **live preview** (the profile rendered with placeholder boxes or the first pages of the last presented deck/the fixture), plus a tree editor: pick a region, split it horizontally/vertically, assign an element, remove. Later milestone.
 * `P` in the presenter window (and a toolbar menu) switches profiles during the show.
 
-**What this changes in the milestones:** M1 ships the layout engine (`layout.py`, `layout_view.py`) with the two fixed built-ins "Standard" and "Look ahead" (named "Current large" and "Next large" until v0.14.20) and a profile menu, no editing; M2 does not change; M3 adds the other built-ins, live splitter-saving, create/copy/rename/delete and the settings-page editor with preview.
+**What this changes in the milestones:** M1 ships the layout engine (`layout.py`, `layout_view.py`) with the two fixed built-ins "Current large" and "Next large" and a profile menu, no editing; M2 does not change; M3 adds the other built-ins, live splitter-saving, create/copy/rename/delete and the settings-page editor with preview.
 
 ### 4.11 Presentation settings (one page)
 All presentation options live in one **"Presentation"** page of the existing settings dialog (`ui/dialogs/settings.py`, new `ui/presentation/settings_page.py`), stored in `PresentationSettings`:
@@ -231,7 +231,7 @@ The audience screen is controlled by two independent states in the session: `bla
 ## 5. Milestones
 
 * **M0 spike (≈0.5-1 day).** Compile a real deck with Presenter; measure page size, the slide and note rectangles, whether the note appears on every overlay page, link rectangles, named destinations for slide ids. Append findings to this file. Gate for M2 and for 4.6.
-* **M1 MVP (≈4 days).** `pdf_source`, `renderer`, `session`, `screens`, `locate`, `layout` + `layout_view` with two built-in profiles ("Standard", "Look ahead") and a profile menu; `settings` with defaults; audience and presenter windows (current, next, notes, counter, toolbar); optional clock and timer elements (`timer.py`, 4.5); key table plus mouse wheel with next/prev/first/last/black/freeze/jump-by-number/exit (Esc exits at once); `present` command and menu entries; no/stale PDF dialogs; single-screen and mirrored fallback; **B (black) with the presenter badge in M1; F (freeze) also in M1 because it is a few lines in the session's `audience_page` logic and the canvas already reads that**; tests.
+* **M1 MVP (≈4 days).** `pdf_source`, `renderer`, `session`, `screens`, `locate`, `layout` + `layout_view` with two built-in profiles ("Current large", "Next large") and a profile menu; `settings` with defaults; audience and presenter windows (current, next, notes, counter, toolbar); optional clock and timer elements (`timer.py`, 4.5); key table plus mouse wheel with next/prev/first/last/black/freeze/jump-by-number/exit (Esc exits at once); `present` command and menu entries; no/stale PDF dialogs; single-screen and mirrored fallback; **B (black) with the presenter badge in M1; F (freeze) also in M1 because it is a few lines in the session's `audience_page` logic and the canvas already reads that**; tests.
 * **M2 interaction (≈2-3 days).** (F moves here if it turns out not to be cheap in M1.) Link clicks (internal jump with return, external with confirmation), Ctrl+left-button laser, pen/highlighter with undo and the Clear button/Delete key (per-page persistent drawings), all synced to the audience; the "Presentation" settings page with colours and link confirmation (profile editing not yet).
 * **M3 polish.** More built-in profiles; profile create/copy/rename/delete, live splitter saving and the settings-page editor with preview (4.10); slide grid/jump list with titles, hot-plug, per-platform keep-awake (4.3), macOS full-screen helper, audience chooser, `present_from_here`.
 * **M4 optional.** Notes as text with adjustable size, phone remote, skip-reveals idea, per-deck profile override.

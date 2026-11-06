@@ -223,7 +223,7 @@ def test_the_big_clock_is_a_big_element_and_old_profiles_stay_valid():
 def test_a_profile_survives_json_and_bad_ones_are_refused():
     data = layout.profile_to_dict(layout.CURRENT_LARGE)
     again = layout.profile_from_dict(data)
-    assert again.tree == layout.CURRENT_LARGE.tree and again.name == "Standard"
+    assert again.tree == layout.CURRENT_LARGE.tree and again.name == "Current large"
     assert layout.profile_from_dict({"name": "x", "tree": {"leaf": "next"}}).tree == layout.Leaf(("next",))   # next alone is enough
     with pytest.raises(ValueError, match="slide is missing"):
         layout.profile_from_dict({"name": "x", "tree": {"leaf": "notes"}})                 # neither slide
@@ -235,7 +235,7 @@ def test_a_profile_survives_json_and_bad_ones_are_refused():
         layout.parse_node({"leaf": "weather"})
     clamped = layout.parse_node({"split": "h", "ratio": 5, "a": {"leaf": "current"}, "b": {"leaf": "next"}})
     assert clamped.ratio == layout.MAX_RATIO
-    assert layout.profile_named("nope").name == "Standard"
+    assert layout.profile_named("nope").name == "Current large"
 
 
 # -- the timer ---------------------------------------------------------------------------
@@ -436,10 +436,10 @@ def test_the_doubled_labels_of_an_older_presenter_pdf_are_not_used(tmp_path, qap
         deck.close()
 
 
-def test_the_builtins_have_new_names_and_the_old_ones_still_resolve():
-    assert [p.name for p in layout.BUILTINS] == ["Standard", "Look ahead", "Mirror and clock"]
+def test_the_builtins_names_and_the_old_clock_name_still_resolves():
+    assert [p.name for p in layout.BUILTINS] == ["Current large", "Next large", "Mirror and clock"]
     assert all(layout.DESCRIPTIONS[p.name] for p in layout.BUILTINS)
     assert layout.profile_named("Current large") is layout.CURRENT_LARGE
     assert layout.profile_named("Next large") is layout.NEXT_LARGE
     assert layout.profile_named("Next large, clock") is layout.NEXT_LARGE_CLOCK
-    assert layout.profile_named("Standard") is layout.CURRENT_LARGE
+    assert layout.profile_named("Mirror and clock") is layout.NEXT_LARGE_CLOCK

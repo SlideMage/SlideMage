@@ -252,12 +252,12 @@ def test_switching_the_layout_profile_rebuilds_the_presenter_and_is_saved(make):
     saved = []
     controller = make(save_settings=lambda s: saved.append(s.profile))
     press_key(controller, Qt.Key.Key_P)
-    assert controller.profile.name == "Look ahead" and saved == ["Look ahead"]
+    assert controller.profile.name == "Next large" and saved == ["Next large"]
     assert len(controller.presenter.findChildren(SlideCanvas)) == 3
     press_key(controller, Qt.Key.Key_P)
     assert controller.profile.name == "Mirror and clock" and saved[-1] == "Mirror and clock"
     press_key(controller, Qt.Key.Key_P)
-    assert controller.profile.name == "Standard"
+    assert controller.profile.name == "Current large"
 
 
 def test_a_duration_timer_starts_on_the_first_slide_change_and_t_toggles_it(make):
@@ -278,11 +278,11 @@ def test_the_settings_tab_saves_each_change_and_resets(qapp):
     tab.confirm_links.setChecked(False)
     tab.timer_minutes.setValue(30)
     tab.timer_mode.setCurrentIndex(tab.timer_mode.findData("duration"))
-    tab.profile_combo.setCurrentText("Look ahead")
+    tab.profile_combo.setCurrentText("Next large")
     tab.pen_width.setValue(2.0)
     saved = PresentationSettings.load()
     assert (saved.confirm_links, saved.timer_duration_minutes, saved.timer_mode, saved.profile, saved.pen_width) == (
-        False, 30, "duration", "Look ahead", 0.02)
+        False, 30, "duration", "Next large", 0.02)
     assert tab.audience_screen.itemData(0) == "" and tab.audience_screen.count() >= 2
     tab._reset()
     assert PresentationSettings.load() == PresentationSettings()
@@ -448,12 +448,12 @@ def test_the_profile_menu_lists_the_layouts_with_the_active_one_checked_and_appl
     saved = []
     controller = make(save_settings=lambda s: saved.append(s.profile))
     menu = controller._profile_menu(controller.presenter)
-    assert [a.text() for a in menu.actions()] == ["Standard", "Look ahead", "Mirror and clock"]
+    assert [a.text() for a in menu.actions()] == ["Current large", "Next large", "Mirror and clock"]
     assert [a.isChecked() for a in menu.actions()] == [True, False, False]
     assert all(a.toolTip() for a in menu.actions())
     menu.actions()[1].trigger()
-    assert controller.profile.name == "Look ahead" and saved == ["Look ahead"]
-    assert controller.settings.profile == "Look ahead"
+    assert controller.profile.name == "Next large" and saved == ["Next large"]
+    assert controller.settings.profile == "Next large"
     assert [a.isChecked() for a in controller._profile_menu(controller.presenter).actions()] == [False, True, False]
     press_key(controller, Qt.Key.Key_P)                                   # P still cycles from the chosen one
     assert controller.profile.name == "Mirror and clock"
@@ -491,7 +491,7 @@ def test_the_projector_takes_the_mouse_while_the_layout_has_no_current_slide(mak
     QTest.mouseRelease(canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, end)
     assert len(session.strokes[0]) == n                                   # the projector no longer draws
     press_key(controller, Qt.Key.Key_P)
-    press_key(controller, Qt.Key.Key_P)                                   # Look ahead, then Mirror and clock
+    press_key(controller, Qt.Key.Key_P)                                   # Next large, then Mirror and clock
     assert audience.canvas.input is not None
 
 
