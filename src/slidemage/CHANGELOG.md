@@ -3662,3 +3662,13 @@ v0.14.30 (2026-11-06, code review plan of 2026-11-06, step 4.1: one background-w
 
 NEW: Nothing changes for you; background work in panels and sheets runs as before.
 - Internal clean-up: the panels and sheets that work in the background share one helper.
+
+v0.14.29 (2026-11-06, code review plan of 2026-11-06, step 5.3: latex_lint._lex as a dispatch): The source checker's lexer, one 229-line function with a cyclomatic complexity of 128, is a dispatch on the next character with one small handler per case (comments, verbatim environments and \verb, \iffalse blocks, groups, commands, math, the special characters). Its output is unchanged: before and after give identical results for all 197 .tex files in example/ and latex/. Tests in tests/test_latex_lint.py pin the masking, encoding, math and grouping cases.
+
+NEW: Nothing changes for you; the source checker reports the same problems as before.
+- Internal clean-up: the checker's lexer is split into small parts.
+
+v0.14.31 (2026-11-06, code review plan of 2026-11-06, step 5.3: latex_lint._lex as a dispatch): The source checker's lexer, one 229-line function with a cyclomatic complexity of 128, is a dispatch on the next character with one small handler per case (comments, verbatim environments and \verb, \iffalse blocks, groups, commands, math, the special characters). Its output is unchanged: before and after give identical results for all 197 .tex files in example/ and latex/. Tests in tests/test_latex_lint.py pin the masking, encoding, math and grouping cases.
+
+NEW: Nothing changes for you; the source checker reports the same problems as before.
+- Internal clean-up: the checker's lexer is split into small parts.
