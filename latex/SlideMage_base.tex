@@ -2338,6 +2338,11 @@
 % one in force where the footer is typeset (the \rightskip is 3ex of the footline font, the 4em is
 % the footer's), which is why the shift is computed in the frame footer template and not once: the
 % two fonts differ in size, and a profile with another x-height has other paddings in ex.
+% Internal, not hooks (v0.14.18, step 5's open class): the 2em between the slide id and the number,
+% the 4em the number backs up by (it cancels against the shift's -4em, so its value moves nothing),
+% and the 0.4ex below the line (part of \SMFooterTextDrop's centring, above). All three are in the
+% footer's own font, so they cannot be lengths fixed in the preamble; a template moves the footer
+% through \SMFooterBoxHeight, \SMFooterIDSize and the paddings.
 
 % The footer no longer shows a compile date/time (removed in v8.25.0: a
 % changing stamp made every wrapper and PDF differ between compiles). The
@@ -4529,7 +4534,8 @@
 % every current use of this pattern across the deck has been updated to
 % match; new slides using this same corner pattern should use this
 % length from the start rather than re-measuring their own one-off nudge.
-\newlength{\SMFloatingInfoblockRightAlign}
+% Derived (v0.14.18): a template sets \SMFrametitleRightPadding, never this; see 'Derived, not set'.
+\makeatletter\SM@derivedlength{SMFloatingInfoblockRightAlign}\makeatother
 \setlength{\SMFloatingInfoblockRightAlign}{\dimexpr\SMFrametitleRightPadding-3.165pt\relax}
 
 % An infoblock's colored title bar starts 6.02pt below the top of its own
@@ -4538,7 +4544,8 @@
 % this much. Measured 2026-07-23 (y3a/gf2: title-bar rect at 47.60pt vs.
 % the 41.58pt Top Margin), written as a literal "+6.02pt" on 15 anchors
 % until 2026-09-30.
-\newlength{\SMFloatingInfoblockTopAlign}
+% Derived (v0.14.18): the block template's own top padding, a fact of the theme, not a template's choice.
+\makeatletter\SM@derivedlength{SMFloatingInfoblockTopAlign}\makeatother
 \setlength{\SMFloatingInfoblockTopAlign}{6.02pt}
 
 % "Bottom Margin" as a length (2026-09-30): the gap between the footer box
@@ -5352,7 +5359,8 @@
 \newlength{\SMSectionframeTitleWidth}
 \setlength{\SMSectionframeTitleWidth}{\dimexpr\paperwidth-\SMFrametitleLeftPadding-\SMLogoWidth-2\SMFrametitleRightPadding\relax}
 \newbox\SMSectionframeTitleBox
-\newlength{\SMSectionframeBarBottom}
+% Derived (v0.14.18): follows \SMSectionframeBoxHeight, set in \sectionframe below; see 'Derived, not set'.
+\makeatletter\SM@derivedlength{SMSectionframeBarBottom}\makeatother
 % The title's place in the bar (v10.8.0: from the title's own material, no longer from four numbers
 % measured at Fira): its last baseline lies the depth of a \strut of the title font plus
 % \SMSectionframeTitleGap above the bar's bottom edge, and the top padding is what makes the bar
@@ -5451,9 +5459,15 @@
 	\end{tikzpicture}%
 	}%
 	\global\SMSideFootnotestrue
-	% 3.1pt: sideimageframe's measured gap between strip and image.
+	% 3.1pt: the gap between the rotated footnote strip and the image. It was sideimageframe's
+	% measured gap, but sideimageframe went to 2.1pt in v5.30.5 (see there) and this one did not,
+	% so a section figure's strip stands about 1pt farther from its image. Left as is (v0.14.18):
+	% unifying them moves rendered footnotes, which needs the user's before/after review.
 	% 2.31pt: the clearance above the footer box that \SMSideFootnoteHsize's
 	% 207pt default leaves under a standard title bar.
+	% Both are internal, not hooks (v0.14.18, step 5's open class): they are measured against the
+	% theme's own drawing of the strip, so a template that changes the look changes the hooks those
+	% drawings follow, not these.
 	\global\SMSideFootnoteRightInset=\dimexpr\SMSectionFigureWidth+3.1pt\relax
 	\global\SMSideFootnoteHsize=\dimexpr\SMSectionFigureHeight-\SMSideFootnoteTitleBlockSep-2.31pt\relax
 }

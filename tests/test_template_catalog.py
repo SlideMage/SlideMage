@@ -28,7 +28,9 @@ DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift",
            "SMFooterTextDrop", "SMFootlineVOffset", "SMLabelItemWidth", "SMLabelItemSep", "SMEnumerateNestedMinNumber",
            "SMEnumerateNestedLabelSep", "SMEnumerateNestedLeftMargin", "SMEnumerateLabelBox", "SMSectionframeRefDepth",
            "SMSectionframeBottomGap", "SMSectionframeBottomPadCorrection", "SMSectionframeHeightCorrection",
-           "SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation"}
+           "SMContentTopShift", "SMColumnsTopCorrection", "SMColumnsTTopCompensation",
+           # v0.14.18: the three public lengths step 5 left unclassified; slides read them, templates don't set them
+           "SMFloatingInfoblockRightAlign", "SMFloatingInfoblockTopAlign", "SMSectionframeBarBottom"}
 # What a layout profile defines besides its fonts (v10.9.0): the font's metrics, and no length (the three top pull-ups
 # of v10.8.0 are measured on the page now). Nothing else is a number of the font.
 PROFILE_LENGTHS: set[str] = set()

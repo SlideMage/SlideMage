@@ -106,6 +106,11 @@
 %            to \jobname.top), \SMColumnsTopCorrection and \SMColumnsTTopCompensation (a
 %            columns environment that starts such a frame: measured against a list where
 %            it begins)
+%   v0.14.18  \SMFloatingInfoblockRightAlign (a floating SMFloatingInfoBlock's anchor against the
+%            logo's edge: \SMFrametitleRightPadding less the block's own 3.165pt border),
+%            \SMFloatingInfoblockTopAlign (the block's 6.02pt top padding above its title bar),
+%            \SMSectionframeBarBottom (where \sectionfigure starts: 0.12bp under the section bar)
+%            -- slides read them, and since step 5 left their class open they are derived
 
 \newcommand{\SMSetupLoaded}{}
 
@@ -139,6 +144,9 @@
 \SM@guardname\SMContentTopShift
 \SM@guardname\SMColumnsTopCorrection
 \SM@guardname\SMColumnsTTopCompensation
+\SM@guardname\SMFloatingInfoblockRightAlign
+\SM@guardname\SMFloatingInfoblockTopAlign
+\SM@guardname\SMSectionframeBarBottom
 \makeatother
 
 % Names that were hooks and are gone (v10.11.0): the footline box's height and depth and the allowance

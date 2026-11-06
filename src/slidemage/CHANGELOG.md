@@ -3580,3 +3580,8 @@ NEW: A frozen version's Details describe that version.
 - The tab shows the frozen file's name, version, language and slug, and a Frozen chip with its version.
 - The list of other languages and earlier versions includes the current version, which opens in the slide's own tab.
 - Rename, Duplicate and Delete are left out on a frozen version, as editing is in its Source view.
+
+v0.14.18 (2026-11-06, the framework's last unclassified lengths get a class): Step 5 of the framework redesign left a few names and numbers without a class. \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign and \SMSectionframeBarBottom are now derived, like \SMContentTopAlign: slides still read them, and a template or a layout profile that sets one gets an error instead of a number the next change would contradict. The footer's 2em, 4em and 0.4ex and the side footnotes' 2.1pt, 3.1pt and 2.31pt stay internal, with comments saying why. Nothing renders differently.
+
+NEW: Three more layout lengths are guarded against being set by a template.
+- A template or a layout profile that sets \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign or \SMSectionframeBarBottom now gets a clear error: they follow from the paddings and the section bar's height.
