@@ -256,7 +256,7 @@ def test_save_merges_human_edit_with_worker_updates_across_visible_images(make_p
     assert saved.takeaway_default == "worker's latest English takeaway"
     assert saved.takeaway_for("one") == "worker's latest slide override"
     assert saved.takeaway_default_de == "worker default DE"
-    assert saved.takeaway_for_de("one") == "worker's latest German override"
+    assert saved.takeaway_in("one", "de") == "worker's latest German override"
     assert (saved.short_de, saved.long_de) == ("worker short DE", "worker long DE")
     assert saved.translated_from_hash == alt_images.en_text_hash(chart)
     assert alt_images.translation_state(saved) == alt_images.STATE_STALE

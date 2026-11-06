@@ -475,14 +475,6 @@ def write_report(target: Path, project_root: Optional[Path] = None, sessions: in
     return names
 
 
-def error_log_path() -> Optional[Path]:
-    """The error log this process writes, or None before setup() or when it could not be opened."""
-    if _state is None:
-        return None
-    files = [h for h in _state["handlers"] if isinstance(h, RotatingFile)]
-    return Path(files[0].baseFilename) if files else None
-
-
 def _excepthook(kind, value, tb) -> None:
     if not issubclass(kind, KeyboardInterrupt):
         logging.getLogger(LOGGER).critical("uncaught exception", exc_info=(kind, value, tb), extra={"uncaught": True})

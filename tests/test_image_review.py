@@ -79,8 +79,6 @@ def test_no_german_filter_lists_slides_with_an_english_only_informative_image(st
         "media/d.png": dict(),                                       # nothing written yet
         german: dict(short="en", short_de="de"),
     })
-    assert image_review.lacks_german(entries[IMG])
-    assert not any(image_review.lacks_german(entries[name]) for name in ("media/b.png", "media/c.png", "media/d.png", german))
     stale = entries["media/b.png"]
     assert alt_images.translation_state(stale) == alt_images.STATE_STALE   # a stale German is not "no German"
     views = [view(slide(store, "1aaa", images=(IMG, "media/c.png")), "none"),

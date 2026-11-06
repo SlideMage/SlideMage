@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The review state of an image's source (citation): stored in media/alt-text.json apart from the
-description's status, set back to "to review" by every writer of a source (alt_images.set_source and
+description's status, set back to "to review" by every writer of a source (alt_images.set_sources and
 flag_source_change), and confirmed only by a person (mark_source_reviewed)."""
 from __future__ import annotations
 
@@ -84,13 +84,13 @@ def test_the_compile_csv_keeps_its_columns(ctx):
 # -- the one rule ------------------------------------------------------------------------------------------
 
 
-def test_set_source_marks_to_review_only_when_a_source_changes():
+def test_set_sources_marks_to_review_only_when_a_source_changes():
     entry = ImageEntry(image=IMG, source="A", source_de="B")
-    assert not alt_images.set_source(entry) and not alt_images.set_source(entry, "A", "B")
+    assert not alt_images.set_sources(entry, {}) and not alt_images.set_sources(entry, {"en": "A", "de": "B"})
     assert entry.source_status == SOURCE_REVIEWED
-    assert alt_images.set_source(entry, source_de="C") and entry.source_status == SOURCE_TO_REVIEW
+    assert alt_images.set_sources(entry, {"de": "C"}) and entry.source_status == SOURCE_TO_REVIEW
     entry.source_status = SOURCE_REVIEWED
-    assert alt_images.set_source(entry, source="") and (entry.source, entry.source_de) == ("", "C")
+    assert alt_images.set_sources(entry, {"en": ""}) and (entry.source, entry.source_de) == ("", "C")
     assert entry.source_status == SOURCE_TO_REVIEW
 
 

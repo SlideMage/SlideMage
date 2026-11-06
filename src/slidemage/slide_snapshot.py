@@ -56,7 +56,6 @@ mass-regenerating when this landed.
 """
 from __future__ import annotations
 
-import os
 import re
 import hashlib
 import threading
@@ -330,17 +329,6 @@ def publish_preview(ctx: project.ProjectContext, images, slide_id: str, template
             path.touch()
         else:
             path.write_bytes(data)
-
-
-def page_png(pdf_path: Path, width: int = FULL_SIZE[0]) -> bytes | None:
-    """The last page of a single-slide preview PDF (its final build step) as
-    PNG bytes `width` pixels wide, at the page's own aspect ratio (a cropped
-    element preview is not 16:9). None if the PDF cannot be read."""
-    try:
-        images = _preview_pngs(pdf_path, ((width, None),))
-        return images[0] if images else None
-    except Exception:
-        return None
 
 
 def capture_single_slide(ctx: project.ProjectContext, pdf_path: Path, slide_id: str, template: str,

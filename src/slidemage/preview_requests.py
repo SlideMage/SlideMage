@@ -490,12 +490,6 @@ class RenderService:
         entry = cache.lookup(identity, env)
         return replace(self._retain_display(cache, entry), request_spec=spec) if entry is not None else None
 
-    def cached_preview(self, target, text, view, language):
-        """Read-only pane lookup; no Qt objects and no compile or selection changes."""
-        spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                              RenderOptions(saved=True))
-        return self.cached_spec(spec)
-
     def selected_preview(self, target, text, view, language, *, reference=None):
         """Read-only whole-slide selection shared with the list policy."""
         from .preview_selection import select_image
@@ -521,14 +515,6 @@ class RenderService:
         if found is not None:
             cache.remember_display(cache_identity(spec), found[2], found[1],
                                    evidence=found[3], observed_at=observed_at)
-
-    def previous_preview(self, target, text, view, language):
-        """Historical display fallback only; never used to skip rendering."""
-        cache = preview_cache.PreviewCache(target.context.root)
-        spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
-                              RenderOptions(saved=True))
-        entry = cache.previous(cache_identity(spec))
-        return self._retain_display(cache, entry) if entry is not None else None
 
     def request(self, target, text, view, language, log, *, saved=False,
                 presenter=False, mode='slide', overlay=None, spec=None, force=False, render_stamp=None,

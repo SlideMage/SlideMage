@@ -249,9 +249,6 @@ class Classification:
     evidence: str
     dependencies: tuple[tuple[str, str], ...]
 
-    def group_for(self, view: str) -> str | None:
-        return next(d.group for d in self.decisions if d.view == view)
-
 
 def _digest(data: bytes) -> str:
     # Line endings do not change what TeX reads, and a checkout may give a file either (Git's autocrlf):

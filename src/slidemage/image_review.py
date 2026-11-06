@@ -47,10 +47,6 @@ def lacks_translation(entry: alt_images.ImageEntry, language: str = "de") -> boo
             and alt_images.translation_state(entry, language) == alt_images.STATE_NONE)
 
 
-def lacks_german(entry: alt_images.ImageEntry) -> bool:
-    return lacks_translation(entry, "de")
-
-
 def _in_states(*states: str) -> Callable[[SlideView, Entries, tuple[str, ...]], bool]:
     return lambda view, entries, languages: view.state in states
 
