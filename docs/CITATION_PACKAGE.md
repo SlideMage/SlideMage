@@ -98,6 +98,11 @@ checks the folder with the installer's rules and writes both files; the same fol
   `%APPDATA%\SlideMage\citations\<key>\`), replacing an installed version of the key; it takes effect at once.
 - **Removing:** Settings → Extensions → Citation formats → Remove. Decks that choose the key then need a copy of the file
   in their project.
+- **From the catalogue:** Settings → Extensions → Citation formats lists the website's `"citations"` (the optional list
+  beside `"plugins"` in `https://slidemage.org/plugins/index.json`, schema 1) under "Available", after **Check for
+  plugins** has loaded it. **Install** downloads the newest release whose `requires_slidemage` accepts this SlideMage and
+  installs it when its SHA-256 is the catalogue's; the house format's key is never offered. Such a format has no
+  `source.json`, so it is not updated from GitHub.
 - **From GitHub:** Settings → Extensions → Citation formats → **Add from GitHub…** takes
   `owner/name`, reads the repository's releases with the GitHub token of Settings → General and installs the newest
   eligible one: published, with `<key>-<version>.smcite` and its `.sha256`, a matching download, a `citation.toml`
