@@ -600,6 +600,11 @@ def build_env(ctx: project.ProjectContext) -> dict:
     perl_bin = _find_git_perl_bin()
     if perl_bin is not None:
         env["PATH"] = str(perl_bin) + os.pathsep + env.get("PATH", "")
+    # A project with no framework of its own to find (no $SLIDEMAGE_LATEX, nothing at ../latex or ../SlideMage/latex)
+    # compiles against the one SlideMage bundles (v0.14.19): the project's .latexmkrc reads $SLIDEMAGE_LATEX first.
+    fallback = project.fallback_framework_dir(ctx.root)
+    if fallback is not None:
+        env[project.LATEX_ENV_VAR] = str(fallback)
     # Installed theme packages (themes.py) go on TEXINPUTS, after the project root and the framework the project's
     # .latexmkrc puts in front: a project's own copy of a theme's template wins.
     theme_path = themes.texinputs(env)

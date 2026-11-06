@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import app_settings, slide_preview, slide_snapshot, update_all_previews
+from slidemage import app_settings, project, slide_preview, slide_snapshot, update_all_previews
 from slidemage.project import ProjectContext
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
@@ -103,8 +103,12 @@ def test_framework_found_via_environment_or_slidemage_checkout(tmp_path, monkeyp
 
 def test_render_template_falls_back_to_what_the_project_has(tmp_path, monkeypatch):
     ctx = ProjectContext.at(tmp_path / "project")
-    # A project with only institution layers and no framework next to it: the first of them.
     root = _project(tmp_path / "project", "beta", "acme")
+    # v0.14.19: with no framework next to it, the project uses the one SlideMage bundles, so the out-of-the-box
+    # template is there.
+    assert slide_snapshot.render_template(ProjectContext.at(root)) == "slidemage"
+    # Without a bundled framework either, only institution layers: the first of them.
+    monkeypatch.setattr(project, "template_dir", lambda name: None)
     assert slide_snapshot.render_template(ProjectContext.at(root)) == "acme"
     # A saved choice whose file is gone falls back too.
     app_settings.set(ctx, slide_snapshot.RENDER_TEMPLATE_SETTING_KEY, "gamma")
