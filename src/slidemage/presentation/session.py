@@ -7,6 +7,7 @@ Coordinates are slide fractions (0..1), so any window size or aspect shows the s
 """
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Optional
@@ -148,10 +149,12 @@ class PresentationSession(QObject):
     def end_stroke(self) -> None:
         self._drawing = None
 
-    def erase_at(self, point: Point, radius: float = 0.02) -> None:
+    def erase_at(self, point: Point, radius: float = 0.02, aspect: float = 1.0) -> None:
+        """Removes the strokes of this page that have a point within `radius` (a fraction of the slide height) of
+        `point`; `aspect` (width / height) makes the reach a circle on the slide, not an oval."""
         strokes = self.strokes.get(self.page, [])
         kept = [s for s in strokes
-                if not any(abs(x - point[0]) <= radius and abs(y - point[1]) <= radius for x, y in s.points)]
+                if not any(math.hypot((x - point[0]) * aspect, y - point[1]) <= radius for x, y in s.points)]
         if len(kept) != len(strokes):
             self.strokes[self.page] = kept
             self.changed.emit()

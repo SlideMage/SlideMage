@@ -76,6 +76,7 @@ class PresentationController(QObject):
         self.ended = False
         self._digits = ""
         self._wheel = 0
+        self._colour_dialog: Optional[QColorDialog] = None
         self.session.page_changed.connect(self._page_changed)
         self.session.link_requested.connect(self._link)
 
@@ -118,6 +119,7 @@ class PresentationController(QObject):
         if self.ended:
             return
         self.ended = True
+        self.accept_colour()
         self.keep_awake.stop()
         self.session.set_pointer(None)
         for window in (self.presenter, self.audience):
@@ -133,6 +135,8 @@ class PresentationController(QObject):
     def _canvas(self, view, part: str, *, interactive: bool = False, background: str = "#000000",
                 empty_text: str = "", top: bool = False, name: str = "") -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
+        if slide_input is not None:
+            slide_input.on_press = self.accept_colour       # a press on the slide settles an open colour dialog
         canvas = SlideCanvas(self.deck, view, part=part, laser_color=self.settings.laser_color,
                              laser_size=self.settings.laser_size, settings=self.settings, name=name, background=background, empty_text=empty_text, top=top, slide_input=slide_input)
         self.session.changed.connect(canvas.update)
@@ -251,7 +255,12 @@ class PresentationController(QObject):
 
         laser = button("Laser", "The laser pointer shows while you hold Ctrl and the left mouse button on the current "
                        "slide; this opens its colour and size for this presentation", laser_clicked)
-        button("Eraser", "Erase strokes (E)", lambda: session.set_tool(TOOL_ERASER), lambda: session.tool == TOOL_ERASER)
+        def eraser_clicked() -> None:
+            session.set_tool(TOOL_ERASER)
+            self._eraser_menu(eraser).popup(eraser.mapToGlobal(eraser.rect().bottomLeft()))
+
+        eraser = button("Eraser", "Erase strokes (E); opens the eraser's size for this presentation",
+                        eraser_clicked, lambda: session.tool == TOOL_ERASER)
         button("Clear", "Clear the drawings of this page (Delete; Shift: all pages)", self.clear_drawings)
         button("Black", "Black out the projector (B)", session.toggle_black, lambda: session.black)
         button("Freeze", "Freeze the projector on this slide (F)", self.toggle_freeze, lambda: session.frozen)
@@ -270,15 +279,19 @@ class PresentationController(QObject):
         """Colour and size of the laser pointer, for this presentation only, like the pen's."""
         return self._colour_menu(parent, "Laser", "laser_color", "laser_size", (5, 60), alpha=False)
 
-    def _colour_menu(self, parent: QWidget, name: str, color_key: str, size_key: str, steps: tuple[int, int], *,
+    def _eraser_menu(self, parent: QWidget) -> QMenu:
+        """The size of the eraser circle, for this presentation only, like the pen's."""
+        return self._colour_menu(parent, "Eraser", None, "eraser_size", (5, 100), alpha=False)
+
+    def _colour_menu(self, parent: QWidget, name: str, color_key: Optional[str], size_key: str, steps: tuple[int, int], *,
                      alpha: bool) -> QMenu:
-        """A colour button and a size slider (tenths of a percent of the slide height) that change
-        self.settings, which the canvases read as they draw."""
+        """A colour button (none for the eraser) and a size slider (tenths of a percent of the slide height) that
+        change self.settings, which the canvases read as they draw."""
         menu = QMenu(parent)
         panel = QWidget()
         column = QHBoxLayout(panel)
         column.addWidget(QLabel(name))
-        swatch = QPushButton("Colour")
+        swatch = QPushButton("Colour") if color_key is not None else None
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(*steps)
         slider.setValue(round(getattr(self.settings, size_key) * 1000))
@@ -286,25 +299,29 @@ class PresentationController(QObject):
         size = QLabel()
 
         def paint() -> None:
-            color = QColor(getattr(self.settings, color_key))
-            swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
+            if swatch is not None:
+                color = QColor(getattr(self.settings, color_key))
+                swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
             size.setText(f"{slider.value() / 10:g} %")
 
+        def apply(color: QColor) -> None:
+            setattr(self.settings, color_key, color.name(QColor.NameFormat.HexArgb if alpha else QColor.NameFormat.HexRgb))
+            paint()
+            self.session.changed.emit()
+
         def pick() -> None:
-            options = QColorDialog.ColorDialogOption.ShowAlphaChannel if alpha else QColorDialog.ColorDialogOption(0)
-            color = QColorDialog.getColor(QColor(getattr(self.settings, color_key)), panel, f"{name} colour", options)
-            if color.isValid():
-                setattr(self.settings, color_key, color.name(QColor.NameFormat.HexArgb if alpha else QColor.NameFormat.HexRgb))
-                paint()
-                self.session.changed.emit()
+            menu.close()
+            self.choose_colour(f"{name} colour", QColor(getattr(self.settings, color_key)), alpha, apply)
 
         def resize(value: int) -> None:
             setattr(self.settings, size_key, value / 1000)
             paint()
             self.session.changed.emit()
-        swatch.clicked.connect(pick)
         slider.valueChanged.connect(resize)
-        for widget in (swatch, slider, size):
+        if swatch is not None:
+            swatch.clicked.connect(pick)
+            column.addWidget(swatch)
+        for widget in (slider, size):
             column.addWidget(widget)
         paint()
         action = QWidgetAction(menu)
@@ -313,6 +330,34 @@ class PresentationController(QObject):
         menu.setToolTipsVisible(True)
         menu.setToolTip(f"For this presentation only; the Settings sheet keeps its own {name.lower()}.")
         return menu
+
+    # -- the colour dialog --------------------------------------------------------------
+
+    def choose_colour(self, title: str, start: QColor, alpha: bool, apply: Callable[[QColor], None]) -> QColorDialog:
+        """A colour dialog that does not block the presentation: every colour picked in it is applied at once through
+        `apply`, so the next press on a slide draws with it. A press on a slide settles it (accept_colour), as
+        OK would; Cancel or Esc puts back the colour it opened with."""
+        self.accept_colour()
+        dialog = QColorDialog(start, self.presenter or self.audience)
+        dialog.setWindowTitle(title)
+        dialog.setModal(False)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        if alpha:
+            dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        dialog.currentColorChanged.connect(apply)
+        dialog.rejected.connect(lambda: apply(start))
+        dialog.finished.connect(lambda _result: setattr(self, "_colour_dialog", None)
+                                if self._colour_dialog is dialog else None)
+        self._colour_dialog = dialog
+        dialog.show()
+        dialog.activateWindow()
+        return dialog
+
+    def accept_colour(self) -> None:
+        """Closes an open colour dialog keeping its colour (a press on a slide counts as OK)."""
+        dialog, self._colour_dialog = self._colour_dialog, None
+        if dialog is not None:
+            dialog.accept()
 
     # -- actions ----------------------------------------------------------------------
 

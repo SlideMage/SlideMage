@@ -6,8 +6,8 @@ manual checklist in the plan."""
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QLabel
 
@@ -16,7 +16,7 @@ from slidemage.presentation import layout
 from slidemage.presentation.keep_awake import KeepAwake
 from slidemage.presentation.pdf_source import PresentationDeck
 from slidemage.presentation.screens import ScreenInfo
-from slidemage.presentation.session import TOOL_PEN
+from slidemage.presentation.session import TOOL_ERASER, TOOL_PEN
 from slidemage.presentation.settings import PresentationSettings
 from slidemage.ui.presentation.controller import PresentationController
 from slidemage.ui.presentation.slide_canvas import SlideCanvas
@@ -501,3 +501,136 @@ def test_one_screen_stays_interactive_and_the_profile_does_not_change_it(make):
     controller.next_profile()
     controller.set_profile(layout.NEXT_LARGE_CLOCK)
     assert controller.audience.canvas.input is not None
+
+
+# -- the eraser: size and circle ---------------------------------------------------------------
+
+def test_the_eraser_menu_has_only_a_size_slider_and_changes_it_for_this_presentation_only(make):
+    from PySide6.QtWidgets import QPushButton, QSlider, QToolButton
+    controller = make(settings=PresentationSettings())
+    assert any(tool.text() == "Eraser" for tool in controller.presenter.findChildren(QToolButton))
+    menu = controller._eraser_menu(controller.presenter)
+    assert menu.findChildren(QPushButton) == []                       # no colour
+    slider = menu.findChildren(QSlider)[0]
+    assert slider.value() == 20
+    slider.setValue(50)
+    assert controller.settings.eraser_size == pytest.approx(0.05)
+    assert PresentationSettings.load().eraser_size == PresentationSettings().eraser_size      # nothing saved
+
+
+def test_the_eraser_size_decides_what_a_press_erases(make):
+    controller = make(settings=PresentationSettings(eraser_size=0.02))
+    session = controller.session
+    current = canvases(controller.presenter, CurrentView)[0]
+    session.begin_stroke("#fff", 0.01, (0.5, 0.5))
+    session.end_stroke()
+    press_key(controller, Qt.Key.Key_E)
+    QTest.mouseClick(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.56, 0.5)))
+    assert len(session.strokes[0]) == 1                               # out of reach
+    controller.settings.eraser_size = 0.15
+    QTest.mouseClick(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.56, 0.5)))
+    assert session.strokes[0] == []
+
+
+def test_a_circle_of_the_erasers_size_follows_the_mouse_on_that_canvas_only_while_the_eraser_is_on(make):
+    controller = make(settings=PresentationSettings(eraser_size=0.05), two_screens=True)
+    current = canvases(controller.presenter, CurrentView)[0]
+    audience = canvases(controller.audience, AudienceView)[0]
+    QTest.mouseMove(current, spot(current, (0.1, 0.1)))               # the first move only enters the widget
+    QTest.mouseMove(current, spot(current, (0.5, 0.5)))
+    assert current._eraser_circle() is None                           # not the eraser
+    press_key(controller, Qt.Key.Key_D)
+    assert controller.session.tool == TOOL_PEN
+    assert current._eraser_circle() is None
+    press_key(controller, Qt.Key.Key_E)
+    assert controller.session.tool == TOOL_ERASER
+    circle = current._eraser_circle()
+    assert circle is not None and circle.height() == pytest.approx(2 * 0.05 * current.target().height())
+    assert circle.center().toPoint() == spot(current, (0.5, 0.5))
+    QTest.mouseMove(current, spot(current, (0.25, 0.5)))
+    assert current._eraser_circle().center().toPoint() == spot(current, (0.25, 0.5))      # it follows
+    assert audience._eraser_circle() is None                          # the projector takes no input here
+    shown = current.grab().toImage()
+    controller.session.set_tool(TOOL_PEN)
+    assert shown != current.grab().toImage()                          # the ring is painted only with the eraser
+    controller.session.set_tool(TOOL_ERASER)
+    QTest.mouseMove(current, spot(current, (0.5, 0.5)))
+    current.leaveEvent(QEvent(QEvent.Type.Leave))
+    assert current._eraser_circle() is None                           # gone when the mouse leaves
+
+
+def test_the_circle_shows_on_the_projector_when_it_takes_the_mouse(make):
+    controller = make(two_screens=False)
+    audience = canvases(controller.audience, AudienceView)[0]
+    press_key(controller, Qt.Key.Key_E)
+    QTest.mouseMove(audience, spot(audience, (0.4, 0.4)))
+    assert audience._eraser_circle() is not None
+
+
+def test_the_eraser_size_is_on_the_settings_sheet(qapp):
+    from slidemage.ui.presentation.settings_page import PresentationTab
+    tab = PresentationTab()
+    assert tab.eraser_size.value() == pytest.approx(2.0)
+    tab.eraser_size.setValue(4.0)
+    assert PresentationSettings.load().eraser_size == pytest.approx(0.04)
+    tab._reset()
+    assert PresentationSettings.load().eraser_size == pytest.approx(0.02) and tab.eraser_size.value() == pytest.approx(2.0)
+
+
+# -- colour picking without OK -----------------------------------------------------------------
+
+def open_pen_dialog(controller):
+    from PySide6.QtWidgets import QPushButton
+    menu = controller._pen_menu(controller.presenter)
+    menu.findChildren(QPushButton)[0].click()
+    return controller._colour_dialog
+
+
+def test_a_colour_chosen_in_the_dialog_applies_at_once_and_a_press_on_the_slide_closes_it_and_draws_in_it(make):
+    controller = make(settings=PresentationSettings())
+    dialog = open_pen_dialog(controller)
+    assert dialog is not None and not dialog.isModal() and dialog.isVisible()
+    dialog.setCurrentColor(QColor("#00aa00"))
+    assert controller.settings.pen_color == "#ff00aa00"               # no OK pressed
+    press_key(controller, Qt.Key.Key_D)
+    current = canvases(controller.presenter, CurrentView)[0]
+    QTest.mousePress(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.3, 0.3)))
+    QTest.mouseRelease(current, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, spot(current, (0.3, 0.3)))
+    assert controller._colour_dialog is None and not dialog.isVisible()
+    assert controller.session.strokes[0][0].color == "#ff00aa00" and controller.settings.pen_color == "#ff00aa00"
+
+
+def test_cancel_and_escape_put_back_the_colour_from_before_the_dialog(make):
+    controller = make(settings=PresentationSettings())
+    before = controller.settings.pen_color
+    dialog = open_pen_dialog(controller)
+    dialog.setCurrentColor(QColor("#00aa00"))
+    dialog.reject()
+    assert controller.settings.pen_color == before and controller._colour_dialog is None
+    dialog = open_pen_dialog(controller)
+    dialog.setCurrentColor(QColor("#123456"))
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+    assert controller.settings.pen_color == before and not controller.ended
+
+
+def test_the_laser_colour_uses_the_same_dialog_and_keys_in_it_do_not_reach_the_presentation(make):
+    from PySide6.QtWidgets import QPushButton
+    controller = make(settings=PresentationSettings())
+    menu = controller._laser_menu(controller.presenter)
+    menu.findChildren(QPushButton)[0].click()
+    dialog = controller._colour_dialog
+    dialog.setCurrentColor(QColor("#0000ff"))
+    assert controller.settings.laser_color == "#0000ff"
+    page = controller.session.page
+    for key in (Qt.Key.Key_Right, Qt.Key.Key_B, Qt.Key.Key_D):
+        QTest.keyClick(dialog, key)
+    assert controller.session.page == page and not controller.session.black and controller.session.tool != TOOL_PEN
+    controller.accept_colour()
+    assert controller.settings.laser_color == "#0000ff"               # closing as OK keeps it
+
+
+def test_ending_the_presentation_closes_an_open_colour_dialog(make):
+    controller = make(settings=PresentationSettings())
+    dialog = open_pen_dialog(controller)
+    controller.end()
+    assert controller._colour_dialog is None and not dialog.isVisible()

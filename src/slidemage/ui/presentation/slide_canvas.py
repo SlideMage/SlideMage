@@ -26,7 +26,7 @@ class View(Protocol):
 
 
 class SlideCanvas(QWidget):
-    def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff2020",
+    def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff0000",
                  laser_size: float = 0.02, background: str = "#000000", empty_text: str = "", top: bool = False,
                  slide_input: Optional[SlideInput] = None, settings: Optional[PresentationSettings] = None,
                  name: str = "",
@@ -35,6 +35,7 @@ class SlideCanvas(QWidget):
         self.deck, self.view, self.part, self.laser_size = deck, view, part, laser_size
         self.laser_color, self.background, self.empty_text, self.top = laser_color, background, empty_text, top
         self.input = slide_input
+        self._hover: Optional[QPointF] = None      # where the mouse is over this canvas (the eraser circle follows it)
         self.settings = settings     # when given, the laser's colour and size are read from it as it is drawn
         self.name = name             # "Current" or "Next" in the presenter window's top-left corner
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -51,6 +52,7 @@ class SlideCanvas(QWidget):
         self.setMouseTracking(slide_input is not None)
         if slide_input is None:
             self.unsetCursor()
+            self._set_hover(None)
 
     # -- geometry ---------------------------------------------------------------------
 
@@ -96,7 +98,37 @@ class SlideCanvas(QWidget):
         pointer = self.view.pointer()
         if pointer is not None:
             self._laser(painter, rect, pointer)
+        circle = self._eraser_circle()
+        if circle is not None:
+            self._draw_eraser(painter, circle)
         self._name_tag(painter, self._badge(painter))
+
+    def _eraser_circle(self) -> Optional[QRectF]:
+        """The eraser's reach around the mouse: only while the eraser is on and the mouse is over this canvas, and
+        this canvas takes input."""
+        if self._hover is None or self.input is None or not self.input.erasing():
+            return None
+        radius = max(3.0, self.input.settings.eraser_size * self.target().height())
+        return QRectF(self._hover.x() - radius, self._hover.y() - radius, 2 * radius, 2 * radius)
+
+    @staticmethod
+    def _draw_eraser(painter: QPainter, circle: QRectF) -> None:
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(0, 0, 0, 200), 3))        # a dark ring under a light one: seen on any slide
+        painter.drawEllipse(circle)
+        painter.setPen(QPen(QColor(255, 255, 255, 235), 1.5))
+        painter.drawEllipse(circle)
+
+    def _set_hover(self, position: Optional[QPointF]) -> None:
+        """Moves the circle's anchor, repainting only where the circle was and where it is now."""
+        before, now = self._hover, position
+        self._hover = now
+        if before == now:
+            return
+        for spot in (before, now):
+            if spot is not None and self.input is not None and self.input.erasing():
+                radius = max(3.0, self.input.settings.eraser_size * self.target().height()) + 3
+                self.update(QRectF(spot.x() - radius, spot.y() - radius, 2 * radius, 2 * radius).toAlignedRect())
 
     def _stroke(self, painter: QPainter, rect: QRect, stroke: Stroke) -> None:
         pen = QPen(QColor(stroke.color), max(2.0, stroke.width * rect.height()))
@@ -184,6 +216,7 @@ class SlideCanvas(QWidget):
         point = self._fraction(event)
         if self.input is None or point is None:
             return event.ignore()
+        self._set_hover(event.position())
         if event.buttons() & Qt.MouseButton.LeftButton:
             self.input.move(*point, bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier))
         else:
@@ -198,6 +231,7 @@ class SlideCanvas(QWidget):
         self.input.release(*point)
 
     def leaveEvent(self, event) -> None:
+        self._set_hover(None)
         if self.input is not None:
             self.input.leave()
         super().leaveEvent(event)

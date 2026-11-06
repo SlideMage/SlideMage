@@ -7,6 +7,7 @@ the eraser it erases; else a press and release that did not move is a click on a
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional
 
 from ...presentation.pdf_source import Link, PresentationDeck
@@ -30,9 +31,12 @@ class SlideInput:
         self.session, self.deck, self.settings = session, deck, settings
         self.mode = IDLE
         self._press: tuple[float, float] = (0.0, 0.0)
+        self.on_press: Optional[Callable[[], None]] = None    # told first of every press (the colour dialog closes)
 
     def press(self, x: float, y: float, ctrl: bool) -> None:
         session = self.session
+        if self.on_press is not None:
+            self.on_press()
         x, y = clamp(x, y)
         self._press = (x, y)
         if ctrl:
@@ -43,7 +47,7 @@ class SlideInput:
             session.begin_stroke(self.settings.pen_color, self.settings.pen_width, (x, y))
         elif session.tool == TOOL_ERASER:
             self.mode = ERASE
-            session.erase_at((x, y))
+            session.erase_at((x, y), self.settings.eraser_size, self.deck.aspect)
         else:
             self.mode = CLICK
 
@@ -59,7 +63,7 @@ class SlideInput:
         elif mode == PEN:
             session.extend_stroke((x, y))
         elif mode == ERASE:
-            session.erase_at((x, y))
+            session.erase_at((x, y), self.settings.eraser_size, self.deck.aspect)
         elif mode == CLICK and max(abs(x - self._press[0]), abs(y - self._press[1])) > CLICK_SLOP:
             self.mode = IGNORE
 
@@ -85,6 +89,9 @@ class SlideInput:
         if self.mode == LASER:
             self.session.set_pointer(None)
             self.mode = IGNORE
+
+    def erasing(self) -> bool:
+        return self.session.tool == TOOL_ERASER
 
     def over_link(self, x: float, y: float) -> bool:
         return self.deck.link_at(self.session.page, x, y) is not None
