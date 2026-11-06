@@ -3567,3 +3567,8 @@ v0.14.15 (2026-11-06, the debug log note in Settings and the manual match the RE
 
 NEW: The debug log note in Settings is more careful about what a log can hold.
 - It says slide text and API keys are left out on purpose, and asks you to look through a log before you share it, since a traceback or a compile line can still carry a fragment.
+
+v0.14.18 (2026-11-06, the framework's last unclassified lengths get a class): Step 5 of the framework redesign left a few names and numbers without a class. \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign and \SMSectionframeBarBottom are now derived, like \SMContentTopAlign: slides still read them, and a template or a layout profile that sets one gets an error instead of a number the next change would contradict. The footer's 2em, 4em and 0.4ex and the side footnotes' 2.1pt, 3.1pt and 2.31pt stay internal, with comments saying why. Nothing renders differently.
+
+NEW: Three more layout lengths are guarded against being set by a template.
+- A template or a layout profile that sets \SMFloatingInfoblockRightAlign, \SMFloatingInfoblockTopAlign or \SMSectionframeBarBottom now gets a clear error: they follow from the paddings and the section bar's height.
