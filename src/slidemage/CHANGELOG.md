@@ -3573,3 +3573,10 @@ v0.14.16 (2026-11-06, direct instruction: a presenter layout with the upcoming s
 NEW: A presenter layout with the next slide, the notes and a large clock.
 - "Next large, clock": the next slide large on the left, the notes top right, a large HH:MM clock bottom right.
 - Press P in the presenter window to switch between the three layouts, or choose one in Settings, Presentation.
+
+v0.14.17 (2026-11-06, a frozen version's tab shows that version's details): The Details view of a tab that holds a frozen version showed the live slide's file and version. It now shows the frozen file's own file name, version, language and slug, the same Frozen lock chip as the Source and Preview views, and the other languages and earlier versions with the current version among them. Rename, Duplicate and Delete are not offered there, since they would act on the live slide. Tests in tests/test_centre_gui.py.
+
+NEW: A frozen version's Details describe that version.
+- The tab shows the frozen file's name, version, language and slug, and a Frozen chip with its version.
+- The list of other languages and earlier versions includes the current version, which opens in the slide's own tab.
+- Rename, Duplicate and Delete are left out on a frozen version, as editing is in its Source view.
