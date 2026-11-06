@@ -72,7 +72,7 @@ def test_every_command_is_in_the_menu_bar_once_per_place_and_every_listed_id_exi
 def test_the_deck_menu_in_order_with_its_separators(qapp):
     ctx = command_context(COURSE, decks=[COURSE])
     assert names(filled_menu(ctx, "Deck")) == [
-        "submenu:switch deck", "refresh_decks", "|", "present", "open_pdf", "|",
+        "submenu:switch deck", "refresh_decks", "|", "present", "present_here", "open_pdf", "|",
         "deck_settings", "deck_tags", "deck_source", "|",
         "add_slide", "duplicate_deck", "submenu:export", "create_snapshot", "|",
         "update_deck_versions", "rerender_deck_previews", "deck:readability", "|", "archive_deck"]

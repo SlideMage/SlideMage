@@ -129,7 +129,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
         "compile:several", "compile:everything"], "PDF")
     add_commands(menu, ctx, [f"transcript:{version}" for version in STUDENT_VERSIONS],
                  "Accessible transcript")
-    add_commands(menu, ctx, ["present"], "Present")
+    add_commands(menu, ctx, ["present", "present_here"], "Present")
     menu.add_separator()
     add_commands(menu, ctx, ["stop", "build_options"])
     return menu
@@ -147,7 +147,7 @@ MENU_BAR = (
                ("", ("selection:rewrite", Submenu("Rewrite selection as", ("selection:rewrite:*",)),
                      "selection:proofread")),
                ("", ("slide:clear",)))),
-    ("&Deck", (("", (DECKS, "archived_decks", "refresh_decks")), ("", ("present", "open_pdf")),
+    ("&Deck", (("", (DECKS, "archived_decks", "refresh_decks")), ("", ("present", "present_here", "open_pdf")),
                ("", ("deck_settings", "deck_tags", "deck_source")),
                ("", ("add_slide", "duplicate_deck", Submenu("Export", ("export_pptx", "export_latex")),
                      "create_snapshot")),
