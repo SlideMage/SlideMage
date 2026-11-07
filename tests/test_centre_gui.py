@@ -111,6 +111,14 @@ def centre(qapp, project, deck, monkeypatch, ctx):
     return centre
 
 
+@pytest.fixture
+def held_autosave(monkeypatch):
+    """For a test of an unsaved buffer: its autosave (source_file.AUTOSAVE_DELAY_MS, 1.5 s) must not run before the test
+    is done. On a loaded machine wait_idle() can take longer than that; the autosave then wrote the buffer, which was no
+    longer dirty, and the reload cleared its selection. List it before `centre`: a source file reads the delay when made."""
+    monkeypatch.setattr(source_file, "AUTOSAVE_DELAY_MS", 10 * 60 * 1000)
+
+
 def wait_idle(centre):
     """Until the Preview has rendered, its render's record is written and the check that follows it has run: until
     then the new page counts as current (the pixels come before the record, v8.48.0), and the status would depend on
@@ -471,7 +479,8 @@ def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_l
     assert renders[-1][0] == "open"
 
 
-def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_step(centre, renders, monkeypatch):
+def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_step(held_autosave, centre, renders,
+                                                                                  monkeypatch):
     state = centre.state
     state.set_focused_slide("aaa")
     state.set_mode("split")
@@ -673,7 +682,7 @@ def test_a_lint_issue_opens_its_file_at_its_line(centre, project):
     assert centre.source.current.editor.textCursor().blockNumber() == 2
 
 
-def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(centre, renders):
+def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_autosave, centre, renders):
     """Regression: a further edit to an already dirty rendered draft must mark its preview stale."""
     centre.state.set_focused_slide('aaa')
     centre.state.set_mode('split')

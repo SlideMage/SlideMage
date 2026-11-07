@@ -142,7 +142,24 @@ def _isolated_temp_dir(monkeypatch, tmp_path_factory):
 def _fresh_example_state():
     """Every test starts with what the app keeps inside the example project (settings, prompts,
     project.json) empty, so a test neither changes the example's own state nor depends on it."""
-    shutil.rmtree(EXAMPLE_PROJECT.settings_dir, ignore_errors=True)
+    _remove_tree(EXAMPLE_PROJECT.settings_dir)
+
+
+def _remove_tree(path: Path, seconds: float = 10) -> None:
+    """Delete `path` and make sure it is gone. A plain rmtree(ignore_errors=True) left app_settings.json or
+    project.json behind under -n auto (5 times in 3 runs): on Windows a file another thread has open cannot be
+    deleted, and an earlier test's thumbnail worker was still reading the example's settings. The next test then
+    started from that state, e.g. on Cloud (test_accessibility_gui, test_ai_switch_gui). Retry until the reader has
+    let go; a folder that stays is an error, not a silent leak."""
+    deadline = time.monotonic() + seconds
+    while True:
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return
+        if time.monotonic() > deadline:
+            left = sorted(str(p.relative_to(path)) for p in path.rglob("*"))
+            raise RuntimeError(f"could not empty {path} before the test: {left}")
+        time.sleep(0.05)
 
 
 @pytest.fixture(autouse=True)
