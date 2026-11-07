@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from .. import app_settings, deck_scan
 from ..ai import ai_profile
+from ..fileio import read_json
 from ..project import ProjectContext
 from . import session
 from .migrate import legacy_anthropic_key
@@ -128,11 +129,8 @@ def offerable(catalogue: Catalogue) -> list[CataloguePlugin]:
 # -- migrations: a removed feature is announced once, whatever happened to the first-start sheet ----
 
 def migrations_seen() -> set[str]:
-    try:
-        data = json.loads((plugins_dir() / MIGRATIONS_SEEN_NAME).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
-    return {i for i in data if isinstance(i, str)} if isinstance(data, list) else set()
+    data = read_json(plugins_dir() / MIGRATIONS_SEEN_NAME, list)
+    return {i for i in data if isinstance(i, str)}
 
 
 def mark_migrations_seen(ids: Iterable[str]) -> None:

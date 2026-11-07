@@ -150,10 +150,10 @@ def from_form(
 
 def template_supports_dark_mode(root: Path, key: str) -> bool:
     """Templates opt in with `% SlideMage dark mode: true` in their header."""
-    from . import slide_snapshot
+    from . import slide_templates
 
     try:
-        text = slide_snapshot.preamble_file(key, root).read_text(encoding="utf-8", errors="replace")
+        text = slide_templates.preamble_file(key, root).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
     head = "\n".join(text.splitlines()[:30])
@@ -163,9 +163,9 @@ def template_supports_dark_mode(root: Path, key: str) -> bool:
 def template_choices(root: Path) -> list[tuple[str, str]]:
     """[(key, label)] of every template the project's decks can \\input: the
     SlideMage_template_<name>.tex in the project folder or the framework."""
-    from . import slide_snapshot
+    from . import slide_templates
 
-    return [(key, slide_snapshot.template_label(key, root)) for key in slide_snapshot.available_templates(root)]
+    return [(key, slide_templates.template_label(key, root)) for key in slide_templates.available_templates(root)]
 
 
 # ---- reading -------------------------------------------------------------

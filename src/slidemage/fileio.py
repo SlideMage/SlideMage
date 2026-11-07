@@ -4,12 +4,22 @@
 keeps is written complete beside its target and renamed into place, so a crash or a second process never
 sees half a file."""
 
+import hashlib
 import json
 import os
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+
+def sha256_file(path: Path) -> str:
+    """Hash a file in 1 MiB chunks so large PDFs and archives need no full copy in memory."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class StaleFileError(RuntimeError):

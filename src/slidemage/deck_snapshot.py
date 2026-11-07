@@ -77,10 +77,9 @@ PARTIAL_PREFIX = ".partial-"
 WRAPPER_PREFIX = "_snapshot_"
 REFERENCE_PDF_DIR = "reference-pdf"
 FRAMEWORK_MARKER = "SlideMage_base.tex"
-NAME_TIME_FORMAT = "%Y-%m-%d_%H-%M"
 # <deck>_<YYYY-MM-DD>_<HH-MM>, optionally _2, _3, ... for a second snapshot of
 # the same form within one minute.
-NAME_RE = re.compile(r"^(?P<deck>.+)_(?P<stamp>\d{4}-\d\d-\d\d_\d\d-\d\d)(?:_(?P<n>\d+))?$")
+NAME_TIME_FORMAT = "%Y-%m-%d_%H-%M"
 
 # Files a deck needs that its compile doesn't read itself (or that latexmk
 # reads before the recorder starts), relative to the project root.

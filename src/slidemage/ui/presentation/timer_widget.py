@@ -3,7 +3,6 @@
 """The timer element of the presenter window and the small dialog that sets it (plan 4.5)."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QTime, QTimer, Qt, Signal
@@ -102,7 +101,3 @@ class TimerButton(QPushButton):
                 self.timer.start()
         self.refresh()
         self.changed.emit()
-
-
-def format_clock(now: datetime, fmt: str) -> str:
-    return now.strftime("%I:%M %p").lstrip("0") if fmt == "12" else now.strftime("%H:%M")

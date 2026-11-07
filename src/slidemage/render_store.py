@@ -440,19 +440,6 @@ class RenderStore:
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return None
 
-    @staticmethod
-    def _read_meta(folder: Path) -> Optional[dict]:
-        try:
-            meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-            if meta.get("format") != STORE_FORMAT:
-                return None
-            for filename, size in meta["files"].items():
-                if (folder / filename).stat().st_size != size:
-                    return None
-            return meta
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            return None
-
     # -- eviction ----------------------------------------------------------------
 
     def enforce_limit(self, limit_bytes: int, *, protected_decks: Iterable[str] = (),

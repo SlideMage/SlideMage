@@ -87,14 +87,14 @@ def test_a_deck_in_two_groups_is_in_both_sections_of_switch_deck(qapp):
 
 def test_a_pinned_deck_is_also_listed_under_its_other_groups(qapp):
     deck = make_deck("both", ["course", "work"])
-    assert deck.is_pinned and deck.groups == ("work", "course")
+    assert ROLE_PINNED in deck.roles and deck.groups == ("work", "course")
     assert switcher([deck]) == [(None, ["both"]), ("Course decks", ["both"])]
 
 
 def test_a_deck_has_the_roles_of_all_its_groups():
     deck = make_deck("d", ["lab", "workshops"], OWN_GROUPS)
-    assert deck.groups == ("workshops", "lab") and deck.is_pinned and deck.is_test_deck
-    assert not make_deck("d", ["lectures"], OWN_GROUPS).is_pinned
+    assert deck.groups == ("workshops", "lab") and ROLE_PINNED in deck.roles and deck.is_test_deck
+    assert ROLE_PINNED not in make_deck("d", ["lectures"], OWN_GROUPS).roles
 
 
 def test_a_deck_in_two_groups_is_compiled_once():
@@ -106,8 +106,8 @@ def test_a_deck_in_two_groups_is_compiled_once():
 def test_several_decks_ticks_a_deck_once_whichever_of_its_rows(qapp):
     both, course = make_deck("both", ["research", "course"]), make_deck("lecture", ["course"])
     sheet = MultiCompileSheet(None, [both, course])
-    boxes = sheet.boxes_of(both, "instructor")
-    assert len(boxes) == 2 and len(sheet.boxes_of(course, "instructor")) == 1
+    boxes = sheet._twins[(both.name, "instructor")]
+    assert len(boxes) == 2 and len(sheet._twins[(course.name, "instructor")]) == 1
     boxes[1].setChecked(True)
     assert boxes[0].isChecked()                                   # its other row follows
     assert [(d.name, kind) for d, kind in sheet.chosen()] == [("both", "instructor")]
@@ -134,7 +134,7 @@ def test_other_decks_is_a_section_only_when_a_deck_has_no_group(qapp):
 def test_several_decks_lists_the_other_decks_too(qapp):
     loose = make_deck("loose", [], OWN_GROUPS)
     sheet = MultiCompileSheet(None, [loose], OWN_GROUPS)
-    assert len(sheet.boxes_of(loose, "instructor")) == 1
+    assert len(sheet._twins[(loose.name, "instructor")]) == 1
     sheet.deleteLater()
 
 
@@ -199,7 +199,7 @@ def test_tags_writes_the_checked_groups_and_keeps_other_tags(qapp, monkeypatch, 
     assert _tags(deck.path) == "work,research,intro"
     window.reload_decks()
     deck = next(d for d in window.decks if d.path == deck.path)
-    assert deck.groups == ("work", "research") and deck.is_pinned
+    assert deck.groups == ("work", "research") and ROLE_PINNED in deck.roles
     monkeypatch.setattr(deck_actions, "DeckGroupSheet", lambda *a, **k: _Sheet([]))
     deck_actions.on_edit_deck_tags(window, deck)
     assert _tags(deck.path) == "intro"

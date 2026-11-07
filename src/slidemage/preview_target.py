@@ -18,7 +18,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_snapshot
+from . import deck_context, project, slide_language, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
 
@@ -63,8 +63,8 @@ class PreviewTarget:
     @property
     def template(self) -> str:
         if self.preamble_text is None:
-            return slide_snapshot.render_template(self.context)
-        return slide_snapshot.detect_template(self.preamble_text)
+            return slide_templates.render_template(self.context)
+        return slide_templates.detect_template(self.preamble_text)
 
     @property
     def is_frozen_alone(self) -> bool:

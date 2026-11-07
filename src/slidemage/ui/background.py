@@ -9,9 +9,13 @@ thread has ended, and the application waits for it at quit; the sheet just drops
 """
 from __future__ import annotations
 
+import inspect
+import logging
+import threading
+from queue import Empty, SimpleQueue
 from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, QThread, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
 _running: dict[QThread, "_Watch"] = {}
@@ -98,3 +102,134 @@ def stop_worker(thread: QThread, abort: Optional[Callable[[], None]] = None, *, 
     if thread.isFinished():                 # it ended between the wait and the connection
         watch.done()
     return False
+
+
+class _Worker(QThread):
+    reported = Signal()
+
+    def __init__(self, work: Callable[[], object]) -> None:
+        super().__init__()
+        self.work = work
+        self.reports = SimpleQueue()
+        self.result = self.error = None
+
+    def report(self, value) -> None:
+        self.reports.put(value)
+        self.reported.emit()
+
+    def run(self) -> None:
+        try:
+            self.result = self.work()
+        except BaseException as exc:      # handed to done(), never lost on the thread
+            self.error = exc
+
+
+class Handle(QObject):
+    """A GUI-thread receiver, retained by start_detached even when its widget disappears.
+
+    cancel() is cooperative: a caller can still show the result of an aborted operation. stop() also drops
+    the result callback, for a closing sheet; finished still runs so route leases can be released independently
+    of widgets.
+    """
+
+    done = Signal(object, object)         # result, exception; also a hook for GUI tests
+    finished = Signal()                  # cleanup, even after stop() or destruction of the owner
+
+    def __init__(self, work, done, progress, parent, cancel, logger) -> None:
+        super().__init__()               # never parent the thread or receiver to a short-lived widget
+        self.cancel_event = cancel if cancel is not None else threading.Event()
+        self._done, self._progress = done, progress
+        self._logger = logger or logging.getLogger(__name__)
+        self._ended = False
+        self._with_progress = progress is not None
+        self._thread = _Worker(lambda: work(self._thread.report) if self._with_progress else work())
+        self._thread.reported.connect(self._report)
+        if parent is not None:
+            parent.destroyed.connect(self._discard)
+
+    @Slot()
+    def _discard(self) -> None:
+        self.cancel()
+        self._done = self._progress = None
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+    def stop(self, abort=None, *, wait_ms=100, on_done=None) -> bool:
+        self.cancel()
+        self._done = None
+        if self._ended:
+            if abort is not None:
+                abort()
+            if on_done is not None:
+                on_done()
+            return True
+        return stop_worker(self._thread, abort, wait_ms=wait_ms, on_done=on_done)
+
+    def wait(self, time: int | None = None) -> bool:
+        """Wait for the thread, for tests and callers already using a bounded shutdown wait."""
+        return self._ended or (self._thread.wait() if time is None else self._thread.wait(time))
+
+    def isRunning(self) -> bool:
+        return not self._ended and self._thread.isRunning()
+
+    def isFinished(self) -> bool:
+        return self._ended or self._thread.isFinished()
+
+    @Slot()
+    def _report(self) -> None:
+        while True:
+            try:
+                value = self._thread.reports.get_nowait()
+            except Empty:
+                return
+            if self._progress is not None:
+                try:
+                    self._progress(value)
+                except Exception:
+                    self._logger.exception("progress callback raised")
+
+    def _finish(self) -> None:
+        self._ended = True
+        # stop_worker can finish synchronously while queued progress signals still await the event loop.
+        self._report()
+        try:
+            if self._done is not None:
+                try:
+                    self._done(self._thread.result, self._thread.error)
+                except Exception:
+                    self._logger.exception("done callback raised" if self._with_progress
+                                           else "done() of run_in_background raised")
+                self.done.emit(self._thread.result, self._thread.error)
+        finally:
+            self._done = self._progress = None
+            self.finished.emit()
+            self._thread.deleteLater()
+
+
+def run_in_background(work, done, *, parent: QObject | None = None, cancel: threading.Event | None = None,
+                      logger: logging.Logger | None = None) -> Handle:
+    """Run work() off the GUI thread, then done(result, error) there through start_detached.
+
+    A work function requiring one argument receives the handle's cancellation Event. A supplied cancel event
+    lets existing operations share their cancellation checks. Destroying parent drops callbacks and cancels;
+    a sheet that merely closes should call handle.stop(). Call this helper on the GUI thread.
+    """
+    handle = Handle(work, done, None, parent, cancel, logger)
+    try:
+        inspect.signature(work).bind()
+    except TypeError:
+        handle._thread.work = lambda: work(handle.cancel_event)
+    except ValueError:                    # some extension callables do not expose a signature
+        pass
+    start_detached(handle._thread, handle._finish)
+    return handle
+
+
+def run_in_background_with_progress(work, progress, done, *, parent: QObject | None = None,
+                                    cancel: threading.Event | None = None,
+                                    logger: logging.Logger | None = None) -> Handle:
+    """Run work(report), queueing progress(value) on the GUI thread before done(result, error)."""
+    handle = Handle(work, done, progress, parent, cancel, logger)
+    start_detached(handle._thread, handle._finish)
+    return handle

@@ -1,10 +1,23 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """fileio.py: complete-or-nothing writes and tolerant JSON reads."""
+import hashlib
 import os
 import pytest
 
-from slidemage.fileio import atomic_write, read_json, read_text_exact, write_json, write_text_exact
+from slidemage.fileio import atomic_write, read_json, read_text_exact, sha256_file, write_json, write_text_exact
+
+
+@pytest.mark.parametrize("data", [b"", b"abc", bytes(range(256)) * 8193], ids=["empty", "small", "multi-chunk"])
+def test_sha256_file_hashes_all_bytes(tmp_path, data):
+    path = tmp_path / "file.bin"
+    path.write_bytes(data)
+    assert sha256_file(path) == hashlib.sha256(data).hexdigest()
+
+
+def test_sha256_file_reports_a_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        sha256_file(tmp_path / "missing")
 
 
 def test_atomic_write_creates_folders_and_leaves_no_temporary_file(tmp_path):

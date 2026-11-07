@@ -209,19 +209,6 @@ def menu_bar(ctx: Context) -> tuple:
     return tuple((title, (*sections, *extra.get(title.replace("&", "").lower(), ()))) for title, sections in MENU_BAR)
 
 
-def menu_bar_ids(ctx: Context) -> list[str]:
-    """Every command id the menu bar can show, submenus included (DECKS is not a command)."""
-    ids = []
-    for _title, sections in menu_bar(ctx):
-        for _header, entries in sections:
-            for entry in expand(ctx, entries):
-                if isinstance(entry, Submenu):
-                    ids += expand(ctx, entry.ids)
-                elif entry != DECKS:
-                    ids.append(entry)
-    return ids
-
-
 def build_menu_bar(window: QWidget, ctx: Context) -> QMenuBar:
     """The window's menu bar; `ctx` runs the commands (the window itself)."""
     bar = QMenuBar(window)

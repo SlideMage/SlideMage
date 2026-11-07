@@ -265,7 +265,7 @@ def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resol
 def test_a_framework_file_is_found_again_through_the_framework_folders(ctx, resolver, store, monkeypatch, tmp_path):
     framework = tmp_path / "fw"
     base = write(framework / "SlideMage_base.tex", "base")
-    monkeypatch.setattr(render_key.slide_snapshot, "framework_dirs", lambda root: [framework])
+    monkeypatch.setattr(render_key.slide_templates, "framework_dirs", lambda root: [framework])
     unit = unit_for(ctx)
     write(unit.source_path, "s")
     key, meta = make_record(resolver, ctx, unit, [unit.source_path, base])
