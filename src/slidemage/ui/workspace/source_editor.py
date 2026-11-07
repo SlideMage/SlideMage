@@ -37,7 +37,7 @@ from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, Edit, Insert, utf16_len, utf1
 from ...tex_source import COMMENT_RE
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
-from ..kit.tokens import FONT_MONO
+from ..kit.tokens import FONT_MONO, TYPE
 from ..kit.widgets import Button, IconButton
 
 # Comments, commands and braces as before; the rest (environments, math, TODO
@@ -49,7 +49,7 @@ ENV_RE = re.compile(r"\\(?:begin|end)\{([a-zA-Z*]+)\}")
 MATH_RE = re.compile(r"(?<!\\)\$[^$]*\$")
 TODO_RE = re.compile(r"\b(?:TODO|FIXME|XXX)\b")
 
-FONT_PX = 13
+FONT_PX = TYPE.body
 
 
 class SourceEditor(Protocol):
