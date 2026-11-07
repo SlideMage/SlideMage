@@ -23,6 +23,7 @@ from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QSizePolicy
 
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, PopoverMenu, Surface
 
@@ -190,14 +191,15 @@ class _TabButton(ClickFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 0, 4 if tab.closable else 12, 0)
-        row.setSpacing(2)
+        row.setContentsMargins(SPACE.xl, 0, SPACE.xs if tab.closable else SPACE.xl, 0)
+        row.setSpacing(SPACE.s_2xs)
         self.label = ElidedLabel()
         self.label.setObjectName(q.TAB_LABEL)
         self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row.addWidget(self.label, 1)
         self.close_button: Optional[IconButton] = None
         if tab.closable:
+            # Compact tab actions preserve the tab height and leave room for the filename.
             self.close_button = IconButton("close", "Close tab", size=14)
             self.close_button.clicked.connect(self.close_requested)
             row.addWidget(self.close_button)
@@ -291,8 +293,8 @@ class TabStrip(Surface):
         self.setObjectName(q.TAB_STRIP)
         self._buttons: dict[CentreTab, _TabButton] = {}
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(8, 0, 8, 0)
-        outer.setSpacing(2)
+        outer.setContentsMargins(SPACE.md, 0, SPACE.md, 0)
+        outer.setSpacing(SPACE.s_2xs)
         self._left = IconButton("chevron_left", "Scroll the tabs left", size=16)
         self._right = IconButton("chevron_right", "Scroll the tabs right", size=16)
         self._left.clicked.connect(lambda: self._scroll_by(-1))
@@ -308,7 +310,7 @@ class TabStrip(Surface):
         inner = Surface()
         self._row = QHBoxLayout(inner)
         self._row.setContentsMargins(0, 0, 0, 0)
-        self._row.setSpacing(2)
+        self._row.setSpacing(SPACE.s_2xs)
         self._row.addStretch(1)
         self._scroll.setWidget(inner)
         outer.addWidget(self._left)

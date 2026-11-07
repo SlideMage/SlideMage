@@ -738,34 +738,6 @@ class PreviewCache:
                 shutil.rmtree(directory, ignore_errors=True)
             return None
 
-    def equivalent_views(self, identity, env: dict) -> tuple[str, ...]:
-        """Verified peers for this exact identity/input set; each keeps its own PDF.
-
-        Relationships live in the immutable per-view sequence records. Always
-        validate every participant again, so source/dependency edits revoke them.
-        """
-        identity = json.loads(json.dumps(identity))
-        own = self.lookup(identity, env)
-        if own is None or own.raster_sequence is None:
-            return ()
-        options = identity.get('options', {})
-        if (not isinstance(options, dict) or options.get('presenter')
-                or options.get('mode', 'slide') != 'slide' or options.get('overlay') is not None):
-            return ()
-        views = []
-        try:
-            own_data = json.loads((own.directory / 'manifest.json').read_text())
-            for view in ('instructor', 'during-course', 'after-course'):
-                peer = self.lookup({**identity, 'view': view}, env)
-                if peer is None or peer.raster_sequence != own.raster_sequence:
-                    continue
-                peer_data = json.loads((peer.directory / 'manifest.json').read_text())
-                if peer_data['inputs'] == own_data['inputs'] and peer_data['evidence'] == own_data['evidence']:
-                    views.append(view)
-        except (OSError, ValueError, KeyError, TypeError):
-            return ()
-        return tuple(views)
-
     @contextmanager
     def lease(self, entry: CachedPreview, *, blocking=True):
         """Keep this generation alive until the consumer releases its PDF."""

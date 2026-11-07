@@ -20,6 +20,7 @@ from ...project import ProjectContext
 from ...deck_scan import Deck
 from ...deck_snapshot import ExistingSnapshot, SnapshotOptions, SnapshotResult
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption
 
 TEXMF_TIP = (
@@ -47,7 +48,7 @@ class SnapshotSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         layout.addWidget(caption(
             "A snapshot is a self-contained copy of a deck -- slides, media, bibliography, "
             "template and LaTeX framework -- that compiles exactly as the deck does today, "
@@ -79,7 +80,7 @@ class SnapshotSheet(ModalSheet):
         decks_box = Surface()
         decks_layout = QVBoxLayout(decks_box)
         decks_layout.setContentsMargins(0, 0, 0, 0)
-        decks_layout.setSpacing(6)
+        decks_layout.setSpacing(SPACE.sm)
         decks_layout.addWidget(self.deck_list)
         decks_layout.addWidget(bulk)
         layout.addWidget(Field("Decks", decks_box))
@@ -171,7 +172,7 @@ class _OldSnapshotsSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         layout.addWidget(caption("These decks already have snapshots. Delete these older snapshots "
                                   "once the new ones have been created?"))
         listing = QLabel("\n".join(snap.label for snap in existing))
@@ -207,7 +208,7 @@ def show_summary(parent: Optional[QWidget], project: ProjectContext, results: li
     body = Surface()
     layout = QVBoxLayout(body)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(10)
+    layout.setSpacing(SPACE.lg)
     layout.addWidget(QLabel(f"{ok} of {len(results)} snapshot(s) created."))
     details = QLabel(deck_snapshot.summary_text(results))
     details.setObjectName(q.PANEL_MONO)

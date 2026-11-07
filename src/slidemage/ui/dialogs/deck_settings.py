@@ -27,6 +27,7 @@ from ...plugins import session
 from ...plugins.host import deck_snapshot
 from ..plugin_ui import DIRTY_SHEET_MESSAGE, HOST_UI
 from ..ai_models import add_route_badge
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, Page, Surface, action_row, caption, columns, set_property
 
 GENERAL, OUTPUT = range(2)
@@ -200,7 +201,7 @@ class DeckSettingsSheet(ModalSheet):
         group = Surface()
         rows = QVBoxLayout(group)
         rows.setContentsMargins(0, 0, 0, 0)
-        rows.setSpacing(10)
+        rows.setSpacing(SPACE.lg)
         self.maintenance_buttons: dict[str, Button] = {}
         for command_id, title, note, label in MAINTENANCE:
             button = Button(label, compact=True)

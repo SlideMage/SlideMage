@@ -641,10 +641,6 @@ def _translated(entry: "alt_images.ImageEntry", language: str = "de") -> tuple[s
     return text.short, text.long, text.takeaway_default
 
 
-def _german(entry: "alt_images.ImageEntry") -> tuple[str, str, str]:
-    return _translated(entry, "de")
-
-
 def apply_one_draft(ctx: ProjectContext, image: str, result: DraftResult, model_label: str, hint: str | None = None,
                     baseline: tuple[str, str, str] | None = None) -> bool:
     """Write one image's draft into the shared store as unreviewed. True if

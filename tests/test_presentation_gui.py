@@ -634,3 +634,64 @@ def test_ending_the_presentation_closes_an_open_colour_dialog(make):
     dialog = open_pen_dialog(controller)
     controller.end()
     assert controller._colour_dialog is None and not dialog.isVisible()
+
+
+@pytest.mark.parametrize("key", ["laser_color", "pen_color"])
+def test_settings_swatch_picker_saves_valid_colours_and_cancel_keeps_them(qapp, monkeypatch, key):
+    from PySide6.QtWidgets import QColorDialog
+    from slidemage.ui.kit.widgets import ColorSwatchButton
+    from slidemage.ui.presentation.settings_page import PresentationTab
+
+    tab = PresentationTab()
+    button = tab.laser_button if key == "laser_color" else tab.pen_button
+    assert isinstance(button, ColorSwatchButton)
+    calls = []
+    chosen = QColor("#8055aaff") if key == "pen_color" else QColor("#55aaff")
+
+    def get_color(start, parent, title, options):
+        calls.append(start)
+        assert parent is tab and title == "Colour"
+        assert bool(options & QColorDialog.ColorDialogOption.ShowAlphaChannel) == (key == "pen_color")
+        return chosen
+
+    monkeypatch.setattr(QColorDialog, "getColor", get_color)
+    button.click()
+    expected = chosen.name(QColor.NameFormat.HexArgb if key == "pen_color" else QColor.NameFormat.HexRgb)
+    assert getattr(PresentationSettings.load(), key) == expected
+    assert button.text() == expected and "#55aaff" in button.styleSheet()
+    chosen = QColor()  # Cancel returns an invalid colour.
+    button.click()
+    assert calls[-1] == QColor(expected)
+    assert getattr(PresentationSettings.load(), key) == expected and button.text() == expected
+    tab._reset()
+    assert getattr(PresentationSettings.load(), key) == getattr(PresentationSettings(), key)
+    assert button.text() == QColor(getattr(PresentationSettings(), key)).name()
+
+
+@pytest.mark.parametrize("tool", ["pen", "laser"])
+def test_presenter_swatch_live_accept_and_cancel_never_persist(make, tool):
+    from slidemage.ui.kit.widgets import ColorSwatchButton
+
+    saved = PresentationSettings()
+    saved.save()
+    controller = make(settings=PresentationSettings.load())
+    key = f"{tool}_color"
+    before = getattr(saved, key)
+    menu = getattr(controller, f"_{tool}_menu")(controller.presenter)
+    swatch = menu.findChildren(ColorSwatchButton)[0]
+    swatch.click()
+    dialog = controller._colour_dialog
+    assert dialog.isVisible() and not dialog.isModal()
+    dialog.setCurrentColor(QColor("#55aaff"))
+    assert QColor(getattr(controller.settings, key)) == QColor("#55aaff")
+    assert "#55aaff" in swatch.styleSheet() and swatch.text() == "Colour"
+    assert PresentationSettings.load() == saved
+    dialog.reject()
+    assert getattr(controller.settings, key) == before
+    assert QColor(before).name() in swatch.styleSheet()
+    swatch.click()
+    controller._colour_dialog.setCurrentColor(QColor("#123456"))
+    controller.accept_colour()
+    assert QColor(getattr(controller.settings, key)) == QColor("#123456")
+    controller.end()
+    assert PresentationSettings.load() == saved

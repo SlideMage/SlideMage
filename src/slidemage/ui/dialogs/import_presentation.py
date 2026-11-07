@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QLineEdit, QM
 
 from ... import languages, slide_import
 from ...deck_scan import Deck, scan_decks
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption
 
 DESCRIPTION = (
@@ -29,7 +30,7 @@ class ImportPresentationSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(SPACE.xl)
         note = caption(DESCRIPTION)
         layout.addWidget(note)
 

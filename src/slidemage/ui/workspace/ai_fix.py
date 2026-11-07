@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Optional
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -39,6 +39,7 @@ from ... import ai_review, syntax_check
 from ...ai import ai_profile, resolver
 from ..ai_models import fill_model_combo, picked_route, built
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
 from .ai_work import RunningWork
@@ -47,20 +48,6 @@ from .source_editor import SourceEditor
 MAX_ROWS_HEIGHT = 230
 DISCLAIMER = ("Heuristic check via a language model, not a real LaTeX compile: it can miss real "
               "problems and flag things that are fine. Review every item yourself.")
-
-
-class _CheckWorker(QThread):
-    """One SyntaxChecker.check() off the GUI thread, so that Esc can abort it."""
-
-    finished_with_result = Signal(object)
-
-    def __init__(self, checker: syntax_check.SyntaxChecker, text: str) -> None:
-        super().__init__()
-        self.checker = checker
-        self.text = text
-
-    def run(self) -> None:
-        self.finished_with_result.emit(self.checker.check(self.text))
 
 
 class _IssueRow(Surface):
@@ -77,8 +64,8 @@ class _IssueRow(Surface):
         self._done = False
         self.setObjectName(q.AI_ROW)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+        layout.setSpacing(SPACE.xs)
         header = QLabel(f"<b>Line {issue.line}:</b> {issue.problem}")
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setWordWrap(True)
@@ -156,7 +143,7 @@ class AiFixPanel(Surface):
         self.app = app
         self.editor = editor
         self.path, self.filename = path, path.name
-        self._worker: Optional[_CheckWorker] = None
+        self._worker: Optional[background.Handle] = None
         self._provider = None   # the running check's provider
         self._route = None      # and the Route it was started on
         self._rows: list[_IssueRow] = []
@@ -164,8 +151,8 @@ class AiFixPanel(Surface):
         self.setObjectName(q.AI_PANEL)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, SPACE.sm)
+        layout.setSpacing(SPACE.sm)
         head = QHBoxLayout()
         self.status = QLabel("")
         self.status.setObjectName(q.SOURCE_NOTE)
@@ -202,7 +189,7 @@ class AiFixPanel(Surface):
         self._rows_holder = Surface()
         self._rows_layout = QVBoxLayout(self._rows_holder)
         self._rows_layout.setContentsMargins(0, 0, 0, 0)
-        self._rows_layout.setSpacing(6)
+        self._rows_layout.setSpacing(SPACE.sm)
         self._rows_layout.addStretch(1)
         self.scroll.setWidget(self._rows_holder)
         layout.addWidget(self.scroll)
@@ -252,12 +239,14 @@ class AiFixPanel(Surface):
             self._route, self._lease = route, lease
             self._clear_rows()
             self.status.setText(f"Checking with {provider.label}… (Esc to abort)")
-            worker = _CheckWorker(syntax_check.SyntaxChecker(provider), self.editor.text())
-            worker.finished_with_result.connect(lambda result, w=worker: self._on_finished(w, result))
-            self._worker = worker
+            self._checker = checker = syntax_check.SyntaxChecker(provider)
+            text = self.editor.text()
+            self._worker = worker = background.run_in_background(
+                lambda: checker.check(text),
+                lambda result, error: self._on_finished(worker, result) if error is None else None, parent=self)
+            worker.finished.connect(lambda: lease.release())
             self.running_changed.emit(True)
             self._show_state()
-            worker.start()
         except BaseException:
             self._worker = None
             lease.release()
@@ -268,7 +257,8 @@ class AiFixPanel(Surface):
         if self._worker is None:
             return False
         self.status.setText("Aborting…")
-        self._worker.checker.abort()
+        self._worker.cancel()
+        self._checker.abort()
         return True
 
     def stop(self) -> None:
@@ -277,7 +267,7 @@ class AiFixPanel(Surface):
         worker, self._worker = self._worker, None
         if worker is None:
             return
-        background.stop_worker(worker, worker.checker.abort, on_done=self._lease.release)
+        worker.stop(self._checker.abort)
         self.running_changed.emit(False)
         self._show_state()
 
@@ -286,12 +276,10 @@ class AiFixPanel(Surface):
         self._clear_rows()
         self.hide()
 
-    def _on_finished(self, worker: _CheckWorker, result: syntax_check.SyntaxCheckResult) -> None:
+    def _on_finished(self, worker: background.Handle, result: syntax_check.SyntaxCheckResult) -> None:
         if worker is not self._worker:      # stopped meanwhile: nobody waits for this result
             return
         self._worker = None
-        worker.wait()
-        worker.deleteLater()
         self._lease.release()
         self.running_changed.emit(False)
         if result.cancelled:

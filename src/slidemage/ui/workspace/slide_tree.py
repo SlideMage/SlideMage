@@ -30,7 +30,7 @@ from ...deck_editor import SlideCall
 from ...deck_outline import SectionRow, SlideRow
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
-from ..kit.tokens import FONT_ICONS, FONT_MONO, FONT_SANS
+from ..kit.tokens import TYPE, RADIUS_SM, pill, FONT_ICONS, FONT_MONO, FONT_SANS
 from .state import WorkspaceState
 from .topbar import VIEW_TONES
 
@@ -171,13 +171,14 @@ class SlideDelegate(QStyledItemDelegate):
         if option.state & QStyle.StateFlag.State_MouseOver:
             painter.setBrush(QColor(t.hover))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(rect, 4, 4)
+            painter.drawRoundedRect(rect, RADIUS_SM, RADIUS_SM)
         painter.setPen(QColor(t.text_2))
+        # The disclosure caret stays small inside its narrow section gutter.
         painter.setFont(self._font(FONT_SANS, 9))
         caret = "▾" if option.state & QStyle.StateFlag.State_Open else "▸"
         painter.drawText(QRectF(rect.left() + 6, rect.top(), 12, rect.height()), Qt.AlignmentFlag.AlignVCenter, caret)
         count = str(len(section.rows))
-        font = self._font(FONT_SANS, 13, QFont.Weight.Medium)
+        font = self._font(FONT_SANS, TYPE.body, QFont.Weight.Medium)
         painter.setFont(font)
         count_width = QFontMetrics(font).horizontalAdvance(count)
         painter.drawText(QRectF(rect.right() - 6 - count_width, rect.top(), count_width, rect.height()),
@@ -185,7 +186,7 @@ class SlideDelegate(QStyledItemDelegate):
         left = rect.left() + 22
         right = rect.right() - 14 - count_width
         if section.chapter is not None and not section.editable:
-            painter.setFont(self._font(FONT_ICONS, 15))
+            painter.setFont(self._font(FONT_ICONS, 16))
             painter.setPen(QColor(t.text_3))
             painter.drawText(QRectF(right - 15, rect.top(), 16, rect.height()), Qt.AlignmentFlag.AlignCenter, "lock")
             right -= 20
@@ -211,28 +212,28 @@ class SlideDelegate(QStyledItemDelegate):
         painter.setPen(Qt.PenStyle.NoPen)
         if fill is not None:
             painter.setBrush(fill)
-            painter.drawRoundedRect(rect, 4, 4)
+            painter.drawRoundedRect(rect, RADIUS_SM, RADIUS_SM)
         if current:
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(view_color, 1.5))
-            painter.drawRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), 4, 4)
+            painter.drawRoundedRect(rect.adjusted(0.75, 0.75, -0.75, -0.75), RADIUS_SM, RADIUS_SM)
         if row.hidden and not current:
             painter.setOpacity(0.4)
 
         if row.unreviewed:
-            font = self._font(FONT_SANS, 10.5, QFont.Weight.Medium)
+            font = self._font(FONT_SANS, TYPE.micro, QFont.Weight.Medium)
             width = QFontMetrics(font).horizontalAdvance("Not reviewed") + 14
             chip = QRectF(rect.left() + THUMB_W + 15, rect.bottom() - 22, width, 16)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(t.warning_bg))
-            painter.drawRoundedRect(chip, 8, 8)
+            painter.drawRoundedRect(chip, pill(chip.height()), pill(chip.height()))
             painter.setFont(font)
             painter.setPen(QColor(t.warning_fg))
             painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, "Not reviewed")
             button = self.review_button(option.rect)
             painter.setBrush(QColor(t.line))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(button, 4, 4)
+            painter.drawRoundedRect(button, RADIUS_SM, RADIUS_SM)
             painter.setPen(QColor(t.text_2))
             painter.setFont(self._font(FONT_ICONS, 16))
             painter.drawText(button, Qt.AlignmentFlag.AlignCenter, "done")
@@ -243,7 +244,7 @@ class SlideDelegate(QStyledItemDelegate):
         pixmap = self._thumbnail(row.thumbnail, painter.device().devicePixelRatioF())
         painter.setPen(QPen(QColor(0, 0, 0, 20), 1))
         painter.setBrush(QColor(t.paper) if pixmap is not None else QColor(t.line))
-        painter.drawRoundedRect(thumb, 3, 3)
+        painter.drawRoundedRect(thumb, RADIUS_SM + 1, RADIUS_SM + 1)
         if pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawPixmap(thumb, pixmap, QRectF(pixmap.rect()))
@@ -257,18 +258,19 @@ class SlideDelegate(QStyledItemDelegate):
         right = rect.right() - 6
         painter.setPen(Qt.PenStyle.NoPen)
         if not row.call.editable:
+            # The per-slide lock stays smaller to leave room for the adjacent variant chip.
             painter.setFont(self._font(FONT_ICONS, 14))
             painter.setPen(QColor(t.text_4))
             painter.drawText(QRectF(right - 14, rect.top(), 15, rect.height()), Qt.AlignmentFlag.AlignCenter, "lock")
             right -= 18
         label = variant_label(row.call)
         if label:
-            font = self._font(FONT_SANS, 10.5, QFont.Weight.Medium)
+            font = self._font(FONT_SANS, TYPE.micro, QFont.Weight.Medium)
             width = QFontMetrics(font).horizontalAdvance(label) + 14
             chip = QRectF(right - width, rect.center().y() - 8, width, 16)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(t.line))
-            painter.drawRoundedRect(chip, 8, 8)
+            painter.drawRoundedRect(chip, pill(chip.height()), pill(chip.height()))
             painter.setFont(font)
             painter.setPen(QColor(t.text_2))
             painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, label)
@@ -276,7 +278,7 @@ class SlideDelegate(QStyledItemDelegate):
 
         # two lines of text: the id line in mono, the title below
         left = thumb.right() + 9
-        meta_font = self._font(FONT_MONO, 10.5)
+        meta_font = self._font(FONT_MONO, TYPE.micro)
         painter.setFont(meta_font)
         meta_color = view_color if current else QColor(t.text_3)
         metrics = QFontMetrics(meta_font)
@@ -296,7 +298,7 @@ class SlideDelegate(QStyledItemDelegate):
             painter.drawText(QRectF(meta_left, rect.center().y() - 15, right - meta_left, 14),
                              Qt.AlignmentFlag.AlignVCenter, text)
             meta_left += metrics.horizontalAdvance(text)
-        title_font = self._font(FONT_SANS, 12.5, QFont.Weight.DemiBold if current else QFont.Weight.Normal)
+        title_font = self._font(FONT_SANS, TYPE.body, QFont.Weight.DemiBold if current else QFont.Weight.Normal)
         title_font.setStrikeOut(row.hidden)
         painter.setFont(title_font)
         painter.setPen(QColor(t.text))

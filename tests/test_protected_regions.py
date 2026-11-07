@@ -38,7 +38,7 @@ def test_moving_the_header_or_the_version_line_is_refused():
     assert protected_problem("\ufeff" + TEXT, "\ufeff" + TEXT.replace("First", "1st")) is None
 
 
-# v0.14.25: a slide's own notes at the top (single '%') are its text; only SlideMage's '%%' lines are protected.
+# v0.14.40: a slide's own notes at the top (single '%') are its text; only SlideMage's '%%' lines are protected.
 NOTED = ("% Source: a paper, slide 3.\n% The chart is to stay this size (2026-07-06, direct instruction).\n%\n"
          "%% Included in decks: test\n%%\n\n\\setSlideVersion{1-0-1}\n\\begin{standardframe}{Hello}\n"
          "\t\\item First point\n\\end{standardframe}\n")

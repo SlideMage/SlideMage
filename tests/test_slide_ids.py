@@ -3,7 +3,8 @@
 import pytest
 from conftest import EXAMPLE_PROJECT
 
-from slidemage import alt_images, deck_headers, processes, slide_ids, slide_language, slide_rename
+from slidemage import alt_images, cli, deck_headers, processes, project as project_module
+from slidemage import slide_ids, slide_language, slide_rename
 
 
 @pytest.fixture
@@ -83,6 +84,26 @@ def test_rename_refuses_digit_first_unless_reserved(ctx, rename_project):
     with pytest.raises(ValueError, match="digit"):
         slide_rename.rename_slide_id(ctx, "2du", "3ab")
     assert slide_rename.rename_slide_id(ctx, "2du", "1ab", reserved=True) == {"2du-EN-Old": "1ab-EN-Old"}
+
+
+@pytest.mark.parametrize("new_id,reserved", [("k7m", False), ("1ab", True)])
+def test_cli_renames_slide_id_without_opening_a_window(rename_project, new_id, reserved, monkeypatch, capsys):
+    (rename_project / project_module.MARKER).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli.diagnostics, "setup", lambda *_a, **_k: None)
+    args = ["--project", str(rename_project), "rename-slide-id", "2du", new_id]
+    cli.main(args + (["--reserved"] if reserved else []))
+    assert capsys.readouterr().out == f"2du-EN-Old -> {new_id}-EN-Old\n"
+    assert (rename_project / "slides" / f"{new_id}-EN-Old-current.tex").is_file()
+    assert (rename_project / "decks" / "d.tex").read_text(encoding="utf-8") == f"\\slide{{{new_id}-EN-Old}}\n"
+
+
+def test_cli_rejects_an_invalid_rename_without_changing_the_slide(rename_project, monkeypatch, capsys):
+    (rename_project / project_module.MARKER).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cli.diagnostics, "setup", lambda *_a, **_k: None)
+    with pytest.raises(SystemExit) as error:
+        cli.main(["rename-slide-id", "2du", "3ab", "--project", str(rename_project)])
+    assert error.value.code == 2 and "digit" in capsys.readouterr().err
+    assert (rename_project / "slides" / "2du-EN-Old-current.tex").is_file()
 
 
 def test_rename_collision_check_ignores_case(ctx, rename_project):

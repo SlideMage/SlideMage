@@ -43,7 +43,9 @@ from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_langu
 from ..dialogs.new_slide_version import NewSlideVersionSheet
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
+from ..kit.widgets import ResetSplitterHandle
 from .centre_tabs import FILE, CentreTab, CentreTabs, TabStrip
 from .details_view import DetailsPane
 from .preview_view import PreviewPane
@@ -65,21 +67,12 @@ CENTRE_TABS_SETTING = "centre_tabs"
 RESUME_TABS_SETTING = "resume_tabs"
 
 
-class _ResetHandle(QSplitterHandle):
-    def mouseDoubleClickEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.splitter().reset_requested.emit()
-            event.accept()
-        else:
-            super().mouseDoubleClickEvent(event)
-
-
 class _SourcePreviewSplitter(QSplitter):
     """Source | Preview; a double-click on the divider gives each half the width again."""
     reset_requested = Signal()
 
     def createHandle(self) -> QSplitterHandle:
-        return _ResetHandle(self.orientation(), self)
+        return ResetSplitterHandle(self.orientation(), self)
 
 
 def ask_update_on_leave(parent, slide_id: str, version: slide_versioning.Version) -> tuple[bool, bool]:
@@ -171,8 +164,8 @@ class CentreColumn(QFrame):
         # floating over the views it covered the Preview's slide id and the editor's last lines.
         self.status_row = QWidget()
         row = QHBoxLayout(self.status_row)
-        row.setContentsMargins(12, 0, 12, 8)
-        row.setSpacing(8)
+        row.setContentsMargins(SPACE.xl, 0, SPACE.xl, SPACE.md)
+        row.setSpacing(SPACE.md)
         row.addStretch(1)
         self.status_row.hide()
         layout = QVBoxLayout(self)

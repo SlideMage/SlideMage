@@ -11,7 +11,7 @@ IMAGE_DESCRIPTION_RULES = (
     "text.<code>.takeaway_default; a slide's own takeaway goes in used_on.<slide>.takeaway.<code>. Preserve the "
     "texts of the other languages and unrelated image metadata; never put text of one language under another "
     "language's code. The conversation's language does not override the slide/deck language. "
-    # v0.14.25, direct request: a new tikz diagram on slide wum was not an image for SlideMage.
+    # v0.14.40, direct request: a new tikz diagram on slide wum was not an image for SlideMage.
     "A tikz drawing is an image for SlideMage (listed on the Images page, described, read out by screen readers) "
     "only inside \\begin{tikzillustration}[options]{ID} ... \\end{tikzillustration}, whose options are "
     "tikzpicture's. When you draw a new tikzpicture that shows content a reader learns from (a chart, a diagram, a "

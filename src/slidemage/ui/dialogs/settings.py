@@ -40,7 +40,7 @@ import shiboken6
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
-from ... import app_settings, diagnostics, slide_preview, slide_snapshot, slide_versioning, updater, version
+from ... import app_settings, diagnostics, slide_preview, slide_templates, slide_versioning, updater, version
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
@@ -142,9 +142,9 @@ class GeneralTab(Page):
             "left off."))
 
         self.template_combo = QComboBox()
-        current = slide_snapshot.render_template(self.app.project)
-        for key in slide_snapshot.available_templates(self.app.project.root):
-            self.template_combo.addItem(slide_snapshot.template_label(key, self.app.project.root), key)
+        current = slide_templates.render_template(self.app.project)
+        for key in slide_templates.available_templates(self.app.project.root):
+            self.template_combo.addItem(slide_templates.template_label(key, self.app.project.root), key)
         self.template_combo.setCurrentIndex(max(self.template_combo.findData(current), 0))
         self.template_combo.currentIndexChanged.connect(self._on_template)
         layout.addWidget(Field("Default template for slides rendered on their own", self.template_combo))
@@ -190,8 +190,8 @@ class GeneralTab(Page):
     def _on_template(self, index: int) -> None:
         key = self.template_combo.itemData(index)
         if key:
-            slide_snapshot.set_render_template(self.app.project, key)
-            self.app.log(f"Default render template set to {slide_snapshot.template_label(key, self.app.project.root)}")
+            slide_templates.set_render_template(self.app.project, key)
+            self.app.log(f"Default render template set to {slide_templates.template_label(key, self.app.project.root)}")
 
     def _add_background_previews(self, layout) -> None:
         """Prepare previews in the background: on/off, only on mains power, speed, disk limit, clear."""

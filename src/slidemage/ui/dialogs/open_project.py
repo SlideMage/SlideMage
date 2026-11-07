@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QCheckBox, QFileDialog, QFrame, QHBoxLayout, QLabe
 from ... import project
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE, TYPE
 from ..kit.widgets import Button, Field, ModalSheet, RowButton, Surface, caption, set_property
 
 ICON_PATH = Path(__file__).resolve().parents[2] / "assets" / "icon.ico"
@@ -48,7 +49,7 @@ class OpenProjectSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(SPACE.xl)
         if first_run:
             layout.addLayout(self._header())
             layout.addWidget(caption(
@@ -78,11 +79,12 @@ class OpenProjectSheet(ModalSheet):
 
     def _header(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(12)
+        row.setSpacing(SPACE.xl)
         logo = QLabel()
+        # The app logo is a brand mark, larger than an action glyph.
         logo.setPixmap(QIcon(str(ICON_PATH)).pixmap(36, 36))
         row.addWidget(logo)
-        title = QLabel("<b style='font-size:20px'>SlideMage</b>")
+        title = QLabel(f"<b style='font-size:{TYPE.display}px'>SlideMage</b>")
         row.addWidget(title)
         row.addWidget(caption(self._app_version.lstrip("v")))
         row.addStretch(1)
@@ -123,8 +125,8 @@ class OpenProjectSheet(ModalSheet):
         form = QFrame()
         form.setObjectName(q.LIST_BOX)
         layout = QVBoxLayout(form)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(SPACE.s_2xl, SPACE.xl, SPACE.s_2xl, SPACE.xl)
+        layout.setSpacing(SPACE.lg)
         title = QLabel("New project")
         title.setObjectName(q.ROW_NAME)
         layout.addWidget(title)
@@ -231,7 +233,7 @@ class NewerProjectSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         if opening:
             text = (f"<b>{name}</b> was last saved by SlideMage {last}. This is {current}. Opening it "
                     "here can write files in the older format and break things the newer version "

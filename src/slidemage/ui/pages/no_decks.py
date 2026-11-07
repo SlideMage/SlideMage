@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..workspace import maintenance
 from ..kit.widgets import Card, RowButton, caption
@@ -26,8 +27,9 @@ class NoDecksPage(QWidget):
         card = Card()
         card.setFixedWidth(520)
         layout = card.layout()
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(14)
+        # The centred empty state keeps more breathing room than a content card.
+        layout.setContentsMargins(2 * SPACE.s_2xl, SPACE.s_2xl + SPACE.xl, 2 * SPACE.s_2xl, SPACE.s_2xl + SPACE.xl)
+        layout.setSpacing(SPACE.xl)
         title = QLabel("This project has no decks yet")
         title.setObjectName(q.SHEET_TITLE)
         note = caption("A deck is the list of slides for one course or talk. Slides live once in "

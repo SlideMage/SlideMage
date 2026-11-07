@@ -31,7 +31,7 @@ def protected_problem(before: str, after: str) -> str | None:
     """The message to give the model when `after` differs from `before` in a protected part.
     Guaranteed: the protected texts are unchanged and in the same order. The `%%` lines are found only inside the
     leading comment block (protected_regions), so moving them out of it, or putting a non-comment line above them,
-    loses them and is refused too; the ordinary `%` notes around them may change (v0.14.25). Where a version line
+    loses them and is refused too; the ordinary `%` notes around them may change (v0.14.40). Where a version line
     sits among the ordinary text is not checked."""
     def parts(text: str) -> list[str]:
         return list(mask_protected_regions(text).placeholders.values())

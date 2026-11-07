@@ -20,20 +20,12 @@ import re
 from pathlib import Path
 
 from .compat_types import APPEARANCE, Change, Finding
+from .compat_util import drop_template_lines, read_template_lines, template_paths
 
 BS = chr(92)
 CHANGE_ID = "project-macros-by-the-framework"
 
 _LINE = re.compile(r"^" + re.escape(BS + "input{SlideMage_project_macros") + r"(?:\.tex)?\}[ \t]*(?:%.*)?$")
-
-
-def _read(path: Path) -> tuple[list[str], str]:
-    raw = path.read_bytes().decode("utf-8")
-    return raw.replace("\r\n", "\n").split("\n"), ("\r\n" if "\r\n" in raw else "\n")
-
-
-def _templates(root: Path):
-    yield from sorted(root.glob("SlideMage_template_*.tex"))
 
 
 def _hits(lines: list[str]) -> list[int]:
@@ -49,9 +41,9 @@ def _intro(lines: list[str], at: int) -> bool:
 
 def detect(root: Path) -> list[Finding]:
     out = []
-    for path in _templates(root):
+    for path in template_paths(root):
         try:
-            lines, _eol = _read(path)
+            lines, _eol = read_template_lines(path)
         except (OSError, UnicodeDecodeError):
             continue
         for i in _hits(lines):
@@ -61,23 +53,7 @@ def detect(root: Path) -> list[Finding]:
 
 
 def migrate(root: Path) -> dict[Path, bytes]:
-    plan: dict[Path, bytes] = {}
-    for path in _templates(root):
-        try:
-            lines, eol = _read(path)
-        except (OSError, UnicodeDecodeError):
-            continue
-        hits = _hits(lines)
-        if not hits:
-            continue
-        drop: set[int] = set()
-        for at in hits:
-            drop.add(at)
-            if _intro(lines, at):
-                drop.add(at - 1)
-        kept = [ln for i, ln in enumerate(lines) if i not in drop]
-        plan[path.relative_to(root)] = eol.join(kept).encode("utf-8")
-    return plan
+    return drop_template_lines(root, _hits, _intro)
 
 
 CHANGE = Change(

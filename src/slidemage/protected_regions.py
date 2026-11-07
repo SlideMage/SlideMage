@@ -10,7 +10,7 @@ were. That is the metadata SlideMage maintains itself: every header line it writ
 `%%` ("%% Included in decks:", "%% Translation of:", "%% <LANG> translation:", the "%%" lines that close
 those blocks, "%% layout-check:").
 
-(v0.14.25, direct request: until then the whole leading comment block was protected, including the
+(v0.14.40, direct request: until then the whole leading comment block was protected, including the
 ordinary `%` notes a slide carries there: its source, the user's dated instructions, layout notes. The
 Claude plugin told the model only the `%%` block was protected, so an edit of such a note was refused
 again and again. Those notes are the slide's own text, so they are editable now; only the `%%` lines are

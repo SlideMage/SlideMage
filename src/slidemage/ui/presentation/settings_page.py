@@ -8,18 +8,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QPushButton, QSpinBox, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ...presentation import layout
 from ...presentation.screens import ScreenInfo
 from ...presentation.settings import TIMER_DURATION, TIMER_END, PresentationSettings
-from ..kit.widgets import Field, Page, Surface, caption, columns
+from ..kit.widgets import ColorSwatchButton, Field, Page, Surface, caption, columns
 
 TIMER_MODES = ((TIMER_END, "End time of day"), (TIMER_DURATION, "Duration"))
 CLOCK_FORMATS = (("system", "System setting"), ("24", "24 hours"), ("12", "12 hours"))
-
-
-def _swatch(button: QPushButton, color: str) -> None:
-    button.setText(QColor(color).name(QColor.NameFormat.HexArgb) if QColor(color).alpha() != 255 else QColor(color).name())
-    button.setStyleSheet(f"border-left: 22px solid {QColor(color).name()};")
 
 
 class PresentationTab(Page):
@@ -40,9 +36,9 @@ class PresentationTab(Page):
             "Which screen elements the presenter window shows and where. P switches the layout while presenting. "
             "The projector always shows only the slide."))
 
-        self.laser_button, self.pen_button = QPushButton(), QPushButton()
+        self.laser_button, self.pen_button = ColorSwatchButton(""), ColorSwatchButton("")
         for button, key, alpha in ((self.laser_button, "laser_color", False), (self.pen_button, "pen_color", True)):
-            _swatch(button, getattr(values, key))
+            self._show_color(button, getattr(values, key))
             button.clicked.connect(lambda _checked=False, b=button, k=key, a=alpha: self._pick(b, k, a))
         self.pen_width = QDoubleSpinBox()
         self.pen_width.setRange(0.2, 5.0)
@@ -101,7 +97,7 @@ class PresentationTab(Page):
         checks = Surface()
         stack = QVBoxLayout(checks)
         stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(4)
+        stack.setSpacing(SPACE.xs)
         for check in (self.timer_start, self.timer_flash, self.timer_warn):
             stack.addWidget(check)
         body.addWidget(Field("Timer behaviour", checks))
@@ -135,12 +131,18 @@ class PresentationTab(Page):
         setattr(self.values, key, value)
         self.values.save()
 
-    def _pick(self, button: QPushButton, key: str, alpha: bool) -> None:
+    @staticmethod
+    def _show_color(button: ColorSwatchButton, color: str) -> None:
+        value = QColor(color)
+        button.setText(value.name(QColor.NameFormat.HexArgb) if value.alpha() != 255 else value.name())
+        button.set_color(color)
+
+    def _pick(self, button: ColorSwatchButton, key: str, alpha: bool) -> None:
         options = QColorDialog.ColorDialogOption.ShowAlphaChannel if alpha else QColorDialog.ColorDialogOption(0)
         color = QColorDialog.getColor(QColor(getattr(self.values, key)), self, "Colour", options)
         if color.isValid():
             self._set(key, color.name(QColor.NameFormat.HexArgb) if alpha else color.name())
-            _swatch(button, getattr(self.values, key))
+            self._show_color(button, getattr(self.values, key))
 
     def _reset(self) -> None:
         defaults = PresentationSettings()
@@ -148,8 +150,8 @@ class PresentationTab(Page):
         self.values = defaults
         for combo, value in ((self.profile_combo, defaults.profile),):
             combo.setCurrentIndex(max(combo.findText(value), 0))
-        _swatch(self.laser_button, defaults.laser_color)
-        _swatch(self.pen_button, defaults.pen_color)
+        self._show_color(self.laser_button, defaults.laser_color)
+        self._show_color(self.pen_button, defaults.pen_color)
         self.pen_width.setValue(defaults.pen_width * 100)
         self.laser_size.setValue(defaults.laser_size * 100)
         self.eraser_size.setValue(defaults.eraser_size * 100)
