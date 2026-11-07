@@ -17,7 +17,7 @@ from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import (QAccessible, QColor, QFont, QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPixmap,
+from PySide6.QtGui import (QAccessible, QColor, QFont, QGuiApplication, QIcon, QImage, QKeyEvent, QMouseEvent, QPainter, QPixmap,
                            QRegion)
 
 try:                    # Qt 6.8 and later; older Qt has no live announcements
@@ -26,7 +26,6 @@ except ImportError:
     QAccessibleAnnouncementEvent = None
 from PySide6.QtWidgets import (
     QApplication,
-    QListWidget,
     QButtonGroup,
     QDialog,
     QFrame,
@@ -50,6 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import kit_qss as q
+from .fonts import load_fonts
 from .tokens import FONT_ICONS, FONT_SANS, SHADOWS
 
 
@@ -57,6 +57,30 @@ def icon_font(px: int) -> QFont:
     font = QFont(FONT_ICONS)
     font.setPixelSize(px)
     return font
+
+
+def draw_glyph(glyph: str, color: str, glyph_px: int, canvas_px: int, scale: int) -> QImage:
+    """Draw a Material Icons ligature at physical scale, centred on a transparent square."""
+    load_fonts()
+    image = QImage(canvas_px * scale, canvas_px * scale, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    painter.setFont(icon_font(glyph_px * scale))
+    painter.setPen(QColor(color))
+    painter.drawText(image.rect(), Qt.AlignmentFlag.AlignCenter, glyph)
+    painter.end()
+    return image
+
+
+def glyph_icon(name: str, color: str, px: int = 16) -> QIcon:
+    """A Material Icons name as a QIcon with 1x and 2x pixmaps."""
+    icon = QIcon()
+    for scale in (1, 2):
+        pixmap = QPixmap.fromImage(draw_glyph(name, color, px, px, scale))
+        pixmap.setDevicePixelRatio(scale)
+        icon.addPixmap(pixmap)
+    return icon
 
 
 def apply_shadow(widget: QWidget, name: str = "raised") -> None:
@@ -191,15 +215,28 @@ class _EnterPresses:
             super().keyPressEvent(event)
 
 
+class ColorSwatchButton(QPushButton):
+    """Display a colour beside the caller's label; dialog and storage belong to the caller."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__(label)
+
+    def set_color(self, color: str | QColor) -> None:
+        # Keep the existing opaque swatch even when the pen colour includes alpha.
+        self.setStyleSheet(f"border-left: 22px solid {QColor(color).name()}; padding: 3px 8px;")
+
+
 class IconButton(_EnterPresses, QToolButton):
     """Flat icon-only button (30 px for the prototype's 18 px icon). `clicked`
     is the plain QAbstractButton signal; `set_active(True)` keeps the hover
     wash while the menu it opened is showing. Its tooltip is also its accessible name (the text is the icon's
     ligature, which a screen reader would spell out)."""
 
-    def __init__(self, name: str, tooltip: str = "", size: int = 18, parent: QWidget | None = None) -> None:
+    def __init__(self, name: str, tooltip: str = "", size: int = 18, parent: QWidget | None = None,
+                 *, faint: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName(q.ICON_BUTTON)
+        self.setProperty("faint", faint)
         self.setText(name)
         self.setFont(icon_font(size))
         self.setToolTip(tooltip)
@@ -216,6 +253,10 @@ class IconButton(_EnterPresses, QToolButton):
 
     def set_active(self, active: bool) -> None:
         set_property(self, "active", active)
+
+    def set_faint(self, faint: bool) -> None:
+        """Dim the glyph; the caller controls row hover and focus feedback (SlideMage v0.14.36)."""
+        set_property(self, "faint", faint)
 
 
 class DropdownButton(ClickFrame):
@@ -579,14 +620,17 @@ class Chip(ClickFrame):
     tone: neutral, muted, info, warning, error, ok. Emits `clicked`. A `pressable` chip is a button: a Tab stop
     (from Tab only, so the 2px focus ring is a keyboard ring) that Enter and Space press, named by its tooltip; its
     ring is a transparent border until it has the focus (kit_qss), so the chip does not move. An `elide` chip
-    shortens its text with "…" rather than widen its column (say the full text in its tooltip)."""
+    shortens its text with "…" rather than widen its column (say the full text in its tooltip).
+    `mono` uses micro-size monospace metadata (SlideMage v0.14.36)."""
 
     RING = 2
 
     def __init__(self, text: str, tone: str = "neutral", icon: str | None = None,
-                 parent: QWidget | None = None, *, pressable: bool = False, elide: bool = False) -> None:
+                 parent: QWidget | None = None, *, pressable: bool = False, elide: bool = False,
+                 mono: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName(q.CHIP)
+        self.setProperty("mono", mono)
         self.setProperty("tone", tone)
         ring = self.RING if pressable else 0
         if pressable:

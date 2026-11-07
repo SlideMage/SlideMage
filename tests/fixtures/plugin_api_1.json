@@ -1092,6 +1092,11 @@
             "name": "pressable",
             "kind": "KEYWORD_ONLY",
             "required": false
+          },
+          {
+            "name": "mono",
+            "kind": "KEYWORD_ONLY",
+            "required": false
           }
         ],
         "ElidedLabel": [
@@ -1138,6 +1143,11 @@
             "name": "tooltip",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          },
+          {
+            "name": "faint",
+            "kind": "KEYWORD_ONLY",
+            "required": false
           }
         ],
         "IconLabel": [
@@ -1635,6 +1645,28 @@
             "name": "self",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          }
+        ],
+        "icon": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "name",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "color",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "px",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
           }
         ],
         "insert_positions": [

@@ -350,9 +350,9 @@ class PluginHost(Registrar):
         from ..ui.kit.widgets import Button
         return Button(text, kind, compact=compact)
 
-    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False):
+    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False, mono=False):
         from ..ui.kit.widgets import Chip
-        return Chip(text, tone, icon, pressable=pressable, elide=elide)
+        return Chip(text, tone, icon, pressable=pressable, elide=elide, mono=mono)
 
     def Window(self, title):
         from ..ui.kit.widgets import ToolWindow
@@ -397,9 +397,14 @@ class PluginHost(Registrar):
         toast = next((c for c in parent.findChildren(Toast)), None) or Toast(parent)
         toast.show_message(text)
 
-    def IconButton(self, icon, tooltip):
+    def IconButton(self, icon, tooltip, *, faint=False):
         from ..ui.kit.widgets import IconButton
-        return IconButton(icon, tooltip)
+        return IconButton(icon, tooltip, faint=faint)
+
+    def icon(self, name, color, px=16):
+        """A Material Icons ligature as a QIcon with 1x and 2x pixmaps (SlideMage v0.14.36)."""
+        from ..ui.kit.widgets import glyph_icon
+        return glyph_icon(name, color, px)
 
     def IconLabel(self, icon, size):
         from ..ui.kit.widgets import IconLabel

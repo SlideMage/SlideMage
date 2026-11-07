@@ -103,7 +103,6 @@ def page_with(draw, hooks):
 
 
 def test_the_logo_detection_window_covers_a_tall_logo_a_title_frame_draws_low():
-    width = 455.24
 
     def draw(y0, y1, x1):
         def inner(page):

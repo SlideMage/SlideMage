@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 if TYPE_CHECKING:
     import threading
+    from PySide6.QtGui import QIcon
 
     from .ai.providers import ChatProvider
 if TYPE_CHECKING:       # for type checkers only: at run time these load on first use (see __getattr__)
@@ -866,12 +867,12 @@ class Host(Protocol):
 
     def Chip(
         self, text: str, tone: str = "neutral", *, icon: str | None = None, elide: bool = False,
-        pressable: bool = False,
+        pressable: bool = False, mono: bool = False,
     ) -> Widget:
         """A status chip with set_text, set_tone and set_icon; it emits clicked. tone is "neutral", "muted", "info",
         "warning", "error" or "ok". icon is a Material icon's name; an elide chip shortens its text with "…" rather
         than widen its column; a pressable chip is a button for the keyboard too, named by its tooltip (the keyword
-        arguments came with SlideMage v0.13.21)."""
+        arguments came with SlideMage v0.13.21). mono uses the micro monospace font (SlideMage v0.14.36)."""
         ...
 
     def Window(self, title: str) -> Widget:
@@ -944,8 +945,13 @@ class Host(Protocol):
         (SlideMage v0.13.21)."""
         ...
 
-    def IconButton(self, icon: str, tooltip: str) -> Widget:
-        """A themed icon button."""
+    def IconButton(self, icon: str, tooltip: str, *, faint: bool = False) -> Widget:
+        """A themed icon button. faint dims the glyph; set_faint(bool) switches it for row hover/focus feedback
+        controlled by the plugin (SlideMage v0.14.36)."""
+        ...
+
+    def icon(self, name: str, color: str, px: int = 16) -> QIcon:
+        """A Material Icons ligature name as a QIcon with 1x and 2x pixmaps (SlideMage v0.14.36)."""
         ...
 
     def IconLabel(self, icon: str, size: int) -> Widget:

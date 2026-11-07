@@ -5,7 +5,15 @@ Plugins use the public `slidemage.plugin_api` contract and the host passed to `a
 ## Looking like SlideMage
 
 Build your UI with the host's themed widgets, such as `host.Card`, `host.Chip`, `host.Label` and
-`host.IconButton`. They follow the app theme automatically.
+`host.IconButton`. They follow the app theme automatically. Use `host.Chip("1-0-0", mono=True)`
+for micro-size monospace metadata. `host.IconButton("more_vert", "More", faint=True)` dims a glyph;
+call its public `set_faint(bool)` when your row's hover or keyboard focus changes. The plugin owns
+that interaction logic. These options are additive (SlideMage v0.14.36); existing calls keep their look.
+
+Use `host.icon("check", host.theme().ok, px=16)` for a `QIcon` on a text button or other Qt control
+(SlideMage v0.14.36). Names are Material Icons ligatures, just like `host.IconLabel` and
+`host.IconButton`; the returned icon includes 1x and 2x pixmaps. Rebuild icons whose colours come
+from the theme in your `on_theme_changed` callback.
 
 For your own widgets, read sizes and colours from `host.theme()` (expanded in SlideMage v0.14.36):
 `font_body` and the other `font_*` sizes are pixels; `font_sans` and `font_mono` are font families.
