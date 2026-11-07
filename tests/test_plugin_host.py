@@ -75,7 +75,7 @@ def test_settings_save_is_atomic(host, monkeypatch):
     def boom(*args):
         raise OSError("disk")
 
-    monkeypatch.setattr(host_module.os, "replace", boom)
+    monkeypatch.setattr(os, "replace", boom)
     with pytest.raises(OSError):
         s.save()
     assert json.loads(s.path.read_text(encoding="utf-8")) == {"a": 1}

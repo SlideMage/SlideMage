@@ -13,6 +13,8 @@ renders running now, the disk space used and the controls: pause, render now, re
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import os
 import sys
 from pathlib import Path
@@ -29,6 +31,7 @@ from ...background_renders import BackgroundRenderer
 from ...plugins import session
 from ...plugins.host import plugin_render_priority
 from ..kit.widgets import Chip
+from ..kit.tokens import LIGHT, Tokens
 
 NO_BACKGROUND_ENV = "SLIDEMAGE_NO_BACKGROUND_PREVIEWS"     # set by the tests: nothing renders by itself
 REFRESH_MS = 1000
@@ -73,8 +76,10 @@ class Dial(QWidget):
 
     clicked = Signal()
 
-    def __init__(self, parent: QWidget | None = None, size: int = DIAL_SIZE, clickable: bool = True) -> None:
+    def __init__(self, parent: QWidget | None = None, size: int = DIAL_SIZE, clickable: bool = True,
+                 *, tokens: Callable[[], Tokens] = lambda: LIGHT) -> None:
         super().__init__(parent)
+        self._tokens = tokens
         self.percent = 0.0
         self.state = "idle"          # idle, working, waiting, done, failed
         self.setFixedSize(QSize(size, size))
@@ -106,7 +111,8 @@ class Dial(QWidget):
         text = self.palette().windowText().color()
         track = QColor(text)
         track.setAlpha(50)
-        colours = {"done": QColor("#2e9e5b"), "working": QColor("#2f7fd8"), "failed": QColor("#d9822b")}
+        tokens = self._tokens()
+        colours = {"done": QColor(tokens.ok), "working": QColor(tokens.info), "failed": QColor(tokens.warning)}
         arc = colours.get(self.state, QColor(text))
         if self.state in ("idle", "waiting"):
             arc.setAlpha(150)
@@ -142,7 +148,7 @@ class StatusDialog(QDialog):
         self.summary.setWordWrap(True)
         self.summary.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         top.addWidget(self.summary, 1)
-        self.dial = Dial(self, BIG_DIAL_SIZE, clickable=False)
+        self.dial = Dial(self, BIG_DIAL_SIZE, clickable=False, tokens=lambda: controller.window.theme.tokens)
         top.addWidget(self.dial, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(top)
         self.overall = QProgressBar()
@@ -354,7 +360,7 @@ class BackgroundPreviews(QObject):
         self.chip = Chip("", "info", pressable=True, parent=central)
         self.chip.hide()
         self.chip.clicked.connect(self.show_status)
-        self.dial = Dial(central)
+        self.dial = Dial(central, tokens=lambda: window.theme.tokens)
         self.dial.hide()
         self.dial.clicked.connect(self.show_status)
         self._status_dialog: Optional[StatusDialog] = None
@@ -694,7 +700,7 @@ class BackgroundPreviews(QObject):
         self.renderer.replan()
 
     def show_failures(self) -> None:
-        lines = [f"{f['error'].strip().splitlines()[0] if f['error'].strip() else f['kind']}" for f in self.store.failures()[:20]]
+        lines = [f"{f['error'].strip().splitlines()[0] if f['error'].strip() else f['kind']}" for f in self.renderer.current_failures()[:20]]
         QMessageBox.information(self.window, "Slides that cannot be rendered", "\n".join(lines) or "None.")
 
     def retry_failed(self) -> None:

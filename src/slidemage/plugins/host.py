@@ -9,10 +9,8 @@ HostUi they raise RuntimeError("no window").
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
-import os
 import types
 from collections.abc import Callable
 from pathlib import Path
@@ -23,7 +21,7 @@ from .. import (app_settings, deck_editor, deck_scan, diagnostics, languages, op
                slide_language, transcript)
 from ..deck_scan import Deck as CoreDeck
 from ..fileio import StaleFileError as CoreStaleFileError
-from ..fileio import atomic_write, read_text_exact
+from ..fileio import atomic_write, read_json, read_text_exact, write_json
 from ..project import ProjectContext
 from .credentials import PluginCredentials
 from .manifest import Manifest
@@ -89,13 +87,7 @@ class PluginSettings:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._data: dict[str, Any] = {}
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                self._data = data
-        except (OSError, ValueError):
-            pass
+        self._data: dict[str, Any] = read_json(path)
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)
@@ -105,13 +97,7 @@ class PluginSettings:
         self._data[key] = value
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(self.path.name + ".tmp")
-        try:
-            tmp.write_text(json.dumps(self._data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            os.replace(tmp, self.path)
-        finally:
-            tmp.unlink(missing_ok=True)
+        write_json(self.path, self._data, sort_keys=False)
 
 
 # -- the host --------------------------------------------------------------------------------------------------
@@ -169,31 +155,8 @@ class PluginHost(Registrar):
     def run_in_background(
         self, work: Callable[[], T], done: Callable[[T | None, BaseException | None], None],
     ) -> None:
-        from PySide6.QtCore import QThread
-
-        from ..ui.background import start_detached
-
-        class Worker(QThread):
-            result: Any = None
-            error: BaseException | None = None
-
-            def run(self) -> None:
-                try:
-                    self.result = work()
-                except BaseException as e:      # handed to done(), never lost on the thread
-                    self.error = e
-
-        thread = Worker()
-
-        def finished() -> None:
-            try:
-                done(thread.result, thread.error)
-            except Exception:
-                self._logger.exception("done() of run_in_background raised")
-            finally:
-                thread.deleteLater()
-
-        start_detached(thread, finished)
+        from ..ui.background import run_in_background
+        run_in_background(lambda: work(), done, logger=self._logger)
 
     def insert_positions(self, deck: plugin_api.Deck) -> list[plugin_api.InsertPosition]:
         view = types.SimpleNamespace(text=deck.text, chapters=deck_scan.parse_chapters(deck.text))
@@ -336,43 +299,8 @@ class PluginHost(Registrar):
         return peek_ollama_host(self.ctx)
 
     def run_in_background_with_progress(self, work, progress, done) -> None:
-        from PySide6.QtCore import QObject, QThread, Signal
-
-        from ..ui.background import start_detached
-
-        class Worker(QThread):
-            reported = Signal(object)
-            result = None
-            error = None
-
-            def run(self) -> None:
-                try:
-                    self.result = work(self.reported.emit)
-                except BaseException as exc:
-                    self.error = exc
-
-        class Receiver(QObject):
-            def report(self, value) -> None:
-                try:
-                    progress(value)
-                except Exception:
-                    self_logger.exception("progress callback raised")
-
-        self_logger = self._logger
-        thread = Worker()
-        receiver = Receiver()
-        thread.reported.connect(receiver.report)
-
-        def finished() -> None:
-            try:
-                done(thread.result, thread.error)
-            except Exception:
-                self._logger.exception("done callback raised")
-            finally:
-                receiver.deleteLater()
-                thread.deleteLater()
-
-        start_detached(thread, finished)
+        from ..ui.background import run_in_background_with_progress
+        run_in_background_with_progress(work, progress, done, logger=self._logger)
 
     def ai_tools(
         self, scope: Literal["slide", "deck"] = "slide", *, focus_slide: Path | None = None,
@@ -422,9 +350,9 @@ class PluginHost(Registrar):
         from ..ui.kit.widgets import Button
         return Button(text, kind, compact=compact)
 
-    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False):
+    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False, mono=False):
         from ..ui.kit.widgets import Chip
-        return Chip(text, tone, icon, pressable=pressable, elide=elide)
+        return Chip(text, tone, icon, pressable=pressable, elide=elide, mono=mono)
 
     def Window(self, title):
         from ..ui.kit.widgets import ToolWindow
@@ -469,9 +397,14 @@ class PluginHost(Registrar):
         toast = next((c for c in parent.findChildren(Toast)), None) or Toast(parent)
         toast.show_message(text)
 
-    def IconButton(self, icon, tooltip):
+    def IconButton(self, icon, tooltip, *, faint=False):
         from ..ui.kit.widgets import IconButton
-        return IconButton(icon, tooltip)
+        return IconButton(icon, tooltip, faint=faint)
+
+    def icon(self, name, color, px=16):
+        """A Material Icons ligature as a QIcon with 1x and 2x pixmaps (SlideMage v0.14.36)."""
+        from ..ui.kit.widgets import glyph_icon
+        return glyph_icon(name, color, px)
 
     def IconLabel(self, icon, size):
         from ..ui.kit.widgets import IconLabel
@@ -482,6 +415,7 @@ class PluginHost(Registrar):
         widget.setObjectName({"surface": q.SURFACE, "cloud_card": q.CLOUD_CARD, "title": q.ASSISTANT_TITLE}[role])
 
     def theme_color(self, role):
+        """Deprecated: use theme().info instead. Kept as a quiet compatibility wrapper."""
         if role != "info":
             raise ValueError(role)
         return self.theme().info
@@ -535,10 +469,61 @@ def _theme_tokens(dark: bool) -> plugin_api.ThemeTokens:
     from ..ui.kit import tokens
 
     t = tokens.tokens_for(dark)
-    names = (f.name for f in dataclasses.fields(plugin_api.ThemeTokens) if hasattr(t, f.name))
     return plugin_api.ThemeTokens(
-        dark=dark, radius_sm=tokens.RADIUS_SM, radius_md=tokens.RADIUS_MD, font_sans=tokens.FONT_SANS,
-        font_mono=tokens.FONT_MONO, **{name: getattr(t, name) for name in names})
+        dark=dark,
+        bg=t.bg,
+        surface=t.surface,
+        text=t.text,
+        text_2=t.text_2,
+        text_3=t.text_3,
+        text_4=t.text_4,
+        line=t.line,
+        hover=t.hover,
+        inverse=t.inverse,
+        on_inverse=t.on_inverse,
+        focus=t.focus,
+        on_solid=t.on_solid,
+        ok=t.ok,
+        ok_bg=t.ok_bg,
+        ok_fg=t.ok_fg,
+        warning=t.warning,
+        warning_bg=t.warning_bg,
+        warning_fg=t.warning_fg,
+        error=t.error,
+        error_bg=t.error_bg,
+        error_fg=t.error_fg,
+        info=t.info,
+        info_bg=t.info_bg,
+        info_fg=t.info_fg,
+        radius_sm=tokens.RADIUS_SM,
+        radius_md=tokens.RADIUS_MD,
+        font_sans=tokens.FONT_SANS,
+        font_mono=tokens.FONT_MONO,
+        font_micro=tokens.TYPE.micro,
+        font_small=tokens.TYPE.small,
+        font_body=tokens.TYPE.body,
+        font_control=tokens.TYPE.control,
+        font_heading=tokens.TYPE.heading,
+        font_title=tokens.TYPE.title,
+        font_display=tokens.TYPE.display,
+        space_2xs=tokens.SPACE.s_2xs,
+        space_xs=tokens.SPACE.xs,
+        space_sm=tokens.SPACE.sm,
+        space_md=tokens.SPACE.md,
+        space_lg=tokens.SPACE.lg,
+        space_xl=tokens.SPACE.xl,
+        space_2xl=tokens.SPACE.s_2xl,
+        radius_xs=tokens.RADIUS_XS,
+        accents=tokens.ACCENTS["dark" if dark else "light"],
+        link=t.link,
+        selection=t.selection,
+        syntax_comment=t.syntax_comment,
+        syntax_command=t.syntax_command,
+        syntax_brace=t.syntax_brace,
+        syntax_env=t.syntax_env,
+        syntax_math=t.syntax_math,
+        syntax_todo=t.syntax_todo,
+    )
 
 
 def _slide_source(frame: str) -> str:

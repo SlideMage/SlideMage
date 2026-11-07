@@ -224,7 +224,6 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     assert len(list((cache.root / 'images').glob('*.png'))) == (2 if small else 3)
     assert [entry.pdf.read_bytes() for entry in entries] == [b'instructor', b'during-course', b'after-course']
     assert entries[-1].deduplicated_images == 4  # its pages and thumbnail are all blobs stored for the first view
-    assert cache.equivalent_views(identity, env) == ('instructor', 'during-course', 'after-course')
     assert cache.lookup(identity, env).raster_sequence['signature'] == sequence['signature']
     # An unrelated reveal corruption cannot change the final image shown by
     # either surface, but it invalidates a full sequence/equality consumer.
@@ -234,10 +233,9 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     assert cache.display_lookup(identity, env).display_png == sequence['images'][-1]
     assert cache.thumbnail_path(identity, env, preview_cache.ValidationPass()) is not None
     assert cache.lookup(identity, env) is None
-    assert cache.equivalent_views(identity, env) == ()
-    # An input edit revokes all equality evidence, even unchanged pixel content.
+    # An input edit invalidates the other views too, even with unchanged pixel content.
     package.write_text('THEME TWO')
-    assert cache.equivalent_views(identity, env) == ()
+    assert cache.lookup({**identity, 'view': 'during-course'}, env) is None
 
 
 def test_prune_shared_blobs_honors_live_generation_and_corruption_misses(tmp_path):
@@ -344,7 +342,8 @@ def test_frame_and_scope_keep_separate_equivalence_identities(tmp_path):
         assert cache.store({**identity, 'view': view, 'target': {'frame_number': frame}}, env,
                            pdf=pdf, raster_sequence=raster, dependencies=(str(source), str(package)),
                            before=cache.begin(env))
-    assert cache.equivalent_views(identity, env) == ('instructor',)
+    assert cache.lookup(identity, env) is not None
+    assert cache.lookup({**identity, 'view': 'during-course'}, env) is None
     for options in ({'mode': 'region'}, {'presenter': True}, {'overlay': 2}, {'mode': 'element'}):
         assert cache.store({**identity, 'options': options}, env, pdf=pdf, raster_sequence=raster,
                            dependencies=(str(source),), before=cache.begin(env)) is None

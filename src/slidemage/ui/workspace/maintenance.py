@@ -33,7 +33,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from ... import alt_images, app_settings, bundled_copies, compat, housekeeping, open_path, project, project_access
 from ... import slide_preview, slide_rename, updater
-from ... import citation_sources, citations, diagnostics, slide_snapshot, theme_sources, themes
+from ... import citation_sources, citations, diagnostics, slide_templates, theme_sources, themes
 from ... import version as version_mod
 from ...plugins import catalogue as plugin_catalogue
 from ...plugins import session as plugin_session
@@ -954,7 +954,7 @@ def on_theme_installed(window, key: str) -> None:
     if renderer is not None:
         renderer.replan()
     deck = window.state.deck
-    if deck is not None and slide_snapshot.detect_template(deck.preamble_text) == key:
+    if deck is not None and slide_templates.detect_template(deck.preamble_text) == key:
         window.centre.preview.render_after_save()
 
 

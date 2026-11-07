@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import compiler, deck_snapshot, project, slide_snapshot, themes
+from slidemage import compiler, deck_snapshot, project, slide_templates, themes
 from slidemage.project import ProjectContext
 
 REPO = Path(__file__).resolve().parents[1]
@@ -313,7 +313,7 @@ def test_a_snapshot_compile_gets_no_theme_folders(package, tmp_path, monkeypatch
     ctx = make_ctx(tmp_path)
     monkeypatch.setattr(project, "is_snapshot", lambda root: True)
     assert "TEXINPUTS" not in compiler.build_env(ctx)
-    assert slide_snapshot.template_dirs(ctx.root)[-1] != themes.themes_dir() / "sample-theme"
+    assert slide_templates.template_dirs(ctx.root)[-1] != themes.themes_dir() / "sample-theme"
 
 
 def test_preview_equivalence_accepts_exactly_the_theme_search_path(package, tmp_path, monkeypatch):
@@ -330,12 +330,12 @@ def test_preview_equivalence_accepts_exactly_the_theme_search_path(package, tmp_
 
 def test_an_installed_theme_is_offered_like_a_project_template(package, tmp_path):
     ctx = make_ctx(tmp_path)
-    assert "sample-theme" not in slide_snapshot.available_templates(ctx.root)
+    assert "sample-theme" not in slide_templates.available_templates(ctx.root)
     themes.install_file(package)
-    assert "sample-theme" in slide_snapshot.available_templates(ctx.root)
-    assert slide_snapshot.preamble_file("sample-theme", ctx.root) == (
+    assert "sample-theme" in slide_templates.available_templates(ctx.root)
+    assert slide_templates.preamble_file("sample-theme", ctx.root) == (
         themes.themes_dir() / "sample-theme" / "SlideMage_template_sample-theme.tex")
-    assert slide_snapshot.template_label("sample-theme", ctx.root) == "Sample Theme"
+    assert slide_templates.template_label("sample-theme", ctx.root) == "Sample Theme"
 
 
 def test_a_project_copy_of_the_same_key_wins(package, tmp_path):
@@ -343,9 +343,9 @@ def test_a_project_copy_of_the_same_key_wins(package, tmp_path):
     themes.install_file(package)
     own = ctx.root / "SlideMage_template_sample-theme.tex"
     own.write_text("% SlideMage template name: Frozen copy\n", encoding="utf-8")
-    assert slide_snapshot.preamble_file("sample-theme", ctx.root) == own
-    assert slide_snapshot.template_label("sample-theme", ctx.root) == "Frozen copy"
-    assert slide_snapshot.available_templates(ctx.root).count("sample-theme") == 1
+    assert slide_templates.preamble_file("sample-theme", ctx.root) == own
+    assert slide_templates.template_label("sample-theme", ctx.root) == "Frozen copy"
+    assert slide_templates.available_templates(ctx.root).count("sample-theme") == 1
 
 
 # -- what bundles a deck's template: deck snapshots and Export LaTeX

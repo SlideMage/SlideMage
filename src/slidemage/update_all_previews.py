@@ -10,7 +10,7 @@ that I have, make a list of slide-template combinations, and
 automatically render each slide for all templates that any deck uses
 them with... the routine should also delete all rendered versions that
 are no longer in use." There is no longer a template to *pick* -- every
-deck already carries its own (slide_snapshot.detect_template(), from its
+deck already carries its own (slide_templates.detect_template(), from its
 own preamble), so this scans every deck instead of asking.
 
 For each (template, [slide ids]) group, builds one throwaway deck
@@ -34,7 +34,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-from . import deck_editor, languages, project, slide_language, slide_snapshot
+from . import deck_editor, languages, project, slide_language, slide_snapshot, slide_templates
 from .compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CancelToken, CompileJob, LogCallback, run_job
 from .deck_scan import Deck, scan_decks
 from .slide_preview import template_preamble
@@ -59,7 +59,7 @@ JOBNAME_PREFIX = "preview_all_"
 # takes everything up to the *first* "-", so by construction there isn't a
 # second one to misparse), which is what makes `[^-]+` safe/unambiguous
 # here -- anchoring the *template* half on the known display names
-# (slide_snapshot.TEMPLATES' own values) is still cheap insurance against
+# (slide_templates.TEMPLATES' own values) is still cheap insurance against
 # a stray file this module didn't itself produce.
 _SNAPSHOT_FILENAME_RE = re.compile(
     r"^(?P<bare_id>[^-]+)(?:-(?:EN|DE|mult))?-(?P<template_name>" +
@@ -84,7 +84,7 @@ def needed_slides_by_template(ctx: project.ProjectContext, deck: Optional[Deck] 
     an archived deck's own editor tab still shows cached previews, so its
     slides still need a cache same as any active deck's -- or, given
     `deck`, only that deck's own. Keyed by
-    template key (slide_snapshot.TEMPLATES), not display name; values are
+    template key (slide_templates.TEMPLATES), not display name; values are
     full id_slugs (e.g. "22s-More-Exotic-Bonds", not "22s") since that's
     what a \\slide{} call in the temp deck needs -- _prune_stale_snapshots()
     below converts to bare ids itself, the shape a cached filename encodes.
@@ -92,7 +92,7 @@ def needed_slides_by_template(ctx: project.ProjectContext, deck: Optional[Deck] 
     needed: dict[str, set[str]] = {}
     from . import deck_language
     for each in [deck] if deck is not None else scan_decks(ctx):
-        template = slide_snapshot.detect_template(each.preamble_text)
+        template = slide_templates.detect_template(each.preamble_text)
         bucket = needed.setdefault(template, set())
         for call in deck_editor.parse_slide_calls(each):
             bucket.add(call.id_slug)
@@ -109,7 +109,7 @@ def _prune_stale_snapshots(ctx: project.ProjectContext, needed: dict[str, set[st
     flat-naming cleanup removed by hand once.
     """
     valid_bare_ids_by_template_name: dict[str, set[str]] = {
-        slide_snapshot.TEMPLATES.get(template, template):
+        slide_templates.TEMPLATES.get(template, template):
             {slide_language.bare_id(slug) for slug in full_slugs}
         for template, full_slugs in needed.items()
     }
@@ -141,7 +141,7 @@ def extra_inputs_by_template(ctx: project.ProjectContext, deck: Optional[Deck] =
     whole batch ("Emergency stop")."""
     found: dict[str, list[str]] = {}
     for each in [deck] if deck is not None else scan_decks(ctx):
-        lines = found.setdefault(slide_snapshot.detect_template(each.preamble_text), [])
+        lines = found.setdefault(slide_templates.detect_template(each.preamble_text), [])
         for match in _EXTRA_INPUT.finditer(each.preamble_text):
             line = match.group(0).strip()
             if line not in lines:
@@ -239,7 +239,7 @@ def run(ctx: project.ProjectContext, log: LogCallback, cancel: Optional[CancelTo
     extras = extra_inputs_by_template(ctx, deck)
     for template in sorted(needed):
         slide_ids = sorted(needed[template])
-        template_name = slide_snapshot.TEMPLATES.get(template, template)
+        template_name = slide_templates.TEMPLATES.get(template, template)
         if not slide_ids:
             # A real, if unusual, case -- e.g. this project's own
             # a project's test decks \input{} a shared test-slides

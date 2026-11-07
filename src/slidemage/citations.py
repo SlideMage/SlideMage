@@ -24,16 +24,14 @@ No Qt, standard library only.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import shutil
 import tomllib
-import uuid
-import zipfile
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path, PurePosixPath
 
-from . import project
+from . import packages, project
+from .packages import os as os, shutil as shutil, uuid as uuid, zipfile as zipfile
 from .plugins import installer
 from .plugins.manifest import REQUIRES_RE, VERSION_RE, ManifestError, _text, matches
 from .version import VERSION_NUMBER
@@ -71,14 +69,6 @@ class CitationManifest:
     @property
     def format_file(self) -> str:
         return format_file(self.id)
-
-
-@dataclass(frozen=True)
-class InstalledCitation:
-    key: str
-    folder: Path
-    manifest: CitationManifest | None   # None: citation.toml unreadable (the folder is still listed, to be removed)
-    problem: str = ""
 
 
 def format_file(key: str) -> str:
@@ -130,17 +120,6 @@ def parse_manifest(text: str) -> CitationManifest:
             license=_text(data, "license", 1))
     except ManifestError as e:
         raise CitationError(f"{MANIFEST_NAME}: {e}") from None
-
-
-def read_manifest(folder: Path) -> CitationManifest:
-    path = Path(folder) / MANIFEST_NAME
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        raise CitationError(f"There is no {MANIFEST_NAME} in {folder}.") from None
-    except (OSError, UnicodeDecodeError) as e:
-        raise CitationError(f"{MANIFEST_NAME} cannot be read: {e}") from None
-    return parse_manifest(text)
 
 
 # -- the package rules
@@ -202,175 +181,24 @@ def check_manifest(manifest: CitationManifest, app_version: str = VERSION_NUMBER
                             f"this is {app_version}.")
 
 
-def folder_names(folder: Path, skip_hidden: bool = False) -> list[str]:
-    """The names check_names() takes, for the files under `folder`. `skip_hidden` leaves out what starts with a dot
-    (.git/, .github/, .gitignore of a package's repository: tools/make_citation_package.py does not pack them)."""
-    names = []
-    for path in sorted(Path(folder).rglob("*")):
-        rel = path.relative_to(folder).as_posix()
-        if skip_hidden and any(part.startswith(".") for part in PurePosixPath(rel).parts):
-            continue
-        if path.is_symlink():
-            raise CitationError(f"The package contains a symbolic link: {rel!r}.")
-        names.append(rel + "/" if path.is_dir() else rel)
-    return names
+# Keep the public package API here; callers and package tools need no knowledge of the shared store.
+KIND = packages.PackageKind(
+    name="citation format", folder=lambda: citations_dir(), manifest_name=MANIFEST_NAME, suffix=PACKAGE_SUFFIX,
+    error=CitationError, parse_manifest=lambda text: parse_manifest(text),
+    check_names=lambda names, manifest: check_names(names, manifest),
+    check_manifest=lambda manifest, app_version: check_manifest(manifest, app_version),
+    key_re=KEY_RE, tex_file=format_file, contents_name="package")
 
-
-def check_folder(folder: Path, app_version: str = VERSION_NUMBER, skip_hidden: bool = False) -> CitationManifest:
-    """Every package rule for the unpacked package in `folder`. Raises CitationError."""
-    manifest = read_manifest(folder)
-    check_names(folder_names(folder, skip_hidden), manifest)
-    check_manifest(manifest, app_version)
-    return manifest
-
-
-def package_name(manifest: CitationManifest) -> str:
-    return f"{manifest.id}-{manifest.version}{PACKAGE_SUFFIX}"
-
-
-def peek(archive: Path) -> CitationManifest:
-    """The checked citation.toml of a .smcite, read without unpacking it. Raises CitationError."""
-    try:
-        with zipfile.ZipFile(archive) as zf:
-            info = next((i for i in zf.infolist() if i.filename == MANIFEST_NAME), None)
-            if info is None:
-                raise CitationError(f"The archive has no {MANIFEST_NAME} at its top level.")
-            if info.file_size > installer.MAX_MANIFEST_BYTES:
-                raise CitationError(f"The {MANIFEST_NAME} is too large.")
-            data = zf.read(info)
-    except zipfile.BadZipFile:
-        raise CitationError("The file is not a valid zip archive.") from None
-    except OSError as e:
-        raise CitationError(f"The archive cannot be read: {e}") from None
-    try:
-        return parse_manifest(data.decode("utf-8"))
-    except UnicodeDecodeError:
-        raise CitationError(f"{MANIFEST_NAME} is not UTF-8 text.") from None
-
-
-# -- installed formats
-
-def installed() -> list[InstalledCitation]:
-    """Every folder in citations_dir(), by key; one with a broken citation.toml has its problem set."""
-    base = citations_dir()
-    try:
-        folders = sorted(p for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
-    except OSError:
-        return []
-    found = []
-    for folder in folders:
-        try:
-            manifest = read_manifest(folder)
-        except CitationError as e:
-            found.append(InstalledCitation(folder.name, folder, None, str(e)))
-            continue
-        problem = "" if manifest.id == folder.name else f"its {MANIFEST_NAME} names the key {manifest.id!r}"
-        found.append(InstalledCitation(folder.name, folder, manifest, problem))
-    return found
-
-
-def citation_dirs() -> list[Path]:
-    """The installed format folders TeX searches: those holding their own key's format file. Cheap (one directory
-    listing and a stat per package): every compile and preview asks."""
-    base = citations_dir()
-    try:
-        folders = sorted(p for p in base.iterdir() if not p.name.startswith(".") and KEY_RE.match(p.name))
-    except OSError:
-        return []
-    return [folder for folder in folders if (folder / format_file(folder.name)).is_file()]
-
-
-def texinputs(env: dict | None = None) -> str | None:
-    """The TEXINPUTS a compile gets: the installed format folders, then what `env` had (or nothing: the trailing
-    separator keeps the TeX distribution's own search path). None when no package is installed, so the environment
-    stays as it was. The project's .latexmkrc puts the project root and the framework in front."""
-    dirs = citation_dirs()
-    if not dirs:
-        return None
-    rest = (env or {}).get("TEXINPUTS", "")
-    return os.pathsep.join([*(str(d) for d in dirs), rest])
-
-
-def citation_of(path: Path) -> Path | None:
-    """The installed citation folder `path` lies in, or None."""
-    try:
-        resolved = Path(path).resolve()
-    except OSError:
-        return None
-    for folder in citation_dirs():
-        root = folder.resolve()
-        if resolved == root or root in resolved.parents:
-            return folder
-    return None
-
-
-# -- install and remove
-
-def install_file(archive: Path, *, expected_sha256: str | None = None,
-                 app_version: str = VERSION_NUMBER) -> CitationManifest:
-    """Check the .smcite `archive` and install it unpacked in citations_dir()/<key>/, replacing an installed version
-    of the same key. Raises CitationError; nothing is changed then."""
-    archive = Path(archive)
-    if expected_sha256 is not None:
-        try:
-            actual = installer.sha256_of(archive)
-        except OSError as e:
-            raise CitationError(f"The archive cannot be read: {e}") from None
-        if actual != expected_sha256.strip().lower():
-            raise CitationError("The package does not match its checksum (SHA-256); nothing was installed.")
-    base = citations_dir()
-    staging = base / ".staging" / uuid.uuid4().hex
-    old: Path | None = None
-    try:
-        try:
-            staging.mkdir(parents=True)
-            with zipfile.ZipFile(archive) as zf:
-                installer.extract(zf, staging, MANIFEST_NAME)
-        except installer.InstallError as e:
-            raise CitationError(str(e)) from None
-        except zipfile.BadZipFile:
-            raise CitationError("The file is not a valid zip archive.") from None
-        except OSError as e:
-            raise CitationError(f"The archive could not be unpacked: {e}") from None
-        manifest = check_folder(staging, app_version)
-        final = base / manifest.id
-        try:
-            if final.exists():
-                old = base / ".old" / f"{manifest.id}-{uuid.uuid4().hex[:8]}"
-                old.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(final, old)
-            os.replace(staging, final)
-        except OSError as e:
-            if old is not None and old.exists() and not final.exists():
-                try:
-                    os.replace(old, final)
-                except OSError:
-                    log.exception("Could not restore %s", final)
-            raise CitationError(f"The citation format could not be put in place (is a compile using it?): {e}"
-                                ) from None
-        return manifest
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
-        cleanup()
-
-
-def remove(key: str) -> None:
-    """Delete the installed citation format `key`. Raises CitationError."""
-    folder = citations_dir() / key
-    if not KEY_RE.match(key) or not folder.is_dir():
-        raise CitationError(f"The citation format {key!r} is not installed.")
-    old = citations_dir() / ".old" / f"{key}-{uuid.uuid4().hex[:8]}"
-    try:
-        old.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(folder, old)
-    except OSError as e:
-        raise CitationError(f"The citation format could not be removed (is a compile using it?): {e}") from None
-    cleanup()
-
-
-def cleanup() -> None:
-    """Delete leftovers of earlier installs (.staging/, .old/). Never raises."""
-    for name in (".staging", ".old"):
-        path = citations_dir() / name
-        if path.exists():
-            shutil.rmtree(path, ignore_errors=True)
+InstalledCitation = packages.InstalledPackage
+read_manifest = partial(packages.read_manifest, KIND)
+folder_names = partial(packages.folder_names, KIND)
+check_folder = partial(packages.check_folder, KIND)
+package_name = partial(packages.package_name, KIND)
+peek = partial(packages.peek, KIND)
+installed = partial(packages.installed, KIND)
+citation_dirs = partial(packages.installed_dirs, KIND)
+texinputs = partial(packages.texinputs, KIND)
+citation_of = partial(packages.owner_of, KIND)
+install_file = partial(packages.install_file, KIND)
+remove = partial(packages.remove, KIND)
+cleanup = partial(packages.cleanup, KIND)

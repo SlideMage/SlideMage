@@ -15,7 +15,7 @@ Both writes happen only if the slide still has the captured text. Typing in the 
 conflict: nothing is written and the proposal is kept. After the write the card renders the slide through the
 preview's shared RenderService (Check preview) and tells whether it compiled. A route that cannot run the task makes
 the card ask for setup, nothing sent.
-The image bubbles (describe, translate the descriptions) are different: an _ImageWorker works through the slide's
+The image bubbles (describe, translate the descriptions) are different: an image task works through the slide's
 images one process after another and alt_draft's batch stores each draft as it is done (nothing of the slide
 changes); the Images panel is shown again at the end, and the assistant shows what became of each image in the
 results panel (`result`; pages/image_results.py) with Retry failed, which runs a new task over the failed images
@@ -63,7 +63,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from ... import (ai_review, alt_blocks, alt_draft, alt_images, deck_editor, deck_language, deck_outline, languages, latex_lint, readability,
                   readability_check, slide_add, slide_ids, slide_language, slide_source, slide_versioning)
@@ -457,37 +457,11 @@ def _capture_images(window, task: ai_tasks.Task, paths) -> _ImageCapture | None:
     return _ImageCapture(task, label, images, rows) if images else None
 
 
-class _Worker(QThread):
-    done = Signal(object, object)      # this worker, the Outcome
-
-    def __init__(self, capture: _Capture, run: Callable[[], Outcome]) -> None:
-        super().__init__()
-        self.capture, self._outcome = capture, run
-
-    def run(self) -> None:
-        try:
-            outcome = self._outcome()
-            if outcome is None:
-                outcome = Outcome(NOTHING, message="No result was returned.")
-        except Exception as exc:  # a route must not strand the task when its runner raises
-            outcome = Outcome(FAILED, message=str(exc))
-        self.done.emit(self, outcome)
-
-
-class _PreviewWorker(QThread):
-    done = Signal(object, str)         # this worker, "" or why the render failed
-
-    def __init__(self, render: Callable[[], object]) -> None:
-        super().__init__()
-        self._render = render
-
-    def run(self) -> None:
-        try:
-            self._render()
-        except Exception as exc:  # noqa: BLE001 -- whatever the render raised is the card's message
-            self.done.emit(self, str(exc) or type(exc).__name__)
-        else:
-            self.done.emit(self, "")
+@dataclass(eq=False)
+class _TextRun:
+    capture: _Capture
+    work: Callable[[], Outcome]
+    handle: background.Handle | None = None
 
 
 def _translate_on_provider(ctx: ProjectContext, provider, capture: _Capture, cancel: threading.Event) -> Outcome:
@@ -510,32 +484,31 @@ def _translate_on_provider(ctx: ProjectContext, provider, capture: _Capture, can
     return outcome
 
 
-class _ImageWorker(QThread):
-    done = Signal(object, object)      # this worker, the summary of alt_draft's batch
-
+class _ImageRun:
     def __init__(self, ctx: ProjectContext, capture: _ImageCapture, backend, cancel: threading.Event) -> None:
         """`backend` is a DraftBackend (to describe) or a TranslationBackend of any route."""
-        super().__init__()
+        self.handle: background.Handle | None = None
         self.ctx, self.capture, self.backend, self.cancel = ctx, capture, backend, cancel
         self.position = (1, len(capture.images))       # the image at work and how many: the status line reads it
         self.images = list(capture.images)             # the images the run goes over (the readable ones, to describe)
 
-    def _progress(self, index: int, total: int, _item) -> None:
-        self.position = (index, total)
+    def progress(self, position) -> None:
+        self.position = position
 
-    def run(self) -> None:
+    def run(self, report):
+        progress = lambda index, total, _item: report((index, total))
         capture = self.capture
         if capture.task is image_tasks.DESCRIBE:
             entries = alt_images.load_store(self.ctx)
             jobs = [job for row in capture.rows for job in alt_draft.slide_jobs(self.ctx, row, entries)]
             self.images = [job.image for job in jobs]
-            summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=self._progress,
+            summary = alt_draft.run_batch(self.ctx, jobs, self.backend, on_progress=progress,
                                           should_stop=self.cancel.is_set)
         else:
             queues = alt_draft.translation_queues(self.ctx, _translation_targets(self.ctx), capture.images)
-            summary = alt_draft.run_translation_batches(self.ctx, queues, self.backend, on_progress=self._progress,
+            summary = alt_draft.run_translation_batches(self.ctx, queues, self.backend, on_progress=progress,
                                                         should_stop=self.cancel.is_set)
-        self.done.emit(self, summary)
+        return summary
 
 
 @dataclass
@@ -576,10 +549,10 @@ class TaskRunner(QObject):
         self._result_capture: _ImageCapture | None = None  # that task, for Retry failed
         self._proposal: tuple[_Capture, str] | None = None  # of the card in Review or Conflict: the task, the new text
         self._applied: EditApplied | None = None           # of the card's write: what Undo puts back
-        self._preview: _PreviewWorker | None = None        # Check preview
+        self._preview: background.Handle | None = None        # Check preview
         self._preview_cancel = threading.Event()
         self._was_busy = False
-        self._running: dict[_Worker | _ImageWorker, _Item | None] = {}    # with the batch item it works on
+        self._running: dict[_TextRun | _ImageRun, _Item | None] = {}    # with the batch item it works on
         self._batch: _Batch | None = None
         self._route: ai_profile.Route | None = None        # of the task or batch under way, captured at its start
         self._lease = None
@@ -620,7 +593,7 @@ class TaskRunner(QObject):
                           "Slides not started are cancelled, not moved to the other route")
         else:
             worker = next(iter(self._running))
-            if isinstance(worker, _ImageWorker):
+            if isinstance(worker, _ImageRun):
                 text = f"{_NAMES[worker.capture.task.name]} · {worker.position[0] - 1} of {worker.position[1]} done"
                 note = "Pending images are cancelled, not moved to the other route"
             else:
@@ -745,12 +718,26 @@ class TaskRunner(QObject):
             backend = self._image_backend(capture.task)
             if (provider := getattr(backend, "provider", None)) is not None:
                 self._providers.append(provider)
-            worker = _ImageWorker(self._window.project, capture, backend, self._cancel)
+            worker = _ImageRun(self._window.project, capture, backend, self._cancel)
+            worker.handle = background.run_in_background_with_progress(
+                worker.run, worker.progress, lambda outcome, error: self._completed(worker, outcome, error),
+                parent=self, cancel=self._cancel)
         else:
-            worker = _Worker(capture, self._text_task(capture))
-        worker.done.connect(self._on_done)
+            worker = _TextRun(capture, self._text_task(capture))
+            worker.handle = background.run_in_background(
+                worker.work, lambda outcome, error: self._completed(worker, outcome, error),
+                parent=self, cancel=self._cancel)
         self._running[worker] = item
-        background.start_detached(worker)
+
+    def _completed(self, worker, outcome, error) -> None:
+        if isinstance(worker, _ImageRun) and error is not None:
+            return
+        if isinstance(worker, _TextRun):
+            if error is not None:       # a route must not strand the task when its runner raises
+                outcome = Outcome(FAILED, message=str(error))
+            elif outcome is None:
+                outcome = Outcome(NOTHING, message="No result was returned.")
+        self._on_done(worker, outcome)
 
     def _image_backend(self, task: ai_tasks.Task):
         """What describes or translates images on the captured route."""
@@ -817,11 +804,11 @@ class TaskRunner(QObject):
             if not pending and lease is not None:
                 lease.release()
         for worker in running:
-            background.stop_worker(worker, on_done=lambda w=worker: ended(w))
+            worker.handle.stop(on_done=lambda w=worker: ended(w))
         if not running and lease is not None:
             lease.release()
         if preview is not None:
-            background.stop_worker(preview)
+            preview.stop()
         self._providers = []
 
     def describe(self) -> str:
@@ -830,7 +817,7 @@ class TaskRunner(QObject):
             return f"{_VERBS[batch.task.name]} {DECK_LABEL}"
         worker = next(iter(self._running))
         capture = worker.capture
-        if isinstance(worker, _ImageWorker):
+        if isinstance(worker, _ImageRun):
             return f"{_VERBS[capture.task.name]} images of {capture.label}"
         return f"{_VERBS[capture.task.name]} {slide_language.bare_id(capture.id_slug)}"
 
@@ -847,24 +834,22 @@ class TaskRunner(QObject):
             self.status.emit(" · ".join(parts), "muted")
             return
         worker = next(iter(self._running))
-        if isinstance(worker, _ImageWorker):
+        if isinstance(worker, _ImageRun):
             self.status.emit(f"{what} … {worker.position[0]}/{worker.position[1]} · {seconds} s", "muted")
         else:
             self.status.emit(f"{what} … {seconds} s", "muted")
 
-    def _on_done(self, worker: _Worker | _ImageWorker, outcome) -> None:
+    def _on_done(self, worker: _TextRun | _ImageRun, outcome) -> None:
         if worker not in self._running:        # the view was closed meanwhile
             return
         item = self._running.pop(worker)
-        worker.wait()
-        worker.deleteLater()
         if item is not None:
             self._settle(worker.capture, item, outcome)
             self._pump()
             return
         self._ticker.stop()
         self._release()
-        if isinstance(worker, _ImageWorker):
+        if isinstance(worker, _ImageRun):
             report = self._images_report(worker.capture.task, outcome)
             self._set_result(BatchResult.of(DRAFT if worker.capture.task is image_tasks.DESCRIBE else TRANSLATE,
                                             self._route, worker.images, outcome.outcomes), worker.capture)
@@ -1083,17 +1068,16 @@ class TaskRunner(QObject):
         target, view, language = context
         text = window.centre.slide_text(path)
         self._preview_cancel = cancel = threading.Event()
-        self._preview = worker = _PreviewWorker(lambda: self._workspace.render_preview(target, text, view, language, cancel))
-        worker.done.connect(self._on_preview)
         self._phase(card, card_model.CHECK, where=f"{slide_language.bare_id(path.name)} · {VIEW_LABELS[view]} · {language}")
-        background.start_detached(worker)
+        self._preview = worker = background.run_in_background(
+            lambda: self._workspace.render_preview(target, text, view, language, cancel),
+            lambda result, error: self._on_preview(worker, (str(error) or type(error).__name__)
+                                                  if error is not None else ""), parent=self, cancel=cancel)
 
-    def _on_preview(self, worker: _PreviewWorker, error: str) -> None:
+    def _on_preview(self, worker: background.Handle, error: str) -> None:
         if worker is not self._preview:                     # the view was closed meanwhile
             return
         self._preview = None
-        worker.wait()
-        worker.deleteLater()
         card = self.card
         end = card_model.OVERFLOW if card.readable is not None and card.readable.overflows else card_model.DONE
         if self._preview_cancel.is_set():

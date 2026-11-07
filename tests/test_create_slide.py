@@ -34,7 +34,6 @@ def env(root, monkeypatch):
         return root / "fake.pdf"
 
     monkeypatch.setattr(preview_target, "render_text", render)
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda pdf, width: PNG)
     # The render service reads the rendered PDF's images (prepare_preview_images) for saved and draft renders alike.
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda pdf, snapshots, widths: ((PNG, PNG), ()))
     (root / "fake.pdf").write_bytes(b"%PDF-1.4")

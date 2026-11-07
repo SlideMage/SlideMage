@@ -23,7 +23,7 @@ from typing import Any
 from .. import alt_draft
 from ..plugin_api import AiRoute
 from ..project import ProjectContext
-from . import ai_profile, routes
+from . import routes
 from .ai_profile import Route
 from .providers import ChatProvider, RouteUnavailable
 
@@ -41,13 +41,6 @@ def _route(route: Route) -> AiRoute:
         raise RouteUnavailable(f"The AI route {route.route or 'for this side'!r} is not installed, so nothing was "
                                "sent and no other route or model is used.")
     return found
-
-
-def api_models(ctx: ProjectContext) -> list[str]:
-    """The Anthropic API models to list in the pickers: none without a key. The static list, so opening a dialog
-    never waits on the network; Settings shows the live list."""
-    found = routes.get(ai_profile.ANTHROPIC_API)
-    return found.model_choices(routes.context(ctx, found.id), ai_profile.CHAT) if found else []
 
 
 def problem(ctx: ProjectContext, route: Route) -> str:

@@ -125,19 +125,6 @@ class RenderScheduler:
         self._on_change()
         return dropped
 
-    def cancel_priority(self, priority: int) -> int:
-        dropped = 0
-        with self._cond:
-            for key in [k for k, j in self._queue.items() if j.priority == priority]:
-                del self._queue[key]
-                dropped += 1
-            for job in self._running.values():
-                if job.priority == priority:
-                    job.cancel.request_stop()
-            self._cond.notify_all()
-        self._on_change()
-        return dropped
-
     def interrupt(self, priority: int) -> int:
         """Stop the running jobs of class `priority` and put them back in the queue (not a failure); how many."""
         stopped = 0

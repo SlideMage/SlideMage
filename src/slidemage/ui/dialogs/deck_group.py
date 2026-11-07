@@ -15,7 +15,7 @@ from typing import Callable, Optional
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLineEdit, QVBoxLayout
 
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, fallback_tag, headings, labels, selectable_tags
-from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, set_property
+from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, show_problem
 
 # The default groups' labels; a project's own list has deck_groups.labels(groups).
 GROUP_LABELS = labels()
@@ -43,7 +43,7 @@ class DeckGroupSheet(ModalSheet):
         if name_prompt is not None:
             self.name_edit = QLineEdit(default_name)
             self.name_edit.selectAll()
-            self.name_edit.textChanged.connect(lambda _text: self._show_problem(""))
+            self.name_edit.textChanged.connect(lambda _text: show_problem(self.problem, ""))
             layout.addWidget(Field(name_prompt, self.name_edit))
         self.template_box: Optional[QComboBox] = None
         if templates:
@@ -104,16 +104,11 @@ class DeckGroupSheet(ModalSheet):
         self.edit_groups_requested = True
         self.reject()
 
-    def _show_problem(self, text: str) -> None:
-        self.problem.setText(text)
-        set_property(self.problem, "tone", "error")
-        self.problem.setVisible(bool(text))
-
     def _on_ok(self) -> None:
         name = self.name_edit.text().strip() if self.name_edit is not None else ""
         reason = self._validate_name(name) if self.name_edit is not None and self._validate_name else None
         if reason is not None:
-            self._show_problem(reason)
+            show_problem(self.problem, reason)
             return
         self.name = name
         self.chosen_groups = tuple(tag for tag, check in self._checks.items() if check.isChecked())

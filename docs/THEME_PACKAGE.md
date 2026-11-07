@@ -168,7 +168,7 @@ SlideMage puts every installed theme folder on `TEXINPUTS` for every compile and
 3. the **installed themes**, in key order.
 
 The template pickers (a deck's settings, Settings → General's render template, New deck) list installed themes
-beside the project's and the bundled templates, in that same order (`slide_snapshot.template_dirs`).
+beside the project's and the bundled templates, in that same order (`slide_templates.template_dirs`).
 
 - **Previews:** the same `TEXINPUTS`, so a preview renders what a compile renders. Preview equivalence
   (`docs/PREVIEW_RENDER_EQUIVALENCE_CONTRACT.md`) accepts exactly the theme folders on `TEXINPUTS` (anything else

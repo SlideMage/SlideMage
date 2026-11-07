@@ -8,7 +8,7 @@ from unittest.mock import Mock
 from PIL import Image
 import pytest
 
-from slidemage import deck_outline, preview_cache, preview_requests, preview_thumbnails, slide_snapshot
+from slidemage import deck_outline, preview_cache, preview_requests, preview_thumbnails, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 
@@ -210,7 +210,7 @@ def test_a_stored_deck_compile_page_is_a_verified_thumbnail_without_the_referenc
     selected = deck(ctx)
     page = tmp_path / 'p001.png'
     page.write_bytes(png('green'))
-    reference = slide_snapshot.snapshot_path(ctx, 'aaa', slide_snapshot.detect_template(selected.preamble_text),
+    reference = slide_snapshot.snapshot_path(ctx, 'aaa', slide_templates.detect_template(selected.preamble_text),
                                              slide_snapshot.FULL_SIZE, 'aaa-EN-One')
     reference.parent.mkdir(parents=True, exist_ok=True)
     reference.write_bytes(png('red'))

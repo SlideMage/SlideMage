@@ -373,7 +373,7 @@ def test_gallery_renders(theme, dark):
     # Page background token reaches the pixels: the gallery is not blank.
     colors = {image.pixelColor(x, y).name() for x in range(0, image.width(), 9) for y in range(0, image.height(), 9)}
     assert len(colors) > 6
-    assert theme.tokens.bg in colors or theme.colors["bg"] in colors
+    assert theme.tokens.bg in colors
     # Icons are drawn from the bundled font, not as long fallback text.
     icon = gallery.findChildren(IconLabel)[0]
     assert icon.font().family() == FONT_ICONS

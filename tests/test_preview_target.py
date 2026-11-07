@@ -3,7 +3,6 @@
 """What the Preview renders: the call, the deck context, the view and language."""
 from __future__ import annotations
 
-import pymupdf
 import pytest
 
 from slidemage import deck_editor, preview_target, slide_preview, slide_snapshot
@@ -104,19 +103,6 @@ def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, mon
     assert preview_target.cached_image(target) == (png, True)
     os.utime(png, (1, source.stat().st_mtime - 10))
     assert preview_target.cached_image(target) == (png, False)
-
-
-def test_page_png_is_the_last_page_at_the_requested_width(tmp_path):
-    pdf = tmp_path / "p.pdf"
-    doc = pymupdf.open()
-    doc.new_page(width=320, height=180)
-    doc.new_page(width=200, height=400)   # not 16:9: a cropped element keeps its shape
-    doc.save(pdf)
-    doc.close()
-    data = slide_snapshot.page_png(pdf, 100)
-    pixmap = pymupdf.Pixmap(data)
-    assert (pixmap.width, pixmap.height) == (100, 200)
-    assert slide_snapshot.page_png(tmp_path / "missing.pdf") is None
 
 
 def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_path):

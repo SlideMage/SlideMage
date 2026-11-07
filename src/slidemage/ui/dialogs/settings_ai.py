@@ -85,10 +85,6 @@ class ModelsGrid(QWidget):
     def _offered(self, route, task: str) -> list[str]:
         return list(route.model_choices(routes.context(self.project, route.id), task))
 
-    def set_installed(self, installed: list) -> None:
-        self.installed = installed
-        self.refresh()
-
     def refresh(self) -> None:
         for side in (LOCAL, CLOUD):
             route = self._route(side)
@@ -211,7 +207,4 @@ class AiPage(Page):
             ai_profile.set_cloud_conn(self.project, value)
         except ValueError:
             return                       # a plugin's route: not one ai_profile can start on yet
-        self.models.refresh()
-
-    def set_installed(self, installed) -> None:
         self.models.refresh()

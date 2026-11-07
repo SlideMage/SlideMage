@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import re
 
-from . import citations, compiler, slide_preview, slide_snapshot, themes
+from . import citations, compiler, slide_preview, slide_templates, themes
 
 CONTRACT = 2
 AUDITED_GENERIC_PREAMBLE = "647999e566d666480aeee6e2649cc246499c79cdafb069418f59cb4d818b7249"
@@ -249,9 +249,6 @@ class Classification:
     evidence: str
     dependencies: tuple[tuple[str, str], ...]
 
-    def group_for(self, view: str) -> str | None:
-        return next(d.group for d in self.decisions if d.view == view)
-
 
 def _digest(data: bytes) -> str:
     # Line endings do not change what TeX reads, and a checkout may give a file either (Git's autocrlf):
@@ -460,8 +457,8 @@ def _preamble(spec, dependencies: dict[str, str]):
             # A template the framework ships and pins (the SlideMage template, since v10.18.0 also the greyscale
             # one) is audited with the framework files above; any other is a project's or an installed theme's.
             if f"{name}.tex" not in AUDITED_FRAMEWORK:
-                # The project's own copy, else an installed theme's (slide_snapshot.template_dirs: TeX's order).
-                path = slide_snapshot.preamble_file(name[len("SlideMage_template_"):], root)
+                # The project's own copy, else an installed theme's (slide_templates.template_dirs: TeX's order).
+                path = slide_templates.preamble_file(name[len("SlideMage_template_"):], root)
                 if (root / "decks" / path.name).exists():
                     return deck_hidden, "deck shadows institution preamble"
                 try:

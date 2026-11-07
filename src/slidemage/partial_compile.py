@@ -183,6 +183,8 @@ class PartialPlan:
     record: dict
     other_changed: list[str] = field(default_factory=list)  # slide ids changed, not asked for
     extra_lines: str = ""           # TeX put right after \begin{document}: the Preview's all-steps selection
+    # Internal preview override; keep the plan's constructor unchanged.
+    _saved_versions: bool = field(default=True, init=False, repr=False)
 
     @property
     def frames(self) -> list[int]:
@@ -354,19 +356,10 @@ def wrapper_text(plan: PartialPlan) -> str:
     job = plan.job
     from . import deck_language
     deck, _ = deck_language.expand_fragments(job.deck)
-    lines: list[str] = []
-    if job.version:
-        lines.append(f"\\def\\deckversionoverride{{{job.version}}}")
-    if job.presenter:
-        lines.append("\\def\\SMPresenterModeOverride{1}")
-    if job._appendix_applies:
-        # the appendix itself isn't generated (its pages stay as they are),
-        # but the footers' "Slide previews" link to it must be there
-        lines.append("\\def\\SMAppendixTocOverride{1}")
-    if job.run_id:
-        lines.append(compile_records.run_id_line(job.run_id))
-    if job.language:
-        lines.append(f"\\def\\decklanguageoverride{{{job.language.lower()}}}")
+    # The appendix itself isn't generated (its pages stay as they are),
+    # but the footers' "Slide previews" link to it must be there.
+    lines = compiler.override_lines(plan.context, job, appendix_link=job._appendix_applies,
+                                    saved_versions=plan._saved_versions)
     text = deck.text
     if deck.preamble_end is None:
         raise PartialError(f"{deck.name}: no \\begin{{document}}")

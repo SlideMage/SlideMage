@@ -9,11 +9,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QBoxLayout, QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
 from ...presentation.layout import Leaf, Node, Profile
+from ..kit.tokens import STAGE
 
 STRIP_HEIGHT = 58
 # Larger than the window's default text: the presenter reads the counter, the clock and the timer, and hits the
 # buttons, from a step or two away. Children with their own sheet (the lit buttons, the timer's colours) keep it.
-STRIP_STYLE = ("QLabel, QToolButton, QPushButton { font-size: 16px; }"
+STRIP_STYLE = (f"QLabel, QToolButton, QPushButton {{ font-size: {STAGE.strip}px; }}"
                " QToolButton, QPushButton { padding: 6px 12px; }")
 
 

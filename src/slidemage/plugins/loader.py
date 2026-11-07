@@ -14,7 +14,6 @@ for this session; the app starts regardless.
 from __future__ import annotations
 
 import importlib.util
-import json
 import logging
 import os
 import sys
@@ -26,6 +25,7 @@ from typing import Literal
 
 from .. import project
 from .. import diagnostics
+from ..fileio import read_json, write_json
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .manifest import MANIFEST_NAME, RESERVED_IDS, Manifest, ManifestError, matches, package_name, read_manifest
@@ -73,11 +73,8 @@ def _state_file() -> Path:
 
 
 def _disabled_ids() -> set[str]:
-    try:
-        data = json.loads(_state_file().read_text(encoding="utf-8"))
-        return {i for i in data.get("disabled", []) if isinstance(i, str)}
-    except (OSError, ValueError, AttributeError):
-        return set()
+    data = read_json(_state_file())
+    return {i for i in data.get("disabled", []) if isinstance(i, str)}
 
 
 def is_enabled(plugin_id: str) -> bool:
@@ -88,11 +85,7 @@ def set_enabled(plugin_id: str, enabled: bool) -> None:
     """Remember the choice (takes effect at the next start). Written atomically: a crash keeps the old file."""
     disabled = _disabled_ids()
     disabled.discard(plugin_id) if enabled else disabled.add(plugin_id)
-    path = _state_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps({"disabled": sorted(disabled)}, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    write_json(_state_file(), {"disabled": sorted(disabled)}, ensure_ascii=True)
 
 
 def _inspect(folder: Path, source: Literal["installed", "dev"]) -> Found:
