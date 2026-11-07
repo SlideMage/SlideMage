@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from ... import qr_code
 from ...project import ProjectContext
+from ..kit.tokens import SPACE
 from ..kit.widgets import (Button, Field, ModalSheet, SegmentedControl, Surface, caption, columns, row,
                            set_property, show_problem)
 
@@ -139,12 +140,12 @@ class QRCodeDialog(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
 
         top = QHBoxLayout()
-        top.setSpacing(20)
+        top.setSpacing(SPACE.s_2xl)
         left = QVBoxLayout()
-        left.setSpacing(12)
+        left.setSpacing(SPACE.xl)
         self.kind_box = QComboBox()
         for kind in qr_code.KINDS:
             self.kind_box.addItem(qr_code.KIND_LABELS[kind], kind)
@@ -158,8 +159,9 @@ class QRCodeDialog(ModalSheet):
         top.addLayout(left, 1)
 
         right = QVBoxLayout()
-        right.setSpacing(8)
+        right.setSpacing(SPACE.md)
         self.preview = QLabel()
+        # QR artwork needs a stable square preview and caption width.
         self.preview.setFixedSize(PREVIEW_SIZE, PREVIEW_SIZE)
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setWordWrap(True)
@@ -182,7 +184,7 @@ class QRCodeDialog(ModalSheet):
         height_field = Surface()
         height_layout = QVBoxLayout(height_field)
         height_layout.setContentsMargins(0, 0, 0, 0)
-        height_layout.setSpacing(4)
+        height_layout.setSpacing(SPACE.xs)
         height_layout.addWidget(Field("Height on the slide (share of the text height)", self.height_box))
         height_layout.addWidget(self.height_hint)
 
@@ -196,7 +198,7 @@ class QRCodeDialog(ModalSheet):
         caption_field = Surface()
         caption_layout = QVBoxLayout(caption_field)
         caption_layout.setContentsMargins(0, 0, 0, 0)
-        caption_layout.setSpacing(4)
+        caption_layout.setSpacing(SPACE.xs)
         caption_layout.addWidget(Field("Caption under the code", self.caption_mode))
         caption_layout.addWidget(self.caption_text)
         caption_layout.addWidget(self.caption_note)
@@ -233,7 +235,7 @@ class QRCodeDialog(ModalSheet):
         self.advanced = Surface()
         advanced_layout = QHBoxLayout(self.advanced)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.setSpacing(12)
+        advanced_layout.setSpacing(SPACE.xl)
         self.error_box = QComboBox()
         for level in qr_code.ERROR_LEVELS:
             self.error_box.addItem(level, level)
@@ -292,7 +294,7 @@ class QRCodeDialog(ModalSheet):
         page = Surface()
         form = QVBoxLayout(page)
         form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(10)
+        form.setSpacing(SPACE.lg)
         read, write = self._read.setdefault(kind, {}), self._write.setdefault(kind, {})
 
         def line(name: str) -> Field:
