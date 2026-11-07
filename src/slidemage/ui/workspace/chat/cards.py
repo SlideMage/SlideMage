@@ -10,6 +10,7 @@ from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout
 
 from ....ai.agent_types import ToolCall, ToolResult
+from ...kit.tokens import SPACE
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, IconLabel, Surface, caption, clear_layout, set_property
 from .format import diff_rows, summarize_call
@@ -40,7 +41,7 @@ class UserBubble(Surface):
         bubble.setObjectName(q.CHAT_USER)
         bubble.setMaximumWidth(BUBBLE_WIDTH)
         inner = QVBoxLayout(bubble)
-        inner.setContentsMargins(12, 9, 12, 9)
+        inner.setContentsMargins(SPACE.xl, SPACE.md, SPACE.xl, SPACE.md)
         label = text_label(text, q.CHAT_USER)
         label.ensurePolished()
         wrapped = label.fontMetrics().boundingRect(QRect(0, 0, BUBBLE_WIDTH - 24, 100000), Qt.TextFlag.TextWordWrap, text)
@@ -117,10 +118,10 @@ class ToolCard(QFrame):
         self.call = call
         self.setObjectName(q.CHAT_TOOL)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 7, 10, 7)
-        layout.setSpacing(5)
+        layout.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+        layout.setSpacing(SPACE.sm)
         head = QHBoxLayout()
-        head.setSpacing(6)
+        head.setSpacing(SPACE.sm)
         self._status = IconLabel("more_horiz", 16)
         head.addWidget(self._status)
         name = QLabel(call.name)
@@ -191,11 +192,11 @@ class DiffCard(QFrame):
         self._rows = diff_rows(before, after)
         self._all_rows = False
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, SPACE.md, 0, SPACE.md)
+        layout.setSpacing(SPACE.sm)
         head = QHBoxLayout()
-        head.setContentsMargins(10, 0, 10, 0)
-        head.setSpacing(6)
+        head.setContentsMargins(SPACE.lg, 0, SPACE.lg, 0)
+        head.setSpacing(SPACE.sm)
         head.addWidget(IconLabel("description", 16))
         name = QLabel(title)
         name.setObjectName(q.CHAT_TOOL_NAME)
@@ -209,7 +210,7 @@ class DiffCard(QFrame):
         layout.addLayout(head)
         if note:
             note_label = caption(note)
-            note_label.setContentsMargins(10, 0, 10, 0)
+            note_label.setContentsMargins(SPACE.lg, 0, SPACE.lg, 0)
             layout.addWidget(note_label)
         self._lines = QVBoxLayout()
         self._lines.setSpacing(0)
@@ -218,8 +219,8 @@ class DiffCard(QFrame):
         self._more.clicked.connect(self.show_all)
         layout.addWidget(self._more, 0, Qt.AlignmentFlag.AlignLeft)
         foot = QHBoxLayout()
-        foot.setContentsMargins(10, 0, 10, 0)
-        foot.setSpacing(6)
+        foot.setContentsMargins(SPACE.lg, 0, SPACE.lg, 0)
+        foot.setSpacing(SPACE.sm)
         self._caption = caption("")
         foot.addWidget(self._caption, 1)
         self.apply_button = Button("Apply", "primary", compact=True)

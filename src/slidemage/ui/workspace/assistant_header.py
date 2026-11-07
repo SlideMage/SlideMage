@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from ... import deck_outline, slide_language
 from ...ai import ai_profile
 from ...ai.focus_scope import DECK, SLIDE
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, ElidedLabel, IconButton, IconLabel, SegmentedControl, Surface
@@ -53,8 +54,8 @@ class RunningPill(ClickFrame):
         super().__init__()
         self.setObjectName(q.TASK_PILL)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, SPACE.sm)
+        layout.setSpacing(SPACE.sm)
         layout.addWidget(IconLabel("assignment", 16))
         self.label = ElidedLabel()
         layout.addWidget(self.label, 1)
@@ -102,7 +103,7 @@ class AssistantHeader(Surface):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
         layout.addLayout(self._build_route_row())
         layout.addLayout(self._build_scope_row())
         self._actions = FlowLayout()
@@ -130,7 +131,7 @@ class AssistantHeader(Surface):
         # One row, so that the card keeps its height for the conversation (640 px windows): what the conversation
         # runs on is the switch's tooltip (the model is also under the message box).
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(SPACE.md)
         self.ai_switch = AiSwitch(self.state)
         self.route_note = ""
         row.addWidget(self.ai_switch)
@@ -138,7 +139,7 @@ class AssistantHeader(Surface):
         self.focus_button = IconButton("open_in_full", "Focus assistant: hide the side panels")
         self.focus_button.clicked.connect(self.toggle_focus)
         row.addWidget(self.focus_button)
-        self.new_button = IconButton("add_comment", "New conversation (this route only)", size=20)
+        self.new_button = IconButton("add_comment", "New conversation (this route only)")
         self.new_button.clicked.connect(self.new_conversation)
         row.addWidget(self.new_button)
         return row
@@ -150,7 +151,7 @@ class AssistantHeader(Surface):
 
     def _build_scope_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(SPACE.md)
         row.addWidget(self.scope)
         self.target = ElidedLabel()
         self.target.setObjectName(q.ASSISTANT_TARGET)
