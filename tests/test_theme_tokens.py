@@ -73,10 +73,43 @@ def test_pill_preserves_half_height_including_odd_heights():
     assert [pill(h) for h in (14, 18, 20, 19)] == [7, 9, 10, 9.5]
 
 
-def test_internal_accents_are_named_and_keep_current_status_colours_distinct():
+def test_internal_accents_are_named_and_shared_with_status_colours():
     for mode, tokens in [("light", LIGHT), ("dark", DARK)]:
         palette = ACCENTS[mode]
         assert set(palette) == {"neutral", "slate", "blue", "teal", "green", "violet", "pink"}
         assert palette["neutral"] == tokens.text
         assert palette["blue"] == tokens.info
-        assert palette["green"] != tokens.ok  # adoption belongs to track A
+        assert palette["green"] == tokens.ok
+        assert tokens.steps == tuple(palette[name] for name in ("neutral", "blue", "teal", "green", "violet", "pink"))
+
+
+def test_stage_is_fixed_and_uses_shared_solid_pairs():
+    from dataclasses import FrozenInstanceError
+
+    from slidemage.presentation.settings import PresentationSettings
+    from slidemage.ui.kit.tokens import STAGE
+    from slidemage.ui.presentation.slide_canvas import SlideCanvas
+    from slidemage.ui.presentation.timer_widget import LEVEL_STYLE
+
+    assert STAGE.stage_warn == LIGHT.warning_solid == DARK.warning_solid == FIXED['cloud_solid']
+    assert STAGE.stage_over == FIXED['error_solid']
+    assert STAGE.stage_on_solid == FIXED['on_solid']
+    assert STAGE.stage_bg == STAGE.stage_scrim == FIXED['scrim']
+    assert (STAGE.strip, STAGE.toast) == (16, 15)
+    assert STAGE.stage_active == '#1976d2'
+    for level, fill in [('warn', STAGE.stage_warn), ('over', STAGE.stage_over)]:
+        assert LEVEL_STYLE[level] == f'background: {fill}; color: {STAGE.stage_on_solid};'
+    assert inspect.signature(SlideCanvas).parameters['laser_color'].default == PresentationSettings.laser_color
+    with pytest.raises(FrozenInstanceError):
+        STAGE.stage_warn = '#000000'
+
+
+@pytest.mark.parametrize('tokens, mode', [(LIGHT, 'light'), (DARK, 'dark')])
+def test_terminal_base_hues_share_semantics_and_accents(tokens, mode):
+    from slidemage.ui.workspace.terminal.theme import xterm_theme
+
+    ansi = xterm_theme(tokens)
+    assert ansi['red'] == tokens.error
+    assert ansi['yellow'] == tokens.warning
+    for ansi_name, accent in [('green', 'green'), ('blue', 'blue'), ('cyan', 'teal'), ('magenta', 'violet')]:
+        assert ansi[ansi_name] == ACCENTS[mode][accent]

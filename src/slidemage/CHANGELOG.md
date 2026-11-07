@@ -3702,3 +3702,8 @@ v0.14.36 (2026-11-07, theme consolidation, stage 2: public theme tokens and shar
 
 NEW: The app looks the same; plugins can now read more of its theme.
 - Plugin authors can use shared text sizes, spacing, corners and named accent colours through the public theme API.
+
+v0.14.37 (2026-11-07, theme consolidation, track A: colour adjustments): Render-status rings read shared status colours; success, Local icons, reveal steps and terminal base hues use the categorical accents. Presentation chrome reads one frozen STAGE group, with shared warning/error solid fills and white text. Fixed colours remain shared across themes; slide artwork and pen/laser settings are unchanged.
+
+NEW: Success and Local icons use a clearer green, reveal step 3 is teal, and terminal colours follow the shared palette. Presenter warning and overdue states use darker amber/red fills with white text.
+- Colour changes preserve control sizes and layout in both themes.

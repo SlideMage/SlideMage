@@ -10,12 +10,13 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QPushButt
                                QVBoxLayout, QWidget)
 
 from ...presentation.settings import TIMER_DURATION, TIMER_END, PresentationSettings
+from ..kit.tokens import STAGE
 from ...presentation.timer import PresentationTimer, end_time_after
 
 LEVEL_STYLE = {
     "off": "", "ok": "",
-    "warn": "background: #ef9a1a; color: #000000;",
-    "over": "background: #d32f2f; color: #ffffff;",
+    "warn": f"background: {STAGE.stage_warn}; color: {STAGE.stage_on_solid};",
+    "over": f"background: {STAGE.stage_over}; color: {STAGE.stage_on_solid};",
 }
 
 
