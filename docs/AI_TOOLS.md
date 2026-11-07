@@ -44,8 +44,8 @@ fresh toolbox from the window's current focus and scope (`ui/workspace/terminal/
 
 - **Project only.** Paths are resolved (symlinks included) and must stay inside the project. Hidden folders
   (`.slidemage/`, `.build/`, `.git/` ...) and `pdf/` do not exist for the model. `tools/files.py`
-- **Protected parts.** A slide's header comment, its `\setSlideVersion` line and `\vbox to 0pt{...}` blocks
-  cannot be edited. Frozen versions (`-vX-Y-Z.tex`) are read-only.
+- **Protected parts.** A slide's `%%` header lines and its `\setSlideVersion` line cannot be edited (v0.14.40;
+  the ordinary `%` notes at the top, and `\vbox to 0pt{...}` blocks since 2026-10-30, can). Frozen versions (`-vX-Y-Z.tex`) are read-only.
 - **Scope.** In "This slide" scope, writes to any other slide or deck file are refused, and so is adding a
   slide to the deck. The model is pointed to `switch_to_deck_mode`, which asks the user. One rule
   (`claude_scope.scope_problem`) serves both the tools and the Claude Code hook.

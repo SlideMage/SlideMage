@@ -273,8 +273,8 @@ def test_old_text_must_occur_exactly_once(box, root):
 
 
 @pytest.mark.parametrize("old, new", [
-    ("%% Included in decks: test", "%% Included in decks: test, other"),      # the header comment
-    ("%%\n\n% A note", "%%\n%\n\n% A note"),
+    ("%% Included in decks: test", "%% Included in decks: test, other"),      # SlideMage's '%%' header lines
+    ("%% Included in decks: test\n%%\n", ""),
     ("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-1-0}"),
     ("\\setSlideVersion{1-0-0}\n", ""),
 ])
@@ -282,6 +282,12 @@ def test_protected_parts_of_a_slide_are_refused(box, root, old, new):
     box.box.ctx.mode = EDIT_AUTO
     assert "protected part" in box.error("edit_file", path=SLIDE, old_text=old, new_text=new)
     assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT and not box.of_type(EditProposed)
+
+
+def test_a_note_at_the_top_of_a_slide_can_be_added(box, root):     # v0.14.40: only the '%%' lines are protected
+    box.box.ctx.mode = EDIT_AUTO
+    box.ok("edit_file", path=SLIDE, old_text="%%\n\n% A note", new_text="%%\n% Source: a paper\n\n% A note")
+    assert "% Source: a paper" in (root / SLIDE).read_bytes().decode()
 
 
 def test_overlay_blocks_of_a_slide_can_be_edited(box, root):      # (2026-10-30, direct request, after slide tjn)
