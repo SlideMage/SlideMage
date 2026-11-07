@@ -9,7 +9,6 @@ HostUi they raise RuntimeError("no window").
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 import types
@@ -411,6 +410,7 @@ class PluginHost(Registrar):
         widget.setObjectName({"surface": q.SURFACE, "cloud_card": q.CLOUD_CARD, "title": q.ASSISTANT_TITLE}[role])
 
     def theme_color(self, role):
+        """Deprecated: use theme().info instead. Kept as a quiet compatibility wrapper."""
         if role != "info":
             raise ValueError(role)
         return self.theme().info
@@ -461,13 +461,23 @@ class PluginHost(Registrar):
 
 def _theme_tokens(dark: bool) -> plugin_api.ThemeTokens:
     """The plugin's view of the design tokens (tokens.py): a chosen subset, so that the others can still change."""
+    import dataclasses
+
     from ..ui.kit import tokens
 
     t = tokens.tokens_for(dark)
-    names = (f.name for f in dataclasses.fields(plugin_api.ThemeTokens) if hasattr(t, f.name))
-    return plugin_api.ThemeTokens(
-        dark=dark, radius_sm=tokens.RADIUS_SM, radius_md=tokens.RADIUS_MD, font_sans=tokens.FONT_SANS,
-        font_mono=tokens.FONT_MONO, **{name: getattr(t, name) for name in names})
+    scales = {
+        "dark": dark, "font_sans": tokens.FONT_SANS, "font_mono": tokens.FONT_MONO,
+        "accents": tokens.ACCENTS["dark" if dark else "light"],
+        **{f"radius_{n}": getattr(tokens, f"RADIUS_{n.upper()}") for n in ("xs", "sm", "md")},
+        **{f"font_{n}": v for n, v in dataclasses.asdict(tokens.TYPE).items()},
+        **{f"space_{n.removeprefix('s_')}": v for n, v in dataclasses.asdict(tokens.SPACE).items()},
+    }
+    # Every other field is a colour of the same name in Tokens; a missing one raises here rather than fall back to
+    # the field's default.
+    return plugin_api.ThemeTokens(**{
+        f.name: scales[f.name] if f.name in scales else getattr(t, f.name)
+        for f in dataclasses.fields(plugin_api.ThemeTokens)})
 
 
 def _slide_source(frame: str) -> str:

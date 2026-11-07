@@ -43,6 +43,22 @@ class TypeScale:
 TYPE = TypeScale()
 
 
+@dataclass(frozen=True)
+class SpaceScale:
+    """Spacing steps in px; zero stays literal. Numeric names use s_2xs/s_2xl."""
+
+    s_2xs: int = 2
+    xs: int = 4
+    sm: int = 6
+    md: int = 8
+    lg: int = 10
+    xl: int = 12
+    s_2xl: int = 16
+
+
+SPACE = SpaceScale()
+
+
 def pill(height: int) -> float:
     """Half the widget height; larger radii can produce square corners in Qt."""
     return height / 2

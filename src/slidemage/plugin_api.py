@@ -37,8 +37,9 @@ Conventions of all calls:
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping as _Mapping
+from dataclasses import dataclass, field as _field
+from types import MappingProxyType as _MappingProxyType
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
@@ -208,7 +209,7 @@ class SlideRef:
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """SlideMage's colours, radii and fonts in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
+    """SlideMage's colours, radii, fonts and spacing in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
     makes these; later versions may add fields (with defaults), so read the fields you need by name. Colours are
     strings QSS and QColor take: hex, except hover, which is translucent and in rgba() form."""
 
@@ -241,6 +242,37 @@ class ThemeTokens:
     radius_md: int
     font_sans: str
     font_mono: str
+
+    # Added in SlideMage v0.14.36: the type scale (font_*), the spacing scale (space_*), radius_xs, the categorical
+    # colours by hue name (accents["teal"]), link, selection and the source editor's syntax colours.
+    font_micro: int = 11
+    font_small: int = 12
+    font_body: int = 13
+    font_control: int = 14
+    font_heading: int = 15
+    font_title: int = 18
+    font_display: int = 20
+    space_2xs: int = 2
+    space_xs: int = 4
+    space_sm: int = 6
+    space_md: int = 8
+    space_lg: int = 10
+    space_xl: int = 12
+    space_2xl: int = 16
+    radius_xs: int = 3
+    accents: _Mapping[str, str] = _field(default_factory=lambda: _MappingProxyType({}))
+    link: str = "#0066cc"
+    selection: str = "#0078d7"
+    syntax_comment: str = "#008000"
+    syntax_command: str = "#0033cc"
+    syntax_brace: str = "#996600"
+    syntax_env: str = "#a03db0"
+    syntax_math: str = "#b8860b"
+    syntax_todo: str = "#cc0000"
+
+    def pill(self, height: int) -> float:
+        """Half the widget height in px for round shapes (SlideMage v0.14.36)."""
+        return height / 2
 
 
 @dataclass(frozen=True)
@@ -925,7 +957,7 @@ class Host(Protocol):
         ...
 
     def theme_color(self, role: Literal["info"]) -> str:
-        """The current theme color for widgets that cannot use QSS."""
+        """Deprecated: use theme().info instead. Kept as a quiet compatibility wrapper."""
         ...
 
 
