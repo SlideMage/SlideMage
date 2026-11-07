@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QPushButton, QSpinBox, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ...presentation import layout
 from ...presentation.screens import ScreenInfo
 from ...presentation.settings import TIMER_DURATION, TIMER_END, PresentationSettings
@@ -96,7 +97,7 @@ class PresentationTab(Page):
         checks = Surface()
         stack = QVBoxLayout(checks)
         stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(4)
+        stack.setSpacing(SPACE.xs)
         for check in (self.timer_start, self.timer_flash, self.timer_warn):
             stack.addWidget(check)
         body.addWidget(Field("Timer behaviour", checks))

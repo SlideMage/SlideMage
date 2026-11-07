@@ -14,6 +14,7 @@ from PySide6.QtCore import QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ..kit.tokens import SPACE
 from ...presentation import open_with, presenter_update, recent
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
@@ -53,8 +54,9 @@ class PresenterStartWindow(QWidget):
         self.updating = False              # its download is running
         self.update_ready = False          # it is installed: quit when the talk that was running has ended
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 16)
-        root.setSpacing(12)
+        # Match sheet outer edges while keeping the compact presenter footer.
+        root.setContentsMargins(2 * SPACE.xl, SPACE.s_2xl + SPACE.sm, 2 * SPACE.xl, SPACE.s_2xl)
+        root.setSpacing(SPACE.xl)
         title = QLabel(TITLE)
         title.setObjectName(q.SHEET_TITLE)
         root.addWidget(title)
