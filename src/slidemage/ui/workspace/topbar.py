@@ -21,9 +21,10 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QSizePolicy,
 
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup
 from ...deck_scan import Deck
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.fonts import FONT_DIR
-from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton
+from ..kit.widgets import Button, DropdownButton, IconButton, SegmentedControl, SplitButton, _repolish
 from .menus import VIEW_LABELS, build_compile_menu, build_deck_menu, deck_key
 from .state import MODES, VIEWS
 
@@ -47,11 +48,6 @@ MODE_LABELS = {mode: mode.capitalize() for mode in MODES}
 SHORT_MODES = {"preview": "Prev.", "split": "Split", "source": "Src.", "details": "Info"}
 SOURCE_ONLY_TIP = ("This tab shows a file that is no slide, so it has only the Source view. "
                    "Switch to the slide tab for Preview, Split and Details.")
-
-
-def _repolish(widget: QWidget) -> None:
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
 
 
 class TopBar(QWidget):
@@ -86,8 +82,8 @@ class TopBar(QWidget):
         outer.addWidget(self._strip)
 
         self._row_layout = layout = QHBoxLayout(row)
-        layout.setContentsMargins(24, 0, 24, 0)
-        layout.setSpacing(14)
+        layout.setContentsMargins(2 * SPACE.xl, 0, 2 * SPACE.xl, 0)
+        layout.setSpacing(SPACE.xl)
 
         def add(widget: QWidget) -> None:
             # centred in the bar, not stretched to its full height
@@ -207,9 +203,10 @@ class TopBar(QWidget):
         full = density == "full"
         tight = density in ("tight", "tiny")
         tiny = density == "tiny"
-        margin = 8 if tiny else 12 if tight else 24
+        # The full toolbar keeps a broader edge inset than its compact density modes.
+        margin = SPACE.md if tiny else SPACE.xl if tight else 2 * SPACE.xl
         self._row_layout.setContentsMargins(margin, 0, margin, 0)
-        self._row_layout.setSpacing(5 if tiny else 8 if tight else 14)
+        self._row_layout.setSpacing(SPACE.xs if tiny else SPACE.md if tight else SPACE.xl)
         self._view_as.setVisible(full)
         self._views.setToolTip("View as")
         self._views.set_labels(VIEW_LABELS if full else SHORT_VIEWS, tooltips=VIEW_LABELS, compact=not full)

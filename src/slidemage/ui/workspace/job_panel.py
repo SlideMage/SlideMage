@@ -16,6 +16,7 @@ from PySide6.QtCore import QEvent, QObject, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from ...compile_status import DONE, FAILED, MOVING, QUEUED, RUNNING, STOPPED, JobRow, RunStatus
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconButton, IconLabel, apply_shadow, set_property
 
@@ -50,8 +51,8 @@ class _RowWidget(QWidget):
         super().__init__()
         self._jobname = row.jobname
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 4, 4)
-        layout.setSpacing(10)
+        layout.setContentsMargins(SPACE.md, SPACE.xs, SPACE.xs, SPACE.xs)
+        layout.setSpacing(SPACE.lg)
         self.icon = IconLabel("schedule", 18)
         layout.addWidget(self.icon)
         self.name = QLabel(row.label)
@@ -60,6 +61,7 @@ class _RowWidget(QWidget):
         self.detail = QLabel("")
         self.detail.setObjectName(q.PANEL_CAPTION)
         layout.addWidget(self.detail)
+        # Compact row actions leave room for job names and progress inside the fixed-width panel.
         self.stop = IconButton("close", "Stop this job", size=14)
         self.stop.clicked.connect(lambda: self.stop_clicked.emit(self._jobname))
         layout.addWidget(self.stop)
@@ -94,15 +96,16 @@ class JobPanel(QFrame):
         self._run: Optional[RunStatus] = None
         self._per_job_stop = self._can_retry = False
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl)
+        layout.setSpacing(SPACE.xl)
 
         head = QHBoxLayout()
-        head.setSpacing(12)
+        head.setSpacing(SPACE.xl)
+        # The compile summary icon stays larger than the inline job-status icons.
         self._icon = IconLabel("check_circle", 24)
         head.addWidget(self._icon)
         titles = QVBoxLayout()
-        titles.setSpacing(2)
+        titles.setSpacing(SPACE.s_2xs)
         self._title = QLabel("")
         self._title.setObjectName(q.JOB_TITLE)
         self._sub = QLabel("")
@@ -114,7 +117,7 @@ class JobPanel(QFrame):
         self._percent = QLabel("")
         self._percent.setObjectName(q.JOB_PCT)
         head.addWidget(self._percent)
-        self._close = IconButton("close", "Close", size=18)
+        self._close = IconButton("close", "Close")
         self._close.clicked.connect(self.hide)
         head.addWidget(self._close)
         layout.addLayout(head)
@@ -128,12 +131,12 @@ class JobPanel(QFrame):
         self._box = QFrame()
         self._box.setObjectName(q.LIST_BOX)
         self._rows_layout = QVBoxLayout(self._box)
-        self._rows_layout.setContentsMargins(4, 4, 4, 4)
+        self._rows_layout.setContentsMargins(SPACE.xs, SPACE.xs, SPACE.xs, SPACE.xs)
         self._rows_layout.setSpacing(0)
         layout.addWidget(self._box)
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(8)
+        buttons.setSpacing(SPACE.md)
         buttons.addStretch(1)
         self.log_button = Button("Log", "secondary", compact=True)
         self.retry_button = Button("Retry failed", "secondary", compact=True)

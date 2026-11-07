@@ -138,7 +138,7 @@ def test_resume_tabs_setting_skips_restore_but_not_save(monkeypatch):
     assert saved == [True]                           # closing still saves, regardless of the setting
 
     layout_settings.set(window_module.RESUME_TABS_SETTING, True)
-    again = build_window(monkeypatch)
+    build_window(monkeypatch)
     assert restored == [True]                        # back on: restore runs again
 
 

@@ -43,6 +43,7 @@ from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
 from .. import layout_settings
 from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionSheet
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
@@ -100,7 +101,7 @@ class SlideList(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE.sm)
         self.find = QLineEdit()
         self.find.setObjectName(q.SLIDES_FIND)
         self.find.setPlaceholderText("Find slide by id or title")
@@ -139,7 +140,7 @@ class SlideList(QWidget):
         layout.addWidget(self.bulk_bar)
         self.add_bar = QWidget()
         add_row = QHBoxLayout(self.add_bar)
-        add_row.setContentsMargins(0, 4, 0, 0)
+        add_row.setContentsMargins(0, SPACE.xs, 0, 0)
         self.add_slide_button = Button("+ Slide", "primary")
         self.add_slide_button.clicked.connect(self._add_slide)
         self.add_section_button = Button("+ Section", "secondary")
@@ -179,8 +180,8 @@ class SlideList(QWidget):
     def _build_bulk_bar(self) -> QWidget:
         bar = QWidget()
         outer = QVBoxLayout(bar)
-        outer.setContentsMargins(0, 4, 0, 0)
-        outer.setSpacing(6)
+        outer.setContentsMargins(0, SPACE.xs, 0, 0)
+        outer.setSpacing(SPACE.sm)
         top = QHBoxLayout()
         self.bulk_label = QLabel()
         self.bulk_label.setObjectName(q.SLIDES_BULK_LABEL)

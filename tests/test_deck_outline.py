@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from slidemage import deck_outline, slide_language, slide_snapshot
+from slidemage import deck_outline, slide_language, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
 
 GOOD = "\\begin{standardframe}{Title}Text\\end{standardframe}\n"
@@ -89,7 +89,7 @@ def test_a_preview_older_than_its_source_is_stale_and_none_is_just_missing(ctx, 
     for name in ("aaa-EN-Fresh", "bbb-EN-Stale", "ccc-EN-NoPreview"):
         slide(project, name)
     deck = make_deck(tmp_path, "\\slide{aaa-EN-Fresh}\n\\slide{bbb-EN-Stale}\n\\slide{ccc-EN-NoPreview}\n")
-    template = slide_snapshot.detect_template(deck.preamble_text)
+    template = slide_templates.detect_template(deck.preamble_text)
     for slide_id, mtime in (("aaa", 4_000_000_000), ("bbb", 1)):
         png = slide_snapshot.snapshot_path(ctx, slide_id, template, slide_snapshot.THUMB_SIZE, f"{slide_id}-EN-X")
         png.write_bytes(b"png")

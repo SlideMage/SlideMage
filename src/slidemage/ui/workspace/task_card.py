@@ -18,6 +18,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, IconLabel, Surface, announce, clear_layout, set_property
@@ -49,7 +50,7 @@ class TaskCardView(Surface):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
         self.back = Button("← Back to conversation", "ghost", compact=True)
         self.back.clicked.connect(self.back_clicked)
         layout.addWidget(self.back, 0, Qt.AlignmentFlag.AlignLeft)
@@ -73,10 +74,10 @@ class TaskCardView(Surface):
         frame = Surface()
         frame.setObjectName(q.TASK_CARD)
         body = QVBoxLayout(frame)
-        body.setContentsMargins(14, 14, 14, 14)
-        body.setSpacing(10)
+        body.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        body.setSpacing(SPACE.lg)
         head = QVBoxLayout()
-        head.setSpacing(3)
+        head.setSpacing(SPACE.xs)
         self.title = QLabel()
         self.title.setObjectName(q.TASK_TITLE)
         self.title.setWordWrap(True)
@@ -86,8 +87,8 @@ class TaskCardView(Surface):
         self.target.setWordWrap(True)
         head.addWidget(self.target)
         route = QHBoxLayout()
-        route.setSpacing(5)
-        self.route_icon = IconLabel("computer", 15)
+        route.setSpacing(SPACE.sm)
+        self.route_icon = IconLabel("computer", 16)
         route.addWidget(self.route_icon)
         self.route = QLabel()
         self.route.setObjectName(q.TASK_ROUTE)
@@ -97,7 +98,7 @@ class TaskCardView(Surface):
         body.addLayout(head)
 
         state = QHBoxLayout()
-        state.setSpacing(8)
+        state.setSpacing(SPACE.md)
         self.state_icon = IconLabel("autorenew", 18)
         state.addWidget(self.state_icon, 0, Qt.AlignmentFlag.AlignTop)
         self.state = QLabel()
@@ -112,13 +113,13 @@ class TaskCardView(Surface):
 
         self._diff_box = QVBoxLayout()
         body.addLayout(self._diff_box)
-        self._buttons = FlowLayout(spacing=8)
+        self._buttons = FlowLayout(spacing=SPACE.md)
         body.addLayout(self._buttons)
         self.steps_toggle = Button("", "ghost", compact=True)
         self.steps_toggle.clicked.connect(self._toggle_steps)
         body.addWidget(self.steps_toggle, 0, Qt.AlignmentFlag.AlignLeft)
         self._steps = QVBoxLayout()
-        self._steps.setSpacing(6)
+        self._steps.setSpacing(SPACE.sm)
         body.addLayout(self._steps)
         return frame
 
@@ -216,8 +217,8 @@ class TaskCardView(Surface):
         clear_layout(self._steps)
         for step in steps:
             line = QHBoxLayout()
-            line.setSpacing(8)
-            icon = IconLabel(step.icon, 17)
+            line.setSpacing(SPACE.md)
+            icon = IconLabel(step.icon, 18)
             icon.set_tone(step.tone)
             icon.setAccessibleName(step.word)
             line.addWidget(icon)

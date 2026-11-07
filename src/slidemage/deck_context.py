@@ -263,6 +263,8 @@ def render_in_deck(ctx: ProjectContext, deck: Deck, view: str, slide_id: str, id
         if not frames:
             return None
         the_plan = partial_compile.plan(ctx, job, frames)
+        # Page patches follow the deck's frozen-version setting; a slide's Preview always shows its edits.
+        the_plan._saved_versions = False
         if all_steps:
             the_plan.extra_lines = slide_preview._overlay_line(None, True)
         output = partial_compile.run(the_plan, log, cancel)

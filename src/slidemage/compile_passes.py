@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import project
+from .fileio import read_json
 
 
 # latexmk's own line at the start of every pass
@@ -45,11 +46,7 @@ def _store_path(ctx: project.ProjectContext) -> Path:
 
 
 def _load(ctx: project.ProjectContext) -> dict:
-    try:
-        data = json.loads(_store_path(ctx).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(_store_path(ctx))
 
 
 def _write(ctx: project.ProjectContext, data: dict) -> None:

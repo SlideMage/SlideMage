@@ -14,6 +14,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ... import image_review, open_path
 from ...project import ProjectContext
 from ..kit import kit_qss as q
@@ -27,7 +28,7 @@ class ImagePreview(Surface):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE.sm)
         preview = image_review.preview_for(project, reference, log)
         pixmap = QPixmap(str(preview.image)) if preview.image is not None else QPixmap()
         if pixmap.isNull():

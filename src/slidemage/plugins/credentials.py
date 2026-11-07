@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 
 from .. import project
+from ..fileio import atomic_write, read_json
 
 DEFAULT_NAME = "key"
 SOURCE_ENV = "environment"
@@ -55,28 +56,16 @@ class PluginCredentials:
     # -- the file
 
     def _read_file(self) -> dict[str, str]:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)} \
-            if isinstance(data, dict) else {}
+        data = read_json(self.path)
+        return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
 
     def _write_file(self, data: dict[str, str]) -> None:
         path = self.path
         if not data:
             path.unlink(missing_ok=True)
             return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".tmp")
-        try:
-            # Created with 0600 from the start: the secret is never readable by others, not even for a moment.
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as out:
-                out.write(json.dumps(data, indent=2) + "\n")
-            os.replace(tmp, path)
-        finally:
-            tmp.unlink(missing_ok=True)
+        # atomic_write creates its temporary file with 0600: the secret is never readable by others.
+        atomic_write(path, json.dumps(data, indent=2) + "\n")
 
     # -- the keychain
 

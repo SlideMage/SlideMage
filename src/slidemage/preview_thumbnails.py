@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from . import compiler, deck_outline, preview_cache, preview_target, slide_snapshot
+from . import compiler, deck_outline, preview_cache, preview_target, slide_templates
 from .preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from .preview_selection import SelectedImage, legacy_reference, select_image
 
@@ -40,7 +40,7 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
             return replace(row, thumbnail=None, thumbnail_verified=False, stale_preview=False,
                            thumbnail_note=f'Hidden in {view}; no thumbnail for this view.', image_selection=None)
         # Reset any previous verified image before considering a new context.
-        reference = legacy_reference(ctx, row.call.id, slide_snapshot.detect_template(deck.preamble_text),
+        reference = legacy_reference(ctx, row.call.id, slide_templates.detect_template(deck.preamble_text),
                                      row.call.id_slug)
         fallback = replace(row, thumbnail=reference, thumbnail_verified=False,
                            stale_preview=reference is not None and deck_outline._older(reference, path),

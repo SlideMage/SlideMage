@@ -78,9 +78,6 @@ class StepPlan:
     final_only: bool = False  # only the last step, by \SMFinalStateForStudents
     note: str = ""
 
-    def is_included(self, step: int) -> bool:
-        return step in self.included
-
     def stops(self, deck_only: bool) -> list[int]:
         """The step numbers the slider offers."""
         steps = range(1, self.n + 1)

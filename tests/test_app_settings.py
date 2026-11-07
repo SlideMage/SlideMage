@@ -22,7 +22,7 @@ def _project_file(ctx):
 def test_ai_settings_go_to_the_machine_and_the_rest_stays_in_the_project(tmp_path):
     ctx = _project(tmp_path)
     ai_profile.set_model_choice(ctx, ai_profile.OLLAMA, ai_profile.CHAT, "qwen3:8b")
-    app_settings.set_ollama_host(ctx, "http://gpu-box:11434")
+    app_settings.set(ctx, app_settings.OLLAMA_HOST_SETTING_KEY, "http://gpu-box:11434")
     app_settings.set(ctx, "last_deck", "course")
     assert set(_project_file(ctx)) == {"last_deck"}
     machine = read_json(app_settings.MACHINE_STORE_PATH)
@@ -33,8 +33,8 @@ def test_ai_settings_go_to_the_machine_and_the_rest_stays_in_the_project(tmp_pat
 
 def test_every_project_on_this_machine_sees_the_same_ai_settings(tmp_path):
     one, two = _project(tmp_path / "one"), _project(tmp_path / "two")
-    app_settings.set_ollama_host(one, "http://gpu-box:11434")
-    assert app_settings.get_ollama_host(two) == "http://gpu-box:11434"
+    app_settings.set(one, app_settings.OLLAMA_HOST_SETTING_KEY, "http://gpu-box:11434")
+    assert app_settings.peek_ollama_host(two) == "http://gpu-box:11434"
 
 
 def test_a_project_s_old_ai_settings_move_out_of_it_once_and_this_machine_s_win(tmp_path):
@@ -68,6 +68,7 @@ def test_a_project_folder_that_refuses_new_files_does_not_stop_a_setting_change(
 
     monkeypatch.setattr(fileio, "atomic_write", refusing)
     app_settings.set(ctx, "last_deck", "course")                       # no exception
-    app_settings.set_ollama_host(ctx, "http://gpu-box:11434")          # this machine's file is still written
+    # This machine's file is still written.
+    app_settings.set(ctx, app_settings.OLLAMA_HOST_SETTING_KEY, "http://gpu-box:11434")
     assert read_json(app_settings.MACHINE_STORE_PATH)["ollama_host"] == "http://gpu-box:11434"
     assert "couldn't save settings" in caplog.text

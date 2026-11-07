@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from ... import bibliography
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import ModalSheet, Surface, caption
 
 # label shown in the "Type:" combo -> bibliography.TYPE_FIELDS key
@@ -117,7 +118,7 @@ class CitationDialog(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         intro = QLabel("Add a new entry to SlideMage.bib. Fields marked * are required.")
         intro.setObjectName(q.PANEL_CAPTION)
         layout.addWidget(intro)

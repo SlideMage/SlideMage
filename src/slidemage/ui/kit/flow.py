@@ -7,9 +7,11 @@ from __future__ import annotations
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt
 from PySide6.QtWidgets import QLayout, QLayoutItem, QWidget
 
+from .tokens import SPACE
+
 
 class FlowLayout(QLayout):
-    def __init__(self, parent: QWidget | None = None, spacing: int = 6) -> None:
+    def __init__(self, parent: QWidget | None = None, spacing: int = SPACE.sm) -> None:
         super().__init__(parent)
         self._items: list[QLayoutItem] = []
         self.setContentsMargins(0, 0, 0, 0)

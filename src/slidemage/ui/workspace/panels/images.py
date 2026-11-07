@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit
 
@@ -29,22 +29,13 @@ from ...ai_models import built, cloud_label, task_route
 from ... import background
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, SegmentedControl
-from ...pages.image_form import (ROLES, SOURCE_SPECS, STATE_TONES, SourceStatus, labelled_edit, review_refused, store_writable,
+from ...pages.image_form import (ROLES, SOURCE_SPEC, STATE_TONES, SourceStatus, labelled_edit, review_refused, store_writable,
                                  translation_specs)
 from ...text import plural
 from .base import Row, SidePanel, box, empty_row, text
 
 THUMBNAIL = 56
 PIXMAP_SUFFIXES = (".png", ".jpg", ".jpeg")
-
-
-class _DraftWorker(QThread):
-    def __init__(self, work):
-        super().__init__()
-        self.work = work
-
-    def run(self):
-        self.work()
 
 
 class ImageForm(Row):
@@ -81,7 +72,7 @@ class ImageForm(Row):
         self.short_edit = self._edit("Short description (the figure's caption)", self.baseline[1], 48)
         self.long_edit = self._edit("Long description (what a student who cannot see it needs to know)",
                                     self.baseline[2], 110)
-        spec = SOURCE_SPECS["source"] if self.language == alt_images.DRAFT_LANGUAGE else translation_specs(self.language)[3]
+        spec = SOURCE_SPEC if self.language == alt_images.DRAFT_LANGUAGE else translation_specs(self.language)[3]
         self.source_edit, source_field = labelled_edit(spec, self.source_baseline)
         self.body.addWidget(source_field)
         self.source_status = SourceStatus()
@@ -249,21 +240,16 @@ class ImageDescriptions(SidePanel):
             form.note.setText(f"Drafting with {backend.label}…")
             form.note.show()
             context = alt_draft.build_context(self.app.project, path, form.reference)
-            worker = _DraftWorker(lambda: self._draft_bg(slide_id, form.reference, backend.provider, backend, found[0][1], context))
-            background.start_detached(worker, on_done=lease.release)
+            reference, provider, resolved = form.reference, backend.provider, found[0][1]
+            worker = background.run_in_background(
+                lambda: backend.draft(resolved, context),
+                lambda result, error: self.drafted.emit(slide_id, reference, provider,
+                    result if error is None else alt_draft.DraftResult(error=str(error) or type(error).__name__)),
+                parent=self)
+            worker.finished.connect(lambda: lease.release())
         except BaseException:
             lease.release()
             raise
-
-    def _draft_bg(self, slide_id: str, reference: str, provider, backend, resolved: Path, context) -> None:
-        try:
-            result = backend.draft(resolved, context)
-        except Exception as exc:  # noqa: BLE001 -- shown on the form; the slot must still be given back
-            result = alt_draft.DraftResult(error=str(exc) or type(exc).__name__)
-        try:
-            self.drafted.emit(slide_id, reference, provider, result)
-        except RuntimeError:  # the panel was destroyed while the worker finished
-            pass
 
     def _on_drafted(self, slide_id: str, reference: str, provider, result) -> None:
         if self._slide is None or self._slide[0] != slide_id:
