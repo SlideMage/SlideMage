@@ -41,6 +41,7 @@ RENDER_SCHEMA = 3     # 2: every reveal step (all_steps) whatever the slide rest
 KIND_PROJECT = "project"        # under the project folder: rel path from the root
 KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_snapshot.framework_dirs): rel path from it
 KIND_ALT_TEXT = "alt-text"      # a project alt-text file: the hash of its rows for the render's pictures (v8.69.0)
+KIND_MISSING_INPUT = "missing-input"   # a failed run's missing file: retry when it appears in a search folder
 
 _SKIPPED_PARTS = ("luatex-cache", ".build", ".previews", "slidemage_preview_", "_slidemage_")
 EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
@@ -234,8 +235,18 @@ class Resolver:
                 return folder / rel
         return None
 
+    def missing_input_entry(self, name: str) -> list:
+        """Remember even a dependency TeX could not read, so restoring it invalidates a stored failure."""
+        paths = {folder / name for folder in [self.ctx.decks_dir, *slide_snapshot.template_dirs(self.ctx.root)]}
+        state = [[str(path), self.hashes.hash(path)] for path in sorted(paths)]
+        return [KIND_MISSING_INPUT, name, _json_hash(state)]
+
     def manifest_current(self, entries: list) -> bool:
         for kind, rel, sha in entries:
+            if kind == KIND_MISSING_INPUT:
+                if self.missing_input_entry(rel)[2] != sha:
+                    return False
+                continue
             path = self._resolve(kind, rel)
             if path is None or self.hashes.is_racy(path):
                 return False

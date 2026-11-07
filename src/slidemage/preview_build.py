@@ -365,17 +365,25 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
     # Returned previews contain only a temporary PDF, so a SyncTeX file in
     # this private build directory cannot be used by the external viewer.
     options = ['-synctex=0', '-r', preview_latexmkrc(ctx.build_dir).as_posix()]
-    if force and not changed:
+    previous_log = cache / (jobname + '.log')
+    failed_before = (not changed and previous_log.is_file()
+                     and compiler.FATAL_ERROR_RE.search(previous_log.read_text(errors='replace')))
+    if (force or failed_before) and not changed:
         # Go mode: a changed wrapper makes latexmk run LuaLaTeX, which reads every input again, so only an
-        # unchanged one needs -g to see an input edited with its time and size restored.
+        # unchanged one needs -g to see an input edited with its time and size restored. Also discard latexmk's
+        # remembered error: a missing input restored in another search folder may not invalidate its old graph.
         options.append('-g')
     if format_dir is not None:
         # The project's .latexmkrc command line plus -fmt; the wrapper is the slide only.
         fmt, env = preview_format.fmt_option(format_dir, env)
         options.append('-lualatex=lualatex ' + fmt + ' -interaction=nonstopmode -file-line-error %O %S')
     log(f'==== Rendering {id_slug} (reusable build) ====')
-    pdf, rerun_limit = run_preview(ctx, wrapper, jobname, id_slug, cache, log, env=env, reusable=True,
-                                   options=options, cancel=cancel)
+    try:
+        pdf, rerun_limit = run_preview(ctx, wrapper, jobname, id_slug, cache, log, env=env, reusable=True,
+                                      options=options, cancel=cancel)
+    except RuntimeError as exc:
+        exc.preview_inputs = list(getattr(exc, 'preview_inputs', ())) + preview_format.inputs(format_dir)
+        raise
     if rerun_limit:
         unstable.touch()
         log('    (PDF produced, but latexmk reached its rerun limit; layout may not be stable)')
@@ -469,7 +477,16 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
                        and 'Maximum runs of' in tail and 'needed too many passes' in tail)
     if not build.ok or (reusable and build.returncode and not rerun_limit):
         error = FontCacheBusy if font_cache_race(build.log_text) else RuntimeError
-        raise error(f'Render failed for {id_slug}:\n' + '\n'.join(build.log_text.splitlines()[-25:]))
+        failure = error(f'Render failed for {id_slug}:\n' + '\n'.join(build.log_text.splitlines()[-25:]))
+        # Carry this job's dependencies to the background worker. Looking for the newest recorder in a shared
+        # build tree can pick another concurrent render, and background jobs build outside the project entirely.
+        try:
+            failure.preview_inputs = recorded_inputs(outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
+                                                     project_root=ctx.root, cache=outdir)
+        except OSError:
+            failure.preview_inputs = []
+        failure.missing_inputs = re.findall(r"LaTeX Error: File [`']([^\n]+?)' not found", build.log_text)
+        raise failure
     return pdf, rerun_limit
 
 

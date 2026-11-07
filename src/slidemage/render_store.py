@@ -42,6 +42,7 @@ BG_SUFFIX = ".bg"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30
 LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of drop_stale(None, ...) ran in this store
+FAILURE_INPUTS_TRACKED = "failures track their own inputs"
 THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
 
 SCHEMA = """
@@ -92,6 +93,11 @@ class RenderStore:
             self.db.executescript(SCHEMA)
             self.db.commit()
         self.lock = self._lock
+        # Older failures often recorded only the slide, having searched the project's build folder instead of the
+        # background workspace. Their dependency state cannot be recovered: retry once with correct tracking.
+        if not self.flag(FAILURE_INPUTS_TRACKED):
+            self.forget_failure()
+            self.set_flag(FAILURE_INPUTS_TRACKED)
 
     @staticmethod
     def forget_project_copy(ctx: project.ProjectContext) -> None:
