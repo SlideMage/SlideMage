@@ -36,3 +36,16 @@ def test_sheet_shows_history_license_and_expands_an_entry(qapp):
     sheet.browser.anchorClicked.emit(QUrl(f"toggle:{index}"))
     assert description not in sheet.browser.toPlainText()
     sheet.browser.anchorClicked.emit(QUrl("https://example.org"))
+
+
+def test_links_follow_the_theme_manager_in_both_modes(qapp):
+    from PySide6.QtWidgets import QWidget
+    from slidemage.ui.kit.theme import ThemeManager
+
+    for dark in (False, True):
+        parent = QWidget()
+        parent.theme = ThemeManager(dark=dark)
+        sheet = AboutSheet(parent)
+        assert sheet.browser.document().defaultStyleSheet() == f"a {{ color: {parent.theme.tokens.link}; }}"
+        sheet.deleteLater()
+        parent.deleteLater()

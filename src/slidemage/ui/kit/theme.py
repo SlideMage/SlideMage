@@ -7,8 +7,8 @@ Every Qt widget picks up `QApplication.setStyleSheet()` changes automatically,
 cascading through the whole widget tree with no registration step: toggling
 dark/light is "rebuild the QSS string, reapply it".
 
-palette.py's PALETTES (the pre-redesign colors) still feed what QSS cannot
-express: the source editor's syntax colors and the status colors.
+The tokens also supply the source editor's per-character syntax colours,
+which QSS cannot express.
 """
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ from PySide6.QtWidgets import QApplication
 
 from ... import app_settings
 from ...project import ProjectContext
-from .palette import PALETTES
 from .fonts import load_fonts
 from .kit_qss import KIT_ICONS, build_kit_qss
 from .tokens import FONT_ICONS, Tokens, tokens_for
@@ -78,10 +77,6 @@ class ThemeManager:
         return lambda: self._listeners.remove(listener) if listener in self._listeners else None
 
     @property
-    def colors(self) -> dict[str, str]:
-        return PALETTES["dark" if self.dark else "light"]
-
-    @property
     def tokens(self) -> Tokens:
         return tokens_for(self.dark)
 
@@ -89,15 +84,15 @@ class ThemeManager:
         """For a QSyntaxHighlighter's QTextCharFormat colors -- not
         QSS-expressible, since they're per-character-range formats inside a
         text document, not widget chrome."""
-        c = self.colors
+        t = self.tokens
         return {
-            "comment": c["syntax_comment"],
-            "command": c["syntax_command"],
-            "brace": c["syntax_brace"],
-            "env": c["syntax_env"],
-            "math": c["syntax_math"],
-            "todo": c["syntax_todo"],
-            "brace_match_bg": c["select_bg"],
+            "comment": t.syntax_comment,
+            "command": t.syntax_command,
+            "brace": t.syntax_brace,
+            "env": t.syntax_env,
+            "math": t.syntax_math,
+            "todo": t.syntax_todo,
+            "brace_match_bg": t.selection,
         }
 
     def toggle(self) -> None:

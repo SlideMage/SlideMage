@@ -22,11 +22,15 @@ from .tokens import (
     FONT_ICONS,
     FONT_MONO,
     FONT_SANS,
+    RADIUS_LG,
     RADIUS_MD,
     RADIUS_PILL,
     RADIUS_SM,
+    RADIUS_XS,
+    TYPE,
     VIEWS,
     Tokens,
+    pill,
     with_alpha,
 )
 
@@ -206,7 +210,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
     font = f'font-family: "{FONT_SANS}";'
     mono = f'font-family: "{FONT_MONO}";'
 
-    def text(selector: str, size: float, color: str, weight: int | None = None, family: str = font) -> str:
+    # Nominal heights used by the round indicators, chips and count badges.
+    RADIO_HEIGHT = 18
+    CHIP_HEIGHT = 18
+    BADGE_HEIGHT = 20
+    SEGMENT_BADGE_HEIGHT = 14
+
+    def text(selector: str, size: int, color: str, weight: int | None = None, family: str = font) -> str:
         """A text style: the family, size, optional weight and color of `selector`."""
         bold = f" font-weight: {weight};" if weight else ""
         return f"{selector} {{ {family} font-size: {size}px;{bold} color: {color}; }}"
@@ -258,7 +268,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.surface};
             color: {t.text};
             border: 1px solid {t.line};
@@ -273,7 +283,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QToolTip {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             background-color: {t.inverse};
             color: {t.on_inverse};
             border: none;
@@ -281,7 +291,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QMenu {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.surface};
             color: {t.text};
             border: 1px solid {t.line};
@@ -305,7 +315,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QMenuBar {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.surface};
             color: {t.text};
             border-bottom: 1px solid {t.line};
@@ -325,7 +335,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{MENU_HEADER} {{
             {font}
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             font-weight: 500;
             color: {t.text_3};
             padding: 6px 12px 2px 12px;
@@ -335,7 +345,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
            under it (prototype v3), a ring when it has the focus. */
         QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QDateTimeEdit, QComboBox {{
             {font}
-            font-size: 13.5px;
+            font-size: {TYPE.control}px;
             background-color: {t.bg};
             color: {t.text};
             border: 1px solid transparent;
@@ -371,7 +381,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QComboBox QAbstractItemView {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.surface};
             color: {t.text};
             border: 1px solid {t.line};
@@ -412,7 +422,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QCheckBox, QRadioButton {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: transparent;
             color: {t.text};
             spacing: 8px;
@@ -427,10 +437,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
         }}
         QCheckBox::indicator {{
-            border-radius: {RADIUS_SM - 1}px;
+            border-radius: {RADIUS_XS}px;
         }}
         QRadioButton::indicator {{
-            border-radius: 9px;
+            border-radius: {pill(RADIO_HEIGHT):g}px;
         }}
         QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
             border-color: {t.text};
@@ -453,7 +463,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QListWidget {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.bg};
             color: {t.text};
             border: none;
@@ -475,12 +485,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QProgressBar {{
             background-color: {with_alpha(t.text, 0.15)};
             border: none;
-            border-radius: 3px;
+            border-radius: {RADIUS_XS}px;
             text-align: center;
         }}
         QProgressBar::chunk {{
             background-color: {t.inverse};
-            border-radius: 3px;
+            border-radius: {RADIUS_XS}px;
         }}
         QSplitter#{SURFACE}::handle:horizontal {{
             background: {t.line};
@@ -508,7 +518,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QScrollBar::handle {{
             background: {t.text_4};
-            border-radius: 4px;
+            border-radius: {RADIUS_SM}px;
             min-height: 24px;
             min-width: 24px;
         }}
@@ -537,7 +547,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton[kitSegment="true"] {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             font-weight: 500;
             background-color: transparent;
             color: {t.text_2};
@@ -548,7 +558,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton[kitSegment="true"][mono="true"] {{
             font-family: "Roboto Mono";
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             font-weight: 600;
             padding: 5px 8px;
         }}
@@ -557,30 +567,30 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{BADGE} {{
             {font}
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             font-weight: 700;
             color: {t.on_inverse};
             background-color: {t.inverse};
-            border-radius: 10px;
+            border-radius: {pill(BADGE_HEIGHT):g}px;
             padding: 0 6px;
-            min-height: 20px;
+            min-height: {BADGE_HEIGHT}px;
             min-width: 8px;
         }}
         QLabel#{BADGE}[tone="info"] {{ color: {t.info_fg}; background-color: {t.info_bg}; }}
         QLabel#{BADGE}[tone="error"] {{ color: {t.on_solid}; background-color: {t.error_solid}; }}
-        {text(f"QLabel#{LABEL_BODY}", 13, t.text)}
-        {text(f"QLabel#{LABEL_SECONDARY}", 13, t.text_2)}
-        {text(f"QLabel#{LABEL_MONO}", 12, t.text_2, family=mono)}
+        {text(f"QLabel#{LABEL_BODY}", TYPE.body, t.text)}
+        {text(f"QLabel#{LABEL_SECONDARY}", TYPE.body, t.text_2)}
+        {text(f"QLabel#{LABEL_MONO}", TYPE.small, t.text_2, family=mono)}
         QLabel#{SEGMENT_BADGE} {{
             {font}
-            font-size: 10px;
+            font-size: {TYPE.micro}px;
             font-weight: 700;
             color: {t.on_solid};
             background-color: {t.error_solid};
-            border-radius: 7px;
+            border-radius: {pill(SEGMENT_BADGE_HEIGHT):g}px;
             padding: 0 4px;
             min-width: 8px;
-            min-height: 14px;
+            min-height: {SEGMENT_BADGE_HEIGHT}px;
         }}
         QPushButton[kitSegment="true"]:hover {{
             color: {t.text};
@@ -620,8 +630,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* Half the chip's height at most: Qt draws square corners for a radius beyond that (RADIUS_PILL would). */
         QFrame#{CHIP} {{
             {font}
-            font-size: 12px;
-            border-radius: 9px;
+            font-size: {TYPE.small}px;
+            border-radius: {pill(CHIP_HEIGHT):g}px;
         }}
         {chips}
         QFrame#{CHIP}[pressable="true"] {{ border: 2px solid transparent; }}
@@ -630,7 +640,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* A chip that switches on and off; on, it takes the colors of its view. */
         QPushButton#{TOGGLE_CHIP} {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             font-weight: 500;
             background-color: transparent;
             color: {t.text_3};
@@ -657,7 +667,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
            surface button, "ghost" a flat one. */
         QPushButton[kind] {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             font-weight: 500;
             border-radius: {RADIUS_SM}px;
             padding: 7px 14px;
@@ -701,7 +711,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border-color: {t.cloud_text};
         }}
         QPushButton[kind][compact="true"] {{
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             padding: 4px 9px;
         }}
         QPushButton[kind]:disabled {{
@@ -718,7 +728,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{SPLIT} QPushButton {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             font-weight: 500;
             background-color: transparent;
             color: {t.on_inverse};
@@ -733,7 +743,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* The caret is an icon glyph: it needs the icon font back. */
         QFrame#{SPLIT} QPushButton#{SPLIT_CARET} {{
             font-family: "{FONT_ICONS}";
-            font-size: 18px;
+            font-size: {TYPE.title}px;
             font-weight: 400;
             padding: 5px 7px;
         }}
@@ -778,7 +788,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{MENU} QListWidget {{
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             background-color: transparent;
             border: none;
             outline: none;
@@ -794,7 +804,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QWidget#{MENU_ROW} {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: transparent;
             border-radius: {RADIUS_SM}px;
         }}
@@ -805,7 +815,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
         }}
         QWidget#{MENU_ROW} QLabel#{MENU_META} {{
-            font-size: 11.5px;
+            font-size: {TYPE.small}px;
             color: {t.text_3};
         }}
         QWidget#{MENU_ROW}[tone="danger"] QLabel#{MENU_TEXT} {{
@@ -816,7 +826,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{MENU_HEADER} {{
             {font}
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             font-weight: 500;
             color: {t.text_3};
             padding: 6px 10px 2px 10px;
@@ -840,25 +850,25 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             margin-top: 4px;
             padding: 6px 4px 2px 4px;
         }}
-        QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} {{ font-size: 12.5px; }}
+        QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} {{ font-size: {TYPE.body}px; }}
         QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} QLabel#{MENU_META} {{
             {mono}
-            font-size: 10.5px;
+            font-size: {TYPE.micro}px;
         }}
-        {text(f'QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER}', 13, t.text_2, 500)}
+        {text(f'QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER}', TYPE.body, t.text_2, 500)}
         QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER} {{ padding: 8px 10px 3px 10px; }}
         QFrame#{MENU_FOOTER} QWidget#{MENU_ROW} QLabel#{MENU_TEXT} {{ font-weight: 500; }}
-        {text(f"QLabel#{MENU_NOTE}", 11.5, t.text_3)}
+        {text(f"QLabel#{MENU_NOTE}", TYPE.small, t.text_3)}
         QLabel#{MENU_NOTE} {{ padding: 0 8px; }}
 
         QFrame#{MENU_SWATCH} {{
             border: 1px solid {t.line};
-            border-radius: 3px;
+            border-radius: {RADIUS_XS}px;
         }}
 
         QFrame#{TOAST} {{
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             background-color: {t.inverse};
             border-radius: {RADIUS_MD}px;
         }}
@@ -873,7 +883,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton#{TOAST_ACTION} {{
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             font-weight: 500;
             background-color: {with_alpha(t.on_inverse, 0.14)};
             color: {t.on_inverse};
@@ -891,7 +901,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
 
         QWidget#{PALETTE} {{
-            background-color: {with_alpha("#000000", 0.4)};
+            background-color: {with_alpha(t.scrim, 0.4)};
         }}
         QFrame#{PALETTE_CARD} QScrollArea, QFrame#{PALETTE_CARD} QScrollArea > QWidget > QWidget {{
             background-color: transparent;
@@ -902,7 +912,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLineEdit#{PALETTE_INPUT} {{
             {font}
-            font-size: 16px;
+            font-size: {TYPE.heading}px;
             color: {t.text};
             background-color: transparent;
             border: none;
@@ -911,8 +921,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{PALETTE_FOOT} {{
             border-top: 1px solid {t.line};
         }}
-        {text(f"QFrame#{PALETTE_FOOT} QLabel", 11.5, t.text_3)}
-        {text(f"QLabel#{PALETTE_KEYS}", 10.5, t.text_3, None, mono)}
+        {text(f"QFrame#{PALETTE_FOOT} QLabel", TYPE.small, t.text_3)}
+        {text(f"QLabel#{PALETTE_KEYS}", TYPE.micro, t.text_3, None, mono)}
 
         QDialog#{SHEET} {{
             background-color: {t.surface};
@@ -920,14 +930,14 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QDialog#{SHEET} QStackedWidget, QDialog#{SHEET} QTabBar {{
             background-color: transparent;
         }}
-        {text(f"QLabel#{SHEET_TITLE}", 18, t.text, 500)}
-        {text(f"QLabel#{SHEET_SECTION}", 15, t.text, 500)}
+        {text(f"QLabel#{SHEET_TITLE}", TYPE.title, t.text, 500)}
+        {text(f"QLabel#{SHEET_SECTION}", TYPE.heading, t.text, 500)}
         /* The read-only route badge under a dialog's title: a grey pill, amber on Cloud. */
         QFrame#{MODE_BADGE} {{ background-color: {t.bg}; border-radius: {RADIUS_PILL}px; }}
         QFrame#{MODE_BADGE}[cloud="true"] {{ background-color: {t.cloud_bg}; }}
-        {text(f"QLabel#{MODE_BADGE_TEXT}", 11.5, t.text_2, 500)}
+        {text(f"QLabel#{MODE_BADGE_TEXT}", TYPE.small, t.text_2, 500)}
         QFrame#{MODE_BADGE}[cloud="true"] QLabel {{ color: {t.cloud_fg}; }}
-        {text(f"QLabel#{FIELD_LABEL}", 13, t.text_2, 500)}
+        {text(f"QLabel#{FIELD_LABEL}", TYPE.body, t.text_2, 500)}
         QFrame#{THUMB} {{
             border: 2px solid {t.line};
             border-radius: {RADIUS_SM + 1}px;
@@ -938,7 +948,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{THUMB_CAPTION} {{
             {mono}
-            font-size: 10.5px;
+            font-size: {TYPE.micro}px;
             color: {t.text_3};
             border: none;
         }}
@@ -950,7 +960,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QTabBar#{SHEET_TABS}::tab {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             font-weight: 500;
             background-color: transparent;
             color: {t.text_3};
@@ -980,7 +990,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{TOPBAR_DECK} {{
             background-color: transparent;
             {font}
-            font-size: 14px;
+            font-size: {TYPE.control}px;
             font-weight: 600;
             border: 2px solid transparent;
             border-radius: {RADIUS_SM}px;
@@ -995,7 +1005,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{TOPBAR_DECK} QLabel#{ICON} {{
             color: {t.text_2};
         }}
-        {text(f"QLabel#{TOPBAR_LABEL}", 12, t.text_3)}
+        {text(f"QLabel#{TOPBAR_LABEL}", TYPE.small, t.text_3)}
 
         /* The AI switch: its wrapper is outlined while Local and amber while Cloud (the 1.5px outline of the
            prototype is a 2px border here; the padding keeps both the same size). */
@@ -1010,26 +1020,26 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border: 2px solid {t.cloud_border};
             padding: 0;
         }}
-        {text(f"QLabel#{AI_SWITCH_STATE}", 12, t.text_2, 600)}
+        {text(f"QLabel#{AI_SWITCH_STATE}", TYPE.small, t.text_2, 600)}
         QLabel#{AI_SWITCH_STATE}[cloud="true"] {{ color: {t.cloud_fg}; }}
         QFrame#{AI_SWITCH} QToolButton#{ICON_BUTTON}[cloud="true"] {{ color: {t.cloud_fg}; }}
         QFrame#{AI_SWITCH}[cloud="true"] QFrame#{SEGMENTED} {{ background-color: {with_alpha(t.text, 0.06)}; }}
 
         /* The popovers of the switch (they are kitMenu frames with 16px padding). */
-        {text(f"QLabel#{AI_POPUP_TITLE}", 14, t.text, 600)}
-        {text(f"QLabel#{AI_POPUP_TEXT}", 13, t.text_2)}
+        {text(f"QLabel#{AI_POPUP_TITLE}", TYPE.control, t.text, 600)}
+        {text(f"QLabel#{AI_POPUP_TEXT}", TYPE.body, t.text_2)}
         QPushButton#{AI_POPUP_LINK} {{
-            {font} font-size: 12.5px; color: {t.text_2}; text-decoration: underline;
+            {font} font-size: {TYPE.body}px; color: {t.text_2}; text-decoration: underline;
             background-color: transparent; border: 2px solid transparent; border-radius: {RADIUS_SM}px; padding: 0 2px;
         }}
         QPushButton#{AI_POPUP_LINK}:hover {{ color: {t.text}; }}
         QPushButton#{AI_POPUP_LINK}:focus {{ border-color: {t.focus}; }}
-        {text(f"QLabel#{AI_SETUP_HEAD}", 12.5, t.text_3, 600)}
+        {text(f"QLabel#{AI_SETUP_HEAD}", TYPE.body, t.text_3, 600)}
         QLabel#{AI_SETUP_HEAD}[active="true"] {{ color: {t.text}; }}
         QFrame#{MENU} QFrame#{LIST_BOX} {{ border-radius: {RADIUS_SM}px; }}
         QComboBox#{AI_SETUP_CELL} {{
             {mono}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             min-height: 20px;
             padding: 3px 6px;
             padding-right: 22px;
@@ -1038,29 +1048,29 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QComboBox#{AI_SETUP_CELL}::drop-down {{ width: 20px; }}
         QLabel#{AI_SETUP_CELL} {{
             {mono}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             color: {t.text_3};
         }}
-        {text(f"QLabel#{TOPBAR_SAVE}", 11.5, t.text_3)}
+        {text(f"QLabel#{TOPBAR_SAVE}", TYPE.small, t.text_3)}
 
         /* The assistant header: the route's title (amber in Cloud), its model, and the target of the scope. */
-        {text(f"QLabel#{ASSISTANT_TITLE}", 14, t.text, 600)}
+        {text(f"QLabel#{ASSISTANT_TITLE}", TYPE.control, t.text, 600)}
         QLabel#{ASSISTANT_TITLE}[cloud="true"] {{ color: {t.cloud_fg}; }}
-        {text(f"QLabel#{ASSISTANT_SUB}", 12, t.text_2)}
-        {text(f"QLabel#{ASSISTANT_TARGET}", 12.5, t.text_2)}
+        {text(f"QLabel#{ASSISTANT_SUB}", TYPE.small, t.text_2)}
+        {text(f"QLabel#{ASSISTANT_TARGET}", TYPE.body, t.text_2)}
         QFrame#{TASK_PILL} {{ background-color: {t.bg}; border-radius: {RADIUS_SM}px; }}
-        {text(f"QFrame#{TASK_PILL} QLabel", 12.5, t.text)}
+        {text(f"QFrame#{TASK_PILL} QLabel", TYPE.body, t.text)}
         QFrame#{TASK_CARD} {{ border: 1px solid {t.line}; border-radius: {RADIUS_MD}px; }}
-        {text(f"QLabel#{TASK_TITLE}", 15, t.text, 600)}
-        {text(f"QLabel#{TASK_ROUTE}", 12, t.local_fg, None, mono)}
+        {text(f"QLabel#{TASK_TITLE}", TYPE.heading, t.text, 600)}
+        {text(f"QLabel#{TASK_ROUTE}", TYPE.small, t.local_fg, None, mono)}
         QLabel#{TASK_ROUTE}[cloud="true"] {{ color: {t.cloud_text}; }}
-        {text(f"QLabel#{TASK_STATE}", 13.5, t.text)}
+        {text(f"QLabel#{TASK_STATE}", TYPE.control, t.text)}
         QLabel#{TASK_STATE}[tone="ok"] {{ color: {t.ok_fg}; }}
         QLabel#{TASK_STATE}[tone="warning"] {{ color: {t.cloud_text}; }}
         QLabel#{TASK_STATE}[tone="error"] {{ color: {t.error}; }}
         QLabel#{TASK_STATE}[tone="muted"] {{ color: {t.text_2}; }}
-        {text(f"QLabel#{TASK_ELAPSED}", 12, t.text_3, None, mono)}
-        {text(f"QLabel#{TASK_STEP}", 12, t.text_3)}
+        {text(f"QLabel#{TASK_ELAPSED}", TYPE.small, t.text_3, None, mono)}
+        {text(f"QLabel#{TASK_STEP}", TYPE.small, t.text_3)}
         QFrame#{CLOUD_CARD} {{
             background-color: {t.cloud_bg};
             border: 1px solid {t.cloud_border};
@@ -1068,13 +1078,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{CLOUD_CARD} QLabel {{ background-color: transparent; color: {t.cloud_fg}; }}
         QFrame#{CLOUD_CARD} QLabel#{ICON} {{ color: {t.cloud_solid}; }}
-        {text(f"QFrame#{CLOUD_CARD} QLabel#{ASSISTANT_TITLE}", 14, t.cloud_fg, 600)}
+        {text(f"QFrame#{CLOUD_CARD} QLabel#{ASSISTANT_TITLE}", TYPE.control, t.cloud_fg, 600)}
 
         /* Slide list: the find box is a white field on the grey page, the
            tree draws its own rows (slide_tree.py). */
         QLineEdit#{SLIDES_FIND} {{
             {font}
-            font-size: 14px;
+            font-size: {TYPE.control}px;
             background-color: {t.surface};
             color: {t.text};
             border: none;
@@ -1084,7 +1094,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLineEdit#{SLIDES_RENAME} {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             font-weight: 600;
             background-color: {t.surface};
             color: {t.text};
@@ -1099,11 +1109,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{SLIDES_NOTE} {{
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             color: {t.text_3};
             padding: 16px 8px;
         }}
-        {text(f"QLabel#{SLIDES_BULK_LABEL}", 13, t.text, 500)}
+        {text(f"QLabel#{SLIDES_BULK_LABEL}", TYPE.body, t.text, 500)}
 
         /* Centre column: containers are transparent on the white card, so a
            plain QFrame doesn't take the page color of the app-wide rule. */
@@ -1130,12 +1140,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}
         /* The tab shown gets the usual SlideMage blue fill, the same one the selected deck version (Instructor) uses. */
         QFrame#{TAB}[active="true"] {{ background-color: {t.view_instructor}; }}
-        {text(f"QLabel#{TAB_LABEL}", 12.5, t.text_3, 500)}
+        {text(f"QLabel#{TAB_LABEL}", TYPE.body, t.text_3, 500)}
         QFrame#{TAB}:hover QLabel#{TAB_LABEL} {{ color: {t.text}; }}
         QFrame#{TAB}[active="true"] QLabel#{TAB_LABEL} {{ color: {t.on_solid}; }}
         QPlainTextEdit#{SOURCE} {{
             {mono}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: {t.surface};
             color: {t.text};
             border: none;
@@ -1145,12 +1155,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.bg};
             border-radius: {RADIUS_MD}px;
         }}
-        {text(f"QFrame#{AI_ROW} QLabel", 12.5, t.text)}
+        {text(f"QFrame#{AI_ROW} QLabel", TYPE.body, t.text)}
         QFrame#{AI_ROW} QLabel#{DIFF_OLD}, QFrame#{AI_ROW} QLabel#{DIFF_NEW} {{
             {mono}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: {RADIUS_XS}px;
         }}
         QFrame#{AI_ROW} QLabel#{DIFF_OLD} {{
             background-color: {t.error_bg};
@@ -1160,24 +1170,24 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.ok_bg};
             color: {t.ok_fg};
         }}
-        {text(f"QLabel#{SOURCE_NOTE}", 12, t.text_3)}
-        {text(f"QLabel#{SOURCE_FILE_NAME}", 12, t.text, None, mono)}
+        {text(f"QLabel#{SOURCE_NOTE}", TYPE.small, t.text_3)}
+        {text(f"QLabel#{SOURCE_FILE_NAME}", TYPE.small, t.text, None, mono)}
 
-        {text(f"QLabel#{PREVIEW_TITLE}", 13, t.text, 600)}
-        {text(f"QLabel#{PREVIEW_ID}", 12, t.text_2, 500, mono)}
+        {text(f"QLabel#{PREVIEW_TITLE}", TYPE.body, t.text, 600)}
+        {text(f"QLabel#{PREVIEW_ID}", TYPE.small, t.text_2, 500, mono)}
 
-        {text(f"QLabel#{DETAILS_LABEL}", 12.5, t.text_3)}
-        {text(f"QLabel#{DETAILS_VALUE}", 12.5, t.text)}
-        {text(f"QLabel#{DETAILS_TITLE}", 18, t.text, 500)}
-        {text(f"QFrame#{DETAILS_PANEL} QLabel", 12.5, t.text)}
-        {text(f"QLabel#{DETAILS_HEAD}", 13, t.text, 600)}
+        {text(f"QLabel#{DETAILS_LABEL}", TYPE.body, t.text_3)}
+        {text(f"QLabel#{DETAILS_VALUE}", TYPE.body, t.text)}
+        {text(f"QLabel#{DETAILS_TITLE}", TYPE.title, t.text, 500)}
+        {text(f"QFrame#{DETAILS_PANEL} QLabel", TYPE.body, t.text)}
+        {text(f"QLabel#{DETAILS_HEAD}", TYPE.body, t.text, 600)}
     
         /* Side panels: the picker is a grey pill; a panel's content sits in grey boxes
            whose rows are separated by hairlines. */
         QFrame#{PANEL_PICKER} {{
             background-color: {t.bg};
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             font-weight: 500;
             border: 2px solid transparent;
             border-radius: {RADIUS_SM}px;
@@ -1197,16 +1207,16 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border: none;
             border-bottom: 1px solid {t.line};
         }}
-        {text(f"QFrame#{PANEL_BOX} QLabel", 12.5, t.text)}
+        {text(f"QFrame#{PANEL_BOX} QLabel", TYPE.body, t.text)}
         QFrame#{PANEL_BOX} QLabel#{DETAILS_LABEL} {{
             color: {t.text_3};
         }}
         QFrame#{PANEL_BOX} QLabel#{PANEL_MONO}, QFrame#{LIST_BOX} QLabel#{PANEL_MONO},
         QDialog#{SHEET} QLabel#{PANEL_MONO} {{
             {mono}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
         }}
-        {text(f"QFrame#{PANEL_BOX} QLabel#{PANEL_CAPTION}, QLabel#{PANEL_CAPTION}", 11.5, t.text_3)}
+        {text(f"QFrame#{PANEL_BOX} QLabel#{PANEL_CAPTION}, QLabel#{PANEL_CAPTION}", TYPE.small, t.text_3)}
         QLabel#{PANEL_CAPTION}[tone="error"] {{
             color: {t.error};
         }}
@@ -1218,7 +1228,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{MATRIX_HEAD} {{
             {font}
-            font-size: 11.5px;
+            font-size: {TYPE.small}px;
             font-weight: 600;
         }}
         QLabel#{MATRIX_HEAD}[current="true"] {{
@@ -1229,7 +1239,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton#{MATRIX_CELL} {{
             {font}
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             font-weight: 700;
             color: {t.on_solid};
             background-color: {t.surface};
@@ -1270,18 +1280,18 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{ROW_NAME} {{
             {font}
-            font-size: 14px;
+            font-size: {TYPE.control}px;
             font-weight: 500;
         }}
 
         /* A grey box of rows (job panel, pre-check sheet). Not PANEL_BOX: its
            label rule would override the icon labels' font. */
         QFrame#{LIST_BOX} QLabel {{
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             color: {t.text};
         }}
         QFrame#{LIST_BOX} QLabel#{PANEL_CAPTION} {{
-            font-size: 11.5px;
+            font-size: {TYPE.small}px;
             color: {t.text_3};
         }}
         QFrame#{LIST_BOX} QLabel#{PANEL_CAPTION}[tone="error"] {{
@@ -1290,7 +1300,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
 
         QListWidget#{IMAGE_LIST} {{
             {font}
-            font-size: 13px;
+            font-size: {TYPE.body}px;
             background-color: transparent;
             color: {t.text};
             border: none;
@@ -1326,9 +1336,9 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
             color: {t.text};
         }}
-        QLabel#{JOB_TITLE} {{ font-size: 15px; font-weight: 500; }}
-        QFrame#{JOB_CARD} QLabel#{JOB_SUB} {{ font-size: 13px; color: {t.text_2}; }}
-        QLabel#{JOB_PCT} {{ font-size: 20px; font-weight: 500; }}
+        QLabel#{JOB_TITLE} {{ font-size: {TYPE.heading}px; font-weight: 500; }}
+        QFrame#{JOB_CARD} QLabel#{JOB_SUB} {{ font-size: {TYPE.body}px; color: {t.text_2}; }}
+        QLabel#{JOB_PCT} {{ font-size: {TYPE.display}px; font-weight: 500; }}
         QProgressBar#{JOB_BAR} {{
             min-height: 6px;
             max-height: 6px;
@@ -1346,14 +1356,14 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{LOG_DRAWER} QLabel {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             color: {with_alpha(t.log_text, 0.55)};
             background-color: transparent;
         }}
         QFrame#{LOG_DRAWER} QLabel#{LOG_TITLE} {{ font-weight: 700; color: {t.log_text}; }}
         QPlainTextEdit#{LOG_TEXT} {{
             {mono}
-            font-size: 11.5px;
+            font-size: {TYPE.small}px;
             color: {t.log_text};
             background-color: transparent;
             border: none;
@@ -1370,7 +1380,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPlainTextEdit#{LOG_TEXT} QScrollBar::handle:vertical {{
             background: {with_alpha(t.log_text, 0.25)};
-            border-radius: 4px;
+            border-radius: {RADIUS_SM}px;
             min-height: 24px;
         }}
         QPlainTextEdit#{LOG_TEXT} QScrollBar::handle:vertical:hover {{
@@ -1378,7 +1388,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton#{LOG_ACTION} {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             color: {with_alpha(t.log_text, 0.6)};
             background-color: transparent;
             border: none;
@@ -1387,7 +1397,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QPushButton#{LOG_ACTION}:hover {{ color: {t.log_text}; }}
         QPushButton#{LOG_ERROR} {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             font-weight: 500;
             color: {t.on_solid};
             background-color: {t.error_solid};
@@ -1399,17 +1409,17 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         /* Chat: the user's bubble, the model's text, tool cards, diff cards, notices. */
         QFrame#{CHAT_USER} {{
             background-color: {t.inverse};
-            border-top-left-radius: 12px;
-            border-top-right-radius: 12px;
-            border-bottom-left-radius: 12px;
-            border-bottom-right-radius: 3px;
+            border-top-left-radius: {RADIUS_LG}px;
+            border-top-right-radius: {RADIUS_LG}px;
+            border-bottom-left-radius: {RADIUS_LG}px;
+            border-bottom-right-radius: {RADIUS_XS}px;
         }}
-        {text(f"QFrame#{CHAT_USER} QLabel", 13, t.on_inverse)}
-        {text(f"QLabel#{CHAT_TEXT}", 13, t.text)}
-        {text(f"QLabel#{CHAT_MODEL}", 10.5, t.text_3, None, mono)}
-        {text(f"QLabel#{CHAT_TOOL_SUMMARY}", 12, t.text_2)}
-        {text(f"QLabel#{CHAT_TOOL_NAME}", 11.5, t.text, 500, mono)}
-        {text(f"QLabel#{CHAT_TOOL_BODY}", 11, t.text_2, None, mono)}
+        {text(f"QFrame#{CHAT_USER} QLabel", TYPE.body, t.on_inverse)}
+        {text(f"QLabel#{CHAT_TEXT}", TYPE.body, t.text)}
+        {text(f"QLabel#{CHAT_MODEL}", TYPE.micro, t.text_3, None, mono)}
+        {text(f"QLabel#{CHAT_TOOL_SUMMARY}", TYPE.small, t.text_2)}
+        {text(f"QLabel#{CHAT_TOOL_NAME}", TYPE.small, t.text, 500, mono)}
+        {text(f"QLabel#{CHAT_TOOL_BODY}", TYPE.micro, t.text_2, None, mono)}
         QFrame#{CHAT_DIFF} {{
             background-color: transparent;
             border: 1px solid {t.line};
@@ -1417,7 +1427,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE} {{
             {mono}
-            font-size: 11px;
+            font-size: {TYPE.micro}px;
             padding: 0 8px;
         }}
         QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="add"] {{ background-color: {t.ok_bg}; color: {t.ok_fg}; }}
@@ -1437,7 +1447,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QLabel#{CHAT_NOTICE} {{
             {font}
-            font-size: 12px;
+            font-size: {TYPE.small}px;
             padding: 8px 10px;
             border-radius: {RADIUS_MD}px;
             background-color: {t.bg};
@@ -1447,7 +1457,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QLabel#{CHAT_NOTICE}[tone="error"] {{ background-color: {t.error_bg}; color: {t.error_fg}; }}
         QPushButton#{CHAT_SUGGESTION} {{
             {font}
-            font-size: 12.5px;
+            font-size: {TYPE.body}px;
             text-align: left;
             color: {t.text};
             background-color: {t.bg};
