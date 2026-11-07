@@ -75,6 +75,7 @@ HIDDEN_IMPORTS = list(dict.fromkeys([
     *_stdlib_hidden_imports(STDLIB_MODULES),
     *PYSIDE6_MODULES,
     *PLUGIN_API_MODULES,
+    "truststore",     # tls_trust.py imports it inside a function: named so that it is always bundled
 ]))
 # The same list for the frozen self-test, which cannot ask find_spec what was bundled (slidemage/plugins/selftest.py).
 STDLIB_LIST_FILE = ROOT / "build" / _selftest.STDLIB_LIST_NAME

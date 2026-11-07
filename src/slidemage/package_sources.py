@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from http.client import HTTPException
 from pathlib import Path
 
-from . import diagnostics, packages, updater
+from . import diagnostics, packages, tls_trust, updater
 from .plugins import installer
 from .plugins.manifest import parse_version
 from .version import VERSION_NUMBER
@@ -218,7 +218,7 @@ def _get_json(url: str, repo: str, timeout: float):
     except urllib.error.HTTPError as exc:
         raise _explain(exc, repo) from exc
     except (urllib.error.URLError, HTTPException, OSError, ValueError) as exc:
-        raise SourceError(f"Couldn't reach GitHub: {exc}") from exc
+        raise SourceError(tls_trust.certificate_message(exc, url) or f"Couldn't reach GitHub: {exc}") from exc
 
 
 def _download(url: str, dest: Path, repo: str, max_bytes: int, timeout: float) -> None:
@@ -237,7 +237,7 @@ def _download(url: str, dest: Path, repo: str, max_bytes: int, timeout: float) -
     except urllib.error.HTTPError as exc:
         raise _explain(exc, repo) from exc
     except (urllib.error.URLError, HTTPException, OSError) as exc:
-        raise SourceError(f"Download failed: {exc}") from exc
+        raise SourceError(tls_trust.certificate_message(exc, url) or f"Download failed: {exc}") from exc
 
 
 def _candidate(kind: packages.PackageKind, item: dict, repo: str, key: str | None,

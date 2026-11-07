@@ -75,7 +75,7 @@ a = Analysis(
         (str(ROOT / "LICENSES"), "slidemage/legal/LICENSES"),
     ],
     # The SVG icon needs QtSvg: without it QIcon draws it empty. presenter_app.py imports it, this is for certainty.
-    hiddenimports=["PySide6.QtSvg"],
+    hiddenimports=["PySide6.QtSvg", "truststore"],     # truststore: tls_trust.py imports it inside a function
     excludes=EXCLUDES,
 )
 

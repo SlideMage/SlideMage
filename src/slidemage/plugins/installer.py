@@ -32,7 +32,7 @@ import zipfile
 from http.client import HTTPException
 from pathlib import Path, PurePosixPath
 
-from .. import fileio
+from .. import fileio, tls_trust
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
 from .loader import plugins_dir
@@ -99,7 +99,7 @@ def download(url: str, dest: Path, *, expected_size: int | None = None, timeout:
         raise
     except (urllib.error.URLError, HTTPException, OSError, ValueError) as e:
         dest.unlink(missing_ok=True)
-        raise InstallError(f"The download failed: {e}") from None
+        raise InstallError(tls_trust.certificate_message(e, url) or f"The download failed: {e}") from None
 
 
 def peek(archive: Path) -> Manifest:
