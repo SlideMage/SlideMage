@@ -3712,3 +3712,8 @@ v0.14.38 (2026-11-07, theme consolidation, track B: kit, pages, presentation, wo
 
 NEW: Small spacing and corner adjustments so equivalent parts look alike.
 - Cards, labels and compact controls use more consistent spacing and corners.
+
+v0.14.39 (2026-11-07, theme consolidation, stage 4): Internal: a design handbook deck for contributors and plugin authors.
+
+NEW: Internal documentation for contributors.
+- A design handbook deck for contributors and plugin authors.
