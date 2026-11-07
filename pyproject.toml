@@ -23,6 +23,9 @@ dependencies = [
     "segno>=1.6",
     "ptyprocess>=0.7.0 ; sys_platform != 'win32'",
     "pywinpty>=3.0.5 ; sys_platform == 'win32'",
+    # The operating system's certificate store for HTTPS (tls_trust.py): pure Python, MIT. Python's own context only
+    # reads the roots Windows already holds, so github.com failed with CERTIFICATE_VERIFY_FAILED until Windows fetched one.
+    "truststore>=0.10",
 ]
 
 [project.optional-dependencies]

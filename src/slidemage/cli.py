@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import diagnostics, project, splash
+from . import diagnostics, project, splash, tls_trust
 
 CLAUDE_HOOK_FLAG = "--claude-hook"   # first argument: run Claude Code's hook instead of the app (ai/claude_launch.py)
 # First argument: import everything the window needs, then exit 0, with no window. The release workflow runs
@@ -91,6 +91,7 @@ def main(argv: list[str] | None = None) -> None:
     splash.release_topmost()  # the splash must not cover other windows while the app loads
     given = sys.argv[1:] if argv is None else argv
     diagnostics.setup(_role(given[:1]), debug=True if diagnostics.DEBUG_FLAG in given else None)
+    tls_trust.inject()  # before any network code, plugin processes and the self-tests included
     if (sys.argv[1:] if argv is None else argv)[:1] == ['--preview-raster']:
         # A frozen executable has no python -m; dispatch before project/GUI setup.
         from .preview_raster import serve
@@ -123,6 +124,8 @@ def main(argv: list[str] | None = None) -> None:
         splash.close()
         try:
             from .ui import app  # noqa: F401 -- the import is the test: the window's modules and their libraries
+            if not tls_trust.injected():
+                raise RuntimeError("HTTPS certificates are not checked through the operating system (tls_trust)")
         except BaseException:
             # Exit 1 here: an exception left to a windowed build opens a message box, which no one clicks in CI.
             import traceback

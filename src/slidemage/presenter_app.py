@@ -12,6 +12,8 @@ import sys
 import time
 from pathlib import Path
 
+from . import tls_trust
+
 # First argument: import everything the Presenter needs, then exit 0, with no window (as cli.SELF_TEST_FLAG).
 SELF_TEST_FLAG = "--self-test"
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "presenter-icon.svg"
@@ -55,6 +57,8 @@ def _self_test() -> int:
         from .presentation import recent  # noqa: F401
         from .ui.kit import fonts, theme, widgets  # noqa: F401
         from . import updater  # noqa: F401
+        if not tls_trust.injected():
+            raise RuntimeError("HTTPS certificates are not checked through the operating system (tls_trust)")
         from .presentation import presenter_update  # noqa: F401
         from .ui.presentation import presenter_window, resume_ui, settings_page, standalone  # noqa: F401
     except BaseException:
@@ -116,6 +120,7 @@ def _report_timing(app) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
+    tls_trust.inject()      # before any network code (the updater): verify HTTPS through the operating system
     if args[:1] == [SELF_TEST_FLAG]:
         return _self_test()
 
