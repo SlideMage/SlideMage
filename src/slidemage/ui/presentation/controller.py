@@ -10,7 +10,7 @@ from typing import Optional
 
 from PySide6.QtCore import QLocale, QObject, QRect, QTime, QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplication, QScreen
-from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSlider,
+from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QSlider,
                                QToolButton, QWidget, QWidgetAction)
 
 from ...presentation import layout
@@ -21,6 +21,7 @@ from ...presentation.screens import ScreenInfo, choose_screens
 from ...presentation.session import TOOL_ERASER, TOOL_PEN, PresentationSession
 from ...presentation.settings import PresentationSettings
 from ...presentation.timer import PresentationTimer
+from ..kit.widgets import ColorSwatchButton
 from .audience_window import AudienceWindow, PresenterWindow
 from .layout_view import build_layout
 from .big_clock import BigClock
@@ -291,7 +292,7 @@ class PresentationController(QObject):
         panel = QWidget()
         column = QHBoxLayout(panel)
         column.addWidget(QLabel(name))
-        swatch = QPushButton("Colour") if color_key is not None else None
+        swatch = ColorSwatchButton("Colour") if color_key is not None else None
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(*steps)
         slider.setValue(round(getattr(self.settings, size_key) * 1000))
@@ -300,8 +301,7 @@ class PresentationController(QObject):
 
         def paint() -> None:
             if swatch is not None:
-                color = QColor(getattr(self.settings, color_key))
-                swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
+                swatch.set_color(getattr(self.settings, color_key))
             size.setText(f"{slider.value() / 10:g} %")
 
         def apply(color: QColor) -> None:

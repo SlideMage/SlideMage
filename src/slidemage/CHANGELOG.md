@@ -3697,3 +3697,8 @@ v0.14.35 (2026-11-07, theme consolidation, stage 1: core tokens): Syntax colours
 
 NEW: The Source segment's count is slightly larger, and the command palette's search text is slightly smaller.
 - Internal clean-up: theme colours, text sizes and corners have one source.
+
+v0.14.36 (2026-11-07, theme consolidation, stage 2: public theme tokens and shared widgets): Plugin API 1 now exposes the type and spacing scales, extra-small radius, height-derived pill helper, named categorical accents, links, selection and syntax colours through Host.theme(). The host maps every field explicitly, with permanent completeness and colour-drift tests. Host.theme_color remains a quiet compatibility wrapper, deprecated in documentation in favour of theme().info. Host.icon supplies Material Icons with 1x and 2x pixmaps through the same drawing path as the byte-identical QSS icon files. Chip gains opt-in mono metadata; IconButton gains faint and set_faint. Settings and the presenter share a display-only colour swatch, retaining modal saved settings and modeless live session-only picking with Cancel/Esc restoration and slide-press acceptance. Both swatches use the presenter’s compact padding. Added plugin styling guidance and regression coverage; existing widget defaults, theme values and terminal tokens are unchanged.
+
+NEW: The app looks the same; plugins can now read more of its theme.
+- Plugin authors can use shared text sizes, spacing, corners and named accent colours through the public theme API.

@@ -9,7 +9,6 @@ HostUi they raise RuntimeError("no window").
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
 import types
@@ -351,9 +350,9 @@ class PluginHost(Registrar):
         from ..ui.kit.widgets import Button
         return Button(text, kind, compact=compact)
 
-    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False):
+    def Chip(self, text, tone="neutral", *, icon=None, elide=False, pressable=False, mono=False):
         from ..ui.kit.widgets import Chip
-        return Chip(text, tone, icon, pressable=pressable, elide=elide)
+        return Chip(text, tone, icon, pressable=pressable, elide=elide, mono=mono)
 
     def Window(self, title):
         from ..ui.kit.widgets import ToolWindow
@@ -398,9 +397,14 @@ class PluginHost(Registrar):
         toast = next((c for c in parent.findChildren(Toast)), None) or Toast(parent)
         toast.show_message(text)
 
-    def IconButton(self, icon, tooltip):
+    def IconButton(self, icon, tooltip, *, faint=False):
         from ..ui.kit.widgets import IconButton
-        return IconButton(icon, tooltip)
+        return IconButton(icon, tooltip, faint=faint)
+
+    def icon(self, name, color, px=16):
+        """A Material Icons ligature as a QIcon with 1x and 2x pixmaps (SlideMage v0.14.36)."""
+        from ..ui.kit.widgets import glyph_icon
+        return glyph_icon(name, color, px)
 
     def IconLabel(self, icon, size):
         from ..ui.kit.widgets import IconLabel
@@ -411,6 +415,7 @@ class PluginHost(Registrar):
         widget.setObjectName({"surface": q.SURFACE, "cloud_card": q.CLOUD_CARD, "title": q.ASSISTANT_TITLE}[role])
 
     def theme_color(self, role):
+        """Deprecated: use theme().info instead. Kept as a quiet compatibility wrapper."""
         if role != "info":
             raise ValueError(role)
         return self.theme().info
@@ -461,13 +466,23 @@ class PluginHost(Registrar):
 
 def _theme_tokens(dark: bool) -> plugin_api.ThemeTokens:
     """The plugin's view of the design tokens (tokens.py): a chosen subset, so that the others can still change."""
+    import dataclasses
+
     from ..ui.kit import tokens
 
     t = tokens.tokens_for(dark)
-    names = (f.name for f in dataclasses.fields(plugin_api.ThemeTokens) if hasattr(t, f.name))
-    return plugin_api.ThemeTokens(
-        dark=dark, radius_sm=tokens.RADIUS_SM, radius_md=tokens.RADIUS_MD, font_sans=tokens.FONT_SANS,
-        font_mono=tokens.FONT_MONO, **{name: getattr(t, name) for name in names})
+    scales = {
+        "dark": dark, "font_sans": tokens.FONT_SANS, "font_mono": tokens.FONT_MONO,
+        "accents": tokens.ACCENTS["dark" if dark else "light"],
+        **{f"radius_{n}": getattr(tokens, f"RADIUS_{n.upper()}") for n in ("xs", "sm", "md")},
+        **{f"font_{n}": v for n, v in dataclasses.asdict(tokens.TYPE).items()},
+        **{f"space_{n.removeprefix('s_')}": v for n, v in dataclasses.asdict(tokens.SPACE).items()},
+    }
+    # Every other field is a colour of the same name in Tokens; a missing one raises here rather than fall back to
+    # the field's default.
+    return plugin_api.ThemeTokens(**{
+        f.name: scales[f.name] if f.name in scales else getattr(t, f.name)
+        for f in dataclasses.fields(plugin_api.ThemeTokens)})
 
 
 def _slide_source(frame: str) -> str:

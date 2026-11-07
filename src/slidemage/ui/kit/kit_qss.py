@@ -631,6 +631,8 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-size: {TYPE.small}px;
             border-radius: {pill(CHIP_HEIGHT):g}px;
         }}
+        QFrame#{CHIP}[mono="true"] QLabel {{ font-family: "{FONT_MONO}"; font-size: {TYPE.micro}px; }}
+        QFrame#{CHIP}[mono="true"] QLabel#{ICON} {{ font-family: "{FONT_ICONS}"; font-size: {TYPE.control}px; }}
         {chips}
         QFrame#{CHIP}[pressable="true"] {{ border: 2px solid transparent; }}
         QFrame#{CHIP}[pressable="true"]:focus {{ border-color: {t.focus}; }}
@@ -774,6 +776,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QToolButton#{ICON_BUTTON}:disabled {{
             color: {t.text_4};
         }}
+        QToolButton#{ICON_BUTTON}[faint="true"] {{ color: {with_alpha(t.text_4, 0.55)}; }}
         QToolButton#{ICON_BUTTON}:focus {{ border: 2px solid {t.focus}; }}
 
         /* Popover menu. A top-level popup, so it cannot cast a shadow
