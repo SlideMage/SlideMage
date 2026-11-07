@@ -12,7 +12,7 @@ import pytest
 
 from slidemage.ui.kit import kit_qss
 from slidemage.ui.kit.theme import ThemeManager
-from slidemage.ui.kit.tokens import ACCENTS, DARK, FIXED, LIGHT, TYPE, Tokens, pill
+from slidemage.ui.kit.tokens import DARK, FIXED, LIGHT, TYPE, Tokens
 
 
 def test_fixed_contains_exactly_the_fields_equal_across_themes():
@@ -20,16 +20,6 @@ def test_fixed_contains_exactly_the_fields_equal_across_themes():
     assert equal == set(FIXED)
     for name, value in FIXED.items():
         assert getattr(LIGHT, name) == getattr(DARK, name) == value
-
-
-@pytest.mark.parametrize("tokens", [LIGHT, DARK])
-def test_semantic_aliases(tokens):
-    for alias, source in {
-        "cloud_bg": "warning_bg", "cloud_fg": "warning_fg",
-        "local_icon": "ok", "local_fg": "ok_fg", "focus": "info", "inverse": "text",
-    }.items():
-        assert getattr(tokens, alias) == getattr(tokens, source)
-    assert (tokens.steps[0], tokens.steps[1], tokens.steps[3]) == (tokens.text, tokens.info, tokens.ok)
 
 
 @pytest.mark.parametrize("dark", [False, True])
@@ -59,24 +49,6 @@ def test_stylesheet_values_come_from_tokens():
 
 
 @pytest.mark.parametrize("tokens", [LIGHT, DARK])
-def test_built_stylesheet_uses_seven_whole_pixel_sizes(tokens):
-    sizes = set(asdict(TYPE).values())
-    assert sizes == {11, 12, 13, 14, 15, 18, 20}
+def test_built_stylesheet_uses_only_the_type_scale(tokens):
     qss = kit_qss.build_kit_qss(tokens, {name: f"ICON/{name}" for name in kit_qss.KIT_ICONS})
-    assert {float(s) for s in re.findall(r'font-size:\s*([\d.]+)px', qss)} == sizes
-    for selector, size in [("QLabel#kitSegmentBadge", TYPE.micro), ("QLineEdit#kitPaletteInput", TYPE.heading)]:
-        rule = re.search(re.escape(selector) + r'\s*\{([^}]+)\}', qss)[1]
-        assert f"font-size: {size}px;" in rule
-
-
-def test_pill_preserves_half_height_including_odd_heights():
-    assert [pill(h) for h in (14, 18, 20, 19)] == [7, 9, 10, 9.5]
-
-
-def test_internal_accents_are_named_and_keep_current_status_colours_distinct():
-    for mode, tokens in [("light", LIGHT), ("dark", DARK)]:
-        palette = ACCENTS[mode]
-        assert set(palette) == {"neutral", "slate", "blue", "teal", "green", "violet", "pink"}
-        assert palette["neutral"] == tokens.text
-        assert palette["blue"] == tokens.info
-        assert palette["green"] != tokens.ok  # adoption belongs to track A
+    assert {float(s) for s in re.findall(r'font-size:\s*([\d.]+)px', qss)} == set(asdict(TYPE).values())

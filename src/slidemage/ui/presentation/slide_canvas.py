@@ -12,9 +12,10 @@ from PySide6.QtWidgets import QWidget
 from ...presentation.pdf_source import SLIDE, PresentationDeck
 from ...presentation.session import Point, Stroke
 from ...presentation.settings import PresentationSettings
+from ..kit.tokens import STAGE
 from .slide_input import SlideInput
 
-BADGE_COLORS = {"black": "#d32f2f", "frozen": "#ef9a1a", "both": "#d32f2f"}
+BADGE_COLORS = {"black": STAGE.stage_over, "frozen": STAGE.stage_warn, "both": STAGE.stage_over}
 
 
 class View(Protocol):
@@ -26,8 +27,8 @@ class View(Protocol):
 
 
 class SlideCanvas(QWidget):
-    def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = "#ff0000",
-                 laser_size: float = 0.02, background: str = "#000000", empty_text: str = "", top: bool = False,
+    def __init__(self, deck: PresentationDeck, view: View, *, part: str = SLIDE, laser_color: str = PresentationSettings.laser_color,
+                 laser_size: float = 0.02, background: str = STAGE.stage_bg, empty_text: str = "", top: bool = False,
                  slide_input: Optional[SlideInput] = None, settings: Optional[PresentationSettings] = None,
                  name: str = "",
                  parent: Optional[QWidget] = None) -> None:
@@ -84,10 +85,10 @@ class SlideCanvas(QWidget):
             image = self.deck.render(page, self.part, int(rect.width() * ratio), int(rect.height() * ratio))
         if image is None:
             if page is not None and self.empty_text:
-                painter.setPen(QColor("#9e9e9e"))
+                painter.setPen(QColor(STAGE.stage_muted))
                 painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self.empty_text)
             elif page is None and self.empty_text:
-                painter.setPen(QColor("#9e9e9e"))
+                painter.setPen(QColor(STAGE.stage_muted))
                 painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.empty_text)
             self._name_tag(painter, self._badge(painter))
             return
@@ -182,7 +183,7 @@ class SlideCanvas(QWidget):
         box = painter.fontMetrics().boundingRect(text).adjusted(-8, -3, 8, 3)
         box.moveTopLeft(self.rect().topLeft() + QPointF(6, 6).toPoint())
         painter.fillRect(box, color)
-        painter.setPen(QColor("#ffffff"))
+        painter.setPen(QColor(STAGE.stage_on_solid))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
         return box
 
@@ -199,9 +200,11 @@ class SlideCanvas(QWidget):
         box = painter.fontMetrics().boundingRect(self.name).adjusted(-9, -4, 9, 4)
         box.moveTopLeft(QPoint(beside.right() + 8, beside.top()) if beside is not None else self.rect().topLeft() + QPoint(6, 6))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 150))
+        scrim = QColor(STAGE.stage_scrim)
+        scrim.setAlpha(150)
+        painter.setBrush(scrim)
         painter.drawRoundedRect(QRectF(box), 4, 4)
-        painter.setPen(QColor("#e0e0e0"))
+        painter.setPen(QColor(STAGE.stage_name))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self.name)
 
     # -- mouse ------------------------------------------------------------------------

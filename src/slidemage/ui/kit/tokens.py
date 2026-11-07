@@ -115,6 +115,7 @@ class Tokens:
     error_bg: str
     error_fg: str
     error_solid: str   # fill behind on_solid text (error toast, badges): the same in both themes
+    warning_solid: str  # fixed fill behind on_solid text
     warning: str
     warning_bg: str
     warning_fg: str
@@ -168,10 +169,12 @@ class Tokens:
 VIEWS = ("instructor", "during", "after")
 
 # Values that are identical across themes, including the overlay's base colour.
+_WARNING_SOLID = "#b45309"
 FIXED = MappingProxyType({
     "on_solid": "#ffffff",
     "error_solid": "#b91c1c",
-    "cloud_solid": "#b45309",
+    "warning_solid": _WARNING_SOLID,
+    "cloud_solid": _WARNING_SOLID,
     "paper": "#ffffff",
     "paper_text": "#4b5563",
     "paper_outline": "#ff00ff",
@@ -182,10 +185,25 @@ FIXED = MappingProxyType({
 # Shared roles within each theme; semantic fields remain available to callers.
 _L_TEXT, _D_TEXT = "#1d1d1d", "#e0e0e0"
 _L_INFO, _D_INFO = "#2563eb", "#60a5fa"
-_L_OK, _D_OK = "#059669", "#34d399"
+_L_OK, _D_OK = "#15803d", "#4ade80"
 _L_OK_FG, _D_OK_FG = "#065f46", "#a7f3d0"
 _L_WARNING_BG, _D_WARNING_BG = "#fef3c7", "#422006"
 _L_WARNING_FG, _D_WARNING_FG = "#78350f", "#fde68a"
+
+# Categorical colours shared by status, reveal steps and terminal base hues.
+ACCENTS = MappingProxyType({
+    "light": MappingProxyType({
+        "neutral": _L_TEXT, "slate": "#475569", "blue": _L_INFO,
+        "teal": "#0f766e", "green": _L_OK, "violet": "#9333ea", "pink": "#be185d",
+    }),
+    "dark": MappingProxyType({
+        "neutral": _D_TEXT, "slate": "#94a3b8", "blue": _D_INFO,
+        "teal": "#2dd4bf", "green": _D_OK, "violet": "#c084fc", "pink": "#f472b6",
+    }),
+})
+
+
+_STEP_ACCENTS = ("neutral", "blue", "teal", "green", "violet", "pink")
 
 LIGHT = Tokens(
     bg="#f3f4f6", surface="#ffffff", text=_L_TEXT, text_2="#4b5563",
@@ -194,11 +212,10 @@ LIGHT = Tokens(
     # oklch(0.55 0.14 255/155/45) and oklch(0.96 0.025-0.03 ...), converted.
     view_instructor="#3072c1", view_during="#00884b", view_after="#b2511e",
     view_instructor_tint="#e7f3ff", view_during_tint="#e3f8e9", view_after_tint="#ffece2",
-    steps=(_L_TEXT, _L_INFO, "#d97706", _L_OK, "#9333ea", "#db2777"),
-    error="#b91c1c", error_bg="#fef2f2", error_fg="#7f1d1d",
-    warning="#b45309", warning_bg=_L_WARNING_BG, warning_fg=_L_WARNING_FG,
-    # The prototype has the green #059669 but no green tint; the tint and
-    # text colors are the Tailwind 100/800 shades.
+    steps=tuple(ACCENTS["light"][name] for name in _STEP_ACCENTS),
+    error=FIXED["error_solid"], error_bg="#fef2f2", error_fg="#7f1d1d",
+    warning=FIXED["warning_solid"], warning_bg=_L_WARNING_BG, warning_fg=_L_WARNING_FG,
+    # Success keeps its existing tinted background/text pair.
     ok=_L_OK, ok_bg="#d1fae5", ok_fg=_L_OK_FG,
     info=_L_INFO, info_bg="#dbeafe", info_fg="#1e40af",
     cloud_bg=_L_WARNING_BG, cloud_border="#f59e0b", cloud_fg=_L_WARNING_FG, cloud_text="#92400e",
@@ -221,7 +238,7 @@ DARK = Tokens(
     hover="rgba(255,255,255,0.08)", inverse=_D_TEXT, on_inverse="#1e1e1e",
     view_instructor="#6aa7f4", view_during="#57bc80", view_after="#e7885d",
     view_instructor_tint="#1c2f46", view_during_tint="#173523", view_after_tint="#422518",
-    steps=(_D_TEXT, _D_INFO, "#fbbf24", _D_OK, "#c084fc", "#f472b6"),
+    steps=tuple(ACCENTS["dark"][name] for name in _STEP_ACCENTS),
     error="#f87171", error_bg="#451a1a", error_fg="#fecaca",
     warning="#fbbf24", warning_bg=_D_WARNING_BG, warning_fg=_D_WARNING_FG,
     ok=_D_OK, ok_bg="#064e3b", ok_fg=_D_OK_FG,
@@ -241,17 +258,35 @@ DARK = Tokens(
 )
 
 
-# Categorical colours, independent of the current status/reveal treatments.
-ACCENTS = MappingProxyType({
-    "light": MappingProxyType({
-        "neutral": LIGHT.text, "slate": "#475569", "blue": LIGHT.info,
-        "teal": "#0f766e", "green": "#15803d", "violet": "#9333ea", "pink": "#be185d",
-    }),
-    "dark": MappingProxyType({
-        "neutral": DARK.text, "slate": "#94a3b8", "blue": DARK.info,
-        "teal": "#2dd4bf", "green": "#4ade80", "violet": "#c084fc", "pink": "#f472b6",
-    }),
-})
+@dataclass(frozen=True)
+class StageTokens:
+    """Fixed presentation chrome, independent of the workspace theme."""
+
+    stage_bg: str = FIXED["scrim"]
+    stage_panel: str = "#1b1b1b"
+    stage_text: str = "#eeeeee"
+    stage_muted: str = "#9e9e9e"
+    stage_active: str = "#1976d2"
+    stage_warn: str = FIXED["warning_solid"]
+    stage_over: str = FIXED["error_solid"]
+    stage_scrim: str = FIXED["scrim"]
+    stage_on_solid: str = FIXED["on_solid"]
+    stage_paper: str = FIXED["paper"]
+    stage_canvas: str = "#101010"
+    stage_name: str = "#e0e0e0"
+    strip: int = 16
+    toast: int = 15
+
+
+STAGE = StageTokens()
+
+# ANSI greys and bright variants deliberately retain their established values.
+LIGHT_ANSI = ("#1d1d1d", LIGHT.error, ACCENTS["light"]["green"], LIGHT.warning,
+              ACCENTS["light"]["blue"], ACCENTS["light"]["violet"], ACCENTS["light"]["teal"], "#6b7280",
+              "#4b5563", "#dc2626", "#059669", "#d97706", "#2563eb", "#9333ea", "#0891b2", "#858b96")
+DARK_ANSI = ("#808080", DARK.error, ACCENTS["dark"]["green"], DARK.warning,
+             ACCENTS["dark"]["blue"], ACCENTS["dark"]["violet"], ACCENTS["dark"]["teal"], "#d4d4d4",
+             "#9a9a9a", "#fca5a5", "#6ee7b7", "#fde68a", "#93c5fd", "#d8b4fe", "#67e8f9", "#ffffff")
 
 
 def tokens_for(dark: bool) -> Tokens:
