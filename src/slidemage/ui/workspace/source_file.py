@@ -36,6 +36,7 @@ from ... import (
 )
 from ...slide_language import bare_id
 from .. import layout_settings
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
@@ -195,7 +196,7 @@ class SourceFile(Surface):
     def _build_status_line(self) -> Surface:
         line = Surface()
         row = QHBoxLayout(line)
-        row.setContentsMargins(10, 4, 10, 4)
+        row.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
         self.lint_chip = Chip("", "muted")
         self.lint_chip.clicked.connect(self._show_issues)
         row.addWidget(self.lint_chip)
@@ -214,7 +215,7 @@ class SourceFile(Surface):
         """The notice for a file that changed on disk while the buffer has unsaved edits."""
         self.conflict_bar = Surface()
         row = QHBoxLayout(self.conflict_bar)
-        row.setContentsMargins(10, 4, 10, 4)
+        row.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
         self.conflict_label = QLabel()
         self.conflict_label.setObjectName(q.CHAT_NOTICE)
         self.conflict_label.setProperty("tone", "warning")

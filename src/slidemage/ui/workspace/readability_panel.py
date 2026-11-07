@@ -31,6 +31,7 @@ from ...compile_status import DONE
 from ...deck_scan import Deck
 from ...readability_check import StalePdf
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, IconLabel, Surface, announce, clear_layout, set_property
@@ -57,15 +58,15 @@ class ReadabilityPanel(Surface):
         self.report: Optional[readability.Report] = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
         self.back = Button("← Back to conversation", "ghost", compact=True)
         self.back.clicked.connect(self.closed)
         layout.addWidget(self.back, 0, Qt.AlignmentFlag.AlignLeft)
         frame = Surface()
         frame.setObjectName(q.TASK_CARD)
         body = QVBoxLayout(frame)
-        body.setContentsMargins(14, 14, 14, 14)
-        body.setSpacing(10)
+        body.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        body.setSpacing(SPACE.lg)
         self.title = QLabel()
         self.title.setObjectName(q.TASK_TITLE)
         self.title.setWordWrap(True)
@@ -75,9 +76,9 @@ class ReadabilityPanel(Surface):
         self.summary.setWordWrap(True)
         body.addWidget(self.summary)
         self.list = QVBoxLayout()
-        self.list.setSpacing(10)
+        self.list.setSpacing(SPACE.lg)
         body.addLayout(self.list)
-        self._buttons = FlowLayout(spacing=8)
+        self._buttons = FlowLayout(spacing=SPACE.md)
         body.addLayout(self._buttons)
         layout.addWidget(frame)
         self.again = self.compile_button = self.close_button = None
@@ -137,7 +138,7 @@ class ReadabilityPanel(Surface):
 
     def _slide_group(self, slide: readability.SlideReport, title: str) -> QVBoxLayout:
         group = QVBoxLayout()
-        group.setSpacing(4)
+        group.setSpacing(SPACE.xs)
         group.addLayout(self._slide_header(slide, title))
         for finding in slide.findings:
             group.addWidget(self._finding_row(slide, finding))
@@ -145,7 +146,7 @@ class ReadabilityPanel(Surface):
 
     def _slide_header(self, slide: readability.SlideReport, title: str) -> QHBoxLayout:
         header = QHBoxLayout()
-        header.setSpacing(8)
+        header.setSpacing(SPACE.md)
         label = QLabel(f"{slide.slide_id} · {title}" if title else slide.slide_id)
         label.setObjectName(q.TASK_STATE)
         label.setWordWrap(True)
@@ -167,14 +168,15 @@ class ReadabilityPanel(Surface):
         row = ClickFrame()
         row.setCursor(Qt.CursorShape.PointingHandCursor)
         line = QHBoxLayout(row)
-        line.setContentsMargins(6, 4, 6, 4)
-        line.setSpacing(8)
+        line.setContentsMargins(SPACE.sm, SPACE.xs, SPACE.sm, SPACE.xs)
+        line.setSpacing(SPACE.md)
         icon, tone = LOOK[finding.severity]
         mark = IconLabel(icon, 16)
         mark.set_tone(tone)
         mark.setAccessibleName(finding.severity.capitalize())
         line.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
         words = QVBoxLayout()
+        # One pixel keeps the finding title and excerpt reading as a single text block.
         words.setSpacing(1)
         measure = QLabel(f"{readability.LABELS[finding.cls]} · {finding.measure_text}"
                          + (f" · {finding.count} lines" if finding.count > 1 else "")

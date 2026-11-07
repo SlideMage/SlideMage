@@ -15,6 +15,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 from ...ai import ai_profile, routes
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconButton, SegmentedControl, announce, set_property
 from .state import WorkspaceState
@@ -47,8 +48,8 @@ class AiSwitch(QFrame):
         self._note = ""                 # what the conversation runs on (the assistant's header), in the tooltip
         self.setObjectName(q.AI_SWITCH)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs)
+        layout.setSpacing(SPACE.sm)
         self.segments = SegmentedControl(SEGMENTS, current=state.ai_mode, tones={CLOUD: "cloud"},
                                          icons={LOCAL: "computer", CLOUD: "cloud"}, roving=True)
         self.segments.setAccessibleName("AI for all tasks")
@@ -62,6 +63,7 @@ class AiSwitch(QFrame):
         self.install.clicked.connect(self.install_requested)
         layout.addWidget(self.install)
         self.caret = IconButton("expand_more", SETUP_TIP, size=16)
+        # The setup caret stays narrow so the route selector fits the smallest assistant.
         self.caret.setFixedSize(24, 28)
         self.caret.setAccessibleName("AI setup")
         self.caret.clicked.connect(self.setup_requested)

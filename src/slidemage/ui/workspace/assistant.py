@@ -30,6 +30,7 @@ from ...ai.agent_context import SCOPE_DECK, SCOPE_SLIDE
 from ...ai.agent_types import EDIT_AUTO
 from ...ai.tasks import PROOFREAD_SELECTION, READABLE, REWRITE, REWRITE_PRESETS, TRANSLATE
 from ...selection import SelectionError
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Card, SegmentedControl
 from ..pages.image_results import BatchResultView
@@ -54,7 +55,7 @@ class AssistantArea(Card):
     def __init__(self, app, state: WorkspaceState) -> None:
         super().__init__()
         self.setMinimumHeight(MIN_HEIGHT)
-        self.layout().setContentsMargins(16, 12, 16, 16)
+        self.layout().setContentsMargins(SPACE.s_2xl, SPACE.xl, SPACE.s_2xl, SPACE.s_2xl)
         self.app, self.state = app, state
         self.scope = SegmentedControl(SCOPES, current=SCOPE_SLIDE, roving=True)
         self.workspace = GuiWorkspace(app)                  # where the tasks write: its own, apart from both bodies'

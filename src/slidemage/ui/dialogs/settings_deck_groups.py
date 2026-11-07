@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from ... import deck_editor, deck_groups
 from ...deck_groups import DEFAULT_GROUPS, ROLE_PINNED, ROLE_TEST, DeckGroup
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, row, show_problem
 
 ROLE_NOTES = {ROLE_PINNED: "pinned on top", ROLE_TEST: "no slide list"}
@@ -74,7 +75,7 @@ class GroupSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         proposed = tag.replace("-", " ").capitalize()
         self.heading_edit = QLineEdit(group.heading if group else proposed)
         self.label_edit = QLineEdit(group.label if group else proposed)
@@ -95,7 +96,7 @@ class GroupSheet(ModalSheet):
             roles = Surface()
             roles_layout = QVBoxLayout(roles)
             roles_layout.setContentsMargins(0, 0, 0, 0)
-            roles_layout.setSpacing(6)
+            roles_layout.setSpacing(SPACE.sm)
             for role, text in ROLE_CHOICES.items():
                 check_box = QCheckBox(text)
                 check_box.setChecked(role in group.roles)
@@ -152,7 +153,7 @@ class RemoveGroupSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
         layout.addWidget(caption(f"{_decks(count)} {'carries' if count == 1 else 'carry'} the tag "
                                  f"“{group.tag}” in {'its' if count == 1 else 'their'} file."))
         buttons = QButtonGroup(self)
@@ -207,7 +208,7 @@ class DeckGroupsSection(Surface):
         self.groups: list[DeckGroup] = list(deck_groups.load(app.project))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
 
         self.list = QListWidget()
         self.list.setAccessibleName("Deck groups")
@@ -242,7 +243,7 @@ class DeckGroupsSection(Surface):
         self.found = Surface()
         found_layout = QVBoxLayout(self.found)
         found_layout.setContentsMargins(0, 0, 0, 0)
-        found_layout.setSpacing(6)
+        found_layout.setSpacing(SPACE.sm)
         found_layout.addWidget(Field("Found in decks (tags that name no group)", self.found_list))
         found_layout.addWidget(row(caption("Nothing changes in the files until you add one as a group."),
                                    self.add_found_button))

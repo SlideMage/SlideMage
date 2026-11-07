@@ -15,6 +15,7 @@ from typing import Callable, Optional
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLineEdit, QVBoxLayout
 
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, fallback_tag, headings, labels, selectable_tags
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, show_problem
 
 # The default groups' labels; a project's own list has deck_groups.labels(groups).
@@ -38,7 +39,7 @@ class DeckGroupSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(SPACE.xl)
         self.name_edit: Optional[QLineEdit] = None
         if name_prompt is not None:
             self.name_edit = QLineEdit(default_name)
@@ -56,7 +57,7 @@ class DeckGroupSheet(ModalSheet):
         group_box = Surface()
         group_layout = QVBoxLayout(group_box)
         group_layout.setContentsMargins(0, 0, 0, 0)
-        group_layout.setSpacing(6)
+        group_layout.setSpacing(SPACE.sm)
         self._checks: dict[str, QCheckBox] = {}
         # The manual's own group is never offered (deck_groups.TAG_MANUAL): a copy of the manual
         # starts out in the fallback group (by default a course deck).

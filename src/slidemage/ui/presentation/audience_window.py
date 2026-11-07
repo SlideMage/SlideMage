@@ -8,7 +8,7 @@ from typing import Optional, Protocol
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from ..kit.tokens import STAGE, with_alpha
+from ..kit.tokens import SPACE, STAGE, with_alpha
 
 from ...presentation.layout import Profile
 from .slide_canvas import SlideCanvas
@@ -27,7 +27,7 @@ class ControlledWindow(QWidget):
         self.controls = controls
         self._toast = QLabel(self)
         self._toast.setStyleSheet(f"background: {with_alpha(STAGE.stage_scrim, 170)}; color: {STAGE.stage_on_solid}; "
-                                 f"padding: 8px 14px; font-size: {STAGE.toast}px;")
+                                 f"padding: {SPACE.md}px {SPACE.xl}px; font-size: {STAGE.toast}px;")
         self._toast.hide()
         self._toast_timer = QTimer(self)
         self._toast_timer.setSingleShot(True)

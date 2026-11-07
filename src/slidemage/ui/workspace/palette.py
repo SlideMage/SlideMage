@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEd
 from ... import slide_ids, slide_language, slide_search
 from ...ai import ai_profile
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Chip, MenuRow, apply_shadow, clear_layout, set_property
 
@@ -172,8 +173,8 @@ class CommandPalette(QWidget):
         head = QFrame()
         head.setObjectName(q.PALETTE_HEAD)
         row = QHBoxLayout(head)
-        row.setContentsMargins(18, 12, 18, 12)
-        row.setSpacing(10)
+        row.setContentsMargins(SPACE.s_2xl, SPACE.xl, SPACE.s_2xl, SPACE.xl)
+        row.setSpacing(SPACE.lg)
         self._chip = Chip("", "neutral")
         row.addWidget(self._chip)
         self.input = QLineEdit()
@@ -192,15 +193,15 @@ class CommandPalette(QWidget):
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list = QWidget()
         self._list_layout = QVBoxLayout(self._list)
-        self._list_layout.setContentsMargins(8, 8, 8, 8)
+        self._list_layout.setContentsMargins(SPACE.md, SPACE.md, SPACE.md, SPACE.md)
         self._list_layout.setSpacing(0)
         self._scroll.setWidget(self._list)
         outer.addWidget(self._scroll)
         foot = QFrame()
         foot.setObjectName(q.PALETTE_FOOT)
         keys = QHBoxLayout(foot)
-        keys.setContentsMargins(18, 10, 18, 10)
-        keys.setSpacing(16)
+        keys.setContentsMargins(SPACE.s_2xl, SPACE.lg, SPACE.s_2xl, SPACE.lg)
+        keys.setSpacing(SPACE.s_2xl)
         for hint in ("↑↓ move", "↵ run", "esc close"):
             keys.addWidget(QLabel(hint))
         keys.addStretch(1)

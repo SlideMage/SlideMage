@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ... import compat
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import ModalSheet, Surface
 
 UPDATE = "update"
@@ -49,7 +50,7 @@ class CompatSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         if review:
             intro = ("Changes of this SlideMage that may affect the project. Those that only change "
                      "how slides look are listed here and need no action.")
@@ -68,8 +69,8 @@ class CompatSheet(ModalSheet):
             box = QFrame()
             box.setObjectName(q.SURFACE)
             rows = QVBoxLayout(box)
-            rows.setContentsMargins(0, 0, 8, 0)
-            rows.setSpacing(10)
+            rows.setContentsMargins(0, 0, SPACE.md, 0)
+            rows.setSpacing(SPACE.lg)
             for item in self.items:
                 rows.addWidget(self._card(item))
             scroll = QScrollArea()
@@ -115,8 +116,8 @@ class CompatSheet(ModalSheet):
         card = QFrame()
         card.setObjectName(q.LIST_BOX)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        layout.setSpacing(SPACE.sm)
         severity = compat.SEVERITY_LABELS.get(change.severity, change.severity)
         layout.addWidget(_label(f"<b>{escape(change.title)}</b> &nbsp; <small>{escape(severity)} · since "
                                 f"{escape(change.since)}</small>", rich=True))
@@ -152,7 +153,7 @@ class ProjectUpdatedSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         layout.addWidget(_label(f"SlideMage {escape(app_version.lstrip('v'))} updated <b>{escape(project_name)}</b> "
                                 "when it opened it. Nothing more needs to be done.", rich=True))
         for item in evaluation.applied:

@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...ai import routes
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, Popover, apply_shadow, clear_layout
 from .ai_work import RunningWork
@@ -93,8 +94,8 @@ class DecisionPopover(Popover):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, min_width=WIDTH, inline=True, dismiss_outside=False)
         self.setFixedWidth(WIDTH)
-        self.body.setContentsMargins(16, 16, 16, 16)
-        self.body.setSpacing(10)
+        self.body.setContentsMargins(SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl)
+        self.body.setSpacing(SPACE.lg)
         apply_shadow(self, "raised")
         self.spec: PopupSpec | None = None
         self.buttons: list[Button] = []        # of the spec on show, the secondary first
@@ -107,7 +108,8 @@ class DecisionPopover(Popover):
         clear_layout(self.body)
         self.setAccessibleName(spec.title)
         head = QHBoxLayout()
-        head.setSpacing(8)
+        head.setSpacing(SPACE.md)
+        # The popup heading icon has greater prominence than inline status icons.
         icon = IconLabel(spec.icon, 20)
         icon.set_tone(spec.tone)
         head.addWidget(icon)
@@ -123,15 +125,15 @@ class DecisionPopover(Popover):
             box = QFrame()
             box.setObjectName(q.LIST_BOX)
             rows = QVBoxLayout(box)
-            rows.setContentsMargins(10, 8, 10, 8)
-            rows.setSpacing(4)
+            rows.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+            rows.setSpacing(SPACE.xs)
             for line in spec.lines:
                 label = QLabel(line)
                 label.setWordWrap(True)
                 rows.addWidget(label)
             self.body.addWidget(box)
         buttons = QHBoxLayout()
-        buttons.setSpacing(8)
+        buttons.setSpacing(SPACE.md)
         buttons.addStretch(1)
         for label, kind, callback in spec.actions:
             button = Button(label, kind)

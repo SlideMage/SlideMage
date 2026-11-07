@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QScrollArea, QStacke
 from ... import ai_review, preview_pages, preview_target
 from ...preview_requests import RenderService
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, IconButton, Surface
 from .chat.cards import DiffCard
@@ -87,8 +88,9 @@ class CompareRendered(QDialog):
         self.closed = False
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 20, 24, 16)
-        root.setSpacing(12)
+        # Side-by-side rendered pages keep a wider dialog inset than compact task cards.
+        root.setContentsMargins(2 * SPACE.xl, 2 * SPACE.lg, 2 * SPACE.xl, SPACE.s_2xl)
+        root.setSpacing(SPACE.xl)
         title = QLabel(self.windowTitle())
         title.setObjectName(q.SHEET_TITLE)
         root.addWidget(title)
@@ -98,9 +100,9 @@ class CompareRendered(QDialog):
         rendered = Surface()
         body = QVBoxLayout(rendered)
         body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(8)
+        body.setSpacing(SPACE.md)
         panes = QHBoxLayout()
-        panes.setSpacing(16)
+        panes.setSpacing(SPACE.s_2xl)
         self._sides: list[_Side] = []
         for name in self.texts:
             column = QVBoxLayout()

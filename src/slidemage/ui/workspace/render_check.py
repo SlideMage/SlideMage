@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QScroll
 
 from ... import latex_lint
 from ...latex_lint import CheckResult, LintIssue
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, IconLabel, ModalSheet
 from ..text import plural
@@ -44,7 +45,7 @@ class RenderCheckSheet(ModalSheet):
         box = QFrame()
         box.setObjectName(q.LIST_BOX)
         rows = QVBoxLayout(box)
-        rows.setContentsMargins(4, 4, 4, 4)
+        rows.setContentsMargins(SPACE.xs, SPACE.xs, SPACE.xs, SPACE.xs)
         rows.setSpacing(0)
         for issue in issues:
             rows.addWidget(self._row(issue))
@@ -73,7 +74,7 @@ class RenderCheckSheet(ModalSheet):
         is_error = issue.severity == latex_lint.ERROR
         row = QWidget()
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(SPACE.md, SPACE.sm, SPACE.md, SPACE.sm)
         icon = IconLabel("error" if is_error else "warning", 18)
         icon.set_tone("error" if is_error else "muted")
         layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)

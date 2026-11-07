@@ -52,6 +52,7 @@ from ...plugins.loader import LoadedPlugin
 from ...plugins.manifest import Manifest, parse_version
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
 
 log = logging.getLogger(__name__)
@@ -62,8 +63,8 @@ STATE_TONES = {"loaded": "ok", "disabled": "muted", "failed": "error", "incompat
 PLUGIN_FILES = "SlideMage plugins (*.smplugin)"
 THEME_FILES = "SlideMage themes (*.smtheme)"
 CITATION_FILES = "SlideMage citation formats (*.smcite)"
-SECTION_GAP = 10    # px above a section's heading, on top of the page's own spacing
-LIST_GAP = 4        # px between the rows of a list
+SECTION_GAP = SPACE.lg    # px above a section's heading, on top of the page's own spacing
+LIST_GAP = SPACE.xs        # px between the rows of a list
 LONG_STATE = 28     # characters: a longer state chip gets a line of its own, so the title line keeps its buttons
 
 
@@ -348,8 +349,9 @@ class _ListRow(Card):
 
     def __init__(self) -> None:
         super().__init__()
-        self.layout().setContentsMargins(8, 8, 8, 8)
-        self.layout().setSpacing(2)
+        # Compact catalogue rows keep 8 px edges for dense extension lists.
+        self.layout().setContentsMargins(SPACE.md, SPACE.md, SPACE.md, SPACE.md)
+        self.layout().setSpacing(SPACE.s_2xs)
 
     def add_title_line(self, left: list[QWidget], buttons: list[QWidget]) -> None:
         """`left` at the left, `buttons` at the right, the width between them empty. The buttons are the line's
@@ -570,7 +572,7 @@ class PluginsTab(Page):
         self.theme_rows: dict[str, ThemeRow] = {}
         self.citation_rows: dict[str, CitationRow] = {}
         layout = self.body
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
 
         self.banner = Card()
         banner_text = caption("Changes take effect after a restart.")

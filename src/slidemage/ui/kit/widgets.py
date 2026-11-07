@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
 
 from . import kit_qss as q
 from .fonts import load_fonts
-from .tokens import FONT_ICONS, FONT_SANS, SHADOWS
+from .tokens import SPACE, FONT_ICONS, FONT_SANS, SHADOWS
 
 
 def icon_font(px: int) -> QFont:
@@ -223,7 +223,7 @@ class ColorSwatchButton(QPushButton):
 
     def set_color(self, color: str | QColor) -> None:
         # Keep the existing opaque swatch even when the pen colour includes alpha.
-        self.setStyleSheet(f"border-left: 22px solid {QColor(color).name()}; padding: 3px 8px;")
+        self.setStyleSheet(f"border-left: 22px solid {QColor(color).name()}; padding: {SPACE.xs}px {SPACE.md}px;")
 
 
 class IconButton(_EnterPresses, QToolButton):
@@ -273,8 +273,9 @@ class DropdownButton(ClickFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8 - self.RING, 5 - self.RING, 4 - self.RING, 5 - self.RING)
-        layout.setSpacing(6)
+        # Reserve the focus border inside compact dropdown padding.
+        layout.setContentsMargins(SPACE.md - self.RING, SPACE.xs - self.RING, SPACE.xs - self.RING, SPACE.xs - self.RING)
+        layout.setSpacing(SPACE.sm)
         self._label = QLabel()
         layout.addWidget(self._label)
         layout.addWidget(IconLabel("expand_more", 20))
@@ -325,7 +326,7 @@ def row(*widgets: QWidget, stretch: int = 0) -> QWidget:
     box = Surface()
     layout = QHBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(8)
+    layout.setSpacing(SPACE.md)
     for index, widget in enumerate(widgets):
         layout.addWidget(widget, 1 if index == stretch else 0)
     return box
@@ -337,7 +338,7 @@ def columns(*widgets: QWidget) -> QWidget:
     box = Surface()
     layout = QHBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(12)
+    layout.setSpacing(SPACE.xl)
     for widget in widgets:
         layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignTop)
     return box
@@ -349,9 +350,9 @@ def action_row(title: str, note: str, button: QWidget) -> QWidget:
     box = Surface()
     layout = QHBoxLayout(box)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(12)
+    layout.setSpacing(SPACE.xl)
     texts = QVBoxLayout()
-    texts.setSpacing(1)
+    texts.setSpacing(SPACE.s_2xs)
     name = QLabel(title)
     name.setObjectName(q.ROW_NAME)
     texts.addWidget(name)
@@ -392,7 +393,7 @@ class Page(Surface):
         super().__init__(parent)
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(0, 0, 0, 0)
-        self.body.setSpacing(12)
+        self.body.setSpacing(SPACE.xl)
 
 
 class Card(QFrame):
@@ -404,8 +405,8 @@ class Card(QFrame):
         super().__init__(parent)
         self.setObjectName(q.CARD)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        layout.setSpacing(SPACE.md)
         if raised:
             apply_shadow(self, "raised")
 
@@ -442,8 +443,8 @@ class SegmentedControl(QFrame):
         self._roving = roving
         self._icons: dict[str, IconLabel] = {}
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(2)
+        layout.setContentsMargins(SPACE.xs, SPACE.xs, SPACE.xs, SPACE.xs)
+        layout.setSpacing(SPACE.s_2xs)
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict[str, QPushButton] = {}
@@ -638,8 +639,8 @@ class Chip(ClickFrame):
             self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8 - ring, 2 - ring, 9 - ring, 2 - ring)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE.md - ring, SPACE.s_2xs - ring, SPACE.md - ring, SPACE.s_2xs - ring)
+        layout.setSpacing(SPACE.xs)
         self._icon = IconLabel(icon or "", 14, self)   # parented now: setVisible on a parentless one shows a window
         self._icon.setVisible(bool(icon))
         self._label = (_ElidedLabel if elide else QLabel)(text, self)
@@ -697,12 +698,12 @@ class RowButton(ClickFrame):
         super().__init__(parent)
         self.setObjectName(q.ROW_BUTTON)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 9, 12, 9)
-        layout.setSpacing(12)
+        layout.setContentsMargins(SPACE.xl, SPACE.md, SPACE.xl, SPACE.md)
+        layout.setSpacing(SPACE.xl)
         if icon:
             layout.addWidget(IconLabel(icon, 22))
         texts = QVBoxLayout()
-        texts.setSpacing(1)
+        texts.setSpacing(SPACE.s_2xs)
         name = (_ElidedLabel if elide_title else QLabel)(title)
         name.setObjectName(q.ROW_NAME)
         if elide_title:
@@ -780,8 +781,8 @@ class ToolWindow(QWidget):
         font.setFamily(FONT_SANS)
         self.setFont(font)
         self.body = QVBoxLayout(self)
-        self.body.setContentsMargins(16, 16, 16, 16)
-        self.body.setSpacing(12)
+        self.body.setContentsMargins(SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl)
+        self.body.setSpacing(SPACE.xl)
 
 
 class Field(Surface):
@@ -791,7 +792,7 @@ class Field(Surface):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE.sm)
         self.label = QLabel(label)
         self.label.setObjectName(q.FIELD_LABEL)
         layout.addWidget(self.label)
@@ -813,7 +814,7 @@ class ThumbnailGrid(Surface):
         super().__init__(parent)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(8)
+        grid.setSpacing(SPACE.md)
         self._tiles: dict[str, ClickFrame] = {}
         for index, (key, caption, image) in enumerate(items):
             tile = ClickFrame()
@@ -822,8 +823,8 @@ class ThumbnailGrid(Surface):
             tile.setToolTip(caption)
             tile.clicked.connect(lambda k=key: self._on_click(k))
             layout = QVBoxLayout(tile)
-            layout.setContentsMargins(2, 2, 2, 2)
-            layout.setSpacing(4)
+            layout.setContentsMargins(SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs)
+            layout.setSpacing(SPACE.xs)
             picture = QLabel()
             picture.setFixedSize(*self.PICTURE)
             picture.setScaledContents(True)
@@ -868,8 +869,8 @@ class MenuRow(QWidget):
         self.setProperty("tone", tone)
         self.setProperty("current", False)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 12, 6)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.xl, SPACE.sm)
+        layout.setSpacing(SPACE.md)
         if show_icon_slot:
             layout.addWidget(IconLabel(icon, 18))
         if swatch:
@@ -882,7 +883,7 @@ class MenuRow(QWidget):
         label.setObjectName(q.MENU_TEXT)
         if detail:
             lines = QVBoxLayout()
-            lines.setSpacing(1)
+            lines.setSpacing(SPACE.s_2xs)
             lines.addWidget(label)
             second = QLabel(detail)
             second.setObjectName(q.MENU_META)
@@ -930,7 +931,7 @@ class Popover(QFrame):
         self.setObjectName(q.MENU)
         self.setMinimumWidth(min_width)
         self.body = QVBoxLayout(self)
-        self.body.setContentsMargins(4, 4, 4, 4)
+        self.body.setContentsMargins(SPACE.xs, SPACE.xs, SPACE.xs, SPACE.xs)
         self.body.setSpacing(0)
         self.focus_target: QWidget | None = None
         self.focus_return: QWidget | None = None     # where the keyboard goes back to when it closes by Esc or a button
@@ -1128,13 +1129,13 @@ class PopoverMenu(Popover):
         self._flyout_key = ""
         columns = any(e[0] in ("column", "footer") for e in self._entries)
         set_property(self, "columns", columns)
-        margin = 6 if columns else 4
+        margin = SPACE.sm if columns else SPACE.xs
         self._layout.setContentsMargins(margin, margin, margin, margin)
         # An icon slot is reserved for every row once any row has an icon.
         slot = any(e[0] == "item" and e[4] for e in self._entries)
         group, target, across, boxes = 0, self._layout, QHBoxLayout(), []
         if columns:
-            across.setSpacing(4)
+            across.setSpacing(SPACE.xs)
             self._layout.addLayout(across)
             target = self._add_box(across, QVBoxLayout, q.MENU_COLUMN, divided=False)
             boxes.append(target)
@@ -1363,8 +1364,8 @@ class Toast(QFrame):
         super().__init__(parent)
         self.setObjectName(q.TOAST)
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(16, 10, 14, 10)
-        self._layout.setSpacing(14)
+        self._layout.setContentsMargins(SPACE.s_2xl, SPACE.lg, SPACE.s_2xl, SPACE.lg)
+        self._layout.setSpacing(SPACE.xl)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.hide)
@@ -1417,8 +1418,8 @@ class ModeBadge(QFrame):
         self.setObjectName(q.MODE_BADGE)
         self.setToolTip(self.TIP)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 3, 8, 3)
-        layout.setSpacing(5)
+        layout.setContentsMargins(SPACE.md, SPACE.s_2xs, SPACE.md, SPACE.s_2xs)
+        layout.setSpacing(SPACE.xs)
         self.icon = IconLabel("computer", 14)
         layout.addWidget(self.icon)
         self.label = QLabel()
@@ -1436,7 +1437,7 @@ class ModeBadge(QFrame):
         return self.label.text()
 
 
-SCROLL_GAP = 14          # px between a scrolling sheet tab's content and its scroll bar
+SCROLL_GAP = SPACE.xl          # px between a scrolling sheet tab's content and its scroll bar
 
 
 class ModalSheet(QDialog):
@@ -1457,8 +1458,9 @@ class ModalSheet(QDialog):
         self.setModal(True)
         self.setMinimumWidth(width)
         self._root = root = QVBoxLayout(self)
-        root.setContentsMargins(24, 22, 24, 18)
-        root.setSpacing(12)
+        # Sheets keep generous outer edges to separate the title from dense form content.
+        root.setContentsMargins(2 * SPACE.xl, SPACE.s_2xl + SPACE.sm, 2 * SPACE.xl, SPACE.s_2xl)
+        root.setSpacing(SPACE.xl)
         self._title = QLabel(title)
         self._title.setObjectName(q.SHEET_TITLE)
         self._tabs = QTabBar()
@@ -1469,7 +1471,7 @@ class ModalSheet(QDialog):
         self._stack = QStackedWidget()
         self._scrolling: list[QScrollArea] = []      # the tabs added with scroll=True
         self._footer = QHBoxLayout()
-        self._footer.setSpacing(8)
+        self._footer.setSpacing(SPACE.md)
         self._footer.addStretch(1)
         root.addWidget(self._title)
         root.addWidget(self._tabs)
