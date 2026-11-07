@@ -12,6 +12,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 
 DRAWER_HEIGHT = 240
@@ -33,8 +34,8 @@ class LogDrawer(QFrame):
         head = QFrame()
         head.setObjectName(q.LOG_HEAD)
         row = QHBoxLayout(head)
-        row.setContentsMargins(14, 6, 8, 6)
-        row.setSpacing(8)
+        row.setContentsMargins(SPACE.xl, SPACE.sm, SPACE.md, SPACE.sm)
+        row.setSpacing(SPACE.md)
         title = QLabel("Log")
         title.setObjectName(q.LOG_TITLE)
         row.addWidget(title)

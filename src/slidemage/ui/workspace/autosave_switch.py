@@ -12,6 +12,7 @@ from typing import Callable
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QWidget
 
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import SegmentedControl
 from .source_file import autosave_on
@@ -28,7 +29,7 @@ class AutoSaveSwitch(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE.sm)
         self.label = QLabel("AutoSave")
         self.label.setObjectName(q.TOPBAR_LABEL)
         layout.addWidget(self.label)
@@ -66,7 +67,7 @@ class AutoSaveSwitch(QWidget):
         self.setParent(bar)
         # Slimmer segments than the top bar's, so that the bar keeps its own height (the window's 640 px minimum).
         room = bar.sizeHint().height() - 4
-        self.control.layout().setContentsMargins(2, 2, 2, 2)
+        self.control.layout().setContentsMargins(SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs, SPACE.s_2xs)
         for button in self.control.buttons():
             button.setFixedHeight(room - 4)
             # The kit's segment padding (and its focus ring's) is for the top bar's taller segments.

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QComboBox, QGridLayout, QHBoxLayout, QLabel, QMess
 from ...ai import ai_profile, routes
 from ...ai.ai_profile import CHAT, CLOUD, LOCAL, TASKS, TASK_LABELS
 from ..dialogs.settings import AI
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Popover, SegmentedControl, announce, apply_shadow, caption, set_property
 from ..kit.widgets import clear_layout
@@ -71,16 +72,16 @@ class AiSetup(Popover):
         self._project = window.project
         self.setFixedWidth(WIDTH)
         self.setAccessibleName("AI for all tasks")
-        self.body.setContentsMargins(16, 16, 16, 16)
-        self.body.setSpacing(12)
+        self.body.setContentsMargins(SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl, SPACE.s_2xl)
+        self.body.setSpacing(SPACE.xl)
         apply_shadow(self, "raised")
 
         title = QLabel("AI for all tasks")
         title.setObjectName(q.AI_POPUP_TITLE)
         self.body.addWidget(title)
         grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(SPACE.md)
+        grid.setVerticalSpacing(SPACE.sm)
         grid.setColumnMinimumWidth(0, TASK_COLUMN)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 1)
@@ -128,7 +129,7 @@ class AiSetup(Popover):
     @staticmethod
     def _setting(label: str, hint: str, control: QWidget) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(10)
+        row.setSpacing(SPACE.lg)
         text = QVBoxLayout()
         text.setSpacing(0)
         text.addWidget(QLabel(label))

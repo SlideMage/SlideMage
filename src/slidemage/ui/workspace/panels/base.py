@@ -27,6 +27,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QLayout, QVBoxLayout
 from ....deck_editor import SlideCall
 from .... import deck_outline
 from ....slide_language import bare_id, call_for_slide_path, current_id_slug_for_bare_id, current_path_for_bare_id
+from ...kit.tokens import SPACE
 from ...kit import kit_qss as q
 from ...kit.widgets import ClickFrame, Surface, clear_layout
 from ..state import WorkspaceState
@@ -78,8 +79,8 @@ class Row(ClickFrame):
         super().__init__()
         self.setObjectName(q.PANEL_ROW)
         inner = QVBoxLayout(self)
-        inner.setContentsMargins(14, 10, 14, 10)
-        inner.setSpacing(4)
+        inner.setContentsMargins(SPACE.xl, SPACE.lg, SPACE.xl, SPACE.lg)
+        inner.setSpacing(SPACE.xs)
         self.body = inner
         layout.addWidget(self)
 
@@ -113,7 +114,7 @@ class SidePanel(Surface):
         self.actions = actions
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(0, 0, 0, 0)
-        self.body.setSpacing(10)
+        self.body.setSpacing(SPACE.lg)
         self.dirty = False
         self._row_now: tuple | None = None      # (row,) while a refresh builds: it resolves the focused row once
 

@@ -39,6 +39,7 @@ from ... import ai_review, syntax_check
 from ...ai import ai_profile, resolver
 from ..ai_models import fill_model_combo, picked_route, built
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Surface
 from .ai_work import RunningWork
@@ -63,8 +64,8 @@ class _IssueRow(Surface):
         self._done = False
         self.setObjectName(q.AI_ROW)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.md)
+        layout.setSpacing(SPACE.xs)
         header = QLabel(f"<b>Line {issue.line}:</b> {issue.problem}")
         header.setTextFormat(Qt.TextFormat.RichText)
         header.setWordWrap(True)
@@ -150,8 +151,8 @@ class AiFixPanel(Surface):
         self.setObjectName(q.AI_PANEL)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, SPACE.sm)
+        layout.setSpacing(SPACE.sm)
         head = QHBoxLayout()
         self.status = QLabel("")
         self.status.setObjectName(q.SOURCE_NOTE)
@@ -188,7 +189,7 @@ class AiFixPanel(Surface):
         self._rows_holder = Surface()
         self._rows_layout = QVBoxLayout(self._rows_holder)
         self._rows_layout.setContentsMargins(0, 0, 0, 0)
-        self._rows_layout.setSpacing(6)
+        self._rows_layout.setSpacing(SPACE.sm)
         self._rows_layout.addStretch(1)
         self.scroll.setWidget(self._rows_holder)
         layout.addWidget(self.scroll)

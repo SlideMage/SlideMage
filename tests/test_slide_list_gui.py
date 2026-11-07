@@ -172,7 +172,9 @@ def test_long_slide_titles_and_meta_elide_and_thumbnails_keep_their_size(make_li
         assert meta.endswith("…") and meta_text(row, "EN").startswith(meta[:-1])
     else:
         assert meta == meta_text(row, "EN")
-    thumb = next(call.args[0] for call in recorded.drawRoundedRect.call_args_list if call.args[1:] == (3, 3))
+    # Identify the thumbnail by its content geometry; theme corner treatments may change.
+    thumb = next(call.args[0] for call in recorded.drawRoundedRect.call_args_list
+                 if call.args[0].left() == option.rect.left() + 6)
     assert (thumb.width(), thumb.height()) == (THUMB_W, THUMB_H)
 
 

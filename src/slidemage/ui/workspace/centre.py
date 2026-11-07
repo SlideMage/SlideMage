@@ -43,6 +43,7 @@ from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_langu
 from ..dialogs.new_slide_version import NewSlideVersionSheet
 from ..dialogs.slide_usage_dialog import DeckVersions, apply_deck_versions, ask_deck_versions
 from .. import layout_settings
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import ResetSplitterHandle
 from .centre_tabs import FILE, CentreTab, CentreTabs, TabStrip
@@ -163,8 +164,8 @@ class CentreColumn(QFrame):
         # floating over the views it covered the Preview's slide id and the editor's last lines.
         self.status_row = QWidget()
         row = QHBoxLayout(self.status_row)
-        row.setContentsMargins(12, 0, 12, 8)
-        row.setSpacing(8)
+        row.setContentsMargins(SPACE.xl, 0, SPACE.xl, SPACE.md)
+        row.setSpacing(SPACE.md)
         row.addStretch(1)
         self.status_row.hide()
         layout = QVBoxLayout(self)

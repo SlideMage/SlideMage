@@ -3708,7 +3708,7 @@ v0.14.37 (2026-11-07, theme consolidation, track A: colour adjustments): Render-
 NEW: Success and Local icons use a clearer green, reveal step 3 is teal, and terminal colours follow the shared palette. Presenter warning and overdue states use darker amber/red fills with white text.
 - Colour changes preserve control sizes and layout in both themes.
 
-v0.14.38 (2026-11-07, theme consolidation, track B: kit, pages and presentation): Shared spacing steps replace layout and padding literals; equivalent card insets, label gaps, compact badges and container corners converge on existing kit treatments. Presenter readability, content-driven previews and focus-border compensation stay distinct.
+v0.14.38 (2026-11-07, theme consolidation, track B: kit, pages, presentation and workspace): Shared spacing steps replace layout and padding literals; equivalent card insets, label gaps, compact badges and container corners converge on existing kit treatments. Workspace cards, chat tools and toolbar gaps now share kit spacing; slide-list captions use the shared text scale. Presenter readability, content-driven previews and focus-border compensation stay distinct.
 
 NEW: Small spacing and corner adjustments so equivalent parts look alike.
 - Cards, labels and compact controls use more consistent spacing and corners.

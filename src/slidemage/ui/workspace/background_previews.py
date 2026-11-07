@@ -126,6 +126,7 @@ class Dial(QWidget):
         painter.setPen(pen)
         painter.drawArc(rect, 90 * 16, -int(self.percent * 3.6 * 16))
         font = QFont(self.font())
+        # The tiny progress ring scales its text to leave room for the percent sign.
         font.setPixelSize(round(10 * scale * (0.8 if scale > 1 else 1)))     # room for the % sign
         font.setBold(True)
         painter.setFont(font)
