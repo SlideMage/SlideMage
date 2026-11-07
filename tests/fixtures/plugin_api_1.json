@@ -2479,20 +2479,29 @@
     },
     "ThemeTokens": {
       "attributes": [
+        "accents",
         "bg",
         "dark",
         "error",
         "error_bg",
         "error_fg",
         "focus",
+        "font_body",
+        "font_control",
+        "font_display",
+        "font_heading",
+        "font_micro",
         "font_mono",
         "font_sans",
+        "font_small",
+        "font_title",
         "hover",
         "info",
         "info_bg",
         "info_fg",
         "inverse",
         "line",
+        "link",
         "ok",
         "ok_bg",
         "ok_fg",
@@ -2500,7 +2509,22 @@
         "on_solid",
         "radius_md",
         "radius_sm",
+        "radius_xs",
+        "selection",
+        "space_2xl",
+        "space_2xs",
+        "space_lg",
+        "space_md",
+        "space_sm",
+        "space_xl",
+        "space_xs",
         "surface",
+        "syntax_brace",
+        "syntax_command",
+        "syntax_comment",
+        "syntax_env",
+        "syntax_math",
+        "syntax_todo",
         "text",
         "text_2",
         "text_3",
@@ -2653,6 +2677,138 @@
           },
           {
             "name": "font_mono",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "font_micro",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_small",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_body",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_control",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_heading",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_title",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "font_display",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_2xs",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_xs",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_sm",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_md",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_lg",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_xl",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "space_2xl",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "radius_xs",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "accents",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "link",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "selection",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_comment",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_command",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_brace",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_env",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_math",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          },
+          {
+            "name": "syntax_todo",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": false
+          }
+        ],
+        "pill": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "height",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
           }

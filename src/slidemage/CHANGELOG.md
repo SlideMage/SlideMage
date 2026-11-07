@@ -3697,3 +3697,8 @@ v0.14.35 (2026-11-07, theme consolidation, stage 1: core tokens): Syntax colours
 
 NEW: The Source segment's count is slightly larger, and the command palette's search text is slightly smaller.
 - Internal clean-up: theme colours, text sizes and corners have one source.
+
+v0.14.36 (2026-11-07, theme consolidation, stage 2 part A: public theme tokens): Plugin API 1 now exposes the type and spacing scales, extra-small radius, height-derived pill helper, named categorical accents, links, selection and syntax colours through Host.theme(). The host maps every field explicitly, with permanent completeness and colour-drift tests. Host.theme_color remains a quiet compatibility wrapper, deprecated in documentation in favour of theme().info. Added plugin styling guidance; core rendering and terminal tokens are unchanged.
+
+NEW: The app looks the same; plugins can now read more of its theme.
+- Plugin authors can use shared text sizes, spacing, corners and named accent colours through the public theme API.

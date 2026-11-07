@@ -209,6 +209,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   offers the kit (`Host.Window`, `Card`, `SegmentedControl`, `Badge`, `ElidedLabel`, `RowButton`, `PlainList`, `Label`, `ModalSheet`,
   `toast`, and `theme`/`on_theme_changed` with `ThemeTokens`), so a plugin's own window looks like SlideMage's and follows
   a theme switch; before SlideMage closes or restarts it asks such a window to close, and one that refuses keeps it open.
+  See the [plugin guide](PLUGIN_GUIDE.md#looking-like-slidemage) for styling your own widgets.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command. A list of slides or text matches that is cut short ends with **Show all**.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck

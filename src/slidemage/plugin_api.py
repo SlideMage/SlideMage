@@ -37,8 +37,9 @@ Conventions of all calls:
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping as _Mapping
+from dataclasses import dataclass, field as _field
+from types import MappingProxyType as _MappingProxyType
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
@@ -208,7 +209,7 @@ class SlideRef:
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    """SlideMage's colours, radii and fonts in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
+    """SlideMage's colours, radii, fonts and spacing in the current theme, from Host.theme() (SlideMage v0.13.21). Only the host
     makes these; later versions may add fields (with defaults), so read the fields you need by name. Colours are
     strings QSS and QColor take: hex, except hover, which is translucent and in rgba() form."""
 
@@ -241,6 +242,59 @@ class ThemeTokens:
     radius_md: int
     font_sans: str
     font_mono: str
+
+    font_micro: int = 11
+    """Micro font size in px (SlideMage v0.14.36)."""
+    font_small: int = 12
+    """Small font size in px (SlideMage v0.14.36)."""
+    font_body: int = 13
+    """Body font size in px (SlideMage v0.14.36)."""
+    font_control: int = 14
+    """Control font size in px (SlideMage v0.14.36)."""
+    font_heading: int = 15
+    """Heading font size in px (SlideMage v0.14.36)."""
+    font_title: int = 18
+    """Title font size in px (SlideMage v0.14.36)."""
+    font_display: int = 20
+    """Display font size in px (SlideMage v0.14.36)."""
+    space_2xs: int = 2
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_xs: int = 4
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_sm: int = 6
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_md: int = 8
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_lg: int = 10
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_xl: int = 12
+    """Spacing step in px (SlideMage v0.14.36)."""
+    space_2xl: int = 16
+    """Spacing step in px (SlideMage v0.14.36)."""
+    radius_xs: int = 3
+    """Extra-small corner radius in px (SlideMage v0.14.36)."""
+    accents: _Mapping[str, str] = _field(default_factory=lambda: _MappingProxyType({}))
+    """Categorical colours by hue name, e.g. accents["teal"] (SlideMage v0.14.36)."""
+    link: str = "#0066cc"
+    """Link colour (SlideMage v0.14.36)."""
+    selection: str = "#0078d7"
+    """Selection colour (SlideMage v0.14.36)."""
+    syntax_comment: str = "#008000"
+    """Syntax comment colour (SlideMage v0.14.36)."""
+    syntax_command: str = "#0033cc"
+    """Syntax command colour (SlideMage v0.14.36)."""
+    syntax_brace: str = "#996600"
+    """Syntax brace colour (SlideMage v0.14.36)."""
+    syntax_env: str = "#a03db0"
+    """Syntax env colour (SlideMage v0.14.36)."""
+    syntax_math: str = "#b8860b"
+    """Syntax math colour (SlideMage v0.14.36)."""
+    syntax_todo: str = "#cc0000"
+    """Syntax todo colour (SlideMage v0.14.36)."""
+
+    def pill(self, height: int) -> float:
+        """Half the widget height in px for round shapes (SlideMage v0.14.36)."""
+        return height / 2
 
 
 @dataclass(frozen=True)
@@ -925,7 +979,7 @@ class Host(Protocol):
         ...
 
     def theme_color(self, role: Literal["info"]) -> str:
-        """The current theme color for widgets that cannot use QSS."""
+        """Deprecated: use theme().info instead. Kept as a quiet compatibility wrapper."""
         ...
 
 
