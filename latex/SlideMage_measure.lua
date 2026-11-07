@@ -835,7 +835,8 @@ end
 --     taller than that (a table). That line-box top is where the Top
 --     Margin is.
 --   the first ink: the top of the topmost visible thing in the column: a
---     letter (a glyph's height is its ink, as luaotfload sets it), a rule
+--     letter (at its font's cap height, v0.14.41, not the glyph's own ink,
+--     so parentheses, accents and ascenders do not push the figure up), a rule
 --     (a table's \toprule), an image. Colour, transparency and drawing
 --     literals carry no size and are passed over; invisible overlay text
 --     (\uncover) counts, as it is where the text will be.
@@ -858,12 +859,28 @@ end
 
 local walk_v
 
+-- The reference height of a letter (v0.14.41): the cap height of its own font (the height of "H", scaled to
+-- the font size), not the glyph's own ink, which for parentheses, accents and ascenders reaches above the
+-- capitals. A glyph that is not a letter of a font with an "H" (a symbol font) keeps its own height.
+local cap_cache = {}
+local function cap_height(n)
+  local key = n.font
+  local cap = cap_cache[key]
+  if cap == nil then
+    local f = font.getfont(key)
+    local h = f and f.characters and f.characters[0x48]
+    cap = h and h.height and h.height > 0 and h.height or false
+    cap_cache[key] = cap
+  end
+  return cap or n.height
+end
+
 -- an hlist whose baseline lies `baseline` below the outer box's top
 local function walk_h(head, baseline, box_height)
   for n in node.traverse(head) do
     local id = n.id
     if id == GLYPH then
-      if n.height > 0 and n.width > 0 then ink_at(baseline - n.height) end
+      if n.height > 0 and n.width > 0 then ink_at(baseline - cap_height(n)) end
       if state.line and state.line.size == nil then
         local f = font.getfont(n.font)
         state.line.size = f and f.size or nil        -- the first line's first letter: its font sets the ascender

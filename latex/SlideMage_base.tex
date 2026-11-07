@@ -4704,8 +4704,10 @@
 % 2pt under its \toprule (slide h5z), and under a template with another font
 % the letters' tops are elsewhere. With \SMBesideFigureTopGap at its default
 % "auto", the column is typeset into a box first and SlideMage_measure.lua
-% (ink_top) finds how far below the box's top its first ink lies: the tallest
-% letter of a first line of text, a rule, an image. The figure is lowered by
+% (ink_top) finds how far below the box's top its first ink lies: the cap
+% height of a first line of text (v0.14.41: the capitals, not the tallest
+% glyph, which parentheses, accents and ascenders push higher), a rule, an
+% image. With `border`, the border's outer edge meets it. The figure is lowered by
 % exactly that, so its top meets whatever starts the column. A column with no
 % ink at all falls back to 0.2em. A template that sets \SMBesideFigureTopGap to
 % a length keeps that fixed amount, and yshift= among the keys still wins.
