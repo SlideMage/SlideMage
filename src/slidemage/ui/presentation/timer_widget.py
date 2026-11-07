@@ -3,7 +3,6 @@
 """The timer element of the presenter window and the small dialog that sets it (plan 4.5)."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QTime, QTimer, Qt, Signal
@@ -11,12 +10,13 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QPushButt
                                QVBoxLayout, QWidget)
 
 from ...presentation.settings import TIMER_DURATION, TIMER_END, PresentationSettings
+from ..kit.tokens import STAGE
 from ...presentation.timer import PresentationTimer, end_time_after
 
 LEVEL_STYLE = {
     "off": "", "ok": "",
-    "warn": "background: #ef9a1a; color: #000000;",
-    "over": "background: #d32f2f; color: #ffffff;",
+    "warn": f"background: {STAGE.stage_warn}; color: {STAGE.stage_on_solid};",
+    "over": f"background: {STAGE.stage_over}; color: {STAGE.stage_on_solid};",
 }
 
 
@@ -102,7 +102,3 @@ class TimerButton(QPushButton):
                 self.timer.start()
         self.refresh()
         self.changed.emit()
-
-
-def format_clock(now: datetime, fmt: str) -> str:
-    return now.strftime("%I:%M %p").lstrip("0") if fmt == "12" else now.strftime("%H:%M")

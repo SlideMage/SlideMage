@@ -198,11 +198,11 @@ def test_single_view_group_stability_and_include_dependency_change(tmp_path):
     included.write_text("First")
     all_views = classify_views(requests)
     one_view = classify_views((requests[1],))
-    assert all_views.group_for("during-course") == one_view.group_for("during-course")
+    assert all_views.decisions[1].group == one_view.decisions[0].group
     included.write_text("Changed")
     changed = classify_views(requests)
     assert changed.evidence != all_views.evidence
-    assert changed.group_for("during-course") != all_views.group_for("during-course")
+    assert changed.decisions[1].group != all_views.decisions[1].group
 
 
 def test_mixed_projects_are_classified_independently_and_io_fails_closed(tmp_path, monkeypatch):

@@ -15,6 +15,7 @@ from typing import Callable, Sequence
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ... import alt_draft
 from ...ai.ai_profile import Route
 from ...batch_result import DRAFT, TRANSLATE, BatchResult, ItemOutcome, display_name
@@ -82,13 +83,13 @@ class JobCard(QFrame):
         super().__init__()
         self.setObjectName(q.JOB_CARD)
         inner = QVBoxLayout(self)
-        inner.setContentsMargins(20, 14, 20, 14)
-        inner.setSpacing(8)
+        inner.setContentsMargins(SPACE.s_2xl, SPACE.xl, SPACE.s_2xl, SPACE.xl)
+        inner.setSpacing(SPACE.md)
         head = QHBoxLayout()
-        head.setSpacing(10)
+        head.setSpacing(SPACE.lg)
         head.addWidget(IconLabel("autorenew", 22))
         titles = QVBoxLayout()
-        titles.setSpacing(2)
+        titles.setSpacing(SPACE.s_2xs)
         self.title = QLabel("")
         self.title.setObjectName(q.JOB_TITLE)
         self.detail = QLabel("")

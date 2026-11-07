@@ -16,7 +16,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from slidemage import alt_images, app_settings, deck_outline, open_path, preview_target, slide_snapshot
+from slidemage import alt_images, app_settings, deck_outline, open_path, preview_target, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui import layout_settings
@@ -61,7 +61,7 @@ def project(tmp_path, monkeypatch):
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
     (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
+    monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     return slides
 
 

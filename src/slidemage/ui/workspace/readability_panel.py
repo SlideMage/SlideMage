@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 
 from ... import deck_outline, readability, readability_check, slide_language
@@ -31,6 +31,7 @@ from ...compile_status import DONE
 from ...deck_scan import Deck
 from ...readability_check import StalePdf
 from .. import background
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.flow import FlowLayout
 from ..kit.widgets import Button, ClickFrame, IconLabel, Surface, announce, clear_layout, set_property
@@ -57,15 +58,15 @@ class ReadabilityPanel(Surface):
         self.report: Optional[readability.Report] = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
         self.back = Button("← Back to conversation", "ghost", compact=True)
         self.back.clicked.connect(self.closed)
         layout.addWidget(self.back, 0, Qt.AlignmentFlag.AlignLeft)
         frame = Surface()
         frame.setObjectName(q.TASK_CARD)
         body = QVBoxLayout(frame)
-        body.setContentsMargins(14, 14, 14, 14)
-        body.setSpacing(10)
+        body.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        body.setSpacing(SPACE.lg)
         self.title = QLabel()
         self.title.setObjectName(q.TASK_TITLE)
         self.title.setWordWrap(True)
@@ -75,9 +76,9 @@ class ReadabilityPanel(Surface):
         self.summary.setWordWrap(True)
         body.addWidget(self.summary)
         self.list = QVBoxLayout()
-        self.list.setSpacing(10)
+        self.list.setSpacing(SPACE.lg)
         body.addLayout(self.list)
-        self._buttons = FlowLayout(spacing=8)
+        self._buttons = FlowLayout(spacing=SPACE.md)
         body.addLayout(self._buttons)
         layout.addWidget(frame)
         self.again = self.compile_button = self.close_button = None
@@ -137,7 +138,7 @@ class ReadabilityPanel(Surface):
 
     def _slide_group(self, slide: readability.SlideReport, title: str) -> QVBoxLayout:
         group = QVBoxLayout()
-        group.setSpacing(4)
+        group.setSpacing(SPACE.xs)
         group.addLayout(self._slide_header(slide, title))
         for finding in slide.findings:
             group.addWidget(self._finding_row(slide, finding))
@@ -145,7 +146,7 @@ class ReadabilityPanel(Surface):
 
     def _slide_header(self, slide: readability.SlideReport, title: str) -> QHBoxLayout:
         header = QHBoxLayout()
-        header.setSpacing(8)
+        header.setSpacing(SPACE.md)
         label = QLabel(f"{slide.slide_id} · {title}" if title else slide.slide_id)
         label.setObjectName(q.TASK_STATE)
         label.setWordWrap(True)
@@ -167,14 +168,15 @@ class ReadabilityPanel(Surface):
         row = ClickFrame()
         row.setCursor(Qt.CursorShape.PointingHandCursor)
         line = QHBoxLayout(row)
-        line.setContentsMargins(6, 4, 6, 4)
-        line.setSpacing(8)
+        line.setContentsMargins(SPACE.sm, SPACE.xs, SPACE.sm, SPACE.xs)
+        line.setSpacing(SPACE.md)
         icon, tone = LOOK[finding.severity]
         mark = IconLabel(icon, 16)
         mark.set_tone(tone)
         mark.setAccessibleName(finding.severity.capitalize())
         line.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
         words = QVBoxLayout()
+        # One pixel keeps the finding title and excerpt reading as a single text block.
         words.setSpacing(1)
         measure = QLabel(f"{readability.LABELS[finding.cls]} · {finding.measure_text}"
                          + (f" · {finding.count} lines" if finding.count > 1 else "")
@@ -197,21 +199,6 @@ class ReadabilityPanel(Surface):
         row.setToolTip(f"Show slide {slide.slide_id}")
         row.clicked.connect(lambda: self.slide_clicked.emit(slide))
         return row
-
-
-class _Worker(QThread):
-    done = Signal(object, object, object)      # this worker, the report or None, the exception or None
-
-    def __init__(self, work: Callable[[], readability.Report]) -> None:
-        super().__init__()
-        self._work = work
-
-    def run(self) -> None:
-        try:
-            report, error = self._work(), None
-        except Exception as exc:  # noqa: BLE001 -- whatever the render or the read raised is the panel's message
-            report, error = None, exc
-        self.done.emit(self, report, error)
 
 
 @dataclass
@@ -237,7 +224,7 @@ class ReadabilityCheck(QObject):
         self.app, self.panel, self.workspace = app, panel, workspace
         self.active = False
         self._request: Optional[_Request] = None
-        self._worker: Optional[_Worker] = None
+        self._worker: Optional[background.Handle] = None
         self._cancel = threading.Event()
         self._compiling: str = ""      # the job name of the compile "Compile the deck first" started
         panel.closed.connect(self.close)
@@ -301,9 +288,8 @@ class ReadabilityCheck(QObject):
             message = "Measuring the compiled deck…"
         self.panel.show_running(request.title, message)
         self._set_active(True)
-        self._worker = worker = _Worker(work)
-        worker.done.connect(self._done)
-        background.start_detached(worker)
+        self._worker = worker = background.run_in_background(
+            work, lambda report, error: self._done(worker, report, error), parent=self, cancel=cancel)
 
     def _slide_work(self, request: _Request, cancel: threading.Event) -> Optional[Callable[[], readability.Report]]:
         app, path = self.app, request.path
@@ -316,7 +302,7 @@ class ReadabilityCheck(QObject):
         ctx = app.project
         return lambda: readability_check.check_slide(ctx, target, text, view, language, cancel, log=app.log)
 
-    def _done(self, worker: _Worker, report: Optional[readability.Report], error: Optional[Exception]) -> None:
+    def _done(self, worker: background.Handle, report: Optional[readability.Report], error: Optional[Exception]) -> None:
         if worker is not self._worker:         # closed or restarted meanwhile
             return
         self._worker = None

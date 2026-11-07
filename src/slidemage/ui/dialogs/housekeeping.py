@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Callable, NamedTuple
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -27,30 +27,15 @@ from PySide6.QtWidgets import (
 )
 
 from ... import deck_snapshot, housekeeping, unused_content
-from ...project import ProjectContext
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, ModalSheet, Surface, caption
 from ..text import plural
 
 LIST_PAGE, ARCHIVE_PAGE = 0, 1
 WORKER_WAIT_MS = 10000
 BUSY_NOTE = "A compile run is in progress."
-
-
-class _ArchiveWorker(QThread):
-    """unused_content.archive_files() off the GUI thread: a move inside a synced folder can be slow."""
-
-    logged = Signal(str)
-    finished_with = Signal(int, int)       # media moved, slides moved
-
-    def __init__(self, project: ProjectContext, media: list, slides: list) -> None:
-        super().__init__()
-        self._project, self._media, self._slides = project, media, slides
-
-    def run(self) -> None:
-        moved = unused_content.archive_files(self._project, self._media, self._slides, self.logged.emit)
-        self.finished_with.emit(*moved)
 
 
 class _Row(QFrame):
@@ -60,9 +45,9 @@ class _Row(QFrame):
         super().__init__()
         self.setObjectName(q.PANEL_ROW)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setContentsMargins(0, SPACE.md, 0, SPACE.md)
         texts = QVBoxLayout()
-        texts.setSpacing(1)
+        texts.setSpacing(SPACE.s_2xs)
         self.title = QLabel(title)
         self.sub = caption()
         texts.addWidget(self.title)
@@ -92,7 +77,7 @@ class HousekeepingSheet(ModalSheet):
         self.app = app
         self.jobs = jobs
         self.update_previews = False
-        self._worker: _ArchiveWorker | None = None
+        self._worker: background.Handle | None = None
         self._unused: tuple[list, list] = ([], [])
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_list())
@@ -132,7 +117,7 @@ class HousekeepingSheet(ModalSheet):
         page = Surface()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         self.archive_intro = QLabel()
         self.archive_intro.setWordWrap(True)
         layout.addWidget(self.archive_intro)
@@ -248,22 +233,21 @@ class HousekeepingSheet(ModalSheet):
         self.archive_button.setEnabled(count > 0 and self._worker is None and not self.app.compiling)
 
     def _on_archive(self) -> None:
+        """A move inside a synced folder can be slow: archive off the GUI thread."""
         chosen = self._checked()
         if not chosen or self._worker is not None:
             return
-        self._worker = _ArchiveWorker(self.app.project, [p for kind, p in chosen if kind == "media"],
-                                      [p for kind, p in chosen if kind == "slide"])
-        self._worker.logged.connect(self.app.log)
-        self._worker.finished_with.connect(self._on_archived)
+        ctx = self.app.project
+        media, slides = [p for kind, p in chosen if kind == "media"], [p for kind, p in chosen if kind == "slide"]
+        self._worker = background.run_in_background_with_progress(
+            lambda log: unused_content.archive_files(ctx, media, slides, log), self.app.log,
+            lambda moved, error: self._on_archived(*moved) if error is None else None, parent=self)
         self.archive_button.setEnabled(False)
         self.back_button.setEnabled(False)
         self.archive_status.setText("Moving…")
-        self._worker.start()
 
     def _on_archived(self, media: int, slides: int) -> None:
-        worker, self._worker = self._worker, None
-        worker.wait()
-        worker.deleteLater()
+        self._worker = None
         self.back_button.setEnabled(True)
         self._show_page(LIST_PAGE)
         self.refresh()
@@ -274,6 +258,5 @@ class HousekeepingSheet(ModalSheet):
         """Closing the sheet gives a running move a moment; its thread is kept until it has ended."""
         worker, self._worker = self._worker, None
         if worker is not None:
-            worker.finished_with.disconnect(self._on_archived)
-            background.stop_worker(worker, wait_ms=WORKER_WAIT_MS)
+            worker.stop(wait_ms=WORKER_WAIT_MS)
         super().done(result)

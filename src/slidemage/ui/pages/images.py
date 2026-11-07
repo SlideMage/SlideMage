@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ..kit.tokens import SPACE
 from ... import alt_draft, alt_images, image_review, languages, slide_language
 from ...ai import ai_profile, routes
 from ..ai_models import cloud_label, fill_model_combo
@@ -85,7 +86,7 @@ class ImagesPage(ImageRunsMixin, Surface):
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(12)
+        outer.setSpacing(SPACE.xl)
         self.nav = SlideNav(app.theme)
         self._missing_in()
         self._build_batch_controls(self.nav.layout())
@@ -128,10 +129,10 @@ class ImagesPage(ImageRunsMixin, Surface):
     def _build_slide_column(self) -> Card:
         card = Card()
         layout = card.layout()
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         head = QHBoxLayout()
         titles = QVBoxLayout()
-        titles.setSpacing(2)
+        titles.setSpacing(SPACE.s_2xs)
         self.slide_title = QLabel("")
         self.slide_title.setObjectName(q.DETAILS_TITLE)
         self.slide_title.setWordWrap(True)
@@ -148,7 +149,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         self.state.languages_changed.connect(lambda _codes: self._rebuild_languages())
 
         actions = QHBoxLayout()
-        actions.setSpacing(6)
+        actions.setSpacing(SPACE.sm)
         self.draft_button = Button("Draft this slide", "secondary", compact=True)
         self.draft_button.setToolTip("Draft this slide's images with the model above. Each draft is written to the "
                                      "store as unreviewed; reviewed descriptions are never overwritten.")
@@ -170,7 +171,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         actions.addStretch(1)
         layout.addLayout(actions)
         saves = QHBoxLayout()
-        saves.setSpacing(6)
+        saves.setSpacing(SPACE.sm)
         saves.addStretch(1)
         saves.addWidget(self.save_button)
         saves.addWidget(self.review_button)
@@ -191,7 +192,7 @@ class ImagesPage(ImageRunsMixin, Surface):
         self.scroll = scroll
         self.forms_host = Surface()
         self.forms_layout = QVBoxLayout(self.forms_host)
-        self.forms_layout.setContentsMargins(0, 0, 8, 0)
+        self.forms_layout.setContentsMargins(0, 0, SPACE.md, 0)
         self.forms_layout.addStretch(1)
         scroll.setWidget(self.forms_host)
         layout.addWidget(scroll, 1)

@@ -18,7 +18,7 @@ from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
 from slidemage.ui.workspace.state import WorkspaceState
 from slidemage.project import ProjectContext
-from conftest import EXAMPLE_PROJECT
+from conftest import EXAMPLE_PROJECT, preview_png
 
 
 @pytest.fixture(autouse=True)
@@ -256,7 +256,7 @@ def test_open_pdf_for_cached_buffer_alias_keeps_captured_revision(pane, tmp_path
     spec = preview_requests.PreviewRequest(
         target, preview_requests.SourceRevision.capture(path, view.buffer[0]), view.state.view, 'EN',
         preview_requests.RenderOptions(saved=False))
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'cached.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'cached.pdf'), 1280)
     monkeypatch.setattr(view._renders, 'selected_preview',
                         lambda *a, **kw: SimpleNamespace(state='verified', fresh=True,
                                                          image=png, pdf=None, request=spec))
@@ -283,7 +283,7 @@ def test_open_pdf_after_previous_image_uses_current_editor_buffer(pane, tmp_path
 
     view, target, path = pane
     view.buffer[0] = 'CURRENT UNSAVED DRAFT'
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'previous.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'previous.pdf'), 1280)
     monkeypatch.setattr(view._renders, 'selected_preview',
                         lambda *a, **kw: SimpleNamespace(state='previous', fresh=False,
                                                          image=png, pdf=None, request=None,
@@ -322,7 +322,7 @@ def test_open_pdf_ignores_older_whole_slide_adhoc_after_shared_selection(pane, t
     newer = preview_requests.PreviewRequest(
         target, preview_requests.SourceRevision.capture(path, view.buffer[0]), 'instructor', 'EN',
         preview_requests.RenderOptions(saved=False))
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'shared.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'shared.pdf'), 1280)
     monkeypatch.setattr(view._renders, 'selected_preview',
                         lambda *a, **kw: SimpleNamespace(state='verified', fresh=True,
                                                          image=png, pdf=None, request=newer))
@@ -349,7 +349,7 @@ def test_background_selection_keeps_pixels_during_revalidation_and_records_laten
     from slidemage.preview_selection import SelectedImage
 
     view, target, _ = pane
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'async.png.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'async.png.pdf'), 1280)
     started, release = Event(), Event()
 
     def validate(specs, _reference):
@@ -394,7 +394,7 @@ def test_selection_keeps_pixels_when_prune_holds_cache_lock(pane, tmp_path, qapp
     from slidemage.preview_selection import SelectedImage
 
     view, target, path = pane
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'locked.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'locked.pdf'), 1280)
     generation = tmp_path / 'generation'
     generation.mkdir()
     pdf = pdf_at(generation / 'document.pdf')
@@ -443,7 +443,7 @@ def test_background_selection_rejects_older_buffer_completion(pane, tmp_path, mo
 
     view, _, _ = pane
     first_started, release = Event(), Event()
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'async-buffer.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'async-buffer.pdf'), 1280)
 
     def validate(specs, _reference):
         spec = specs[0]
@@ -477,7 +477,7 @@ def test_background_selection_rechecks_same_mtime_disk_edit(pane, tmp_path, monk
     view, _, path = pane
     view._buffer = lambda: None
     first_started, release = Event(), Event()
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'async-disk.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'async-disk.pdf'), 1280)
     calls = []
 
     def validate(specs, _reference):
@@ -512,8 +512,8 @@ def test_newly_accepted_image_displaces_pending_validation_immediately(pane, tmp
     from slidemage.preview_selection import SelectedImage
 
     view, target, path = pane
-    old = slide_snapshot.page_png(pdf_at(tmp_path / 'old-pending.pdf', 'old'), 1280)
-    new = slide_snapshot.page_png(pdf_at(tmp_path / 'new-accepted.pdf', 'new'), 1280)
+    old = preview_png(pdf_at(tmp_path / 'old-pending.pdf', 'old'), 1280)
+    new = preview_png(pdf_at(tmp_path / 'new-accepted.pdf', 'new'), 1280)
     started, release = Event(), Event()
     calls = []
 
@@ -551,7 +551,7 @@ def test_scoped_background_validation_runs_off_gui_thread(pane, tmp_path, monkey
     from slidemage.preview_selection import SelectedImage
 
     view, target, path = pane
-    png = slide_snapshot.page_png(pdf_at(tmp_path / 'scoped-async.pdf'), 1280)
+    png = preview_png(pdf_at(tmp_path / 'scoped-async.pdf'), 1280)
     pixmap = preview_view.QPixmap()
     assert pixmap.loadFromData(png)
     spec = preview_requests.PreviewRequest(
@@ -608,9 +608,9 @@ def test_previous_whole_slide_selection_outranks_older_ad_hoc_draft(pane, tmp_pa
     env = {'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(preview_requests.compiler, 'build_env', lambda _: env)
     saved_pdf = pdf_at(tmp_path / 'newer-saved.pdf', 'new saved image')
-    saved_png = slide_snapshot.page_png(saved_pdf)
+    saved_png = preview_png(saved_pdf)
     old_pixmap = preview_view.QPixmap()
-    assert old_pixmap.loadFromData(slide_snapshot.page_png(pdf_at(tmp_path / 'old-draft.pdf', 'old draft')))
+    assert old_pixmap.loadFromData(preview_png(pdf_at(tmp_path / 'old-draft.pdf', 'old draft')))
     cache = preview_cache.PreviewCache(target.context.root)
     saved = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(path),
                                              'instructor', 'EN', preview_requests.RenderOptions(saved=True))
@@ -846,7 +846,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
     workspace._context = SimpleNamespace(deck=None)
     assert workspace.is_open_deck(deck.path)
     assert not workspace.is_open_deck(tmp_path / "other.tex")
-    png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
+    png = preview_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     workspace.show_slide(path)
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: tmp_path / 'composite.pdf')
     assert workspace.render_preview(target, "BODY", state.view, language,
@@ -859,7 +859,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
 @pytest.mark.parametrize("change", ["slide", "view", "language", "buffer", "disk", "deleted"])
 def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, monkeypatch, change):
     view, target, path = pane
-    png = slide_snapshot.page_png(pdf_at(tmp_path / "composite.pdf"), 1280)
+    png = preview_png(pdf_at(tmp_path / "composite.pdf"), 1280)
     publications = []
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: tmp_path / 'composite.pdf')
     monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
@@ -895,7 +895,7 @@ def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, d
     builds, rasters = [], []
     started, release = threading.Event(), threading.Event()
     pdf = pdf_at(tmp_path / 'shared.pdf')
-    png = slide_snapshot.page_png(pdf, 1280)
+    png = preview_png(pdf, 1280)
     def builder(*a, **kw):
         builds.append(kw)
         started.set()
@@ -976,7 +976,7 @@ def test_refresh_tool_publishes_saved_artifact_through_gui_workspace(pane, tmp_p
     workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(
         preview=view, source=SimpleNamespace(file_for=lambda path: None))))
     workspace._context = WorkspaceContext(path=path, language="EN")
-    old = slide_snapshot.page_png(pdf_at(tmp_path / 'old-refresh.pdf', 'old'))
+    old = preview_png(pdf_at(tmp_path / 'old-refresh.pdf', 'old'))
     old_pixmap = preview_view.QPixmap()
     assert old_pixmap.loadFromData(old)
     key = (target.key, 'instructor', 'EN')
@@ -1126,7 +1126,7 @@ def test_view_cache_hit_updates_pdf_and_enables_menu_immediately(pane, tmp_path,
     artifacts = {key: SimpleNamespace(pdf=pdf_at(tmp_path / f'{key}.pdf', key), display_png=None)
                  for key in ('instructor', 'during-course', 'after-course')}
     for artifact in artifacts.values():
-        artifact.display_png = slide_snapshot.page_png(artifact.pdf)
+        artifact.display_png = preview_png(artifact.pdf)
     monkeypatch.setattr(view._renders, 'selected_preview', lambda target, text, key, *args, **kw:
                         SimpleNamespace(state='verified', fresh=True, image=artifacts[key].display_png,
                                         pdf=artifacts[key].pdf, request=None))
@@ -1158,7 +1158,7 @@ def test_ui_batch_preparation_error_is_reported_without_worker(pane, monkeypatch
 def test_buffer_scope_preference_does_not_hide_a_valid_saved_preview(pane, tmp_path, monkeypatch, scope, overlay):
     view, target, _ = pane
     pdf = pdf_at(tmp_path / "saved-full.pdf", "saved full slide")
-    png = slide_snapshot.page_png(pdf)
+    png = preview_png(pdf)
     view._scope, view._overlay = scope, overlay
     monkeypatch.setattr(view._renders, "selected_preview", lambda *args, **kw: SimpleNamespace(
         state='verified', fresh=True, image=png, pdf=pdf, request=None))
@@ -1172,7 +1172,7 @@ def test_buffer_scope_preference_does_not_hide_a_valid_saved_preview(pane, tmp_p
 def test_unverified_memory_image_is_not_current_even_when_source_mtime_matches(pane, tmp_path, monkeypatch):
     view, target, path = pane
     pdf = pdf_at(tmp_path / "unverified.pdf", "unverified render")
-    png = slide_snapshot.page_png(pdf)
+    png = preview_png(pdf)
     pixmap = preview_view.QPixmap()
     assert pixmap.loadFromData(png)
     view._pixmaps.put((target.key, "instructor", "EN"), pixmap, preview_view._mtime(path), None, "")
@@ -1190,7 +1190,7 @@ def test_full_draft_batch_replaces_the_previous_region_cache_identity(pane, tmp_
     view, target, path = pane
     view.buffer[0] = "DRAFT"
     pdf = pdf_at(tmp_path / "draft-full.pdf", "new full draft")
-    png = slide_snapshot.page_png(pdf)
+    png = preview_png(pdf)
     spec = PreviewRequest(target, SourceRevision.capture(path, "DRAFT"), "instructor", "EN", RenderOptions())
     view._adhoc_spec = replace(spec, options=RenderOptions(mode="region"))
     checked = []
@@ -1284,7 +1284,7 @@ class _TwoSlides:
         self.path_b = tmp_path / "slides" / "bbb-EN-Other-current.tex"
         self.path_b.write_text("OTHER")
         self.target_b = preview_target.for_path(view.state.project, self.path_b)
-        self.png = {text: slide_snapshot.page_png(pdf_at(tmp_path / f"{text}.pdf", text), 1280)
+        self.png = {text: preview_png(pdf_at(tmp_path / f"{text}.pdf", text), 1280)
                     for text in ("BODY", "OTHER", "BODY2")}
         self.gate = {text: threading.Event() for text in self.png}
         for gate in self.gate.values():

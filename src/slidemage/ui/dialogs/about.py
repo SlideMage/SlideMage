@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QTextBrowser
 
 from ... import app_info
 from ... import version as version_mod
-from ..kit.palette import PALETTES
+from ..kit.theme import ThemeManager
 from ..kit.widgets import ModalSheet
 
 
@@ -30,8 +30,8 @@ class AboutSheet(ModalSheet):
         self._expanded: set[int] = set()
         self.browser = QTextBrowser()
         self.browser.setOpenLinks(False)
-        dark = self.palette().window().color().lightness() < 128
-        self.browser.document().setDefaultStyleSheet(f"a {{ color: {PALETTES['dark' if dark else 'light']['link_fg']}; }}")
+        theme = parent.theme if parent is not None else ThemeManager()
+        self.browser.document().setDefaultStyleSheet(f"a {{ color: {theme.tokens.link}; }}")
         self.browser.anchorClicked.connect(self._on_anchor_clicked)
         self.browser.setHtml(self._build_html())
         self.add_tab("Version history", self.browser)

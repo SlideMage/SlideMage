@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton
 
 from ....deck_editor import VISIBILITY_MACROS, SlideCall, set_calls_visibility
+from ...kit.tokens import SPACE
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
 from ..state import VIEWS
@@ -63,7 +64,7 @@ class Visibility(SidePanel):
         what = f"Steps {call.steps}" if call.macro == "slidestep" else "Whole slide"
         grid.addWidget(text(what, q.DETAILS_VALUE), 0, 0)
         grid.addWidget(text(f"\\{call.macro} · #{position}", q.PANEL_CAPTION), 1, 0)
-        grid.setContentsMargins(0, 6, 0, 6)
+        grid.setContentsMargins(0, SPACE.sm, 0, SPACE.sm)
         grid.setVerticalSpacing(0)
         return grid
 

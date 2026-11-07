@@ -35,6 +35,8 @@ from functools import wraps
 from pathlib import Path
 from typing import Optional
 
+from .fileio import read_json
+
 LOGGER = "slidemage"
 DIR_ENV = "SLIDEMAGE_LOG_DIR"
 ERROR_LOG = "slidemage.log"
@@ -90,12 +92,7 @@ def forced() -> Optional[bool]:
 
 def saved() -> bool:
     """The setting: on until it is turned off (decision D1), for this computer's SlideMage, every project."""
-    import json
-
-    try:
-        return json.loads(settings_path().read_text(encoding="utf-8")).get("debug") is True
-    except (OSError, ValueError, AttributeError):
-        return False
+    return read_json(settings_path()).get("debug") is True
 
 
 def wanted() -> bool:
@@ -473,14 +470,6 @@ def write_report(target: Path, project_root: Optional[Path] = None, sessions: in
                 continue              # rotated or removed meanwhile
             names.append(name)
     return names
-
-
-def error_log_path() -> Optional[Path]:
-    """The error log this process writes, or None before setup() or when it could not be opened."""
-    if _state is None:
-        return None
-    files = [h for h in _state["handlers"] if isinstance(h, RotatingFile)]
-    return Path(files[0].baseFilename) if files else None
 
 
 def _excepthook(kind, value, tb) -> None:

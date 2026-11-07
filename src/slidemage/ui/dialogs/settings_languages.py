@@ -24,6 +24,7 @@ from ... import deck_scan, languages, slide_rename
 from ...ai import translation_style
 from ...deck_settings import read_settings
 from ...project import ProjectContext
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption, row
 
 MULT = "mult"
@@ -90,7 +91,7 @@ class UntaggedSlugsSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
         layout.addWidget(caption(
             f"{_count(len(id_slugs), 'slide')} without a language in the name start{'s' if len(id_slugs) == 1 else ''} "
             f"with {code.upper()}, which SlideMage would read as the language {languages.name(code)} once you add it. "
@@ -126,7 +127,7 @@ class LanguagesSection(Surface):
         self.project = app.project
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
 
         self.main = QComboBox()
         self.main.setAccessibleName("Main language")

@@ -13,7 +13,7 @@ Unlike a deck snapshot (deck_snapshot.py: the files a real compile read, a froze
 same PDF) this follows the sources: it walks the deck's text the way the compiler would, with the search path
 of the project's .latexmkrc (decks/, the project root, the framework). The slide calls and the media
 references are read by the code that archives unused content (unused_content.py), the framework folders are
-found as the slide previews find them (slide_snapshot.framework_dirs). Files that belong to the TeX
+found as the slide previews find them (slide_templates.framework_dirs). Files that belong to the TeX
 distribution are not found there and so not copied. A file the sources name but the project does not hold is
 reported in ExportResult.missing; the rest is exported.
 
@@ -33,7 +33,7 @@ from typing import Callable, Optional
 from . import citations, themes, unused_content
 from .deck_scan import Deck
 from .project import ProjectContext, is_snapshot
-from .slide_snapshot import framework_dirs
+from .slide_templates import framework_dirs
 from .tex_source import COMMENT_RE
 
 FOLDER_SUFFIX = "-latex"

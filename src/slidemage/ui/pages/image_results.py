@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
+from ..kit.tokens import SPACE
 from ...ai.ai_profile import Route
 from ...batch_result import CANCELLED, DONE, DRAFT, FAILED, KEPT, TRANSLATE, BatchResult, display_name
 from ..kit import kit_qss as q
@@ -71,7 +72,7 @@ class BatchResultView(Surface):
         self.result: BatchResult | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
         if back:
             self.back = Button("← Back to conversation", "ghost", compact=True)
             self.back.clicked.connect(self.closed)
@@ -79,10 +80,10 @@ class BatchResultView(Surface):
         frame = Surface()
         frame.setObjectName(q.TASK_CARD)
         body = QVBoxLayout(frame)
-        body.setContentsMargins(14, 14, 14, 14)
-        body.setSpacing(10)
+        body.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
+        body.setSpacing(SPACE.lg)
         head = QHBoxLayout()
-        head.setSpacing(8)
+        head.setSpacing(SPACE.md)
         self.title = QLabel()
         self.title.setObjectName(q.TASK_TITLE)
         self.title.setWordWrap(True)
@@ -126,18 +127,18 @@ class BatchResultView(Surface):
         frame = QFrame()
         frame.setObjectName(q.LIST_BOX)
         rows = QVBoxLayout(frame)
-        rows.setContentsMargins(4, 4, 4, 4)
+        rows.setContentsMargins(SPACE.xs, SPACE.xs, SPACE.xs, SPACE.xs)
         rows.setSpacing(0)
         for image, outcome in result.items:
             line = QHBoxLayout()
-            line.setContentsMargins(8, 6, 8, 6)
-            line.setSpacing(8)
+            line.setContentsMargins(SPACE.md, SPACE.sm, SPACE.md, SPACE.sm)
+            line.setSpacing(SPACE.md)
             icon, tone = LOOK[outcome.kind]
             mark = IconLabel(icon, 16)
             mark.set_tone(tone)
             line.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
             words = QVBoxLayout()
-            words.setSpacing(1)
+            words.setSpacing(SPACE.s_2xs)
             name = QLabel(display_name(image))
             name.setObjectName(q.PANEL_MONO)
             name.setToolTip(image)

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEd
 
 from ... import bibliography, latex_edit, snippets
 from ...project import ProjectContext
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Popover, SegmentedControl
 
@@ -42,8 +43,8 @@ class _FormPopover(Popover):
 
     def __init__(self, title: str, *, min_width: int = 340) -> None:
         super().__init__(min_width=min_width)
-        self.body.setContentsMargins(12, 10, 12, 12)
-        self.body.setSpacing(8)
+        self.body.setContentsMargins(SPACE.xl, SPACE.lg, SPACE.xl, SPACE.xl)
+        self.body.setSpacing(SPACE.md)
         heading = QLabel(title)
         heading.setObjectName(q.DETAILS_HEAD)
         self.body.addWidget(heading)
@@ -160,8 +161,8 @@ class CitationPopover(Popover):
 
     def __init__(self, project: ProjectContext) -> None:
         super().__init__(min_width=460)
-        self.body.setContentsMargins(10, 10, 10, 8)
-        self.body.setSpacing(8)
+        self.body.setContentsMargins(SPACE.lg, SPACE.lg, SPACE.lg, SPACE.md)
+        self.body.setSpacing(SPACE.md)
         self._entries = bibliography.load(project.bibliography_path)
         top = QHBoxLayout()
         top.addWidget(QLabel("Insert as"))
