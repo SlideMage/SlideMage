@@ -19,10 +19,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .tokens import (
+    SPACE,
     FONT_ICONS,
     FONT_MONO,
     FONT_SANS,
-    RADIUS_LG,
     RADIUS_MD,
     RADIUS_PILL,
     RADIUS_SM,
@@ -271,7 +271,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: 1px solid {t.line};
             border-radius: {RADIUS_SM}px;
-            padding: 4px 10px;
+            padding: {SPACE.xs}px {SPACE.lg}px;
         }}
         QPushButton:hover {{
             background-color: {t.hover};
@@ -285,7 +285,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.inverse};
             color: {t.on_inverse};
             border: none;
-            padding: 4px 8px;
+            padding: {SPACE.xs}px {SPACE.md}px;
         }}
         QMenu {{
             {font}
@@ -294,10 +294,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: 1px solid {t.line};
             border-radius: {RADIUS_SM}px;
-            padding: 4px;
+            padding: {SPACE.xs}px;
         }}
         QMenu::item {{
-            padding: 5px 24px 5px 12px;
+            /* Leave room for the combo arrow and retain native control height. */
+            padding: 5px 24px 5px {SPACE.xl}px;
             border-radius: {RADIUS_SM}px;
         }}
         QMenu::item:selected {{
@@ -317,11 +318,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.surface};
             color: {t.text};
             border-bottom: 1px solid {t.line};
-            padding: 2px 8px;
+            padding: {SPACE.s_2xs}px {SPACE.md}px;
         }}
         QMenuBar::item {{
             background: transparent;
-            padding: 4px 10px;
+            padding: {SPACE.xs}px {SPACE.lg}px;
             border-radius: {RADIUS_SM}px;
         }}
         QMenuBar::item:selected {{
@@ -336,7 +337,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-size: {TYPE.micro}px;
             font-weight: 500;
             color: {t.text_3};
-            padding: 6px 12px 2px 12px;
+            padding: {SPACE.sm}px {SPACE.xl}px {SPACE.s_2xs}px {SPACE.xl}px;
         }}
 
         /* Form controls, everywhere: a field on the page color with a line
@@ -384,14 +385,14 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: 1px solid {t.line};
             border-radius: {RADIUS_SM}px;
-            padding: 4px;
+            padding: {SPACE.xs}px;
             outline: none;
             selection-background-color: {t.hover};
             selection-color: {t.text};
         }}
         QComboBox QAbstractItemView::item {{
             min-height: 22px;
-            padding: 2px 8px;
+            padding: {SPACE.s_2xs}px {SPACE.md}px;
         }}
         QSpinBox, QDoubleSpinBox {{
             padding-right: 24px;
@@ -466,11 +467,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: none;
             border-radius: {RADIUS_MD}px;
-            padding: 4px;
+            padding: {SPACE.xs}px;
             outline: none;
         }}
         QListWidget::item {{
-            padding: 5px 8px;
+            padding: 5px {SPACE.md}px;
             border-radius: {RADIUS_SM}px;
         }}
         QListWidget::item:hover {{
@@ -552,13 +553,13 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             border: none;
             border-bottom: 1px solid transparent;
             border-radius: {RADIUS_SM}px;
-            padding: 5px 10px;
+            padding: 5px {SPACE.lg}px;
         }}
         QPushButton[kitSegment="true"][mono="true"] {{
             font-family: "Roboto Mono";
             font-size: {TYPE.micro}px;
             font-weight: 600;
-            padding: 5px 8px;
+            padding: 5px {SPACE.md}px;
         }}
         QPushButton[kitSegment="true"][badge="true"] {{
             padding-right: 22px;
@@ -570,7 +571,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.on_inverse};
             background-color: {t.inverse};
             border-radius: {pill(BADGE_HEIGHT):g}px;
-            padding: 0 6px;
+            padding: 0 {SPACE.sm}px;
             min-height: {BADGE_HEIGHT}px;
             min-width: 8px;
         }}
@@ -586,7 +587,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.on_solid};
             background-color: {t.error_solid};
             border-radius: {pill(SEGMENT_BADGE_HEIGHT):g}px;
-            padding: 0 4px;
+            padding: 0 {SPACE.xs}px;
             min-width: 8px;
             min-height: {SEGMENT_BADGE_HEIGHT}px;
         }}
@@ -615,7 +616,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QPushButton[kitSegment="true"]:focus {{
             border: 2px solid {t.focus}; padding: 3px 9px;
         }}
-        QPushButton[kitSegment="true"][mono="true"]:focus {{ padding: 3px 6px; }}
+        QPushButton[kitSegment="true"][mono="true"]:focus {{ padding: 3px {SPACE.sm}px; }}
         QPushButton[kitSegment="true"][badge="true"]:focus {{ padding-right: 20px; }}
         QPushButton[kitSegment="true"][withIcon="true"]:focus {{ padding-left: 28px; }}
         QLabel#{ICON}[segment="off"] {{ color: {t.text_2}; }}
@@ -646,7 +647,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text_3};
             border: 1px solid {t.line};
             border-radius: {RADIUS_PILL}px;
-            padding: 4px 12px;
+            padding: {SPACE.xs}px {SPACE.xl}px;
         }}
         QPushButton#{TOGGLE_CHIP}:hover {{
             background-color: {t.hover};
@@ -712,15 +713,15 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         }}
         QPushButton[kind][compact="true"] {{
             font-size: {TYPE.body}px;
-            padding: 4px 9px;
+            padding: {SPACE.xs}px 9px;
         }}
         QPushButton[kind]:disabled {{
             color: {t.text_4};
             background-color: {t.bg};
             border-color: {t.line};
         }}
-        QPushButton[kind]:focus {{ border: 2px solid {t.focus}; padding: 6px 13px; }}
-        QPushButton[kind][compact="true"]:focus {{ padding: 3px 8px; }}
+        QPushButton[kind]:focus {{ border: 2px solid {t.focus}; padding: {SPACE.sm}px 13px; }}
+        QPushButton[kind][compact="true"]:focus {{ padding: 3px {SPACE.md}px; }}
 
         QFrame#{SPLIT} {{
             background-color: {t.inverse};
@@ -734,7 +735,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.on_inverse};
             border: none;
             border-radius: 0;
-            padding: 7px 12px;
+            padding: 7px {SPACE.xl}px;
         }}
         QFrame#{SPLIT} QPushButton:hover {{
             background-color: rgba(0,0,0,0.12);
@@ -747,7 +748,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-weight: 400;
             padding: 5px 7px;
         }}
-        QFrame#{SPLIT} QPushButton:focus {{ border: 2px solid {t.focus}; padding: 5px 10px; }}
+        QFrame#{SPLIT} QPushButton:focus {{ border: 2px solid {t.focus}; padding: 5px {SPACE.lg}px; }}
         QFrame#{SPLIT} QPushButton#{SPLIT_CARET}:focus {{ padding: 3px 5px; }}
         QFrame#{SPLIT} QFrame#{SPLIT_DIVIDER} {{
             background-color: {with_alpha(t.on_inverse, 0.25)};
@@ -795,7 +796,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             outline: none;
         }}
         QFrame#{MENU} QListWidget::item {{
-            padding: 6px 8px;
+            padding: {SPACE.sm}px {SPACE.md}px;
             border-radius: {RADIUS_SM}px;
             color: {t.text};
         }}
@@ -830,7 +831,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-size: {TYPE.micro}px;
             font-weight: 500;
             color: {t.text_3};
-            padding: 6px 10px 2px 10px;
+            padding: {SPACE.sm}px {SPACE.lg}px {SPACE.s_2xs}px {SPACE.lg}px;
         }}
         QFrame#{MENU_SEPARATOR} {{
             background-color: {t.line};
@@ -849,7 +850,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{MENU_FOOTER} {{
             border-top: 1px solid {t.line};
             margin-top: 4px;
-            padding: 6px 4px 2px 4px;
+            padding: {SPACE.sm}px {SPACE.xs}px {SPACE.s_2xs}px {SPACE.xs}px;
         }}
         QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} {{ font-size: {TYPE.body}px; }}
         QFrame#{MENU}[columns="true"] QWidget#{MENU_ROW} QLabel#{MENU_META} {{
@@ -857,10 +858,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             font-size: {TYPE.micro}px;
         }}
         {text(f'QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER}', TYPE.body, t.text_2, 500)}
-        QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER} {{ padding: 8px 10px 3px 10px; }}
+        QFrame#{MENU}[columns="true"] QLabel#{MENU_HEADER} {{ padding: {SPACE.md}px {SPACE.lg}px 3px {SPACE.lg}px; }}
         QFrame#{MENU_FOOTER} QWidget#{MENU_ROW} QLabel#{MENU_TEXT} {{ font-weight: 500; }}
         {text(f"QLabel#{MENU_NOTE}", TYPE.small, t.text_3)}
-        QLabel#{MENU_NOTE} {{ padding: 0 8px; }}
+        QLabel#{MENU_NOTE} {{ padding: 0 {SPACE.md}px; }}
 
         QFrame#{MENU_SWATCH} {{
             border: 1px solid {t.line};
@@ -890,7 +891,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.on_inverse};
             border: none;
             border-radius: {RADIUS_SM}px;
-            padding: 4px 10px;
+            padding: {SPACE.xs}px {SPACE.lg}px;
         }}
         QPushButton#{TOAST_ACTION}:hover {{
             background-color: {with_alpha(t.on_inverse, 0.28)};
@@ -967,7 +968,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text_3};
             border: none;
             border-bottom: 2px solid transparent;
-            padding: 8px 14px;
+            padding: {SPACE.md}px 14px;
         }}
         QTabBar#{SHEET_TABS}::tab:hover {{
             color: {t.text};
@@ -1031,7 +1032,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         {text(f"QLabel#{AI_POPUP_TEXT}", TYPE.body, t.text_2)}
         QPushButton#{AI_POPUP_LINK} {{
             {font} font-size: {TYPE.body}px; color: {t.text_2}; text-decoration: underline;
-            background-color: transparent; border: 2px solid transparent; border-radius: {RADIUS_SM}px; padding: 0 2px;
+            background-color: transparent; border: 2px solid transparent; border-radius: {RADIUS_SM}px; padding: 0 {SPACE.s_2xs}px;
         }}
         QPushButton#{AI_POPUP_LINK}:hover {{ color: {t.text}; }}
         QPushButton#{AI_POPUP_LINK}:focus {{ border-color: {t.focus}; }}
@@ -1042,7 +1043,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             {mono}
             font-size: {TYPE.small}px;
             min-height: 20px;
-            padding: 3px 6px;
+            padding: 3px {SPACE.sm}px;
             padding-right: 22px;
         }}
         QComboBox#{AI_SETUP_CELL}[active="false"] {{ color: {t.text_4}; }}
@@ -1089,7 +1090,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: none;
             border-radius: {RADIUS_SM}px;
-            padding: 0 12px;
+            padding: 0 {SPACE.xl}px;
             min-height: 40px;
         }}
         QLineEdit#{SLIDES_RENAME} {{
@@ -1100,7 +1101,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             border: 1.5px solid {t.info};
             border-radius: {RADIUS_SM}px;
-            padding: 0 8px;
+            padding: 0 {SPACE.md}px;
         }}
         QTreeWidget#{SLIDES_TREE} {{
             background-color: transparent;
@@ -1111,7 +1112,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             {font}
             font-size: {TYPE.body}px;
             color: {t.text_3};
-            padding: 16px 8px;
+            padding: {SPACE.s_2xl}px {SPACE.md}px;
         }}
         {text(f"QLabel#{SLIDES_BULK_LABEL}", TYPE.body, t.text, 500)}
 
@@ -1159,7 +1160,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{AI_ROW} QLabel#{DIFF_OLD}, QFrame#{AI_ROW} QLabel#{DIFF_NEW} {{
             {mono}
             font-size: {TYPE.small}px;
-            padding: 2px 6px;
+            padding: {SPACE.s_2xs}px {SPACE.sm}px;
             border-radius: {RADIUS_XS}px;
         }}
         QFrame#{AI_ROW} QLabel#{DIFF_OLD} {{
@@ -1307,7 +1308,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             outline: none;
         }}
         QListWidget#{IMAGE_LIST}::item {{
-            padding: 7px 8px;
+            padding: 7px {SPACE.md}px;
             border-radius: {RADIUS_SM}px;
         }}
         QListWidget#{IMAGE_LIST}::item:hover {{
@@ -1392,7 +1393,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {with_alpha(t.log_text, 0.6)};
             background-color: transparent;
             border: none;
-            padding: 4px 8px;
+            padding: {SPACE.xs}px {SPACE.md}px;
         }}
         QPushButton#{LOG_ACTION}:hover {{ color: {t.log_text}; }}
         QPushButton#{LOG_ERROR} {{
@@ -1403,15 +1404,15 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.error_solid};
             border: none;
             border-radius: {RADIUS_SM}px;
-            padding: 4px 10px;
+            padding: {SPACE.xs}px {SPACE.lg}px;
         }}
 
         /* Chat: the user's bubble, the model's text, tool cards, diff cards, notices. */
         QFrame#{CHAT_USER} {{
             background-color: {t.inverse};
-            border-top-left-radius: {RADIUS_LG}px;
-            border-top-right-radius: {RADIUS_LG}px;
-            border-bottom-left-radius: {RADIUS_LG}px;
+            border-top-left-radius: {RADIUS_MD}px;
+            border-top-right-radius: {RADIUS_MD}px;
+            border-bottom-left-radius: {RADIUS_MD}px;
             border-bottom-right-radius: {RADIUS_XS}px;
         }}
         {text(f"QFrame#{CHAT_USER} QLabel", TYPE.body, t.on_inverse)}
@@ -1428,7 +1429,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE} {{
             {mono}
             font-size: {TYPE.micro}px;
-            padding: 0 8px;
+            padding: 0 {SPACE.md}px;
         }}
         QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="add"] {{ background-color: {t.ok_bg}; color: {t.ok_fg}; }}
         QFrame#{CHAT_DIFF} QLabel#{CHAT_DIFF_LINE}[kind="del"] {{ background-color: {t.error_bg}; color: {t.error_fg}; }}
@@ -1448,7 +1449,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QLabel#{CHAT_NOTICE} {{
             {font}
             font-size: {TYPE.small}px;
-            padding: 8px 10px;
+            padding: {SPACE.md}px {SPACE.lg}px;
             border-radius: {RADIUS_MD}px;
             background-color: {t.bg};
             color: {t.text_2};
@@ -1463,7 +1464,7 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.bg};
             border: none;
             border-radius: {RADIUS_MD}px;
-            padding: 6px 10px;
+            padding: {SPACE.sm}px {SPACE.lg}px;
         }}
         QPushButton#{CHAT_SUGGESTION}:hover {{ background-color: {t.line}; }}
     """

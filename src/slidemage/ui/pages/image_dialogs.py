@@ -9,6 +9,7 @@ from typing import Callable, Optional
 
 from PySide6.QtWidgets import QCheckBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QVBoxLayout, QWidget
 
+from ..kit.tokens import SPACE
 from ... import alt_draft, image_review
 from ...ai.providers import ChatProvider
 from ...project import ProjectContext
@@ -117,13 +118,13 @@ class PromptTuningSheet(ModalSheet):
         self.result_draft: Optional[alt_draft.DraftResult] = None
         page = Page()
         columns = QHBoxLayout()
-        columns.setSpacing(18)
+        columns.setSpacing(SPACE.s_2xl)
         left = QVBoxLayout()
         left.addWidget(ImagePreview(app.project, reference, app.log, max_size=(520, 640)))
         left.addStretch(1)
         columns.addLayout(left, 1)
         right = QVBoxLayout()
-        right.setSpacing(10)
+        right.setSpacing(SPACE.lg)
         self.hint_edit = QPlainTextEdit(hint)
         self.hint_edit.setFixedHeight(64)
         self.hint_edit.setPlaceholderText("e.g. the y-axis maximum is 6800, not 250")

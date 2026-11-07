@@ -17,6 +17,7 @@ from typing import Optional
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ... import alt_images, image_review, languages
 from ..ai_models import cloud_label
 from ..kit import kit_qss as q
@@ -92,7 +93,7 @@ class SourceStatus(Surface):
         super().__init__()
         line = QHBoxLayout(self)
         line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(8)
+        line.setSpacing(SPACE.md)
         self.chip = Chip("", "neutral")
         self.button = Button("Mark reviewed", "ghost", compact=True)
         self.button.setAccessibleName("Mark source reviewed")
@@ -177,10 +178,10 @@ class ImageForm(Surface):
         self._source_status: list[SourceStatus] = []   # one under the source field of each language
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 18)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, SPACE.md, 0, SPACE.s_2xl)
+        layout.setSpacing(SPACE.lg)
         head = QHBoxLayout()
-        head.setSpacing(10)
+        head.setSpacing(SPACE.lg)
         name = QLabel(reference)
         name.setObjectName(q.PANEL_MONO)
         name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -253,7 +254,7 @@ class ImageForm(Surface):
         group = Surface()
         column = QVBoxLayout(group)
         column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(10)
+        column.setSpacing(SPACE.lg)
         for spec in specs:
             key = spec[0]
             edit, field = labelled_edit(spec, self.baseline[key])

@@ -15,6 +15,7 @@ from PySide6.QtCore import QStringListModel, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QCompleter, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem
 
+from ..kit.tokens import SPACE
 from ... import alt_images, image_review, slide_language
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
@@ -65,7 +66,7 @@ class SlideNav(Card):
         self.languages: tuple[str, ...] = ("de",)     # where Missing a translation looks (the page sets them)
         self.setFixedWidth(340)
         layout = self.layout()
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
 
         head = QHBoxLayout()
         back = IconButton("arrow_back", "Back to the slides", size=20)

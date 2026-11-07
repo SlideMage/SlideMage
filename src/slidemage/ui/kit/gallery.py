@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from .fonts import FONT_DIR, load_fonts
 from .kit_qss import FIELD_LABEL
 from .theme import ThemeManager
-from .tokens import VIEWS
+from .tokens import SPACE, RADIUS_SM, VIEWS
 from .widgets import (
     Button,
     Card,
@@ -64,7 +64,7 @@ class KitGallery(QWidget):
         body = QWidget()
         scroll.setWidget(body)
         self._root = QVBoxLayout(body)
-        self._root.setSpacing(16)
+        self._root.setSpacing(SPACE.s_2xl)
 
         dark = QCheckBox("Dark mode")
         dark.setChecked(theme.dark)
@@ -207,7 +207,7 @@ class KitGallery(QWidget):
         for color in colors:
             swatch = QLabel()
             swatch.setFixedSize(28, 28)
-            swatch.setStyleSheet(f"background-color: {color}; border: 1px solid {t.line}; border-radius: 4px;")
+            swatch.setStyleSheet(f"background-color: {color}; border: 1px solid {t.line}; border-radius: {RADIUS_SM}px;")
             swatch.setToolTip(color)
             layout.addWidget(swatch)
         layout.addStretch(1)
