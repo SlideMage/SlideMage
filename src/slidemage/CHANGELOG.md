@@ -3692,3 +3692,8 @@ v0.14.34 (2026-11-06, code review plan of 2026-11-06, the rest of phase 1: unuse
 
 NEW: Nothing changes for you; background previews work as before.
 - Internal clean-up: unused code in the background renderer is gone.
+
+v0.14.35 (2026-11-07, theme consolidation, stage 1: core tokens): Syntax colours, selection and links now live with the design tokens; the old palette and ThemeManager.colors are removed. Shared colour roles reference common values, and colours fixed across themes are stored once. The kit stylesheet reads the seven-size type scale, corner tokens and height-derived pill radii; the source editor and project picker use the same type scale. Added the internal categorical accent palette for later adoption. Selectors, syntax colours and all other rendered stylesheet values stay the same.
+
+NEW: The Source segment's count is slightly larger, and the command palette's search text is slightly smaller.
+- Internal clean-up: theme colours, text sizes and corners have one source.
