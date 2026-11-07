@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
-from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language, slide_snapshot
+from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language, slide_snapshot, slide_templates
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -164,7 +164,7 @@ def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
 
 def _sections(ctx: ProjectContext, deck: Deck, view: str, language: str, resolved: tuple[ResolvedSlot, ...],
               links: slide_language.TranslationLinks) -> list[SectionRow]:
-    template = slide_snapshot.detect_template(deck.preamble_text)
+    template = slide_templates.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     unreviewed_paths = set(ai_review.unreviewed(ctx))
     for slot in resolved:
@@ -250,7 +250,7 @@ def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, languag
     (or, when `outline` describes this deck, view and language, without resolving anything)."""
     if outline is not None and outline.matches(ctx, deck, language, view):
         return outline.row(slide_id, occurrence_key)
-    template = slide_snapshot.detect_template(deck.preamble_text)
+    template = slide_templates.detect_template(deck.preamble_text)
     links = slide_language.links_for(ctx)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
     matches = [r for r in resolve_slots(ctx, deck, view, language, links=links) if r.slot.matches(slide_id)]

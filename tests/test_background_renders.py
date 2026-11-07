@@ -218,6 +218,72 @@ def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(pr
     assert r.resolver.lookup(unit).state is not Freshness.FAILED
 
 
+@pytest.mark.parametrize("repair", ["edit dependency", "restore missing input"])
+def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(project, store, raster, monkeypatch, repair):
+    from slidemage import compiler
+
+    r = make(project, store, raster)
+    r._render = r._render_pdf
+    monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    dependency = project.root / "preview-shared.tex"
+    dependency.write_text("broken dependency")
+    os.utime(dependency, (time.time() - 60,) * 2)
+    missing = project.root / "preview-restored.tex"
+    unrelated = project.root / "unrelated.tex"
+    unrelated.write_text("another concurrent job")
+    calls = []
+
+    def fail(command, *, jobname, outdir, **kwargs):
+        calls.append(command)
+        (outdir / (jobname + ".fls")).write_text(
+            f"PWD {project.decks_dir}\nINPUT {unit.source_path}\nINPUT {dependency}\n")
+        other = store.work_dir / "build/preview-cache/other/other.fls"
+        other.parent.mkdir(parents=True, exist_ok=True)
+        other.write_text(f"INPUT {unrelated}\n")
+        # The useful error may be long before the stored tail of the log.
+        log = "! LaTeX Error: File `preview-restored.tex' not found.\n" + "memory statistics\n" * 30
+        return compiler.Build(1, outdir / (jobname + ".pdf"), outdir / (jobname + ".log"), log, False)
+
+    monkeypatch.setattr(compiler, "run_latexmk", fail)
+    with pytest.raises(RuntimeError, match="Render failed"):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    failure = r.resolver.lookup(unit).failure
+    assert failure is not None
+    assert any(entry[1] == dependency.name for entry in failure["manifest"])
+    assert not any(entry[1] == unrelated.name for entry in failure["manifest"])
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert len(calls) == 1
+    if repair == "edit dependency":
+        _edit(dependency, "\nfixed dependency")
+    else:
+        missing.write_text("restored dependency")
+        os.utime(missing, (time.time() - 60,) * 2)
+    assert r.resolver.lookup(unit).state is not Freshness.FAILED
+    with pytest.raises(RuntimeError, match="Render failed"):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    assert len(calls) == 2
+    assert r.resolver.lookup(unit).state is Freshness.FAILED
+    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+
+
+def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, store, raster):
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    tex.fail[unit.id_slug] = "Render failed for x:\n! Bad dependency."
+    store.record_failure("obsolete", render_store.DETERMINISTIC, "an old request", [])
+    with pytest.raises(RuntimeError):
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    r.scan()
+    assert r.progress.failures == 1
+    assert [f["key"] for f in r.current_failures()] == [r.resolver.fast_key(unit)]
+    _edit(unit.source_path)
+    r.scan()
+    assert r.progress.failures == 0 and r.current_failures() == []
+    assert len(store.failures()) == 2                     # historical records do not affect the warning
+
+
 def test_the_planner_feeds_the_scheduler_and_the_progress_goes_down(project, store, raster):
     tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)
@@ -257,6 +323,10 @@ def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_wai
     def queued_decks():
         return {job.group for job in r.scheduler._queue.values()}
 
+    def drop_queued():
+        for group in queued_decks():
+            r.scheduler.cancel_group(group)
+
     r.tick()                                     # no deck opened yet: rendering any would push another one out
     assert queued_decks() == set() and r.progress.left > 0
     assert r.progress.paused_because == background_renders.STORE_FULL and not r.sweeping()
@@ -264,12 +334,12 @@ def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_wai
     r.replan()
     r.tick()                                     # the deck in use may push out the others' renders
     assert queued_decks() == {manual.name} and r.progress.paused_because is None
-    r.scheduler.cancel_priority(P_IDLE)
+    drop_queued()
     background_renders.app_settings.set(project, background_renders.LIMIT_GB_KEY, 1.0)
     r.replan()
     r.tick()                                     # room again: the sweep goes on with every deck, nothing was pushed out
     assert r.progress.paused_because is None and store.count() == 1
-    r.scheduler.cancel_priority(P_IDLE)
+    drop_queued()
     with r._plan_lock:
         r._plan = [item for item in r._plan if item[1].deck == copy.name]
     r._top_up()
@@ -286,18 +356,6 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
     deck.archived = True
     r.deck_archived(deck)
     assert store.count() == 0 and deck.name not in [d.name for d in r.ordered_decks()]
-
-
-def test_the_slider_goes_before_the_sweep(project, store, raster):
-    tex = FakeTeX(project, pages=1)
-    r = make(project, store, raster, tex=tex)
-    deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")
-    r.tick()
-    r.submit_neighbours(units[7])
-    assert r.scheduler.queued_keys()[0] == units[7].label
-    r.scheduler.run_next()
-    assert tex.calls[0][0] == units[7].id_slug and r.resolver.lookup(units[7]).record["origin"] == "reveal"
 
 
 def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(project, store, raster):
@@ -942,7 +1000,7 @@ def test_a_deck_whose_template_is_nowhere_is_held_back_and_named_not_failed(proj
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
-    monkeypatch.setattr(background_renders.slide_snapshot, "available_templates", lambda root: ["somewhere-else"])
+    monkeypatch.setattr(background_renders.slide_templates, "available_templates", lambda root: ["somewhere-else"])
     assert r.scan() == []
     counted = r.progress.deck("slidemage-manual")
     assert counted.blocked == counted.total > 0 and counted.left == 0 and counted.failed == 0

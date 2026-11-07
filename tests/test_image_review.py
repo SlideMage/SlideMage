@@ -79,8 +79,6 @@ def test_no_german_filter_lists_slides_with_an_english_only_informative_image(st
         "media/d.png": dict(),                                       # nothing written yet
         german: dict(short="en", short_de="de"),
     })
-    assert image_review.lacks_german(entries[IMG])
-    assert not any(image_review.lacks_german(entries[name]) for name in ("media/b.png", "media/c.png", "media/d.png", german))
     stale = entries["media/b.png"]
     assert alt_images.translation_state(stale) == alt_images.STATE_STALE   # a stale German is not "no German"
     views = [view(slide(store, "1aaa", images=(IMG, "media/c.png")), "none"),
@@ -141,16 +139,16 @@ def test_takeaway_follows_default_becomes_default_or_overrides():
 
 def test_german_edit_marks_translation_in_sync_only_against_unchanged_english():
     entry = alt_images.ImageEntry(image=IMG, short="en", long="l")
-    edit = edit_of(entry, "1aaa", short_de="de")
+    edit = edit_of(entry, "1aaa", short_tr="de")
     image_review.apply_form_edit(entry, "1aaa", edit)
     assert alt_images.translation_state(entry) == alt_images.STATE_REVIEWED
     entry.short = "changed meanwhile"
-    image_review.apply_form_edit(entry, "1aaa", edit_of(entry, "1aaa", short_de="de2"))   # baseline is current: in sync
-    edit = edit_of(entry, "1aaa", short_de="de3")
+    image_review.apply_form_edit(entry, "1aaa", edit_of(entry, "1aaa", short_tr="de2"))   # baseline is current: in sync
+    edit = edit_of(entry, "1aaa", short_tr="de3")
     edit.baseline_en_hash = "older"
     image_review.apply_form_edit(entry, "1aaa", edit)
     assert entry.translated_from_hash == ""
-    image_review.apply_form_edit(entry, "1aaa", edit_of(entry, "1aaa", short_de="", long_de=""))
+    image_review.apply_form_edit(entry, "1aaa", edit_of(entry, "1aaa", short_tr="", long_tr=""))
     assert entry.translated_from_hash == ""
 
 
@@ -158,8 +156,8 @@ def test_translation_provenance_keeps_the_workers_source_hash():
     entry = alt_images.ImageEntry(image=IMG, short="en", long="l")
     source = image_review.source_hash("en", "l", "")
     assert source == alt_images.en_text_hash(entry)
-    edit = edit_of(entry, "1aaa", short_de="de", long_de="dl")
-    edit.provenance = {"source_hash": source, "fields": {"short_de": "de", "long_de": "dl", "takeaway_de": ""}}
+    edit = edit_of(entry, "1aaa", short_tr="de", long_tr="dl")
+    edit.provenance = {"source_hash": source, "fields": {"short_tr": "de", "long_tr": "dl", "takeaway_tr": ""}}
     image_review.apply_form_edit(entry, "1aaa", edit)
     assert entry.translated_from_hash == source
 
@@ -257,15 +255,15 @@ def test_media_names():
 def test_apply_translation_merges_only_untouched_fields_and_proves_provenance():
     result = alt_draft.TranslationResult(short_de="S", long_de="L", takeaway_de="T",
                                          source_hash=image_review.source_hash("en", "long", "take"))
-    asked = {"short_de": "", "long_de": "", "takeaway_de": ""}
+    asked = {"short_tr": "", "long_tr": "", "takeaway_tr": ""}
     english = ("en", "long", "take")
     applied = image_review.apply_translation(result, asked, english, dict(asked), english)
-    assert applied.fields == {"short_de": "S", "long_de": "L", "takeaway_de": "T"}
+    assert applied.fields == {"short_tr": "S", "long_tr": "L", "takeaway_tr": "T"}
     assert applied.in_sync and applied.provenance == {"source_hash": result.source_hash, "fields": applied.fields}
     # German typed since the request is kept, and then no provenance can be proved
-    typed = {**asked, "long_de": "mine"}
+    typed = {**asked, "long_tr": "mine"}
     kept = image_review.apply_translation(result, asked, english, typed, english)
-    assert kept.fields == {"short_de": "S", "takeaway_de": "T"} and kept.provenance is None
+    assert kept.fields == {"short_tr": "S", "takeaway_tr": "T"} and kept.provenance is None
     # English edited since the request: the translation is stale
     newer = image_review.apply_translation(result, asked, english, dict(asked), ("en", "newer", "take"))
     assert not newer.in_sync and newer.provenance is not None

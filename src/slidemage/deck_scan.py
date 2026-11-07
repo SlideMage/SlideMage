@@ -58,11 +58,8 @@ TAG_COURSE = deck_groups.TAG_COURSE
 TAG_RESEARCH = deck_groups.TAG_RESEARCH
 TAG_TEST = deck_groups.TAG_TEST
 TAG_MANUAL = deck_groups.TAG_MANUAL
-# The default groups' values of deck_groups.group_tags(), selectable_tags() and
-# switcher_order(): with a project's own list, ask deck_groups.
-GROUP_TAGS = deck_groups.group_tags()
+# The default groups' selectable tags: with a project's own list, ask deck_groups.
 SELECTABLE_GROUP_TAGS = deck_groups.selectable_tags()
-GROUP_ORDER = deck_groups.switcher_order()
 
 
 @dataclass
@@ -120,11 +117,6 @@ class Deck:
         """The first of the deck's groups ("" for a deck in none): the one
         it is listed and compiled under."""
         return self.groups[0] if self.groups else ""
-
-    @property
-    def is_pinned(self) -> bool:
-        """In a group with the `pinned` role: first in the deck switcher."""
-        return deck_groups.ROLE_PINNED in self.roles
 
     @property
     def is_test_deck(self) -> bool:

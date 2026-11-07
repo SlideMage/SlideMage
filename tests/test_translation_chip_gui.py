@@ -10,7 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from conftest import build_window, make_project
-from slidemage import slide_snapshot
+from slidemage import slide_templates
 from slidemage.deck_scan import scan_decks
 from slidemage.project import ProjectContext
 from slidemage.ui.workspace.preview_view import PreviewPane
@@ -26,7 +26,7 @@ def window(qapp, tmp_path, monkeypatch):
     english.write_bytes(b"%% DE translation: abe-DE-Hallo\r\n" + english.read_bytes())
     (slides / GERMAN).write_bytes(b"%% Translation of: abc-EN-Hello\r\n"
                                   + english.read_bytes().split(b"\r\n", 1)[1].replace(b"Hello", b"Hallo"))
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
+    monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

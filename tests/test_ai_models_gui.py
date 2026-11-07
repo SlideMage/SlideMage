@@ -111,7 +111,10 @@ def test_a_route_without_a_provider_is_refused_with_its_name(ctx, qapp, monkeypa
     ai_profile.mark_cloud_seen(ctx)
     combo = QComboBox()
     combo.addItem("fake-1", "fake-1")
-    assert ai_models.provider_from_combo(QWidget(), ctx, combo, TRANSLATION, "the text") is None
+    parent = QWidget()
+    route = ai_models.picked_route(parent, ctx, combo, TRANSLATION, "the text")
+    assert route is not None
+    assert ai_models.built(parent, ai_models.resolver.provider_for, ctx, route) is None
     assert fake_routes.cloud.service in errors[-1] and "no other route" in errors[-1]
 
 

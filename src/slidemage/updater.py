@@ -58,7 +58,6 @@ from .project import config_dir
 from .version import to_zero_x
 
 REPO = "SlideMage/SlideMage"
-LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases"
 # A private repo's releases are only visible with a token that can read it.
 # The environment variable wins over the token saved in Settings, which
@@ -266,10 +265,6 @@ def plan_update(releases: list[Release], current_tag: str, *, need_asset: bool =
     return UpdatePlan(latest=newer[-1], breaking=breaking, safe=safe)
 
 
-def newest_non_breaking(releases: list[Release], current_tag: str) -> Optional[Release]:
-    return plan_update(releases, current_tag).safe
-
-
 def _token_file() -> Path:
     return config_dir() / TOKEN_FILENAME
 
@@ -343,10 +338,6 @@ def _release_from(data: dict, flavour: Optional[str] = None) -> Release:
         asset_size=asset.get("size", 0) if asset else 0,
         body=data.get("body") or "",
     )
-
-
-def fetch_latest_release(timeout: float = 10) -> Release:
-    return _release_from(_get_json(LATEST_RELEASE_URL, timeout))
 
 
 def fetch_releases(limit: int = 30, timeout: float = 10, flavour: Optional[str] = None) -> list[Release]:

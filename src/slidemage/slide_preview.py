@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, compile_log, compiler, open_path, preview_build, project
-from . import slide_language, slide_snapshot
+from . import slide_language, slide_snapshot, slide_templates
 from .compiler import build_env
 from .deck_editor import format_call
 from .deck_language import language_lines
@@ -258,23 +258,23 @@ GENERIC_PREAMBLE = r"""\documentclass[aspectratio=169]{beamer}
 
 # GENERIC_PREAMBLE's template line; template_preamble() swaps it for another
 # template's (2026-10-03: the default render template is a setting now, see
-# slide_snapshot.render_template()).
+# slide_templates.render_template()).
 _DEFAULT_INPUT = "\\input{SlideMage_template_slidemage}"
 
 
 def template_preamble(template: str) -> str:
     """GENERIC_PREAMBLE rendering in `template` (a template key; one that is not
-    a plain name falls back to slide_snapshot.DEFAULT_TEMPLATE)."""
+    a plain name falls back to slide_templates.DEFAULT_TEMPLATE)."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", template or ""):
-        template = slide_snapshot.DEFAULT_TEMPLATE
+        template = slide_templates.DEFAULT_TEMPLATE
     return GENERIC_PREAMBLE.replace(
         _DEFAULT_INPUT, f"\\input{{SlideMage_template_{template}}}")
 
 
 def default_preamble(ctx: project.ProjectContext) -> str:
     """The preamble for a render with no deck: the default render template
-    chosen in Settings -> General (slide_snapshot.render_template())."""
-    return template_preamble(slide_snapshot.render_template(ctx))
+    chosen in Settings -> General (slide_templates.render_template())."""
+    return template_preamble(slide_templates.render_template(ctx))
 
 
 def _frame_number_line(frame_number: Optional[int]) -> str:
@@ -526,7 +526,7 @@ def render_slide_to_pdf(
     during-course/after-course request is a deliberate look at a *partial*
     version, and must never overwrite the canonical (fullest-content)
     snapshot with it. The snapshot is captured under whichever institution
-    template `preamble` itself selects (slide_snapshot.detect_template()),
+    template `preamble` itself selects (slide_templates.detect_template()),
     not a fixed one -- a deck row previewing under its own preamble ends up
     caching the *right* template's image, not always the default one.
     """
@@ -536,7 +536,7 @@ def render_slide_to_pdf(
         ctx, preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (
-        slide_snapshot.detect_template(preamble)
+        slide_templates.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and overlay is None and not all_steps
         and not (context_before or context_after) else None
     )
@@ -682,7 +682,7 @@ def render_slide_text_to_pdf(
         _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
     snapshot_template = (
-        slide_snapshot.detect_template(preamble)
+        slide_templates.detect_template(preamble)
         if capture_snapshot and deck_version in (None, "instructor") and not presenter
         and preview_mode == "slide" and overlay is None and not all_steps
         and not (context_before or context_after) else None

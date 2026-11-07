@@ -38,7 +38,8 @@ from PySide6.QtWidgets import (
 
 from ... import qr_code
 from ...project import ProjectContext
-from ..kit.widgets import Button, Field, ModalSheet, SegmentedControl, Surface, caption, columns, row, set_property
+from ..kit.widgets import (Button, Field, ModalSheet, SegmentedControl, Surface, caption, columns, row,
+                           set_property, show_problem)
 
 PREVIEW_SIZE = 240
 PREVIEW_SCALE = 8                     # pixels per module of the picture, scaled down to PREVIEW_SIZE
@@ -524,11 +525,6 @@ class QRCodeDialog(ModalSheet):
 
     # -- inserting ------------------------------------------------------------------------------------
 
-    def _show_problem(self, text: str) -> None:
-        self.problem.setText(text)
-        set_property(self.problem, "tone", "error")
-        self.problem.setVisible(bool(text))
-
     def _copy_target(self) -> Optional[Path]:
         if not self.copy_check.isChecked():
             return None
@@ -554,7 +550,7 @@ class QRCodeDialog(ModalSheet):
             if copy is not None:
                 qr_code.save(qr_code.make(spec), copy, border=spec.border)
         except (ValueError, OSError) as exc:
-            self._show_problem(str(exc))
+            show_problem(self.problem, str(exc))
             return
         self.created = created
         self.snippet = created.snippet

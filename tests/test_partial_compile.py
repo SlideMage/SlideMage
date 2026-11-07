@@ -4,6 +4,8 @@
 deck, and swap the new pages into the whole-deck PDF."""
 from __future__ import annotations
 
+import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -45,6 +47,70 @@ def full_pages():
 
 def ctx_of(job):
     return ProjectContext.at(job.deck.path.parent.parent)
+
+
+@pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None,
+                    reason="needs a TeX installation")
+@pytest.mark.parametrize("render_changes", [False, True])
+def test_page_compile_matches_full_compile_after_another_slide_changes(ctx, render_changes):
+    from slidemage import app_settings, deck_context, slide_versioning
+
+    ctx.decks_dir.mkdir(parents=True)
+    ctx.slides_dir.mkdir()
+    # A tiny deck using real LaTeX input substitution and the footer format the planner reads,
+    # without a theme or fonts obscuring which source supplied each page.
+    deck_text = (r"\documentclass{article}" "\n"
+                 r"\newcounter{framenumber}" "\n"
+                 r"\newcommand{\setSlideVersion}[1]{}" "\n"
+                 r"\newcommand{\SMProjectLanguages}[2][]{}" "\n"
+                 r"\def\slideid#1#2#3#4\relax{#1#2#3}" "\n"
+                 r"\newcommand{\slide}[1]{\stepcounter{framenumber}\input{slides/#1-current.tex}"
+                 r"\par (slide id: \slideid#1\relax\space | v1.0.0EN | instructor deck)"
+                 r"\space\arabic{framenumber}\clearpage}" "\n"
+                 "\\begin{document}\n\\slide{1aa-EN-A}\n\\slide{1bb-EN-B}\n\\end{document}\n")
+    (ctx.decks_dir / "t-Frozen.tex").write_text(deck_text, encoding="utf-8")
+    (ctx.root / ".latexmkrc").write_text("$pdf_mode = 4;\n", encoding="utf-8")
+    (ctx.slides_dir / "1aa-EN-A-current.tex").write_text(
+        "\\setSlideVersion{1-0-0+}\nCurrent alpha\n", encoding="utf-8")
+    (ctx.slides_dir / "1aa-EN-A-v1-0-0.tex").write_text(
+        "\\setSlideVersion{1-0-0}\nFrozen alpha\n", encoding="utf-8")
+    other = ctx.slides_dir / "1bb-EN-B-current.tex"
+    other.write_text("Original beta\n", encoding="utf-8")
+    app_settings.set(ctx, slide_versioning.RENDER_CHANGES_SETTING_KEY, render_changes)
+    job = compiler.CompileJob(deck_scan.scan_dir(ctx.decks_dir, False)[0], None, None)
+    logs = []
+
+    def compile_full():
+        published = threading.Event()
+        job.pages = None
+        assert compiler.run_job(ctx, job, logs.append, on_relocated=lambda *_: published.set()), "\n".join(logs)
+        assert published.wait(30), "\n".join(logs)
+        record = compile_records.read_record(ctx.build_dir, job.jobname)
+        assert record is not None, "\n".join(logs)
+        return Path(record["pdf"])
+
+    pdf = compile_full()
+    expected, absent = ("Current alpha", "Frozen alpha") if render_changes else ("Frozen alpha", "Current alpha")
+    with fitz.open(pdf) as doc:
+        assert expected in doc[0].get_text() and absent not in doc[0].get_text()
+
+    preview = deck_context.render_in_deck(ctx, job.deck, "instructor", "1aa", "1aa-EN-A", logs.append)
+    assert preview is not None, "\n".join(logs)
+    with fitz.open(preview) as doc:
+        assert "Current alpha" in doc[0].get_text() and "Frozen alpha" not in doc[0].get_text()
+
+    other.write_text("Edited beta\n", encoding="utf-8")
+    # A range can include an unchanged '+' slide beside the slide just edited.
+    job.pages = [1, 2]
+    assert compiler.run_job(ctx, job, logs.append), "\n".join(logs)
+    with fitz.open(pdf) as doc:
+        assert len(doc) == 2
+        assert "Edited beta" in doc[1].get_text()
+        assert expected in doc[0].get_text() and absent not in doc[0].get_text()
+        patched_pages = [page.get_pixmap().samples for page in doc]
+    # The patch must look exactly like a fresh whole-deck compile with the same setting.
+    with fitz.open(compile_full()) as doc:
+        assert [page.get_pixmap().samples for page in doc] == patched_pages
 
 
 @pytest.fixture

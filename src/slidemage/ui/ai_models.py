@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QComboBox, QMessageBox, QWidget
 
 from ..ai import ai_profile, resolver, routes
 from ..ai.ai_profile import Route
-from ..ai.providers import ChatProvider, ProviderError
+from ..ai.providers import ProviderError
 from ..project import ProjectContext
 from .kit.widgets import ModalSheet, ModeBadge
 
@@ -128,12 +128,6 @@ def built(parent: QWidget, make, project: ProjectContext, route: Route):
     except ProviderError as exc:
         QMessageBox.critical(parent, "AI model", str(exc))
         return None
-
-
-def provider_from_combo(parent: QWidget, project: ProjectContext, combo: QComboBox, task: str, what: str) -> ChatProvider | None:
-    """The provider for the picker's selection, or None after telling the user why not."""
-    route = picked_route(parent, project, combo, task, what)
-    return None if route is None else built(parent, resolver.provider_for, project, route)
 
 
 def task_route(parent: QWidget, project: ProjectContext, task: str, what: str) -> Route | None:

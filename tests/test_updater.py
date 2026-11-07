@@ -80,17 +80,17 @@ def test_fetch_picks_platform_asset_and_explains_404(monkeypatch):
     }
     monkeypatch.setattr(
         updater.urllib.request, "urlopen",
-        lambda *_a, **_k: io.BytesIO(json.dumps(payload).encode()),
+        lambda *_a, **_k: io.BytesIO(json.dumps([payload]).encode()),
     )
-    release = updater.fetch_latest_release()
+    release = updater.plan_update(updater.fetch_releases(), "v3.29.0", need_asset=True).latest
     assert (release.tag, release.asset_url, release.asset_size) == ("v3.30.0", "lin", 2)
 
     def not_found(*_a, **_k):
-        raise urllib.error.HTTPError(updater.LATEST_RELEASE_URL, 404, "Not Found", {}, None)
+        raise urllib.error.HTTPError(updater.RELEASES_URL, 404, "Not Found", {}, None)
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", not_found)
     with pytest.raises(updater.UpdateError, match=updater.TOKEN_ENV_VAR):
-        updater.fetch_latest_release()
+        updater.plan_update(updater.fetch_releases(), "v3.29.0")
 
 
 def test_token_saved_privately_and_env_var_wins(tmp_path, monkeypatch):
@@ -117,11 +117,11 @@ def test_refused_token_names_the_missing_permission(tmp_path, monkeypatch):
     monkeypatch.setenv(updater.TOKEN_ENV_VAR, "github_pat_x")
 
     def forbidden(*_a, **_k):
-        raise urllib.error.HTTPError(updater.LATEST_RELEASE_URL, 403, "Forbidden", {}, None)
+        raise urllib.error.HTTPError(updater.RELEASES_URL, 403, "Forbidden", {}, None)
 
     monkeypatch.setattr(updater.urllib.request, "urlopen", forbidden)
     with pytest.raises(updater.UpdateError, match="Contents: Read-only"):
-        updater.fetch_latest_release()
+        updater.plan_update(updater.fetch_releases(), "v3.29.0")
 
 
 def _release(tag, body=""):
@@ -150,7 +150,6 @@ def test_plan_update_counts_every_release_in_between():
     assert plan.latest.tag == "v5.0.0"
     assert [r.tag for r in plan.breaking] == ["v5.0.0"]
     assert plan.safe.tag == "v4.3.0"
-    assert updater.newest_non_breaking(releases, "v4.1.0").tag == "v4.3.0"
 
     # A later unmarked release doesn't hide an earlier breaking one.
     releases = [_release("v4.3.0"), _release("v4.2.0", "BREAKING: x")]

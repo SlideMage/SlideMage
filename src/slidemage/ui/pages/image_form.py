@@ -64,12 +64,10 @@ def review_refused(parent, images: list[tuple[str, str, str]]) -> bool:
     return bool(missing)
 
 
-# (key, label, tooltip, height, placeholder) of the source field of each language; the side panel's
-# Image descriptions shows the same ones.
-SOURCE_SPECS = {
-    "source": ("source", "Source (citation or attribution)", "", 48, "e.g. Own illustration, data from …"),
-    "source_de": ("source_de", "Quelle (source_de; leave blank to use the English source)", "", 48, ""),
-}
+# (key, label, tooltip, height, placeholder) of the English source field; translation_specs() has the other
+# languages'. The side panel's Image descriptions shows the same ones.
+SOURCE_SPEC = ("source", "Source (citation or attribution)", "", 48, "e.g. Own illustration, data from …")
+SOURCE_KEYS = ("source", "source_tr")
 
 
 def labelled_edit(spec: tuple[str, str, str, int, str], value: str) -> tuple[QPlainTextEdit, Field]:
@@ -104,7 +102,7 @@ class SourceStatus(Surface):
         line.addStretch(1)
 
     def show_state(self, stored: str, typed: tuple[str, str], baseline: tuple[str, str]) -> None:
-        """`stored` is alt_images.source_state() of the entry; `typed` and `baseline` are the (source, source_de)
+        """`stored` is alt_images.source_state() of the entry; `typed` and `baseline` are the (source, source_tr)
         in the boxes and as they were shown. A citation changed in the boxes is to review once saved, and
         cannot be marked reviewed before that."""
         pending = typed != baseline
@@ -125,26 +123,27 @@ ENGLISH = (
     ("long", "Long description", "Structured; goes into the transcript. Shared by every slide using this image.",
      190, "Values, axes, structure"),
     ("takeaway", "Takeaway (why this image is on this slide)", "", 64, "What the slide wants the reader to conclude"),
-    SOURCE_SPECS["source"],
+    SOURCE_SPEC,
 )
-GERMAN = (
-    ("short_de", "Kurzbeschreibung", "", 64, "Not translated yet"),
-    ("long_de", "Langbeschreibung", "", 190, "Not translated yet"),
-    ("takeaway_de", "Erkenntnis (takeaway_de)", "", 64, "Not translated yet"),
-    SOURCE_SPECS["source_de"],
-)
+# The labels of the second language's fields where a language has its own; any other language gets the English
+# labels with its name.
+TRANSLATION_LABELS = {
+    "de": ("Kurzbeschreibung", "Langbeschreibung", "Erkenntnis (takeaway_de)",
+           "Quelle (source_de; leave blank to use the English source)"),
+}
 
 
 def translation_specs(language: str) -> tuple:
-    """The fields of the form's second language (the `_de` keys, whatever the language): GERMAN for German."""
-    if language == "de":
-        return GERMAN
+    """The fields of the form's second language (the `_tr` keys, whatever the language)."""
     name = languages.name(language)
+    short, long, takeaway, source = TRANSLATION_LABELS.get(language) or (
+        f"Short description ({name})", f"Long description ({name})", f"Takeaway ({name})",
+        f"Source ({name}; leave blank to use the English source)")
     return (
-        ("short_de", f"Short description ({name})", "", 64, "Not translated yet"),
-        ("long_de", f"Long description ({name})", "", 190, "Not translated yet"),
-        ("takeaway_de", f"Takeaway ({name})", "", 64, "Not translated yet"),
-        ("source_de", f"Source ({name}; leave blank to use the English source)", "", 48, ""),
+        ("short_tr", short, "", 64, "Not translated yet"),
+        ("long_tr", long, "", 190, "Not translated yet"),
+        ("takeaway_tr", takeaway, "", 64, "Not translated yet"),
+        ("source_tr", source, "", 48, ""),
     )
 
 
@@ -261,7 +260,7 @@ class ImageForm(Surface):
             edit.textChanged.connect(self.edited)   # connected after the text is set: showing is no edit
             column.addWidget(field)
             self.fields[key] = edit
-            if key in SOURCE_SPECS:
+            if key in SOURCE_KEYS:
                 status = SourceStatus()
                 status.review_clicked.connect(self._mark_source_reviewed)
                 column.addWidget(status)
@@ -318,10 +317,10 @@ class ImageForm(Surface):
             group.setVisible(key == language)
 
     def _show_source_state(self) -> None:
-        typed = (self.fields["source"].toPlainText().strip(), self.fields["source_de"].toPlainText().strip())
+        typed = (self.fields["source"].toPlainText().strip(), self.fields["source_tr"].toPlainText().strip())
         for status in self._source_status:
             status.show_state(alt_images.source_state(self.entry), typed,
-                              (self.baseline["source"], self.baseline["source_de"]))
+                              (self.baseline["source"], self.baseline["source_tr"]))
 
     def _mark_source_reviewed(self) -> None:
         if not store_writable(self, self.app.project):
@@ -378,7 +377,7 @@ class ImageForm(Surface):
         decorative = self.role == alt_images.ROLE_DECORATIVE
         self.decorative_note.setVisible(decorative)
         for key, edit in self.fields.items():
-            if key not in ("source", "source_de"):   # the source is attribution, whatever the role
+            if key not in SOURCE_KEYS:   # the source is attribution, whatever the role
                 edit.setEnabled(not decorative)
         self._refresh_translate_buttons()
         self.tune_button.setEnabled(not self.busy)
@@ -432,7 +431,7 @@ class ImageForm(Surface):
     def begin_translation(self, english: tuple[str, str, str]) -> None:
         """A request for the translation of `english` went out; fields typed from now on are kept."""
         self.provenance = None
-        self._asked = ({key: self.fields[key].toPlainText() for key in image_review.GERMAN_FIELDS}, english)
+        self._asked = ({key: self.fields[key].toPlainText() for key in image_review.TRANSLATION_FIELDS}, english)
         self.translating = True
         self.translate_button.setText("Translating…")
         self._apply_role()
@@ -456,7 +455,7 @@ class ImageForm(Surface):
         self._apply_role()
         if not result.ok:
             return
-        fields = {key: self.fields[key].toPlainText() for key in image_review.GERMAN_FIELDS}
+        fields = {key: self.fields[key].toPlainText() for key in image_review.TRANSLATION_FIELDS}
         applied = image_review.apply_translation(result, asked_fields or fields, asked_english, fields, self.english())
         for key, value in applied.fields.items():
             self.fields[key].setPlainText(value)

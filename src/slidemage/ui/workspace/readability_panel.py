@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 
 from ... import deck_outline, readability, readability_check, slide_language
@@ -199,21 +199,6 @@ class ReadabilityPanel(Surface):
         return row
 
 
-class _Worker(QThread):
-    done = Signal(object, object, object)      # this worker, the report or None, the exception or None
-
-    def __init__(self, work: Callable[[], readability.Report]) -> None:
-        super().__init__()
-        self._work = work
-
-    def run(self) -> None:
-        try:
-            report, error = self._work(), None
-        except Exception as exc:  # noqa: BLE001 -- whatever the render or the read raised is the panel's message
-            report, error = None, exc
-        self.done.emit(self, report, error)
-
-
 @dataclass
 class _Request:
     """What a check is for, kept for Check again: a slide's file, or a deck with the view and language."""
@@ -237,7 +222,7 @@ class ReadabilityCheck(QObject):
         self.app, self.panel, self.workspace = app, panel, workspace
         self.active = False
         self._request: Optional[_Request] = None
-        self._worker: Optional[_Worker] = None
+        self._worker: Optional[background.Handle] = None
         self._cancel = threading.Event()
         self._compiling: str = ""      # the job name of the compile "Compile the deck first" started
         panel.closed.connect(self.close)
@@ -301,9 +286,8 @@ class ReadabilityCheck(QObject):
             message = "Measuring the compiled deck…"
         self.panel.show_running(request.title, message)
         self._set_active(True)
-        self._worker = worker = _Worker(work)
-        worker.done.connect(self._done)
-        background.start_detached(worker)
+        self._worker = worker = background.run_in_background(
+            work, lambda report, error: self._done(worker, report, error), parent=self, cancel=cancel)
 
     def _slide_work(self, request: _Request, cancel: threading.Event) -> Optional[Callable[[], readability.Report]]:
         app, path = self.app, request.path
@@ -316,7 +300,7 @@ class ReadabilityCheck(QObject):
         ctx = app.project
         return lambda: readability_check.check_slide(ctx, target, text, view, language, cancel, log=app.log)
 
-    def _done(self, worker: _Worker, report: Optional[readability.Report], error: Optional[Exception]) -> None:
+    def _done(self, worker: background.Handle, report: Optional[readability.Report], error: Optional[Exception]) -> None:
         if worker is not self._worker:         # closed or restarted meanwhile
             return
         self._worker = None
