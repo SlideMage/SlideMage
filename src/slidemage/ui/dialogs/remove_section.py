@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QButtonGroup, QRadioButton, QVBoxLayout
 
+from ..kit.tokens import SPACE
 from ..kit.widgets import ModalSheet, Surface, caption
 
 HEADING, WITH_SLIDES, ALL_SECTIONS = "heading", "with_slides", "all_sections"
@@ -22,7 +23,7 @@ class RemoveSectionSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
         buttons = QButtonGroup(self)
         self._radios: dict[str, QRadioButton] = {}
         options = [

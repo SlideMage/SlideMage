@@ -44,6 +44,7 @@ from ...project import ProjectContext
 from ..ai_models import add_route_badge, built, fill_model_combo, picked_route
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Field, ModalSheet, SegmentedControl, Surface, ThumbnailGrid, ToggleChip, caption, set_property
 from ..workspace.menus import VIEW_LABELS
 from ..workspace.topbar import VIEW_TONES
@@ -96,7 +97,7 @@ class AddSlideSheet(ModalSheet):
         body = Surface()
         self._layout = QVBoxLayout(body)
         self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(14)
+        self._layout.setSpacing(SPACE.xl)
         self._build_source(where, source)
         self._build_picker()
         self._build_existing()
@@ -129,11 +130,12 @@ class AddSlideSheet(ModalSheet):
         box = Surface()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE.sm)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find a slide in the project by id or title")
         self.search.textChanged.connect(self._fill_list)
         self.listbox = QListWidget()
+        # Preview dimensions are content-driven, independent of form control sizes.
         self.listbox.setFixedHeight(204)
         self.listbox.setIconSize(QSize(*THUMB))
         self.listbox.currentItemChanged.connect(lambda *_: self._on_picked())
@@ -146,7 +148,7 @@ class AddSlideSheet(ModalSheet):
         box = Surface()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         self.load = SegmentedControl(LOAD_LABELS, current="live")
         self.load.changed.connect(lambda _key: self._sync())
         layout.addWidget(Field("Load as", self.load))
@@ -168,9 +170,9 @@ class AddSlideSheet(ModalSheet):
         box = Surface()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         names = QHBoxLayout()
-        names.setSpacing(12)
+        names.setSpacing(SPACE.xl)
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("Slide title")
         self.title_edit.textEdited.connect(self._on_title)
@@ -201,7 +203,7 @@ class AddSlideSheet(ModalSheet):
         box = Surface()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
+        layout.setSpacing(SPACE.xl)
         self.copy_slug = QLineEdit()
         self.copy_slug.textEdited.connect(self._on_slug_edited)
         self.copy_slug.textChanged.connect(lambda _text: self._sync())
@@ -210,7 +212,7 @@ class AddSlideSheet(ModalSheet):
         self.translation = Surface()
         translation = QVBoxLayout(self.translation)
         translation.setContentsMargins(0, 0, 0, 0)
-        translation.setSpacing(12)
+        translation.setSpacing(SPACE.xl)
         self.target = QComboBox()
         self.target.currentIndexChanged.connect(lambda _i: self._sync())
         translation.addWidget(Field("Translate into", self.target))
@@ -221,7 +223,7 @@ class AddSlideSheet(ModalSheet):
         self.machine_box = Surface()
         machine = QVBoxLayout(self.machine_box)
         machine.setContentsMargins(0, 0, 0, 0)
-        machine.setSpacing(8)
+        machine.setSpacing(SPACE.md)
         warning = caption(TRANSLATION_WARNING)
         self._reserve_lines(warning)
         machine.addWidget(warning)
@@ -235,7 +237,7 @@ class AddSlideSheet(ModalSheet):
         row = Surface()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        layout.setSpacing(SPACE.s_2xl)
         self.views: dict[str, ToggleChip] = {}
         for view in deck_editor.DEFAULT_CONDITIONS:
             chip = ToggleChip(VIEW_LABELS[view], VIEW_TONES[view])
@@ -251,6 +253,7 @@ class AddSlideSheet(ModalSheet):
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.setTextVisible(False)
+        # This is a thin activity indicator, not an interactive form control.
         self.progress.setFixedHeight(3)
         self.progress.hide()
         self._add(self.progress)

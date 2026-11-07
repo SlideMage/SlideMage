@@ -12,6 +12,7 @@ from typing import Optional
 from PySide6.QtWidgets import QCheckBox, QLineEdit, QVBoxLayout
 
 from ... import slide_add, slide_versioning
+from ..kit.tokens import SPACE
 from ..kit.widgets import Field, ModalSheet, Surface, caption, show_problem
 
 
@@ -25,7 +26,7 @@ class NewSlideVersionSheet(ModalSheet):
         body = Surface()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(SPACE.xl)
         old = f"v{slide_versioning.format_dot(version)}"
         intro = caption(f"The changes since {old} become a new slide with an id of its own. {id_slug} goes back to "
                         f"{old}, unchanged, so the decks that keep it look as before.")
@@ -40,7 +41,7 @@ class NewSlideVersionSheet(ModalSheet):
             box = Surface()
             box_layout = QVBoxLayout(box)
             box_layout.setContentsMargins(0, 0, 0, 0)
-            box_layout.setSpacing(6)
+            box_layout.setSpacing(SPACE.sm)
             for name, count in decks:
                 label = name + (" (this deck)" if name == edited_deck else "") + (f", {count} places" if count > 1 else "")
                 check = QCheckBox(label)

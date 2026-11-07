@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from ... import deck_snapshot, housekeeping, unused_content
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, ModalSheet, Surface, caption
 from ..text import plural
 
@@ -44,9 +45,9 @@ class _Row(QFrame):
         super().__init__()
         self.setObjectName(q.PANEL_ROW)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setContentsMargins(0, SPACE.md, 0, SPACE.md)
         texts = QVBoxLayout()
-        texts.setSpacing(1)
+        texts.setSpacing(SPACE.s_2xs)
         self.title = QLabel(title)
         self.sub = caption()
         texts.addWidget(self.title)
@@ -116,7 +117,7 @@ class HousekeepingSheet(ModalSheet):
         page = Surface()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE.lg)
         self.archive_intro = QLabel()
         self.archive_intro.setWordWrap(True)
         layout.addWidget(self.archive_intro)
