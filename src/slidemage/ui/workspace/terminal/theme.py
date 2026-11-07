@@ -7,12 +7,8 @@ from __future__ import annotations
 
 import json
 
-from ...kit.tokens import Tokens, tokens_for, with_alpha
+from ...kit.tokens import DARK_ANSI, LIGHT_ANSI, Tokens, tokens_for, with_alpha
 
-LIGHT_ANSI = ("#1d1d1d", "#b91c1c", "#047857", "#b45309", "#1d4ed8", "#7e22ce", "#0e7490", "#6b7280",
-              "#4b5563", "#dc2626", "#059669", "#d97706", "#2563eb", "#9333ea", "#0891b2", "#858b96")
-DARK_ANSI = ("#808080", "#f87171", "#34d399", "#fbbf24", "#60a5fa", "#c084fc", "#22d3ee", "#d4d4d4",
-             "#9a9a9a", "#fca5a5", "#6ee7b7", "#fde68a", "#93c5fd", "#d8b4fe", "#67e8f9", "#ffffff")
 NAMES = ("black", "red", "green", "yellow", "blue", "magenta", "cyan", "white")
 
 
