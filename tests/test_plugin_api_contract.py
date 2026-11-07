@@ -149,6 +149,94 @@ def test_update_records_additions_but_refuses_incompatible_changes(tmp_path, mon
     assert path.read_text(encoding="utf-8") == saved
 
 
+@pytest.mark.parametrize("dark", [False, True])
+def test_theme_tokens_produces_every_field(dark, monkeypatch):
+    from dataclasses import fields
+    from slidemage.plugins.host import _theme_tokens
+
+    original = plugin_api.ThemeTokens
+    supplied = {}
+
+    class Capture(original):
+        def __init__(self, **kwargs):
+            supplied.update(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(plugin_api, "ThemeTokens", Capture)
+    theme = _theme_tokens(dark)
+    assert set(supplied) == {f.name for f in fields(original)}
+    assert theme.dark is dark
+    for name, value in supplied.items():
+        if name == "dark":
+            continue
+        if name in {"font_sans", "font_mono"}:
+            assert isinstance(value, str) and value
+        elif isinstance(value, (int, float)):
+            assert value > 0, name
+        elif name == "accents":
+            assert value
+            for color in value.values():
+                _assert_theme_color(color)
+        else:
+            _assert_theme_color(value)
+
+
+def _assert_theme_color(value):
+    import re
+    from PySide6.QtGui import QColor
+
+    # QSS accepts rgba() while QColor's string constructor does not.
+    if value.startswith("rgba("):
+        match = re.fullmatch(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", value)
+        assert match, value
+        assert all(0 <= int(c) <= 255 for c in match.groups()[:3]), value
+        assert 0 <= float(match[4]) <= 1, value
+    else:
+        assert QColor(value).isValid(), value
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_theme_tokens_never_drift_from_core(dark):
+    from dataclasses import fields
+    from typing import get_type_hints
+    from slidemage.plugins.host import _theme_tokens
+    from slidemage.ui.kit import tokens
+
+    theme = _theme_tokens(dark)
+    core = tokens.tokens_for(dark)
+    annotations = get_type_hints(plugin_api.ThemeTokens)
+    for field in fields(theme):
+        value = getattr(theme, field.name)
+        if annotations[field.name] is str and field.name not in {"font_sans", "font_mono"}:
+            # Deliberately no hasattr filter: every public colour must map to a core token.
+            assert value == getattr(core, field.name), field.name
+    assert theme.accents == tokens.ACCENTS["dark" if dark else "light"]
+    for field in fields(tokens.TYPE):
+        assert getattr(theme, f"font_{field.name}") == getattr(tokens.TYPE, field.name)
+    for suffix in ("2xs", "xs", "sm", "md", "lg", "xl", "2xl"):
+        attr = f"s_{suffix}" if suffix[0].isdigit() else suffix
+        assert getattr(theme, f"space_{suffix}") == getattr(tokens.SPACE, attr)
+    for suffix in ("xs", "sm", "md"):
+        assert getattr(theme, f"radius_{suffix}") == getattr(tokens, f"RADIUS_{suffix.upper()}")
+    assert theme.font_sans == tokens.FONT_SANS
+    assert theme.font_mono == tokens.FONT_MONO
+    for height in (1, 14, 18, 20):
+        assert theme.pill(height) == tokens.pill(height) > 0
+
+
+def test_theme_token_additions_keep_legacy_construction_compatible():
+    from dataclasses import fields, MISSING
+    from slidemage.plugins.host import _theme_tokens
+
+    legacy = {f.name: getattr(_theme_tokens(False), f.name) for f in fields(plugin_api.ThemeTokens)
+              if f.default is MISSING and f.default_factory is MISSING}
+    theme = plugin_api.ThemeTokens(**legacy)
+    assert theme.font_body == 13
+    assert theme.space_2xl == 16
+    assert theme.pill(18) == 9
+    assert plugin_api.API_VERSION == 1
+
+
 def _update():
     path = _snapshot_path()
     current = _contract()

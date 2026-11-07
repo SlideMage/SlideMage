@@ -13,7 +13,7 @@ import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import ai_review, compiler, preview_target, slide_snapshot, update_all_previews
+from slidemage import ai_review, compiler, preview_target, slide_snapshot, slide_templates, update_all_previews
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -273,8 +273,8 @@ def test_old_text_must_occur_exactly_once(box, root):
 
 
 @pytest.mark.parametrize("old, new", [
-    ("%% Included in decks: test", "%% Included in decks: test, other"),      # the header comment
-    ("%%\n\n% A note", "%%\n%\n\n% A note"),
+    ("%% Included in decks: test", "%% Included in decks: test, other"),      # SlideMage's '%%' header lines
+    ("%% Included in decks: test\n%%\n", ""),
     ("\\setSlideVersion{1-0-0}", "\\setSlideVersion{1-1-0}"),
     ("\\setSlideVersion{1-0-0}\n", ""),
 ])
@@ -282,6 +282,12 @@ def test_protected_parts_of_a_slide_are_refused(box, root, old, new):
     box.box.ctx.mode = EDIT_AUTO
     assert "protected part" in box.error("edit_file", path=SLIDE, old_text=old, new_text=new)
     assert (root / SLIDE).read_bytes().decode() == SLIDE_TEXT and not box.of_type(EditProposed)
+
+
+def test_a_note_at_the_top_of_a_slide_can_be_added(box, root):     # v0.14.40: only the '%%' lines are protected
+    box.box.ctx.mode = EDIT_AUTO
+    box.ok("edit_file", path=SLIDE, old_text="%%\n\n% A note", new_text="%%\n% Source: a paper\n\n% A note")
+    assert "% Source: a paper" in (root / SLIDE).read_bytes().decode()
 
 
 def test_overlay_blocks_of_a_slide_can_be_edited(box, root):      # (2026-10-30, direct request, after slide tjn)
@@ -568,7 +574,7 @@ def test_refresh_preview_rerenders_the_focused_slide_and_an_explicit_one(box, ro
     seen = fake_render(monkeypatch, root)
     assert "abc: instructor, EN: rendered; cached for instructor." in box.ok("refresh_preview", view="instructor")          # the slide in focus
     assert seen == [("abc-EN-Hello", 1, "instructor", "EN", False)]                    # as the open deck calls it
-    assert slide_snapshot.snapshot_path(box.ws.project, "abc", slide_snapshot.DEFAULT_TEMPLATE, id_slug="abc-EN-Hello").is_file()
+    assert slide_snapshot.snapshot_path(box.ws.project, "abc", slide_templates.DEFAULT_TEMPLATE, id_slug="abc-EN-Hello").is_file()
     assert "abd: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="abd")
     assert seen[-1][:2] == ("abd-EN-Second", 2)
     assert "abc: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="slides/abc-EN-Hello-current.tex")
@@ -756,7 +762,7 @@ def test_refresh_preview_headless_rejects_a_source_edit_during_render(box, root,
     monkeypatch.setattr(preview_target, 'render_text', changed)
     result = box.ok('refresh_preview')
     assert 'rendered' in result and 'superseded' in result and 'displayed' not in result
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE).exists()
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE).exists()
 
 
 def test_render_preview_default_is_selected_view_and_refresh_default_is_all_views(box, root, monkeypatch):
@@ -766,11 +772,11 @@ def test_render_preview_default_is_selected_view_and_refresh_default_is_all_view
     box.ws.open(root / SLIDE, LF + '% draft\n')
     assert box.run('render_preview').images
     assert seen[-1][2] == 'during-course'
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE).exists()
+    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE).exists()
     result = box.ok('refresh_preview')
     assert all(f'{view}, EN' in result for view in ('instructor', 'during-course', 'after-course'))
     assert sorted(row[2] for row in seen[-3:]) == sorted(['instructor', 'during-course', 'after-course'])     # the views render at once, in any order
-    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_snapshot.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
+    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
     assert box.ws.context().view == 'during-course'
 
 

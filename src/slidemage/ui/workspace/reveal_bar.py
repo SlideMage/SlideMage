@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QToolTip, QVBoxL
 
 from ...reveal_steps import StepPlan
 from ..kit.tokens import Tokens
+from ..kit.tokens import SPACE, RADIUS_SM
 from ..kit import kit_qss as q
 from ..kit.widgets import ElidedLabel, IconButton, Surface, ToggleChip, clear_layout
 from .menus import VIEW_LABELS
@@ -163,7 +164,7 @@ class StepTrack(QWidget):
         if self.hasFocus():
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.setPen(QPen(QColor(tokens.focus), 2))
-            painter.drawRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), 6, 6)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(1, 1, -1, -1), RADIUS_SM, RADIUS_SM)
 
     # -- input --------------------------------------------------------------------------
 
@@ -234,9 +235,9 @@ class RevealBar(QWidget):
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
+        outer.setSpacing(SPACE.xs)
         top = QHBoxLayout()
-        top.setSpacing(6)
+        top.setSpacing(SPACE.sm)
         self._previous = IconButton("chevron_left", "Previous step")
         self._next = IconButton("chevron_right", "Next step")
         self.track = StepTrack(tokens, self._view)
@@ -250,13 +251,13 @@ class RevealBar(QWidget):
         top.addWidget(self._next)
         outer.addLayout(top)
         below = QHBoxLayout()
-        below.setSpacing(6)
+        below.setSpacing(SPACE.sm)
         below.addWidget(self.label, 1)
         below.addWidget(self.deck_only)
         below.addWidget(self.expand)
         outer.addLayout(below)
         self._rows_box = QVBoxLayout()
-        self._rows_box.setSpacing(2)
+        self._rows_box.setSpacing(SPACE.s_2xs)
         self._rows_holder = Surface()
         self._rows_holder.setLayout(self._rows_box)
         self._rows_holder.setVisible(False)
@@ -278,10 +279,6 @@ class RevealBar(QWidget):
     @property
     def expanded(self) -> bool:
         return self._expanded
-
-    @property
-    def deck_steps_only(self) -> bool:
-        return self.deck_only.isChecked()
 
     def set_expanded(self, expanded: bool) -> None:
         if expanded != self._expanded:
@@ -350,7 +347,7 @@ class RevealBar(QWidget):
             holder = Surface(self._rows_holder)         # children are made with their parent, else they stay hidden
             line = QHBoxLayout(holder)
             line.setContentsMargins(0, 0, 0, 0)
-            line.setSpacing(6)
+            line.setSpacing(SPACE.sm)
             name = ToggleChip(VIEW_LABELS[view], VIEW_TONES[view], holder)
             name.setChecked(view == self._view)
             name.setToolTip(f"Show the slide in {VIEW_LABELS[view]}")

@@ -52,6 +52,7 @@ from ...preview_metrics import PreviewMetrics
 from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
 from ..dialogs.transcript_preview import show_transcript_preview
+from ..kit.tokens import SPACE, RADIUS_SM
 from ..kit import kit_qss as q
 from ..kit.tokens import Tokens
 from ..kit.widgets import Button, Chip, PopoverMenu, SplitButton, Surface, clear_layout
@@ -61,7 +62,7 @@ from .reveal_bar import RevealBar, RowSpec
 from .state import VIEWS, WorkspaceState
 
 PAGE_ASPECT = 16 / 9
-PANE_SIDE_MARGIN = 12    # the Preview's margin left and right (chips, page, footer)
+PANE_SIDE_MARGIN = SPACE.xl    # the Preview's margin left and right (chips, page, footer)
 PAGE_SIDE_INSET = 8      # the page inside its area, left and right: the shadow's room
 PROBE_MS = 1500          # idle time before the step bar counts a slide's steps in the background
 SETTLE_MS = 150          # the selection must rest this long before the step bar starts counting the slide's steps
@@ -401,10 +402,10 @@ class PageView(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         for grow, alpha in ((6, 8), (3, 14), (1, 22)):   # a soft shadow, as the prototype's
             painter.setBrush(QColor(0, 0, 0, alpha))
-            painter.drawRoundedRect(page.adjusted(-grow, -grow, grow, grow).translated(0, grow), 4 + grow, 4 + grow)
+            painter.drawRoundedRect(page.adjusted(-grow, -grow, grow, grow).translated(0, grow), RADIUS_SM + grow, RADIUS_SM + grow)
         tokens = self._tokens()
         painter.setBrush(QColor(tokens.paper) if self.pixmap is not None else QColor(tokens.surface))
-        painter.drawRoundedRect(page, 4, 4)
+        painter.drawRoundedRect(page, RADIUS_SM, RADIUS_SM)
         if self.pixmap is not None:
             scaled = self._scaled_pixmap(page)
             if self.dimmed:
@@ -549,10 +550,10 @@ class PreviewPane(Surface):
         self._menu_built: Optional[tuple] = None     # them unchanged and leaves them
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(PANE_SIDE_MARGIN, 12, PANE_SIDE_MARGIN, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(PANE_SIDE_MARGIN, SPACE.xl, PANE_SIDE_MARGIN, SPACE.xl)
+        layout.setSpacing(SPACE.md)
         self._chips = QHBoxLayout()
-        self._chips.setSpacing(6)
+        self._chips.setSpacing(SPACE.sm)
         layout.addLayout(self._chips)
         self._page = PageView(lambda: self.app.theme.tokens)
         self._page.render_button.clicked.connect(self.render_now)
@@ -570,7 +571,7 @@ class PreviewPane(Surface):
             shortcut.activated.connect(lambda delta=delta: self._reveal.move(delta))
 
         status = QHBoxLayout()
-        status.setSpacing(8)
+        status.setSpacing(SPACE.md)
         self._status_chip = Chip("", "muted")
         status.addWidget(self._status_chip)
         self._status_button = Button("Render now", "secondary", compact=True)
@@ -588,7 +589,7 @@ class PreviewPane(Surface):
         layout.addLayout(status)
 
         footer = QHBoxLayout()
-        footer.setSpacing(12)
+        footer.setSpacing(SPACE.xl)
         self._id = QLabel()
         self._id.setObjectName(q.PREVIEW_ID)
         self._name = QLabel()

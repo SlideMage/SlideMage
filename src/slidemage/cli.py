@@ -134,6 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="slidemage",
         description="Build, compile and manage SlideMage slide decks.",
+        epilog="Commands: rename-slide-id OLD NEW [--reserved] (no window; accepts --project).",
     )
     parser.add_argument(
         "--project", type=Path,
@@ -154,6 +155,32 @@ def main(argv: list[str] | None = None) -> None:
              f"folder), whatever the setting says; ${diagnostics.DEBUG_ENV}=1 does the same")
     args, qt_args = parser.parse_known_args(argv)
     project.warn_legacy_env_vars()
+
+    if qt_args[:1] == ["rename-slide-id"]:
+        # Parse the command separately so the GUI still receives arbitrary Qt arguments.
+        from . import slide_rename
+
+        splash.close()
+        rename_parser = argparse.ArgumentParser(prog="slidemage rename-slide-id")
+        rename_parser.add_argument("old", metavar="OLD")
+        rename_parser.add_argument("new", metavar="NEW")
+        rename_parser.add_argument("--reserved", action="store_true",
+                                   help="allow a SlideMage manual or demo slide id")
+        rename_args = rename_parser.parse_args(qt_args[1:])
+        root = args.project or project.discover()
+        if root is None:
+            rename_parser.error("No project found; give one with --project.")
+        root = root.resolve()
+        if not project.is_project(root):
+            rename_parser.error(f"{root} has no {project.MARKER}.")
+        try:
+            mapping = slide_rename.rename_slide_id(project.ProjectContext.at(root), rename_args.old,
+                                                  rename_args.new, reserved=rename_args.reserved)
+        except (OSError, ValueError) as exc:
+            rename_parser.error(str(exc))
+        for old, new in mapping.items():
+            print(f"{old} -> {new}")
+        return
 
     if args.check_project:
         from . import compat

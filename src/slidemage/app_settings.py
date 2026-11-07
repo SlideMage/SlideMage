@@ -52,7 +52,7 @@ MACHINE_KEYS = frozenset({
 })
 # Duplicated from ai_draft.py/alt_draft.py's own DEFAULT_OLLAMA_HOST
 # rather than imported from either -- this module sits below both of them
-# in the import graph (they import get_ollama_host() from here), so it
+# in the import graph (they read the Ollama host from here), so it
 # has no business depending back on either just for one shared constant.
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
@@ -116,35 +116,4 @@ def set(ctx: ProjectContext, key: str, value: Any) -> None:
     diagnostics.event(_log, "setting changed", key=key)     # the key only: a value can be a key or a token
     settings = load(ctx)
     settings[key] = value
-    save(ctx, settings)
-
-
-def get_ollama_host(ctx: ProjectContext) -> str:
-    """The Ollama server every drafting/translation/AI-rewrite call should
-    use (2026-09-23, review finding: this used to be a hardcoded
-    "http://localhost:11434" in two separate modules, with no way to
-    point this app at Ollama running elsewhere -- a different machine, a
-    non-default port, WSL, ...).
-
-    Resolution order: the Settings sheet's own saved value if the
-    user has set one, else $OLLAMA_HOST (Ollama's own conventional
-    environment variable, so a script/CI run can point this app at a
-    different server without touching its settings file), else the plain
-    localhost default."""
-    saved = get(ctx, OLLAMA_HOST_SETTING_KEY)
-    if saved:
-        return saved
-    return os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST
-
-
-def set_ollama_host(ctx: ProjectContext, host: str) -> None:
-    """Empty/whitespace-only clears the saved override, falling back to
-    $OLLAMA_HOST/the plain default again -- same "empty means unset"
-    convention draft_prompts.set_custom_prompt() uses."""
-    settings = load(ctx)
-    host = host.strip()
-    if host:
-        settings[OLLAMA_HOST_SETTING_KEY] = host
-    else:
-        settings.pop(OLLAMA_HOST_SETTING_KEY, None)
     save(ctx, settings)

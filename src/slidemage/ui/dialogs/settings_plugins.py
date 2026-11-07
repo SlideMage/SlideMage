@@ -44,7 +44,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
-from ... import citation_sources, citations, theme_sources, themes
+from ... import citation_sources, citations, packages, theme_sources, themes
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -52,6 +52,7 @@ from ...plugins.loader import LoadedPlugin
 from ...plugins.manifest import Manifest, parse_version
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Card, Chip, ModalSheet, Page, Surface, caption, clear_layout, row
 
 log = logging.getLogger(__name__)
@@ -62,8 +63,8 @@ STATE_TONES = {"loaded": "ok", "disabled": "muted", "failed": "error", "incompat
 PLUGIN_FILES = "SlideMage plugins (*.smplugin)"
 THEME_FILES = "SlideMage themes (*.smtheme)"
 CITATION_FILES = "SlideMage citation formats (*.smcite)"
-SECTION_GAP = 10    # px above a section's heading, on top of the page's own spacing
-LIST_GAP = 4        # px between the rows of a list
+SECTION_GAP = SPACE.lg    # px above a section's heading, on top of the page's own spacing
+LIST_GAP = SPACE.xs        # px between the rows of a list
 LONG_STATE = 28     # characters: a longer state chip gets a line of its own, so the title line keeps its buttons
 
 
@@ -203,14 +204,23 @@ def install_theme_file(parent: QWidget, path: Path, say: Callable[[str, bool], N
     return True
 
 
-def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
-    current = next((t for t in themes.installed() if t.key == manifest.id), None)
+def _confirm_package(parent: QWidget, manifest: packages.PackageManifest, kind: packages.PackageKind,
+                     title: str, key_label: str, explanation: str, repository: str = "") -> bool:
+    current = next((item for item in packages.installed(kind) if item.key == manifest.id), None)
     replaces = (f"\n\nIt replaces the installed version {current.manifest.version}." if current and current.manifest
-                else "\n\nIt replaces the installed theme of that key." if current else "")
-    text = (f"Install the theme {manifest.name} {manifest.version}?\n{manifest.summary}\n\n"
-            f"Template key: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
-            "A theme is a slide template; it runs no program. A project's own copy of the same template still wins.")
-    return QMessageBox.question(parent, "Install theme from file", text) == QMessageBox.StandardButton.Yes
+                else f"\n\nIt replaces the installed {kind.name} of that key." if current else "")
+    origin = f" from {repository}" if repository else ""
+    updates = "SlideMage offers its updates from that repository. " if repository else ""
+    text = (f"Install the {kind.name} {manifest.name} {manifest.version}{origin}?\n{manifest.summary}\n\n"
+            f"{key_label}: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
+            f"{updates}{explanation}")
+    return QMessageBox.question(parent, title, text) == QMessageBox.StandardButton.Yes
+
+
+def _confirm_theme(parent: QWidget, manifest: themes.ThemeManifest) -> bool:
+    return _confirm_package(parent, manifest, themes.KIND, "Install theme from file", "Template key",
+                            "A theme is a slide template; it runs no program. A project's own copy of the same "
+                            "template still wins.")
 
 
 def install_citation_file(parent: QWidget, path: Path, say: Callable[[str, bool], None]) -> bool:
@@ -241,35 +251,27 @@ def _citation_installed(manifest: citations.CitationManifest, repository: str = 
 
 
 def _confirm_citation(parent: QWidget, manifest: citations.CitationManifest, repository: str = "") -> bool:
-    current = next((c for c in citations.installed() if c.key == manifest.id), None)
-    replaces = (f"\n\nIt replaces the installed version {current.manifest.version}." if current and current.manifest
-                else "\n\nIt replaces the installed citation format of that key." if current else "")
-    origin = f" from {repository}" if repository else ""
-    updates = "SlideMage offers its updates from that repository. " if repository else ""
-    text = (f"Install the citation format {manifest.name} {manifest.version}{origin}?\n{manifest.summary}\n\n"
-            f"Key: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
-            f"{updates}A citation format is a TeX file that sets how references look; it runs no program. A "
-            "project's own copy of the same file still wins.")
-    return QMessageBox.question(parent, "Install citation format", text) == QMessageBox.StandardButton.Yes
+    return _confirm_package(parent, manifest, citations.KIND, "Install citation format", "Key",
+                            "A citation format is a TeX file that sets how references look; it runs no program. A "
+                            "project's own copy of the same file still wins.", repository)
 
 
 NOTES_LIMIT = 1500       # characters of a release's notes in the update offer
 
 
-def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
-    """"install", "later" or "skip": the offer of a newer release of a theme from GitHub, with its notes."""
+def _ask_package_update(parent: QWidget, offer: theme_sources.Offer, kind: packages.PackageKind,
+                        subject: str, file: str, major_note: str) -> str:
     release = offer.fetched.release
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Theme update available")
-    box.setText(f"The theme {offer.name} {release.version} is available (you have {offer.installed_version}).")
+    box.setWindowTitle(f"{kind.name.capitalize()} update available")
+    box.setText(f"The {kind.name} {offer.name} {release.version} is available (you have {offer.installed_version}).")
     notes = release.body.strip() or "The release has no notes."
     if len(notes) > NOTES_LIMIT:
         notes = notes[:NOTES_LIMIT].rstrip() + f"…\n\nThe full notes: {release.page_url}"
-    major = ("This is a new major version: the theme's author marks it as a change that may alter how your "
-             "slides look.\n\n" if offer.major else "")
-    box.setInformativeText(f"{major}{notes}\n\nFrom {release.repository}. Decks using the template {offer.key!r} "
-                           "get the new version; a project's own copy of the template still wins.")
+    major = major_note if offer.major else ""
+    box.setInformativeText(f"{major}{notes}\n\nFrom {release.repository}. Decks using the {subject} {offer.key!r} "
+                           f"get the new version; a project's own copy of the {file} still wins.")
     install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
     later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
     skip = box.addButton("Skip this version", QMessageBox.ButtonRole.ActionRole)
@@ -277,41 +279,25 @@ def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
     box.setEscapeButton(later)
     box.exec()
     return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+
+
+def ask_theme_update(parent: QWidget, offer: theme_sources.Offer) -> str:
+    """"install", "later" or "skip": the offer of a newer release of a theme from GitHub, with its notes."""
+    return _ask_package_update(parent, offer, themes.KIND, "template", "template",
+                               "This is a new major version: the theme's author marks it as a change that may "
+                               "alter how your slides look.\n\n")
 
 
 def ask_citation_update(parent: QWidget, offer: theme_sources.Offer) -> str:
     """"install", "later" or "skip": the offer of a newer release of a citation format from GitHub, with its notes."""
-    release = offer.fetched.release
-    box = QMessageBox(parent)
-    box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Citation format update available")
-    box.setText(f"The citation format {offer.name} {release.version} is available (you have "
-                f"{offer.installed_version}).")
-    notes = release.body.strip() or "The release has no notes."
-    if len(notes) > NOTES_LIMIT:
-        notes = notes[:NOTES_LIMIT].rstrip() + f"…\n\nThe full notes: {release.page_url}"
-    major = ("This is a new major version: the author marks it as a change that may alter how your references "
-             "look.\n\n" if offer.major else "")
-    box.setInformativeText(f"{major}{notes}\n\nFrom {release.repository}. Decks using the format {offer.key!r} "
-                           "get the new version; a project's own copy of the file still wins.")
-    install = box.addButton("Install now", QMessageBox.ButtonRole.AcceptRole)
-    later = box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
-    skip = box.addButton("Skip this version", QMessageBox.ButtonRole.ActionRole)
-    box.setDefaultButton(install)
-    box.setEscapeButton(later)
-    box.exec()
-    return {install: "install", skip: "skip"}.get(box.clickedButton(), "later")
+    return _ask_package_update(parent, offer, citations.KIND, "format", "file",
+                               "This is a new major version: the author marks it as a change that may alter "
+                               "how your references look.\n\n")
 
 
 def _confirm_github_theme(parent: QWidget, fetched: theme_sources.Fetched) -> bool:
-    manifest, release = fetched.manifest, fetched.release
-    current = next((t for t in themes.installed() if t.key == manifest.id), None)
-    replaces = (f"\n\nIt replaces the installed version {current.manifest.version}." if current and current.manifest
-                else "\n\nIt replaces the installed theme of that key." if current else "")
-    text = (f"Install the theme {manifest.name} {manifest.version} from {release.repository}?\n{manifest.summary}\n\n"
-            f"Template key: {manifest.id}\nAuthor: {manifest.author}\nLicence: {manifest.license}{replaces}\n\n"
-            "SlideMage offers its updates from that repository. A theme is a slide template; it runs no program.")
-    return QMessageBox.question(parent, "Add theme from GitHub", text) == QMessageBox.StandardButton.Yes
+    return _confirm_package(parent, fetched.manifest, themes.KIND, "Add theme from GitHub", "Template key",
+                            "A theme is a slide template; it runs no program.", fetched.release.repository)
 
 
 def pick_plugin_file(parent: QWidget) -> Path | None:
@@ -347,13 +333,25 @@ def _newer(release: Release, installed: Manifest) -> bool:
         return False
 
 
+def _check_package_update(sources, key: str, repository: str, installed_version: str):
+    """Record a manual check's result just as the scheduled check does, before returning to the GUI thread."""
+    try:
+        found = sources.newest_eligible(repository, key=key, newer_than=installed_version)
+    except sources.SourceError as exc:
+        sources.record_check(key, str(exc))
+        raise
+    sources.record_check(key, "")
+    return found
+
+
 class _ListRow(Card):
     """A row of the tab's lists, tighter than a Card's default."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.layout().setContentsMargins(8, 8, 8, 8)
-        self.layout().setSpacing(2)
+        # Compact catalogue rows keep 8 px edges for dense extension lists.
+        self.layout().setContentsMargins(SPACE.md, SPACE.md, SPACE.md, SPACE.md)
+        self.layout().setSpacing(SPACE.s_2xs)
 
     def add_title_line(self, left: list[QWidget], buttons: list[QWidget]) -> None:
         """`left` at the left, `buttons` at the right, the width between them empty. The buttons are the line's
@@ -574,7 +572,7 @@ class PluginsTab(Page):
         self.theme_rows: dict[str, ThemeRow] = {}
         self.citation_rows: dict[str, CitationRow] = {}
         layout = self.body
-        layout.setSpacing(4)
+        layout.setSpacing(SPACE.xs)
 
         self.banner = Card()
         banner_text = caption("Changes take effect after a restart.")
@@ -753,15 +751,6 @@ class PluginsTab(Page):
         if source is None or theme is None:
             return
 
-        def work():
-            try:
-                found = theme_sources.newest_eligible(source.repository, key=key, newer_than=theme.manifest.version)
-            except theme_sources.SourceError as exc:
-                theme_sources.record_check(key, str(exc))
-                raise
-            theme_sources.record_check(key, "")
-            return found
-
         def done(result, error: Exception | None) -> None:
             self.refresh_themes()
             if error is not None:
@@ -778,7 +767,8 @@ class PluginsTab(Page):
                 theme_sources.skip_version(key, fetched.release.version)
             self._say("")
 
-        self._start(work, done, f"Checking {source.repository} for a newer release…")
+        self._start(partial(_check_package_update, theme_sources, key, source.repository, theme.manifest.version),
+                    done, f"Checking {source.repository} for a newer release…")
 
     def _install_fetched(self, fetched: theme_sources.Fetched) -> None:
         try:
@@ -905,16 +895,6 @@ class PluginsTab(Page):
         if source is None or item is None:
             return
 
-        def work():
-            try:
-                found = citation_sources.newest_eligible(source.repository, key=key,
-                                                         newer_than=item.manifest.version)
-            except citation_sources.SourceError as exc:
-                citation_sources.record_check(key, str(exc))
-                raise
-            citation_sources.record_check(key, "")
-            return found
-
         def done(result, error: Exception | None) -> None:
             self.refresh_citations()
             if error is not None:
@@ -931,7 +911,8 @@ class PluginsTab(Page):
                 citation_sources.skip_version(key, fetched.release.version)
             self._say("")
 
-        self._start(work, done, f"Checking {source.repository} for a newer release…")
+        self._start(partial(_check_package_update, citation_sources, key, source.repository, item.manifest.version),
+                    done, f"Checking {source.repository} for a newer release…")
 
     def _install_citation_fetched(self, fetched: theme_sources.Fetched) -> None:
         try:

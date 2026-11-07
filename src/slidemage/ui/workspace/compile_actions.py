@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
-from ... import slide_language, slide_snapshot, slide_versioning, update_all_previews
+from ... import slide_language, slide_templates, slide_versioning, update_all_previews
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
@@ -494,7 +494,7 @@ def update_previews(window) -> None:
         QMessageBox.information(window, "Nothing to do", "No deck references any slides right now.")
         return
     total_slides = sum(len(ids) for ids in needed.values())
-    template_names = [slide_snapshot.TEMPLATES.get(t, t) for t in sorted(needed)]
+    template_names = [slide_templates.TEMPLATES.get(t, t) for t in sorted(needed)]
     reply = QMessageBox.question(
         window, "Update previews",
         f"Scan every deck (active and archived) and refresh preview "
@@ -591,7 +591,7 @@ def _start_previews(window, needed: dict[str, set[str]], title: str, run: Callab
     # "-instructor" matches CompileJob.jobname's own "-{version}" suffix (compiler.py) --
     # update_all_previews.run() always compiles the instructor version.
     base_jobnames = {template: f"{update_all_previews.JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}" for template in needed}
-    labels = {f"{base}-instructor": f"{title} ({slide_snapshot.TEMPLATES.get(template, template)})"
+    labels = {f"{base}-instructor": f"{title} ({slide_templates.TEMPLATES.get(template, template)})"
               for template, base in base_jobnames.items()}
 
     def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> object:

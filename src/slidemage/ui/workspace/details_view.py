@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from ... import ai_review, deck_outline, alt_blocks, languages, slide_language, slide_rename, slide_source, slide_versioning
 from ...deck_outline import SlideRow
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, Surface
 from . import compare_rendered
@@ -85,8 +86,9 @@ class DetailsPane(Surface):
         self._frozen = frozen if id_slug and frozen is not None and slide_language.FROZEN_RE.search(frozen.name) else None
         page = Surface()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(16)
+        # Keep the broad page inset to distinguish details sections from their nested cards.
+        layout.setContentsMargins(2 * SPACE.s_2xl, 2 * SPACE.xl, 2 * SPACE.s_2xl, 2 * SPACE.xl)
+        layout.setSpacing(SPACE.s_2xl)
         if not id_slug:
             layout.addWidget(_label(message or "Select a slide in the list.", q.DETAILS_LABEL))
             layout.addStretch(1)
@@ -103,8 +105,8 @@ class DetailsPane(Surface):
         panel = Surface()
         panel.setObjectName(q.DETAILS_PANEL)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE.s_2xl, SPACE.xl, SPACE.s_2xl, SPACE.xl)
+        layout.setSpacing(SPACE.md)
         layout.addWidget(_label(title, q.DETAILS_HEAD))
         return panel, layout
 
@@ -151,8 +153,8 @@ class DetailsPane(Surface):
         _language, _, slug = slide_rename.parse_id_slug(self._id_slug, codes)
         panel, layout = self._panel("Slide")
         grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(SPACE.s_2xl)
+        grid.setVerticalSpacing(SPACE.sm)
         rows = [("File", path.name), ("Frame", alt_blocks.frame_type(text) or "none found"),
                 ("Version", f"v{version}" if version else "untracked"),
                 ("Language", language), ("Slug", slug)]
@@ -184,8 +186,8 @@ class DetailsPane(Surface):
         project = self.app.project
         panel, layout = self._panel("Other languages and earlier versions")
         grid = QGridLayout()
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(SPACE.s_2xl)
+        grid.setVerticalSpacing(SPACE.sm)
         grid.setColumnStretch(1, 1)
         index = 0
         try:

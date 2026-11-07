@@ -41,6 +41,7 @@ from ....ai.agent_types import (
     ToolStarted,
 )
 from ....ai.providers import ChatProvider, ProviderError
+from ...kit.tokens import SPACE
 from ...kit import kit_qss as q
 from ...kit.widgets import Button, Chip, DropdownButton, IconButton, PopoverMenu, SegmentedControl, Surface, caption, clear_layout
 from .. import compare_rendered
@@ -146,7 +147,7 @@ class ChatView(Surface):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE.md)
         scope.changed.connect(lambda _scope: self._fill_empty())
 
         self._scroll = QScrollArea()
@@ -158,12 +159,12 @@ class ChatView(Surface):
         self._scroll.setMinimumHeight(LIST_MIN_HEIGHT)     # the message list gives way to the controls
         content = _Column()
         self._messages = QVBoxLayout(content)
-        self._messages.setContentsMargins(0, 0, 4, 0)
-        self._messages.setSpacing(10)
+        self._messages.setContentsMargins(0, 0, SPACE.xs, 0)
+        self._messages.setSpacing(SPACE.lg)
         self._empty = Surface()
         self._ideas = QVBoxLayout(self._empty)
         self._ideas.setContentsMargins(0, 0, 0, 0)
-        self._ideas.setSpacing(6)
+        self._ideas.setSpacing(SPACE.sm)
         self._messages.addWidget(self._empty)
         self.status = Status()
         self._messages.addWidget(self.status)
@@ -179,11 +180,11 @@ class ChatView(Surface):
         self.composer.files_dropped.connect(self.attach_files)
         self.composer.image_pasted.connect(self.attach_image)
         self._chips = QVBoxLayout()
-        self._chips.setSpacing(4)
+        self._chips.setSpacing(SPACE.xs)
         layout.addLayout(self._chips)
         layout.addWidget(self.composer)
         controls = QHBoxLayout()
-        controls.setSpacing(6)
+        controls.setSpacing(SPACE.sm)
         self.mode_picker = DropdownButton(q.PANEL_PICKER)
         self.mode_picker.clicked.connect(self._open_mode_menu)
         controls.addWidget(self.mode_picker)

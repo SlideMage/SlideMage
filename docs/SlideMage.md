@@ -159,8 +159,8 @@ deck switcher offers the rest). From top to bottom and left to right:
   `provider_tasks.run_task` on Local and the API) and task cards like the other single-slide tasks. The selection is
   captured when the button is clicked (`SourcePane.selection()` -> `selection.capture`: the file, its whole text and the
   range as Python offsets, since Qt counts UTF-16 units): a blank selection, a frozen version and a selection that
-  touches a protected part (`protected_regions.protected_spans`: the header comment, `\setSlideVersion`, a `\vbox to 0pt`
-  block) are refused with a message, nothing sent. The request carries the instruction, 800 characters of context on
+  touches a protected part (`protected_regions.protected_spans`: the `%%` lines of the leading comment block,
+  `\setSlideVersion`) are refused with a message, nothing sent. The request carries the instruction, 800 characters of context on
   either side (`<before>`, `<after>`, never returned) and the selection between `<selection>` tags. **Rewrite** answers
   `{"text": ...}`, the replacement for the selection only (the whitespace at its ends is kept by the check); its
   instruction is chosen before generation: Simplify, Shorten (`REWRITE_PRESETS`) or Custom..., which asks in a popover
@@ -197,7 +197,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   slides again; "Preview rendering paused" while paused; failed slides get one more try once everything else is
   done; "All previews are up to date." is plain green text (v8.67, which also renders contents, agenda and section
   slides on selection and in the background). A deck whose template key is not among
-  `slide_snapshot.available_templates()` (no installed theme, no copy in the project) is held back by
+  `slide_templates.available_templates()` (no installed theme, no copy in the project) is held back by
   `BackgroundRenderer.scan` (`DeckProgress.blocked`, `Progress.missing_templates`) instead of failing every render;
   the status text turns red and the window explains it, and a failure stored for want of the template is forgotten
   once the template is found (v0.14.1).
@@ -209,6 +209,7 @@ deck switcher offers the rest). From top to bottom and left to right:
   offers the kit (`Host.Window`, `Card`, `SegmentedControl`, `Badge`, `ElidedLabel`, `RowButton`, `PlainList`, `Label`, `ModalSheet`,
   `toast`, and `theme`/`on_theme_changed` with `ThemeTokens`), so a plugin's own window looks like SlideMage's and follows
   a theme switch; before SlideMage closes or restarts it asks such a window to close, and one that refuses keeps it open.
+  See the [plugin guide](PLUGIN_GUIDE.md#looking-like-slidemage) for styling your own widgets.
 - **Ctrl+K**: the command palette (`palette.py`, commands in `actions.py`); every menu
   entry is a registered command. A list of slides or text matches that is cut short ends with **Show all**.
 - Dialogs are kit **sheets** (`ui/dialogs/`): Add slide, Open project, Settings, Deck
@@ -368,7 +369,7 @@ What matters when touching *this code*:
   still share the page's underlying store and lock (`alt_images.py`,
   `slide_snapshot.py`) -- see those modules' own entries in the module map
   below. The Image descriptions *panel* and the page are the only writers of the
-  image forms. Both show the citation field (`image_form.SOURCE_SPECS`,
+  image forms. Both show the citation field (`image_form.SOURCE_SPEC`, `translation_specs`,
   `labelled_edit()`, `SourceStatus`: the same label, placeholder, review
   badge and *Mark reviewed*; the panel shows the language of the top bar).
   They are never visible together: `WorkspaceWindow._on_page_changed` saves the
@@ -791,7 +792,7 @@ What matters when touching *this code*:
   finds (active *and* archived -- an archived deck's own editor tab still
   shows cached previews) and groups every `\slide{}`-family call's own
   full `id_slug` by that deck's own detected template
-  (`slide_snapshot.detect_template()`), giving `{template key: {full
+  (`slide_templates.detect_template()`), giving `{template key: {full
   id_slugs}}`. `run()` then compiles one throwaway deck per template
   (`_run_one_template()`, same `compiler.run_job()` mechanics the
   original single-template version always used, just scoped to that
@@ -802,7 +803,7 @@ What matters when touching *this code*:
   `\slide{}` directly, so their own template detects with nothing of its
   own -- confirmed directly, not assumed, when it first showed up as a
   test failure). `_prune_stale_snapshots()` then deletes every cached
-  file (`_SNAPSHOT_FILENAME_RE`, anchored to `slide_snapshot.TEMPLATES`'
+  file (`_SNAPSHOT_FILENAME_RE`, anchored to `slide_templates.TEMPLATES`'
   own display names) whose (template, bare id) isn't in that scan's
   result any more -- skipped if the run was cancelled partway through, so
   an aborted "Stop creation" doesn't delete caches based on a scan

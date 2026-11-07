@@ -41,6 +41,7 @@ from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_L
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs import qr_code as qr_dialog
 from ..dialogs.citation import CitationDialog
+from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
@@ -112,11 +113,11 @@ class SourcePane(Surface):
         bar = Surface()
         bar.setObjectName(q.SOURCE_BAR)
         outer = QVBoxLayout(bar)
-        outer.setContentsMargins(10, 8, 10, 6)
-        outer.setSpacing(4)
+        outer.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.sm)
+        outer.setSpacing(SPACE.xs)
 
         top = QHBoxLayout()
-        top.setSpacing(6)
+        top.setSpacing(SPACE.sm)
         # Cut with … where the pane is narrow (Split view); the whole name is its tooltip.
         self._name = ElidedLabel()
         self._name.setObjectName(q.SOURCE_FILE_NAME)
@@ -145,7 +146,7 @@ class SourcePane(Surface):
         self._format_row = Surface()
         row = QHBoxLayout(self._format_row)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
+        row.setSpacing(SPACE.s_2xs)
         for label, macro in latex_edit.FORMAT_MACROS:
             button = Button(label, "ghost", compact=True)
             # Each label is drawn in the style it applies: the row is its own legend.
@@ -187,8 +188,8 @@ class SourcePane(Surface):
         """SlideMage.bib only: one button per letter jumps to the first entry whose key starts with it."""
         bar = Surface()
         grid = QGridLayout(bar)
-        grid.setContentsMargins(10, 4, 10, 4)
-        grid.setSpacing(2)
+        grid.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
+        grid.setSpacing(SPACE.s_2xs)
         half = len(LETTERS) // 2
         for i, letter in enumerate(LETTERS):
             button = Button(letter, "ghost", compact=True)
@@ -202,7 +203,7 @@ class SourcePane(Surface):
     def _build_frozen_bar(self) -> QWidget:
         bar = Surface()
         row = QHBoxLayout(bar)
-        row.setContentsMargins(10, 4, 10, 4)
+        row.setContentsMargins(SPACE.lg, SPACE.xs, SPACE.lg, SPACE.xs)
         label = QLabel("Frozen version, read-only.")
         label.setObjectName(q.SOURCE_NOTE)
         row.addWidget(label)

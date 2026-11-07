@@ -10,7 +10,7 @@ from typing import Optional
 
 from PySide6.QtCore import QLocale, QObject, QRect, QTime, QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QActionGroup, QColor, QDesktopServices, QGuiApplication, QScreen
-from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSlider,
+from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QSlider,
                                QToolButton, QWidget, QWidgetAction)
 
 from ...presentation import layout
@@ -21,6 +21,8 @@ from ...presentation.screens import ScreenInfo, choose_screens
 from ...presentation.session import TOOL_ERASER, TOOL_PEN, PresentationSession
 from ...presentation.settings import PresentationSettings
 from ...presentation.timer import PresentationTimer
+from ..kit.tokens import STAGE
+from ..kit.widgets import ColorSwatchButton
 from .audience_window import AudienceWindow, PresenterWindow
 from .layout_view import build_layout
 from .big_clock import BigClock
@@ -31,7 +33,8 @@ from .views import AudienceView, CurrentView, NextView, NotesView
 
 WHEEL_STEP = 120
 # A tool that is switched on (pen, eraser, black, freeze) is lit, so the state is clear at a glance.
-ACTIVE_STYLE = "QToolButton:checked { background: #1976d2; color: #ffffff; font-weight: bold; }"
+ACTIVE_STYLE = (f"QToolButton:checked {{ background: {STAGE.stage_active}; "
+                f"color: {STAGE.stage_on_solid}; font-weight: bold; }}")
 # The addresses a click on a slide opens (QDesktopServices hands them to the system's handler): web pages, mail and
 # map locations (geo:, the link of a QR code for a place: qr_code.link_target; Windows opens it in Maps). Files,
 # javascript: and other schemes that could start a program or read local data stay closed.
@@ -132,7 +135,7 @@ class PresentationController(QObject):
 
     # -- the widgets ------------------------------------------------------------------
 
-    def _canvas(self, view, part: str, *, interactive: bool = False, background: str = "#000000",
+    def _canvas(self, view, part: str, *, interactive: bool = False, background: str = STAGE.stage_bg,
                 empty_text: str = "", top: bool = False, name: str = "") -> SlideCanvas:
         slide_input = SlideInput(self.session, self.deck, self.settings) if interactive else None
         if slide_input is not None:
@@ -164,12 +167,12 @@ class PresentationController(QObject):
     def _element(self, name: str) -> QWidget:
         session = self.session
         if name == "current":
-            return self._canvas(CurrentView(session), SLIDE, interactive=True, background="#101010", name="Current")
+            return self._canvas(CurrentView(session), SLIDE, interactive=True, background=STAGE.stage_canvas, name="Current")
         if name == "next":
-            return self._canvas(NextView(session), SLIDE, background="#101010", empty_text="End of presentation",
+            return self._canvas(NextView(session), SLIDE, background=STAGE.stage_canvas, empty_text="End of presentation",
                                 name="Next")
         if name == "notes":
-            return self._canvas(NotesView(session), NOTES, background="#ffffff", top=True,
+            return self._canvas(NotesView(session), NOTES, background=STAGE.stage_paper, top=True,
                                 empty_text="" if self.deck.has_notes else "No notes in this PDF.\nCompile the Presenter version to see notes.")
         if name == "counter":
             label = QLabel()
@@ -291,7 +294,7 @@ class PresentationController(QObject):
         panel = QWidget()
         column = QHBoxLayout(panel)
         column.addWidget(QLabel(name))
-        swatch = QPushButton("Colour") if color_key is not None else None
+        swatch = ColorSwatchButton("Colour") if color_key is not None else None
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(*steps)
         slider.setValue(round(getattr(self.settings, size_key) * 1000))
@@ -300,8 +303,7 @@ class PresentationController(QObject):
 
         def paint() -> None:
             if swatch is not None:
-                color = QColor(getattr(self.settings, color_key))
-                swatch.setStyleSheet(f"border-left: 22px solid {color.name()}; padding: 3px 8px;")
+                swatch.set_color(getattr(self.settings, color_key))
             size.setText(f"{slider.value() / 10:g} %")
 
         def apply(color: QColor) -> None:

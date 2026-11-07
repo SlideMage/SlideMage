@@ -32,6 +32,7 @@ from ...plugins import catalogue, installer, loader, session, upgrade
 from ...plugins.catalogue import Catalogue, CataloguePlugin, CatalogueError, CatalogueTooNew, Release
 from .. import background
 from ..kit import kit_qss as q
+from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Card, ModalSheet, Page, Surface, caption, clear_layout, row
 from .settings_plugins import (PLUGINS_PAGE, Job, download_release, install_downloaded, install_file, network_line,
                                pick_plugin_file)
@@ -102,7 +103,7 @@ class PluginOfferSheet(ModalSheet):
         self.status.setWordWrap(True)
         page.body.addWidget(self.status)
         self._list = QVBoxLayout()
-        self._list.setSpacing(8)
+        self._list.setSpacing(SPACE.md)
         page.body.addLayout(self._list)
         page.body.addStretch(1)
         self.add_tab("Plugins", page, scroll=True)

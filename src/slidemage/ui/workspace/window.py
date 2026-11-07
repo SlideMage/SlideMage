@@ -17,6 +17,8 @@ the compile controller (compile_controller.py); the window shows them (compile_d
 """
 from __future__ import annotations
 
+from ..kit.tokens import SPACE
+
 import sys
 import threading
 from pathlib import Path
@@ -212,7 +214,7 @@ class WorkspaceWindow(QMainWindow):
         self._apply_column_visibility()
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
-        workspace_layout.setContentsMargins(12, 12, 12, 12)
+        workspace_layout.setContentsMargins(SPACE.xl, SPACE.xl, SPACE.xl, SPACE.xl)
         workspace_layout.addWidget(self.splitter)
         self.no_decks = NoDecksPage(self)
         self.body = QStackedWidget()      # the workspace, or the page for a project without decks

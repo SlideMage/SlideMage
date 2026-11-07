@@ -13,7 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
 from conftest import build_window, make_project, wait_until
-from slidemage import app_settings, deck_scan, languages, slide_snapshot
+from slidemage import app_settings, deck_scan, languages, slide_templates
 from slidemage.fileio import read_text_exact as read
 from slidemage.slide_source import read_slide_source
 from slidemage.ui import plugin_ui
@@ -656,9 +656,9 @@ def test_redraft_fills_the_fields_from_the_model_and_stores_nothing(ctx, content
             return alt_draft.DraftResult(short="Drafted short", long="Drafted long", model="qwen3 · local")
 
     monkeypatch.setattr(alt_draft, "ModelBackend", FakeBackend)
-    monkeypatch.setattr(images.background, "start_detached", lambda worker, on_done: (worker.run(), on_done()))
     form = panel._forms[0]
     form.redraft_button.click()
+    wait_until(lambda: window.busy is None)
     assert drafted[0] == (paths.path, "media/pic.png")
     form = panel._forms[0]
     assert (form.short_edit.toPlainText(), form.long_edit.toPlainText()) == ("Drafted short", "Drafted long")
@@ -855,8 +855,8 @@ def test_the_images_panel_edits_the_source_like_the_full_editor(ctx, content):
     panel = shown(panels, "images")
     form = panel._forms[0]
     field = form.source_edit.parentWidget()
-    assert field.label.text() == image_form.SOURCE_SPECS["source"][1] == "Source (citation or attribution)"
-    assert form.source_edit.placeholderText() == image_form.SOURCE_SPECS["source"][4]
+    assert field.label.text() == image_form.SOURCE_SPEC[1] == "Source (citation or attribution)"
+    assert form.source_edit.placeholderText() == image_form.SOURCE_SPEC[4]
     assert form.source_status.isHidden()                                  # no source: nothing to review
     form.source_edit.setPlainText("Photo: Smith")
     assert panel.dirty and form.source_status.chip.text() == "To review" and not form.source_status.button.isEnabled()
@@ -901,7 +901,7 @@ def test_the_source_of_the_panels_language_is_shown_and_saved(ctx, content):
     state.set_language("DE")
     form = panel._forms[0]
     assert form.source_edit.toPlainText() == "Eigene Grafik"
-    assert form.source_edit.parentWidget().label.text() == image_form.SOURCE_SPECS["source_de"][1]
+    assert form.source_edit.parentWidget().label.text() == image_form.translation_specs("de")[3][1]
     form.source_edit.setPlainText("Foto: Smith")
     panel.flush()                                                         # a pending edit is saved as a draft
     entry = alt_images.load_store(ctx)["media/pic.png"]
@@ -1125,7 +1125,7 @@ def test_clicking_the_second_use_of_a_slide_in_another_deck_focuses_that_occurre
 @pytest.fixture
 def window(qapp, tmp_path, monkeypatch):
     root = make_project(monkeypatch, tmp_path / "project")
-    monkeypatch.setattr(slide_snapshot, "render_template", lambda root=None: "acme")
+    monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     monkeypatch.setattr(PreviewPane, "render_after_save", lambda self: None)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.show()

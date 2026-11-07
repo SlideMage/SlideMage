@@ -25,9 +25,9 @@ _STATE_RANK = {alt_images.STATE_NONE: 0, alt_images.STATE_DRAFT: 1,
                alt_images.STATE_STALE: 2, alt_images.STATE_REVIEWED: 3}
 
 # What a form holds per image; `role` is the image's, the takeaways are as this slide shows them. The plain fields
-# are the English text's; the `_de` ones are those of the form's second language (FormEdit.language, German unless
+# are the English text's; the `_tr` ones are those of the form's second language (FormEdit.language, German unless
 # the Images page shows another).
-FIELDS = ("role", "short", "long", "source", "takeaway", "short_de", "long_de", "source_de", "takeaway_de")
+FIELDS = ("role", "short", "long", "source", "takeaway", "short_tr", "long_tr", "source_tr", "takeaway_tr")
 
 
 @dataclass
@@ -45,10 +45,6 @@ def lacks_translation(entry: alt_images.ImageEntry, language: str = "de") -> boo
     translation_state() STALE, not NONE: the translation exists, it only needs another look)."""
     return (not entry.is_decorative and bool(entry.short or entry.long)
             and alt_images.translation_state(entry, language) == alt_images.STATE_NONE)
-
-
-def lacks_german(entry: alt_images.ImageEntry) -> bool:
-    return lacks_translation(entry, "de")
 
 
 def _in_states(*states: str) -> Callable[[SlideView, Entries, tuple[str, ...]], bool]:
@@ -168,7 +164,7 @@ class FormEdit:
     """One image's form: `values` as typed and `baseline` as it was shown (both keyed by FIELDS),
     `baseline_en_hash` the English text it was shown with, `provenance` the exact source hash
     and translated values of a translation applied to it (None when there is none), and `language` the
-    language of the form's second group (the `_de` fields)."""
+    language of the form's second group (the `_tr` fields)."""
 
     reference: str
     values: dict[str, str]
@@ -179,11 +175,11 @@ class FormEdit:
 
 
 def form_baseline(entry: alt_images.ImageEntry, slide_id: str, language: str = "de") -> dict[str, str]:
-    """The form's fields as the store has them; the `_de` ones in `language`."""
+    """The form's fields as the store has them; the `_tr` ones in `language`."""
     text = entry.texts.get(language) or alt_images.ImageText()
     return {"role": entry.role, "short": entry.short, "long": entry.long, "source": entry.source,
-            "takeaway": entry.takeaway_for(slide_id), "short_de": text.short, "long_de": text.long,
-            "source_de": text.source, "takeaway_de": entry.takeaway_in(slide_id, language)}
+            "takeaway": entry.takeaway_for(slide_id), "short_tr": text.short, "long_tr": text.long,
+            "source_tr": text.source, "takeaway_tr": entry.takeaway_in(slide_id, language)}
 
 
 def _promote_takeaway(typed: str, default: str) -> tuple[str, str]:
@@ -205,27 +201,27 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
     for key in ("role", "short", "long"):
         if key in changed:
             setattr(entry, key, values[key])
-    for key in ("short_de", "long_de"):
+    for key in ("short_tr", "long_tr"):
         if key in changed:
-            setattr(entry.text(language), key.removesuffix("_de"), values[key])
-    alt_images.set_sources(entry, {code: values[key] for code, key in (("en", "source"), (language, "source_de"))
+            setattr(entry.text(language), key.removesuffix("_tr"), values[key])
+    alt_images.set_sources(entry, {code: values[key] for code, key in (("en", "source"), (language, "source_tr"))
                                    if key in changed})
     use = entry.used_on.setdefault(slide_id, alt_images.SlideUse())
     if "takeaway" in changed:
         entry.takeaway_default, use.takeaway = _promote_takeaway(values["takeaway"], entry.takeaway_default)
-    if "takeaway_de" in changed:
+    if "takeaway_tr" in changed:
         text = entry.text(language)
-        text.takeaway_default, taken = _promote_takeaway(values["takeaway_de"], text.takeaway_default)
+        text.takeaway_default, taken = _promote_takeaway(values["takeaway_tr"], text.takeaway_default)
         use.set_takeaway(language, taken)
 
-    text = entry.text(language) if changed & {"short_de", "long_de", "takeaway_de"} or edit.provenance else None
+    text = entry.text(language) if changed & {"short_tr", "long_tr", "takeaway_tr"} or edit.provenance else None
     provenance = edit.provenance or {}
     fields = provenance.get("fields", {})
     provenance_matches = (
         bool(provenance)
-        and fields.get("short_de") == text.short
-        and fields.get("long_de") == text.long
-        and fields.get("takeaway_de") == entry.takeaway_in(slide_id, language)
+        and fields.get("short_tr") == text.short
+        and fields.get("long_tr") == text.long
+        and fields.get("takeaway_tr") == entry.takeaway_in(slide_id, language)
         and provenance.get("source_hash") == alt_images.en_text_hash(entry)
     )
     english = bool(entry.short or entry.long)
@@ -236,7 +232,7 @@ def apply_form_edit(entry: alt_images.ImageEntry, slide_id: str, edit: FormEdit)
         text.from_hash = ""
     elif provenance_matches:
         text.from_hash = str(provenance["source_hash"])
-    elif changed & {"short_de", "long_de", "takeaway_de"}:
+    elif changed & {"short_tr", "long_tr", "takeaway_tr"}:
         if not text.short and not text.long:
             text.from_hash = ""
         elif alt_images.en_text_hash(entry) == edit.baseline_en_hash:
@@ -286,19 +282,19 @@ class TranslationApplied:
     in_sync: bool
 
 
-GERMAN_FIELDS = ("short_de", "long_de", "takeaway_de")
+TRANSLATION_FIELDS = ("short_tr", "long_tr", "takeaway_tr")
 
 
 def apply_translation(result: alt_draft.TranslationResult, asked_fields: dict[str, str],
                       asked_english: tuple[str, str, str], fields: dict[str, str],
                       english: tuple[str, str, str]) -> TranslationApplied:
-    """Merge a translation into a form. `asked_fields` (GERMAN_FIELDS) and `asked_english` (short,
+    """Merge a translation into a form. `asked_fields` (TRANSLATION_FIELDS) and `asked_english` (short,
     long, takeaway) are what the form held when the request went out, `fields` and `english` what it
     holds now: a result never overwrites newer typing."""
-    translated = dict(zip(GERMAN_FIELDS, (result.short_de, result.long_de, result.takeaway_de)))
+    translated = dict(zip(TRANSLATION_FIELDS, (result.short_de, result.long_de, result.takeaway_de)))
     applied = {key: value for key, value in translated.items() if fields[key] == asked_fields[key]}
     provenance = None
-    if len(applied) == len(GERMAN_FIELDS) and result.source_hash == source_hash(*asked_english):
+    if len(applied) == len(TRANSLATION_FIELDS) and result.source_hash == source_hash(*asked_english):
         # The save may come after the English was edited in this form: keep the worker's exact source
         # hash and the German values applied, so that it can prove the merged record still matches.
         provenance = {"source_hash": result.source_hash,

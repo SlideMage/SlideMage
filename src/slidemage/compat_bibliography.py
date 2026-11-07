@@ -43,7 +43,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import bibliography_house, slide_snapshot
+from . import bibliography_house, slide_templates
 from .compat_types import LAYOUT, Change, Finding
 
 BS = chr(92)
@@ -175,7 +175,7 @@ def _template_state(root: Path, deck_text: str):
     m = _INPUT_TEMPLATE.search(deck_text)
     if not m:
         return None, "its template is not one of the SlideMage_template_* files"
-    path = slide_snapshot.preamble_file(m.group(1), root)
+    path = slide_templates.preamble_file(m.group(1), root)
     if not path.is_file():
         return None, f"template SlideMage_template_{m.group(1)}.tex not found"
     text, _ = _read(path)
@@ -193,7 +193,7 @@ def _template_state(root: Path, deck_text: str):
 
 
 def _framework_ready(root: Path) -> bool:
-    for folder in slide_snapshot.framework_dirs(root):
+    for folder in slide_templates.framework_dirs(root):
         base = folder / "SlideMage_base.tex"
         if "SMUseBibliography" in base.read_text(encoding="utf-8", errors="replace"):
             return True
@@ -202,7 +202,7 @@ def _framework_ready(root: Path) -> bool:
 
 def _framework_loads_format(root: Path) -> bool:
     """Whether the framework's base loads the citation format itself (v0.13.0), so a template needs no line."""
-    for folder in slide_snapshot.framework_dirs(root):
+    for folder in slide_templates.framework_dirs(root):
         base = folder / "SlideMage_base.tex"
         try:
             if "SM@LoadCitationFormat" in base.read_text(encoding="utf-8", errors="replace"):
@@ -287,7 +287,7 @@ def _shortenable_templates(root: Path) -> list[Path]:
     house format, line for line."""
     want = _code(_style_lines(_full_text_lines()))
     out = []
-    for path in sorted(root.glob(slide_snapshot.TEMPLATE_PREFIX + "*.tex")):
+    for path in sorted(root.glob(slide_templates.TEMPLATE_PREFIX + "*.tex")):
         try:
             text, _eol = _read(path)
         except (OSError, UnicodeDecodeError):

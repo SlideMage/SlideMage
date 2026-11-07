@@ -105,7 +105,3 @@ def deck(text: str) -> str:
     for match in reversed(_live(_THEME, text)):
         text = _drop(text, match)
     return text
-
-
-def deck_has_theme(text: str) -> bool:
-    return bool(_live(_THEME, text))
