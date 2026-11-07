@@ -17,29 +17,13 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter
 from PySide6.QtWidgets import QApplication
 
 from ... import app_settings
 from ...project import ProjectContext
-from .fonts import load_fonts
 from .kit_qss import KIT_ICONS, build_kit_qss
-from .tokens import FONT_ICONS, Tokens, tokens_for
-
-
-def _draw_icon(path: Path, glyph: str, color: str, glyph_px: int, size: int, scale: int) -> None:
-    image = QImage(size * scale, size * scale, QImage.Format.Format_ARGB32)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-    font = QFont(FONT_ICONS)
-    font.setPixelSize(glyph_px * scale)
-    painter.setFont(font)
-    painter.setPen(QColor(color))
-    painter.drawText(image.rect(), Qt.AlignmentFlag.AlignCenter, glyph)
-    painter.end()
-    image.save(str(path))
+from .tokens import Tokens, tokens_for
+from .widgets import draw_glyph
 
 
 def _icon_files(t: Tokens) -> dict[str, str]:
@@ -53,9 +37,8 @@ def _icon_files(t: Tokens) -> dict[str, str]:
         color = getattr(t, token)
         path = folder / f"{name}-{color.lstrip('#')}-{glyph_px}-{size}.png"
         if not path.exists():
-            load_fonts()
-            _draw_icon(path.with_name(f"{path.stem}@2x.png"), glyph, color, glyph_px, size, 2)
-            _draw_icon(path, glyph, color, glyph_px, size, 1)
+            draw_glyph(glyph, color, glyph_px, size, 2).save(str(path.with_name(f"{path.stem}@2x.png")))
+            draw_glyph(glyph, color, glyph_px, size, 1).save(str(path))
         files[name] = path.as_posix()
     return files
 
