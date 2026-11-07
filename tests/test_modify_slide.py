@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Composite slide edits with fake buffers/rendering and socket-free MCP."""
 import importlib.util
-import json
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -31,7 +30,6 @@ def env(root, monkeypatch):
     shown, renders, events = [], [], []
     monkeypatch.setattr(ws, "show_slide", shown.append)
     monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: renders.append(a) or root / "fake.pdf")
-    monkeypatch.setattr(slide_snapshot, "page_png", lambda *a: PNG)
     # The render service reads the rendered PDF's images (prepare_preview_images) for saved and draft renders alike.
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda pdf, snapshots, widths: ((PNG, PNG), ()))
     (root / "fake.pdf").write_bytes(b"%PDF-1.4")

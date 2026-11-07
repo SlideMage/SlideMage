@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QCheckBox, QFileDialog, QFrame, QHBoxLayout, QLabe
 from ... import project
 from ...version import VERSION_NUMBER
 from ..kit import kit_qss as q
+from ..kit.tokens import TYPE
 from ..kit.widgets import Button, Field, ModalSheet, RowButton, Surface, caption, set_property
 
 ICON_PATH = Path(__file__).resolve().parents[2] / "assets" / "icon.ico"
@@ -82,7 +83,7 @@ class OpenProjectSheet(ModalSheet):
         logo = QLabel()
         logo.setPixmap(QIcon(str(ICON_PATH)).pixmap(36, 36))
         row.addWidget(logo)
-        title = QLabel("<b style='font-size:20px'>SlideMage</b>")
+        title = QLabel(f"<b style='font-size:{TYPE.display}px'>SlideMage</b>")
         row.addWidget(title)
         row.addWidget(caption(self._app_version.lstrip("v")))
         row.addStretch(1)

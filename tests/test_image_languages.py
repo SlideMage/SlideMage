@@ -166,7 +166,7 @@ def test_the_review_filter_looks_for_the_language_shown():
 def test_a_form_edits_the_second_language_it_shows():
     entry = ImageEntry(IMG, short="A chart.", long="Long.")
     baseline = image_review.form_baseline(entry, "s1", "fr")
-    values = {**baseline, "short_de": "Un graphique.", "long_de": "Long.", "source_de": "Source FR"}
+    values = {**baseline, "short_tr": "Un graphique.", "long_tr": "Long.", "source_tr": "Source FR"}
     image_review.apply_form_edit(entry, "s1", image_review.FormEdit(IMG, values, baseline,
                                                                     alt_images.en_text_hash(entry), language="fr"))
     assert entry.texts["fr"].short == "Un graphique." and entry.texts["fr"].source == "Source FR"
@@ -177,7 +177,7 @@ def test_a_form_edits_the_second_language_it_shows():
 def test_a_text_written_without_english_is_its_own_not_a_translation():
     entry = ImageEntry(IMG)
     baseline = image_review.form_baseline(entry, "s1", "fr")
-    values = {**baseline, "short_de": "Un graphique.", "long_de": "Long."}
+    values = {**baseline, "short_tr": "Un graphique.", "long_tr": "Long."}
     image_review.apply_form_edit(entry, "s1", image_review.FormEdit(IMG, values, baseline,
                                                                     alt_images.en_text_hash(entry), language="fr"))
     assert (entry.texts["fr"].translated_from, entry.texts["fr"].from_hash) == ("", "")

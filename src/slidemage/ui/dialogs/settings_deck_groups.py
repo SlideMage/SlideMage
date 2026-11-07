@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from ... import deck_editor, deck_groups
 from ...deck_groups import DEFAULT_GROUPS, ROLE_PINNED, ROLE_TEST, DeckGroup
-from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, row, set_property
+from ..kit.widgets import Button, Field, ModalSheet, Surface, caption, row, show_problem
 
 ROLE_NOTES = {ROLE_PINNED: "pinned on top", ROLE_TEST: "no slide list"}
 FALLBACK_NOTE = "decks without a group go here"
@@ -118,17 +118,12 @@ class GroupSheet(ModalSheet):
 
     def _on_tag_typed(self, _text: str) -> None:
         self._tag_typed = True
-        self._show_problem("")
+        show_problem(self.problem, "")
 
     def _on_label(self, label: str) -> None:
-        self._show_problem("")
+        show_problem(self.problem, "")
         if self._editing is None and not self._tag_typed:
             self.tag_edit.setText(deck_groups.tag_from_label(label))
-
-    def _show_problem(self, text: str) -> None:
-        self.problem.setText(text)
-        set_property(self.problem, "tone", "error")
-        self.problem.setVisible(bool(text))
 
     def entered(self) -> DeckGroup:
         roles = frozenset(role for role, box in self.role_checks.items() if box.isChecked())
@@ -142,7 +137,7 @@ class GroupSheet(ModalSheet):
         group = self.entered()
         reason = self._check(group)
         if reason is not None:
-            self._show_problem(reason)
+            show_problem(self.problem, reason)
             return
         self.group = group
         self.accept()

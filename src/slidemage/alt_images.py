@@ -173,10 +173,6 @@ class SlideUse:
     def has_override(self) -> bool:
         return bool(self.takeaway)
 
-    @property
-    def has_override_de(self) -> bool:
-        return bool(self.takeaway_de)
-
 
 @dataclass
 class ImageText:
@@ -295,10 +291,6 @@ class ImageEntry:
         """
         return bool(self.short or self.long or self.is_decorative)
 
-    @property
-    def has_content_de(self) -> bool:
-        return self.has_content_in("de")
-
     def has_content_in(self, language: str) -> bool:
         """has_content in `language` -- decorative still counts (role has no language of its own), an
         untranslated informative image does not."""
@@ -335,9 +327,6 @@ class ImageEntry:
             return use.takeaway
         return self.takeaway_default
 
-    def takeaway_for_de(self, slide_id: str) -> str:
-        return self.takeaway_in(slide_id, "de")
-
     def takeaway_in(self, slide_id: str, language: str) -> str:
         """The takeaway a slide shows in `language`: its own override in that language, or the image's default in
         it ("" when it has none: a takeaway does not fall back to another language)."""
@@ -346,14 +335,6 @@ class ImageEntry:
             return use.takeaway_in(language)
         text = self.texts.get(language)
         return text.takeaway_default if text else ""
-
-    def source_for_de(self) -> str:
-        """source_de if set, else the English source (source_in)."""
-        return self.source_in("de")
-
-    def is_override_for(self, slide_id: str) -> bool:
-        use = self.used_on.get(slide_id)
-        return bool(use and use.has_override)
 
 
 # --------------------------------------------------------------------------
@@ -509,12 +490,7 @@ def update_store(ctx: ProjectContext, mutate) -> bool:
     """Atomically load, let `mutate(entries) -> bool` change it in place,
     and save only if it returned True. Single-entry edits use this path;
     sync_store() takes the same lock around its full scan and bulk update."""
-    with _store_lock:
-        entries = load_store(ctx)
-        changed = mutate(entries)
-        if changed:
-            save_store(ctx, entries)
-        return changed
+    return _update(ctx, mutate, load_store, save_store)
 
 
 def delete_entry(ctx: ProjectContext, image: str) -> bool:
@@ -535,11 +511,15 @@ def update_slide_notes(ctx: ProjectContext, mutate) -> bool:
     "slides" section instead of "images" -- same shared file, same lock,
     so a slide-notes save and an image save can never interleave and lose
     each other's change."""
+    return _update(ctx, mutate, load_slide_notes, _save_slide_notes)
+
+
+def _update(ctx: ProjectContext, mutate, load, save) -> bool:
     with _store_lock:
-        notes = load_slide_notes(ctx)
-        changed = mutate(notes)
+        data = load(ctx)
+        changed = mutate(data)
         if changed:
-            _save_slide_notes(ctx, notes)
+            save(ctx, data)
         return changed
 
 
@@ -977,11 +957,6 @@ def set_sources(entry: ImageEntry, changes: dict[str, str]) -> bool:
     for language, text in changes.items():
         entry.text(language).source = text
     return flag_source_change(entry, before)
-
-
-def set_source(entry: ImageEntry, source: str | None = None, source_de: str | None = None) -> bool:
-    """set_sources() of the English source and/or the German one (None leaves one as it is)."""
-    return set_sources(entry, {code: text for code, text in (("en", source), ("de", source_de)) if text is not None})
 
 
 def save_source(ctx: ProjectContext, image: str, source: str | None = None, source_de: str | None = None, *,

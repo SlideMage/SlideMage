@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitterHandle,
     QStackedWidget,
     QStyle,
     QStyleOptionButton,
@@ -105,6 +106,23 @@ def _repolish(widget: QWidget) -> None:
 def set_property(widget: QWidget, name: str, value: object) -> None:
     widget.setProperty(name, value)
     _repolish(widget)
+
+
+def show_problem(label: QLabel, text: str) -> None:
+    label.setText(text)
+    set_property(label, "tone", "error")
+    label.setVisible(bool(text))
+
+
+class ResetSplitterHandle(QSplitterHandle):
+    """Ask the owning splitter to restore its default sizes through its `reset_requested` signal."""
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.splitter().reset_requested.emit()
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
 
 
 class ClickFrame(QFrame):

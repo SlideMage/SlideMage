@@ -43,7 +43,7 @@ DECK_TEXT = r"""% !TeX program = lualatex
 
 
 def deck_text(name: str, template: str, group: str = "") -> str:
-    """The text of a new, empty deck called `name` in `template` (a slide_snapshot.TEMPLATES key), tagged `group`."""
+    """The text of a new, empty deck called `name` in `template` (a slide_templates.TEMPLATES key), tagged `group`."""
     footer = name.strip().replace("\\", "").replace("{", "").replace("}", "").replace("%", "")
     # The name is typeset in every footer: a bare _ & # $ ^ ~ is a TeX error, not text.
     for char in "_&#$":

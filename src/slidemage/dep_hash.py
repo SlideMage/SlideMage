@@ -15,7 +15,6 @@ Free of Qt.
 """
 from __future__ import annotations
 
-import hashlib
 import os
 import sqlite3
 import threading
@@ -23,20 +22,14 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from .fileio import sha256_file
+
 RACY_SECONDS = 3.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS filehash (
     path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, sha256 TEXT NOT NULL)
 """
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def norm(path: Path | str) -> str:
@@ -47,7 +40,7 @@ class HashCache:
     """File hashes kept in the `filehash` table of a SQLite connection (the render store's local index)."""
 
     def __init__(self, connection: sqlite3.Connection, lock: Optional[threading.RLock] = None, *,
-                 clock: Callable[[], float] = time.time, hasher: Callable[[Path], str] = file_sha256) -> None:
+                 clock: Callable[[], float] = time.time, hasher: Callable[[Path], str] = sha256_file) -> None:
         self._db = connection
         self._lock = lock or threading.RLock()
         self._clock = clock
