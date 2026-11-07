@@ -4,6 +4,10 @@ Plugins use the public `slidemage.plugin_api` contract and the host passed to `a
 
 ## Looking like SlideMage
 
+The [design handbook deck](design-handbook/decks/design-handbook.tex) shows the
+colour roles, scales and widgets in both themes. See its [compile instructions](design-handbook/README.md)
+for the local PDF at `design-handbook/build/design-handbook.pdf`; compiled decks are not committed.
+
 Build your UI with the host's themed widgets, such as `host.Card`, `host.Chip`, `host.Label` and
 `host.IconButton`. They follow the app theme automatically. Use `host.Chip("1-0-0", mono=True)`
 for micro-size monospace metadata. `host.IconButton("more_vert", "More", faint=True)` dims a glyph;

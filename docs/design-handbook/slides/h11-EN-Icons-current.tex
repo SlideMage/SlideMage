@@ -1,0 +1,11 @@
+%% Included in decks: design-handbook
+\setSlideVersion{1-0-0}
+\begin{standardframe}{Icons}
+\begin{itemize}
+\item Material Icons ligature names, such as \SMCode{check} and \SMCode{more\_vert}.
+\item Plugins: \SMCode{host.icon(name, colour, px=16)} returns a \SMCode{QIcon} with 1x and 2x pixmaps.
+\item Core: \SMCode{glyph\_icon} and QSS icons share \SMCode{draw\_glyph}.
+\item \SMCode{IconButton} defaults to an 18 px glyph; preserve the click target around it.
+\item Rebuild colour-dependent icons when the theme changes.
+\end{itemize}\SMCodeFile{snippets/icon-example.py}
+\end{standardframe}
