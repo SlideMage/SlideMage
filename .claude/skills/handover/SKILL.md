@@ -22,7 +22,8 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
 3. Publish the file with the `Artifact` tool: `icon: "checklist"`, `capabilities: {"artifact": {}, "comments": {}}` (artifact stores the picks, comments is what wakes this session), a one-sentence
    `description`. **Do not edit the HTML by hand**; change the task block or the template and rerun the script. Keep the page's
    URL (same file path) for later publishes in this conversation.
-4. Give the user the link in one or two lines. (Publishing already opens the artifact pane; do not open it again.) Say the page lets them tick tasks, drag them into order, add notes, and click
+4. Open the page for the user with the `Artifact` tool, `action: "open"` and the URL (publishing does not always open it). Do not
+   also call `show_pane`. Give the user the link in one or two lines. Say the page lets them tick tasks, drag them into order, add notes, and click
    "Start tasks". Then stop and wait: nothing starts before that click.
 
 ## 2. When the picks arrive
