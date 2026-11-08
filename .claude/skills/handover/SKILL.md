@@ -33,6 +33,8 @@ A republish alone starts no turn. The page therefore also sends the picks to thi
 editors only; the user may be asked to allow it once), which wakes the session with the picks in the comment text. If the page
 says it could not notify Claude, the user tells you in chat. Either way, then:
 
+0. Close the picker for the user: `mcp__ccd_view__close_pane` with `pane: "artifact"` (load it with ToolSearch if it is deferred).
+   A page cannot close its own pane. Do this first, before reading or working.
 1. `Artifact` action `read` on the URL, and take `sent.picked`: it is in the user's order, each with its note. If `sent` is
    `null`, nothing was sent yet.
 2. Say in one line which tasks you start and in what order.
