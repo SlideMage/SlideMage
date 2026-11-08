@@ -26,7 +26,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
-from ... import app_settings
+from ... import app_settings, timing
 from ... import (
     latex_edit,
     latex_lint,
@@ -381,8 +381,9 @@ class SourceFile(Surface):
         previous_text = self.text
         try:
             # A slide's current file gets the "+", after its version is frozen if it is not yet.
-            new_text, backup_path, frozen = slide_versioning.save_slide(
-                self.app.project, self.path, raw_text, self.eol, previous_text, backup=not self._backed_up)
+            with timing.span("source.save_slide", file=self.path.name):
+                new_text, backup_path, frozen = slide_versioning.save_slide(
+                    self.app.project, self.path, raw_text, self.eol, previous_text, backup=not self._backed_up)
         except slide_source.StaleFileError:
             self.disk_changed()
             return False
@@ -402,8 +403,10 @@ class SourceFile(Surface):
         if backup_path is not None:
             self.app.log(f"Saving {self.path.name} as you type (backup: {backup_path.relative_to(self.app.project.root)})")
         if self.on_saved is not None:
-            self.on_saved(previous_text)
-        self.written.emit()
+            with timing.span("source.on_saved", file=self.path.name):
+                self.on_saved(previous_text)
+        with timing.span("source.written", file=self.path.name):
+            self.written.emit()
         if explicit:
             self.saved.emit()
         return True

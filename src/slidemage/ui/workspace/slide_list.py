@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ... import timing
 from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal_steps
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
@@ -265,10 +266,12 @@ class SlideList(QWidget):
             validation = preview_cache.ValidationPass()
             revisions = {}
             started = time.perf_counter()
-            updated = preview_thumbnails.for_outline(
-                ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
-            stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
+            with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):
+                updated = preview_thumbnails.for_outline(
+                    ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
+                    paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
+            with timing.span("thumbnails.stable"):
+                stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,
                        'configuration_seconds': validation.configuration_seconds,
@@ -326,7 +329,10 @@ class SlideList(QWidget):
         self._thumbnail_metrics = metrics
         self._thumbnail_metrics['gui_event_latency_seconds'] = self._thumbnail_gui_latency
         publishing = time.perf_counter()
-        self._apply_preview_rows(outline, paths=paths)
+        timing.event(self.app.project.root, "thumbnails.published", **{k: round(v, 3) if isinstance(v, float) else v
+                                                                      for k, v in metrics.items()})
+        with timing.span("thumbnails.apply_rows"):
+            self._apply_preview_rows(outline, paths=paths)
         self._thumbnail_metrics['publication_seconds'] = time.perf_counter() - publishing
 
     def preview_source_changed(self, path: Path) -> None:
@@ -428,18 +434,22 @@ class SlideList(QWidget):
         if not same_deck:
             self.tree.collapsed.clear()
         self._deck_path = path
-        self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
-                          if deck else None)
+        with timing.span("slide_list.resolve_outline"):
+            self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
+                              if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
         if deck and not self._background_thumbnails:
-            self._set_outline(self._preview_images(self._outline))
+            with timing.span("slide_list.preview_images"):
+                self._set_outline(self._preview_images(self._outline))
         self._thumbnail_paths.clear()
         self._thumbnail_timer.stop()
         self.tree.blockSignals(True)
-        self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
+        with timing.span("slide_list.populate"):
+            self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
         if deck and self._background_thumbnails:
-            self._queue_preview_images(self._outline)
+            with timing.span("slide_list.queue_previews"):
+                self._queue_preview_images(self._outline)
         items = self.tree.slide_items()
         for item in items:
             item.setSelected(self.tree.data_of(item).key in selected)
