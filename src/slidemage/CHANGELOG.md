@@ -3771,3 +3771,8 @@ v0.14.51 (2026-11-08, direct request to do the open framework-redesign item: one
 
 NEW: Footnotes beside a section's picture sit as close to it as on other picture slides.
 - On a section overview with a picture on the right, the rotated footnotes and image sources now stand as far from the picture as they do on a slide with a side picture: about 1pt closer than before.
+
+v0.14.52 (2026-11-08, handover item dark-progress-text): The update download dialog drew its percent in the text colour on a bar whose fill was also the text colour (white in dark mode, near black in light mode), so the percent disappeared once the fill reached it. The kit stylesheet now gives a QProgressBar inside a QProgressDialog a translucent text-colour fill (30 percent) with the plain text colour on top, which keeps the percent at a contrast of at least 3 to 1 over both the filled and the empty part in both themes. Other progress bars (the job cards) keep the strong fill, since they print no text. Test: test_progress_dialog_percent_is_readable_over_fill_and_track in tests/test_ui_kit_gui.py renders the dialog in both themes and measures the contrast.
+
+NEW: The percent on the update download bar stays readable in dark mode.
+- While SlideMage downloads an update, the percent no longer vanishes into the bar once it fills, in dark or light mode.
