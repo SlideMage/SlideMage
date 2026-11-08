@@ -145,7 +145,9 @@ AUDITED_FRAMEWORK = {
     # catalog's \SMFootnoteMark with the symbols, a number in a rounded box or TikZ dice (the setup layer's comment
     # says so; its code is unchanged). Re-audited: markers only, drawn the same in every view; no version, footer-hide
     # or deck-label rule entered the theme or the setup layer.
-    "beamerthemeSlideMage.sty": "9006631fd64bae9062ff54fcf22db8001b4a15887d399005dca932868d22b869",
+    # v0.14.45: the footnote block draws the boxed marker full size on the baseline (a box as tall as a capital) instead
+    # of raised. Re-audited: marker drawing only, the same in every view; no version, footer-hide or deck-label rule.
+    "beamerthemeSlideMage.sty": "452416b86f4085b04ccecfc0986689602cd4242dd8cd22485b1e513d17323966",
     # v0.13.30: the image description CSV's columns are read by their header names, one per language (content
     # languages plan, 2.4). Re-audited: which column is read depends on the deck's language only, the same in every
     # view; no version, footer-hide or deck-label rule.
