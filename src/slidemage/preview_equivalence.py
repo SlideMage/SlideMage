@@ -129,7 +129,7 @@ AUDITED_FRAMEWORK = {
     # footer-hide or deck-label rule entered the base.
     # v0.13.37: the patterns are looked up in hyphenation/ first (the framework ships them, a project may have its
     # own). Re-audited: where the patterns come from, the same in every view; no rule changed.
-    "SlideMage_base.tex": "14eb9598ca708eb5bfc86097abea0a9351bce5f2176b7994a72aa0218aab9e53",
+    "SlideMage_base.tex": "ebb75a019271dead2c10a6d19e905c58c91b3a1575069ced1c14ad4355444ae0",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name
@@ -150,7 +150,7 @@ AUDITED_FRAMEWORK = {
     # languages plan, 2.4). Re-audited: which column is read depends on the deck's language only, the same in every
     # view; no version, footer-hide or deck-label rule.
     "SlideMage_alt.lua": "a3d1b99c2f8b7fce28c817878f8412008f2db9bf639d2c89a7014ac90faca853",
-    "SlideMage_measure.lua": "3fff73386b6de924f1d5b3c3bcb719d61e4e77dd8b97faa6fa12be7ec4a8bbe3",
+    "SlideMage_measure.lua": "999599d80f528b19289a49810705b199b139c43e4bd0889e2e6637dfbc19fdd2",
     "SlideMage_layout_lmroman.tex": "0bf5a70d2e190da8979174871924ec7552288ccafc61285db777d6afe98042dd",
     # v10.18.1: the greyscale template sets the body sizes to beamer's 10pt ones (\normalsize, \small, \footnotesize,
     # \scriptsize redefined after the base). Re-audited: no version, footer-hide or deck-label rule; the sizes are the
