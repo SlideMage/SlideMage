@@ -3761,3 +3761,8 @@ v0.14.49 (2026-11-08, Slide edit tab: a way back to the last version): "Update v
 NEW: Go back to the last version of a slide from its edit tab.
 - Open the caret next to Update version and choose Revert to the version.
 - Ctrl+Z undoes it.
+
+v0.14.51 (2026-11-08, direct request to do the open framework-redesign item: one gap between a side image and its footnote strip): \sectionfigure put the rotated footnote strip 3.1pt left of its image, sideimageframe 2.1pt. 3.1pt was sideimageframe's value until v5.30.5 measured it down to 2.1pt (the text's own depth strut added about 0.8pt); \sectionfigure kept the old number, so a section overview's strip stood about 1pt farther from its image. Both now use 2.1pt (latex/SlideMage_base.tex, the strip's \SMSideFootnoteRightInset in \sectionfigure; the comment there no longer calls it an open question). Only slides with \sectionfigure move: in the manual the chapter slides 1y9 and mkd, in the real project the section overviews. The pin of SlideMage_base.tex is renewed. The version skips v0.14.50, which an unmerged branch holds.
+
+NEW: Footnotes beside a section's picture sit as close to it as on other picture slides.
+- On a section overview with a picture on the right, the rotated footnotes and image sources now stand as far from the picture as they do on a slide with a side picture: about 1pt closer than before.

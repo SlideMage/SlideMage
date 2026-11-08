@@ -5459,16 +5459,15 @@
 	\end{tikzpicture}%
 	}%
 	\global\SMSideFootnotestrue
-	% 3.1pt: the gap between the rotated footnote strip and the image. It was sideimageframe's
-	% measured gap, but sideimageframe went to 2.1pt in v5.30.5 (see there) and this one did not,
-	% so a section figure's strip stands about 1pt farther from its image. Left as is (v0.14.18):
-	% unifying them moves rendered footnotes, which needs the user's before/after review.
+	% 2.1pt: the gap between the rotated footnote strip and the image, sideimageframe's measured
+	% gap (see there). Until v0.14.51 this was still 3.1pt, the value sideimageframe left in
+	% v5.30.5, so a section figure's strip stood about 1pt farther from its image.
 	% 2.31pt: the clearance above the footer box that \SMSideFootnoteHsize's
 	% 207pt default leaves under a standard title bar.
 	% Both are internal, not hooks (v0.14.18, step 5's open class): they are measured against the
 	% theme's own drawing of the strip, so a template that changes the look changes the hooks those
 	% drawings follow, not these.
-	\global\SMSideFootnoteRightInset=\dimexpr\SMSectionFigureWidth+3.1pt\relax
+	\global\SMSideFootnoteRightInset=\dimexpr\SMSectionFigureWidth+2.1pt\relax
 	\global\SMSideFootnoteHsize=\dimexpr\SMSectionFigureHeight-\SMSideFootnoteTitleBlockSep-2.31pt\relax
 }
 
