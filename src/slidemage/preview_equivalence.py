@@ -129,7 +129,7 @@ AUDITED_FRAMEWORK = {
     # footer-hide or deck-label rule entered the base.
     # v0.13.37: the patterns are looked up in hyphenation/ first (the framework ships them, a project may have its
     # own). Re-audited: where the patterns come from, the same in every view; no rule changed.
-    "SlideMage_base.tex": "ebb75a019271dead2c10a6d19e905c58c91b3a1575069ced1c14ad4355444ae0",
+    "SlideMage_base.tex": "a6ab9ddf703ead2aa73b6697bc381e892d517eb4636fcde6ab81d8c804e69bf3",
     "SlideMage_template_slidemage.tex": "537a59284e3c21744c0ba0cf5d271ef59fddb4c043d3e31266f78218efc8ee9b",
     # v0.13.0 (step 18c): the citation formats are a category. The house format is latex/SlideMage_citation_default.tex
     # (the old file renamed, byte for byte, so its pin is the old one), the old name
