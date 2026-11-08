@@ -96,3 +96,10 @@ def test_current_release_has_a_new_paragraph():
     from slidemage import version
     entry = next(e for e in version.parse_history() if e.version == version.VERSION_NUMBER)
     assert entry.news and entry.summary
+
+
+def test_every_entry_since_the_new_paragraph_has_one():
+    # the release build refuses a tag when any version since the last release lacks NEW: bullets
+    # (v0.14.49 failed on FIX: and CHANGE: paragraphs), so no entry may lack them
+    from slidemage import version
+    assert release_notes.missing_news(version.parse_history()) == []
