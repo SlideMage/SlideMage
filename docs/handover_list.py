@@ -6,10 +6,13 @@ Reads the JSON lines between <!-- TASKS:BEGIN --> and <!-- TASKS:END --> in hand
 is not in git, so a worktree does not have it), keeps the tasks
 whose status is "open" (all with --all), and writes OUT.html from handover_list.template.html. Publish OUT.html with the
 Artifact tool; the page republishes itself with the user's picks and notes when they click "Start tasks".
-Prints the number of tasks and the ids, one line. Standard library only.
+Each task's "Details" text is whatever stands between `<!-- task:ID -->` and `<!-- /task:ID -->` lines in handover.md; a
+task's optional "notes" field preloads its text field. Prints the number of tasks and the ids, one line (and the ids that
+have no details). Standard library only.
 """
 import json
 import pathlib
+import re
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -39,6 +42,16 @@ def read_tasks(text):
     return tasks
 
 
+def read_details(text):
+    """Text between <!-- task:ID --> and <!-- /task:ID --> lines, by id."""
+    out = {}
+    for m in re.finditer(r"^<!-- task:([a-z0-9-]+) -->[ \t]*\r?\n(.*?)^<!-- /task:\1 -->", text, re.S | re.M):
+        if m.group(1) in out:
+            raise SystemExit(f"handover.md: task markers for {m.group(1)} appear twice")
+        out[m.group(1)] = m.group(2).strip()
+    return out
+
+
 def main(argv):
     argv = list(argv)
     handover = HERE / "handover.md"
@@ -49,14 +62,24 @@ def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     if len(args) != 1:
         raise SystemExit(__doc__)
-    tasks = read_tasks(handover.read_text(encoding="utf-8"))
+    text = handover.read_text(encoding="utf-8")
+    tasks = read_tasks(text)
     if "--all" not in argv:
         tasks = [t for t in tasks if t["status"] == "open"]
-    state = {"tasks": tasks, "sel": {}, "notes": {}, "sent": None}
+    details = read_details(text)
+    missing = []
+    for t in tasks:
+        t["detail"] = details.get(t["id"], "")
+        if not t["detail"]:
+            missing.append(t["id"])
+    notes = {t["id"]: t["notes"] for t in tasks if t.get("notes")}
+    state = {"tasks": tasks, "sel": {}, "notes": dict(notes), "savedNotes": dict(notes), "sent": None, "updated": None}
     blob = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
     html = (HERE / "handover_list.template.html").read_text(encoding="utf-8").replace("__STATE__", blob)
     pathlib.Path(args[0]).write_text(html, encoding="utf-8")
     print(len(tasks), "tasks:", " ".join(t["id"] for t in tasks))
+    if missing:
+        print("no details (add task markers):", " ".join(missing))
 
 
 if __name__ == "__main__":
