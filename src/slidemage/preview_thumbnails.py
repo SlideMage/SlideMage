@@ -12,8 +12,10 @@ store, which the caller reads through `stored_page`; that only looks up the inde
 """
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 
+from . import timing
 from . import compiler, deck_outline, preview_cache, preview_target, slide_templates
 from .preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from .preview_selection import SelectedImage, legacy_reference, select_image
@@ -29,6 +31,8 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
     env = None
     frames = None
     revisions = {}
+    states: dict[str, int] = {}     # what select_image found per row, for the debug log
+    spent = {'capture': 0.0, 'select': 0.0, 'reference': 0.0, 'frames': 0.0}
     paths = None if paths is None else {path.resolve() for path in paths}
 
     def image(row):
@@ -40,8 +44,10 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
             return replace(row, thumbnail=None, thumbnail_verified=False, stale_preview=False,
                            thumbnail_note=f'Hidden in {view}; no thumbnail for this view.', image_selection=None)
         # Reset any previous verified image before considering a new context.
+        began = time.perf_counter()
         reference = legacy_reference(ctx, row.call.id, slide_templates.detect_template(deck.preamble_text),
                                      row.call.id_slug)
+        spent['reference'] += time.perf_counter() - began
         fallback = replace(row, thumbnail=reference, thumbnail_verified=False,
                            stale_preview=reference is not None and deck_outline._older(reference, path),
                            thumbnail_note=('Shared Instructor reference; not verified for this deck, view, '
@@ -54,18 +60,25 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
             if frames is None:
                 # Match for_call's Instructor numbering, computed once rather
                 # than resolving the entire deck again for every row.
+                began = time.perf_counter()
                 frames = {r.key: r.frame_number for r in deck_outline.resolve_slots(ctx, deck, 'instructor', language)}
+                spent['frames'] += time.perf_counter() - began
             target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number)
             target = replace(target, occurrence_key=row.key, presenter_frame_number=frames.get(row.key))
             source = path.resolve()
             if source not in revisions:
+                began = time.perf_counter()
                 text = read_source(path) if read_source is not None else None
                 revisions[source] = SourceRevision.capture(path, text)
+                spent['capture'] += time.perf_counter() - began
             revision = revisions[source]
             if revision_sink is not None:
                 revision_sink[source] = revision.content_hash
             specs = (PreviewRequest(target, revision, view, language, RenderOptions(saved=True)),)
+            began = time.perf_counter()
             selected = select_image(cache, specs, env, thumbnail=True, validation=validation, reference=reference)
+            spent['select'] += time.perf_counter() - began
+            states[selected.state] = states.get(selected.state, 0) + 1
             if not selected.fresh and stored_page is not None:
                 page = stored_page(target, view, language, deck.name)
                 if page is not None:
@@ -84,4 +97,6 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
             pass  # An unavailable source/cache remains an explicitly unverified reference.
         return fallback
 
-    return [replace(section, rows=[image(row) for row in section.rows]) for section in outline]
+    result = [replace(section, rows=[image(row) for row in section.rows]) for section in outline]
+    timing.event(ctx.root, "thumbnails.states", **states, **{f"{k}_s": round(v, 3) for k, v in spent.items()})
+    return result

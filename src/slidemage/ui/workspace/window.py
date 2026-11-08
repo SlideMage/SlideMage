@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import timing
+from ...stall_monitor import StallMonitor
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
@@ -255,6 +256,7 @@ class WorkspaceWindow(QMainWindow):
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         debug_log_ui.log_state_changes(self.state)
+        self._stall_monitor = StallMonitor(self)        # freezes of the window itself, in the debug log
         self.state.deck_changed.connect(self._remember_deck)
         self.project_access_problems: list = []     # what maintenance.check_project_access last found
         self.state.dirty_changed.connect(self._on_dirty_changed)
@@ -264,7 +266,9 @@ class WorkspaceWindow(QMainWindow):
         self._after_write.setSingleShot(True)
         self._after_write.setInterval(AFTER_WRITE_REFRESH_MS)
         self._after_write.timeout.connect(self._refresh_after_write)
-        self.centre.source.written.connect(lambda _path: self._after_write.start())
+        self.centre.source.written.connect(lambda _path: (timing.event(self.project.root, "after_write.armed",
+                                                                       ms=AFTER_WRITE_REFRESH_MS),
+                                                          self._after_write.start()))
         self.centre.source.written.connect(self._live_render)
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
@@ -383,6 +387,7 @@ class WorkspaceWindow(QMainWindow):
         self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
         if not self.decks:
             self.no_decks.refresh()
+        timing.caller("reload_decks")
         current = self.state.deck
         remembered = app_settings.get(self.project, LAST_DECK_KEY)
         by_path = next((d for d in self.decks if current and d.path == current.path), None)
@@ -516,6 +521,7 @@ class WorkspaceWindow(QMainWindow):
         paths = tuple(dict.fromkeys(Path(path).resolve() for path in paths))
         if not paths:
             return
+        timing.caller("after_version_updates", files=len(paths))
         self._after_write.stop()
         self.slide_list.rebuild(preserve_focus=True)
         self.centre.refresh()
@@ -524,6 +530,7 @@ class WorkspaceWindow(QMainWindow):
             self._live_render(path)
 
     def _refresh_after_write(self) -> None:
+        timing.caller("after_write.fired")
         self._after_write.stop()
         self.slide_list.rebuild()   # a save changes lint errors and stale previews
         self.side_panels.refresh()  # and the slide's versions
