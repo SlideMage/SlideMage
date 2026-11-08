@@ -190,3 +190,11 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
         record=(c["wrapper"], WRAPPER, c["started"]))
     fresh, why = fresh_output(c["build"], "t-Deck-during-course", WRAPPER)
     assert why == "" and fresh.pdf == dest and dest.read_bytes() == b"%PDF during"
+
+
+def test_a_relative_bib_name_in_the_blg_is_read_from_the_folder_latexmk_ran_in(tmp_path):
+    blg = tmp_path / "t.blg"
+    blg.write_text("INFO - Found BibTeX data source '../SlideMage.bib'\n", encoding="utf-8")
+    decks = tmp_path / "proj" / "decks"
+    assert compile_records.parse_blg_sources(blg, decks) == [tmp_path / "proj" / "SlideMage.bib"]
+    assert compile_records.parse_blg_sources(blg) == [Path("../SlideMage.bib")]

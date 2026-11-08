@@ -158,13 +158,15 @@ def parse_fls(fls: Path) -> list[Path]:
     return list(seen.values())
 
 
-def parse_blg_sources(blg: Path) -> list[Path]:
-    """The .bib files biber read (its .blg log names them)."""
+def parse_blg_sources(blg: Path, cwd: Optional[Path] = None) -> list[Path]:
+    """The .bib files biber read (its .blg log names them). A relative name is relative to the
+    folder latexmk ran in, `cwd`, and comes back absolute."""
     try:
         text = blg.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    return [Path(os.path.normpath(m.group(1))) for m in BLG_SOURCE_RE.finditer(text)]
+    return [Path(os.path.normpath(os.path.join(cwd, m.group(1)) if cwd else m.group(1)))
+            for m in BLG_SOURCE_RE.finditer(text)]
 
 
 def version_lines(log_text: str) -> str:
@@ -241,7 +243,8 @@ def write_record(
         if not fls.is_file() or BIBER_NEEDED_RE.search(log_text):
             target.unlink(missing_ok=True)
             return None
-        bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg")
+        bib_sources = parse_blg_sources(invocation_dir / f"{jobname}.blg",
+                                       deck_path.parent if deck_path is not None else None)
         aux = aux_dir(ctx.build_dir, jobname)
         shutil.rmtree(aux, ignore_errors=True)
         aux.mkdir(parents=True)

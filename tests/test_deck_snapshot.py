@@ -157,6 +157,60 @@ def test_framework_relpath(tmp_path):
         == "SlideMage/latex"
 
 
+# ---------------------------------------------------------------- two drives
+# A project, the framework and the snapshot may sit on different drives (the project on D:, SlideMage on C:):
+# no os.path.relpath between drives. Skipped on a machine where the temp folder and the repo share a drive.
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def other_drive_dir(tmp_path):
+    """A scratch folder on the repo's drive when pytest's temp folder is on another one, else skip."""
+    if os.path.splitdrive(str(tmp_path.resolve()))[0].lower() == os.path.splitdrive(str(REPO))[0].lower():
+        pytest.skip("temp folder and repo are on the same drive; no second drive to test with")
+    import tempfile
+    folder = Path(tempfile.mkdtemp(prefix="sm-other-drive-", dir=REPO))
+    yield folder
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+def test_paths_on_two_drives_have_no_relative_form(tmp_path, other_drive_dir):
+    root = tmp_path / "Proj"
+    framework = other_drive_dir / "latex"
+    assert deck_snapshot.framework_relpath(root, framework) == "SlideMage/latex"
+    rel = deck_snapshot._rel(framework, root)
+    assert deck_snapshot._is_outside(rel) and not rel.startswith("..")
+    assert not deck_snapshot._is_outside(deck_snapshot._rel(root / "decks" / "a.tex", root))
+
+
+def test_files_of_another_drive_are_not_project_files(tmp_path, other_drive_dir):
+    root = tmp_path / "Proj"
+    write(root / "decks" / "a.tex", "x")
+    write(other_drive_dir / "elsewhere.bib", "y")
+    out = deck_snapshot._JobOutput(job_name="a", pdf=root / "a.pdf", inputs=[root / "decks" / "a.tex"],
+                                   log_text="", bib_sources=[other_drive_dir / "elsewhere.bib"])
+    collected = deck_snapshot.collect_files([out], root, [], [], [])
+    assert "decks/a.tex" in collected.project_files
+    assert any("elsewhere.bib" in w for w in collected.warnings)       # outside the project, not a crash
+
+
+@pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("latexmk"),
+                    reason="real LaTeX compile; set SLIDEMAGE_TEX_TESTS=1")
+def test_real_snapshot_with_the_framework_on_another_drive(tmp_path, other_drive_dir, monkeypatch):
+    shutil.copytree(REPO / "latex", other_drive_dir / "latex")
+    shutil.copytree(REPO / "example", tmp_path / "example",
+                    ignore=shutil.ignore_patterns("pdf", ".build", ".previews", "snapshots"))
+    root = tmp_path / "example"
+    monkeypatch.setenv("SLIDEMAGE_LATEX", str(other_drive_dir / "latex"))
+    deck = next(d for d in deck_scan.scan_dir(root / "decks", False) if d.name == "slidemage-manual")
+    deck.supports_version = False
+    result = deck_snapshot.create_snapshot(deck, SnapshotOptions(presenter=False), print,
+                                           ctx=project.ProjectContext.at(root))
+    assert result.ok, result.error
+    assert any(result.path.rglob("SlideMage_base.tex"))        # the framework came along, under SlideMage/latex
+
+
 # ---------------------------------------------------------------- creating
 
 def test_snapshot_copies_what_the_deck_uses_at_the_same_paths(tree):

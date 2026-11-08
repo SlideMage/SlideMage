@@ -234,8 +234,17 @@ def summary_text(results: list[SnapshotResult]) -> str:
 
 
 def _rel(path: Path, root: Path) -> str:
-    """`path` relative to `root`, with forward slashes."""
-    return Path(os.path.relpath(str(path), str(root))).as_posix()
+    """`path` relative to `root`, with forward slashes. On another drive there is no relative
+    path (os.path.relpath raises): the absolute path comes back, which `_is_outside` recognises."""
+    try:
+        return Path(os.path.relpath(str(path), str(root))).as_posix()
+    except ValueError:
+        return Path(str(path)).as_posix()
+
+
+def _is_outside(rel: str) -> bool:
+    """`rel` (from `_rel`) leads out of its root: above it, or on another drive."""
+    return rel.startswith("../") or rel == ".." or os.path.isabs(rel) or ":" in rel
 
 
 def _dir_size(path: Path) -> int:
@@ -442,7 +451,7 @@ def run_recorded_compile(
         raise SnapshotError(f"{jobname}: the bibliography could not be built (biber failed; "
                             f"see the log above and {log_path})")
     return _JobOutput(job_name=jobname, pdf=pdf, inputs=parse_fls(fls), log_text=log_text,
-                      bib_sources=parse_blg_sources(build_dir / f"{jobname}.blg"))
+                      bib_sources=parse_blg_sources(build_dir / f"{jobname}.blg", cwd))
 
 
 # --------------------------------------------------------------------------
@@ -495,7 +504,7 @@ def collect_files(outputs: list[_JobOutput], project_root: Path, build_dirs: lis
         if _norm(path) in wrapper_keys or not path.is_file():
             return
         rel = _rel(path.resolve(), project_root.resolve())
-        if rel.startswith("../"):
+        if _is_outside(rel):
             return
         if rel.split("/", 1)[0] in EXCLUDED_PROJECT_DIRS:
             return
@@ -589,7 +598,7 @@ def framework_relpath(project_root: Path, framework_dir: Path) -> str:
     exactly as before. A framework elsewhere (via $SLIDEMAGE_LATEX) goes to
     SlideMage/latex; render scripts always point $SLIDEMAGE_LATEX at it."""
     rel = _rel(framework_dir.resolve(), project_root.resolve().parent)
-    if rel.startswith("../") or rel == ".." or os.path.isabs(rel) or ":" in rel:
+    if _is_outside(rel):
         return "SlideMage/latex"
     return rel
 
