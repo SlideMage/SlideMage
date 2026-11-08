@@ -3734,3 +3734,9 @@ v0.14.43 (2026-11-08, Settings closed when the log folder opened): Settings -> A
 
 NEW: The Settings window no longer closes when you open the log folder.
 - Only the folder opens; the other buttons in About that start something (version history, update check, debug report) still close Settings first.
+
+v0.14.45 (2026-11-08, boxed footnote markers sat raised in the footnote): With \SMSetFootnoteMarkers{boxed}, the footnote block now shows the marker as a box as tall as a capital on the baseline, the number centred inside, with a little more space before the note text. The marker in the running text is unchanged.
+
+NEW: Boxed footnote numbers are easier to read at the bottom of the slide.
+- In the footnote itself the box is now full size on the line instead of a tiny raised superscript.
+- The number in the text keeps its look.
