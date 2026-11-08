@@ -398,3 +398,46 @@ def test_segment_badge_shows_a_count_and_hides_at_zero(theme):
     control.set_badge("s", 0)
     assert badge.isHidden() and control._buttons["s"].property("badge") is False
     assert control.current() == "p"          # a badge is not a click
+
+
+def _luminance(rgb) -> float:
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(c) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a, b) -> float:
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_progress_dialog_percent_is_readable_over_fill_and_track(theme, dark):
+    """The update download's percent is centred on the bar, so it sits over
+    the fill and the empty track alike. Render the dialog and measure the
+    contrast of the text colour against the pixel colours of both."""
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QProgressBar, QProgressDialog
+
+    dialog = QProgressDialog("Downloading", "Cancel", 0, 100)
+    dialog.setMinimumDuration(0)
+    dialog.resize(360, 120)
+    styled(dialog, theme, dark)
+    dialog.setValue(50)
+    bar = dialog.findChild(QProgressBar)
+    dialog.show()
+    QApplication.processEvents()
+    # Grab the dialog, not the bar: the translucent track needs its backdrop.
+    image = dialog.grab().toImage()
+    y = bar.mapTo(dialog, QPoint(0, bar.height() - 3)).y()
+    x0 = bar.mapTo(dialog, QPoint(0, 0)).x()
+    fill = QColor(image.pixel(x0 + bar.width() // 4, y))
+    track = QColor(image.pixel(x0 + bar.width() * 3 // 4, y))
+    text = QColor(theme.tokens.text)
+    assert fill != track
+    for part in (fill, track):
+        assert _contrast((text.red(), text.green(), text.blue()),
+                         (part.red(), part.green(), part.blue())) >= 3.0
+    dialog.close()
