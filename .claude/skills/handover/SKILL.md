@@ -30,9 +30,10 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
 ## 2. When the picks or an update arrive
 
 "Start tasks" makes the page republish itself, with the picks stored in its state as `"sent":{"ids":[...],"picked":[{"rank","task","note"}]}`.
-The page has two buttons. **Update** sends only the changed notes (a comment starting "UPDATE ONLY"): do not start any task. Write each
-note into that task's `notes` field in the TASKS block of `docs/handover.md` (the next page build preloads it) and, where it fits,
-into its section; close the picker pane as in step 0 below only if the user is done, otherwise leave it; answer in one line.
+The page has two buttons. **Update** sends only the changed notes (a comment starting "UPDATE ONLY"): do not start any task. **Integrate each
+note into the task's description**: rewrite its `desc` in the TASKS block of `docs/handover.md` and its text between its task
+markers (and its section, where it fits) so the note is part of the task and does not stay a separate note; the `notes` field of
+the block line then stays empty (clear it if it holds anything). Leave the picker pane open; answer in one line.
 **Start tasks** sends the picks (steps 0 to 6 below). A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
 editors only; the user may be asked to allow it once), which wakes the session with the picks in the comment text. If the page
 says it could not notify Claude, the user tells you in chat. Either way, then:
@@ -43,7 +44,8 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
    `null`, nothing was sent yet.
 2. Say in one line which tasks you start and in what order.
 3. For each picked task, in that order: read only the handover section its `src` points to (grep for the heading), plus the
-   "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text.
+   "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text: integrate it into the task's description first
+   (`desc`, the text between its markers, and its section), clear the block line's `notes` field, and then work from the result.
 4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; bump the version with
    app-code commits; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
    task text says to ask about open, ask before building.

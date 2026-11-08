@@ -117,8 +117,8 @@ document.addEventListener("click",async e=>{
     const ids=STATE.tasks.filter(t=>STATE.sel[t.id]).map(t=>t.id);if(!ids.length)return;
     btn.disabled=true;btn.textContent="Sending…";
     const ch=changed().filter(id=>ids.indexOf(id)<0);
-    let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
-    if(ch.length)msg+="\n\nAlso record these notes (do not start these tasks):\n"+noteLines(ch);
+    let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort. Integrate each note into its task's description in handover.md (desc and marked text), then clear the task's `notes` field.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
+    if(ch.length)msg+="\n\nAlso integrate these notes into those tasks' descriptions, as for an update (do not start these tasks):\n"+noteLines(ch);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
     ns.sent={ids:ids,wake:wk,at:new Date().toISOString(),picked:ids.map(id=>({rank:STATE.tasks.findIndex(t=>t.id===id)+1,id:id,task:title(id),note:STATE.notes[id]||"",run:JSON.parse(JSON.stringify(run(id)))}))};
@@ -127,7 +127,7 @@ document.addEventListener("click",async e=>{
   }else if(btn.id==="upd"){
     const ids=changed();if(!ids.length)return;
     btn.disabled=true;btn.textContent="Sending…";
-    const msg="UPDATE ONLY, do not start any task. Record these notes in each task's `notes` field in the TASKS block of docs/handover.md (and in its section where it fits), then reply with one line:\n"+noteLines(ids);
+    const msg="UPDATE ONLY, do not start any task. Integrate each note into that task's description: rewrite its `desc` in the TASKS block of docs/handover.md and its text between its task markers, so the note is not kept separately, then clear the task's `notes` field and reply with one line:\n"+noteLines(ids);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
     ns.updated={ids:ids,wake:wk,at:new Date().toISOString()};
