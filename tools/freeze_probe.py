@@ -54,6 +54,7 @@ def main() -> int:
     args = parser.parse_args()
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.pop("SLIDEMAGE_NO_STALL_MONITOR", None)
     if not args.background_previews:
         os.environ["SLIDEMAGE_NO_BACKGROUND_PREVIEWS"] = "1"
     work = Path(tempfile.mkdtemp(prefix="freeze-probe-"))

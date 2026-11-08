@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from ..kit.tokens import SPACE
 
+import os
 import sys
 import threading
 from pathlib import Path
@@ -256,7 +257,9 @@ class WorkspaceWindow(QMainWindow):
         self.topbar.command.connect(self._on_command)
         self.topbar.mode_clicked.connect(lambda: self.stack.setCurrentWidget(self.centre))   # leaves the Images page
         debug_log_ui.log_state_changes(self.state)
-        self._stall_monitor = StallMonitor(self)        # freezes of the window itself, in the debug log
+        # freezes of the window itself, in the debug log (not in a test: a window that outlives its test would
+        # write `stall` lines into the timeline of the next one)
+        self._stall_monitor = None if os.environ.get("SLIDEMAGE_NO_STALL_MONITOR") else StallMonitor(self)
         self.state.deck_changed.connect(self._remember_deck)
         self.project_access_problems: list = []     # what maintenance.check_project_access last found
         self.state.dirty_changed.connect(self._on_dirty_changed)
