@@ -28,7 +28,13 @@ my $slidemage_sep = $slidemage_windows ? ';' : ':';
 sub slidemage_native_path {
 	my ($path) = @_;
 	if ($^O eq 'cygwin' || $^O eq 'msys') {
-		$path =~ s{^/cygdrive/([a-zA-Z])/}{$1:/} or $path =~ s{^/([a-zA-Z])/}{$1:/};
+		# Any mount, not only /d/...: that Perl shows the Windows Temp folder as /tmp/... (found 2026-11-08).
+		if (defined &Cygwin::posix_to_win_path && $path =~ m{^/}) {
+			$path = Cygwin::posix_to_win_path($path);
+			$path =~ s{[\x5c]}{/}g;
+		} else {
+			$path =~ s{^/cygdrive/([a-zA-Z])/}{$1:/} or $path =~ s{^/([a-zA-Z])/}{$1:/};
+		}
 	}
 	return $path;
 }
