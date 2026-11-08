@@ -452,10 +452,12 @@ def test_about_switches_the_debug_log_and_offers_its_folder_and_a_report(qapp, t
     assert app.logged[-1].startswith("Debug log on: ")
     sheet.about.debug_check.setChecked(False)
     assert not diagnostics.debug_enabled() and app.logged[-1] == "Debug log off"
-    for text in ("Open", "Save…"):
-        sheet = open_sheet(qapp, app, tab=ABOUT)
-        next(b for b in sheet.about.findChildren(Button) if b.text() == text).click()
-        sheet.after()
+    sheet = open_sheet(qapp, app, tab=ABOUT)
+    next(b for b in sheet.about.findChildren(Button) if b.text() == "Open").click()
+    assert app.calls[-1][0] == "open_logs" and sheet.after is None   # the folder opens at once; Settings stays open
+    sheet = open_sheet(qapp, app, tab=ABOUT)
+    next(b for b in sheet.about.findChildren(Button) if b.text() == "Save…").click()
+    sheet.after()
     assert [c[0] for c in app.calls[-2:]] == ["open_logs", "debug_report"]
 
 
