@@ -3743,12 +3743,12 @@ NEW: Boxed footnote numbers are easier to read at the bottom of the slide.
 
 v0.14.46 (2026-11-08, Render now failed with WinError 6): Every helper process SlideMage starts for a render or a git query now gets an empty standard input of its own instead of inheriting the app's. A windowed app on Windows can end up with no usable input handle, and starting a process then failed with "[WinError 6] The handle is invalid" until SlideMage was restarted.
 
-FIX: "Render now" no longer fails with an invalid handle.
+NEW: "Render now" no longer fails with an invalid handle.
 - LaTeX runs, git queries and the process killer no longer inherit the app's standard input.
 
 v0.14.47 (2026-11-08, PDF section Appendix renamed Navigation): The generated appendix agenda slide, the one that lists the deck's sections and links to their slide-preview grids, was titled "Appendix", so the PDF's bookmarks and navigation showed "Appendix". Its title is now "Navigation".
 
-CHANGE: The PDF section with the table of contents of slide previews is now called Navigation.
+NEW: The PDF section with the table of contents of slide previews is now called Navigation.
 - Bookmarks and the agenda slide itself use the new name.
 
 v0.14.48 (2026-11-08, Insert menu: \SMFinalStateForStudents): The Insert menu of the slide edit tabs now offers \SMFinalStateForStudents, which makes every student version show only the final reveal state of the slide it stands in front of. It inserts the macro at the cursor, like \conditionalpause[instructor].

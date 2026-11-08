@@ -18,7 +18,8 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
    ```
 
    From a worktree whose branch lacks the script, call the script of the main checkout. It prints the number of tasks and
-   their ids. A "missing key" or "duplicate id" error means the block needs fixing first: fix that line, then rerun.
+   their ids, and the ids that have no "Details" text (add `<!-- task:ID -->` markers around that task's text in handover.md; the
+   page's Details button shows what stands between them). A "missing key" or "duplicate id" error means the block needs fixing first: fix that line, then rerun.
 3. Publish the file with the `Artifact` tool: `icon: "checklist"`, `capabilities: {"artifact": {}, "comments": {}}` (artifact stores the picks, comments is what wakes this session), a one-sentence
    `description`. **Do not edit the HTML by hand**; change the task block or the template and rerun the script. Keep the page's
    URL (same file path) for later publishes in this conversation.
@@ -26,10 +27,13 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
    also call `show_pane`. Give the user the link in one or two lines. Say the page lets them tick tasks, drag them into order, add notes, and click
    "Start tasks". Then stop and wait: nothing starts before that click.
 
-## 2. When the picks arrive
+## 2. When the picks or an update arrive
 
 "Start tasks" makes the page republish itself, with the picks stored in its state as `"sent":{"ids":[...],"picked":[{"rank","task","note"}]}`.
-A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
+The page has two buttons. **Update** sends only the changed notes (a comment starting "UPDATE ONLY"): do not start any task. Write each
+note into that task's `notes` field in the TASKS block of `docs/handover.md` (the next page build preloads it) and, where it fits,
+into its section; close the picker pane as in step 0 below only if the user is done, otherwise leave it; answer in one line.
+**Start tasks** sends the picks (steps 0 to 6 below). A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
 editors only; the user may be asked to allow it once), which wakes the session with the picks in the comment text. If the page
 says it could not notify Claude, the user tells you in chat. Either way, then:
 
@@ -51,7 +55,7 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 
 ## 3. Keeping the list useful
 
-- New work the user names: add a line to the TASKS block (stable `id`, never reused) before starting it.
+- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before starting it.
 - Finished sections move to `docs/handover-archive.md`, unedited; ask the user first.
 - The page template is `docs/handover_list.template.html`. Its script keeps the `/*S*/ ... /*E*/` markers around the state
   and `__STATE__` is the placeholder the script fills: keep both when changing it.
