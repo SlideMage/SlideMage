@@ -3745,3 +3745,8 @@ v0.14.46 (2026-11-08, Render now failed with WinError 6): Every helper process S
 
 FIX: "Render now" no longer fails with an invalid handle.
 - LaTeX runs, git queries and the process killer no longer inherit the app's standard input.
+
+v0.14.47 (2026-11-08, PDF section Appendix renamed Navigation): The generated appendix agenda slide, the one that lists the deck's sections and links to their slide-preview grids, was titled "Appendix", so the PDF's bookmarks and navigation showed "Appendix". Its title is now "Navigation".
+
+CHANGE: The PDF section with the table of contents of slide previews is now called Navigation.
+- Bookmarks and the agenda slide itself use the new name.

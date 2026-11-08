@@ -166,7 +166,7 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
         "\\end{columns}"
     )
     return (
-        "\\begin{standardframe}{Appendix}\n"
+        "\\begin{standardframe}{Navigation}\n"
         "\\hypertarget{SMAppendixAgenda}{}%\n"
         f"{columns}\n"
         "\\end{standardframe}\n"
