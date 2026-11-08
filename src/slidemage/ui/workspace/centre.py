@@ -126,6 +126,7 @@ class CentreColumn(QFrame):
         self._opening = False               # open_file() is changing the focus itself
         self._edited: set[Path] = set()     # files written from the Source view since they were last left
         self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
+        self.rescanning = False             # a deck rescan is under way: a focus it moves is not the user's, so no tab switch
         self._holding = 0                   # > 0: showing another tab does not refresh, the caller does
         self.tabs = CentreTabs(state.mode, self)
         # A file tab's mode (D2) is shown through state.mode too (_on_tab_active), but is never the deck's own:
@@ -952,7 +953,8 @@ class CentreColumn(QFrame):
 
     def _on_focus(self, _slide_id: Optional[str]) -> None:
         if not self._opening:
-            self._show_slide_tab()
+            if not self.rescanning:     # the rescan after a save moves the focus off a slide that is gone: stay on the tab
+                self._show_slide_tab()
             self._set_path(self._focused_path())
             self.refresh()
 

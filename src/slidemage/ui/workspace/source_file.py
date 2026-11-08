@@ -5,7 +5,7 @@ button, and what saving, reverting and reloading it mean.
 
 The Source view edits slides (slides/*.tex), a deck's own .tex file and
 SlideMage.bib alike, and saves as you type (AUTOSAVE_DELAY_MS after the last
-keystroke; write_now()). A slide's `-current.tex` gets the "+" on its version
+keystroke, DECK_AUTOSAVE_DELAY_MS for a deck's source; write_now()). A slide's `-current.tex` gets the "+" on its version
 line as it is written (slide_versioning.prepare_autosave()); a version is made
 on purpose, with Update Version. A frozen `-vX-Y-Z.tex` snapshot is read-only
 until unlocked, then saves plainly, like any other file. The saved text is
@@ -26,7 +26,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
-from ... import app_settings
+from ... import app_settings, timing
 from ... import (
     latex_edit,
     latex_lint,
@@ -45,6 +45,7 @@ from .source_editor import FindBar, LatexPlainTextEdit
 
 LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
+DECK_AUTOSAVE_DELAY_MS = 10_000     # a deck's own source: each save rescans every deck, rebuilds the lists and syncs headers
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
 SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
 AUTOSAVE_KEY = "autosave"   # this user's choice (layout_settings), on unless switched off
@@ -355,7 +356,13 @@ class SourceFile(Surface):
 
     def _schedule_autosave(self) -> None:
         if self.dirty and not self.editor.is_read_only() and autosave_on():
-            self._autosave_timer.start()
+            self._autosave_timer.start(self._autosave_delay())
+
+    def _autosave_delay(self) -> int:
+        """How long after the last keystroke the buffer is written: a deck's own source (whose save runs the
+        deck-edit pipeline: rescan, header sync, list and preview rebuild) waits longer, as the app froze for
+        seconds on every pause in typing. It is written at once when the tab closes or another file is shown."""
+        return DECK_AUTOSAVE_DELAY_MS if self.on_saved is not None and not self.is_slide else AUTOSAVE_DELAY_MS
 
     def _on_fix_running(self, running: bool) -> None:
         self._update_status()
@@ -381,8 +388,9 @@ class SourceFile(Surface):
         previous_text = self.text
         try:
             # A slide's current file gets the "+", after its version is frozen if it is not yet.
-            new_text, backup_path, frozen = slide_versioning.save_slide(
-                self.app.project, self.path, raw_text, self.eol, previous_text, backup=not self._backed_up)
+            with timing.span("source.save_slide", file=self.path.name):
+                new_text, backup_path, frozen = slide_versioning.save_slide(
+                    self.app.project, self.path, raw_text, self.eol, previous_text, backup=not self._backed_up)
         except slide_source.StaleFileError:
             self.disk_changed()
             return False
@@ -402,8 +410,10 @@ class SourceFile(Surface):
         if backup_path is not None:
             self.app.log(f"Saving {self.path.name} as you type (backup: {backup_path.relative_to(self.app.project.root)})")
         if self.on_saved is not None:
-            self.on_saved(previous_text)
-        self.written.emit()
+            with timing.span("source.on_saved", file=self.path.name):
+                self.on_saved(previous_text)
+        with timing.span("source.written", file=self.path.name):
+            self.written.emit()
         if explicit:
             self.saved.emit()
         return True

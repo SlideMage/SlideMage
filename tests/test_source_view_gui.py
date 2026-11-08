@@ -317,6 +317,7 @@ def test_a_bad_hyperlink_stays_in_the_popover_with_the_reason(pane, slides):
 def quick(monkeypatch):
     """Autosave a moment after the last keystroke, not 1.5 s."""
     monkeypatch.setattr(source_file, "AUTOSAVE_DELAY_MS", 20)
+    monkeypatch.setattr(source_file, "DECK_AUTOSAVE_DELAY_MS", 20)
 
 
 def test_a_slide_is_saved_as_you_type_with_its_version_frozen_first_and_the_plus(pane, slides, quick):

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ... import timing
 from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal_steps
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
@@ -428,18 +429,22 @@ class SlideList(QWidget):
         if not same_deck:
             self.tree.collapsed.clear()
         self._deck_path = path
-        self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
-                          if deck else None)
+        with timing.span("slide_list.resolve_outline"):
+            self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
+                              if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
         if deck and not self._background_thumbnails:
-            self._set_outline(self._preview_images(self._outline))
+            with timing.span("slide_list.preview_images"):
+                self._set_outline(self._preview_images(self._outline))
         self._thumbnail_paths.clear()
         self._thumbnail_timer.stop()
         self.tree.blockSignals(True)
-        self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
+        with timing.span("slide_list.populate"):
+            self.tree.populate(self._outline, VIEW_LABELS[self.state.view], self.state.language)
         if deck and self._background_thumbnails:
-            self._queue_preview_images(self._outline)
+            with timing.span("slide_list.queue_previews"):
+                self._queue_preview_images(self._outline)
         items = self.tree.slide_items()
         for item in items:
             item.setSelected(self.tree.data_of(item).key in selected)

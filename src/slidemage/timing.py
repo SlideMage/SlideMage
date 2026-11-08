@@ -7,6 +7,8 @@ events went to <project>/.slidemage/timing.jsonl, read by tools/timing_summary.p
 from __future__ import annotations
 
 import logging
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 ENV = "SLIDEMAGE_TIMING"
@@ -22,3 +24,18 @@ def event(root: Path, name: str, **fields) -> None:
     the signature for the callers and the plugin API's HookContext.timing_event."""
     if enabled():
         log.debug("%s%s", name, "".join(f" {key}={value}" for key, value in fields.items()))
+
+
+@contextmanager
+def span(name: str, **fields):
+    """Log `name seconds=… key=value …` when the block ends, so that a stall shows in the debug log with the
+    step that took it (area `timing`); a no-op while the debug log is off."""
+    if not enabled():
+        yield
+        return
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        seconds = time.perf_counter() - start
+        log.debug("%s seconds=%.3f%s", name, seconds, "".join(f" {key}={value}" for key, value in fields.items()))

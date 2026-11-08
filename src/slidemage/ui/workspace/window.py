@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ... import timing
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
@@ -375,8 +376,9 @@ class WorkspaceWindow(QMainWindow):
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
         that was open last time, else the first active deck."""
-        self.deck_groups = load_deck_groups(self.project)
-        self.decks = scan_decks(self.project)
+        with timing.span("reload_decks.scan"):
+            self.deck_groups = load_deck_groups(self.project)
+            self.decks = scan_decks(self.project)
         self.topbar.set_decks(self.decks, self.deck_groups)
         self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
         if not self.decks:
@@ -389,9 +391,16 @@ class WorkspaceWindow(QMainWindow):
         first_active = next((d for d in self.decks if not d.archived), None)
         switched = self.state.set_deck(by_path or by_name or last or first_active or next(iter(self.decks), None))
         if not switched:   # a fresh scan of the open deck is no switch (state.set_deck): nothing told the views
-            self.slide_list.rebuild()
-            self.centre.refresh()
-            self.side_panels.refresh()
+            self.centre.rescanning = True
+            try:
+                with timing.span("reload_decks.slide_list"):
+                    self.slide_list.rebuild()
+            finally:
+                self.centre.rescanning = False
+            with timing.span("reload_decks.centre"):
+                self.centre.refresh()
+            with timing.span("reload_decks.side_panels"):
+                self.side_panels.refresh()
 
     def _remember_deck(self, deck: Optional[Deck]) -> None:
         if deck is not None:
@@ -742,10 +751,13 @@ class WorkspaceWindow(QMainWindow):
         or a dialog -- header-sync in the background, rescan (which redraws the
         list), then log a summary line and tell the list, which keeps
         `previous_text` for its Undo."""
-        threading.Thread(target=self._regenerate_headers_bg, daemon=True).start()
-        self.resync_deck(deck_path)
-        self.slide_list.deck_edited(deck_path, summary, previous_text)
-        self.log(summary)
+        with timing.span("after_deck_edit", summary=summary):
+            threading.Thread(target=self._regenerate_headers_bg, daemon=True).start()
+            with timing.span("after_deck_edit.resync"):
+                self.resync_deck(deck_path)
+            with timing.span("after_deck_edit.slide_list"):
+                self.slide_list.deck_edited(deck_path, summary, previous_text)
+            self.log(summary)
 
     def refresh_ai_review(self) -> None:
         from .wizard_portal import note_review_updates
@@ -791,7 +803,8 @@ class WorkspaceWindow(QMainWindow):
             del self._route_tasks[route_id]
 
     def _regenerate_headers_bg(self) -> None:
-        changed, n_decks = deck_headers.regenerate_headers(self.project)
+        with timing.span("header_sync"):
+            changed, n_decks = deck_headers.regenerate_headers(self.project)
         self.log(
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
