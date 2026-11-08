@@ -7,7 +7,8 @@ is not in git, so a worktree does not have it), keeps the tasks
 whose status is "open" (all with --all), and writes OUT.html from handover_list.template.html. Publish OUT.html with the
 Artifact tool; the page republishes itself with the user's picks and notes when they click "Start tasks".
 Each task's "Details" text is whatever stands between `<!-- task:ID -->` and `<!-- /task:ID -->` lines in handover.md; a
-task's optional "notes" field preloads its text field. A task with `"needs_items": true` is left out unless its marked text has a
+task's optional "notes" field preloads its text field. A task's optional "run" ({"mode": "session"|"agent"|"", "model", "effort"}) preselects the page's Subsession/Subagent boxes and
+model and effort lists as a recommendation (defaults: no mode, sonnet, medium). A task with `"needs_items": true` is left out unless its marked text has a
 bullet item (a line starting with "* " or "- "), so an empty standing section does not clutter the page. Prints the number of tasks and the ids, one line (and the ids that
 have no details). Standard library only.
 """
@@ -76,7 +77,11 @@ def main(argv):
     tasks = [t for t in tasks if not t.get("needs_items") or re.search(r"^[*-] ", details.get(t["id"], ""), re.M)]
     missing = [i for i in missing if any(t["id"] == i for t in tasks)]
     notes = {t["id"]: t["notes"] for t in tasks if t.get("notes")}
-    state = {"tasks": tasks, "sel": {}, "notes": dict(notes), "savedNotes": dict(notes), "sent": None, "updated": None}
+    run = {}
+    for t in tasks:
+        r = t.get("run") or {}
+        run[t["id"]] = {"mode": r.get("mode", ""), "model": r.get("model", "sonnet"), "effort": r.get("effort", "medium")}
+    state = {"tasks": tasks, "sel": {}, "notes": dict(notes), "savedNotes": dict(notes), "run": run, "sent": None, "updated": None}
     blob = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
     html = (HERE / "handover_list.template.html").read_text(encoding="utf-8").replace("__STATE__", blob)
     pathlib.Path(args[0]).write_text(html, encoding="utf-8")

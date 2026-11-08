@@ -1,7 +1,7 @@
 <title>Handover Next Tasks</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style id="css">
-/* Layout: one narrow column of task cards (grip, checkbox, title, source tag, arrows), a Details toggle and an always-visible notes field per card, and a fixed bar with Update and Start tasks. */
+/* Layout: one narrow column of compact task cards (grip, checkbox, title, source tag, arrows); under each, Details and Modify toggles, the run choice (Subsession or Subagent, model, effort), and a fixed bar with Update and Start tasks. */
 :root{--bg:#f6f7f9;--fg:#1b2430;--muted:#5d6877;--card:#ffffff;--line:#d9dee6;--accent:#1f5fbf;--on-accent:#ffffff;--ok:#1d7a4d;--font-ui:"IBM Plex Sans",system-ui,sans-serif;--font-mono:"IBM Plex Mono",ui-monospace,monospace}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171e;--fg:#e4e9f0;--muted:#98a3b3;--card:#1a212b;--line:#2c3644;--accent:#6fa3f0;--on-accent:#0d1520;--ok:#5cc58f;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#12171e;--fg:#e4e9f0;--muted:#98a3b3;--card:#1a212b;--line:#2c3644;--accent:#6fa3f0;--on-accent:#0d1520;--ok:#5cc58f;color-scheme:dark}
@@ -19,7 +19,7 @@ h1{font-size:26px;margin:0 0 4px;text-wrap:balance}
 .tag{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:4px}
 textarea{width:100%;box-sizing:border-box;min-height:56px;resize:vertical;font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px}
 textarea.dirty{border-color:var(--accent)}
-textarea:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+textarea:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;gap:12px;align-items:center;justify-content:space-between}
 .bar span{color:var(--muted);font-size:14px}
 .btns{display:flex;gap:8px}
@@ -35,35 +35,57 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mv{display:flex;flex-direction:column;gap:2px;flex:none}
 button.mb{background:transparent;color:var(--muted);border:1px solid var(--line);padding:0;width:26px;height:20px;font-size:10px;font-weight:400;border-radius:3px}
 button.mb:hover{color:var(--accent);border-color:var(--accent)}
-button.lnk{background:none;border:0;color:var(--accent);padding:0;font-size:13px;font-weight:600;justify-self:start;cursor:pointer}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding-left:38px;font-size:13px}
+button.lnk{background:none;border:0;color:var(--accent);padding:0;font-size:13px;font-weight:600;cursor:pointer}
+.opts label.ck{display:flex;gap:6px;align-items:center;cursor:pointer;color:var(--fg)}
+.opts input[type=checkbox]{accent-color:var(--accent)}
+.opts select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:3px 6px}
+.dot{color:var(--accent)}
+.pad{padding-left:38px}
 pre.det{margin:0;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:12px;line-height:1.5;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:10px}
 </style>
 <div id="app"></div>
 <script id="appjs">
 const STATE = /*S*/__STATE__/*E*/;
 STATE.open = STATE.open || {};
+STATE.mod = STATE.mod || {};
+STATE.run = STATE.run || {};
+const MODELS=[["sonnet","Sonnet"],["opus","Opus"],["haiku","Haiku"],["fable","Fable"]];
+const EFFORTS=[["low","Low"],["medium","Medium"],["high","High"],["xhigh","Extra high"],["max","Max"]];
 const $=(s,r=document)=>r.querySelector(s);
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function changed(){return STATE.tasks.filter(t=>(STATE.notes[t.id]||"")!==(STATE.savedNotes[t.id]||"")).map(t=>t.id)}
 function title(id){return STATE.tasks.find(t=>t.id===id).title}
+function run(id){return STATE.run[id]||(STATE.run[id]={mode:"",model:"sonnet",effort:"medium"})}
+function runText(id){const r=run(id);return r.mode?" ("+(r.mode==="session"?"subsession":"subagent")+", "+r.model+", "+r.effort+")":""}
+function opts(list,cur){return list.map(o=>'<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+o[1]+'</option>').join("")}
 function render(){
-  const app=$("#app");let h='<h1>Handover Next Tasks</h1><p class="sub">Tick what to start, and drag the handle (or use the arrows) to set the order: ticked tasks are started top to bottom. Write notes in any task\'s field and click Update to send them without starting anything. Source: SlideMage/docs/handover.md.</p>';
+  const app=$("#app");let h='<h1>Handover Next Tasks</h1><p class="sub">Tick what to start, and drag the handle (or use the arrows) to set the order: ticked tasks are started top to bottom. Use Modify to write notes for a task and Update to send them without starting anything. Source: SlideMage/docs/handover.md.</p>';
   if(STATE.updated){h+='<div class="note"><b>Update sent</b> for '+STATE.updated.ids.length+' task(s)'+(STATE.updated.wake?', and Claude was notified.':'. Claude could not be notified automatically: tell the session in chat that you sent an update.')+'</div>'}
   if(STATE.sent){h+='<div class="note"><b>Sent.</b> '+STATE.sent.ids.length+' task(s) handed to Claude'+(STATE.sent.wake?', and Claude was notified.':'. Claude could not be notified automatically: tell the session in chat that you sent the picks.')+' Pick again and resend to change it.</div>'}
   const dirty=changed();
   STATE.tasks.forEach((t,i)=>{
-    const on=!!STATE.sel[t.id],open=!!STATE.open[t.id],dn=dirty.indexOf(t.id)>=0;
+    const on=!!STATE.sel[t.id],open=!!STATE.open[t.id],mod=!!STATE.mod[t.id],dn=dirty.indexOf(t.id)>=0,hasNote=!!(STATE.notes[t.id]||"").trim(),r=run(t.id);
     h+='<div class="task'+(on?' on':'')+'" data-card="'+t.id+'"><div class="row"><div class="grip" draggable="true" data-grip="'+t.id+'" title="Drag to reorder">⋮⋮<span class="rk">'+(i+1)+'</span></div><input type="checkbox" id="c-'+t.id+'" data-id="'+t.id+'"'+(on?' checked':'')+'><label for="c-'+t.id+'"><div class="t">'+esc(t.title)+'</div><div class="d">'+esc(t.desc)+'</div><div class="tag">'+esc(t.grp+' · '+t.src)+'</div></label><div class="mv"><button class="mb" data-m="'+t.id+'" data-d="-1" aria-label="Move up">▲</button><button class="mb" data-m="'+t.id+'" data-d="1" aria-label="Move down">▼</button></div></div>';
-    h+='<button class="lnk" data-det="'+t.id+'" aria-expanded="'+open+'">'+(open?'Hide details':'Details')+'</button>';
+    h+='<div class="opts"><button class="lnk" data-det="'+t.id+'" aria-expanded="'+open+'">'+(open?'Hide details':'Details')+'</button><button class="lnk" data-mod="'+t.id+'" aria-expanded="'+mod+'">'+(mod?'Hide modify':'Modify')+(hasNote&&!mod?' <span class="dot" title="Has a note">●</span>':'')+'</button>';
+    if(r.mode!=="agent")h+='<label class="ck"><input type="checkbox" data-mode="session" data-rid="'+t.id+'"'+(r.mode==="session"?' checked':'')+'>Subsession</label>';
+    if(r.mode!=="session")h+='<label class="ck"><input type="checkbox" data-mode="agent" data-rid="'+t.id+'"'+(r.mode==="agent"?' checked':'')+'>Subagent</label>';
+    if(r.mode)h+='<label class="ck">Model <select data-run="model" data-rid="'+t.id+'" aria-label="Model for '+esc(t.title)+'">'+opts(MODELS,r.model)+'</select></label><label class="ck">Effort <select data-run="effort" data-rid="'+t.id+'" aria-label="Effort for '+esc(t.title)+'">'+opts(EFFORTS,r.effort)+'</select></label>';
+    h+='</div>';
     if(open)h+='<pre class="det">'+(t.detail?esc(t.detail):'No details in handover.md for this task.')+'</pre>';
-    h+='<textarea id="n-'+t.id+'" class="'+(dn?'dirty':'')+'" data-note="'+t.id+'" aria-label="Notes for '+esc(t.title)+'" placeholder="Notes or clarifications for this task (optional)">'+esc(STATE.notes[t.id]||"")+'</textarea>';
+    if(mod)h+='<textarea id="n-'+t.id+'" class="'+(dn?'dirty':'')+'" data-note="'+t.id+'" aria-label="Notes for '+esc(t.title)+'" placeholder="Notes or clarifications for this task (optional)">'+esc(STATE.notes[t.id]||"")+'</textarea>';
     h+='</div>';
   });
   const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length;
   h+='<div class="bar"><span id="cnt">'+n+' selected'+(dirty.length?', '+dirty.length+' changed note(s)':'')+'</span><div class="btns"><button id="upd" class="sec"'+(dirty.length?'':' disabled')+'>Update</button><button id="go"'+(n?'':' disabled')+'>Start tasks</button></div></div>';
   app.innerHTML=h;
 }
-document.addEventListener("change",e=>{const id=e.target.dataset&&e.target.dataset.id;if(id){STATE.sel[id]=e.target.checked;if(!e.target.checked)delete STATE.sel[id];render()}});
+document.addEventListener("change",e=>{
+  const t=e.target,d=t.dataset||{};
+  if(d.id){STATE.sel[d.id]=t.checked;if(!t.checked)delete STATE.sel[d.id];render()}
+  else if(d.mode){const r=run(d.rid);r.mode=t.checked?d.mode:"";render()}
+  else if(d.run){run(d.rid)[d.run]=t.value}
+});
 document.addEventListener("input",e=>{const id=e.target.dataset&&e.target.dataset.note;if(id){STATE.notes[id]=e.target.value;const d=changed(),u=$("#upd"),c=$("#cnt");if(u)u.disabled=!d.length;e.target.classList.toggle("dirty",d.indexOf(id)>=0);if(c){const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length;c.textContent=n+" selected"+(d.length?", "+d.length+" changed note(s)":"")}}});
 const RESET=':root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}';
 function noteLines(ids){return ids.map(id=>"- "+title(id)+" ["+id+"]: "+((STATE.notes[id]||"").trim()||"(note cleared)")).join("\n")}
@@ -95,11 +117,11 @@ document.addEventListener("click",async e=>{
     const ids=STATE.tasks.filter(t=>STATE.sel[t.id]).map(t=>t.id);if(!ids.length)return;
     btn.disabled=true;btn.textContent="Sending…";
     const ch=changed().filter(id=>ids.indexOf(id)<0);
-    let msg="Start these tasks now, in this order (the full picks are also in this page's STATE.sent):\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
+    let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
     if(ch.length)msg+="\n\nAlso record these notes (do not start these tasks):\n"+noteLines(ch);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
-    ns.sent={ids:ids,wake:wk,at:new Date().toISOString(),picked:ids.map(id=>({rank:STATE.tasks.findIndex(t=>t.id===id)+1,id:id,task:title(id),note:STATE.notes[id]||""}))};
+    ns.sent={ids:ids,wake:wk,at:new Date().toISOString(),picked:ids.map(id=>({rank:STATE.tasks.findIndex(t=>t.id===id)+1,id:id,task:title(id),note:STATE.notes[id]||"",run:JSON.parse(JSON.stringify(run(id)))}))};
     ns.savedNotes=JSON.parse(JSON.stringify(STATE.notes));
     await save(btn,ns);
   }else if(btn.id==="upd"){
@@ -122,6 +144,8 @@ document.addEventListener("dragend",()=>{dragId=null;document.querySelectorAll("
 document.addEventListener("click",e=>{
   const d=e.target.closest&&e.target.closest("[data-det]");
   if(d){const id=d.dataset.det;STATE.open[id]=!STATE.open[id];render();return}
+  const m=e.target.closest&&e.target.closest("[data-mod]");
+  if(m){const id=m.dataset.mod;STATE.mod[id]=!STATE.mod[id];render();if(STATE.mod[id]){const ta=$('[data-note="'+id+'"]');if(ta)ta.focus()}return}
   const b=e.target.closest&&e.target.closest("[data-m]");if(!b)return;
   const id=b.dataset.m;const i=STATE.tasks.findIndex(t=>t.id===id);moveTo(id,i+Number(b.dataset.d));
   const nb=document.querySelector('[data-m="'+id+'"][data-d="'+b.dataset.d+'"]');if(nb)nb.focus()

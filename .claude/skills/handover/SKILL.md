@@ -50,12 +50,20 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 5. After each step, update `docs/handover.md`: the task's line in the TASKS block (`status`: `done` or `blocked`, and a
    changed `desc` if the scope moved) and its section, as the working rule says. Re-read the lines right before editing:
    other sessions append to this file.
-6. Independent tasks may go to their own sessions or subagents where the session rules allow it; tasks that touch the same
-   files go one after another.
+6. **Run choice.** Each pick carries `run` = `{mode, model, effort}`, preselected from the task's `run` recommendation and possibly
+   changed by the user, so it is the user's instruction, not a suggestion:
+   - `mode: "session"` (page label "Subsession"): start a session of its own with `start_session` (`initiation: "user_asked"`, the
+     given `model` and `effort`, a worktree for work that ends in a branch or PR), with a brief that names the files, the
+     handover section and what done looks like. Do not do that task yourself.
+   - `mode: "agent"` (page label "Subagent"): run it inside this turn with the `Agent` tool, with the given `model` and `effort`.
+   - `mode: ""`: do it in this session.
+   Tasks that touch the same files go one after another, whatever their modes.
 
 ## 3. Keeping the list useful
 
-- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before starting it.
+- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before
+  starting it. **Also set the line's `run` recommendation** (mode, model, effort; see the rules at the top of handover.md) so the page
+  preselects a sensible choice: the user can change it before clicking Start tasks.
 - Finished sections move to `docs/handover-archive.md`, unedited; ask the user first.
 - The page template is `docs/handover_list.template.html`. Its script keeps the `/*S*/ ... /*E*/` markers around the state
   and `__STATE__` is the placeholder the script fills: keep both when changing it.
