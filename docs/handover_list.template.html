@@ -41,7 +41,7 @@ const $=(s,r=document)=>r.querySelector(s);
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function render(){
   const app=$("#app");let h='<h1>Handover Next Tasks</h1><p class="sub">Tick what to work on next, and drag the handle (or use the arrows) to set the order: ticked tasks are started top to bottom. Add a note to refine a task. Source: SlideMage/docs/handover.md.</p>';
-  if(STATE.sent){h+='<div class="sent"><b>Sent.</b> '+STATE.sent.ids.length+' task(s) handed to Claude. Pick again and resend to change it.</div>'}
+  if(STATE.sent){h+='<div class="sent"><b>Sent.</b> '+STATE.sent.ids.length+' task(s) handed to Claude'+(STATE.sent.wake?', and Claude was notified.':'. Claude could not be notified automatically: tell the session in chat that you sent the picks.')+' Pick again and resend to change it.</div>'}
   STATE.tasks.forEach((t,i)=>{
     const on=!!STATE.sel[t.id];
     h+='<div class="task'+(on?' on':'')+'" data-card="'+t.id+'"><div class="row"><div class="grip" draggable="true" data-grip="'+t.id+'" title="Drag to reorder">⋮⋮<span class="rk">'+(i+1)+'</span></div><input type="checkbox" id="c-'+t.id+'" data-id="'+t.id+'"'+(on?' checked':'')+'><label for="c-'+t.id+'"><div class="t">'+esc(t.title)+'</div><div class="d">'+esc(t.desc)+'</div><div class="tag">'+esc(t.grp+' · '+t.src)+'</div></label><div class="mv"><button class="mb" data-m="'+t.id+'" data-d="-1" aria-label="Move up">▲</button><button class="mb" data-m="'+t.id+'" data-d="1" aria-label="Move down">▼</button></div></div>';
@@ -60,6 +60,20 @@ document.addEventListener("click",async e=>{
   const ids=STATE.tasks.filter(t=>STATE.sel[t.id]).map(t=>t.id);if(!ids.length)return;
   e.target.disabled=true;e.target.textContent="Sending…";
   const ns=JSON.parse(JSON.stringify(STATE));ns.sent={ids:ids,at:new Date().toISOString(),picked:ids.map(id=>({rank:ns.tasks.findIndex(t=>t.id===id)+1,task:ns.tasks.find(t=>t.id===id).title,note:ns.notes[id]||""}))};
+  /* Republishing wakes nobody, so also send the picks to Claude as a comment (editors only; the viewer may be asked once). */
+  ns.sent.wake=false;
+  try{
+    const cm=await claude.use("comments");
+    if(cm&&cm.sendToClaude&&(await cm.canSendToClaude())==="available"){
+      let msg="Start these tasks now, in this order (the full picks are also in this page's STATE.sent):
+"+ns.sent.picked.map((p,i)=>(i+1)+". "+p.task+(p.note?" - note: "+p.note:"")).join("
+");
+      if(new TextEncoder().encode(msg).length>3900)msg=msg.slice(0,1500)+"
+... (cut; read STATE.sent for the rest)";
+      await cm.sendToClaude({anchor:await cm.anchorFor(document.getElementById("go")),text:msg});
+      ns.sent.wake=true;
+    }
+  }catch(err){}
   const art=await claude.use("artifact");
   if(!art){e.target.textContent="Unavailable here";return}
   const css=$("#css").textContent;
