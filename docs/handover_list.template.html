@@ -65,11 +65,8 @@ document.addEventListener("click",async e=>{
   try{
     const cm=await claude.use("comments");
     if(cm&&cm.sendToClaude&&(await cm.canSendToClaude())==="available"){
-      let msg="Start these tasks now, in this order (the full picks are also in this page's STATE.sent):
-"+ns.sent.picked.map((p,i)=>(i+1)+". "+p.task+(p.note?" - note: "+p.note:"")).join("
-");
-      if(new TextEncoder().encode(msg).length>3900)msg=msg.slice(0,1500)+"
-... (cut; read STATE.sent for the rest)";
+      let msg="Start these tasks now, in this order (the full picks are also in this page's STATE.sent):\n"+ns.sent.picked.map((p,i)=>(i+1)+". "+p.task+(p.note?" - note: "+p.note:"")).join("\n");
+      if(new TextEncoder().encode(msg).length>3900)msg=msg.slice(0,1500)+"\n... (cut; read STATE.sent for the rest)";
       await cm.sendToClaude({anchor:await cm.anchorFor(document.getElementById("go")),text:msg});
       ns.sent.wake=true;
     }
