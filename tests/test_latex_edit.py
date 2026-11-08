@@ -213,3 +213,8 @@ def test_minimal_replacement_reports_utf16_offsets():
     assert le.minimal_replacement("same", "same")[2] == ""
     assert le.utf16_len("a😀") == 3
     assert len(le.utf16_units("a😀")) == 3
+
+
+def test_insert_menu_offers_final_state_for_students():
+    entry = next(i for i in le.INSERT_COMMANDS if i.label == "\SMFinalStateForStudents")
+    assert le.insert_edit(entry, "", "") == le.Edit("\SMFinalStateForStudents", len("\SMFinalStateForStudents"))

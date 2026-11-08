@@ -3750,3 +3750,8 @@ v0.14.47 (2026-11-08, PDF section Appendix renamed Navigation): The generated ap
 
 CHANGE: The PDF section with the table of contents of slide previews is now called Navigation.
 - Bookmarks and the agenda slide itself use the new name.
+
+v0.14.48 (2026-11-08, Insert menu: \SMFinalStateForStudents): The Insert menu of the slide edit tabs now offers \SMFinalStateForStudents, which makes every student version show only the final reveal state of the slide it stands in front of. It inserts the macro at the cursor, like \conditionalpause[instructor].
+
+NEW: Insert has an entry for the final-state-for-students macro.
+- Choose Insert, then \SMFinalStateForStudents, with the cursor on the line before the frame.
