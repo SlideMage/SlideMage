@@ -3740,3 +3740,24 @@ v0.14.45 (2026-11-08, boxed footnote markers sat raised in the footnote): With \
 NEW: Boxed footnote numbers are easier to read at the bottom of the slide.
 - In the footnote itself the box is now full size on the line instead of a tiny raised superscript.
 - The number in the text keeps its look.
+
+v0.14.46 (2026-11-08, Render now failed with WinError 6): Every helper process SlideMage starts for a render or a git query now gets an empty standard input of its own instead of inheriting the app's. A windowed app on Windows can end up with no usable input handle, and starting a process then failed with "[WinError 6] The handle is invalid" until SlideMage was restarted.
+
+FIX: "Render now" no longer fails with an invalid handle.
+- LaTeX runs, git queries and the process killer no longer inherit the app's standard input.
+
+v0.14.47 (2026-11-08, PDF section Appendix renamed Navigation): The generated appendix agenda slide, the one that lists the deck's sections and links to their slide-preview grids, was titled "Appendix", so the PDF's bookmarks and navigation showed "Appendix". Its title is now "Navigation".
+
+CHANGE: The PDF section with the table of contents of slide previews is now called Navigation.
+- Bookmarks and the agenda slide itself use the new name.
+
+v0.14.48 (2026-11-08, Insert menu: \SMFinalStateForStudents): The Insert menu of the slide edit tabs now offers \SMFinalStateForStudents, which makes every student version show only the final reveal state of the slide it stands in front of. It inserts the macro at the cursor, like \conditionalpause[instructor].
+
+NEW: Insert has an entry for the final-state-for-students macro.
+- Choose Insert, then \SMFinalStateForStudents, with the cursor on the line before the frame.
+
+v0.14.49 (2026-11-08, Slide edit tab: a way back to the last version): "Update version" in a slide's edit tab is now a split button, and its caret menu offers "Revert to vX.Y.Z…", X.Y.Z being the version the slide was changed from. After one question, the slide's text goes back to that version's content as one undoable edit of the editor (Ctrl+Z brings the changes back), keeping the slide's own header; the autosave then writes it without the "+". With AutoSave off and unsaved edits the question also offers "Revert to saved", the file on disk. An autosave whose text equals the frozen version's content no longer puts the "+" on the version line (slide_versioning.prepare_autosave). slide_versioning.reverted_text() is the text half of revert_to_version().
+
+NEW: Go back to the last version of a slide from its edit tab.
+- Open the caret next to Update version and choose Revert to the version.
+- Ctrl+Z undoes it.

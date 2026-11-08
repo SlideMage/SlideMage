@@ -186,7 +186,12 @@ def prepare_autosave(current_path: Path, id_slug: str, disk_text: str, new_text:
     marker = parse_marker(disk_text)
     version = marker[0] if marker is not None else DEFAULT_BASELINE
     changed = marker is not None and marker[1]
-    freeze_as = None if changed or frozen_path(current_path, id_slug, version).exists() else version
+    frozen = frozen_path(current_path, id_slug, version)
+    freeze_as = None if changed or frozen.exists() else version
+    if freeze_as is None and frozen.exists():
+        from . import slide_source
+        if not _changed_since(slide_source.read_slide_source(frozen)[0], new_text):
+            return set_marker(new_text, version), None      # back to the frozen content (a revert): no "+"
     return set_marker(new_text, version, changed=True), freeze_as
 
 
@@ -394,6 +399,19 @@ def revert_to_version(ctx: ProjectContext, current_path: Path, id_slug: str) -> 
     from .deck_headers import HEADER_RE
 
     cur_text, eol = slide_source.read_slide_source(current_path)
+    new_text, base = reverted_text(current_path, id_slug, cur_text)
+    if new_text != cur_text:
+        slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=cur_text)
+    return base
+
+
+def reverted_text(current_path: Path, id_slug: str, cur_text: str) -> tuple[str, Version]:
+    """(`cur_text` given back the content of the version it was changed from, keeping its own header and
+    without the "+", that version). Nothing is written: revert_to_version() writes it, the Source view puts it
+    into the editor as one undoable edit. Raises ValueError when there is no frozen version to go back to."""
+    from . import slide_source
+    from .deck_headers import HEADER_RE
+
     marker = parse_marker(cur_text)
     base = marker[0] if marker is not None else DEFAULT_BASELINE
     base_path = frozen_path(current_path, id_slug, base)
@@ -402,12 +420,8 @@ def revert_to_version(ctx: ProjectContext, current_path: Path, id_slug: str) -> 
     new_text = strip_marker(slide_source.read_slide_source(base_path)[0])
     header = HEADER_RE.search(cur_text)
     if header:
-        new_text = HEADER_RE.sub(lambda _m: header.group(0), new_text, count=1) \
-            if HEADER_RE.search(new_text) else header.group(0) + new_text
-    new_text = set_marker(new_text, base)
-    if new_text != cur_text:
-        slide_source.save_slide_source(ctx, current_path, new_text, eol, expected_text=cur_text)
-    return base
+        new_text = HEADER_RE.sub(lambda _m: header.group(0), new_text, count=1)             if HEADER_RE.search(new_text) else header.group(0) + new_text
+    return set_marker(new_text, base), base
 
 
 class RestoreError(ValueError):
