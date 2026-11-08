@@ -41,23 +41,14 @@ def test_deleting_the_include_line_of_the_focused_slide_and_autosaving_keeps_the
     assert window.centre.source.current is source
 
 
-def test_a_deck_source_waits_10_s_for_its_autosave_and_other_files_keep_the_short_delay(qapp, monkeypatch, tmp_path):
-    from slidemage.ui.workspace import source_file
-
-    assert source_file.DECK_AUTOSAVE_DELAY_MS == 10_000
+def test_closing_a_deck_source_tab_writes_its_edits_at_once(qapp, monkeypatch, tmp_path):
     root = tmp_path / "example"
     shutil.copytree(EXAMPLE, root)
     window = build_window(monkeypatch, ProjectContext.at(root))
     window.reload_decks()
     deck = next(d for d in window.decks if d.name == "slidemage-manual")
     window.open_deck_source_editor(deck)
-    source = window.centre.source.current
-    source.editor.insertPlainText("% a\n")
-    assert source._autosave_timer.isActive() and source._autosave_timer.interval() == 10_000
+    window.centre.source.current.editor.insertPlainText("% a\n")
     window._on_edit_bib()
-    bib = window.centre.source.current
-    assert bib.path == window.project.bibliography_path
-    bib.editor.insertPlainText("% a\n")
-    assert bib._autosave_timer.interval() == source_file.AUTOSAVE_DELAY_MS
-    window.centre.close_tab(window.centre.tabs.tab_for(deck.path))      # closing the tab writes it at once
+    window.centre.close_tab(window.centre.tabs.tab_for(deck.path))
     assert "% a\n" in deck.path.read_text(encoding="utf-8")

@@ -266,10 +266,12 @@ class SlideList(QWidget):
             validation = preview_cache.ValidationPass()
             revisions = {}
             started = time.perf_counter()
-            updated = preview_thumbnails.for_outline(
-                ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
-            stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
+            with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):
+                updated = preview_thumbnails.for_outline(
+                    ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
+                    paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
+            with timing.span("thumbnails.stable"):
+                stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,
                        'configuration_seconds': validation.configuration_seconds,
@@ -327,7 +329,10 @@ class SlideList(QWidget):
         self._thumbnail_metrics = metrics
         self._thumbnail_metrics['gui_event_latency_seconds'] = self._thumbnail_gui_latency
         publishing = time.perf_counter()
-        self._apply_preview_rows(outline, paths=paths)
+        timing.event(self.app.project.root, "thumbnails.published", **{k: round(v, 3) if isinstance(v, float) else v
+                                                                      for k, v in metrics.items()})
+        with timing.span("thumbnails.apply_rows"):
+            self._apply_preview_rows(outline, paths=paths)
         self._thumbnail_metrics['publication_seconds'] = time.perf_counter() - publishing
 
     def preview_source_changed(self, path: Path) -> None:
