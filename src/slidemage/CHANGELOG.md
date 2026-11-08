@@ -3730,7 +3730,7 @@ NEW: Updates and downloads work again when Windows had not yet fetched GitHub's 
 - SlideMage and SlideMage Presenter now check websites' security certificates with the ones your computer trusts, so "Couldn't reach GitHub" no longer appears in Settings -> Plugins -> Themes, and the update check, theme and citation-format updates and the plugin list work again.
 - If a certificate still cannot be checked, the message says so in plain words and names the website, and mentions that a proxy or security software may be intercepting HTTPS.
 
-v0.14.45 (2026-11-08, Settings closed when the log folder opened): Settings -> About -> Log folder -> Open now opens the folder and leaves Settings open.
+v0.14.43 (2026-11-08, Settings closed when the log folder opened): Settings -> About -> Log folder -> Open now opens the folder and leaves Settings open.
 
-FIX: The Settings window no longer closes when you open the log folder.
+NEW: The Settings window no longer closes when you open the log folder.
 - Only the folder opens; the other buttons in About that start something (version history, update check, debug report) still close Settings first.
