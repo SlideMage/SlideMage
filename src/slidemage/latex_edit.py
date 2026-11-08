@@ -247,6 +247,8 @@ INSERT_COMMANDS = [
     Insert("Hyperlink…", "hyperlink", hint="\\href{URL}{text}"),
     Insert("Code file…", "code_file", hint="\\SMCodeFile{snippets/…}"),
     Insert("\\conditionalpause[instructor]", "literal"),
+    # students see only the slide's last reveal state; goes right before the frame
+    Insert("\\SMFinalStateForStudents", "literal"),
     Insert("\\only<2->{...}", "wrap_macro", "only<2->"),
     # an image or other content in the bottom-right corner of the content area, as an overlay
     Insert("\\cornerfigure[corner=se]{...}", "wrap_macro", "cornerfigure[corner=se]"),

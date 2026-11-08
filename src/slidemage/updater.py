@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import diagnostics
+from . import diagnostics, tls_trust
 from .project import config_dir
 from .version import to_zero_x
 
@@ -325,7 +325,7 @@ def _get_json(url: str, timeout: float):
             ) from exc
         raise UpdateError(f"GitHub answered {exc.code} {exc.reason}.") from exc
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise UpdateError(f"Couldn't reach GitHub: {exc}") from exc
+        raise UpdateError(tls_trust.certificate_message(exc, url) or f"Couldn't reach GitHub: {exc}") from exc
 
 
 def _release_from(data: dict, flavour: Optional[str] = None) -> Release:
@@ -374,7 +374,7 @@ def download(
     except urllib.error.HTTPError as exc:
         raise UpdateError(f"Download failed: {exc.code} {exc.reason}.") from exc
     except (urllib.error.URLError, OSError) as exc:
-        raise UpdateError(f"Download failed: {exc}") from exc
+        raise UpdateError(tls_trust.certificate_message(exc, release.asset_url) or f"Download failed: {exc}") from exc
 
 
 def install_zip(zip_path: Path, executable: Path, binary_name: str) -> None:

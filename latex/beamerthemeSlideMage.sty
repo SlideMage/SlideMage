@@ -1849,10 +1849,24 @@ fg=normal~text.fg
 \protected\def\SM@FootnoteDice#1{\SM@FootnoteMarkerInText{%
 	\SM@FootnoteDiceFaces{#1}%
 	\tikz[baseline=0pt, x=1ex, y=1ex, line width=0.08ex, line cap=round]{\SM@FootnoteDiceList}}}
-\protected\def\SM@FootnoteBoxed#1{\SM@FootnoteMarkerInText{%
+% In the footnote block itself (v0.14.45) the boxed marker is not raised: a box as tall as a
+% capital on the baseline, the number scaled to fit. \SM@FnFulltrue is set around the footnote's own marker.
+\newdimen\SM@BoxCap
+\newdimen\SM@BoxDigit
+\newif\ifSM@FnFull
+\newif\ifSM@BoxedStyle
+\protected\def\SM@FootnoteBoxedFull#1{%
+	\settoheight{\SM@BoxCap}{H}%
+	\settoheight{\SM@BoxDigit}{0}%
+	\tikz[baseline=0pt]{%
+		\node[draw, line width=0.07ex, rounded corners=0.22ex, inner xsep=0.22ex, inner ysep=0pt,
+			anchor=south west, minimum height=\SM@BoxCap, minimum width=\SM@BoxCap,
+			text height=0.7\SM@BoxDigit, text depth=0pt, align=center]
+			at (0,0) {\scalebox{0.7}{\strut #1}};}}
+\protected\def\SM@FootnoteBoxed#1{\ifSM@FnFull\SM@FootnoteBoxedFull{#1}\else\SM@FootnoteMarkerInText{%
 	\tikz[baseline=(SMBoxedNumber.base)]{%
 		\node[draw, line width=0.07ex, rounded corners=0.22ex, inner xsep=0.28ex, inner ysep=0.2ex,
-			minimum width=1.3ex, minimum height=1.55ex, align=center] (SMBoxedNumber) {#1};}}}
+			minimum width=1.3ex, minimum height=1.55ex, align=center] (SMBoxedNumber) {#1};}}\fi}
 \ExplSyntaxOn
 \int_new:N \l__SM_footnote_dice_int
 \int_new:N \l__SM_footnote_die_int
@@ -1886,9 +1900,9 @@ fg=normal~text.fg
 	{
 		\str_case:nnF {#1}
 			{
-				{ symbols } { \cs_set:Npn \SMFootnoteMark ##1 { \SMFnSymbol {##1} } }
-				{ boxed } { \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteBoxed } { \number ##1 } } }
-				{ dice } { \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteDice } { \number ##1 } } }
+				{ symbols } { \use:c { SM@BoxedStylefalse } \cs_set:Npn \SMFootnoteMark ##1 { \SMFnSymbol {##1} } }
+				{ boxed } { \use:c { SM@BoxedStyletrue } \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteBoxed } { \number ##1 } } }
+				{ dice } { \use:c { SM@BoxedStylefalse } \cs_set:Npn \SMFootnoteMark ##1 { \use:c { SM@FootnoteDice } { \number ##1 } } }
 			}
 			{
 				\PackageError { beamerthemeSlideMage }
@@ -2057,7 +2071,7 @@ fg=normal~text.fg
 			\ifx\@thefnmark\@empty
 				\SM@SideFootnoteCover{\insertfootnotetext}\par%
 			\else
-				\SM@SideFootnoteCover{\hspace*{\SMSideFootnoteMarkerShift}\insertfootnotemark\,\insertfootnotetext}\par%
+				\SM@SideFootnoteCover{\hspace*{\SMSideFootnoteMarkerShift}\SM@InsertFootnoteMark\,\insertfootnotetext}\par%
 			\fi
 		}%
 	\else
@@ -2086,10 +2100,12 @@ fg=normal~text.fg
 	\ifx\@thefnmark\@empty
 		\insertfootnotetext\par%
 	\else
-		\insertfootnotemark\,\insertfootnotetext\par%
+		\SM@InsertFootnoteMark\,\insertfootnotetext\par%
 	\fi
 	\fi
 }
+% The footnote's own marker: the boxed style full size on the baseline, any other as beamer sets it.
+\def\SM@InsertFootnoteMark{\ifSM@BoxedStyle{\SM@FnFulltrue\normalfont\@thefnmark}\kern0.3em\else\insertfootnotemark\fi}
 \setbeamertemplate{footnote}[SMFootnote]
 % A footnote in revealed content (v10.12.0): an item after \pause, \item<2->, \onslide<2->,
 % \uncover<2->{...}, \visible<2->{...}. Beamer builds the footnote's text where \footnote is

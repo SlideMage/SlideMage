@@ -20,6 +20,7 @@ src/slidemage/diagnostics.py
 src/slidemage/fileio.py
 src/slidemage/processes.py
 src/slidemage/project.py
+src/slidemage/tls_trust.py
 src/slidemage/ui/__init__.py
 src/slidemage/ui/layout_settings.py
 src/slidemage/updater.py

@@ -297,11 +297,15 @@ class GeneralTab(Page):
 
 
 def _command_row(app, leave, command_id: str, title: str, note: str, text: str, *,
-                 enabled: bool = True) -> tuple[QWidget, Button]:
-    """A row whose button closes the sheet (`leave`), then runs the window command `command_id`."""
+                 enabled: bool = True, stay: bool = False) -> tuple[QWidget, Button]:
+    """A row whose button closes the sheet (`leave`), then runs the window command `command_id`. With `stay` the
+    command runs at once and the sheet stays open (for commands that open another program, such as a folder)."""
     button = Button(text, compact=True)
     button.setEnabled(enabled)
-    button.clicked.connect(lambda: leave(partial(app.commands.run, command_id, app)))
+    if stay:
+        button.clicked.connect(lambda: app.commands.run(command_id, app))
+    else:
+        button.clicked.connect(lambda: leave(partial(app.commands.run, command_id, app)))
     return action_row(title, note, button), button
 
 
@@ -355,7 +359,8 @@ class AboutTab(Page):
             "on purpose, but a traceback or a compile line can still carry a fragment, so look through a log before you "
             "share it. Warnings and errors are always kept, in a small error log."))
         layout.addWidget(_command_row(
-            app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open")[0])
+            app, leave, "open_logs", "Log folder", str(diagnostics.log_dir()), "Open",
+            stay=True)[0])
         layout.addWidget(_command_row(
             app, leave, "debug_report", "Debug report",
             "The logs in one zip file, saved where you choose, to send with a problem report.", "Save…")[0])

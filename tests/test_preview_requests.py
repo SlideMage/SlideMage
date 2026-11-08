@@ -264,10 +264,13 @@ def test_cache_identity_reads_the_raster_version_once(tmp_path, monkeypatch):
     source.write_text('body')
     spec = preview_requests.PreviewRequest(preview_target.for_path(ctx, source),
                                            preview_requests.SourceRevision.capture(source), 'instructor', 'EN')
+    # The cache is the process's: a thumbnail worker an earlier GUI test left running on this xdist worker may fill it
+    # (or miss it at the same moment) while this test runs. So fill it first, then check nothing reads the version
+    # again: that holds whichever thread filled it.
+    first = preview_requests.cache_identity(spec)
     reads = []
     monkeypatch.setattr(preview_requests, 'version', lambda name: reads.append(name) or installed(name))
-    first = preview_requests.cache_identity(spec)
-    assert preview_requests.cache_identity(spec) == first and reads == ['pymupdf']
+    assert all(preview_requests.cache_identity(spec) == first for _ in range(3)) and reads == []
     assert first['raster']['renderer'] == installed('pymupdf')
 
 

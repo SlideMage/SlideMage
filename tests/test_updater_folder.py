@@ -117,10 +117,19 @@ def test_the_windows_helper_swaps_the_folder_the_app_was_started_in(tmp_path):
     """)
     subprocess.run([sys.executable, "-c", app], cwd=install, check=True, timeout=60)
     deadline = time.monotonic() + 60
-    while (install / "SlideMage.exe").read_bytes() != b"new" or staging.exists():
+    while _bytes_or_none(install / "SlideMage.exe") != b"new" or staging.exists():
         assert time.monotonic() < deadline, "the helper did not swap the folders"
         time.sleep(0.2)
     assert (tmp_path / "SlideMage-folder.old" / "SlideMage.exe").read_bytes() == b"old"
+
+
+def _bytes_or_none(path):
+    """The file's bytes, or None while the helper is between its two moves: the installation folder is then briefly
+    gone, or the file is held by the move. Under load (-n auto) the poll landed in that moment."""
+    try:
+        return path.read_bytes()
+    except (FileNotFoundError, PermissionError):
+        return None
 
 
 @pytest.mark.skipif(os.name != "nt", reason="runs the Windows helper")

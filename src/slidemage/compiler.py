@@ -407,6 +407,7 @@ class CancelToken:
             subprocess.run(
                 ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                 creationflags=subprocess.CREATE_NO_WINDOW,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
@@ -436,7 +437,7 @@ def run_streamed(
     returncode = None
     try:
         proc = subprocess.Popen(
-            cmd, cwd=cwd, env=env, stdout=subprocess.PIPE,
+            cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, errors=errors, bufsize=bufsize,
             **no_console_kwargs(),
             **({"start_new_session": True} if cancel is not None and os.name != "nt" else {}),

@@ -26,7 +26,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from http.client import HTTPException
 
-from .. import diagnostics
+from .. import diagnostics, tls_trust
 from ..fileio import atomic_write
 from ..plugin_api import SUPPORTED_API_VERSIONS
 from ..version import VERSION_NUMBER
@@ -298,7 +298,8 @@ def fetch(timeout: float = 10) -> Catalogue:
             info["status"] = getattr(response, "status", None)
             raw = response.read(MAX_BYTES + 1)
     except (urllib.error.URLError, HTTPException, OSError, ValueError) as e:
-        raise CatalogueError(f"Could not load the plugin list: {e}") from None
+        raise CatalogueError(tls_trust.certificate_message(e, request.full_url)
+                             or f"Could not load the plugin list: {e}") from None
     if len(raw) > MAX_BYTES:
         raise CatalogueError("The plugin list is too large.")
     try:
