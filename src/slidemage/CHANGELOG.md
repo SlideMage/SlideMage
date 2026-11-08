@@ -3782,3 +3782,9 @@ v0.14.53 (2026-11-08, direct request: the app froze for seconds while editing a 
 NEW: Deleting the line of the slide you had selected in a deck's source no longer throws you out of the source tab when it saves.
 - The debug log now times each step of a save, so the cause of the freeze while editing a deck source can be found.
 - Deleting the line of the selected slide in a deck's source keeps you in the source tab.
+
+v0.14.54 (2026-11-08, direct request: the tests must work with the project, the framework and the snapshot on different drives): A project, the SlideMage framework and a deck snapshot can now be on different drives. A snapshot no longer fails with "path is on mount 'D:', start on mount 'C:'" (deck_snapshot._rel used os.path.relpath between drives; such a file now counts as outside the project, and a framework on another drive goes to SlideMage/latex in the snapshot). A biber source named relatively in the .blg (../SlideMage.bib) is read relative to the folder latexmk ran in instead of being reported as a file outside the project. The .latexmkrc files (example/, example/decks/) turn every path Git's Perl reports (/tmp/... for the Windows temp folder, not only /d/...) into a Windows path for TeX, so a project in the temp folder finds its media and .bib files; preview_equivalence accepts both digests of those two files. Tests: two-drive tests in test_deck_snapshot.py (skipped when temp folder and repo share a drive), a relative-.blg test in test_compile_records.py.
+
+NEW: Snapshots and compiles work when the project, the SlideMage framework and the snapshot folder are on different drives.
+- A deck snapshot no longer fails when the framework is on another drive than the project.
+- A project in the Windows temp folder finds its images and bibliography when compiled from Git's Perl.

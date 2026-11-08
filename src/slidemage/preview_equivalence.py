@@ -175,9 +175,13 @@ AUDITED_PROJECT_TEMPLATES = frozenset({
     "74e4d515f70f97274875457274acc7746894d40ba245a9e8ce2494f3db9712ff",   # v10.0.0: the v8.40.0 one as the project compatibility update leaves it
     "2952cf64c3057cfcc7e35c2f00e4398e5e96c032603aecf0945c8f22aaf60549",   # v10.1.0: the same with a comment that names \SMFrametitleRightPadding
 })
+# The earlier digest of each file stays valid: v0.14.54 only changed how Git's Perl paths (/tmp/...) are turned
+# into Windows ones, which no view-dependent rule depends on.
 AUDITED_LATEXMKRC = {
-    ".latexmkrc": "8273d5f38c719ab1e1064fe07ea27a73de7d423ee7d70b2e7e82312b302a73bc",
-    "decks/.latexmkrc": "03c0f5a0a7a825fd3802aeffbdbbd7be90a0bea52e3a1e38d2c127fa488cc0f7",
+    ".latexmkrc": frozenset({"8273d5f38c719ab1e1064fe07ea27a73de7d423ee7d70b2e7e82312b302a73bc",
+                             "b19322345f34b32965779890f55b1fb76eae1260383e5035600bde666702c951"}),
+    "decks/.latexmkrc": frozenset({"03c0f5a0a7a825fd3802aeffbdbbd7be90a0bea52e3a1e38d2c127fa488cc0f7",
+                                   "b70d21375d2895d9ac3ce68ce9e3ce6bee7a28e611f14444795c6c0916d63897"}),
 }
 
 _VIEWS = ("instructor", "during-course", "after-course")
@@ -379,13 +383,13 @@ def _framework(ctx, dependencies: dict[str, str]):
     except OSError:
         return "project latexmk search configuration unavailable"
     dependencies[str(rc)] = rc_digest
-    if rc_digest != AUDITED_LATEXMKRC[".latexmkrc"]:
+    if rc_digest not in AUDITED_LATEXMKRC[".latexmkrc"]:
         return "unaudited project latexmk search configuration"
     deck_rc = root / "decks" / ".latexmkrc"
     if deck_rc.exists():
         deck_digest = _digest(deck_rc.read_bytes())
         dependencies[str(deck_rc)] = deck_digest
-        if deck_digest != AUDITED_LATEXMKRC["decks/.latexmkrc"]:
+        if deck_digest not in AUDITED_LATEXMKRC["decks/.latexmkrc"]:
             return "unaudited deck latexmk search configuration"
     # The pinned stock .latexmkrc uses this exact fallback when the variable
     # is absent. Path('') would instead inspect the process CWD.
