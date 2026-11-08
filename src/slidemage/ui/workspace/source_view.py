@@ -43,7 +43,7 @@ from ..dialogs import qr_code as qr_dialog
 from ..dialogs.citation import CitationDialog
 from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
-from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, Surface
+from ..kit.widgets import Button, Chip, ElidedLabel, IconButton, Popover, PopoverMenu, SplitButton, Surface
 from .insert_popovers import CitationPopover, CodeFilePopover, LinkPopover
 from .selection_tasks import PROOFREAD, REWRITE, add_menu_items
 from .source_file import REPLACE_KEY, SourceFile, autosave_on
@@ -131,8 +131,10 @@ class SourcePane(Surface):
         self._find_button = IconButton("search", f"Find and replace ({keys})")
         self._find_button.clicked.connect(lambda: self._with_file(lambda f: f.find_bar.show_find()))
         top.addWidget(self._find_button)
-        self._version_button = Button("Update version", "primary", compact=True)
+        # Update version, and in the caret's menu the way back to the last version (revert_version).
+        self._version_button = SplitButton("Update version")
         self._version_button.clicked.connect(self.update_version)
+        self._revert_label = ""
         self.written.connect(lambda _path: self._update_toolbar())     # an autosave may add the "+"
         top.addWidget(self._version_button)
         # A deck's source and Slidemaster.bib with AutoSave off: Save, as Ctrl+S.
@@ -436,6 +438,8 @@ class SourcePane(Surface):
         changes, why_not = self._changes_since_version(file) if has and file.is_current_slide else (False, "")
         self._version_button.setEnabled(changes and not read_only)
         self._version_button.setToolTip(VERSION_TIP if changes else why_not)
+        if has and file.is_current_slide:
+            self._set_revert_menu(file)
         # Formatting is for slides: a deck's source and SlideMage.bib are edited as plain text.
         self._format_row.setVisible(not has or file.is_slide)
         self._format_row.setEnabled(has and not read_only)
@@ -499,6 +503,51 @@ class SourcePane(Surface):
         """Write every file's edits now (before a run reads the files, or the window closes).
         Whether all are saved; one in conflict with a change on disk is not."""
         return all([file.write_now() for file in list(self._files.values())])
+
+    def _set_revert_menu(self, file: SourceFile) -> None:
+        """The caret's menu: "Revert to vX.Y.Z…", X.Y.Z the version the slide was changed from."""
+        marker = slide_versioning.parse_marker(file.editor.text())
+        version = slide_versioning.format_dot(marker[0] if marker is not None else slide_versioning.DEFAULT_BASELINE)
+        label = f"Revert to v{version}…"
+        if label == self._revert_label:
+            return
+        self._revert_label = label
+        menu = PopoverMenu(self, min_width=200)
+        menu.add_item("revert", label)
+        menu.triggered.connect(lambda _key: self.revert_version())
+        self._version_button.set_menu(menu)
+
+    def revert_version(self) -> None:
+        """Give the slide shown the content of the version it was changed from, as one undoable edit of the
+        buffer (Ctrl+Z brings the changes back; the autosave writes it like any edit, without the "+").
+        With AutoSave off and unsaved edits, "Revert to saved" goes back to the file on disk instead."""
+        file = self._current
+        if file is None or not file.is_current_slide or file.editor.is_read_only():
+            return
+        text = file.editor.text()
+        try:
+            reverted, version = slide_versioning.reverted_text(file.path, file.id_slug, text)
+        except ValueError as exc:
+            QMessageBox.information(self, "Revert", str(exc))
+            return
+        name = f"v{slide_versioning.format_dot(version)}"
+        box = QMessageBox(QMessageBox.Icon.Question, "Revert",
+                          f"Revert {file.id_slug} to {name}? Your changes since then are discarded. "
+                          "Undo (Ctrl+Z) brings them back.", parent=self)
+        revert = box.addButton(f"Revert to {name}", QMessageBox.ButtonRole.AcceptRole)
+        saved = None
+        if file.dirty and not autosave_on():
+            saved = box.addButton("Revert to saved", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() is revert:
+            file.editor.replace_all_text(reverted)
+        elif saved is not None and box.clickedButton() is saved:
+            from ... import slide_source
+            file.editor.replace_all_text(slide_source.read_slide_source(file.path)[0])
+        else:
+            return
+        self._update_toolbar()
 
     def update_version(self) -> None:
         file = self._current

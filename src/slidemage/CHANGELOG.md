@@ -3755,3 +3755,9 @@ v0.14.48 (2026-11-08, Insert menu: \SMFinalStateForStudents): The Insert menu of
 
 NEW: Insert has an entry for the final-state-for-students macro.
 - Choose Insert, then \SMFinalStateForStudents, with the cursor on the line before the frame.
+
+v0.14.49 (2026-11-08, Slide edit tab: a way back to the last version): "Update version" in a slide's edit tab is now a split button, and its caret menu offers "Revert to vX.Y.Z…", X.Y.Z being the version the slide was changed from. After one question, the slide's text goes back to that version's content as one undoable edit of the editor (Ctrl+Z brings the changes back), keeping the slide's own header; the autosave then writes it without the "+". With AutoSave off and unsaved edits the question also offers "Revert to saved", the file on disk. An autosave whose text equals the frozen version's content no longer puts the "+" on the version line (slide_versioning.prepare_autosave). slide_versioning.reverted_text() is the text half of revert_to_version().
+
+NEW: Go back to the last version of a slide from its edit tab.
+- Open the caret next to Update version and choose Revert to the version.
+- Ctrl+Z undoes it.

@@ -252,7 +252,7 @@ def test_a_frozen_version_is_read_only_until_unlocked_and_its_toolbar_follows(pa
     assert pane._version_button.isEnabled()                          # the "+" once written
     asked = []
     pane.version_requested.connect(asked.append)
-    pane._version_button.click()
+    pane._version_button.buttons()[0].click()
     assert asked == ["abc-EN-Demo"]
 
 
@@ -529,3 +529,27 @@ def test_the_last_release_of_the_file_on_show_drops_it_and_an_extra_unhold_is_ha
     assert pane.is_held(path)
     pane.unhold(path)
     assert not pane.is_held(path)
+
+
+def test_revert_puts_the_last_version_back_as_one_undoable_edit(pane, slides, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    path = slides / "abc-EN-Demo-current.tex"
+    pane.show_path(path)
+    original = pane.current.editor.text()
+    pane.current.editor.insertPlainText("edit ")
+    assert pane.current.write_now() and "1-1-0+" in path.read_text()
+    pane._set_revert_menu(pane.current)
+    assert pane._revert_label == "Revert to v1.1.0…"
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)         # no answer: nothing changes
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: None)
+    pane.revert_version()
+    assert "edit " in pane.current.editor.text()
+    box = {}
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: box.setdefault("b", self.buttons()[0]) and 0)
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: box["b"])
+    pane.revert_version()
+    assert pane.current.editor.text() == original and "edit " not in pane.current.editor.text()
+    assert pane.current.write_now() and "1-1-0+" not in path.read_text()      # the autosave adds no "+"
+    pane.current.editor.undo()
+    assert "edit " in pane.current.editor.text()                      # one Ctrl+Z brings the changes back
