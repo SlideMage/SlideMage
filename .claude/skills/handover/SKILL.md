@@ -30,9 +30,10 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
 ## 2. When the picks or an update arrive
 
 "Start tasks" makes the page republish itself, with the picks stored in its state as `"sent":{"ids":[...],"picked":[{"rank","task","note"}]}`.
-The page has two buttons. **Update** sends only the changed notes (a comment starting "UPDATE ONLY"): do not start any task. Write each
-note into that task's `notes` field in the TASKS block of `docs/handover.md` (the next page build preloads it) and, where it fits,
-into its section; close the picker pane as in step 0 below only if the user is done, otherwise leave it; answer in one line.
+The page has two buttons. **Update** sends only the changed notes (a comment starting "UPDATE ONLY"): do not start any task. **Integrate each
+note into the task's description**: rewrite its `desc` in the TASKS block of `docs/handover.md` and its text between its task
+markers (and its section, where it fits) so the note is part of the task and does not stay a separate note; the `notes` field of
+the block line then stays empty (clear it if it holds anything). Leave the picker pane open; answer in one line.
 **Start tasks** sends the picks (steps 0 to 6 below). A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
 editors only; the user may be asked to allow it once), which wakes the session with the picks in the comment text. If the page
 says it could not notify Claude, the user tells you in chat. Either way, then:
@@ -43,19 +44,28 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
    `null`, nothing was sent yet.
 2. Say in one line which tasks you start and in what order.
 3. For each picked task, in that order: read only the handover section its `src` points to (grep for the heading), plus the
-   "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text.
+   "Working rule" and "How to work" parts of the section it sits in. The user's note refines or overrides the task text: integrate it into the task's description first
+   (`desc`, the text between its markers, and its section), clear the block line's `notes` field, and then work from the result.
 4. Do the task. Apply the file's standing rules (a worktree and branch per step from `origin/develop`; bump the version with
    app-code commits; merge only on the user's go; never touch the main checkout's `latex/`). If the note leaves a decision the
    task text says to ask about open, ask before building.
 5. After each step, update `docs/handover.md`: the task's line in the TASKS block (`status`: `done` or `blocked`, and a
    changed `desc` if the scope moved) and its section, as the working rule says. Re-read the lines right before editing:
    other sessions append to this file.
-6. Independent tasks may go to their own sessions or subagents where the session rules allow it; tasks that touch the same
-   files go one after another.
+6. **Run choice.** Each pick carries `run` = `{mode, model, effort}`, preselected from the task's `run` recommendation and possibly
+   changed by the user, so it is the user's instruction, not a suggestion:
+   - `mode: "session"` (page label "Subsession"): start a session of its own with `start_session` (`initiation: "user_asked"`, the
+     given `model` and `effort`, a worktree for work that ends in a branch or PR), with a brief that names the files, the
+     handover section and what done looks like. Do not do that task yourself.
+   - `mode: "agent"` (page label "Subagent"): run it inside this turn with the `Agent` tool, with the given `model` and `effort`.
+   - `mode: ""`: do it in this session.
+   Tasks that touch the same files go one after another, whatever their modes.
 
 ## 3. Keeping the list useful
 
-- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before starting it.
+- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before
+  starting it. **Also set the line's `run` recommendation** (mode, model, effort; see the rules at the top of handover.md) so the page
+  preselects a sensible choice: the user can change it before clicking Start tasks.
 - Finished sections move to `docs/handover-archive.md`, unedited; ask the user first.
 - The page template is `docs/handover_list.template.html`. Its script keeps the `/*S*/ ... /*E*/` markers around the state
   and `__STATE__` is the placeholder the script fills: keep both when changing it.
