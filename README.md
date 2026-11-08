@@ -2048,11 +2048,15 @@ pixel-identical; everything below is what new slides should use.
 - **`\begin{besidefigure}[height=5cm, border]{media/chart-x.png} ... \end{besidefigure}`**
   -- text next to a corner figure (same keys as `\cornerfigure`, plus
   `gap=`, default 12pt); the text column is exactly as wide as the room left
-  of the figure, measured from the figure itself. Since v5.27.0 the figure's
-  top edge is lowered by `\SMBesideFigureTopGap` (0.2em) so that it meets the top of the
-  first line's *letters* instead of that line's box (which sits on the Top
-  Margin and starts about 0.2em above the letters); `yshift=0pt` among the keys
-  puts the figure on the margin again.
+  of the figure, measured from the figure itself. The figure's top edge is
+  lowered so that it meets the **cap height** of the column's first line (the
+  capitals' tops, not the tallest glyph: parentheses, accents and ascenders
+  reach higher), or the top of a rule or image that starts the column (a
+  table's `\toprule`), instead of that line's box (which sits on the Top
+  Margin and starts above the letters). With `border`, the border's outer edge
+  meets it. `\SMBesideFigureTopGap` is `auto` by default; set it to a length
+  (such as `0.2em`, the fixed amount before v0.14.24) for that amount instead;
+  `yshift=0pt` among the keys puts the figure on the margin again.
 - **`\fitfigure[top=here|margin, gap=6pt, valign=, halign=, bottom=, node=]{file}`**
   -- an image as large as it fits (aspect ratio kept) between the current
   position (or the Top Margin) and the Bottom Margin, Left to Right Margin.
