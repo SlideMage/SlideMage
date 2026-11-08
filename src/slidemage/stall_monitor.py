@@ -20,6 +20,7 @@ INTERVAL_MS = 50
 LATE_S = 0.15
 FRAMES_PER_THREAD = 3
 MAIN_FRAMES = 8
+BUSY_FRAMES = 9       # a worker that is not idle
 WATCH_S = 0.1        # how often the watchdog looks
 MAX_REPORTS = 3      # thread reports kept per stall
 
@@ -48,6 +49,11 @@ def thread_report(main_ident: int) -> str:
         if ident == threading.get_ident():
             continue                                   # the watchdog itself
         limit = MAIN_FRAMES if ident == main_ident else FRAMES_PER_THREAD
+        top = frame.f_code
+        if ident != main_ident and top.co_name in ("wait", "_worker", "_select") and                 top.co_filename.replace(chr(92), "/").rsplit("/", 1)[-1] in ("threading.py", "thread.py", "selectors.py"):
+            limit = 1                                  # idle: parked in a wait, nothing to learn from its callers
+        elif ident != main_ident:
+            limit = BUSY_FRAMES                        # at work, or in a lock: the callers say which lock and who holds it
         frames = []
         while frame is not None and len(frames) < limit:
             code = frame.f_code
