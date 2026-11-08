@@ -491,6 +491,16 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: {t.inverse};
             border-radius: {RADIUS_XS}px;
         }}
+        /* A bar that prints its percent (the update download's QProgressDialog)
+           cannot use the strong inverse fill: it is the text colour, so the
+           percent vanished once the fill reached it. A translucent wash of
+           the text colour stays readable under the text on both parts. */
+        QProgressDialog QProgressBar {{
+            color: {t.text};
+        }}
+        QProgressDialog QProgressBar::chunk {{
+            background-color: {with_alpha(t.text, 0.3)};
+        }}
         QSplitter#{SURFACE}::handle:horizontal {{
             background: {t.line};
             margin: 0 4px;
