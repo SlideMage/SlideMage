@@ -3740,3 +3740,8 @@ v0.14.45 (2026-11-08, boxed footnote markers sat raised in the footnote): With \
 NEW: Boxed footnote numbers are easier to read at the bottom of the slide.
 - In the footnote itself the box is now full size on the line instead of a tiny raised superscript.
 - The number in the text keeps its look.
+
+v0.14.46 (2026-11-08, Render now failed with WinError 6): Every helper process SlideMage starts for a render or a git query now gets an empty standard input of its own instead of inheriting the app's. A windowed app on Windows can end up with no usable input handle, and starting a process then failed with "[WinError 6] The handle is invalid" until SlideMage was restarted.
+
+FIX: "Render now" no longer fails with an invalid handle.
+- LaTeX runs, git queries and the process killer no longer inherit the app's standard input.
