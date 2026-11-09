@@ -1,7 +1,63 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **draft for the user's review, nothing built.** Parts A and B (list personal themes in Settings → Extensions;
-edit a theme's `.tex` in a centre tab; copy an installed theme into the project) are in v0.14.62.
+Status: **draft for the user's review, nothing of Part C built.** Parts A and B (list personal themes in Settings →
+Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the project) are in v0.14.62
+(PR SlideMage/SlideMage#145, branch `feat/personal-themes-extensions`, not merged).
+
+## 0. Where this stands (read this first; written 2026-11-09 evening for the next session)
+
+**What the discussion produced, in order** (each step is a section below; the user steered every turn):
+
+1. The full inventory of what a theme can set, ranked (section 2), from the hook catalog and five real templates.
+2. **Uni Graz as the reference theme** (section 1a): the most used, the only one with a dark mode, an *installed* package
+   (`D:\Dropbox\repos\slidemage-theme-uni-graz`, 1.1.1; the installed copy under `%APPDATA%\SlideMage\themes\uni-graz` is
+   identical). First acceptance test of the editor: a byte-identical round trip of the Graz file.
+3. **Themes per view** (3.7, stage C0): instructor / during-course / after-course each map to `theme[:mode]`, so one deck is
+   dark for projection and light for print. The user asked for it to be in the plan.
+4. **Colours** (3.8, stage CR): a physical palette, about 35 roles, role names slides can use, and **modes as a list a theme
+   declares** (colour schemes only; `dark` and `grey` as derivation presets), reached through one BREAKING release with the
+   `compat.py` migration and no legacy aliases. The user's decisions in the discussion: no compatibility leftovers; dark must not
+   be hard-coded; Greyscale-like variants are modes of a theme (the user's idea; my boundary: a mode is colours only).
+
+**Decided by the user so far:** per-view themes go in the plan; the roles strategy "in principle"; clean transition over
+aliases; modes not hard-coded. **Nothing else is decided, and nothing may be built before their OK on a stage.**
+
+**Open questions, with my recommendation** (all in section 5; the user had not answered them when this was written):
+
+| # | Question | My recommendation |
+|---|---|---|
+| 1, 1a | Tier order; which route for editing Graz | tier order as written; route A as built plus B (the theme's source folder) for the author, C (edit the installed copy) not offered; Graz round trip as the first test |
+| 2 | Form beside the source tab, or a designer tab that hides it | beside it, both live on one buffer |
+| 3 | May the form add a marked block to a hand-written theme | yes |
+| 4 | Sample deck for the live render | a purpose-written theme sample deck |
+| 5 | Which framework hooks first | block title text and link colours, as the first roles of CR |
+| 6 | A mode is colours only; Greyscale as shipped stays a theme | yes |
+| 7 | Derived modes live in TeX with explicit lines winning, or only explicit values written by the editor | live defaults, explicit lines override |
+| 8 | One BREAKING release with migration and regression proof; old installed themes refused until updated | yes |
+| 9 | Role names for slides (`c_text`, `c_background`, `c_surface`, `c_line`, `c_muted`, `c_on_accent`, `c_link`) | as listed, final names to be agreed |
+
+**Suggested way on, when the user has answered:** (1) settle 6 to 9 and fold the answers into 3.8; (2) C0 as its own task
+and PR (small, framework-free, fourteen call sites); (3) CR as its own task (this is also the plan for handover task
+`theme-color-roles`, whose step 1, white block-title text, is the first role); (4) the form (C1 onwards). C0 and CR do not
+depend on the form; CR depends on C0 only for the `theme:mode` value.
+
+**Facts a new session needs, so it does not rediscover them:**
+
+* Worktree `D:\Dropbox\repos\SlideMage\.claude\worktrees\personal-themes` on branch `feat/personal-themes-extensions`; PR #145 holds
+  A, B and this file (docs-only commits after the code commit). Develop was v0.14.61 when it started.
+* The hook catalog is `latex/SlideMage_setup.tex` (21 palette colours, 8 optional colours, 9 colour roles, 33 lengths, 42
+  macros, 22 guarded derived names); `\SMApplyColorRoles` in `latex/beamerthemeSlideMage.sty` is the single place that
+  resolves colour roles after the template.
+* The real project is `D:\uniCLOUD\Slidemaster` (templates `mci` and `uni-ibk` in the project folder, Graz is installed; 1,416
+  slides; the usage counts in 3.8 come from there). Existing migration precedent: `src/slidemage/compat.py` and
+  `compat_names.py` / `compat_own_theme.py`. The regression tool for "identical PDFs before and after" is
+  `tools/framework_regression.py`.
+* Template consumers to touch for per-view themes: fourteen `detect_template(...)` calls in ten files (listed in 3.7).
+* A theme package holds exactly one template file (`themes.check_names`), which is why Graz Dark as a package of its own
+  would be a second package.
+* Not checked: the Presenter app against per-view themes; whether `compat.py`'s detector can classify the ambiguous colour
+  uses well enough (the plan assumes a rule table plus a report of what it cannot classify, proven by the base-mode PDF
+  regression); the exact TeX for `derive=grey` (xcolor can convert to gray, not tried).
 
 Request (2026-11-09): "a UI for theme settings or for defining a new theme (font, colours, margins)". The user
 asked to discuss what really goes into a theme and its editor, and for a full inventory of everything a theme could
