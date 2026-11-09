@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import os
 import shutil
 import sys
@@ -18,6 +19,7 @@ from conftest import EXAMPLE_PROJECT
 def _no_precompiled_preamble(monkeypatch):
     # These tests fake latexmk; the format tests below opt back in.
     monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '0')
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', False)
 
 
 def test_regions_and_elements_keep_preamble_and_validate():
@@ -572,3 +574,26 @@ def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, 
     now["t"] += preview_build.PRUNE_EVERY + 1
     assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
     assert ran == [one, two, one]
+
+
+def test_a_changed_aux_falls_back_to_latexmk(tmp_path, monkeypatch):
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    commands = []
+
+    def run(command, *, jobname, outdir, cwd, env, **kwargs):
+        commands.append(command)
+        pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
+        pdf.write_bytes(b'%PDF fresh')
+        log.write_text('Success')
+        (outdir / (jobname + '.aux')).write_text(str(len(commands)))
+        (outdir / (jobname + '.direct.json')).write_text(
+            json.dumps(dict(command='lualatex', cwd=str(cwd), env=env)))
+        return compiler.Build(0, pdf, log, 'Success', False)
+
+    monkeypatch.setattr(compiler, 'run_latexmk', run)
+    ctx = ProjectContext.at(tmp_path)
+    text = r'\begin{document}First\end{document}'
+    preview_build.compile_cached(text, 'abc', lambda _: None, ctx=ctx, env={})
+    preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None, ctx=ctx, env={})
+    assert [cmd[0] == 'latexmk' for cmd in commands] == [True, False, True]
+    assert '-g' in commands[-1]

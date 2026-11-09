@@ -3,7 +3,7 @@
 """Reusable latexmk builds for interactive previews.
 
 Keep TeX's own dependency graph and auxiliary files between edits. This caches
-build state, not slide pixels: latexmk still checks every recorded input. Each
+build state, not slide pixels: latexmk settles cold builds and needed reruns. Each
 preamble/slide pair has a separate job and an interprocess lock.
 """
 from __future__ import annotations
@@ -28,6 +28,8 @@ from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
 from .render_evidence import find_tool
 from .project import ProjectContext
+
+DIRECT_LUALATEX = True
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -215,6 +217,25 @@ PREVIEW_LATEXMKRC = r"""# Written by SlideMage (preview_build.PREVIEW_LATEXMKRC)
 $hash_calc_ignore_pattern{'aux'} = '^\\\\abx\@aux\@read\@bbl(?:\@mdfivesum|rerun)';
 $hash_calc_ignore_pattern{'xml'} = '^\s*<(?:internal|external) package="biblatex"';
 $normalize_names = 0;
+# Capture the expanded command at the point latexmk would execute it, without running it twice.
+push @{$hooks{'before_xlatex'}}, sub {
+    return unless $rule eq 'lualatex';
+    eval { require JSON::PP; };
+    return if $@;
+    local *Run = sub {
+        my $cwd = Cwd::getcwd();
+        $cwd = Cygwin::posix_to_win_path($cwd) if defined &Cygwin::posix_to_win_path;
+        my %env = map { $_ => $ENV{$_} } grep {
+            /^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)/ || /^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$/
+        } keys %ENV;
+        if (open my $fh, '>', "${aux_dir1}${root_filename}.direct.json") {
+            print $fh JSON::PP->new->utf8->encode({command => $_[0], cwd => $cwd, env => \%env});
+            close $fh;
+        }
+        return (0, 0);
+    };
+    Run_subst(undef, 0);
+};
 """
 # biblatex reads .run.xml silently at the end of the document, so latexmk learned of it only when the second run read
 # it, and ran a third to be safe. A missing one now prints the line LaTeX prints for a missing .aux, which latexmk
@@ -458,6 +479,50 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
     else:
         command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
         run_cwd = ctx.root
+    # The cold latexmk run records its own expanded command, cwd and TeX search environment.
+    # Never bypass an explicit -g: unchanged text may hide a repaired or otherwise changed input.
+    direct = outdir / (jobname + '.direct.json')
+    log_path = outdir / (jobname + '.log')
+    if (DIRECT_LUALATEX and reusable and previous_pdf is not None and '-g' not in options
+            and log_path.is_file() and not compiler.FATAL_ERROR_RE.search(log_path.read_text(errors='replace'))):
+        try:
+            invocation = json.loads(direct.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            invocation = None
+        if invocation is not None:
+            # TeX reads the .bbl, not its .bib sources; let latexmk notice bibliography edits/deletions.
+            bibs = [Path(name) for name in recorded_inputs(
+                outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'), ctx=ctx, cache=outdir)
+                    if Path(name).suffix == '.bib']
+            if any(not path.is_file() or path.stat().st_mtime_ns > direct.stat().st_mtime_ns for path in bibs):
+                invocation = None
+        if invocation is not None:
+            # Include the framework's layout/reveal helpers and bibliography control file as well.
+            auxiliaries = [outdir / (jobname + ext) for ext in
+                           ('.aux', '.nav', '.toc', '.bbl', '.bcf', '.out', '.snm', '.ovl', '.top')]
+            before = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            shell = ([os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/s', '/c'] if os.name == 'nt'
+                     else ['/bin/sh', '-c'])
+            log('    (direct LuaLaTeX pass)')
+            with stage('lualatex'):
+                try:
+                    build = compiler.run_latexmk(
+                        [*shell, invocation['command']], jobname=jobname, outdir=outdir,
+                        cwd=Path(invocation['cwd']), env=dict(env, **invocation['env']), log=log,
+                        on_line=on_line, bufsize=-1, cancel=cancel)
+                except OSError:
+                    build = None
+            check_cancel(cancel)
+            after = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            if (build is not None and build.ok and not build.returncode and before == after
+                    and pdf.stat().st_mtime_ns != previous_pdf
+                    and not re.search(r'Rerun to get|Label\(s\) may have changed|Please\s+(?:re|\(re\))?run|'
+                                      r'rerun (?:LaTeX|Biber|BibTeX)', build.log_text, re.I)):
+                return pdf, False
+            # latexmk must reread the outputs of the direct pass, even if it remembers this wrapper.
+            command.insert(command.index('-f') + 1, '-g')
+            output_tail.clear()
+            log('    (direct pass needs latexmk)')
     for attempt in range(1, FONT_CACHE_ATTEMPTS + 1):
         with stage('latexmk'):
             try:

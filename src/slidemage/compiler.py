@@ -495,7 +495,7 @@ class Build:
 def run_latexmk(cmd: list[str], *, jobname: str, outdir: Path, cwd: Path, env: dict, log: LogCallback,
                 cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
                 errors: Optional[str] = "replace", bufsize: int = 1) -> Build:
-    """run_streamed() for a latexmk command, then the outcome. FileNotFoundError (no latexmk) propagates."""
+    """Stream a latexmk or direct TeX command, then read its outcome. Launch errors propagate."""
     returncode = run_streamed(cmd, cwd=cwd, env=env, log=log, cancel=cancel, on_line=on_line,
                               errors=errors, bufsize=bufsize)
     log_path = outdir / f"{jobname}.log"
