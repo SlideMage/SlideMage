@@ -44,7 +44,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
-from ... import citation_sources, citations, packages, theme_sources, themes
+from ... import citation_sources, citations, open_path, packages, slide_templates, theme_sources, themes
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -474,6 +474,13 @@ class ThemeRow(_ListRow):
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_theme_update, theme.key))
             buttons.append(self.update_button)
+        self.copy_button: Button | None = None
+        if not theme.problem:
+            self.copy_button = Button("Copy to my project and edit", compact=True)
+            self.copy_button.setToolTip("Put a copy of this theme into the project folder and open it for editing. "
+                                        "The copy is used instead of the installed theme, which stays as it is.")
+            self.copy_button.clicked.connect(partial(tab.copy_theme_to_project, theme.key))
+            buttons.append(self.copy_button)
         self.remove_button = Button("Remove", compact=True)
         self.remove_button.clicked.connect(partial(tab.remove_theme, theme.key,
                                                    manifest.name if manifest else theme.key))
@@ -493,6 +500,30 @@ class ThemeRow(_ListRow):
                 layout.addWidget(self.check_error_label)
         if theme.problem:
             layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
+
+
+class PersonalThemeRow(_ListRow):
+    """One personal theme: a template file in the project folder. Not from the catalogue, so no install, update or
+    remove controls; Edit opens its source in a tab, Reveal in Explorer shows the file."""
+
+    def __init__(self, tab: PluginsTab, theme: slide_templates.PersonalTheme) -> None:
+        super().__init__()
+        self.key = theme.key
+        self.path = theme.path
+        layout = self.layout()
+        title = QLabel(theme.name)
+        title.setObjectName(q.ROW_NAME)
+        self.edit_button = Button("Edit", compact=True)
+        self.edit_button.clicked.connect(partial(tab.edit_personal_theme, theme.path))
+        self.reveal_button = Button("Reveal in Explorer", compact=True)
+        self.reveal_button.clicked.connect(partial(tab.reveal_personal_theme, theme.path))
+        self.add_title_line([title, caption(f"template {theme.key}"), Chip("Personal (project folder)", "info")],
+                            [self.edit_button, self.reveal_button])
+        self.location_label = caption(str(theme.path))
+        layout.addWidget(self.location_label)
+        if theme.replaces:
+            layout.addWidget(caption(f"Decks that choose {theme.key!r} use this file, not {theme.replaces} of the "
+                                     "same key."))
 
 
 class CitationRow(_ListRow):
@@ -570,6 +601,7 @@ class PluginsTab(Page):
         self.rows: dict[str, InstalledRow] = {}
         self.available: dict[str, AvailableRow] = {}
         self.theme_rows: dict[str, ThemeRow] = {}
+        self.personal_rows: dict[str, PersonalThemeRow] = {}
         self.citation_rows: dict[str, CitationRow] = {}
         layout = self.body
         layout.setSpacing(SPACE.xs)
@@ -593,6 +625,11 @@ class PluginsTab(Page):
         self._themes_box = QVBoxLayout()
         self._themes_box.setSpacing(LIST_GAP)
         layout.addLayout(self._themes_box)
+        self.personal_heading = caption("In this project's folder")
+        layout.addWidget(self.personal_heading)
+        self._personal_box = QVBoxLayout()
+        self._personal_box.setSpacing(LIST_GAP)
+        layout.addLayout(self._personal_box)
 
         layout.addSpacing(SECTION_GAP)
         self.citation_file_button = Button("Add from file…", compact=True)
@@ -693,6 +730,46 @@ class PluginsTab(Page):
         if not self.theme_rows:
             self._themes_box.addWidget(caption("No themes are installed. A theme is a slide template packaged on its "
                                                "own (.smtheme)."))
+        self.refresh_personal_themes()
+
+    def refresh_personal_themes(self) -> None:
+        """The templates in the project folder (the ones the deck settings offer from there), marked as personal."""
+        clear_layout(self._personal_box)
+        self.personal_rows.clear()
+        for theme in slide_templates.personal_themes(self.app.project.root):
+            self.personal_rows[theme.key] = PersonalThemeRow(self, theme)
+            self._personal_box.addWidget(self.personal_rows[theme.key])
+        if not self.personal_rows:
+            self._personal_box.addWidget(caption("No personal themes: a template file named "
+                                                 "SlideMage_template_<key>.tex in the project folder would be one."))
+
+    def edit_personal_theme(self, path: Path) -> None:
+        """Open the theme's source in a tab of the centre column (the sheet closes first)."""
+        editor = getattr(self.app, "open_theme_editor", None)
+        if editor is None:
+            return
+        action = partial(editor, path)
+        if self._leave is not None:
+            self._leave(action)
+        else:
+            action()
+
+    def copy_theme_to_project(self, key: str) -> None:
+        """Copy the installed theme into the project folder and open the copy in a tab (the sheet closes first)."""
+        copier = getattr(self.app, "copy_theme_to_project", None)
+        if copier is None:
+            return
+        action = partial(copier, key)
+        if self._leave is not None:
+            self._leave(action)
+        else:
+            action()
+
+    def reveal_personal_theme(self, path: Path) -> None:
+        try:
+            open_path.reveal_in_file_manager(path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Cannot open the folder", f"Could not show {path}: {exc}")
 
     def remove_theme(self, key: str, name: str) -> None:
         if QMessageBox.question(self, "Remove theme", f"Remove the theme {name}? Decks that use the template "

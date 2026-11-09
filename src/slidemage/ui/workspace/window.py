@@ -43,7 +43,8 @@ from PySide6.QtWidgets import (
 
 from ... import timing
 from ...stall_monitor import StallMonitor
-from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
+from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check,
+                 slide_templates, themes, updater)
 from ... import version as version_mod
 from ...ai import ai_profile, resolver, routes
 from ...deck_groups import DEFAULT_GROUPS, DeckGroup, load as load_deck_groups
@@ -84,6 +85,7 @@ from .topbar import TopBar
 
 # Settings key of the deck that was open when the app was last closed.
 LAST_DECK_KEY = "last_deck"
+THEME_RECOMPILE_MS = 2000       # quiet time after a write of a personal theme's file before the decks that use it render again
 AFTER_WRITE_REFRESH_MS = 3000   # quiet time after an autosave before the slide list and side panels are refreshed
 
 
@@ -269,6 +271,14 @@ class WorkspaceWindow(QMainWindow):
         self._after_write.setSingleShot(True)
         self._after_write.setInterval(AFTER_WRITE_REFRESH_MS)
         self._after_write.timeout.connect(self._refresh_after_write)
+        # A personal theme (a template file in the project folder) written in a tab: after a pause the previews of the
+        # decks that use its key are rendered again (maintenance.on_theme_installed), whichever way its tab was opened.
+        self._themes_written: set[str] = set()
+        self._theme_recompile = QTimer(self)
+        self._theme_recompile.setSingleShot(True)
+        self._theme_recompile.setInterval(THEME_RECOMPILE_MS)
+        self._theme_recompile.timeout.connect(self._recompile_written_themes)
+        self.centre.source.written.connect(self._theme_written)
         self.centre.source.written.connect(lambda _path: (timing.event(self.project.root, "after_write.armed",
                                                                        ms=AFTER_WRITE_REFRESH_MS),
                                                           self._after_write.start()))
@@ -832,6 +842,37 @@ class WorkspaceWindow(QMainWindow):
             ),
             tab=True,
         )
+
+    def open_theme_editor(self, path: Path) -> None:
+        """Settings → Extensions → a personal theme's Edit: its .tex in a tab of the centre column, like a deck's
+        source (the source view alone). Saving it renders what uses it again (_theme_written)."""
+        self.open_slide_editor(path, tab=True)
+
+    def copy_theme_to_project(self, key: str) -> None:
+        """An installed theme's "Copy to my project and edit": its files go into the project folder (what is there
+        stays) and the copy's template opens in a tab. The copy wins over the installed theme of the key."""
+        try:
+            path = themes.copy_to_project(key, self.project.root)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Copy theme to the project", str(exc))
+            return
+        self.log(f"Copied the theme {key} into the project: {path.name}")
+        self.open_theme_editor(path)
+        self.reload_decks()     # the project's template list has a file more
+
+    def _theme_written(self, path: Path) -> None:
+        """A file was written in the Source view: if it is a template of the project folder, its decks render again
+        after a pause."""
+        name = path.name
+        if (path.parent == self.project.root and name.startswith(slide_templates.TEMPLATE_PREFIX)
+                and name.endswith(".tex")):
+            self._themes_written.add(name[len(slide_templates.TEMPLATE_PREFIX):-len(".tex")])
+            self._theme_recompile.start()
+
+    def _recompile_written_themes(self) -> None:
+        keys, self._themes_written = sorted(self._themes_written), set()
+        for key in keys:
+            self.theme_installed(key)
 
     def _on_edit_bib(self) -> None:
         """"⋮ -> "Edit .bib" (a plain toolbar button until

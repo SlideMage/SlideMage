@@ -33,3 +33,15 @@ def open_in_default_app(path: Path | str) -> None:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             env=env,
         )
+
+
+def reveal_in_file_manager(path: Path | str) -> None:
+    """Show `path` selected in the OS's file manager (Explorer, Finder); on Linux, where the file managers have no
+    common way to select, its folder."""
+    path = Path(path)
+    if os.name == "nt":
+        subprocess.Popen(["explorer", f"/select,{path}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        open_in_default_app(path.parent)

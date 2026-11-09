@@ -6,6 +6,7 @@ Instructor-snapshot cache."""
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import project, themes
@@ -119,6 +120,35 @@ def available_templates(root: Path) -> list[str]:
     keys = {file.stem[len(TEMPLATE_PREFIX):] for folder in template_dirs(root)
             for file in folder.glob(f"{TEMPLATE_PREFIX}*.tex")}
     return sorted(keys, key=lambda key: (key != DEFAULT_TEMPLATE, key))
+
+
+@dataclass(frozen=True)
+class PersonalTheme:
+    """A template file in the project folder: a personal theme (what the deck settings offer next to the framework's
+    and the installed ones). `replaces` is "" or what a copy of the same key elsewhere is, which this one wins over."""
+
+    key: str
+    name: str
+    path: Path
+    replaces: str = ""      # "" | "the shipped template" | "an installed theme"
+
+
+def personal_themes(root: Path) -> list[PersonalTheme]:
+    """The project's own themes, alphabetically by key: every SlideMage_template_<key>.tex in the project folder (the
+    same files template_choices() lists from there; TeX finds the project root first, so each wins over a framework
+    or installed template of its key)."""
+    found = []
+    for file in sorted(root.glob(f"{TEMPLATE_PREFIX}*.tex")):
+        key = file.stem[len(TEMPLATE_PREFIX):]
+        elsewhere = [folder for folder in template_dirs(root)[1:] if (folder / file.name).is_file()]
+        if not elsewhere:
+            replaces = ""
+        elif elsewhere[0] in themes.installed_dirs():
+            replaces = "an installed theme"
+        else:
+            replaces = "the shipped template"
+        found.append(PersonalTheme(key, template_label(key, root), file, replaces))
+    return found
 
 
 def render_template(ctx: project.ProjectContext) -> str:
