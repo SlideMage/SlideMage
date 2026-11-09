@@ -47,7 +47,7 @@ from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
 from ...fileio import text_sha256
 from ...preview_target import PreviewTarget
-from ...preview_requests import PreviewRequest, RenderRequest, RenderService, SourceRevision
+from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_metrics import PreviewMetrics
 from ...slide_language import MULT, LanguageBadge, TranslationLink, own_language, translation_group
 from ...step_renders import BACKGROUND, FOREGROUND, StepRenderQueue
@@ -252,12 +252,20 @@ class DisplayCache:
         self._items.clear()
 
 
-def _preload_page(background, target, view: str, language: str, deck_name: str, data: Optional[bytes], decode: bool):
+def _preload_page(background, target, view: str, language: str, data: Optional[bytes], decode: bool):
     """(PNG, digest, QImage or None) of the stored whole-slide page, or None. Runs on the read-ahead worker: `data`
     is the PNG already held (then only decoded), else the store is asked; `decode` decodes it too."""
     if data is None:
         time.sleep(PRELOAD_PAUSE)
-        data = background.stored_page(target, view, language, deck_name)
+        renderer = background.renderer
+        if renderer is None:
+            return None
+        try:
+            spec = PreviewRequest(target, SourceRevision.capture(target.source_path), view, language)
+            _state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=False)
+            data = renderer.store.page(record, record['pages']) if record is not None else None
+        except (OSError, ValueError):
+            return None
         if data is None:
             return None
     image = None
@@ -833,7 +841,7 @@ class PreviewPane(Surface):
             held = self._compressed.get(ident)
             if ident in self._prefetching or ident in self._preload_missing or not decode and held is not None:
                 continue
-            future = self._prefetch_executor.submit(_preload_page, background, other, view, language, deck,
+            future = self._prefetch_executor.submit(_preload_page, background, other, view, language,
                                                     held[0] if held is not None else None, decode)
             self._prefetching[ident] = future
 
@@ -1144,10 +1152,15 @@ class PreviewPane(Surface):
         if render is not None:
             self._count_after[key] = render
         choice = self._step_choice.get(target.source_path)
-        deck = self._deck_name()
 
         def read():
-            pages = background.stored_pages(target, key[3], key[4], deck)
+            renderer = background.renderer
+            if renderer is None:
+                return None
+            spec = PreviewRequest(target, SourceRevision.capture(target.source_path), key[3], key[4],
+                                  RenderOptions(all_steps=True))
+            state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+            pages = renderer.store.pages(record) if state == 'current' else None
             if not pages:
                 return None
             step = min(max(choice if choice is not None else len(pages), 1), len(pages))

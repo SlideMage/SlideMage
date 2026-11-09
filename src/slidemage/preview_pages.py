@@ -24,19 +24,16 @@ SCHEMA = 1
 PNG = b'\x89PNG\r\n\x1a\n'
 
 
-def sequence_images(request, *, start=1, count=60, dpi=130):
-    """Use already validated full-sequence images when their resolution suffices.
+def sequence_images(spec, resolver, *, start=1, count=60, dpi=130):
+    """Read current whole-slide pages when the stored resolution suffices."""
+    from . import render_lookup
 
-    ``wait()`` must have succeeded first, holding the immutable cache generation.
-    The source of a group consumer owns the same proven image sequence.
-    """
-    source = getattr(request, 'source', request)
-    entry = getattr(source, '_cache_entry', None)
-    evidence = getattr(entry, 'raster_sequence', None)
-    images = getattr(entry, 'sequence_images', ())
-    if (evidence is not None and evidence['configuration']['dpi'] >= dpi
-            and images and len(images) == len(evidence['pages'])):
-        return list(images[start - 1:start - 1 + count])
+    state, record = render_lookup.select(dict(resolver=resolver, unit=spec.unit, spec=spec), strict=True)
+    # SlideMage's 16:9 Beamer pages are 16 cm wide. Higher resolutions keep the PDF raster fallback.
+    if state == 'current' and record.get('width', 0) >= dpi * 16 / 2.54:
+        pages = resolver.store.pages(record)
+        if pages is not None:
+            return pages[start - 1:start - 1 + count]
     return None
 
 

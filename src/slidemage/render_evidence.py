@@ -285,8 +285,6 @@ class ValidationPass:
         self.dependency_bytes = 0
         self.dependency_seconds = 0.0
         self.configuration_seconds = 0.0
-        self.stability_seconds = 0.0
-        self.stability_bytes = 0
 
     def build_env(self, ctx):
         from . import compiler
@@ -341,24 +339,3 @@ class ValidationPass:
                                   'search': search_state(cache.project_root, env)}
             self.configuration_seconds += time.perf_counter() - start
         return self._evidence[key]
-
-    def stable(self, cache, env):
-        """Reject a result if an input changed while this validation batch ran."""
-        start = time.perf_counter()
-        try:
-            states = FileStates(search_roots(cache.project_root, env))
-            for path, state in self._files.items():
-                candidate = Path(path)
-                current = states(candidate)
-                try:
-                    self.stability_bytes += candidate.stat().st_size
-                except OSError:
-                    pass
-                if current != state:
-                    return False
-            key = (str(cache.project_root), digest(env))
-            return key not in self._evidence or self._evidence[key] == cache._evidence(env)
-        except (OSError, ValueError):
-            return False
-        finally:
-            self.stability_seconds += time.perf_counter() - start

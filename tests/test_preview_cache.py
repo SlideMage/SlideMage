@@ -52,18 +52,6 @@ def test_content_changes_with_identical_version_size_and_mtime_miss(tmp_path):
     assert cache.lookup(identity, env) is None
 
 
-def test_validation_pass_rejects_same_mtime_dependency_edit_before_publication(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    assert store(cache, identity, env, pdf, source, package)
-    validation = render_evidence.ValidationPass()
-    assert cache.display_lookup(identity, env, validation=validation) is not None
-    old = package.stat()
-    package.write_text('THEME TWO')  # same byte length
-    os.utime(package, ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert not validation.stable(cache, env)
-    assert validation.stability_bytes > 0 and validation.dependency_bytes > 0
-
-
 def test_new_shadow_missing_input_and_search_change_miss(tmp_path):
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     missing = cache.project_root / 'optional.tex'
@@ -83,7 +71,7 @@ def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_p
     import subprocess
     from io import BytesIO
     from PIL import Image
-    from slidemage import preview_cache, preview_requests, preview_selection, preview_target
+    from slidemage import preview_cache, preview_requests, preview_target
     from slidemage.project import ProjectContext
 
     ctx = ProjectContext.at(tmp_path / 'project')
@@ -122,11 +110,6 @@ def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_p
     # whole-result consumers and sequence comparisons still fail validation.
     (entry.directory / 'preview.pdf').write_bytes(b'broken')
     assert cache.thumbnail_path(identity, env, render_evidence.ValidationPass()) == thumb
-    main = preview_selection.select_image(cache, (request,), env)
-    listed = preview_selection.select_image(cache, (request,), env, thumbnail=True,
-                                            validation=render_evidence.ValidationPass())
-    assert main.fresh and listed.fresh and main.artifact_id == listed.artifact_id == original_id
-    assert main.pdf is None
     assert cache.lookup(identity, env) is None
     thumb.write_bytes(b'broken')
     fallback = cache.thumbnail_path(identity, env, render_evidence.ValidationPass())

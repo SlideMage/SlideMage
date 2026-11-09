@@ -387,14 +387,26 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
 
     def fake_render(target, text, view, language, **kwargs):
         seen.update(target=target, text=text, view=view, language=language, **kwargs)
-        return root / "x.pdf"
+        folder = root / ".build" / f"slidemage_preview_test_{target.bare_id}"
+        folder.mkdir(parents=True, exist_ok=True)
+        pdf = folder / 'slide.pdf'
+        with pymupdf.open() as doc:
+            doc.new_page(width=320, height=180)
+            doc.save(pdf)
+        return pdf
 
     monkeypatch.setattr(preview_target, "render_text", fake_render)
-    monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
-                        lambda *a: ((b"\x89PNG-image", b"\x89PNG-image"), ()))
     box.ws.open(root / SLIDE, LF + "% unsaved\n")
     result = box.run("render_preview")
-    assert not result.is_error and result.images == [b"\x89PNG-image"]
+    assert not result.is_error and len(result.images) == 1
+    from slidemage import render_lookup
+    spec, = box.ws.prepare_preview_batch(root / SLIDE, 'instructor')
+    renderer = box.ws.preview_service()._renderer(box.ws.project)
+    state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+    assert state == 'current' and result.images == [renderer.store.page(record, record['pages'])]
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pytest.fail('a current store hit must not compile'))
+    assert box.run('render_preview').images == result.images
+    monkeypatch.setattr(preview_target, 'render_text', fake_render)
     assert seen["text"].endswith("% unsaved\n") and seen["view"] == "instructor" and seen["language"] == "EN"
     assert seen["target"].id_slug == "abc-EN-Hello" and seen["target"].frame_number == 1     # as the deck calls it
     assert box.run("render_preview", slide="abd").images        # another slide, from disk
@@ -403,6 +415,7 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
         raise RuntimeError("! Undefined control sequence.")
 
     monkeypatch.setattr(preview_target, "render_text", failing)
+    box.ws.open(root / SLIDE, LF + "% another edit\n")
     assert "Undefined control sequence" in box.error("render_preview")
     assert "not a slide" in box.error("render_preview", slide="SlideMage.bib")
 

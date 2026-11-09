@@ -505,7 +505,7 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
     import time
 
     from conftest import EXAMPLE, build_window
-    from slidemage import compile_records, deck_outline, deck_scan, preview_target, preview_thumbnails
+    from slidemage import compile_records, deck_outline, deck_scan, preview_requests, preview_target, preview_thumbnails, render_lookup
     from slidemage.compiler import CompileJob
     from slidemage.preview_raster_client import RasterClient
     from slidemage.project import ProjectContext
@@ -538,17 +538,22 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         outline = deck_outline.build_outline(ctx, deck, "instructor", "EN")
         row = next(r for s in outline for r in s.rows if r.call.source_filename == units[0].source_path.name)
         target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number)
-        assert controller.stored_page(target, "instructor", "EN", deck.name)     # the Preview's page
-        pages = controller.stored_pages(target, "instructor", "EN", deck.name)
+        spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(target.source_path), "instructor", "EN")
+        request = dict(resolver=renderer.resolver, unit=spec.unit, spec=spec)
+        state, found = render_lookup.select(request, strict=True)
+        assert state == 'current'
+        pages = renderer.store.pages(found)
         assert pages is not None and len(pages) == 2      # a plain \slide call: the compile already has every step
         result = preview_thumbnails.for_outline(ctx, deck, outline, "instructor", "EN",
-                                                stored_page=controller.stored_page_path)
+                                                resolver=renderer.resolver)
         shown = next(r for s in result for r in s.rows if r.key == row.key)
         assert shown.thumbnail_verified and shown.thumbnail.is_file()
         assert "reference" not in shown.thumbnail_note.lower()
         # what the slide depends on changing takes the page away again
         units[0].source_path.write_text(units[0].source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
-        assert controller.stored_page(target, "instructor", "EN", deck.name)  # read-ahead can show a previous page
+        request.pop('spec')
+        state, found = render_lookup.select(request, strict=False)
+        assert state == 'previous' and renderer.store.page(found, found['pages'])
     finally:
         raster.close()
 
@@ -668,7 +673,7 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
                 assert ('Previous render' in preview._status_chip.text()) == (state == 'previous')
         assert any(strict for strict, _on_main in calls) and not any(on_main for _strict, on_main in calls)
         calls.clear()
-        assert window.background.stored_page(target, 'instructor', 'EN', deck.name)
+        assert render_lookup.select(dict(resolver=renderer.resolver, unit=unit), strict=False)[1]
         assert (False, True) in calls
     finally:
         path.write_text(original, encoding='utf-8')

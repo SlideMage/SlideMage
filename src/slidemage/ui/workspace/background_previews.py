@@ -25,7 +25,7 @@ from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_lookup, render_store
+from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_store
 from ...background_renders import BackgroundRenderer
 from ...plugins import session
 from ...plugins.host import plugin_render_priority
@@ -490,61 +490,6 @@ class BackgroundPreviews(QObject):
         if self.store is not None:
             self.store.close()
             self.store = None
-
-    def _stored_found(self, target, view: str, language: str, deck_name: str, *, strict=False, validation=None):
-        """The usable store lookup of `target`'s whole-slide render, else None. It does not ask whether background
-        rendering is switched on: that setting stops the idle rendering, not the use of renders that exist
-        (2026-10-30, direct request). Reads only; nothing is rendered or started here."""
-        renderer = self.renderer
-        if renderer is None or self.store is None:
-            return None
-        if target.macro == "slidestep" and target.steps:
-            return None
-        unit = render_key.unit_for(target, view, language, deck_name)
-        found = renderer.resolver.lookup(unit, strict=strict, validation=validation)
-        return found if found.usable else None
-
-    def stored_page(self, target, view: str, language: str, deck_name: str):
-        """Read ahead the chooser's last page; selection must confirm it with a strict lookup."""
-        if self.renderer is None or self.store is None:
-            return None
-        from ...preview_requests import PreviewRequest, SourceRevision
-
-        try:
-            spec = PreviewRequest(target, SourceRevision.capture(target.source_path), view, language)
-            unit = render_key.unit_for(target, view, language, deck_name)
-            _state, record = render_lookup.select(dict(resolver=self.renderer.resolver, unit=unit, spec=spec))
-            return self.store.page(record, record['pages']) if record is not None else None
-        except Exception:  # noqa: BLE001 -- read-ahead must not break the Preview
-            return None
-
-    def stored_page_path(self, target, view: str, language: str, deck_name: str, *, validation=None):
-        """The slide list's thumbnail of the current render, read on its thumbnail worker."""
-        try:
-            found = self._stored_found(target, view, language, deck_name, validation=validation)
-            if found is None:
-                return None
-            return self.store.thumbnail_path(found.record)
-        except Exception:  # noqa: BLE001 -- the store is a help
-            return None
-
-    def stored_pages(self, target, view: str, language: str, deck_name: str):
-        """Every page (reveal step) of the stored render of `target` as PNG bytes if a current one is there, else
-        None. The reveal bar takes its steps from here instead of counting them with a render. Like `stored_page`,
-        it runs on the display worker."""
-        renderer = self.renderer
-        if renderer is None or self.store is None:        # switched off or not: renders that exist are used
-            return None
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
-            return None
-        try:
-            unit = render_key.unit_for(target, view, language, deck_name)
-            found = renderer.resolver.lookup(unit, strict=True)
-            if not found.usable:
-                return None
-            return self.store.pages(found.record)
-        except Exception:  # noqa: BLE001 -- the store is a help
-            return None
 
     # -- the chip --------------------------------------------------------------------------------
 

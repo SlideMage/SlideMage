@@ -651,7 +651,11 @@ def test_tool_and_pane_share_one_build(pane, tmp_path, monkeypatch, debounce):
     box = build_toolbox(ws, lambda _: None, compiler.CancelToken())
     response = box.execute(ToolCall('1', 'render_preview', {}))
     assert not response.is_error
-    assert response.images == [png]
+    from slidemage import render_lookup
+    renderer = view._renders._renderer(target.context)
+    spec = job.request.spec
+    state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+    assert state == 'current' and response.images == [renderer.store.page(record, record['pages'])]
     if debounce:
         view._debounce.stop()
         view._launch_pending()

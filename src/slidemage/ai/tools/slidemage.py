@@ -25,6 +25,7 @@ from ... import (
     latex_lint,
     preview_target,
     qr_code,
+    render_lookup,
     slide_add,
     slide_ids,
     slide_language,
@@ -219,6 +220,11 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
                   'superseded': 'publication superseded; visible pane unchanged',
                   'failed': f"publication failed: {result.error}"}.get(publication, publication)
         image = result.secondary_png or result.display_png
+        if not saved:
+            renderer = ctx.workspace.preview_service()._renderer(ctx.project)
+            state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+            if state == 'current':
+                image = renderer.store.page(record, record['pages']) or image
         if not saved and image is not None:
             images.append(image)
             detail += f"; image #{len(images)} = {spec.view}, {spec.language}"

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_store, slide_language
+from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_requests, preview_target, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -456,10 +456,12 @@ class BackgroundRenderer:
                             if deck.name not in decks:
                                 decks.append(deck.name)
                             continue
-                        found = self.resolver.lookup(unit, validation=validation)
+                        found = render_lookup.select(dict(resolver=self.resolver, unit=unit, validation=validation, state_only=True),
+                                                     strict=False)
                         if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
                             self.store.forget_failure(found.key)       # it failed only for want of the template
-                            found = self.resolver.lookup(unit, validation=validation)
+                            found = render_lookup.select(dict(resolver=self.resolver, unit=unit, validation=validation, state_only=True),
+                                                         strict=False)
                         if found.key is not None:
                             key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable and found.record is not None and found.record.get("key") == found.key

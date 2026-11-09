@@ -50,7 +50,6 @@ class SlideRow:
     frame_number: Optional[int] = None
     thumbnail_verified: bool = False
     thumbnail_note: str = ""
-    image_selection: object | None = None
 
     @property
     def deck_call(self) -> SlideCall:

@@ -5,16 +5,16 @@
 A request is a dict with an existing ``resolver`` and ``unit``, and optionally a captured
 PreviewRequest (``spec``) and a shared ValidationPass (``validation``). Omitting ``spec``
 asks about the saved unit. Selection reads no artifacts; RenderStore supplies the readers.
-Resolver.lookup / Lookup.final retain the sweep's freshness and failure state.
+``state_only`` returns the sweep's Lookup, including numbering and failure state, without selecting fallbacks.
 """
 from __future__ import annotations
 
 from . import render_evidence
-from .render_key import KIND_PROJECT
+from .render_key import KIND_PROJECT, Lookup
 
 
-def select(request: dict, *, strict=False) -> tuple[str, dict | None]:
-    """Return (current, previous, reference, missing or hidden; record), without rendering."""
+def select(request: dict, *, strict=False) -> tuple[str, dict | None] | Lookup:
+    """Return (current, previous, reference, missing or hidden; record), or a state-only Lookup."""
     resolver, unit = request["resolver"], request["unit"]
     spec = request.get("spec")
     if spec is not None:
@@ -23,6 +23,8 @@ def select(request: dict, *, strict=False) -> tuple[str, dict | None]:
         if not spec.complete:
             return "missing", None
     validation = request.get("validation") or render_evidence.ValidationPass()
+    if request.get("state_only"):
+        return resolver.lookup(unit, strict=strict, validation=validation)
     key = resolver.fast_key(unit, spec.revision.text if spec is not None else None,
                             strict=strict, validation=validation)
     if key is None:

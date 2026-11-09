@@ -18,7 +18,7 @@ from test_tasks_gui import pump, wait_until
 from test_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
 from test_task_card_gui import area, asked, card, phase_is, press, shown_buttons  # noqa: F401 -- a fixture
 
-from slidemage import ai_review
+from slidemage import ai_review, preview_requests
 from slidemage.ui.workspace import compare_rendered, task_card_model as model
 from slidemage.ui.workspace.compare_rendered import CompareRendered
 
@@ -62,13 +62,14 @@ class FakeRenders:
 
     def request(self, target, text, view, language, log, **kwargs):
         request = FakeRequest(self, len(self.requests), text)
+        request.spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(target.source_path, text), view, language)
         self.requests.append((request, target, text, view, language, kwargs))
         return request
 
-    def read_pages(self, pdf: Path, project_root: Path) -> list[bytes]:
+    def read_pages(self, pdf: Path, **kwargs) -> dict:
         request = self.requests[int(pdf.stem)][0]
-        return [png("#c04040" if request.index % 2 == 0 else "#40a040", 320 + n)
-                for n in range(self.plans.get(request.text, {}).get("pages", 1))]
+        return dict(images=[png("#c04040" if request.index % 2 == 0 else "#40a040", 320 + n)
+                            for n in range(self.plans.get(request.text, {}).get("pages", 1))])
 
     def close(self) -> None:
         self.closed = True
@@ -89,7 +90,7 @@ def env(fake):  # noqa: F811
 def renders(env, monkeypatch):
     service = FakeRenders()
     monkeypatch.setattr(env.window.centre.preview, "_renders", service)
-    monkeypatch.setattr(compare_rendered, "read_pages", service.read_pages)
+    monkeypatch.setattr(compare_rendered.preview_pages, "read_document", service.read_pages)
     return service
 
 
