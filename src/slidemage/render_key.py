@@ -4,7 +4,7 @@
 
 docs/plans/idle-background-rendering.md, section 3. A *unit* is what the Preview would render for one slide
 call of a deck in one view and language, with every reveal step (an unrestricted render: no `steps`).
-Its **fast key** is a hash of everything that is known without running TeX: the slide file's bytes, the
+Its **fast key** is a hash of everything that is known without running TeX: the captured slide text, the
 call, view, language, the deck's preamble, the template, the TeX engine and the project's latexmk
 settings. The **manifest** of a render lists every project file the run read (taken from the inputs the
 render recorded, see preview_build.recorded_inputs) with its SHA-256. A stored render is current iff
@@ -31,6 +31,7 @@ from typing import Callable, Optional
 
 from . import compile_records, deck_language, slide_templates
 from .dep_hash import HashCache, norm
+from .fileio import text_sha256
 from .preview_target import PreviewTarget
 from .project import ProjectContext
 
@@ -168,17 +169,17 @@ class Resolver:
 
     # -- the fast key ------------------------------------------------------------
 
-    def fast_key(self, unit: Unit) -> Optional[str]:
-        """The key of `unit`, or None when the slide file cannot be hashed right now (missing, being written)."""
-        slide_sha = self.hashes.hash(unit.source_path)
-        if slide_sha is None or self.hashes.is_racy(unit.source_path):
+    def fast_key(self, unit: Unit, text: Optional[str] = None) -> Optional[str]:
+        """The key of captured `text` (else the saved source), or None when the source cannot be read stably."""
+        slide_sha = self.hashes.hash(unit.source_path) if text is None else text_sha256(text)
+        if slide_sha is None:
             return None
         rc = [self.hashes.hash(self.ctx.root / name) or "" for name in (".latexmkrc", "decks/.latexmkrc")]
         return _json_hash({
             "schema": RENDER_SCHEMA, "slide": slide_sha,
             "call": [unit.macro, unit.id_slug, unit.version, list(unit.conditions)],
             "view": unit.view, "language": unit.language, "template": unit.template,
-            "preamble": hashlib.sha256((unit.preamble_text or "").encode()).hexdigest(),
+            "preamble": text_sha256(unit.preamble_text or ""),
             "engine": self.engine_fp, "rc": rc,
             **({"context": unit.context} if unit.context else {}),
             # What the wrapper tells TeX about the project's languages.

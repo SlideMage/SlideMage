@@ -15,7 +15,6 @@ from __future__ import annotations
 from collections import Counter
 from types import SimpleNamespace
 from datetime import datetime, timezone
-from hashlib import sha256
 from pathlib import Path
 
 from . import deck_editor, fileio, slide_language
@@ -58,7 +57,7 @@ def mark(ctx: ProjectContext, path: Path | str, kind: str, source: str, *,
         fileio.atomic_write(ctx.ai_before_dir / Path(key).name, before.replace("\r\n", "\n"))
     entry = dict(by="claude", kind=kind, source=source,
                  since=datetime.now(timezone.utc).isoformat(),
-                 text_hash=sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest())
+                 text_hash=fileio.text_sha256(text.replace("\r\n", "\n")))
 
     def mutate(data):
         # Preserve insertion provenance when the slide body is edited later.

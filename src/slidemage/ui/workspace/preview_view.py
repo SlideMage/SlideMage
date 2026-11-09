@@ -45,6 +45,7 @@ from ... import (deck_context, deck_editor, languages, latex_lint, reveal_steps,
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
+from ...fileio import text_sha256
 from ...preview_target import PreviewTarget
 from ...preview_requests import PreviewRequest, RenderOptions, RenderRequest, RenderService, SourceRevision
 from ...preview_selection import SelectedImage, legacy_reference, remember_transient, validate_captured, validate_scoped
@@ -675,7 +676,7 @@ class PreviewPane(Surface):
 
     def _select_in_background(self, target, text, view, language, reference, *, scoped_spec=None):
         key = (self._generation, target.key, view, language,
-               hashlib.sha256(text.encode('utf-8')).hexdigest(),
+               text_sha256(text),
                scoped_spec.options.mode if scoped_spec is not None else 'slide',
                scoped_spec.options.overlay if scoped_spec is not None else None)
         if self._selection_result_key == key and time.monotonic() - self._selection_validated_at < 5:
@@ -756,7 +757,7 @@ class PreviewPane(Surface):
             current = buffer[0] if buffer is not None else target.source_path.read_text(encoding='utf-8')
         except OSError:
             return
-        if hashlib.sha256(current.encode('utf-8')).hexdigest() != key[4]:
+        if text_sha256(current) != key[4]:
             self._refresh()  # recapture the editor/disk revision after a mid-validation edit
             return
         if metrics.get('unstable'):
@@ -803,7 +804,7 @@ class PreviewPane(Surface):
         try:
             buffer = self._buffer()
             text = buffer[0] if buffer is not None else target.source_path.read_text(encoding='utf-8')
-            text_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+            text_hash = text_sha256(text)
             adhoc_spec = getattr(self, '_adhoc_spec', None)
             scoped = (adhoc_here and adhoc_spec is not None
                       and (adhoc_spec.options.mode != 'slide' or adhoc_spec.options.overlay is not None))
@@ -926,7 +927,7 @@ class PreviewPane(Surface):
 
     def _remember(self, key: tuple, pixmap: QPixmap, png: bytes, mtime: int, text: Optional[str]) -> None:
         """Hold the page of a saved render of `text` (the saved file's) for display."""
-        self._pixmaps.put(key, pixmap, mtime, hashlib.sha256(text.encode('utf-8')).hexdigest()
+        self._pixmaps.put(key, pixmap, mtime, text_sha256(text)
                           if text is not None else None, hashlib.sha256(png).hexdigest())
 
     def _stored_pixmap(self, target: PreviewTarget, view: str, language: str,

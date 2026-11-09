@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Any
 
 
+def text_sha256(text: str) -> str:
+    """Hash UTF-8 text; source files are read with universal newlines before hashing."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def sha256_file(path: Path) -> str:
     """Hash a file in 1 MiB chunks so large PDFs and archives need no full copy in memory."""
     digest = hashlib.sha256()

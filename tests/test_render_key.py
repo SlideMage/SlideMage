@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import dep_hash, render_key, render_store
+from slidemage import dep_hash, preview_requests, render_key, render_store
 from slidemage.project import ProjectContext
 from slidemage.render_key import Freshness, Unit
 
@@ -124,10 +124,25 @@ def test_the_key_follows_slide_text_preamble_view_language_and_engine(ctx, resol
     assert resolver.fast_key(unit) != key
 
 
-def test_no_key_for_a_missing_or_just_written_slide(ctx, resolver):
-    assert resolver.fast_key(unit_for(ctx)) is None
-    write(ctx.slides_dir / "aaa-EN-One-current.tex", "x", mtime=time.time())
-    assert resolver.fast_key(unit_for(ctx)) is None
+def test_a_just_saved_slide_has_a_key_without_a_hash_shortcut(ctx, resolver, store):
+    unit = unit_for(ctx)
+    write(unit.source_path, "slide\n", mtime=time.time())
+    key = resolver.fast_key(unit)
+    assert key is not None and resolver.fast_key(unit) == key
+    assert resolver.hashes.reads == 2
+    assert store.db.execute("SELECT COUNT(*) FROM filehash").fetchone()[0] == 0
+
+
+def test_a_crlf_slide_and_its_captured_lf_text_have_the_same_key(ctx, resolver, store):
+    unit = unit_for(ctx)
+    unit.source_path.write_bytes("A ä\r\nB\r\n".encode("utf-8"))
+    os.utime(unit.source_path, (OLD, OLD))
+    revision = preview_requests.SourceRevision.capture(unit.source_path)
+    assert revision.text == "A ä\nB\n"
+    key = resolver.fast_key(unit)
+    assert key is not None and resolver.fast_key(unit, revision.text) == key
+    assert resolver.fast_key(unit, "unsaved\n") != key
+    assert store.db.execute("SELECT sha256 FROM filehash WHERE path=?", (dep_hash.norm(unit.source_path),)).fetchone()[0] == revision.content_hash
 
 
 def test_unit_for_drops_the_steps(ctx):

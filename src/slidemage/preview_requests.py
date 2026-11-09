@@ -13,7 +13,6 @@ import functools
 import json
 import logging
 from pathlib import Path
-import hashlib
 from importlib.metadata import version, PackageNotFoundError
 import threading
 import shutil
@@ -22,6 +21,7 @@ import weakref
 
 from . import diagnostics
 from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, slide_snapshot
+from .fileio import text_sha256
 from .preview_metrics import PreviewMetrics
 
 _log = logging.getLogger("slidemage.preview")
@@ -44,7 +44,7 @@ class SourceRevision:
             mtime = path.stat().st_mtime_ns
         except OSError:
             mtime = None
-        return cls(path.resolve(), text, hashlib.sha256(text.encode("utf-8")).hexdigest(), mtime)
+        return cls(path.resolve(), text, text_sha256(text), mtime)
 
 
 @dataclass(frozen=True)

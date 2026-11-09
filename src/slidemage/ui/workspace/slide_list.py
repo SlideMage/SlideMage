@@ -19,7 +19,6 @@ from __future__ import annotations
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-import hashlib
 import time
 from typing import Callable, Optional
 import weakref
@@ -42,6 +41,7 @@ from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
+from ...fileio import text_sha256
 from .. import layout_settings
 from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionSheet
 from ..kit.tokens import SPACE
@@ -317,7 +317,7 @@ class SlideList(QWidget):
             try:
                 text = self._thumbnail_source(source)
                 current = text if text is not None else source.read_text(encoding='utf-8')
-                if hashlib.sha256(current.encode('utf-8')).hexdigest() != content_hash:
+                if text_sha256(current) != content_hash:
                     self._queue_preview_images(self._outline, paths=paths)
                     return
             except OSError:

@@ -733,7 +733,7 @@ class BackgroundRenderer:
             if unit.macro in ("slidestep", "slidefinal") or not pages or known is None:
                 continue
             key = self.resolver.fast_key(unit)
-            if key is None or self.hashes.hash(unit.source_path) != known[1]:
+            if key is None or compile_records.sha256(unit.source_path) != known[1]:
                 continue                                # the slide changed since the compile
             found = self.resolver.lookup(unit, key)
             if found.final:
@@ -757,7 +757,8 @@ class BackgroundRenderer:
         for path in render_key.unit_inputs(self.ctx, [path for path, _sha in recorded.values()], unit.source_path):
             where = self.resolver._relative(path)
             if where is not None:
-                entries.append([where[0], where[1], recorded[norm(path)][1]])
+                digest = self.hashes.hash(path) if norm(path) == norm(unit.source_path) else recorded[norm(path)][1]
+                entries.append([where[0], where[1], digest])
         entries = self.resolver.narrow_alt_text(entries, recorded)
         entries.sort()
         return entries
