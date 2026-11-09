@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Common batch fallback, bulk cancellation and the AI tools' existing result contracts."""
 from pathlib import Path
+import shutil
 import threading
 
+import pymupdf
 import pytest
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
 
-from conftest import wait_until
+from conftest import EXAMPLE, wait_until
 from slidemage import batch_render, preview_requests, preview_target, render_key
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.project import ProjectContext
@@ -54,6 +56,31 @@ def test_a_failed_batch_falls_back_to_forced_single_renders(tmp_path, monkeypatc
     finally:
         service.close()
 
+
+@pytest.mark.skipif(shutil.which('latexmk') is None or shutil.which('lualatex') is None, reason='needs a TeX installation')
+def test_an_ordinary_slide_after_an_omitted_slide_is_stored_without_the_omitted_banner(tmp_path, monkeypatch):
+    shutil.copytree(EXAMPLE, tmp_path / 'project')
+    ctx = ProjectContext.at(tmp_path / 'project')
+    specs = []
+    for number, macro in enumerate(('omitslide', 'slide'), 1):
+        slug = f'zz{number}-EN-Test'
+        path = ctx.slides_dir / f'{slug}-current.tex'
+        path.write_text('\\begin{standardframe}{Test}\nBody\n\\end{standardframe}\n')
+        target = preview_target.PreviewTarget(ctx, macro, slug, None, None, None, number, None)
+        specs.append(PreviewRequest(target, SourceRevision.capture(path), 'instructor', 'EN', RenderOptions(saved=True)))
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: pytest.fail('The batch must not fall back'))
+    service = preview_requests.RenderService()
+    try:
+        results = batch_render.render_batch(service, specs, batch_size=2)
+        assert [result.status for result in results] == ['rendered', 'rendered']
+        renderer = service._renderer(ctx)
+        for spec, omitted in zip(specs, (True, False)):
+            found = renderer.resolver.lookup(spec.unit)
+            assert found.final
+            with renderer.store.pdf_copy(found.record) as pdf, pymupdf.open(pdf) as doc:
+                assert ('omitted from student deck' in doc[0].get_text()) is omitted
+    finally:
+        service.close()
 
 
 def test_cancel_stops_a_bulk_action(window, monkeypatch):

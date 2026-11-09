@@ -71,7 +71,7 @@ def test_cancel_running_latexmk_kills_children_and_frees_lock(tmp_path, monkeypa
         cancel.request_stop()
         worker.join(5)
     assert not worker.is_alive() and errors == ['Preview cancelled']
-    assert cancel._proc is None and not preview_build.is_active(ctx.build_dir)
+    assert not cancel._processes and not preview_build.is_active(ctx.build_dir)
     for lock in ctx.build_dir.rglob('build.lock'):
         with preview_build.build_lock(lock, blocking=False) as acquired:
             assert acquired
@@ -113,7 +113,7 @@ def test_cancel_before_process_registration_kills_new_process(tmp_path):
                             start_new_session=os.name != 'nt')
     cancel._set_process(proc)
     assert proc.wait(timeout=2) != 0
-    cancel._set_process(None)
+    cancel._remove_process(proc)
 
 
 def test_agent_stop_cancels_current_toolbox(tmp_path):

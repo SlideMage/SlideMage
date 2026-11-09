@@ -329,9 +329,8 @@ class CancelToken:
     """Cross-thread stop signal for a batch of jobs, created fresh per
     compile run. The GUI's "Stop creation" button calls request_stop();
     run_jobs() checks is_set() between jobs to skip whatever's still queued,
-    and run_job() registers its live Popen here so request_stop() can kill
-    it immediately rather than waiting for the current job to finish on its
-    own. Killing the registered process alone (proc.kill()) would only kill
+    and each run registers its live Popen here so request_stop() can kill
+    every process immediately rather than waiting for running jobs to finish. Killing the registered process alone (proc.kill()) would only kill
     latexmk's own launcher -- it shells out to perl, which shells out to
     lualatex/biber in turn -- so request_stop() uses `taskkill /T` to kill
     the whole process tree instead, the same way CREATE_NO_WINDOW elsewhere
@@ -341,7 +340,7 @@ class CancelToken:
     def __init__(self) -> None:
         self._event = threading.Event()
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
+        self._processes: set[subprocess.Popen] = set()
         self._job_killed = False
         self._skipped: set[str] = set()
         # Background renders run their process at below-normal priority (set right after it starts, so
@@ -351,37 +350,43 @@ class CancelToken:
     def is_set(self) -> bool:
         return self._event.is_set()
 
-    def _set_process(self, proc: Optional[subprocess.Popen]) -> None:
+    def _set_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
-            self._proc = proc
+            self._processes.add(proc)
             stopped = self._event.is_set()
-        if proc is not None and self.low_priority:
+        if self.low_priority:
             lower_priority(proc)
         if stopped:
             self._kill(proc)
 
+    def _remove_process(self, proc: subprocess.Popen) -> None:
+        with self._lock:
+            self._processes.discard(proc)
+
     def request_stop(self, *, wait: bool = True) -> None:
-        """Stop the whole run: kill the job being compiled, skip the rest. `wait=False` sets the stop at once and
+        """Stop the whole run: kill all running jobs, skip the rest. `wait=False` sets the stop at once and
         kills the process tree on a thread of its own: taskkill takes a few tenths of a second, and the GUI stopping
         ten background renders one after the other froze for seconds (v8.52.5)."""
         self._event.set()
         with self._lock:
-            proc = self._proc
-        if wait:
-            self._kill(proc)
-        elif proc is not None and proc.poll() is None:
-            threading.Thread(target=self._kill, args=(proc,), daemon=True, name="stop-render").start()
+            processes = tuple(self._processes)
+        for proc in processes:
+            if wait:
+                self._kill(proc)
+            elif proc.poll() is None:
+                threading.Thread(target=self._kill, args=(proc,), daemon=True, name="stop-render").start()
 
     def stop_current(self) -> None:
-        """Stop only the job being compiled (job_stopped() tells its runner);
+        """Stop only the running jobs (job_stopped() tells their runner);
         the queue goes on with the next job. Nothing happens while no
         compile process runs."""
         with self._lock:
-            proc = self._proc
-            if proc is None or proc.poll() is not None:
+            processes = [proc for proc in self._processes if proc.poll() is None]
+            if not processes:
                 return
             self._job_killed = True
-        self._kill(proc)
+        for proc in processes:
+            self._kill(proc)
 
     def job_stopped(self) -> bool:
         """Whether the job that just ended was stopped, by stop_current() or
@@ -400,8 +405,8 @@ class CancelToken:
             return jobname in self._skipped
 
     @staticmethod
-    def _kill(proc: Optional[subprocess.Popen]) -> None:
-        if proc is None or proc.poll() is not None:
+    def _kill(proc: subprocess.Popen) -> None:
+        if proc.poll() is not None:
             return
         if os.name == "nt":
             subprocess.run(
@@ -435,6 +440,7 @@ def run_streamed(
     diagnostics.event(_log, "process started", cmd=" ".join(str(part) for part in cmd), cwd=cwd)
     started = time.monotonic()
     returncode = None
+    proc = None
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -454,8 +460,8 @@ def run_streamed(
     finally:
         diagnostics.event(_log, "process ended", program=cmd[0], exit=returncode,
                           seconds=round(time.monotonic() - started, 3))
-        if cancel is not None:
-            cancel._set_process(None)
+        if cancel is not None and proc is not None:
+            cancel._remove_process(proc)
 
 
 def latexmk_command(wrapper: Path, jobname: str, outdir: Path, *options: str, cwd: Path, aux: bool = True,

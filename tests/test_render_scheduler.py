@@ -259,6 +259,7 @@ def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monke
     # The GUI stopped ten renders one after the other, each waiting for taskkill, under the queue's lock: the window
     # froze for seconds when the user came back (v8.52.5).
     from types import SimpleNamespace
+    from unittest.mock import Mock
     from slidemage.compiler import CancelToken
     killed = threading.Event()
 
@@ -269,7 +270,7 @@ def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monke
     monkeypatch.setattr(CancelToken, "_kill", staticmethod(slow_kill))
     s = make()
     token = CancelToken()
-    token._proc = SimpleNamespace(poll=lambda: None)
+    token._set_process(Mock(poll=lambda: None))
     s._running["idle-1"] = SimpleNamespace(key="idle-1", priority=P_IDLE, cancelled_for_requeue=False, cancel=token)
     started = time.monotonic()
     assert s.interrupt(P_IDLE) == 1

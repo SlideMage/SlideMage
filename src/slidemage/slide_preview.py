@@ -344,6 +344,7 @@ def _text_slide(id_slug: str, slide_body: str, frame_number: Optional[int], step
             call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
         if omitted:
             call_state += "\\global\\SMOmittedSlidetrue\n"
+            slide_body += "\n\\global\\SMOmittedSlidefalse\n"
     return (f"{_frame_number_line(frame_number)}"
             f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n{call_state}{slide_body}\n")
 
