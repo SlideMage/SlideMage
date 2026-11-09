@@ -233,6 +233,7 @@ class BackgroundRenderer:
         self._counted: set[str] = set()         # labels the progress counts as fresh already: each is counted once
         self._last_try: set[str] = set()        # labels of failed units tried once more now that the rest is rendered
         self._failure_keys: set[str] = set()    # failures that the current decks still use, with unchanged inputs
+        self._failure_slides: dict[str, set] = {}   # failure key -> the slides (deck, id) whose units have that key
         self._current: Optional[_CurrentKeys] = None    # what the last scan found current (stale renders go, _drop_stale)
 
     def _soon(self, deck: Deck) -> bool:
@@ -414,6 +415,7 @@ class BackgroundRenderer:
         single: set[str] = set()
         counted: set[str] = set()
         failure_keys: set[str] = set()
+        failure_slides: dict[str, set] = {}
         usage = {u["deck"]: u for u in self.store.deck_usage()}
         # A deck whose template file is in neither the project, the framework nor an installed theme fails every
         # render at its \input (a theme installed on another computer, a template file deleted): its units are held
@@ -461,6 +463,7 @@ class BackgroundRenderer:
                             counted.add(unit.label)
                         elif found.state is render_key.Freshness.FAILED:
                             failure_keys.add(found.key)
+                            failure_slides.setdefault(found.key, set()).add((unit.deck, unit.id_slug))
                             if found.failure and self.store.may_retry(found.failure):
                                 first.append(((deck_rank, language_rank, view_rank, order), unit))
                                 single.add(unit.label)          # a batch holding it would fail again
@@ -499,6 +502,7 @@ class BackgroundRenderer:
         self._counted = counted
         with self._working_lock:
             self._failure_keys = failure_keys
+            self._failure_slides = failure_slides
         failures = self.store_failures_count()
         with self._working_lock:
             # What runs now, from the workers' own list under their lock: copied from the old progress, a render that
@@ -557,6 +561,13 @@ class BackgroundRenderer:
         with self._working_lock:
             keys = self._failure_keys.copy()
         return [failure for failure in self.store.failures() if failure['key'] in keys]
+
+    def failed_slide_count(self) -> int:
+        """How many slides have a current failure: a failure is one render unit (slide x view x language), so a
+        slide failing in two views counts once."""
+        with self._working_lock:
+            slides = self._failure_slides.copy()
+        return len({slide for failure in self.current_failures() for slide in slides.get(failure['key'], ())})
 
     def store_failures_count(self) -> int:
         return len(self.current_failures())
@@ -864,6 +875,7 @@ class BackgroundRenderer:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
         with self._working_lock:
             self._failure_keys.discard(key)
+            self._failure_slides.pop(key, None)
         self.progress.failures = self.store_failures_count()
         name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
         self._drop_stale(unit, key)
@@ -993,6 +1005,7 @@ class BackgroundRenderer:
         with self._working_lock:
             if self._current is None or key in self._current.keys:
                 self._failure_keys.add(key)
+                self._failure_slides.setdefault(key, set()).add((unit.deck, unit.id_slug))
 
     def _failed(self, job: Job, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()

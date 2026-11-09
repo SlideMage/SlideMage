@@ -3809,3 +3809,8 @@ v0.14.58 (2026-11-09, direct request: find why the text on slide bij sits too lo
 NEW: Section slides: the text after a section figure starts where it should.
 - A section figure can be written before the text or the agenda without pushing them down.
 - On a section slide with a long list and the figure last, the first line moves down 1.5pt to where the other slides have it.
+
+v0.14.59 (2026-11-09, direct request: confirm that failed slides are queued again): "Try failed slides again" in the background previews window now shows a message with the number of slides added to the render queue, with an OK button. The number counts slides, not render units: a slide that failed in two views or languages counts once (RenderScheduler.failed_slide_count, from a failure key to its slides, kept with the failure keys). The count is taken before the failures are forgotten. The text is "n failed slides added to the render queue." for every n. Test in test_background_previews_gui.py.
+
+NEW: Try failed slides again now tells you how many failed slides were added to the render queue.
+- The background previews window shows the number and an OK button after you click it.
