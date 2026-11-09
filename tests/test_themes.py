@@ -316,15 +316,6 @@ def test_a_snapshot_compile_gets_no_theme_folders(package, tmp_path, monkeypatch
     assert slide_templates.template_dirs(ctx.root)[-1] != themes.themes_dir() / "sample-theme"
 
 
-def test_preview_equivalence_accepts_exactly_the_theme_search_path(package, tmp_path, monkeypatch):
-    from slidemage import preview_equivalence
-    themes.install_file(package)
-    monkeypatch.delenv("TEXINPUTS", raising=False)
-    ctx = make_ctx(tmp_path)
-    assert preview_equivalence._framework(ctx, {}) != "custom TEXINPUTS search path"
-    monkeypatch.setenv("TEXINPUTS", "mine")
-    assert preview_equivalence._framework(ctx, {}) == "custom TEXINPUTS search path"
-
 
 # -- template discovery
 

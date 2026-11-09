@@ -84,6 +84,7 @@ class RenderStore:
         self.root = self.local_dir
         self.work_dir = self.local_dir / "work"
         self.forget_project_copy(ctx)
+        shutil.rmtree(project.preview_cache_dir(ctx.root) / "render-results", ignore_errors=True)
         self._clock = clock
         self._lock = threading.RLock()
         self.local_dir.mkdir(parents=True, exist_ok=True)

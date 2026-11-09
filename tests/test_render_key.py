@@ -253,7 +253,11 @@ def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, re
         again_store.close()
 
 
-def test_the_store_creates_nothing_in_the_project_and_removes_an_earlier_copy_there(ctx, tmp_path):
+def test_the_store_creates_nothing_in_the_project_and_removes_old_caches(ctx, tmp_path, monkeypatch):
+    cache = tmp_path / "preview-cache"
+    monkeypatch.setattr(render_store.project, "preview_cache_dir", lambda root: cache)
+    write(cache / "render-results" / "old.pdf", "%PDF")
+    page = write(cache / "page-images" / "keep.json", "pages")
     old = ctx.root / ".previews" / "render-store" / "objects" / "ab" / "cd"
     old.mkdir(parents=True)
     (old / "slide.pdf").write_bytes(b"%PDF")
@@ -272,6 +276,9 @@ def test_the_store_creates_nothing_in_the_project_and_removes_an_earlier_copy_th
     after = {p.relative_to(ctx.root).as_posix() for p in ctx.root.rglob("*") if ".previews" not in p.parts}
     assert after == before
     assert not list(ctx.root.rglob("render-store*"))
+    again = render_store.RenderStore(ctx, local)
+    again.close()
+    assert not (cache / "render-results").exists() and page.read_text() == "pages"
 
 
 def test_eviction_order_and_protection(ctx, resolver, store):

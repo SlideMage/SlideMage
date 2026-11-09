@@ -22,9 +22,9 @@ def test_defaults_and_overrides():
     assert (args.repeat, args.view, args.in_place, args.keep, args.json) == (3, "instructor", False, False, None)
     assert args.project == bench.REPO / "example" and args.framework == bench.REPO / "latex"
     assert args.scenarios == ["cold", "unchanged", "edit", "view-switch"]
-    args = bench.parse_args(["--scenarios", "fill-cache,cold", "--repeat", "5", "--view", "during-course", "--slide", "1b2",
+    args = bench.parse_args(["--scenarios", "edit,cold", "--repeat", "5", "--view", "during-course", "--slide", "1b2",
                              "--in-place", "--json", "out.json"])
-    assert args.scenarios == ["cold", "fill-cache"]  # in running order
+    assert args.scenarios == ["cold", "edit"]  # in running order
     assert (args.repeat, args.view, args.slide, args.in_place, args.json) == (5, "during-course", "1b2", True, Path("out.json"))
 
 

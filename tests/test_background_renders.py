@@ -1153,7 +1153,7 @@ def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, ra
 
 
 def test_saving_the_captured_text_is_a_store_hit_without_tex(project, store, raster, monkeypatch):
-    from slidemage import preview_cache, preview_requests, preview_target
+    from slidemage import preview_requests, preview_target
 
     r = make(project, store, raster)
     deck = deck_named(r, 'slidemage-manual')
@@ -1183,7 +1183,6 @@ def test_saving_the_captured_text_is_a_store_hit_without_tex(project, store, ras
     key = r.resolver.fast_key(unit, text)
     assert store.find(key) is not None and len(builds) == 1
     r.renders.close()
-    preview_cache.PreviewCache(project.root).prune(max_bytes=0)
     r.renders = preview_requests.RenderService()
     r.renders._background = r
     unit.source_path.write_text(text, encoding='utf-8')

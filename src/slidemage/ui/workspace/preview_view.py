@@ -1491,7 +1491,7 @@ class PreviewPane(Surface):
             spec = self._adhoc_spec
             job = self._job(self._target, external=True, revision_text=self._adhoc_text)
             job.request = self._renders.request(spec.target, spec.revision.text, spec.view, spec.language,
-                                                self.app.log, spec=spec, require_pdf=True)
+                                                self.app.log, spec=spec)
             self._start(lambda: None, job)
 
     # -- rendering ---------------------------------------------------------------------
@@ -1552,7 +1552,7 @@ class PreviewPane(Surface):
         if self._active is not None:
             active = self._active.request
             pending = self._pending[1].request
-            if active is not None and getattr(active, 'source', active) is not getattr(pending, 'source', pending):
+            if active is not None and active is not pending:
                 # Detach only this pane. RenderRequest stops TeX when its last waiter leaves; an AI/tool
                 # consumer can finish the old revision independently. Never kill a shared request here.
                 self._active.cancel.set()
@@ -1564,7 +1564,7 @@ class PreviewPane(Surface):
             # Reacquire that immutable request after cancellation instead of displaying a cancellation error.
             spec = job.request.spec
             job.request = self._renders.request(spec.target, spec.revision.text, spec.view, spec.language,
-                                                self.app.log, spec=spec, require_pdf=job.external)
+                                                self.app.log, spec=spec)
         self._active = job
         self._lifetime.job = job
         Thread(target=self._run, args=(work, job), daemon=True).start()

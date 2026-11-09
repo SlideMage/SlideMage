@@ -591,23 +591,22 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
     try:
         assert started.wait(5)
         request = service.request(target, unit.source_path.read_text(encoding='utf-8'), 'instructor', 'EN', lambda _: None)
-        build = request.source
         pixels = []
         pane = threading.Thread(target=lambda: pixels.append(request.wait(pixels_only=True)))
         pane.start()
         deadline = time.monotonic() + 5
-        while len(build._consumers) < 2 and time.monotonic() < deadline:
+        while len(request._consumers) < 2 and time.monotonic() < deadline:
             time.sleep(.005)
-        assert len(build._consumers) == 2
+        assert len(request._consumers) == 2
         r.gate.in_front = True
         r.user_active()
         sweep.join(5)
-        assert not sweep.is_alive() and not build.cancel.is_set()
-        assert len(build._consumers) == 1 and not tex.calls
+        assert not sweep.is_alive() and not request.cancel.is_set()
+        assert len(request._consumers) == 1 and not tex.calls
         release.set()
         pane.join(5)
         assert not pane.is_alive() and pixels[0][1].startswith(b'\x89PNG')
-        assert build.done.wait(5) and len(tex.calls) == 1
+        assert request.done.wait(5) and len(tex.calls) == 1
         assert r.resolver.lookup(unit).final
     finally:
         release.set()

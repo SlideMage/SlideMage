@@ -166,7 +166,7 @@ class CompareRendered(QDialog):
         self._show()
         for side in self._sides:
             request = self._renders.request(self.target, self.texts[side.name], self.view, self.language,
-                                            app.log, require_pdf=True)
+                                            app.log)
             cancel = self._cancel
             resolver = app.background.renderer.resolver
             side.worker = background.run_in_background(

@@ -10,13 +10,14 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from types import SimpleNamespace
 
 import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import (batch_render, compiler, deck_preview_refresh, deck_scan, preview_batch, preview_cache,
-                       preview_requests, preview_target, slide_preview, slide_snapshot)
+from slidemage import (batch_render, compiler, deck_preview_refresh, deck_scan, preview_batch,
+                       preview_requests, preview_target, slide_preview)
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.project import ProjectContext
 
@@ -37,8 +38,11 @@ class CachedSet:
     def __init__(self, cached=()):
         self.cached = set(cached)
 
-    def is_cached(self, spec):
-        return spec.target.id_slug in self.cached
+    def _renderer(self, ctx):
+        return SimpleNamespace(resolver=SimpleNamespace(
+            fast_key=lambda unit, *a, **k: unit.id_slug if unit.id_slug in self.cached else None,
+            lookup=lambda *a, **k: SimpleNamespace(usable=True, record={}),
+            capture=lambda *a: None))
 
 
 def keys(batches):
@@ -99,17 +103,6 @@ def test_a_slide_that_is_not_a_plain_slide_of_the_deck_renders_singly(tmp_path, 
     assert keys(batch_render.groups(CachedSet(), list(enumerate(specs, 1)), 8)) == [[1, 3]]
 
 
-def test_a_service_that_cannot_tell_leaves_the_request_to_a_single_render(tmp_path):
-    class Broken:
-        def is_cached(self, spec):
-            if spec.target.id_slug == 'bbb-EN-X':
-                raise ValueError('odd')
-
-    ctx = ProjectContext.at(tmp_path)
-    specs = [make_spec(ctx, slug) for slug in ('aaa-EN-X', 'bbb-EN-X', 'ccc-EN-X')]
-    assert keys(batch_render.groups(Broken(), list(enumerate(specs, 1)), 8)) == [[1, 3]]
-
-
 # -- splitting the document ---------------------------------------------------------------------
 
 class FakeDocument:
@@ -167,7 +160,7 @@ def test_the_document_is_split_by_the_slide_ids_into_a_pdf_and_the_dependencies_
     assert set(built[1].dependencies) == {str(media / 'named.png'), str(media / 'other.png'), str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme)}
     assert set(built[2].dependencies) == {str(media / 'other.png'), str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme),
                                           str(ctx.slides_dir / 'bbb-EN-X-current.tex')}
-    assert built[1].before is built[2].before is not None and not document.folder.exists()
+    assert not document.folder.exists()
 
 
 @pytest.mark.parametrize('ids', [['aaa', 'bbb', 'ccc'], ['bbb', 'aaa'], ['aaa', 'bbb', 'aaa'], ['aaa']])
@@ -209,14 +202,11 @@ def test_each_slide_of_the_document_is_the_text_a_single_render_would_compile(tm
 
 # -- render_batch ---------------------------------------------------------------------------------
 
-class Service(preview_requests.RenderService):
+class Service(CachedSet, preview_requests.RenderService):
     """A service that renders nothing: it records what it was asked and which requests came with a made PDF."""
     def __init__(self, cached=()):
-        super().__init__()
+        preview_requests.RenderService.__init__(self)
         self.cached, self.requests = set(cached), []
-
-    def is_cached(self, spec):
-        return spec.target.id_slug in self.cached
 
     def request(self, *args, spec, prebuilt=None, **kwargs):
         self.requests.append((spec, prebuilt))
@@ -238,7 +228,7 @@ def fake_build(monkeypatch, fail=False):
         built.append([key for key, _spec in batch])
         if fail:
             raise RuntimeError('Render failed')
-        return {key: preview_requests.PrebuiltRender(Path(tempfile.mkdtemp(prefix='slidemage_preview_')) / 'x.pdf', (), 'guard')
+        return {key: preview_requests.PrebuiltRender(Path(tempfile.mkdtemp(prefix='slidemage_preview_')) / 'x.pdf', ())
                 for key, _spec in batch}
 
     monkeypatch.setattr(batch_render, 'build', build)
@@ -280,19 +270,6 @@ def test_a_document_that_fails_leaves_every_request_to_its_own_render(tmp_path, 
     assert [[e.status for e in events if e.index == i] for i in (1, 2, 3)] == [['rendering', 'rendered']] * 3
 
 
-def test_views_that_make_one_image_follow_the_first_which_alone_comes_from_the_document(tmp_path, monkeypatch):
-    ctx = ProjectContext.at(tmp_path)
-    specs = tuple(make_spec(ctx, slug, view=view) for slug in ('aaa-EN-X', 'bbb-EN-X') for view in VIEWS)
-    group = lambda spec, identity=None: (f'group-{spec.target.id_slug}', 'evidence')        # noqa: E731
-    monkeypatch.setattr(preview_batch, 'image_group', group)
-    built = fake_build(monkeypatch)
-    service = Service()
-    preview_batch.render_batch(service, specs, batch_size=8, workers=1)
-    assert built == [[1, 4]]
-    assert [(spec.view, prebuilt is not None) for spec, prebuilt in service.requests if spec.target.id_slug == 'aaa-EN-X'] == [
-        ('instructor', True), ('during-course', False), ('after-course', False)]
-
-
 def test_a_made_pdf_nobody_took_is_removed(tmp_path, monkeypatch):
     class Joined(Service):
         def request(self, *args, spec, prebuilt=None, **kwargs):
@@ -318,58 +295,6 @@ def test_a_cancelled_refresh_compiles_nothing(tmp_path, monkeypatch):
     assert built == [] and [result.status for result in results] == ['cancelled'] * 3
 
 
-# -- the service records a made PDF like a render of its own ----------------------------------------
-
-def service_fixture(tmp_path, monkeypatch):
-    ctx = ProjectContext.at(tmp_path / 'project')
-    framework = tmp_path / 'framework'
-    framework.mkdir()
-    theme = framework / 'theme.tex'
-    theme.write_text('fixture')
-    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
-    monkeypatch.setattr(compiler, 'build_env', lambda _: env)
-    monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images',
-                        lambda pdf, *a: ((b'page', b'tool', b'thumb'), (((200, 100), b'snapshot'),)))
-    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pytest.fail('a made PDF was rendered again'))
-    return ctx, theme, env
-
-
-def test_a_made_pdf_is_stored_like_a_render_and_a_later_request_finds_it(tmp_path, monkeypatch):
-    ctx, theme, env = service_fixture(tmp_path, monkeypatch)
-    spec = make_spec(ctx, 'abc-EN-One')
-    service = preview_requests.RenderService()
-    assert not service.is_cached(spec)
-    folder = Path(tempfile.mkdtemp(prefix='slidemage_preview_'))
-    pdf = folder / 'abc-EN-One.pdf'
-    pdf.write_bytes(b'PDF')
-    before = preview_cache.PreviewCache(ctx.root).begin(env)
-    prebuilt = preview_requests.PrebuiltRender(pdf, [str(theme)], before)
-    request = service.request(spec.target, spec.revision.text, spec.view, spec.language, lambda _: None, spec=spec, prebuilt=prebuilt)
-    request.wait()
-    assert prebuilt.used and request.preview_result.status == 'rendered' and request.preview_result.dependencies == (theme,)
-    assert request.preview_result.display_png == b'page' and not folder.exists()
-    assert service.is_cached(spec)
-    later = service.request(spec.target, spec.revision.text, spec.view, spec.language, lambda _: None, spec=spec)
-    later.wait()
-    assert later.preview_result.status == 'cached' and later.preview_result.display_png == b'page'
-    service.close()
-
-
-def test_a_guard_taken_before_the_input_changed_stores_nothing(tmp_path, monkeypatch):
-    ctx, theme, env = service_fixture(tmp_path, monkeypatch)
-    spec = make_spec(ctx, 'abc-EN-One')
-    service = preview_requests.RenderService()
-    pdf = Path(tempfile.mkdtemp(prefix='slidemage_preview_')) / 'abc-EN-One.pdf'
-    pdf.write_bytes(b'PDF')
-    before = preview_cache.PreviewCache(ctx.root).begin(env)
-    theme.write_text('edited while the document compiled')
-    prebuilt = preview_requests.PrebuiltRender(pdf, [str(theme)], before)
-    service.request(spec.target, spec.revision.text, spec.view, spec.language, lambda _: None, spec=spec, prebuilt=prebuilt).wait()
-    assert not service.is_cached(spec)
-    service.close()
-
-
 # -- with the real TeX tools -------------------------------------------------------------------------
 
 def manual_requests(root, count):
@@ -377,11 +302,10 @@ def manual_requests(root, count):
     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == 'slidemage-manual')
     seen, found = set(), []
     for spec in deck_preview_refresh.plan(ctx, deck, scope='selected', selected_view='instructor', language='EN'):
-        if batch_render.eligible(spec) and spec.target.bare_id not in seen:
+        if batch_render.eligible(spec) and spec.complete and spec.target.bare_id not in seen:
             seen.add(spec.target.bare_id)
             found.append(spec)
-    stepped = next(spec for spec in found if spec.target.steps)           # a slide with a \\slidestep call (steps)
-    return ctx, [spec for spec in found[3:] if spec is not stepped][:count - 1] + [stepped]
+    return ctx, found[3:3 + count]
 
 
 @pytest.mark.skipif(shutil.which('latexmk') is None or shutil.which('lualatex') is None, reason='needs a TeX installation')
@@ -401,8 +325,9 @@ def test_a_real_document_stores_the_images_and_the_evidence_of_the_single_render
         try:
             results[name] = preview_batch.render_batch(service, requests, batch_size=size)
             assert spy == (['batch'] if size > 1 else ['single'] * 3), [r.error for r in results[name]]
-            cache, env = preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx)
-            entries[name] = [cache.lookup(preview_requests.cache_identity(spec), env) for spec in requests]
+            renderer = service._renderer(ctx)
+            entries[name] = [renderer.store.find(renderer.resolver.fast_key(spec.unit, spec.revision.text))
+                             for spec in requests]
             if size > 1:        # a later request of the same slide finds the stored entry, the same pixels
                 for spec, result in zip(requests, results[name]):
                     again = service.request(spec.target, spec.revision.text, spec.view, spec.language, lambda _: None, spec=spec)
@@ -415,8 +340,6 @@ def test_a_real_document_stores_the_images_and_the_evidence_of_the_single_render
         assert batched.display_png == single.display_png and batched.secondary_png == single.secondary_png
         assert batched.page_images == single.page_images
     for batched, single in zip(entries['batched'], entries['singles']):
-        assert batched is not None and single is not None and batched.page_images == single.page_images
-        relative = lambda entry, name: {os.path.relpath(path, tmp_path / name) for path in entry.dependencies  # noqa: E731
-                                        if str(tmp_path / name) in str(path)}
-        assert relative(single, 'singles') <= relative(batched, 'batched')         # evidence at least as strict
-        assert len(pymupdf.open(batched.pdf)) == len(pymupdf.open(single.pdf))
+        assert batched is not None and single is not None and batched['pages'] == single['pages']
+        relative = lambda entry: {path for kind, path, _sha in entry['manifest'] if kind == 'project'}  # noqa: E731
+        assert relative(single) <= relative(batched)         # evidence at least as strict

@@ -17,10 +17,10 @@ from pathlib import Path
 from . import preview_raster_client
 from .fileio import atomic_write
 from .filelock import build_lock
-from .preview_cache import MAX_BYTES
 from .render_evidence import digest
 
 SCHEMA = 1
+MAX_BYTES = 512 * 1024 * 1024
 PNG = b'\x89PNG\r\n\x1a\n'
 
 
@@ -84,7 +84,6 @@ def read_document(pdf: Path, *, project_root: Path, start=1, count=60, dpi=130) 
                 atomic_write(path, json.dumps(dict(identity=identity, count=result['count'],
                     images=[base64.b64encode(image).decode('ascii') for image in result['images']],
                     hashes=[hashlib.sha256(image).hexdigest() for image in result['images']])))
-                # Bound this secondary cache independently of leased render artifacts.
                 files = sorted(root.glob('*.json'), key=lambda item: item.stat().st_mtime_ns, reverse=True)
                 size = 0
                 for item in files:

@@ -148,10 +148,7 @@ def serve():
         try:
             request = json.loads(line)
             with redirect_stdout(errors):
-                if request.get("op") == "sequence":
-                    response = sequence(base64.b64decode(request["pdf"]))
-                    images = response.pop("images")
-                elif "op" in request:
+                if "op" in request:
                     response = document(**request)
                     images = response.pop("images", [])
                 else:

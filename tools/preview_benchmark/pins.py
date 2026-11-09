@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Prove unchanged audited pinned calls survive a batch creating a frozen sibling."""
+"""Prove unchanged pinned calls survive a batch creating a frozen sibling."""
 from __future__ import annotations
 import argparse
 from dataclasses import replace
@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from slidemage import deck_scan, preview_equivalence, preview_requests
+from slidemage import deck_scan, preview_requests
 from slidemage.project import ProjectContext
 
 
@@ -26,10 +26,9 @@ def run(root, framework, output):
     deck = deck_scan.read_deck(path)
     spec, = preview_requests.resolve_requests(ctx, deck, source, 'instructor', 'EN',
                                               options=preview_requests.RenderOptions(saved=True))
-    assert preview_equivalence.classify_views((spec,)).decisions[0].certain
     service = preview_requests.RenderService()
     def request():
-        handle = service.request(spec.target, spec.revision.text, spec.view, spec.language, False,
+        handle = service.request(spec.target, spec.revision.text, spec.view, spec.language,
                                  lambda _: None, spec=spec)
         handle.wait()
         return handle
@@ -47,7 +46,8 @@ def run(root, framework, output):
     # Separate current calls still have their own changed revision and version text.
     current = replace(spec.target, macro='slide', version=None)
     new = preview_requests.PreviewRequest(current, preview_requests.SourceRevision.capture(source), spec.view, 'EN')
-    assert preview_requests.cache_identity(new) != preview_requests.cache_identity(spec)
+    resolver = service._renderer(ctx).resolver
+    assert resolver.fast_key(new.unit, new.revision.text) != resolver.fast_key(spec.unit, spec.revision.text)
     service.close()
     result = dict(initial_compile_count=1, after_batch_compile_count=0, after_batch_raster_count=0,
                   pinned_unchanged=True, current_revision_distinct=True)

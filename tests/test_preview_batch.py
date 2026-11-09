@@ -4,7 +4,6 @@
 from dataclasses import replace
 import os
 import threading
-from types import SimpleNamespace
 
 import pytest
 
@@ -39,12 +38,11 @@ class Service:
         request = preview_requests.RenderRequest(work, lambda: None)
         request.spec = spec
         if spec.view == 'instructor':
-            # Simulate the completed cache adapter without skipping the waiter.
+            # Simulate a store hit without skipping the waiter.
             original = work
             def cached(token):
                 artifact = original(token)
-                request._cache_entry = SimpleNamespace(dependencies=(), render_stamp='original')
-                request._cache_status = 'cached'
+                request._store_record = {}
                 return artifact
             request._work = cached
         return request
@@ -60,7 +58,6 @@ def test_mixed_cached_failed_hidden_batch_keeps_order(tmp_path):
     assert [r.request.view for r in results] == ['instructor', 'during-course', 'after-course']
     assert published == ['instructor']
     assert results[0].display_png == b'image' and results[1].error == 'bad TeX'
-    assert len({r.options.render_stamp for r in service.calls}) == 1
     # the views render at once: their events interleave, but each view starts before it ends, and `done` counts up
     assert sorted(e.status for e in events) == sorted(['rendering', 'cached', 'rendering', 'failed', 'hidden'])
     assert [e.done for e in events if e.status != 'rendering'] == [1, 2, 3]

@@ -336,9 +336,7 @@ def test_new_revision_detaches_obsolete_pane_without_cancelling_other_consumers(
 
 def test_identical_inflight_revision_is_not_cancelled_when_save_joins_it(pane):
     view, target, _ = pane
-    source = object()
-    draft = SimpleNamespace(source=source, cancelled=lambda: False)
-    saved = SimpleNamespace(source=source, cancelled=lambda: False)
+    draft = saved = SimpleNamespace(cancelled=lambda: False)
     first = view._job(target, request=draft)
     view._start(lambda: None, first)
     view._start(lambda: None, view._job(target, request=saved))

@@ -138,7 +138,7 @@ def project_id(root: Path) -> str:
 
 
 def preview_cache_dir(root: Path) -> Path:
-    """This computer's rebuildable preview caches for the project at `root` (rendered PDFs and their page images):
+    """This computer's rebuildable PDF page-image cache for the project at `root`:
     outside the project, so a synced project folder never carries them."""
     return cache_dir() / "preview-cache" / project_id(root)
 

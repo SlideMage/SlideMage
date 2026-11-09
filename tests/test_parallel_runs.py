@@ -115,7 +115,6 @@ def test_the_budget_first_always_then_the_limit_and_the_cpu_rule_and_the_users_o
 
 
 def test_a_batch_renders_its_views_at_once_and_keeps_their_order(monkeypatch):
-    monkeypatch.setattr(preview_batch, "image_group", lambda spec, identity=None: None)   # every view its own image
     lock = threading.Lock()
     state = {"now": 0, "peak": 0}
 
@@ -138,7 +137,7 @@ def test_a_batch_renders_its_views_at_once_and_keeps_their_order(monkeypatch):
 
     def spec(view):
         return SimpleNamespace(view=view, target=SimpleNamespace(hidden=False), capture_error=None,
-                               options=SimpleNamespace(render_stamp=None, force=False, saved=True, presenter=False,
+                               options=SimpleNamespace(force=False, saved=True, presenter=False,
                                                        mode="slide", overlay=None),
                                revision=SimpleNamespace(text="T"), language="EN")
     monkeypatch.setattr(preview_batch, "replace", lambda obj, **changes: (

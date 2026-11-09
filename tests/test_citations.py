@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import (citation_sources, citations, compat, compat_citation_format, compiler, preview_equivalence,
+from slidemage import (citation_sources, citations, compat, compat_citation_format, compiler,
                        project, theme_sources, updater)
 from slidemage.project import ProjectContext
 
@@ -253,15 +253,6 @@ def test_a_snapshot_compile_gets_no_citation_folders(package, tmp_path, monkeypa
     monkeypatch.setattr(project, "is_snapshot", lambda root: True)
     assert "sample" not in compiler.build_env(ProjectContext(root=tmp_path / "proj")).get("TEXINPUTS", "")
 
-
-def test_preview_equivalence_accepts_exactly_the_installed_search_path(package, tmp_path, monkeypatch):
-    citations.install_file(package)
-    monkeypatch.delenv("TEXINPUTS", raising=False)
-    ctx = ProjectContext(root=tmp_path / "proj")
-    (ctx.root).mkdir()
-    assert preview_equivalence._framework(ctx, {}) != "custom TEXINPUTS search path"
-    monkeypatch.setenv("TEXINPUTS", "mine")
-    assert preview_equivalence._framework(ctx, {}) == "custom TEXINPUTS search path"
 
 
 def test_citation_of_finds_the_folder_a_file_lies_in(package, tmp_path):

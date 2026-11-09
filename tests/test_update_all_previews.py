@@ -149,20 +149,6 @@ def test_missing_source_does_not_abort_other_occurrences(project):
     assert result.refreshed == ['abd-EN-Second']
 
 
-def test_unchanged_deck_refresh_reuses_each_view_after_restart(tmp_path, monkeypatch):
-    from test_preview_image_groups import fixture
-    from test_preview_target import make_deck
-    ctx, _target, _source, compiles, _group = fixture(tmp_path, monkeypatch)
-    deck = make_deck('\\slide{abc-EN-One}\n')
-    first = update_all_previews.rerender_deck(ctx, deck, lambda _: None,
-                                            publish=lambda _: 'cached')
-    assert first and len(compiles) == 3
-    second = update_all_previews.rerender_deck(ctx, deck, lambda _: None,
-                                             publish=lambda _: 'cached')
-    assert second and len(compiles) == 3
-    assert second.details.count('cached') == 3
-
-
 def test_deck_resolver_uses_translation_and_reveal_selection(project):
     from dataclasses import replace
     from slidemage import deck_preview_refresh

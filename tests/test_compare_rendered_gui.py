@@ -120,7 +120,7 @@ def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(en
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     (first, second) = renders.requests
     for (request, target, text, view, language, kwargs), expected in zip((first, second), ("old text", "new text")):
-        assert text == expected and kwargs == {'require_pdf': True}  # a draft, with its own view's PDF
+        assert text == expected and kwargs == {}  # a draft, with its own view's PDF
         assert (view, language) == ("during-course", "EN") and target.source_path == env.path
     assert dialog.windowTitle() == "Compare rendered · abc · During · EN" and not dialog.isModal()
     assert chips(dialog) == ["Rendering…", "Rendering…"] and messages(dialog) == ["Rendering…", "Rendering…"]
@@ -320,7 +320,7 @@ def test_the_task_card_compares_in_review_and_done(asked, renders):  # noqa: F81
     (dialog,) = renders.dialogs(env.window)
     assert dialog.texts == {"Before": BROKEN, "After": card(env).after} and "\\end{itemize}" in dialog.texts["After"]
     assert dialog.target.source_path == env.path and (dialog.view, dialog.language) == ("instructor", "EN")
-    assert len(renders.requests) == 2 and all(entry[5] == {'require_pdf': True} for entry in renders.requests)
+    assert len(renders.requests) == 2 and all(entry[5] == {} for entry in renders.requests)
     close(dialog)
     press(env, "Apply")
     wait_until(phase_is(env, model.DONE))

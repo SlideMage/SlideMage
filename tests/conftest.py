@@ -73,16 +73,6 @@ def _no_cloud_credentials(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _fresh_raster_version():
-    """cache_identity reads the PyMuPDF version once per process; a test that patches it starts and leaves it unread."""
-    from slidemage import preview_requests
-
-    preview_requests._raster_version.cache_clear()
-    yield
-    preview_requests._raster_version.cache_clear()
-
-
-@pytest.fixture(autouse=True)
 def _no_scrolling(monkeypatch):
     """Tests change slides faster than anyone scrolls: the Preview would take that as scrolling and hold its checks
     back (preview_view.SCROLLING_MS). The tests of scrolling set it themselves."""
