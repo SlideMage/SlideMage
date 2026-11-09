@@ -3803,3 +3803,9 @@ v0.14.57 (2026-11-09, direct request: fix the freeze after a deck-source save th
 
 NEW: Editing a deck's source in a large project no longer freezes the window for seconds after each save.
 - SlideMage now reads only the slide files that changed since it last looked, instead of all of them several times after every save.
+
+v0.14.58 (2026-11-09, direct request: find why the text on slide bij sits too low and fix it generally): Text after a section figure no longer starts about 16pt too low. \sectionfigure puts the picture in an empty box in the vertical list, and TeX added line spacing between that box and the next one, so a section slide that placed the figure before its text or agenda (bij) had everything 16pt lower. The macro now ends with \nointerlineskip. With the figure last, as on the other section slides, nothing changes visibly except that a long list is no longer squeezed: the extra spacing made the frame look too full, and TeX moved the first line up by 1.5pt (slide vtm, 2.5pt under the greyscale template). The framework file has a new pin.
+
+NEW: Section slides: the text after a section figure starts where it should.
+- A section figure can be written before the text or the agenda without pushing them down.
+- On a section slide with a long list and the figure last, the first line moves down 1.5pt to where the other slides have it.

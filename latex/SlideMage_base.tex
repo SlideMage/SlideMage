@@ -5459,7 +5459,16 @@
 % (2026-10-01, direct instruction: bij's image should "fit snugly between
 % header box and footer and touch the right edge of the slide", for section
 % slides with images in general, with the image's source visible). Put it
-% anywhere in the sectionframe body. The image is scaled by height to fill
+% anywhere in the sectionframe body; put it BEFORE a \SMSubsectionAgenda or
+% \SMChapterAgenda, whose width leaves room for \SMSectionFigureWidth, set here.
+% The image is an empty \vbox to 0pt in the vertical list, and TeX puts the
+% interline glue (\baselineskip, about 16pt at \large) between that box and
+% the box that follows, so text after the figure starts that much lower
+% (bij's agenda, measured 2026-11-09), so the macro ends with \nointerlineskip
+% (in vertical mode) to cancel that glue. With the figure last (the usual place)
+% it also keeps the slide from looking overfull: the glue after the empty box
+% made a long list's frame too tall, and TeX shrank the 1.5pt of glue above the
+% list to fit (vtm's first line stood 1.5pt too high). The image is scaled by height to fill
 % the gap from the title bar's bottom edge to the footer box's top edge and
 % sits flush with the page's right edge -- sideimageframe's geometry, but
 % for sectionframe's taller bar. That bar's bottom edge depends on the
@@ -5505,6 +5514,8 @@
 	% drawings follow, not these.
 	\global\SMSideFootnoteRightInset=\dimexpr\SMSectionFigureWidth+2.1pt\relax
 	\global\SMSideFootnoteHsize=\dimexpr\SMSectionFigureHeight-\SMSideFootnoteTitleBlockSep-2.31pt\relax
+	% the empty box above must not cost the interline glue before the next box (see the comment above)
+	\ifvmode\nointerlineskip\fi
 }
 
 % quoteframe: a quote slide (ExampleSlides.pptx slide 4) -- institute logo
