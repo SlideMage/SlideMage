@@ -8,7 +8,7 @@ whose status is "open" (all with --all), and writes OUT.html from handover_list.
 Artifact tool; the page republishes itself with the user's picks and notes when they click "Start tasks".
 Each task's "Details" text is whatever stands between `<!-- task:ID -->` and `<!-- /task:ID -->` lines in handover.md; a
 task's optional "notes" field preloads its text field (it only holds notes not yet integrated into the description). A task's optional "run" ({"mode": "session"|"agent"|"", "model", "effort"}) preselects the page's Subsession/Subagent boxes and
-model and effort lists as a recommendation (defaults: no mode, sonnet, medium). A task with `"needs_items": true` is left out unless its marked text has a
+model and effort lists as a recommendation (defaults: no mode, sonnet, medium). A task's optional "pin" ("top" or "bottom") keeps it at the top or bottom of the page; unpinned tasks, new ones included, sit between. A task with `"needs_items": true` is left out unless its marked text has a
 bullet item (a line starting with "* " or "- "), so an empty standing section does not clutter the page. Prints the number of tasks and the ids, one line (and the ids that
 have no details). Standard library only.
 """
@@ -68,6 +68,12 @@ def main(argv):
     tasks = read_tasks(text)
     if "--all" not in argv:
         tasks = [t for t in tasks if t["status"] == "open"]
+    # A task's optional "pin" ("top" or "bottom") keeps it above or below the rest. Stable sort: pinned-top tasks first, then
+    # the others in file order (so a task added at the end of the block lands between the pinned ones), then pinned-bottom.
+    for t in tasks:
+        if t.get("pin") not in (None, "", "top", "bottom"):
+            raise SystemExit(f"TASKS block: task {t['id']} has pin {t['pin']!r}; use \"top\" or \"bottom\"")
+    tasks.sort(key=lambda t: {"top": 0, "bottom": 2}.get(t.get("pin"), 1))
     details = read_details(text)
     missing = []
     for t in tasks:
@@ -81,7 +87,7 @@ def main(argv):
     for t in tasks:
         r = t.get("run") or {}
         run[t["id"]] = {"mode": r.get("mode", ""), "model": r.get("model", "sonnet"), "effort": r.get("effort", "medium")}
-    state = {"tasks": tasks, "sel": {}, "notes": dict(notes), "savedNotes": dict(notes), "run": run, "sent": None, "updated": None}
+    state = {"tasks": tasks, "sel": {}, "notes": dict(notes), "savedNotes": dict(notes), "run": run, "savedPin": {t["id"]: t["pin"] for t in tasks if t.get("pin")}, "sent": None, "updated": None}
     blob = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
     html = (HERE / "handover_list.template.html").read_text(encoding="utf-8").replace("__STATE__", blob)
     pathlib.Path(args[0]).write_text(html, encoding="utf-8")
