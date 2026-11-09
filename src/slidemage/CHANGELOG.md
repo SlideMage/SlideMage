@@ -3820,3 +3820,8 @@ v0.14.60 (2026-11-09, direct request: a cloud-synced project carried a 477 MB .p
 NEW: Previews no longer sync with a cloud-synced project.
 - Slide previews, TikZ pictures and PDF media images live in SlideMage's folder on this computer.
 - An existing .previews folder in a project is moved there the first time the project is used, so nothing has to be rendered again.
+
+v0.14.61 (2026-11-09, direct request: confirm that failed slides are queued again): "Try failed slides again" in the background previews window now shows a message with the number of slides added to the render queue, with an OK button. The number counts slides, not render units: a slide that failed in two views or languages counts once (RenderScheduler.failed_slide_count, from a failure key to its slides, kept with the failure keys). The count is taken before the failures are forgotten. The text is "n failed slides added to the render queue." for every n. Test in test_background_previews_gui.py.
+
+NEW: Try failed slides again now tells you how many failed slides were added to the render queue.
+- The background previews window shows the number and an OK button after you click it.

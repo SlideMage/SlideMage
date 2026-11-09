@@ -232,12 +232,29 @@ def test_the_chip_opens_the_status_window_which_pauses_renders_now_and_leaves_de
     dialog.reject()
 
 
-def test_retrying_failed_slides_forgets_the_failures(window):
+def test_retrying_failed_slides_forgets_the_failures(window, monkeypatch):
+    monkeypatch.setattr(background_previews.QMessageBox, "information", lambda *a, **k: None)
     controller = window.background
     controller.store.record_failure("k" * 64, "deterministic", "boom", [])
     assert controller.store.failures()
     controller.retry_failed()
     assert not controller.store.failures()
+
+
+def test_retrying_failed_slides_says_how_many_slides_are_queued_again(window, monkeypatch):
+    shown = []
+    monkeypatch.setattr(background_previews.QMessageBox, "information", lambda *a, **k: shown.append(a))
+    controller = window.background
+    renderer = controller.renderer
+    replanned = []
+    monkeypatch.setattr(renderer, "replan", lambda: replanned.append(True))
+    for key in ("a" * 64, "b" * 64, "c" * 64):          # three units, two slides: one slide fails in two views
+        controller.store.record_failure(key, "deterministic", "boom", [])
+    renderer._failure_keys = {"a" * 64, "b" * 64, "c" * 64}
+    renderer._failure_slides = {"a" * 64: {("d", "s1")}, "b" * 64: {("d", "s1")}, "c" * 64: {("d", "s2")}}
+    controller.retry_failed()
+    assert [a[2] for a in shown] == ["2 failed slides added to the render queue."]
+    assert not controller.store.failures() and replanned
 
 
 def test_the_gate_waits_for_a_compile_a_dialog_and_the_preview(window, monkeypatch):
