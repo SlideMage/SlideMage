@@ -282,10 +282,53 @@ Recommendation: A stays as built (it is the safe default and the one other users
 written ("uni-graz 1.1.1, your project's copy" or "from the repository D:\...\slidemage-theme-uni-graz"), so nobody edits
 the wrong one.
 
+### 3.7 Themes per view (instructor, during-course, after-course)
+
+Request (2026-11-09 discussion): let the deck's views use different themes, so the same deck is dark for projection
+(instructor view) and light for print (student views). It also gives Greyscale for printed handouts, and it decides the
+question "dark as a mode or as a theme of its own" without forcing either: the mapping works for both.
+
+How views work today (checked in the code): a deck that supports versions has three views (`deck_editor.VIEWS`); every
+compile is a job for one view (`compiler.py`), with a generated wrapper file that defines `\deckversionoverride` and, in
+several branches, already inlines a rewritten copy of the deck's preamble (it adds the language lines). The render key
+already carries the template per render unit (`unit.template`). In the deck the template is `\input` *before*
+`\deckversion[...]` runs, so TeX cannot choose the theme from the view; the app has to, when it builds the wrapper.
+
+* **Where it is stored:** in the deck, as one comment-style settings line, for example
+  `% SlideMage view themes: instructor=uni-graz+dark, during-course=uni-graz, after-course=uni-graz`. The deck's own
+  `\input{SlideMage_template_...}` line stays the default. A view without an entry, and a compile outside the app,
+  use that default; the deck stays valid TeX.
+* **A value is a template key, optionally `+dark`.** `+dark` makes the wrapper define `\SMDarkMode` for that view (the
+  mechanism Graz uses today), so dark can stay a mode of the theme and the print/projection case still works; a brand
+  that wants a different dark design maps the view to a theme of its own instead.
+* **At compile time:** `wrapper_text` replaces the template key in the inlined preamble for a mapped view, and takes
+  the inline-preamble branch for it (not plain `\input{deck}`).
+* **One function for the template of a deck and view:** `slide_templates.template_for(preamble, view)`. Fourteen calls in ten files
+  now call `detect_template(deck.preamble_text)` (compiler twice, deck_outline twice, preview_target,
+  preview_thumbnails, slide_preview twice, add_slide, deck_actions, maintenance, source_view, update_all_previews
+  twice); each takes the view and uses the new function. The colour menu of the toolbar (`theme_colors`) follows the
+  view shown.
+* **Render sharing:** `preview_equivalence` already isolates a template with another digest from the others. It must
+  compare the effective template per view, so views with different themes are never shared; this costs more stored
+  renders for such a deck.
+* **Deck settings:** the template picker and the Dark slides checkbox become a table "Theme per view" (default, then one
+  row per view). Decks without version support have no views and keep the single picker.
+* **Limit:** a view is a content axis, print versus projection a medium axis. The same view in both media (instructor
+  view as a dark projection and as a light handout) needs a one-off "theme for this build" in the Compile menu, which
+  the mapping would then supply as the default. Not part of the first step.
+* **Package rule:** a theme package holds exactly one template file (`themes.check_names`). A standalone "Graz dark" is
+  therefore a second package with the palette duplicated, unless the package rules are relaxed (a second template and a
+  shared include). Dark as `+dark` needs none of that.
+* **Not checked yet:** the Presenter app (it presents the instructor view, so it should follow that entry).
+
+Order: this is its own step, before the form: a small framework-free app change with focused tests (the twelve call
+sites, the wrapper, equivalence, deck settings). The editor's per-view table then edits the same settings line.
+
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |
 |---|---|---|
+| C0 | **Themes per view** (section 3.7): the settings line, `template_for(preamble, view)` at the fourteen call sites, the wrapper, equivalence, the deck settings table; optional `+dark` | nothing; independent of the form |
 | C1 | The scope-aware reader and in-place writer with the **Graz round-trip tests** first; then identity, palette (with the theme's own colours) and contrast badges, logo, 9 colour roles, code colours, **Light / Dark columns** for the colours Graz overrides, footnote marker; "New theme…" from the shipped one; live sample render in light and dark | the field metadata and catalog test; `theme-color-roles` for the full role list |
 | C2 | Layout profile, sizes, margins, title bar, footer, bullets, citation format; route B (theme source folder) for installed themes | C1's editing core |
 | C3 | "Advanced": tier 3 fields, optional features; a "derive dark mode from the light palette" helper; the framework hooks that remove Graz's raw dark-mode TeX (block title text, inline code, standout) | the framework gaps above |
