@@ -171,7 +171,8 @@ def test_repeated_automatic_requests_are_debounced_and_can_be_invalidated(
     view._start(work, view._job(target), debounce=True)
     view._start(work, view._job(target), debounce=True)
     assert not view.launched
-    QTest.qWait(350)
+    # Saves already follow the editor's typing debounce. Only coalesce notifications from this turn.
+    QTest.qWait(20)
     assert len(view.launched) == 1
     view._start(work, view._job(target), debounce=True)
     view.state.set_language("DE")
@@ -193,6 +194,109 @@ def test_presentation_opens_pdf_without_rasterizing(pane, tmp_path, monkeypatch)
     view._start(lambda: pdf, view._job(target, external=True))
     view._run(*view.launched[0])
     assert opened == [pdf]
+
+
+@pytest.mark.parametrize('shared', [False, True])
+def test_new_revision_detaches_obsolete_pane_without_cancelling_other_consumers(pane, tmp_path, monkeypatch, shared):
+    from slidemage import preview_build
+    from slidemage.preview_requests import PreviewRequest, RenderRequest, SourceRevision
+
+    view, target, path = pane
+    started, release = threading.Event(), threading.Event()
+    old_pdf, new_pdf = pdf_at(tmp_path / 'old.pdf'), pdf_at(tmp_path / 'new.pdf', 'new')
+    png = preview_png(new_pdf)
+    monkeypatch.setattr(view, '_after_render', lambda job: None)
+
+    def old_work(cancel):
+        started.set()
+        while not release.wait(.01):
+            preview_build.check_cancel(cancel)
+        return old_pdf, png, (), None
+
+    old = RenderRequest(old_work, lambda: None)
+    old.spec = PreviewRequest(target, SourceRevision.capture(path, 'BODY'), 'instructor', 'EN')
+    first = view._job(target, revision_text='BODY', request=old)
+    view._start(lambda: None, first)
+    pane_worker = WorkerThread(target=view._run, args=view.launched[0])
+    tool_result, tool_errors = [], []
+
+    def tool_wait():
+        try:
+            tool_result.append(old.wait(timeout=5))
+        except Exception as exc:
+            tool_errors.append(exc)
+
+    tool = WorkerThread(target=tool_wait) if shared else None
+    try:
+        if tool is not None:
+            tool.start()
+        pane_worker.start()
+        assert started.wait(2)
+        deadline = time.monotonic() + 2
+        while len(old._consumers) != (2 if shared else 1) and time.monotonic() < deadline:
+            time.sleep(.005)
+        assert len(old._consumers) == (2 if shared else 1)
+        view.buffer[0] = 'NEW'
+        new = RenderRequest(lambda cancel: (new_pdf, png, (), None), lambda: None)
+        new.spec = PreviewRequest(target, SourceRevision.capture(path, 'NEW'), 'instructor', 'EN')
+        latest = view._job(target, revision_text='NEW', request=new)
+        view._start(lambda: None, latest)
+        pane_worker.join(2)
+        assert not pane_worker.is_alive()     # the old render has not been released
+        assert first.cancel.is_set() and old.cancel.is_set() == (not shared)
+        view._on_finished(first)
+        assert len(view.launched) == 2
+        view._run(*view.launched[-1])
+        assert view._last_pdf == new_pdf and view._page.pixmap is not None
+        assert not any('Render failed' in line for line in view.logged)
+        if shared:
+            assert not old.done.is_set() and not tool_result
+    finally:
+        release.set()
+        pane_worker.join(3)
+        if tool is not None:
+            tool.join(3)
+        old.done.wait(3)
+    assert not tool_errors
+    if shared:
+        assert tool_result[0][0] == old_pdf
+
+
+def test_identical_inflight_revision_is_not_cancelled_when_save_joins_it(pane):
+    view, target, _ = pane
+    source = object()
+    draft = SimpleNamespace(source=source, cancelled=lambda: False)
+    saved = SimpleNamespace(source=source, cancelled=lambda: False)
+    first = view._job(target, request=draft)
+    view._start(lambda: None, first)
+    view._start(lambda: None, view._job(target, request=saved))
+    assert not first.cancel.is_set() and len(view.launched) == 1
+    view._pending = None
+
+
+def test_edit_then_undo_reacquires_request_that_was_cancelled_while_pending(pane, tmp_path, monkeypatch):
+    view, target, _ = pane
+    pdf = pdf_at(tmp_path / 'latest.pdf')
+    png = preview_png(pdf)
+    builds = []
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: builds.append(a[1]) or pdf)
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((png, png), ()))
+    monkeypatch.setattr(view, '_after_render', lambda job: None)
+
+    def request(text):
+        return view._renders.request(target, text, 'instructor', 'EN', view.app.log)
+
+    old = request('BODY')
+    first = view._job(target, revision_text='BODY', request=old)
+    view._start(lambda: None, first)
+    view._start(lambda: None, view._job(target, revision_text='EDIT', request=request('EDIT')))
+    latest = view._job(target, revision_text='BODY', request=request('BODY'))
+    assert latest.request is old and first.cancel.is_set()
+    view._start(lambda: None, latest)
+    view._run(*view.launched[0])
+    assert latest.request is not old and not latest.request.cancelled()
+    view._run(*view.launched[-1])
+    assert builds == ['BODY'] and view._last_pdf == pdf and not view._error
 
 
 def test_open_pdf_for_shared_buffer_image_requests_exact_buffer_view(pane, monkeypatch):

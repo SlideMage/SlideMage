@@ -24,6 +24,8 @@ def raster(data, sizes, full_size):
         if not doc.page_count:
             return []
         page = doc[-1]
+        # Parse the PDF page once; replay it for the display, tool image and thumbnails.
+        display = page.get_displaylist()
         images = {}
         for size in map(tuple, sizes):
             if size in images:
@@ -32,7 +34,7 @@ def raster(data, sizes, full_size):
             if fit:
                 # (width, height, "fit"): the largest size inside the box, aspect ratio kept (a list thumbnail)
                 zoom = min(width / page.rect.width, height / page.rect.height)
-                images[size] = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
+                images[size] = display.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
                 continue
             if (
                 height is None
@@ -49,7 +51,7 @@ def raster(data, sizes, full_size):
             matrix = pymupdf.Matrix(
                 zoom, height / page.rect.height if height is not None else zoom
             )
-            images[size] = page.get_pixmap(matrix=matrix).tobytes("png")
+            images[size] = display.get_pixmap(matrix=matrix).tobytes("png")
         return [images[tuple(size)] for size in sizes]
 
 

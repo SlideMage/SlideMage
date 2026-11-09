@@ -19,6 +19,27 @@ def pdf_bytes(text="one"):
         return doc.tobytes()
 
 
+@pytest.mark.parametrize('rotation', [0, 90])
+def test_replaying_display_list_preserves_every_size_and_annotations(rotation):
+    sizes = [(1920, 1080), (168, 95), (1920, None), (1280, None), (320, 180, 'fit')]
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=360, height=240)
+        page.insert_text((40, 45), 'Preview with text and transparency')
+        page.draw_rect((50, 70, 200, 150), color=(1, 0, 0), fill=(0, 0, 1), fill_opacity=.4)
+        page.add_rect_annot((60, 80, 190, 140)).update()
+        page.set_cropbox(pymupdf.Rect(10, 10, 330, 200))
+        page.set_rotation(rotation)
+        data = doc.tobytes()
+    with pymupdf.open(stream=data, filetype='pdf') as doc:
+        expected = []
+        for width, height, *fit in sizes:
+            page = doc[0]
+            zoom = min(width / page.rect.width, height / page.rect.height) if fit else width / page.rect.width
+            y = zoom if fit or height is None else height / page.rect.height
+            expected.append(page.get_pixmap(matrix=pymupdf.Matrix(zoom, y)).tobytes('png'))
+    assert preview_raster.raster(data, sizes, (1920, 1080)) == expected
+
+
 @pytest.mark.parametrize("failure", ["bad_pdf", "crash"])
 def test_helper_reuses_one_process_and_recovers_from_failure(failure):
     client = preview_raster_client._shared

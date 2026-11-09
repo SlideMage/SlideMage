@@ -31,7 +31,7 @@ from threading import Thread
 import shutil
 import time
 import weakref
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
@@ -199,6 +199,7 @@ class _Job:
     revision_text: Optional[str] = None
     remote: bool = False
     steps_ok: bool = True           # a whole-slide render: the step bar can use its PDF
+    cancel: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)
 
 
 def _discard_job(job: _Job) -> None:
@@ -319,6 +320,7 @@ class _Lifetime:
             owner._stored = None
             owner._step_pixmap = owner._step_image = None
         if self.job is not None:
+            self.job.cancel.set()
             _discard_job(self.job)
 
 
@@ -495,7 +497,9 @@ class PreviewPane(Surface):
         self._shown_mtime = 0
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(300)
+        # Autosave already waits for typing to settle. Coalesce save notifications in this event-loop turn
+        # without adding another 300 ms before starting the focused preview.
+        self._debounce.setInterval(0)
         self._debounce.timeout.connect(self._launch_pending)
         self._buffer_notice = QTimer(self)
         self._buffer_notice.setSingleShot(True)
@@ -1739,6 +1743,8 @@ class PreviewPane(Surface):
         # Drops the selection and what is running, so stale completions are discarded; the decoded pages in
         # `_pixmaps` stay for a return visit.
         self._generation += 1
+        if self._active is not None:
+            self._active.cancel.set()
         self._selection_ticket += 1
         if self._selection_pending is not None:
             self._selection_pending.cancel()
@@ -1781,10 +1787,24 @@ class PreviewPane(Surface):
         self._refresh()
 
     def _launch_pending(self) -> None:
-        if self._closed or self._active is not None or self._pending is None or self._debounce.isActive():
+        if self._closed or self._pending is None or self._debounce.isActive():
+            return
+        if self._active is not None:
+            active = self._active.request
+            pending = self._pending[1].request
+            if active is not None and getattr(active, 'source', active) is not getattr(pending, 'source', pending):
+                # Detach only this pane. RenderRequest stops TeX when its last waiter leaves; an AI/tool
+                # consumer can finish the old revision independently. Never kill a shared request here.
+                self._active.cancel.set()
             return
         work, job = self._pending
         self._pending = None
+        if job.request is not None and job.request.cancelled():
+            # A rapid edit/undo can have joined the old revision just before its last waiter detached.
+            # Reacquire that immutable request after cancellation instead of displaying a cancellation error.
+            spec = job.request.spec
+            job.request = self._renders.request(spec.target, spec.revision.text, spec.view, spec.language,
+                                                self.app.log, spec=spec, require_pdf=job.external)
         self._active = job
         self._lifetime.job = job
         Thread(target=self._run, args=(work, job), daemon=True).start()
@@ -1794,7 +1814,7 @@ class PreviewPane(Surface):
             try:
                 if job.request is not None:
                     # The pixels are enough to show the slide; the cache record follows on the request's worker.
-                    job.pdf, job.png, job.images, _ = job.request.wait(pixels_only=True)
+                    job.pdf, job.png, job.images, _ = job.request.wait(job.cancel, pixels_only=True)
                 else:
                     job.pdf = work()
                 if job.request is None and not job.external and not self._closed and job.generation == self._generation:
@@ -1848,7 +1868,7 @@ class PreviewPane(Surface):
         accepted = self._accepts(job)
         if not accepted:
             self._discard(job)
-            if job.error:   # a superseded render that failed still ends in the log, never silently
+            if job.error and not job.cancel.is_set():   # cancellation of an obsolete revision is not a failure
                 self.app.log(f"*** Render failed: {job.error} ***")
         elif job.error:
             self._discard(job)

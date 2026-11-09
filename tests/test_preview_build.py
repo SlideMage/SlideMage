@@ -335,6 +335,24 @@ def test_recorder_expands_format_inputs_without_depending_on_generated_format(tm
     assert deps == sorted([str(source), str(theme)])
 
 
+def test_recorder_keeps_similar_prefixes_and_normalizes_relative_inputs(tmp_path):
+    root = tmp_path / 'project with spaces'
+    out = root / '.build/preview-cache/slide'
+    out.mkdir(parents=True)
+    fls = out / 'slide.fls'
+    source = root / 'slides/one.tex'
+    sibling = out.with_name('slide-extra') / 'input.tex'
+    framework = root / '.build/preview-formats-extra/theme.tex'
+    fls.write_text(f'PWD {root / "decks"}\nINPUT ../slides/./one.tex\nINPUT {source}\n'
+                   f'INPUT {out / "slide.aux"}\nINPUT {sibling}\nINPUT {framework}\n'
+                   'INPUT _slidemage_preview-wrapper.tex\n')
+    database = out / 'slide.fdb_latexmk'
+    database.write_text('  "../references with spaces.bib" 123 42 abc\n'
+                        '  "../missing.bib" 0 -1 0\n')
+    assert preview_build.recorded_inputs(fls, database, project_root=root, cache=out) == sorted(map(str, (
+        source, sibling, framework, root / 'references with spaces.bib')))
+
+
 # -- luaotfload's font-cache race (several LuaLaTeX runs starting at once) -------------------------------------------
 
 RACE_LOG = ('luaotfload | load :     x "...luaotfload-init.lua:301: system : no wr\n'

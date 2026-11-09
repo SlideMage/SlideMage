@@ -111,14 +111,18 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
                 names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
     formats = project_root / '.build' / 'preview-formats'
-    cache_roots = (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())
+    # Normalize roots once. Path.is_relative_to walks every ancestor on some Python versions;
+    # doing that four times for thousands of recorder inputs delays the first preview pixels.
+    cache_roots = {os.path.normcase(str(root)) for root in
+                   (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())}
+    prefixes = tuple(root.rstrip(os.sep) + os.sep for root in cache_roots)
     for name in set(names):
-        path = Path(name)
-        # Normalize . and .. without repeated filesystem/symlink walks for the
-        # hundreds of TeX package/font inputs. stat in watch follows symlinks.
-        path = Path(os.path.abspath(path if path.is_absolute() else cwd / path))
-        if not any(path.is_relative_to(root) for root in cache_roots) and not path.name.startswith(WRAPPER_PREFIX):
-            paths.add(str(path))
+        # Keep the recorder's path spelling, normalizing . and .. without resolving symlinks.
+        # Dependency validation follows those links; cache exclusion uses the OS's case rules.
+        path = os.path.abspath(name if os.path.isabs(name) else os.path.join(cwd, name))
+        key = os.path.normcase(path)
+        if key not in cache_roots and not key.startswith(prefixes) and not os.path.basename(path).startswith(WRAPPER_PREFIX):
+            paths.add(path)
     return sorted(paths)
 
 
