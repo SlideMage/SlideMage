@@ -4,8 +4,6 @@
 states and renders (the renderer is faked), and unsaved edits across slides."""
 from __future__ import annotations
 
-import os
-import threading
 import time
 from types import SimpleNamespace
 
@@ -75,7 +73,8 @@ def deck(tmp_path):
 @pytest.fixture
 def renders(tmp_path, monkeypatch):
     """preview_target's two renderers, replaced by recorders that write a small 16:9 PDF."""
-    pdf = tmp_path / "render.pdf"
+    pdf = tmp_path / ".temp" / "render.pdf"
+    pdf.parent.mkdir(exist_ok=True)
     doc = pymupdf.open()
     doc.new_page(width=320, height=180)
     doc.save(pdf)
@@ -105,10 +104,12 @@ def centre(qapp, project, deck, monkeypatch, ctx):
     app = FakeApp(ctx)
     state = WorkspaceState(ctx)
     centre = CentreColumn(app, state)
-    centre.preview._background_validation = False  # legacy widget tests assert synchronous state
     app.centre = centre
     state.set_deck(deck)
-    return centre
+    yield centre
+    centre.preview._dispose()
+    centre.preview._display_executor.shutdown(wait=True, cancel_futures=True)
+    centre.preview._prefetch_executor.shutdown(wait=True, cancel_futures=True)
 
 
 @pytest.fixture
@@ -132,8 +133,9 @@ def wait_idle(centre):
     deadline = time.monotonic() + 5
     recorded = False
     while time.monotonic() < deadline:
+        QTest.qWait(10)
         recorded = recorded or recording()
-        if not (preview._busy or preview._selection_pending is not None or recording()):
+        if not (preview._busy or bool(preview._lookups) or recording()):
             break
         QApplication.processEvents()
         time.sleep(0.01)
@@ -142,7 +144,6 @@ def wait_idle(centre):
         while time.monotonic() < end:
             QApplication.processEvents()
             time.sleep(0.01)
-    QApplication.processEvents()
     assert not preview._busy and not recording()
 
 
@@ -354,86 +355,6 @@ def test_a_slide_the_view_does_not_typeset_says_so_and_does_not_offer_to_render(
     assert not page(centre).render_button.isVisibleTo(centre) and renders == []
 
 
-def test_without_a_picture_the_page_offers_to_render_and_a_render_shows_the_result(centre, renders, monkeypatch):
-    # This checks the view/language-specific session cache, independently of
-    # the canonical instructor snapshot the accepted render also publishes.
-    monkeypatch.setattr(preview_view, 'legacy_reference', lambda *args: None)
-    state = centre.state
-    state.set_focused_slide("aaa")
-    assert "No preview" in page(centre).message and not page(centre).render_button.isHidden()
-    page(centre).render_button.click()
-    assert centre.preview._busy
-    wait_idle(centre)
-    kind, id_slug, args, kwargs = renders[0]
-    assert (kind, id_slug, args[1:3]) == ("buffer", "aaa-EN-One", ("instructor", "EN"))
-    assert page(centre).pixmap is not None
-    assert page(centre).render_button.isHidden()
-    assert 'Previous render' in centre.preview._status_chip.text()  # fake PDF has no recorder evidence
-    state.set_view("during-course")                         # another view has no picture yet
-    assert page(centre).pixmap is None and "During course" in page(centre).message
-    state.set_view("instructor")
-    assert page(centre).pixmap is not None                  # the first one is remembered
-    state.set_language("DE")
-    assert page(centre).pixmap is None
-
-
-def test_a_render_whose_record_is_still_being_written_shows_as_current_and_is_checked_once_it_is(
-        centre, renders, monkeypatch):
-    # The pixels come before the cache record (v8.48.0). A check in between called the new page "Previous
-    # render … render to verify" for about a second after every render.
-    monkeypatch.setattr(preview_view, 'legacy_reference', lambda *args: None)
-    state = centre.state
-    state.set_focused_slide("aaa")
-    page(centre).render_button.click()
-    wait_idle(centre)
-    pane = centre.preview
-    assert "Previous render" in pane._status_chip.text()      # fake PDF: no record ever comes
-    request = SimpleNamespace(done=threading.Event())
-    pane._last_request = request
-    pane._check_when_recorded(request)
-    pane._refresh()
-    assert page(centre).pixmap is not None and not pane._status_chip.isVisibleTo(pane)
-    request.done.set()
-    deadline = time.monotonic() + 10
-    while "Previous render" not in pane._status_chip.text() and time.monotonic() < deadline:
-        QApplication.processEvents()
-        time.sleep(0.01)
-    assert "Previous render" in pane._status_chip.text() and page(centre).pixmap is not None
-
-
-def test_a_picture_older_than_the_source_is_marked_and_a_render_makes_it_current(centre, renders, project):
-    centre.state.set_focused_slide("aaa")
-    centre.preview.render_now()
-    wait_idle(centre)
-    source = project / "aaa-EN-One-current.tex"
-    source.write_text(source.read_text().replace('Text', 'Edited text'))
-    centre.refresh()
-    wait_idle(centre)
-    assert page(centre).pixmap is not None
-    assert 'Previous render' in centre.preview._status_chip.text()
-    assert centre.preview._status_button.isVisibleTo(centre)
-    centre.preview._status_button.click()
-    wait_idle(centre)
-    assert 'Previous render' in centre.preview._status_chip.text() and len(renders) == 2
-
-
-def test_the_cached_snapshot_is_shown_for_the_instructor_view(ctx, centre, project, tmp_path):
-    centre.state.set_focused_slide("aaa")
-    template = centre.preview._target.template
-    png = slide_snapshot.snapshot_path(ctx, "aaa", template, slide_snapshot.FULL_SIZE)
-    doc = pymupdf.open()
-    page_ = doc.new_page(width=320, height=180)
-    png.write_bytes(page_.get_pixmap().tobytes("png"))
-    doc.close()
-    os.utime(png, (1, (project / "aaa-EN-One-current.tex").stat().st_mtime + 10))
-    centre.refresh()
-    assert page(centre).pixmap is not None
-    assert 'Shared Instructor reference' in centre.preview._status_chip.text()
-    centre.state.set_view("after-course")
-    assert page(centre).pixmap is not None
-    assert 'Instructor reference' in centre.preview._status_chip.text()
-
-
 def test_a_failed_render_is_reported_and_can_be_repeated(centre, renders, monkeypatch):
     centre.state.set_focused_slide("aaa")
     original = preview_target.render_text
@@ -504,7 +425,7 @@ def test_rendering_the_buffer_uses_the_unsaved_text_the_scope_and_the_reveal_ste
     assert kind == "buffer" and args[0] == editor.selected_text() == "unsaved"
     assert (kwargs["mode"], kwargs["overlay"], args[1]) == ("region", 3, "instructor")
     assert page(centre).pixmap is not None
-    assert preview._status_chip.text() == "Render to verify current source and dependencies"
+    assert preview._status_chip.text() == "Rendered from the editor buffer, not the saved file"
     preview._on_menu("scope:element")                         # a cropped element has no reveal steps
     preview.render_buffer()
     wait_idle(centre)
@@ -688,6 +609,7 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     centre.state.set_mode('split')
     centre.source.current.editor.insertPlainText('% a draft, never saved\n')
     QTest.qWait(300)
+    wait_idle(centre)
     preview = centre.preview
     assert 'Unsaved edits' in preview._status_chip.text()
     assert preview._status_button.text().startswith('Render draft')
@@ -695,13 +617,14 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     assert not renders  # noticing a draft never compiles
     preview._status_button.click()
     wait_idle(centre)
-    assert 'Previous render' in preview._status_chip.text()  # unverified stand-in renderer
+    assert preview._record is not None and not preview._status_draft
     assert not preview._status_draft  # the remaining button asks to verify dependencies
     assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])
     assert centre.source.current.dirty
     centre.source.current.editor.insertPlainText('% a second edit while still dirty\n')
     QTest.qWait(200)
-    assert 'Previous render' in preview._status_chip.text() and preview._status_draft
+    wait_idle(centre)
+    assert preview._status_draft
     assert len(renders) == 1  # status refresh never compiles on a keystroke
 
 

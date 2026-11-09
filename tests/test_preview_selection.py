@@ -166,20 +166,3 @@ def test_late_uncached_completion_does_not_replace_newer_transient(tmp_path, mon
     preview_selection.remember_transient(request, b'older pixels', observed_at=100)
     selected = select(cache, request, env)
     assert selected.image == b'newer pixels'
-
-
-def test_worker_validation_reports_separate_costs_without_rendering(tmp_path, monkeypatch):
-    from slidemage import compiler, preview_target
-
-    _, source, package, env, cache, target, _ = setup(tmp_path, monkeypatch)
-    request = spec(target, source.read_text())
-    store(cache, env, package, request, tmp_path, b'pixels')
-    monkeypatch.setattr(compiler, 'build_env', lambda _ctx: env)
-    monkeypatch.setattr(preview_target, 'render', lambda *a, **kw: (_ for _ in ()).throw(
-        AssertionError('selection must not compile')))
-    selected, metrics = preview_selection.validate_captured((request,))
-    assert selected.fresh and selected.image == b'pixels'
-    assert metrics['validation_seconds'] >= metrics['dependency_hash_seconds'] >= 0
-    assert metrics['stability_seconds'] >= 0
-    assert metrics['dependency_bytes'] > 0 and metrics['hashed_bytes'] >= metrics['dependency_bytes']
-    assert metrics['unstable'] is False

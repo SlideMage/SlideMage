@@ -128,6 +128,7 @@ class Unit:
 
 def unit_for(target: PreviewTarget, view: str, language: str, deck: str = "") -> Unit:
     """The unit of a Preview target: its steps are dropped (all steps are rendered)."""
+    deck = deck or (target.deck.name if target.deck is not None else "")
     return Unit(deck, target.macro, target.id_slug, target.version,
                 () if target.macro == "slidestep" else tuple(target.conditions or ()), view, language.upper(),
                 target.frame_number, target.preamble_text, target.template, target.source_path,

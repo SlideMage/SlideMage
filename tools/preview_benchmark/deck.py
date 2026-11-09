@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,8 +12,8 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from slidemage import deck_outline, deck_scan, preview_target, preview_thumbnails, update_all_previews
-from slidemage.preview_requests import RenderService
+from slidemage import deck_outline, deck_scan, preview_target, preview_thumbnails, render_key, render_lookup, update_all_previews
+from slidemage.preview_requests import PreviewRequest, RenderService, SourceRevision
 from slidemage.project import ProjectContext
 
 
@@ -61,9 +62,12 @@ def run(root, framework, output):
             for row in section.rows:
                 target = preview_target.for_call(ctx, deck, row.call, row.position, language='EN',
                     frame_number=row.frame_number, occurrence_key=row.key, hidden=row.hidden)
-                pane = service.selected_preview(target, target.source_path.read_text(), view, 'EN', False)
-                assert row.image_selection.fresh and pane.fresh
-                assert row.image_selection.artifact_id == pane.artifact_id
+                spec = PreviewRequest(target, SourceRevision.capture(target.source_path), view, 'EN')
+                renderer = service._renderer(ctx)
+                state, record = render_lookup.select(dict(resolver=renderer.resolver,
+                    unit=render_key.unit_for(target, view, 'EN', deck.name), spec=spec), strict=True)
+                assert row.image_selection.fresh and state == 'current'
+                assert row.image_selection.artifact_id == hashlib.sha256(renderer.store.page(record, record['pages'])).hexdigest()
     result = dict(requests=9, cold_compile_count=compile_count, cold_seconds=cold_seconds,
                   warm_compile_count=0, warm_raster_count=0, warm_seconds=warm_seconds,
                   warm_cache_hits=9, repeated_and_pinned_calls=True,

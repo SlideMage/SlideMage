@@ -20,9 +20,7 @@ def select(request: dict, *, strict=False) -> tuple[str, dict | None]:
     if spec is not None:
         if spec.target.hidden:
             return "hidden", None
-        options = spec.options
-        if (spec.capture_error or options.mode != "slide" or options.presenter or options.overlay is not None
-                or (spec.target.macro == "slidestep" and spec.target.steps and not options.all_steps)):
+        if not spec.complete:
             return "missing", None
     validation = request.get("validation") or render_evidence.ValidationPass()
     key = resolver.fast_key(unit, spec.revision.text if spec is not None else None,

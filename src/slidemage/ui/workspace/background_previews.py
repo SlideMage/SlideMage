@@ -25,7 +25,7 @@ from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_store
+from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_lookup, render_store
 from ...background_renders import BackgroundRenderer
 from ...plugins import session
 from ...plugins.host import plugin_render_priority
@@ -505,16 +505,17 @@ class BackgroundPreviews(QObject):
         return found if found.usable else None
 
     def stored_page(self, target, view: str, language: str, deck_name: str):
-        """The last page (every reveal step has been shown) of the stored render of `target` as PNG bytes if a
-        current one is there, else None. A slidestep call keeps its own step restriction, which a stored
-        unrestricted render does not show. Runs on the Preview's display worker: `deck_name` is the open deck's,
-        read by the caller on the GUI thread."""
+        """Read ahead the chooser's last page; selection must confirm it with a strict lookup."""
+        if self.renderer is None or self.store is None:
+            return None
+        from ...preview_requests import PreviewRequest, SourceRevision
+
         try:
-            found = self._stored_found(target, view, language, deck_name, strict=True)
-            if found is None:
-                return None
-            return self.store.page(found.record, found.record["pages"])
-        except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
+            spec = PreviewRequest(target, SourceRevision.capture(target.source_path), view, language)
+            unit = render_key.unit_for(target, view, language, deck_name)
+            _state, record = render_lookup.select(dict(resolver=self.renderer.resolver, unit=unit, spec=spec))
+            return self.store.page(record, record['pages']) if record is not None else None
+        except Exception:  # noqa: BLE001 -- read-ahead must not break the Preview
             return None
 
     def stored_page_path(self, target, view: str, language: str, deck_name: str, *, validation=None):

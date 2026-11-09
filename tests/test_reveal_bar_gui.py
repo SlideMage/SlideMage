@@ -415,9 +415,6 @@ def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_
         def stored_pages(self, target, view, language, deck_name):
             return [png] * 4
 
-        def stored_page(self, target, view, language, deck_name):
-            return None
-
     (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
     centre.preview.app.background = Stored()
     centre.state.set_focused_slide("aaa")
@@ -585,12 +582,8 @@ def png_of(color):
 class StoredPages:
     """app.background: a stored page for every slide, and (when `steps`) its step pages; calls are recorded."""
 
-    def __init__(self, page, steps=None):
-        self.page, self.steps, self.calls = page, steps, []
-
-    def stored_page(self, target, view, language, deck_name=""):
-        self.calls.append(("page", threading.current_thread() is threading.main_thread()))
-        return self.page
+    def __init__(self, steps):
+        self.steps, self.calls = steps, []
 
     def stored_pages(self, target, view, language, deck_name=""):
         self.calls.append(("pages", threading.current_thread() is threading.main_thread()))
@@ -650,18 +643,6 @@ def test_selecting_a_b_and_c_in_a_row_counts_only_c(centre, steps_renders, pausi
     wait_for(lambda: preview._reveal.track.stops == [1, 2, 3, 4], 40)
 
 
-def test_the_slide_image_shows_before_the_count_starts(centre, steps_renders, pausing, monkeypatch):
-    preview = centre.preview
-    preview._settle.setInterval(300)
-    preview.app.background = StoredPages(png_of(0x00FF00))            # a stored page, but no counted steps
-    asked = foreground_asks(centre, monkeypatch)
-    centre.state.set_focused_slide("aaa")
-    wait_for(lambda: preview._page.pixmap is not None, 40)
-    assert not asked and preview._reveal.track.counting              # the image first, "Counting" meanwhile
-    wait_for(lambda: asked, 40)
-    assert asked == [("aaa-EN-One", True)]
-
-
 def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_renders, pausing, monkeypatch):
     loads, preview = [], centre.preview
 
@@ -672,7 +653,7 @@ def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_
 
     monkeypatch.setattr(preview_view, "QPixmap", Counting)
     colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00]
-    store = StoredPages(None, [png_of(color) for color in colors])    # steps, but no whole-slide page
+    store = StoredPages([png_of(color) for color in colors])    # steps, but no whole-slide page
     preview.app.background = store
     centre.state.set_focused_slide("aaa")
     bar = preview._reveal
@@ -680,4 +661,4 @@ def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_
     wait_for(lambda: preview._page.pixmap is not None, 40)           # no slide page: the step bar's page is shown
     assert not any(loads) and not steps_renders
     assert store.calls and not any(on_main for _what, on_main in store.calls)
-    assert {what for what, _ in store.calls} == {"page", "pages"}
+    assert {what for what, _ in store.calls} == {"pages"}

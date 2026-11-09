@@ -102,11 +102,11 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     target = PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
                            position if frame_number is None else frame_number, deck.preamble_text,
                            occurrence_key=occurrence_key, hidden=hidden, presenter_frame_number=presenter_frame,
-                           position=position)
+                           position=position, deck=deck)
     found = deck_context.reasons_for_file(target.source_path)
     if not found:
         return target
-    return replace(target, deck=deck, needs_context=found,
+    return replace(target, needs_context=found,
                    deck_hash=text_sha256(deck.text))
 
 

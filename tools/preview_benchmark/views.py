@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 
 import pymupdf
 from PIL import Image
-from slidemage import deck_scan, preview_batch, preview_equivalence, preview_requests, preview_raster, preview_target, preview_pages, slide_snapshot
+from slidemage import deck_scan, preview_batch, preview_equivalence, preview_requests, preview_raster, preview_target, preview_pages, render_lookup, slide_snapshot
 from slidemage.project import ProjectContext
 
 
@@ -154,7 +154,9 @@ def run(output):
     assert records[-1]['compile_count'] == 0 and records[-1]['cache_hits'] == 3
     start = time.perf_counter()
     for result in cold:
-        assert service.cached_spec(result.request) is not None
+        spec = result.request
+        renderer = service._renderer(spec.target.context)
+        assert render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)[0] == 'current'
     records.append(dict(phase='view-switch-cache-lookup', seconds=time.perf_counter()-start,
                         compile_count=0, raster_count=0, cache_hits=3))
 

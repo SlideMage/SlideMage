@@ -130,7 +130,7 @@ def test_a_target_of_a_slide_that_needs_the_deck_says_so_and_keeps_renders_of_ot
     target = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1bb"), 2)
     assert target.needs_context == ("contents",) and target.deck is deck
     plain = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1aa"), 1)
-    assert plain.needs_context == () and plain.deck is None and plain.key[-1] == ""
+    assert plain.needs_context == () and plain.deck is deck and plain.key[-1] == ""
     assert target.key[-1] == target.deck_hash != ""
 
 

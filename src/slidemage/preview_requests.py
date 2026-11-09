@@ -74,7 +74,7 @@ class PreviewRequest:
 
     @property
     def unit(self):
-        return render_key.unit_for(self.target, self.view, self.language, self.target.deck.name if self.target.deck else '')
+        return render_key.unit_for(self.target, self.view, self.language)
 
     @property
     def complete(self):
@@ -191,28 +191,13 @@ class PrebuiltRender:
         self.evidence = None
 
 
-class _ArtifactLease:
-    """Shared by the future and immutable results, without a reference cycle."""
-    def __init__(self, context):
-        self._context = context
-        self.artifact = context.__enter__()
-
-    def close(self):
-        context, self._context = self._context, None
-        if context is not None:
-            context.__exit__(None, None, None)
-
-    def __del__(self):
-        self.close()
-
-
 class RenderRequest:
     """One shared build. `done` means delivered and recorded; `delivered` is set earlier, as soon as a fresh
     render's pixels exist, and the worker then records it in the cache (store, group, prune, cleanup).
 
     wait() returns when the request is done: the cache entry, `preview_result` and `result` are final. A consumer
     that needs only pixels (the Preview pane) calls wait(pixels_only=True): it returns at delivery with the
-    rendered temp PDF and image (raw when the pane started the build), valid while the request is alive.
+    image (raw when the pane started the build), without lending the temp PDF.
     """
     def __init__(self, work, finished):
         self.cancel = compiler.CancelToken()
@@ -226,11 +211,9 @@ class RenderRequest:
         self.preview_result = None
         self._cache_entry = None
         self._store_record = None
-        self._artifact_lease = None
+        self._artifact_owner = None
         self._delivery = None
         self._delivered_artifact = None     # the fresh render before it is recorded (its PDF is in the temp folder)
-        self.lent = False                   # a pixels_only waiter holds that PDF: the temp folder outlives the record
-        self._loans_closed = False          # no more loans: the temp folder is removed or the work is over (_start_lock)
         self._collector = None
         self._consumers = {}
         self._work, self._finished = work, finished
@@ -243,9 +226,9 @@ class RenderRequest:
         if self._cache_entry is not None:
             result = replace(result, status=self._cache_status,
                              dependencies=tuple(Path(path) for path in self._cache_entry.dependencies),
-                             render_stamp=self._cache_entry.render_stamp, _artifact_owner=self._artifact_lease)
+                             render_stamp=self._cache_entry.render_stamp, _artifact_owner=self._artifact_owner)
         elif self._store_record is not None:
-            result = replace(result, status='cached', _artifact_owner=self._artifact_lease)
+            result = replace(result, status='cached', _artifact_owner=self._artifact_owner)
         return result
 
     def _metrics_of(self, collector):
@@ -266,31 +249,19 @@ class RenderRequest:
             timing.event(self.spec.target.context.root, 'preview.delivered')
         self.delivered.set()
 
-    def drop_temp(self, folder):
-        """Remove a render's temp folder: now, or when this request is released if a waiter was handed its PDF."""
-        with self._start_lock:
-            if self.lent:
-                return
-            self._loans_closed = True
-        shutil.rmtree(folder, ignore_errors=True)
-
     def _run(self):
         with PreviewMetrics() as metrics:
             self._collector = metrics
             try:
                 preview_build.check_cancel(self.cancel)
                 self.result = self._work(self.cancel)
-                with self._start_lock:
-                    self._loans_closed = True
-                    lent = self.lent
-                if lent:
-                    self._deliver_history()     # the pixels-only waiters left before there was a cache entry
+                self._deliver_history()
                 if self.spec is not None:
                     self.preview_result = self._result_of(self.result)
                 preview_build.check_cancel(self.cancel)
             except Exception as exc:  # noqa: BLE001 -- forwarded to every consumer
                 self.error = exc
-                self.release_artifact()
+                self._artifact_owner = None
         self.metrics = self._metrics_of(metrics)
         if _log.isEnabledFor(logging.DEBUG) and self.spec is not None:
             _log.debug("preview %s view=%s language=%s seconds=%.2f cache_hit=%s error=%s stages=%s",
@@ -329,9 +300,8 @@ class RenderRequest:
         Only active waiters reserve a build; merely holding a request before
         calling wait does not prevent its last active waiter from stopping it.
         `pixels_only` returns as soon as a fresh render's pixels exist, before it is recorded in the cache:
-        the artifact holds the render's temp PDF and image, `preview_result` is not final, no cache entry exists
-        yet and the display history is written once the record is done. Otherwise (a cache hit, a finished
-        request) it returns what a plain wait() returns.
+        the artifact holds only the image, `preview_result` is not final and no cache entry exists yet.
+        The raw file may be removed once recording finishes; a caller can then wait for the settled PNG.
         """
         if pixels_only:
             busy.acquire('foreground preview')
@@ -348,22 +318,15 @@ class RenderRequest:
                     self._pixels_only = pixels_only
                     self.cancel.low_priority = getattr(cancel, 'low_priority', False)
                     threading.Thread(target=self._run, daemon=True).start()
-            early = False
             self._await(self.delivered if pixels_only else self.done, cancel, deadline)
-            if pixels_only and self.error is None:
-                with self._start_lock:
-                    early = self._delivered_artifact is not None and not self._loans_closed
-                    self.lent = self.lent or early
-                if not early:
-                    self._await(self.done, cancel, deadline)
             if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
                 raise RuntimeError('Preview cancelled')
             if self.error is not None:
                 raise self.error
-            if early:
-                return self._delivered_artifact
+            if pixels_only and self._delivered_artifact is not None and not self.done.is_set():
+                return (None, *self._delivered_artifact[1:])
             self._deliver_history()
-            return self.result
+            return (None, *self.result[1:]) if pixels_only else self.result
         finally:
             if pixels_only:
                 busy.release('foreground preview')
@@ -381,11 +344,6 @@ class RenderRequest:
                 self._delivery(self)
             except Exception:  # noqa: BLE001 -- display history cannot fail the render
                 pass  # Display history never changes a successful render.
-
-    def release_artifact(self):
-        lease, self._artifact_lease = self._artifact_lease, None
-        if lease is not None:
-            lease.close()
 
 
 class _ImageConsumer:
@@ -466,8 +424,6 @@ class RenderService:
         self._lock = threading.Lock()
         self._completed = weakref.WeakSet()
         self._closed = False
-        self._display_lease = None
-        self._display_entry = None
         self._background = None
         self._owns_background = False
 
@@ -480,11 +436,8 @@ class RenderService:
             self._requests.clear()
         for request in requests:
             request.cancel.request_stop()
-        for request in tuple(self._completed):
-            request.release_artifact()
-        if self._display_lease is not None:
-            self._display_lease.__exit__(None, None, None)
-            self._display_lease = None
+        for owner in tuple(self._completed):
+            owner.__exit__(None, None, None)
         if self._owns_background:
             self._background.store.close()
 
@@ -499,17 +452,6 @@ class RenderService:
             elif self._background.ctx.root.resolve() != ctx.root.resolve():
                 raise ValueError('A render service handles one project')
             return self._background
-
-    def _retain_display(self, cache, entry, *, blocking=True):
-        if self._display_entry is not None and self._display_entry.directory == entry.directory:
-            return entry
-        lease = cache.lease(entry, blocking=blocking)
-        lease.__enter__()
-        previous, self._display_lease = self._display_lease, lease
-        self._display_entry = entry
-        if previous is not None:
-            previous.__exit__(None, None, None)
-        return entry
 
     def is_cached(self, spec) -> bool:
         """Whether a verified entry of `spec`, its own or its image group's, exists now: what a request would find. Nothing
@@ -526,35 +468,6 @@ class RenderService:
         if group is not None and cache.group_lookup(group[0], env, validation=validation) is not None:
             return True
         return cache.lookup(identity, env, validation=validation) is not None
-
-    def cached_spec(self, spec):
-        cache = preview_cache.PreviewCache(spec.target.context.root)
-        identity = cache_identity(spec)
-        env = compiler.build_env(spec.target.context)
-        group = image_group(spec, identity)
-        if group is not None:
-            found = cache.group_lookup(group[0], env)
-            if found is not None:
-                entry, representative, _, _ = found
-                self._retain_display(cache, entry)
-                return replace(entry, pdf=entry.pdf if representative == spec.view else None, request_spec=spec)
-        entry = cache.lookup(identity, env)
-        return replace(self._retain_display(cache, entry), request_spec=spec) if entry is not None else None
-
-    def selected_preview(self, target, text, view, language, *, reference=None):
-        """Read-only whole-slide selection shared with the list policy."""
-        from .preview_selection import select_image
-
-        revision = SourceRevision.capture(target.source_path, text)
-        specs = (PreviewRequest(target, revision, view, language, RenderOptions(saved=True)),)
-        cache = preview_cache.PreviewCache(target.context.root)
-        selection = select_image(cache, specs, compiler.build_env(target.context), reference=reference)
-        if selection.cache_entry is not None and selection.cache_entry.pdf is not None:
-            try:
-                self._retain_display(cache, selection.cache_entry, blocking=False)
-            except OSError:
-                selection = replace(selection, pdf=None)  # image bytes remain usable
-        return selection
 
     def remember_group_alias(self, spec, *, observed_at=None):
         """Record a forced batch's locally reused image for its requested view."""
@@ -599,14 +512,15 @@ class RenderService:
                 remember_transient(spec, waiter.result[1], waiter.result[0], observed_at=observed_at)
 
         def pin(entry, status):
-            lease = _ArtifactLease(cache.lease(entry))
-            request._artifact_lease = lease
+            owner = cache.lease(entry)
+            owner.__enter__()
+            request._artifact_owner = owner
             request._cache_entry, request._cache_status = entry, status
             with self._lock:
                 if self._closed:
-                    request.release_artifact()
+                    owner.__exit__(None, None, None)
                     raise RuntimeError('Preview service closed')
-                self._completed.add(request)
+                self._completed.add(owner)
             return entry.pdf, entry.display_png, entry.page_images, entry.secondary_png
 
         def work(cancel):
@@ -617,16 +531,16 @@ class RenderService:
                     and renderer.store.find(store_key) is not None):
                 state, stored = render_lookup.select(dict(resolver=renderer.resolver, unit=unit, spec=spec), strict=True)
                 if state == 'current' and (not background or stored.get('frame_number') == unit.frame_number):
-                    lease = _ArtifactLease(renderer.store.pdf_copy(stored))
-                    request._artifact_lease = lease
+                    owner = renderer.store.pdf_copy(stored)
+                    pdf = owner.__enter__()
+                    request._artifact_owner = owner
                     request._store_record = stored
                     with self._lock:
-                        self._completed.add(request)
-                    pdf = lease.artifact
+                        self._completed.add(owner)
                     png = renderer.store.page(stored, stored['pages'])
                     if pdf is not None and png is not None:
                         return pdf, png, (), png
-                    request.release_artifact()
+                    owner.__exit__(None, None, None)
                     request._store_record = None
 
             if prebuilt is not None:
@@ -653,8 +567,6 @@ class RenderService:
                     presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
                     all_steps=all_steps, force_build=True,
                     **({'workspace': renderer.store.work_dir} if background else {}))
-            if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                weakref.finalize(request, shutil.rmtree, pdf.parent, True)
             try:
                 preview_build.check_cancel(cancel)
                 if presenter:
@@ -740,7 +652,7 @@ class RenderService:
                     if image_group(spec, identity) == group:
                         cache.publish_group(group[0], identity, view, evidence=group[1])
                 if pdf.parent.name.startswith('slidemage_preview_'):
-                    request.drop_temp(pdf.parent)
+                    shutil.rmtree(pdf.parent, ignore_errors=True)
                 cache.maybe_prune()
                 return result
             except Exception as exc:  # noqa: BLE001 -- the delivered render stays valid
