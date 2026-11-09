@@ -790,7 +790,7 @@ shows them all on.
 - `transcripts/` — generated accessible transcripts (Markdown + HTML), one per
   deck and student version. Gitignored: it is derived from the deck, the
   slide files and `media/alt-text.json`, and is regenerated on demand.
-- `.previews/slide_previews/` — two PNGs per slide per institution template
+- `slide_previews/` (in this computer's SlideMage cache folder, `previews/<project id>/`, not in the project) — two PNGs per slide per institution template
   (`<bare id>-<TemplateName>-<width>-<height>.png`, e.g.
   `22s-MyUniversity-1920-1080.png` and `22s-MyUniversity-304-171.png` — bare id
   first, to sort/glob-match by slide before institution), refreshed as
@@ -798,7 +798,7 @@ shows them all on.
   **Deck settings → General → Maintenance → Rerender all**, or for the whole project via
   SlideMage's "Update slide previews" (Housekeeping → *Housekeeping…*). A best-effort cache for
   SlideMage's own Preview view and slide-list thumbnails, not a
-  guaranteed-fresh one. Gitignored, same category as `transcripts/`.
+  guaranteed-fresh one. Never synced with the project; an older `.previews/` is moved there when the project opens.
 - `.previews/render-results/` — verified per-view/group preview artifacts, dependency
   evidence, small thumbnails and display history. The pane, list and deck refresh
   share these results.

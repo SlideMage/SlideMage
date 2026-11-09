@@ -3814,3 +3814,9 @@ v0.14.59 (2026-11-09, direct request: the toolbar colours follow the deck theme)
 
 NEW: Toolbar colour menu shows the deck theme colours.
 - Each swatch has the colour the render gives that name, checked for the two shipped templates.
+
+v0.14.60 (2026-11-09, direct request: a cloud-synced project carried a 477 MB .previews folder to every computer): The slide previews, the TikZ pictures and the rendered pages of PDF media are kept in this computer's cache folder, not in the project. They depend on this machine's TeX, fonts and theme, so they should not sync. One accessor in project.py decides the place: project.previews_cache_dir(root) is <cache folder>/previews/<project id>, the id the render store already uses, and ctx.previews_dir, ctx.slide_previews_dir, ctx.tikz_previews_dir and ctx.pdf_render_cache_dir point into it. The first use of any of them in a process moves the three folders of an earlier .previews over, even to another drive, keeps what the new place already holds, deletes the rest of the old copy and the maintenance lock, and removes .previews when it is then empty, so a benchmark archive in it stays. The maintenance lock lives in the new folder too. A generated appendix still shows the slide previews by absolute path; compile records, render keys and deck snapshots treat that folder as derived input as they treated .previews, and a snapshot still names them .previews/<version>/ inside itself. Tests in tests/test_previews_cache.py.
+
+NEW: Previews no longer sync with a cloud-synced project.
+- Slide previews, TikZ pictures and PDF media images live in SlideMage's folder on this computer.
+- An existing .previews folder in a project is moved there the first time the project is used, so nothing has to be rendered again.

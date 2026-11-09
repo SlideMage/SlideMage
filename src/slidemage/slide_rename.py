@@ -371,7 +371,7 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
     - slide_ids.csv gets the new id (the old one stays registered, so it is
       never handed out again), then deck-inclusion headers and translation
       cross-references are regenerated;
-    - the cached slide previews (.previews/slide_previews/<old>-*.png) are
+    - the cached slide previews (<ctx.slide_previews_dir>/<old>-*.png) are
       renamed too, so they need no re-render.
 
     `new_id` must start with a letter (slide_ids.regular_id_reason());

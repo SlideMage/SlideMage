@@ -5,10 +5,9 @@
 Every compile that touches a slide -- a single-slide preview render, or a
 full-deck instructor compile -- refreshes a PNG of that slide's last page
 (its final `\\pause`/overlay step, i.e. what an instructor sees once
-everything has built) into a flat, gitignored `.previews/slide_previews/`
-directory (moved under previews/ 2026-09-18, then .previews/ the same day;
-was a project-root folder before that; dot-prefixed since nothing here is
-ever something the user needs to interact with).
+everything has built) into a flat `slide_previews/` directory in this computer's
+cache folder (ctx.slide_previews_dir; it was `.previews/slide_previews/` in the project, which a synced
+project carried to every computer).
 The point is purely to let a review UI show *something current-ish* without
 paying a LaTeX compile to do it -- these are a best-effort cache, refreshed
 opportunistically whenever a compile happens to touch that slide, not a

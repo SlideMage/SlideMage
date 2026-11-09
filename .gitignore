@@ -346,29 +346,14 @@ dist/
 transcripts/
 alt-text-bakeoff.md
 
-# Compile-time slide preview PNGs (slide_snapshot.py) -- a best-effort
-# cache refreshed opportunistically on every compile that touches a slide,
-# not a build artifact worth keeping in history. Moved under previews/
-# 2026-09-18 (was a project-root folder before that), then under .previews/
-# the same day (dot-prefixed: nothing the user needs to interact with).
+# Slide previews, rendered PDF media pages and 	ikzillustration PNGs now live in the user's cache folder
+# (project.previews_cache_dir), not in the project; a .previews/ left by an older version is moved there
+# when the project opens. These lines only cover a copy that has not been migrated yet.
 **/.previews/slide_previews/
-
-# Rendered PNGs of .pdf media (media_render.py, 2026-08-26) -- same
-# regeneratable-cache reasoning as slide_previews/ above, for the Images
-# tab's own preview and Ollama drafting, both of which need a raster image
-# a .pdf media file itself isn't. Moved under previews/ 2026-09-18, then
-# .previews/ the same day (was a project-root folder before that).
 **/.previews/pdf_render_cache/
-
-# Rendered/cropped PNGs of \tikzillustration{} bodies (tikz_render.py) --
-# same regeneratable-cache reasoning again: entirely derived, on demand,
-# from a slide's own current tikz source, for the Images tab's preview and
-# Ollama drafting of a hand-drawn diagram that has no media/ file at all.
-# Moved under previews/ 2026-09-18, then .previews/ the same day (was a
-# project-root folder before that).
 **/.previews/tikz_illustration_previews/
 
-# Persistent preview maintenance lock and local, checksummed benchmark evidence.
+# Local, checksummed benchmark evidence.
 **/.previews/preview-maintenance.lock
 **/.previews/benchmarks/
 
