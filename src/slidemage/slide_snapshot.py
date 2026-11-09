@@ -15,7 +15,7 @@ from pathlib import Path
 import pymupdf as fitz
 
 from .render_evidence import THUMBNAIL_MAX
-from .preview_metrics import measure
+from .preview_metrics import stage
 
 
 # PDF content, dimensions -> PNG. Paths alone are unsafe when a job is rebuilt.
@@ -32,7 +32,6 @@ _PNG_LOCK = threading.RLock()
 SLIDE_ID_RE = re.compile(r"slide id:\s*(\S+)")
 
 FULL_SIZE = (1920, 1080)
-THUMB_SIZE = (304, 171)
 
 
 def slide_id_in(text: str) -> str | None:
@@ -45,49 +44,38 @@ def slide_id_of(page: "fitz.Page") -> str | None:
     return slide_id_in(page.get_text())
 
 
-@measure('png')
-def _preview_pngs(pdf_path: Path, sizes) -> tuple[bytes, ...]:
-    data = pdf_path.read_bytes()
-    digest = hashlib.sha256(data).digest()
-    with _PNG_LOCK:
-        keys = [(digest, size) for size in sizes]
-        missing = [key for key in keys if key not in _PNG_CACHE]
-        if missing:
-            from .preview_raster_client import render
-            # Only bytes cross the boundary. MuPDF is unsafe in Python threads,
-            # even with a mutex around calls (another thread can run its GC).
-            images = render(data, tuple(key[1] for key in missing), FULL_SIZE)
-            if not images:
-                return ()
-            _PNG_CACHE.update(zip(missing, images))
-        result = tuple(_PNG_CACHE[key] for key in keys)
-        for key in keys:
-            _PNG_CACHE.move_to_end(key)
-        while len(_PNG_CACHE) > 16 or sum(map(len, _PNG_CACHE.values())) > _PNG_CACHE_BYTES:
-            _PNG_CACHE.popitem(last=False)
-        return result
-
-
 def prepare_preview_images(pdf_path: Path, snapshots: bool, widths, *, raw=False):
-    """Pane and tool display sizes in one raster subprocess, with optional snapshots.
+    """Return display PNGs in width order and a list thumbnail; raw returns a last-page PPM path.
 
-    With `raw`, write only the last page at the first width to a PPM beside the PDF and return its path.
-    Otherwise return the display PNGs in `widths` order, followed by the list thumbnail.
+    The unused snapshots argument keeps the Claude plugin's positional call contract.
     """
-    if raw:
-        from .preview_raster_client import render
+    from .preview_raster_client import render
 
+    if raw:
         path = render(pdf_path.read_bytes(), ((widths[0], None),), FULL_SIZE,
                       raw=pdf_path.with_suffix('.ppm'))
         if not path:
             raise RuntimeError('Preview PDF has no pages')
         return (Path(path),), ()
-    displays = tuple((width, None) for width in widths) + ((*THUMBNAIL_MAX, 'fit'),)
-    sizes = (FULL_SIZE, THUMB_SIZE) + displays if snapshots else displays
-    images = _preview_pngs(pdf_path, sizes)
-    if not images:
-        raise RuntimeError('Preview PDF has no pages')
-    return images[-len(displays):], tuple(zip(sizes[:2], images[:2])) if snapshots else ()
+    sizes = tuple((width, None) for width in widths) + ((*THUMBNAIL_MAX, 'fit'),)
+    with stage('png'):
+        data = pdf_path.read_bytes()
+        digest = hashlib.sha256(data).digest()
+        with _PNG_LOCK:
+            keys = [(digest, size) for size in sizes]
+            missing = [key for key in keys if key not in _PNG_CACHE]
+            if missing:
+                # MuPDF is unsafe in Python threads, even with a mutex (another thread can run its GC).
+                images = render(data, tuple(key[1] for key in missing), FULL_SIZE)
+                if not images:
+                    raise RuntimeError('Preview PDF has no pages')
+                _PNG_CACHE.update(zip(missing, images))
+            images = tuple(_PNG_CACHE[key] for key in keys)
+            for key in keys:
+                _PNG_CACHE.move_to_end(key)
+            while len(_PNG_CACHE) > 16 or sum(map(len, _PNG_CACHE.values())) > _PNG_CACHE_BYTES:
+                _PNG_CACHE.popitem(last=False)
+    return images, ()
 
 
 def slide_runs(slide_ids) -> list[tuple[str, list[int]]]:

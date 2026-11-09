@@ -86,6 +86,24 @@ def make(project, store, raster, tex=None, batch=1, **kwargs):
     return renderer
 
 
+def render_unit(renderer, unit):
+    spec = renderer.request_for(unit)
+    cancel = CancelToken()
+    cancel.low_priority = True
+    request = renderer.renders.request(spec.target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
+    try:
+        request.wait(cancel)
+    except RuntimeError:
+        if request.preview_result is not None and request.preview_result.status == 'failed':
+            return None
+        raise
+    stored = renderer.store.find(renderer.resolver.fast_key(unit, spec.revision.text))
+    if stored is not None:
+        renderer.store.link_decks(stored['name'], [unit.deck])
+        return stored['name']
+    return None
+
+
 def drain(renderer):
     while renderer.scheduler.run_next():
         pass
@@ -145,13 +163,13 @@ def test_rendering_a_unit_stores_every_step_and_then_it_is_fresh(project, store,
     tex = FakeTeX(project, pages=3)
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
-    name = r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    name = render_unit(r, unit)
     assert name == r.resolver.fast_key(unit)
     found = r.resolver.lookup(unit)
     assert found.state is Freshness.FRESH and found.final and found.record["pages"] == 3
     assert store.page(found.record, 3).startswith(b"\x89PNG") and store.page(found.record, 4) is None
     assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))          # the temp folder is gone
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     assert len(tex.calls) == 1                                                        # nothing to do the second time
 
 
@@ -159,7 +177,7 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
     tex = FakeTeX(project)
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     assert r.resolver.lookup(unit).final
     unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
     time.sleep(0.01)
@@ -175,11 +193,11 @@ def test_a_page_number_that_moved_is_refreshed_last(project, store, raster):
     r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
-    r.render_unit(units[3], background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, units[3])
     from dataclasses import replace
     moved = replace(units[3], frame_number=units[3].frame_number + 1)
     assert r.resolver.lookup(moved).state is Freshness.FRESH_NUMBERING_DIFFERS
-    r.render_unit(moved, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, moved)
     assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 2
     assert store.count() == 1
 
@@ -191,12 +209,12 @@ def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(pr
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
     tex.fail[unit.id_slug] = "Render failed for x:\n! Undefined control sequence."
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     assert r.resolver.lookup(unit).state is Freshness.FAILED
     plan = r.scan()
     assert unit.label not in [u.label for _, u in plan]
     assert r.progress.deck("slidemage-manual").failed >= 1
-    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None   # no loop
+    assert render_unit(r, unit) is None   # no loop
     assert len(tex.calls) == 1
     unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + "\n% fixed\n", encoding="utf-8")
     old = time.time() - 60
@@ -233,12 +251,12 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
 
     monkeypatch.setattr(compiler, "run_latexmk", fail)
     with pytest.raises(RuntimeError, match="Render failed"):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     failure = r.resolver.lookup(unit).failure
     assert failure is not None
     assert any(entry[1] == dependency.name for entry in failure["manifest"])
     assert not any(entry[1] == unrelated.name for entry in failure["manifest"])
-    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert render_unit(r, unit) is None
     assert len(calls) == 1
     if repair == "edit dependency":
         _edit(dependency, "\nfixed dependency")
@@ -247,10 +265,10 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
         os.utime(missing, (time.time() - 60,) * 2)
     assert r.resolver.lookup(unit).state is not Freshness.FAILED
     with pytest.raises(RuntimeError, match="Render failed"):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     assert len(calls) == 2
     assert r.resolver.lookup(unit).state is Freshness.FAILED
-    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert render_unit(r, unit) is None
 
 
 def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, store, raster):
@@ -260,7 +278,7 @@ def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, s
     tex.fail[unit.id_slug] = "Render failed for x:\n! Bad dependency."
     store.record_failure("obsolete", render_store.DETERMINISTIC, "an old request", [])
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     r.scan()
     assert r.progress.failures == 1
     assert [f["key"] for f in r.current_failures()] == [r.resolver.fast_key(unit)]
@@ -303,7 +321,7 @@ def test_a_full_store_renders_only_the_protected_decks_and_says_why_the_rest_wai
     r = make(project, store, raster, tex=tex)
     manual, copy = deck_named(r, "slidemage-manual"), deck_named(r, "slidemage-manual-copy")
     unit = background_renders.deck_units(project, copy, "instructor", "EN")[0]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     background_renders.app_settings.set(project, background_renders.LIMIT_GB_KEY, store.total_bytes() / 1024 ** 3)
 
     def queued_decks():
@@ -337,7 +355,7 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
     r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual-copy")
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     assert store.count() == 1
     deck.archived = True
     r.deck_archived(deck)
@@ -349,7 +367,7 @@ def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(proje
     r._rasterise = lambda pdf, cancel: []
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     assert r.resolver.lookup(unit).state is Freshness.FAILED
 
 
@@ -368,7 +386,7 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
     for unit in units[:5]:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     background_renders.app_settings.set(project, background_renders.DECKS_OFF_KEY, ["slidemage-manual-copy"])
     r.scan()
     progress = r.progress
@@ -399,7 +417,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
         return {p.relative_to(project.root).as_posix() for p in project.root.rglob("*")}
 
     before = listing()
-    name = renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    name = render_unit(renderer, unit)
     assert name is not None and listing() == before                                  # not one file in the project
     assert (store.work_dir / "decks").is_dir() and list((store.work_dir / "decks").glob("_slidemage_preview-*.tex"))
     assert [d.name for d in deck_scan.scan_decks(project)] == [d.name for d in decks]
@@ -527,7 +545,7 @@ def test_a_slidestep_call_is_left_to_the_sweep_not_finished_by_a_compile(project
     assert r.ingest_compile(job, pdf, _record(pdf, job, [unit], project)) == 0
     found = r.resolver.lookup(unit)
     assert not found.usable and not found.final
-    r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     assert r.resolver.lookup(unit).final            # finished once the sweep's own all-steps render lands
 
 
@@ -640,7 +658,7 @@ def test_a_dependency_edited_during_the_render_is_never_stored(project, store, r
 
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", compile)
     r._render = None
-    assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert render_unit(r, unit) is None
     assert store.count() == 0 and store.failures() == []
     assert not r.resolver.lookup(unit).usable
 
@@ -697,18 +715,18 @@ def test_a_failed_slide_is_tried_once_more_on_its_own_when_everything_else_is_re
     monkeypatch.setattr(r, "languages_for", lambda _deck: ["EN"])
     tex.fail[broken.id_slug] = "Render failed for x:\n! Undefined control sequence."
     with pytest.raises(RuntimeError):
-        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, broken)
     plan = r.scan()                                              # the other slide first; the failed one waits
     assert [u.label for _, u in plan] == [other.label] and r.progress.deck(deck.name).failed == 1
-    r.render_unit(other, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, other)
     plan = r.scan()                                              # nothing else left: one more try, on its own
     assert [u.label for _, u in plan] == [broken.label] and broken.label in r._single
     assert r.progress.deck(deck.name).failed == 0 and r.progress.left == 1
     with pytest.raises(RuntimeError):
-        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, broken)
     assert len([c for c in tex.calls if c[0] == broken.id_slug]) == 2
     assert r.scan() == [] and r.progress.deck(deck.name).failed == 1      # once only
-    assert r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert render_unit(r, broken) is None
 
 
 def test_a_failed_slide_that_renders_on_its_last_try_is_no_longer_a_failure(project, store, raster, monkeypatch):
@@ -723,10 +741,10 @@ def test_a_failed_slide_that_renders_on_its_last_try_is_no_longer_a_failure(proj
     monkeypatch.setattr(r, "languages_for", lambda _deck: ["EN"])
     tex.fail[broken.id_slug] = "Render failed for x:\n! A passing problem."
     with pytest.raises(RuntimeError):
-        r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, broken)
     assert [u.label for _, u in r.scan()] == [broken.label]
     del tex.fail[broken.id_slug]
-    assert r.render_unit(broken, background_renders.ORIGIN_BACKGROUND, CancelToken()) is not None
+    assert render_unit(r, broken) is not None
     assert store.failures() == [] and r.resolver.lookup(broken).state is Freshness.FRESH
     r.scan()
     assert r.progress.deck(deck.name).fresh == 1 and r.progress.failures == 0
@@ -779,14 +797,14 @@ def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(pr
 
     monkeypatch.setattr(deck_context, "render_in_deck", in_deck)
     r._render = None
-    assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is not None
+    assert render_unit(r, unit) is not None
     assert asked == [(deck.name, "instructor", unit.id_slug, True, "EN")] and not tex.calls
     assert r.resolver.lookup(unit).state is Freshness.FRESH
     monkeypatch.setattr(deck_context, "render_in_deck", lambda *a, **k: None)
     other = _context_units(project, deck)[0][-1]
     if other.label != unit.label:
         with pytest.raises(RuntimeError, match="no compile"):
-            r.render_unit(other, background_renders.ORIGIN_BACKGROUND, CancelToken())
+            render_unit(r, other)
 
 
 def test_start_does_not_rescan_the_store_on_the_calling_thread_and_the_rescan_can_be_stopped(project, store, raster, monkeypatch):
@@ -836,7 +854,7 @@ def test_a_failure_for_want_of_the_template_is_forgotten_once_the_template_is_fo
     tex.fail[unit.id_slug] = (f"Render failed for x:\nl.16 \\input{{SlideMage_template_{unit.template}}}\n"
                               "! Emergency stop.\n")
     with pytest.raises(RuntimeError):
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     assert r.resolver.lookup(unit).state is Freshness.FAILED
     plan = r.scan()                       # the template is found now: tried again, not counted as failed
     assert unit.label in [u.label for _, u in plan]
@@ -882,23 +900,23 @@ def _call_twice(project, slide="1cx-EN-Slide-IDs"):
 def test_a_slide_edited_and_rendered_again_leaves_one_render_and_the_old_one_is_shown_until_then(project, store, raster):
     r = make(project, store, raster)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     old_key = r.resolver.fast_key(unit)
     _edit(unit.source_path)
     r.scan()
     assert _keys_of(store, unit.label) == [old_key]                  # nothing new yet: the old one is "outdated"
     assert r.resolver.lookup(unit).state is Freshness.STALE
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)] != [old_key]
 
 
 def test_a_render_stored_before_the_scan_saw_the_edit_has_its_old_one_cleared_by_the_next_scan(project, store, raster):
     r = make(project, store, raster)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[2]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     r.scan()
     _edit(unit.source_path)
-    r.render_unit(unit, background_renders.ORIGIN_REVEAL, CancelToken())     # the Preview's render, before any scan
+    render_unit(r, unit)                                # stored before the next scan
     assert len(_keys_of(store, unit.label)) == 2                    # the last scan still had the old key as current
     r.scan()
     assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]
@@ -914,13 +932,13 @@ def test_a_slide_called_twice_in_two_ways_keeps_both_current_renders_whichever_i
     both = [u for u in background_renders.deck_units(project, deck, "instructor", "EN") if u.id_slug == "1cx-EN-Slide-IDs"]
     assert len({u.label for u in both}) == 1 and len({r.resolver.fast_key(u) for u in both}) == 2
     keys = sorted(r.resolver.fast_key(u) for u in both)
-    r.render_unit(both[0], background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, both[0])
     r.scan()                                            # the one-off clearing runs here too
-    r.render_unit(both[1], background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, both[1])
     assert _keys_of(store, both[0].label) == keys
     for unit in both:                                   # storing either again (the reveal bar's render) keeps the other
         store.delete(r.resolver.fast_key(unit))
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
         assert _keys_of(store, unit.label) == keys
         r.scan()
         assert _keys_of(store, unit.label) == keys
@@ -935,7 +953,7 @@ def test_the_leftovers_in_a_store_are_cleared_once_and_only_what_the_scan_read(p
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[1]
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    render_unit(r, unit)
     current = r.resolver.fast_key(unit)
     r.scan()
     store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.LEFTOVERS_CLEARED,))
@@ -963,7 +981,7 @@ def _one_pass(r, label):
     """Render what a scan plans for `label`, as the sweep would; returns how many units it planned."""
     planned = [unit for _, unit in r.scan() if unit.label == label]
     for unit in planned:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     return len(planned)
 
 
@@ -992,7 +1010,7 @@ def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, ra
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")[2:4]
     for unit in units:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
     gone = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "f" * 64)
     real = background_renders.deck_units
 
@@ -1009,7 +1027,7 @@ def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, ra
     assert store.count() == before and store._exists(gone)          # neither the scan nor the one-off clearing
     assert not store.flag(render_store.LEFTOVERS_CLEARED)           # left for a scan that reads every deck
     for unit in units:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        render_unit(r, unit)
         assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]  # put clears the superseded key
     monkeypatch.setattr(background_renders, "deck_units", real)
     r.scan()
@@ -1055,5 +1073,5 @@ def test_saving_the_captured_text_is_a_store_hit_without_tex(project, store, ras
     saved = r.renders.request(target, text, 'instructor', 'EN', lambda _: None, saved=True)
     saved.wait()
     assert saved.metrics['cache_hit'] and len(builds) == 1
-    assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) == key
+    assert render_unit(r, unit) == key
     r.stop()

@@ -131,7 +131,6 @@ class RenderRequest:
         self.error = None
         self.metrics = None
         self.spec = None
-        self.origin = None
         self.preview_result = None
         self._store_record = None
         self._artifact_owner = None
@@ -386,7 +385,7 @@ class RenderService:
                             raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
                         from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
                         renderer._store_render(
-                            unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL),
+                            unit, ORIGIN_BACKGROUND if background else ORIGIN_REVEAL,
                             pdf, pages, manifest, evidence)
                     except Exception as exc:
                         if background:

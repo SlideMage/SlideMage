@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Common batch fallback, bulk cancellation and the AI tools' existing result contracts."""
+from functools import partial
 from pathlib import Path
 import shutil
 import threading
@@ -11,7 +12,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
 
 from conftest import EXAMPLE, wait_until
-from slidemage import batch_render, preview_requests, preview_target, render_key
+from slidemage import batch_render, parallel_runs, preview_requests, preview_target, render_key
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from slidemage.project import ProjectContext
 from slidemage.ui.workspace import compile_actions
@@ -100,6 +101,7 @@ def test_cancel_stops_a_bulk_action(window, monkeypatch):
 
     monkeypatch.setattr(service, 'request', request)
     original = batch_render.render_batch
+    monkeypatch.setattr(parallel_runs, 'run_all', partial(parallel_runs.run_all, workers=1))
 
     def render(service, captured, *, cancel, progress, **options):
         def notify(event):
@@ -111,7 +113,7 @@ def test_cancel_stops_a_bulk_action(window, monkeypatch):
                     stopped.set()
                 QTimer.singleShot(0, window.compile, stop)
                 assert stopped.wait(3)
-        results.extend(original(service, captured, cancel=cancel, progress=notify, workers=1))
+        results.extend(original(service, captured, cancel=cancel, progress=notify))
         return tuple(results)
 
     monkeypatch.setattr(batch_render, 'render_batch', render)
@@ -123,11 +125,7 @@ def test_cancel_stops_a_bulk_action(window, monkeypatch):
     assert row.label == 'Render all previews now' and row.state == 'stopped'
 
 
-def test_refresh_deck_previews_reports_counts_and_lists(box, root):
-    specs = batch_render.plan_deck(box.ws.project, box.ws.context().deck)
-    details = batch_render.DeckResult.from_results(
-        (preview_requests.PreviewResult(spec) for spec in specs), 'all', 'EN').details
-    assert details.scope == 'all' and details.language == 'EN' and details.count('rendered') == 6
+def test_refresh_deck_previews_reports_counts_and_lists(box):
     box.ws.refresh_result = batch_render.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"],
                                                            error="! Undefined control sequence.")
     out = box.ok("refresh_deck_previews")                                       # the open deck

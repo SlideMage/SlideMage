@@ -315,7 +315,6 @@ class Bench:
 
     def background_batch(self):
         from slidemage import background_renders, render_store
-        from slidemage.compiler import CancelToken
         from slidemage.idle_gate import IdleGate
         units = background_renders.deck_units(self.ctx, self.deck, self.args.view, self.language)
         warm, units = units[-1], units[:self.args.units or None]
@@ -330,7 +329,8 @@ class Bench:
             renderer = background_renders.BackgroundRenderer(self.ctx, store, gate=gate, decks=lambda: [self.deck])
             renderer.batch_size = lambda size=size: size
             try:
-                renderer.render_unit(warm, background_renders.ORIGIN_BACKGROUND, CancelToken())     # the format, unreported
+                renderer.scheduler.submit(warm.label, ((warm,), background_renders.ORIGIN_BACKGROUND), background_renders.P_IDLE)
+                renderer.scheduler.run_next()     # warm the format, unreported
                 renderer._plan = [((n,), unit) for n, unit in enumerate(units)]
                 before, own, start = children(), time.process_time(), time.perf_counter()
                 while renderer._plan or renderer.scheduler.pending():

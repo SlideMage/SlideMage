@@ -86,12 +86,6 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
             continue
         if not c.included_in(version):
             continue
-        if deck_editor.is_commented_out(deck.text, c):
-            # A disabled "% \slide{abc-EN-Old}" is not a real slide in
-            # this compile -- included anyway, it would produce a
-            # thumbnail cell whose \hyperlink{} target doesn't exist in
-            # the PDF (2026-09-23 review finding).
-            continue
         if c.macro == "slidestep":
             if c.id in step_ids:
                 continue
@@ -106,10 +100,6 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
         if chapter_calls:
             sections.append((chapter.order, chapter.title, chapter_calls))
     return sections
-
-
-def _chunks(items: list, size: int) -> list[list]:
-    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, png: Path | None) -> str:
@@ -218,21 +208,12 @@ def generate_appendix_tex(ctx: project.ProjectContext, deck: Deck, template: str
                         atomic_write(png, output.getvalue())
                     thumbnails[call.source_filename] = png
 
-    # standardframe's own footer template always shows whatever \slideID
-    # currently holds, even on a frame that never called \setSlideID{} --
-    # left unset, every appendix page would keep displaying the *last real
-    # slide's* id in its own footer. Confirmed to be more than cosmetic: a
-    # compile import scans that footer text to identify slides, so a stale id
-    # would attribute the appendix pages to the last real slide. "appendix"
-    # can never collide with a real (3-character) bare id.
-    # The last real slide's version and language must not show either
-    # ("(slide id: appendix | v1.0.0EN | ...)", seen 2026-10-04 in the
-    # SlideMage manual).
+    # Clear the last slide's footer so compile import cannot attribute appendix pages to it.
     reset_id = ("\\renewcommand{\\slideID}{appendix}%\n"
                 "\\global\\SMSlideVersionSetfalse\\global\\SMSlideLanguageSetfalse%")
     parts = ["\\appendix", reset_id, _GEOMETRY_TEX, _agenda_slide(sections)]
     for order, title, calls in sections:
-        pages = _chunks(calls, PER_PAGE)
+        pages = [calls[i:i + PER_PAGE] for i in range(0, len(calls), PER_PAGE)]
         total = len(pages)
         for i, page_calls in enumerate(pages):
             page_title = title if total == 1 else f"{title} ({i + 1}/{total})"

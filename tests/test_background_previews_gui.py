@@ -627,9 +627,8 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
 
     from PySide6.QtGui import QImage
     from slidemage import deck_editor, preview_target, render_lookup
-    from slidemage.compiler import CancelToken
     from slidemage.preview_requests import PreviewRequest, SourceRevision
-    from test_background_renders import FakeTeX
+    from test_background_renders import FakeTeX, render_unit
 
     deck = window.state.deck
     target = next(t for i, call in enumerate(deck_editor.parse_slide_calls(deck), 1)
@@ -674,7 +673,7 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
                 dependency.write_text('changed')
             else:
                 tex.pages = count
-                assert renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+                assert render_unit(renderer, unit)
             preview._stored_asked = None
             preview._refresh()
             expected_state, record = select(dict(resolver=renderer.resolver, unit=unit), strict=True)

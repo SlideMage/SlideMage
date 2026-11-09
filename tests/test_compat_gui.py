@@ -165,8 +165,6 @@ def test_flat_snapshots_are_removed_and_the_notice_is_shown_only_on_first_start(
     assert ".previews/slide_previews/ is gone" in shown[0] and "deletion syncs" in shown[0]
     assert "every computer" in shown[0] and "References rebuild from the local render store" in shown[0]
 
-    # Even if an older computer syncs the folder back, migration runs only once.
-    folder.mkdir()
     assert cli.check_project_format(root, "v0.15.0")
     maintenance.check_project_compat(win)
-    assert folder.exists() and len(shown) == 1
+    assert not folder.exists() and len(shown) == 1

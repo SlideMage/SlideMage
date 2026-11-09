@@ -841,26 +841,6 @@ class BackgroundRenderer:
         return preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
                                               preview_requests.RenderOptions(saved=True, all_steps=True), error)
 
-    def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
-        """Render one saved unit; return its stored object name, or None when held back."""
-        spec = self.request_for(unit)
-        if spec.capture_error:
-            raise _transient(spec.capture_error)
-        cancel.low_priority = True
-        request = self.renders.request(spec.target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
-        request.origin = origin
-        try:
-            request.wait(cancel)
-        except RuntimeError:
-            if request.preview_result is not None and request.preview_result.status == 'failed':
-                return None
-            raise
-        stored = self.store.find(self.resolver.fast_key(unit, spec.revision.text))
-        if stored is not None:
-            self.store.link_decks(stored['name'], [unit.deck])
-            return stored['name']
-        return None
-
     def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
                       pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
         if not pages or not self.resolver.publishable(unit, evidence, manifest):

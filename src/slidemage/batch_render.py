@@ -18,15 +18,6 @@ from .preview_requests import PrebuiltRender, PreviewRequest, PreviewResult, Ren
 ALL_PAGES = 100000
 
 
-def eligible(spec) -> bool:
-    """Whether a request's render can be one slide of a document of several: a whole, visible slide of a deck in
-    its plain editor-style render, that needs nothing of the deck around it (a contents or agenda slide would show its
-    links on every slide of the document)."""
-    options, target = spec.options, spec.target
-    return options.saved and not (target.hidden or target.needs_context or spec.capture_error or options.presenter or options.mode != 'slide'
-                or options.overlay is not None or deck_context.reasons(spec.revision.text))
-
-
 def groups(service, candidates, size: int) -> list[list]:
     """The documents to compile for `candidates`, [(key, request)] in plan order: the eligible requests the service
     finds no verified preview of (all, when forced), `size` at most per document, of one view, language and preamble, and
@@ -34,7 +25,10 @@ def groups(service, candidates, size: int) -> list[list]:
     A request that would be alone in its document is left out: it renders singly."""
     batches: dict[tuple, list[list]] = {}
     for key, spec in candidates:
-        if size < 2 or not eligible(spec):
+        options, target = spec.options, spec.target
+        if (size < 2 or not options.saved or target.hidden or target.needs_context or spec.capture_error
+                or options.presenter or options.mode != 'slide' or options.overlay is not None
+                or deck_context.reasons(spec.revision.text)):
             continue
         try:
             if not spec.options.force:
@@ -104,8 +98,7 @@ class BatchProgress:
     done: int = 0       # how many requests had finished: several run at once, so `index` is not that
 
 
-def render_batch(service, requests, *, cancel=None, progress=None, publish=None, log=None, workers=None,
-                 may_add=None, batch_size=1):
+def render_batch(service, requests, *, cancel=None, progress=None, publish=None, log=None, batch_size=1):
     """Render captured requests in order, preserving partial results and cancellation.
 
     Compatible saved requests share documents of at most `batch_size`; a failed document falls back to single
@@ -116,13 +109,14 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
     requests = tuple(requests)
     results: list = [None] * len(requests)
     notify_lock = threading.Lock()
-    finished = {"n": 0}
+    finished = 0
 
     def notify(event, finishing=False):
+        nonlocal finished
         with notify_lock:
             if finishing:
-                finished["n"] += 1
-            event = replace(event, done=finished["n"])
+                finished += 1
+            event = replace(event, done=finished)
             if progress is not None:
                 try:
                     progress(event)
@@ -198,7 +192,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
     elif len(requests) == 1:
         tasks[0]()                            # a single tool request may join the pane's foreground build
     else:
-        parallel_runs.run_all(tasks, workers=workers, may_add=may_add or parallel_runs.cpu_has_room, cancel=cancel)
+        parallel_runs.run_all(tasks, may_add=parallel_runs.cpu_has_room, cancel=cancel)
     for index, original in enumerate(requests, 1):          # a unit that never started (cancelled first)
         if results[index - 1] is None:
             results[index - 1] = PreviewResult(original, status='cancelled', error='Preview cancelled')
@@ -210,10 +204,6 @@ class DeckRefreshResult:
     scope: str
     language: str
     results: tuple
-
-    @property
-    def total(self) -> int:
-        return len(self.results)
 
     def count(self, status: str) -> int:
         return sum(result.status == status for result in self.results)
@@ -320,8 +310,7 @@ def plan_slide(ctx, deck, path, view, language, *, selected_view="instructor",
                 text = read_source(source) if read_source is not None else None
                 revisions[source] = SourceRevision.capture(source, text)
             except OSError as exc:
-                # Visibility is resolvable without a slide file. Record capture
-                # failures per view so other views can still complete normally.
+                # A missing source in one view must not prevent the other views.
                 revisions[source] = SourceRevision.capture(source, '')
                 capture_errors[source] = str(exc)
         result.append(PreviewRequest(target, revisions[source], canonical, language, options,
