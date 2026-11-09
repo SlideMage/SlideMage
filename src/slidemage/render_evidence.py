@@ -186,6 +186,67 @@ def search_state(project_root: Path, env: dict, *, stability=False) -> dict:
     return inventories
 
 
+_INVENTORY_DIRS = {}
+_INVENTORY_LOCK = threading.Lock()
+
+
+def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -> dict:
+    """Capture names before TeX starts; reuse directory listings until their mtimes change.
+
+    Sweep planning forces a full re-list; strict checks re-list the directories of
+    recorded inputs. Keep this separate from the preview cache's whole-tree search_state.
+    """
+    relist = {Path(path).absolute().parent for path in inputs}
+    skipped = _SKIP_DIRS | {'pdf', '.temp', 'snapshots'}
+    conservative, stems = {}, {}
+    project_root = project_root.absolute()
+    for root in search_roots(project_root, env):
+        names = conservative[str(root)] = []
+        pending = [root]
+        while pending:
+            directory = pending.pop()
+            try:
+                mtime = directory.stat().st_mtime_ns
+            except FileNotFoundError:
+                if directory != root:
+                    raise
+                conservative[str(root)] = None
+                continue
+            with _INVENTORY_LOCK:
+                known = _INVENTORY_DIRS.get(directory)
+                if force or directory in relist or known is None or known[0] != mtime:
+                    dirs, files = [], []
+                    with os.scandir(directory) as entries:
+                        for entry in entries:
+                            if entry.is_dir():
+                                if entry.name in skipped:
+                                    continue
+                                if entry.is_symlink():
+                                    raise ValueError('Unsupported symlinked TeX search directory')
+                                dirs.append(entry.name)
+                            elif not entry.name.startswith(('_slidemage_', '_snapshot_')):
+                                files.append(entry.name)
+                    known = _INVENTORY_DIRS[directory] = (mtime, dirs, files)
+            pending.extend(directory / name for name in known[1])
+            for name in known[2]:
+                path = directory / name
+                relative = path.relative_to(project_root) if path.is_relative_to(project_root) else None
+                if (relative is not None and relative.parts[0] in {'slides', 'media', 'snippets'}
+                        and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}):
+                    stems.setdefault(path.stem, set()).add(str(path))
+                else:
+                    names.append(str(path))
+        names.sort()
+    return {'conservative': digest(conservative),
+            'stems': {stem: sorted(paths) for stem, paths in stems.items()}}
+
+
+def inventory_state(inventory: dict, inputs) -> dict:
+    """Evidence to record, or compare with a record: conservative names and input-stem candidates."""
+    return {'conservative': inventory['conservative'],
+            'stems': {stem: inventory['stems'].get(stem, []) for stem in sorted({Path(path).stem for path in inputs})}}
+
+
 def configuration_state(project_root: Path, env: dict) -> dict:
     """Actual compile environment, tool bytes, and latexmk configuration sources."""
     home = Path(env.get('HOME') or env.get('USERPROFILE') or Path.home())
