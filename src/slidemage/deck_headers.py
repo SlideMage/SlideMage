@@ -49,9 +49,10 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from pathlib import Path
 
-from . import languages
+from . import languages, timing
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
 
@@ -89,12 +90,20 @@ def regenerate_header(ctx: ProjectContext, slide_path: Path) -> bool:
 
 
 def _regenerate_headers_impl(ctx: ProjectContext) -> tuple[int, int]:
-    id_to_decks, deck_paths = _deck_membership(ctx)
-    changed = 0
+    with timing.span("header_sync.membership"):
+        id_to_decks, deck_paths = _deck_membership(ctx)
+    changed = scanned = 0
+    changed_names: list[str] = []
+    started = time.perf_counter()
     if ctx.slides_dir.is_dir():
         for slide_path in ctx.slides_dir.glob("*-current.tex"):
             slide_id = slide_path.name.split("-")[0]
-            changed += _rewrite_header(slide_path, sorted(id_to_decks.get(slide_id, [])))
+            scanned += 1
+            if _rewrite_header(slide_path, sorted(id_to_decks.get(slide_id, []))):
+                changed += 1
+                changed_names.append(slide_path.name)
+    timing.event(ctx.root, "header_sync.rewrite", seconds=round(time.perf_counter() - started, 3), slides=scanned,
+                 decks=len(deck_paths), changed=changed, first_changed=",".join(changed_names[:5]) or "-")
     return changed, len(deck_paths)
 
 

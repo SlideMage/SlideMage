@@ -236,6 +236,8 @@ class SlideList(QWidget):
         deck = self.deck
         if deck is None:
             return
+        timing.caller("thumbnails.queue", paths="all" if paths is None else len(paths),
+                      running=self._thumbnail_future is not None)
         if self._thumbnail_full_requested:
             paths = None
         if self._thumbnail_future is not None:
@@ -337,6 +339,7 @@ class SlideList(QWidget):
 
     def preview_source_changed(self, path: Path) -> None:
         """Refresh image age after typing pauses, without rebuilding the slide tree."""
+        timing.caller("thumbnails.source_changed", file=path.name)
         if self.deck is not None:
             if not self._thumbnail_full_requested:
                 self._thumbnail_paths.add(path)
@@ -415,6 +418,7 @@ class SlideList(QWidget):
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
         deck = self.deck
+        timing.caller("slide_list.rebuild", preserve_focus=preserve_focus)
         self._thumbnail_ticket += 1
         if self._thumbnail_future is not None:
             self._thumbnail_future.cancel()

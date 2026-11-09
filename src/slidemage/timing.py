@@ -39,3 +39,22 @@ def span(name: str, **fields):
     finally:
         seconds = time.perf_counter() - start
         log.debug("%s seconds=%.3f%s", name, seconds, "".join(f" {key}={value}" for key, value in fields.items()))
+
+
+def stack_summary(skip: int = 2, depth: int = 6) -> str:
+    """The callers of the function that asks, innermost first, as `module.function:line > ...` (for `caller`)."""
+    import sys
+    frames = []
+    frame = sys._getframe(skip)
+    while frame is not None and len(frames) < depth:
+        module = frame.f_globals.get("__name__", "?").removeprefix("slidemage.").removeprefix("ui.workspace.")
+        frames.append(f"{module}.{frame.f_code.co_name}:{frame.f_lineno}")
+        frame = frame.f_back
+    return " > ".join(frames)
+
+
+def caller(name: str, **fields) -> None:
+    """`name` with the call stack that led here, to find out what triggers a rebuild or a refresh; a no-op while the
+    debug log is off."""
+    if enabled():
+        log.debug("%s%s stack=%s", name, "".join(f" {key}={value}" for key, value in fields.items()), stack_summary(3))

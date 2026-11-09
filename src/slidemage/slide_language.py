@@ -32,12 +32,19 @@ once) and kept honest afterward by slide_rename.regenerate_translation_links().
 from __future__ import annotations
 
 import re
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import logging
+
+from . import diagnostics, timing
 from .project import ProjectContext
+
+_perf_log = logging.getLogger("slidemage.perf")
 
 
 # A multilingual slide: the same in every language, so it is nobody's translation.
@@ -136,13 +143,22 @@ class TranslationLinks:
                       for p in self.slides_dir.glob("*-current.tex")}
         self.headers: dict[str, str] = {}
         self._groups: dict[str, Group] | None = None
+        self.read_files, self.read_chars, self.read_seconds, self.slowest = 0, 0, 0.0, 0.0   # for the debug log
 
     def own(self, id_slug: str) -> str | None:
         return own_language(id_slug, self.codes)
 
     def header(self, id_slug: str) -> str:
         if id_slug not in self.headers:
-            self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
+            if timing.enabled():
+                began = time.perf_counter()
+                self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
+                self.read_seconds += time.perf_counter() - began
+                self.read_files += 1
+                self.read_chars += len(self.headers[id_slug])
+                self.slowest = max(self.slowest, time.perf_counter() - began)
+            else:
+                self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
         return self.headers[id_slug]
 
     def group(self, id_slug: str) -> Group:
@@ -150,7 +166,14 @@ class TranslationLinks:
         current file, is its own group. Links count from either side, as "Translation of:" and as
         "<LANG> translation:"."""
         if self._groups is None:
+            began = time.perf_counter()
             self._groups = self._scan()
+            if timing.enabled():
+                # its own logger: the `timing` area is the prompt-to-preview timeline of one request
+                diagnostics.event(_perf_log, "slide_language.scan", files=self.read_files, chars=self.read_chars,
+                                  reading_s=round(self.read_seconds, 3), slowest_read_s=round(self.slowest, 3),
+                                  total_s=round(time.perf_counter() - began, 3),
+                                  gui=threading.current_thread() is threading.main_thread())
         return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
 
     def find(self, id_slug: str, language: str) -> str | None:

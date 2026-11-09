@@ -21,7 +21,7 @@ from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QScrollArea, QSplitter, QSplitterHandle, QVBoxLayout, QWidget)
 
-from ... import app_settings
+from ... import app_settings, timing
 from ...plugins import session
 from ...project import ProjectContext
 from .. import layout_settings
@@ -242,6 +242,7 @@ class SidePanels(QWidget):
 
     def refresh(self) -> None:
         """Bring the shown panel up to date (at once; a hidden card is brought up to date when it is shown)."""
+        timing.caller("side_panels.refresh", panel=self.current)
         self._rebuild.stop()
         self._shield.hide()
         self.flush()   # an edit belongs to the slide, deck and panel it was made in

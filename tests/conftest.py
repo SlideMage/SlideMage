@@ -20,6 +20,7 @@ EXAMPLE_PROJECT = ProjectContext.at(EXAMPLE)
 # symlink is needed, including on Windows where symlinks may need privileges.
 os.environ["SLIDEMAGE_LATEX"] = str(_REPO_ROOT / "latex")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("SLIDEMAGE_NO_STALL_MONITOR", "1")        # the stall monitor logs from a thread of its own
 os.environ.setdefault("SLIDEMAGE_NO_BACKGROUND_PREVIEWS", "1")      # a window under test renders nothing by itself
 
 
