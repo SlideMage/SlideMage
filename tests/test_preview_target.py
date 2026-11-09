@@ -68,7 +68,7 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     ctx = ProjectContext.at(tmp_path)
     slides = tmp_path / "slides"
     slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
     current = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
     frozen = preview_target.for_path(ctx, slides / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
@@ -92,7 +92,7 @@ def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, mon
     ctx = ProjectContext.at(tmp_path)
     slides = tmp_path / "slides"
     slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
     target = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
     assert preview_target.cached_image(target) is None
     source = slides / "abc-EN-Demo-current.tex"

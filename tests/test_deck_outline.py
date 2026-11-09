@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from slidemage import deck_outline, slide_language, slide_snapshot, slide_templates
+from slidemage import deck_outline, project as project_module, slide_language, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
 
 GOOD = "\\begin{standardframe}{Title}Text\\end{standardframe}\n"
@@ -19,7 +19,7 @@ def project(tmp_path, monkeypatch):
     """An empty slides/ folder and preview cache the outline looks at."""
     slides = tmp_path / "slides"
     slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    project_module.ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
     deck_outline.forget_lint()
     return slides
 

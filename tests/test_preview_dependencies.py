@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from slidemage import compiler, preview_build, preview_cli
+from slidemage import compiler, preview_build, preview_cli, project
 from slidemage.preview_metrics import PreviewMetrics, record_line, stage
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
@@ -236,11 +236,12 @@ def test_housekeeping_and_pruning_skip_another_process_active_build(tmp_path, mo
     os.utime(lock, (old, old))
     os.utime(wrapper, (old, old))
     code = (
-        "import sys; from pathlib import Path; from slidemage.preview_build import active_build; "
+        "import sys; from pathlib import Path; from slidemage import project; from slidemage.preview_build import active_build; "
+            "project.cache_dir = lambda: Path(sys.argv[3]); "      # the test's cache folder, where the maintenance lock is
         "ctx=active_build(Path(sys.argv[1]),Path(sys.argv[2])); "
         "ctx.__enter__(); print('reserved',flush=True); sys.stdin.readline(); ctx.__exit__(None,None,None)"
     )
-    child = subprocess.Popen([sys.executable, "-c", code, str(cache), str(wrapper)],
+    child = subprocess.Popen([sys.executable, "-c", code, str(cache), str(wrapper), str(project.cache_dir())],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     ready = queue.Queue()
     threading.Thread(target=lambda: ready.put(child.stdout.readline()), daemon=True).start()

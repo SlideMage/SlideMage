@@ -390,7 +390,7 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
 
     `snapshot_template` (only ever passed by render_slide_to_pdf(), and
     only when it compiled the instructor version -- see there), when not
-    None, refreshes .previews/slide_previews/<bare id>-<Template>-*.png from this
+    None, refreshes <ctx.slide_previews_dir>/<bare id>-<Template>-*.png from this
     render's last page as a side effect, at that template. Never lets a
     snapshot failure fail the render itself: a stale or missing preview
     image is a much smaller problem than losing a PDF the user actually

@@ -26,11 +26,8 @@ import pymupdf as fitz
 from . import project
 
 
-# Gitignored (see .gitignore), same as .previews/slide_previews/ -- a
-# regeneratable, best-effort cache, not project content worth tracking.
-# Moved under previews/ 2026-09-18, then .previews/ the same day (was a
-# project-root folder before that; dot-prefixed since nothing here is ever
-# something the user needs to interact with).
+# In the user's cache folder (ctx.pdf_render_cache_dir), not the project, same as the slide previews -- a
+# regeneratable, best-effort cache, not project content worth syncing.
 
 # ~216 DPI at PyMuPDF's 72-DPI-per-unit default (matrix scale = DPI/72) --
 # same reasoning as slide_snapshot.py's own zoom choice: enough detail to

@@ -61,7 +61,8 @@ def is_active(path: Path) -> bool:
 
 
 def maintenance_lock(project_root: Path) -> Path:
-    return project_root / '.previews' / 'preview-maintenance.lock'
+    from .project import ProjectContext
+    return ProjectContext.at(project_root).previews_dir / 'preview-maintenance.lock'
 
 
 @contextmanager

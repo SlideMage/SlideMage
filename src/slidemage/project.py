@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -534,6 +535,71 @@ class _Under:
         return self if context is None else context.root.joinpath(*self.parts)
 
 
+class _InPreviews:
+    """A place in this computer's preview cache for the project: `ctx.slide_previews_dir` is
+    `cache_dir() / "previews" / <project id> / "slide_previews"`, never inside the project folder (a synced
+    folder would carry hundreds of MB of PNGs that depend on this machine's TeX, fonts and theme to every
+    computer). The first use of one in a process moves an earlier `.previews/` copy over (migrate_previews)."""
+
+    def __init__(self, *parts: str) -> None:
+        self.parts = parts
+
+    def __get__(self, context: "ProjectContext | None", owner: type | None = None):
+        if context is None:
+            return self
+        migrate_previews_once(context.root)
+        return previews_cache_dir(context.root).joinpath(*self.parts)
+
+
+SLIDE_PREVIEWS = "slide_previews"
+TIKZ_PREVIEWS = "tikz_illustration_previews"
+PDF_RENDER_CACHE = "pdf_render_cache"
+_OLD_PREVIEWS = ".previews"
+_MIGRATED: set[str] = set()
+_MIGRATE_LOCK = threading.Lock()
+
+
+def previews_cache_dir(root: Path) -> Path:
+    """This computer's slide previews, TikZ pictures and rendered PDF pages for the project at `root`."""
+    return cache_dir() / "previews" / project_id(root)
+
+
+def migrate_previews(root: Path) -> None:
+    """Move the caches an earlier version kept in the project's `.previews/` into previews_cache_dir(root) (what the
+    new place already holds wins; the rest of the old copy is deleted: it is only a cache), then remove the old
+    lock file and, when nothing else is in it, `.previews/` itself. Works across drives. Never raises."""
+    old = Path(root) / _OLD_PREVIEWS
+    if not old.is_dir():
+        return
+    new = previews_cache_dir(root)
+    for name in (SLIDE_PREVIEWS, TIKZ_PREVIEWS, PDF_RENDER_CACHE):
+        source = old / name
+        if not source.is_dir():
+            continue
+        target = new / name
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                shutil.move(str(source), str(target))
+        except OSError:
+            pass
+        shutil.rmtree(source, ignore_errors=True)
+    try:
+        (old / "preview-maintenance.lock").unlink(missing_ok=True)
+        old.rmdir()                      # only when empty: a benchmark archive in it stays
+    except OSError:
+        pass
+
+
+def migrate_previews_once(root: Path) -> None:
+    key = os.path.normcase(os.path.normpath(str(root)))
+    with _MIGRATE_LOCK:
+        if key in _MIGRATED:
+            return
+        _MIGRATED.add(key)
+    migrate_previews(root)
+
+
 @dataclass(frozen=True)
 class ProjectContext:
     """One project folder and the places inside it. Immutable; created once at the entry point
@@ -551,10 +617,10 @@ class ProjectContext:
     sources_dir = _Under("sources")              # papers and figures the user attached to the chat
     pdf_dir = _Under("pdf")
     temp_dir = _Under(".temp")
-    previews_dir = _Under(".previews")
-    slide_previews_dir = _Under(".previews", "slide_previews")
-    tikz_previews_dir = _Under(".previews", "tikz_illustration_previews")
-    pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
+    previews_dir = _InPreviews()                 # in the user's cache folder, not the project (see _InPreviews)
+    slide_previews_dir = _InPreviews(SLIDE_PREVIEWS)
+    tikz_previews_dir = _InPreviews(TIKZ_PREVIEWS)
+    pdf_render_cache_dir = _InPreviews(PDF_RENDER_CACHE)
     settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json
     ai_review_path = _Under(".slidemage", "ai-review.json")
     ai_before_dir = _Under(".slidemage", "ai-before")   # a slide's text before the last AI edit (ai_review.last_before)

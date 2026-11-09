@@ -281,7 +281,7 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     """The instructor compile reads the previews from before its own refresh,
     the versions compiled after it the refreshed ones: one snapshot holds both."""
     root, target = tmp_path / "Proj", tmp_path / "snap" / "Proj"
-    preview = write(root / ".previews" / "slide_previews" / "1aa-304-171.png", b"refreshed")
+    preview = write(project.ProjectContext.at(root).slide_previews_dir / "1aa-304-171.png", b"refreshed")
     kept = write(tmp_path / "kept" / "0-1aa-304-171.png", b"as the instructor compile read it")
 
     def out(copies):
@@ -296,11 +296,12 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
         == b"as the instructor compile read it"
     assert (base / "t-after-course" / "slide_previews" / "1aa-304-171.png").read_bytes() \
         == b"refreshed"
-    wrapper = f"\\includegraphics{{{root.as_posix()}/.previews/slide_previews/1aa-304-171.png}}"
+    previews = project.ProjectContext.at(root).previews_dir.as_posix()
+    wrapper = f"\\includegraphics{{{previews}/slide_previews/1aa-304-171.png}}"
     assert deck_snapshot.relative_wrapper(wrapper, root, "t-instructor") == (
         "\\includegraphics{.previews/t-instructor/slide_previews/1aa-304-171.png}")
 
-    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.previews/slide_previews/x.png}}\n"
+    text = (f"\\includegraphics[width=1cm]{{{previews}/slide_previews/x.png}}\n"
             "\\input{t-Deck.tex}\n")
     assert deck_snapshot.relative_wrapper(text, root) == (
         "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
