@@ -31,8 +31,11 @@ the prompts.
 """
 from __future__ import annotations
 
+import copy
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -57,16 +60,50 @@ MACHINE_KEYS = frozenset({
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 
+# The parsed files, kept with their (mtime, size) (v0.14.57): get() is asked on the GUI thread many times a second (the
+# AI route, the background renders' switch), and each call read and parsed both JSON files. A file changed in the last
+# 2 s is read again every time (a second write inside Windows' 15 ms mtime step can keep the stamp), and _write()
+# forgets the file it writes.
+_cache_lock = threading.Lock()
+_parsed: dict[Path, tuple[tuple[int, int], dict]] = {}
+_RACY_NS = 2_000_000_000
+
+
+def _read(path: Path) -> dict[str, Any]:
+    """read_json(path), from the cache while the file's stamp is unchanged; a copy the caller may change."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        with _cache_lock:
+            _parsed.pop(path, None)
+        return {}
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    with _cache_lock:
+        cached = _parsed.get(path)
+    if cached is not None and cached[0] == stamp:
+        return copy.deepcopy(cached[1])
+    data = read_json(path)
+    if stamp[0] < time.time_ns() - _RACY_NS:
+        with _cache_lock:
+            _parsed[path] = (stamp, copy.deepcopy(data))
+    return data
+
+
+def clear_cache() -> None:
+    with _cache_lock:
+        _parsed.clear()
+
+
 def _store_path(ctx: ProjectContext) -> Path:
     return ctx.settings_dir / "app_settings.json"
 
 
 def peek(ctx: ProjectContext, key: str, default: Any = None) -> Any:
     """Read a legacy setting with machine precedence, without migrating either file."""
-    machine = read_json(MACHINE_STORE_PATH)
+    machine = _read(MACHINE_STORE_PATH)
     if key in MACHINE_KEYS and key in machine:
         return machine[key]
-    return read_json(_store_path(ctx)).get(key, default)
+    return _read(_store_path(ctx)).get(key, default)
 
 
 def peek_ollama_host(ctx: ProjectContext) -> str:
@@ -75,8 +112,8 @@ def peek_ollama_host(ctx: ProjectContext) -> str:
 
 def load(ctx: ProjectContext) -> dict[str, Any]:
     """The project's settings with this machine's AI settings (MACHINE_KEYS) over them."""
-    project_settings = read_json(_store_path(ctx))
-    machine = read_json(MACHINE_STORE_PATH)
+    project_settings = _read(_store_path(ctx))
+    machine = _read(MACHINE_STORE_PATH)
     moved = {key: project_settings.pop(key) for key in MACHINE_KEYS if key in project_settings}
     if moved:
         machine = {**moved, **machine}
@@ -88,7 +125,7 @@ def load(ctx: ProjectContext) -> dict[str, Any]:
 def save(ctx: ProjectContext, settings: dict[str, Any]) -> None:
     """`settings` as load() gave it, changed: MACHINE_KEYS to this machine's file (one left out is removed), the
     rest to the project's. A file that cannot be written is logged and left as it was (_write)."""
-    machine = {key: value for key, value in read_json(MACHINE_STORE_PATH).items() if key not in MACHINE_KEYS}
+    machine = {key: value for key, value in _read(MACHINE_STORE_PATH).items() if key not in MACHINE_KEYS}
     machine.update({key: value for key, value in settings.items() if key in MACHINE_KEYS})
     _write(MACHINE_STORE_PATH, machine)
     _write(_store_path(ctx), {key: value for key, value in settings.items() if key not in MACHINE_KEYS})
@@ -100,6 +137,8 @@ def _write(path: Path, data: dict) -> bool:
     (2026-11-05, Nextcloud's virtual files gave "[Errno 22] Invalid argument"). Raised from a deck switch or
     from closing the window, that error left the workspace half updated; the window says once that the
     project folder cannot be written (project_access.py)."""
+    with _cache_lock:
+        _parsed.pop(path, None)
     try:
         write_json(path, data)
         return True
