@@ -861,7 +861,7 @@ class BackgroundRenderer:
                     manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
                     inventory=render_evidence.inventory_state(evidence["inventory"], paths),
                     machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number,
-                    width=STORE_WIDTH)
+                    width=STORE_WIDTH, template=unit.template)
         if self.store.failure(key) is not None:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
         with self._working_lock:

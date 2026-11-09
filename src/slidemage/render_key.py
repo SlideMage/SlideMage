@@ -353,14 +353,11 @@ class Resolver:
 
     def lookup(self, unit: Unit, key: Optional[str] = None, *, strict=False, validation=None) -> "Lookup":
         validation = validation or render_evidence.ValidationPass()
-        key = self.fast_key(unit, strict=strict, validation=validation) if strict or key is None else key
+        key = self.fast_key(unit, strict=strict, validation=validation) if key is None else key
         if key is None:
             return Lookup(Freshness.MISSING, None, None)
-        records = self.store.find(key)
-        for record in records:
-            inventory = record.get("inventory")
-            if inventory is None:
-                continue
+        record = self.store.find(key)
+        if record is not None and record.get("inventory") is not None:
             env = validation.build_env(self.ctx)
             if strict:
                 inputs = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in record["manifest"]],
@@ -369,16 +366,15 @@ class Resolver:
             else:
                 current = validation.inventory(self.ctx.root, env)
             paths = [unit.source_path, *[rel for _kind, rel, _sha in record["manifest"]]]
-            if render_evidence.inventory_state(current, paths) != inventory:
-                continue
-            if self.manifest_current(record["manifest"], strict=strict) and self.tex_current(record, validation):
+            # The key already covers the requested source text, which can be an unsaved buffer.
+            entries = [entry for entry in record["manifest"] if self._resolve(*entry[:2]) != unit.source_path]
+            if (render_evidence.inventory_state(current, paths) == record["inventory"]
+                    and self.manifest_current(entries, strict=strict) and self.tex_current(record, validation)):
                 same = record.get("frame_number") == unit.frame_number
                 return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
         failure = self.store.failure(key)
         if failure is not None and self.manifest_current(failure["manifest"], strict=strict):
             return Lookup(Freshness.FAILED, None, key, failure)
-        if records:
-            return Lookup(Freshness.STALE, records[0], key)
         # An older render of the same unit under another key (the slide changed): shown as outdated.
         previous = self.store.latest_for_unit(unit.label)
         return Lookup(Freshness.STALE if previous else Freshness.MISSING, previous, key)

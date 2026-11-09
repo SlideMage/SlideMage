@@ -512,10 +512,7 @@ class BackgroundPreviews(QObject):
             found = self._stored_found(target, view, language, deck_name, strict=True)
             if found is None:
                 return None
-            with self.store.lock:
-                if found.record not in self.store.find(found.key):
-                    return None
-                return self.store.page(found.record, found.record["pages"])
+            return self.store.page(found.record, found.record["pages"])
         except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
             return None
 
@@ -525,11 +522,7 @@ class BackgroundPreviews(QObject):
             found = self._stored_found(target, view, language, deck_name, validation=validation)
             if found is None:
                 return None
-            with self.store.lock:
-                if found.record not in self.store.find(found.key):
-                    return None
-                self.store.touch(found.record["name"])
-                return self.store.thumbnail_path(found.record)
+            return self.store.thumbnail_path(found.record)
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
 
@@ -547,11 +540,7 @@ class BackgroundPreviews(QObject):
             found = renderer.resolver.lookup(unit, strict=True)
             if not found.usable:
                 return None
-            with self.store.lock:
-                if found.record not in self.store.find(found.key):
-                    return None
-                pages = [self.store.page(found.record, number) for number in range(1, int(found.record["pages"]) + 1)]
-                return pages if pages and all(pages) else None
+            return self.store.pages(found.record)
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
 

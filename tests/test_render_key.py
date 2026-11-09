@@ -190,7 +190,7 @@ def test_two_producers_replace_one_object_of_a_key(ctx, resolver, store):
         assert store_render(store, key, meta, origin=origin, pages=pages) == key
         found = resolver.lookup(unit)
         assert found.final and found.record["origin"] == origin and found.record["pages"] == pages
-        assert store.count() == 1 and len(store.find(key)) == 1
+        assert store.count() == 1 and store.find(key) is not None
         assert [p.name for p in (store.root / "objects" / key[:2]).iterdir()] == [key]
         assert not store.page(found.record, pages + 1)
 
@@ -419,7 +419,7 @@ def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_a
     key, meta = make_record(resolver, unit, [unit.source_path])
     name = store_render(store, key, meta)
     folder = render_store.object_dir(store.root, name)
-    assert store.thumbnail_path(store.find(key)[0]) == folder / "thumb.png"
+    assert store.thumbnail_path(store.find(key)) == folder / "thumb.png"
     with Image.open(folder / "thumb.png") as im:
         assert im.width == THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1]
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))

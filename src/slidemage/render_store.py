@@ -18,10 +18,12 @@ Free of Qt.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import os
 import shutil
 import sqlite3
+import tempfile
 import threading
 import time
 import uuid
@@ -167,29 +169,28 @@ class RenderStore:
             self.db.execute("INSERT OR IGNORE INTO texsets VALUES (?,?)", (meta["tex_digest"], json.dumps(tex_files)))
         self.db.commit()
 
-    def find(self, key: str) -> list[dict]:
+    def find(self, key: str) -> Optional[dict]:
         """The current-format object of `key`, if present on disk."""
         with self._lock:
             row = self.db.execute("SELECT meta FROM renders WHERE name=?", (key,)).fetchone()
-            if row is None:
-                return []
-            record = self._checked_meta(str(object_dir(self.root, key)), row[0])
-            if record is None:
-                return []
-            record["name"], record["dir"] = key, str(object_dir(self.root, key))
-            return [record]
+            record = self._checked_meta(str(object_dir(self.root, key)), row[0]) if row else None
+            if record is not None:
+                record["name"], record["dir"] = key, str(object_dir(self.root, key))
+            return record
 
     def latest_for_unit(self, unit: str) -> Optional[dict]:
         with self._lock:
-            rows = self.db.execute("SELECT fast_key FROM renders WHERE unit=? ORDER BY rendered_at DESC", (unit,)).fetchall()
+            rows = self.db.execute("SELECT fast_key FROM renders WHERE unit=? ORDER BY rendered_at DESC, name DESC", (unit,)).fetchall()
             for (key,) in rows:
                 if found := self.find(key):
-                    return found[0]
+                    return found
         return None
 
     def page(self, record: dict, number: int) -> Optional[bytes]:
         """The PNG of page `number` (1-based), read under the publication lock."""
         with self._lock:
+            if self.find(record["key"]) != record:
+                return None
             try:
                 data = (Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
             except OSError:
@@ -197,10 +198,43 @@ class RenderStore:
             self.touch(record["name"])
             return data
 
+    def pages(self, record: dict) -> Optional[list[bytes]]:
+        """Every page from one publication, or a miss if the object was replaced or evicted."""
+        with self._lock:
+            if self.find(record["key"]) != record:
+                return None
+            try:
+                pages = [(Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
+                         for number in range(1, record["pages"] + 1)]
+            except OSError:
+                return None
+            self.touch(record["name"])
+            return pages if pages and all(pages) else None
+
+    @contextmanager
+    def pdf_copy(self, record: dict):
+        """A temporary PDF, independent of replacement/eviction, for the caller's context lifetime."""
+        with tempfile.TemporaryDirectory(prefix="slidemage-render-") as tmp:
+            pdf = Path(tmp) / "slide.pdf"
+            with self._lock:
+                if self.find(record["key"]) != record:
+                    pdf = None
+                else:
+                    try:
+                        shutil.copyfile(Path(record["dir"]) / "slide.pdf", pdf)
+                    except OSError:
+                        pdf = None
+                    else:
+                        self.touch(record["name"])
+            yield pdf
+
     def thumbnail_path(self, record: dict) -> Optional[Path]:
         """The slide list's small copy of the last page; eviction may remove it after this returns."""
         with self._lock:
+            if self.find(record["key"]) != record:
+                return None
             path = Path(record["dir"]) / THUMB_NAME
+            self.touch(record["name"])
             return path if path.is_file() else None
 
     def touch(self, name: str) -> None:
