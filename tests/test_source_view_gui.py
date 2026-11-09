@@ -553,3 +553,48 @@ def test_revert_puts_the_last_version_back_as_one_undoable_edit(pane, slides, mo
     assert pane.current.write_now() and "1-1-0+" not in path.read_text()      # the autosave adds no "+"
     pane.current.editor.undo()
     assert "edit " in pane.current.editor.text()                      # one Ctrl+Z brings the changes back
+
+
+# -- the Color menu follows the deck's theme ---------------------------------------------
+
+def _color_menu(pane, monkeypatch):
+    from slidemage.ui.kit.widgets import PopoverMenu
+
+    shown = []
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_color_menu()
+    return {e[1]: e[7] for e in shown[0]._entries if e[0] == "item"}
+
+
+def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx, monkeypatch):
+    from types import SimpleNamespace
+    from conftest import write_test_file
+
+    write_test_file(ctx.root / "SlideMage_template_acme.tex",
+                    "\\input{SlideMage_setup}\n\\definecolor{c_primary_highlight}{HTML}{b45309}\n"
+                    "\\definecolor{c_secondary_blue}{RGB}{0,128,255} % comment \\definecolor{c_secondary_blue}{HTML}{000000}\n")
+    deck = lambda template: SimpleNamespace(text=f"\\documentclass{{beamer}}\n\\input{{SlideMage_template_{template}}}\n")
+    pane.app_for_test.state = SimpleNamespace(deck=deck("acme"))
+    acme = _color_menu(pane, monkeypatch)
+    assert acme["c_primary_highlight"] == "#b45309" and acme["c_secondary_blue"] == "#0080ff"
+    assert acme["c_secondary_violet"] == "#ba68c8"                  # not redefined: the framework's catalog value
+
+    pane.app_for_test.state.deck = deck("slidemage")                # another deck
+    assert _color_menu(pane, monkeypatch)["c_primary_highlight"] == "#0066cc"
+    pane.app_for_test.state.deck = deck("greyscale")                # the shipped greyscale template
+    grey = _color_menu(pane, monkeypatch)
+    assert grey["c_primary_highlight"] == "#555555"
+    assert all(v[1:3] == v[3:5] == v[5:7] for v in grey.values())
+    pane.app_for_test.state.deck = None                             # no deck: the default render template
+    assert _color_menu(pane, monkeypatch)["c_primary_highlight"] == "#0066cc"
+    write_test_file(ctx.root / "SlideMage_template_acme.tex", "\\input{SlideMage_setup}\n\\definecolor{c_primary_highlight}{HTML}{111111}\n")
+    pane.app_for_test.state.deck = deck("acme")                     # the theme edited
+    assert _color_menu(pane, monkeypatch)["c_primary_highlight"] == "#111111"
+
+
+def test_shipped_templates_give_every_menu_name_from_their_own_files(ctx):
+    from slidemage import theme_colors
+
+    for key in ("slidemage", "greyscale"):
+        read = theme_colors.theme_colors(key, ctx.root)
+        assert set(theme_colors.swatches(key, ctx.root)) == set(read) and len(read) >= 21
