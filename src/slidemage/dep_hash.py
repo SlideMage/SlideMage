@@ -37,11 +37,6 @@ def norm(path: Path | str) -> str:
     return os.path.normcase(os.path.normpath(str(path)))
 
 
-def _is_source(path: Path | str) -> bool:
-    path = Path(norm(path))
-    return path.parent.name == "slides" and path.suffix == ".tex"
-
-
 class HashCache:
     """File hashes kept in the `filehash` table of a SQLite connection (the render store's local index)."""
 
@@ -70,7 +65,9 @@ class HashCache:
             if row and row[0] == before.st_size and row[1] == before.st_mtime_ns:
                 return row[2]
         try:
-            digest = text_sha256(Path(path).read_text(encoding="utf-8")) if _is_source(path) else self._hasher(Path(path))
+            source = Path(key)
+            digest = (text_sha256(Path(path).read_text(encoding="utf-8"))
+                      if source.parent.name == "slides" and source.suffix == ".tex" else self._hasher(Path(path)))
             after = os.stat(path)
         except (OSError, UnicodeError):
             return None

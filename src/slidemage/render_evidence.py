@@ -44,17 +44,10 @@ _MEMO_LOCK = threading.Lock()
 
 
 class FileStates:
-    """file_state() that does not re-read the TeX distribution: the states of one lookup, store or validation.
+    """Always read user files; memoize unchanged TeX distribution files and artifacts.
 
-    A file inside one of `roots` (the trees users edit: search_roots()) is always read, so an edit that restores
-    the modification time is still seen. Any other file (TeX Live's or MiKTeX's own trees, the tool binaries, the
-    cache's own artifacts) is read once per process and again only when (size, mtime, inode, ctime) changes,
-    which a package update or a repair always does. ctime is when the file's metadata last changed and cannot
-    be set from userland on Linux and macOS; on Windows it is the creation time, but a rewritten file still
-    changes size or mtime (or its inode: an installer replaces files). A file changed less than MEMO_RACY_SECONDS
-    ago is read every time, as its timestamps may not have moved yet. A missing file is never remembered.
-    The result is what file_state() returns, so stored states stay valid. The memo is shared by every thread
-    and bounded to MEMO_LIMIT files.
+    User edits may restore mtimes. Package updates change size, mtime, inode or ctime
+    (creation time on Windows). Recent files are re-read until their timestamps settle.
     """
     def __init__(self, roots):
         # String prefixes: Path.resolve()/is_relative_to() per input cost more than the hashing they save.
@@ -267,8 +260,7 @@ def configuration_state(project_root: Path, env: dict) -> dict:
     for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
         executable = find_tool(name, env.get('PATH'))
         tools[name] = states(Path(executable)) if executable else None
-    # Not PATH (2026-11-09): it is part of the render store's fast key now, and a terminal start and a desktop
-    # start differ in PATH; the tools' resolved paths and contents above cover what it changes.
+    # Desktop and terminal PATHs differ; resolved tools above cover the relevant changes (2026-11-09).
     relevant = {name: value for name, value in env.items() if name.startswith(
         ('TEX', 'LUA', 'BIB', 'BST', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
         ('SLIDEMAGE_LATEX', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',

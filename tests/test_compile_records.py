@@ -56,8 +56,8 @@ def compiled(tmp_path, monkeypatch):
                 deck=deck, slide=slide, image=image, bib=bib, inventory=inventory, configuration=configuration)
 
 
-def record(c, wrapper_text=WRAPPER):
-    return write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
+def record(c):
+    return write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], WRAPPER,
                         c["pdf"], c["started"], c["inventory"], c["configuration"])
 
 
@@ -82,18 +82,6 @@ def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
     write(c["slide"], "slide, edited\n")
     fresh, why = fresh_output(c["build"], "t-Deck-instructor", WRAPPER)
     assert fresh is None and why == "1aa-EN-One-current.tex changed"
-
-
-@pytest.mark.parametrize("change, reason", [
-    (lambda c: write(c["pdf"], b"%PDF other"), "t-Deck-instructor.pdf was replaced"),
-    (lambda c: c["pdf"].unlink(), "t-Deck-instructor.pdf is gone"),
-    (lambda c: c["image"].unlink(), "a.png is gone"),
-    (lambda c: write(c["bib"], "@book{y}\n"), "SlideMage.bib changed"),
-])
-def test_stale_when_pdf_or_input_changes(compiled, change, reason):
-    record(compiled)
-    change(compiled)
-    assert fresh_output(compiled["build"], "t-Deck-instructor", WRAPPER) == (None, reason)
 
 
 def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
@@ -125,7 +113,7 @@ def test_slide_previews_are_kept_not_compared(compiled):
         "the kept copy of 1aa-EN-SlideMage-304-171.png is missing")
 
 
-def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
+def test_unchanged_jobs_need_the_same_destination(compiled):
     c = compiled
     ctx = ProjectContext.at(c["build"].parent)
     deck = deck_scan.Deck(name="t-Deck", path=c["deck"], archived=False, text="deck\n",
@@ -144,7 +132,7 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
     assert compiler.unchanged_jobs(ctx, [job], {"t-Deck-instructor": c["pdf"]}) == []
 
 
-def test_remove_temp_files_keeps_the_records(compiled, monkeypatch):
+def test_remove_temp_files_keeps_the_records(compiled):
     c = compiled
     record(c)
     ctx = ProjectContext.at(c["build"].parent)

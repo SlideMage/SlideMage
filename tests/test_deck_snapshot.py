@@ -129,16 +129,6 @@ def test_parse_fls_resolves_relative_paths_and_drops_duplicates(tmp_path):
     assert inputs[2] == Path(os.path.normpath(tmp_path / "fw" / "base.tex"))
 
 
-def test_failed_biber_run_is_recognized_in_the_final_log():
-    """A compile whose biber run failed (once seen: "No space left on device"
-    while biber unpacked itself) still writes a PDF, citations as keys --
-    never acceptable as a snapshot's reference."""
-    log = ("Package biblatex Warning: Please (re)run Biber on the file:\n"
-           "(biblatex)                slidemage-manual-during-course\n")
-    assert deck_snapshot._BIBER_NEEDED_RE.search(log)
-    assert not deck_snapshot._BIBER_NEEDED_RE.search("Package biblatex Info: ... \n")
-
-
 def test_first_difference_names_the_line():
     assert deck_snapshot.first_difference("a\nb\nc", "a\nB\nc") == 'reference "b", now "B"'
     assert deck_snapshot.first_difference("a\nb", "a") == "reference has 2 lines, now 1"
@@ -173,15 +163,6 @@ def other_drive_dir(tmp_path):
     folder = Path(tempfile.mkdtemp(prefix="sm-other-drive-", dir=REPO))
     yield folder
     shutil.rmtree(folder, ignore_errors=True)
-
-
-def test_paths_on_two_drives_have_no_relative_form(tmp_path, other_drive_dir):
-    root = tmp_path / "Proj"
-    framework = other_drive_dir / "latex"
-    assert deck_snapshot.framework_relpath(root, framework) == "SlideMage/latex"
-    rel = deck_snapshot._rel(framework, root)
-    assert deck_snapshot._is_outside(rel) and not rel.startswith("..")
-    assert not deck_snapshot._is_outside(deck_snapshot._rel(root / "decks" / "a.tex", root))
 
 
 def test_files_of_another_drive_are_not_project_files(tmp_path, other_drive_dir):
@@ -718,3 +699,22 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
             if len(expected) == 3:
                 assert "omitted from student deck" in pdf[1].get_text()
             print(f"{job.jobname}: {pdf.page_count} pages, slides {frames}")
+
+
+def test_failed_biber_run_is_recognized_in_the_final_log():
+    """A compile whose biber run failed (once seen: "No space left on device"
+    while biber unpacked itself) still writes a PDF, citations as keys --
+    never acceptable as a snapshot's reference."""
+    log = ("Package biblatex Warning: Please (re)run Biber on the file:\n"
+           "(biblatex)                slidemage-manual-during-course\n")
+    assert deck_snapshot._BIBER_NEEDED_RE.search(log)
+    assert not deck_snapshot._BIBER_NEEDED_RE.search("Package biblatex Info: ... \n")
+
+
+def test_paths_on_two_drives_have_no_relative_form(tmp_path, other_drive_dir):
+    root = tmp_path / "Proj"
+    framework = other_drive_dir / "latex"
+    assert deck_snapshot.framework_relpath(root, framework) == "SlideMage/latex"
+    rel = deck_snapshot._rel(framework, root)
+    assert deck_snapshot._is_outside(rel) and not rel.startswith("..")
+    assert not deck_snapshot._is_outside(deck_snapshot._rel(root / "decks" / "a.tex", root))

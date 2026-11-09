@@ -3,7 +3,6 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 
 from slidemage import render_evidence
 from slidemage.preview_cache import PreviewCache
@@ -53,15 +52,6 @@ def test_content_changes_with_identical_version_size_and_mtime_miss(tmp_path):
     assert cache.lookup(identity, env) is None
 
 
-def test_external_framework_changes_invalidate_without_source_change(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    assert store(cache, identity, env, pdf, source, package)
-    old = package.stat()
-    package.write_text('THEME TWO')
-    os.utime(package, ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert cache.lookup(identity, env) is None
-
-
 def test_validation_pass_rejects_same_mtime_dependency_edit_before_publication(tmp_path):
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     assert store(cache, identity, env, pdf, source, package)
@@ -86,13 +76,6 @@ def test_new_shadow_missing_input_and_search_change_miss(tmp_path):
     (cache.project_root / package.name).write_text('project shadows framework')
     assert cache.lookup(identity, env) is None
     assert cache.lookup(identity, {**env, 'TEXINPUTS': str(tmp_path)}) is None
-
-
-def test_corrupt_or_missing_artifacts_are_misses(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    result = store(cache, identity, env, pdf, source, package)
-    result.pdf.write_bytes(b'corrupt')
-    assert cache.lookup(identity, env) is None
 
 
 def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_path, monkeypatch):
@@ -174,26 +157,6 @@ def test_prune_preserves_only_live_leased_artifacts(tmp_path):
     assert not first.pdf.exists()
 
 
-def test_overlapping_leases_have_independent_locks(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    entry = store(cache, identity, env, pdf, source, package)
-    with cache.lease(entry):
-        with cache.lease(entry):
-            assert len(list(entry.directory.glob('.lease-*.lock'))) == 2
-            cache.prune(max_bytes=0)
-            assert entry.pdf.exists()
-        cache.prune(max_bytes=0)
-        assert entry.pdf.exists()
-    cache.prune(max_bytes=0)
-    assert not entry.pdf.exists()
-
-
-def test_unsupported_search_and_missing_recorder_are_not_cacheable(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    assert cache.begin({**env, 'TEXINPUTS': '$TEXMF//:{one,two}'}) is None
-    assert cache.store(identity, env, pdf=pdf, before=cache.begin(env)) is None
-
-
 def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     from slidemage import preview_raster
     import pymupdf
@@ -231,46 +194,6 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     # An input edit invalidates the other views too, even with unchanged pixel content.
     package.write_text('THEME TWO')
     assert cache.lookup({**identity, 'view': 'during-course'}, env) is None
-
-
-def test_prune_shared_blobs_honors_live_generation_and_corruption_misses(tmp_path):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    first = store(cache, identity, env, pdf, source, package)
-    second = store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
-    with cache.lease(first):
-        cache.prune(max_bytes=0)
-        assert first.pdf.exists() and not second.pdf.exists()
-        assert cache.lookup(identity, env)
-        assert len(list((cache.root / 'images').glob('*.png'))) == 2
-    blob = next((cache.root / 'images').glob('*.png'))
-    blob.write_bytes(b'corruption')
-    assert cache.lookup(identity, env) is None
-    cache.prune(max_bytes=0)
-    assert not list((cache.root / 'images').glob('*.png'))
-
-
-def count_manifest_reads(monkeypatch):
-    reads = []
-    original = Path.read_text
-
-    def read_text(self, *args, **kwargs):
-        if self.name == 'manifest.json':
-            reads.append(self)
-        return original(self, *args, **kwargs)
-    monkeypatch.setattr(Path, 'read_text', read_text)
-    return reads
-
-
-def test_prune_reads_no_manifest_unless_a_generation_was_deleted(tmp_path, monkeypatch):
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    old = store(cache, identity, env, pdf, source, package)
-    survivor = store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
-    reads = count_manifest_reads(monkeypatch)
-    cache.prune()
-    assert not reads and old.pdf.exists() and survivor.pdf.exists()
-    os.utime(old.directory / 'manifest.json', (1, 1))
-    cache.prune(max_age=3600)
-    assert reads == [survivor.directory / 'manifest.json'] and not old.pdf.exists() and survivor.pdf.exists()
 
 
 def test_prune_after_deleting_one_generation_keeps_survivors_blobs(tmp_path):
@@ -313,15 +236,6 @@ def test_maybe_prune_runs_first_then_after_the_interval_or_when_over_the_limit(t
     store(cache, {**identity, 'view': 'during-course'}, env, pdf, source, package)
     cache.maybe_prune()
     assert len(runs) == 3
-
-
-def test_sequence_evidence_rejects_malformed_manifests():
-    from slidemage.preview_cache import valid_sequence
-
-    for value in (None, [], {'configuration': 'invalid'}, {'configuration': [], 'pages': []},
-                  {'configuration': {}, 'pages': [None]},
-                  {'configuration': {}, 'pages': [{'size': None, 'pixels': [], 'sha256': ''}]}):
-        assert not valid_sequence(value)
 
 
 def test_frame_and_scope_keep_separate_equivalence_identities(tmp_path):

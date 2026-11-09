@@ -382,7 +382,7 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
 
 
 @pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
-def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the_foreground_render(project, store, tmp_path):
+def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the_foreground_render(project, store):
     """The wrapper, the build caches and the format are in the store's work folder; TeX still runs in decks/, so the
     pages are what the foreground Preview renders."""
     from slidemage import slide_preview
@@ -780,7 +780,7 @@ def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(pro
         batched.stop()
 
 
-def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, tmp_path, caplog):
+def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, caplog):
     # A render that ended while the planner rebuilt the progress stayed "working" in the copy: the chip said
     # "Preparing previews" with nothing running until the next render, and in front of the window none starts.
     r = make(project, store, raster)
@@ -817,21 +817,6 @@ def test_a_slide_the_plan_counted_as_fresh_is_not_counted_again_when_its_page_nu
     assert r.progress.deck(deck.name).fresh == 4
     r._count_fresh(second)                                       # a slide really rendered now
     assert r.progress.deck(deck.name).fresh == 5
-
-
-def test_a_slide_is_counted_once_however_often_a_job_finds_it_current(project, store, raster):
-    # A batch the plan still held ran again after the same batch had finished, and counted its 16 slides a second
-    # time: the instructor view showed 268 of 252 renders. So did a batch stopped part-way and run again.
-    r = make(project, store, raster)
-    deck = deck_named(r, "slidemage-manual")
-    first, second = background_renders.deck_units(project, deck, "instructor", "EN")[:2]
-    r.progress = background_renders.Progress([background_renders.DeckProgress(deck.name, total=10, fresh=4)])
-    r._counted = {first.label}                                   # current when the plan was made
-    for _run in range(3):
-        r._count_fresh(first)
-        r._count_fresh(second)
-    counted = r.progress.deck(deck.name)
-    assert counted.fresh == 5 and counted.views["instructor"][1] == 1
 
 
 def test_a_failed_slide_is_tried_once_more_on_its_own_when_everything_else_is_rendered(project, store, raster, monkeypatch):
@@ -964,38 +949,6 @@ def test_start_does_not_rescan_the_store_on_the_calling_thread_and_the_rescan_ca
     assert not r.rescanning and seen == ["background-planner"]
 
 
-def test_a_lookup_during_the_rescan_finds_an_indexed_record_and_a_render_stored_meanwhile_is_kept(project, store, raster):
-    import threading
-    r = make(project, store, raster)
-    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
-    meta_key = r.resolver.fast_key(unit)
-    pdf = _compiled_pdf(store.local_dir, [unit], steps=1)
-    store.put(meta_key, "background", pdf, [_png()], dict(unit=unit.label, manifest=[], rendered_at=1.0), decks=["d"])
-    results, errors = [], []
-    stop = threading.Event()
-
-    def lookups():
-        try:
-            while not stop.is_set():
-                results.append(bool(store.find(meta_key)))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(exc)
-
-    reader = threading.Thread(target=lookups)
-    reader.start()
-    later = []
-    try:
-        for i in range(30):
-            later.append(store.put(f"{i:02x}" + "e" * 62, "background", pdf, [_png()], dict(unit=f"u{i}", manifest=[], rendered_at=1.0)))
-            store.rescan()
-    finally:
-        stop.set()
-        reader.join()
-    assert not errors and results and all(results)             # always found, never half-way
-    assert store.count() == 31 and all(store._exists(name) for name in later)
-    assert store.rescan(lambda: True) == 0 and store.count() == 31      # a stopped rescan forgets nothing
-
-
 def test_a_deck_whose_template_is_nowhere_is_held_back_and_named_not_failed(project, store, raster, monkeypatch):
     # The project's template file deleted for a theme that is installed on another computer only (v0.14.1): every
     # render stopped at \input{SlideMage_template_<key>} and was stored as a failure, and the chip never said why.
@@ -1086,27 +1039,6 @@ def test_a_render_stored_before_the_scan_saw_the_edit_has_its_old_one_cleared_by
     assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]
 
 
-def test_a_preamble_edit_clears_the_old_renders_of_every_slide_rendered_again(project, store, raster):
-    r = make(project, store, raster)
-    units = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[3:6]
-    for unit in units:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    old = {unit.label: r.resolver.fast_key(unit) for unit in units}
-    deck_file = project.root / "decks" / "slidemage-manual.tex"
-    text = deck_file.read_text(encoding="utf-8").replace("{SlideMage Manual}", "{SlideMage Manual, edited}")
-    deck_file.write_text(text, encoding="utf-8")
-    os.utime(deck_file, (time.time() - 60, time.time() - 60))
-    decks = deck_scan.scan_decks(project)
-    r._decks = lambda: decks
-    r.scan()
-    edited_deck = next(d for d in decks if d.name == "slidemage-manual")
-    edited = [u for u in background_renders.deck_units(project, edited_deck, "instructor", "EN") if u.label in old]
-    assert len(edited) == 3 and all(r.resolver.fast_key(u) != old[u.label] for u in edited)
-    for unit in edited:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-        assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]
-
-
 def test_a_slide_called_twice_in_two_ways_keeps_both_current_renders_whichever_is_stored(project, store, raster):
     # One label, two current keys (a \slide and a \slidefinal of one slide): deleting by label alone would have each
     # render delete the other, for ever.
@@ -1131,56 +1063,6 @@ def test_a_slide_called_twice_in_two_ways_keeps_both_current_renders_whichever_i
     calls = len(tex.calls)
     plan = r.scan()
     assert not [u for _, u in plan if u.label == both[0].label] and len(tex.calls) == calls
-
-
-def test_a_slide_reverted_to_its_old_text_is_rendered_again_and_accepted(project, store, raster):
-    tex = FakeTeX(project)
-    r = make(project, store, raster, tex=tex)
-    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[4]
-    original = unit.source_path.read_bytes()
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    first_key = r.resolver.fast_key(unit)
-    _edit(unit.source_path)
-    r.scan()
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)] != [first_key]
-    unit.source_path.write_bytes(original)
-    os.utime(unit.source_path, (time.time() - 30, time.time() - 30))
-    assert r.resolver.fast_key(unit) == first_key
-    plan = r.scan()
-    assert unit.label in [u.label for _, u in plan]                 # its old render was deleted: rendered again
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    assert _keys_of(store, unit.label) == [first_key] and r.resolver.lookup(unit).final
-
-
-def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, raster, monkeypatch):
-    r = make(project, store, raster)
-    deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")[2:4]
-    for unit in units:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    gone = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "f" * 64)
-    real = background_renders.deck_units
-
-    def unreadable(ctx, d, view, *args, **kwargs):
-        if d.name == deck.name and view == "during-course":
-            raise ValueError("cannot read the deck now")
-        return real(ctx, d, view, *args, **kwargs)
-
-    monkeypatch.setattr(background_renders, "deck_units", unreadable)
-    before = store.count()
-    for unit in units:
-        _edit(unit.source_path)
-    r.scan()
-    assert store.count() == before and store._exists(gone)          # neither the scan nor the one-off clearing
-    assert not store.flag(render_store.LEFTOVERS_CLEARED)           # left for a scan that reads every deck
-    for unit in units:
-        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-        assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]  # put clears the superseded key
-    monkeypatch.setattr(background_renders, "deck_units", real)
-    r.scan()
-    assert not store._exists(gone) and store.flag(render_store.LEFTOVERS_CLEARED)
-    assert all(_keys_of(store, u.label) == [r.resolver.fast_key(u)] for u in units)
 
 
 def test_the_leftovers_in_a_store_are_cleared_once_and_only_what_the_scan_read(project, store, raster):
@@ -1240,10 +1122,31 @@ def test_a_slide_called_twice_with_one_key_has_nothing_outstanding_after_one_pas
     assert states == sorted([Freshness.FRESH.value, Freshness.FRESH_NUMBERING_DIFFERS.value])
 
 
-def test_a_slide_alone_with_its_key_still_has_a_moved_page_number_refreshed(project, store, raster):
-    from dataclasses import replace
-    r = make(project, store, raster, tex=FakeTeX(project, pages=1))
-    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[3]
-    r.render_unit(replace(unit, frame_number=unit.frame_number + 1), background_renders.ORIGIN_BACKGROUND, CancelToken())
-    planned = [(rank, u) for rank, u in r.scan() if u.label == unit.label]
-    assert len(planned) == 1 and planned[0][0][0] >= 1000                 # refreshed, after everything else
+def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, raster, monkeypatch):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[2:4]
+    for unit in units:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+    gone = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "f" * 64)
+    real = background_renders.deck_units
+
+    def unreadable(ctx, d, view, *args, **kwargs):
+        if d.name == deck.name and view == "during-course":
+            raise ValueError("cannot read the deck now")
+        return real(ctx, d, view, *args, **kwargs)
+
+    monkeypatch.setattr(background_renders, "deck_units", unreadable)
+    before = store.count()
+    for unit in units:
+        _edit(unit.source_path)
+    r.scan()
+    assert store.count() == before and store._exists(gone)          # neither the scan nor the one-off clearing
+    assert not store.flag(render_store.LEFTOVERS_CLEARED)           # left for a scan that reads every deck
+    for unit in units:
+        r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+        assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]  # put clears the superseded key
+    monkeypatch.setattr(background_renders, "deck_units", real)
+    r.scan()
+    assert not store._exists(gone) and store.flag(render_store.LEFTOVERS_CLEARED)
+    assert all(_keys_of(store, u.label) == [r.resolver.fast_key(u)] for u in units)

@@ -17,7 +17,6 @@ Free of Qt; the TeX run itself is in background_renders.py.
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
 import json
 import os
@@ -137,16 +136,15 @@ def unit_for(target: PreviewTarget, view: str, language: str, deck: str = "") ->
 
 def default_engine_fp() -> str:
     """The TeX engine and the operating system, without paths: portable between machines of one project."""
-    from . import compile_records
     return f"{compile_records.engine_version()}|{platform.system()}"
 
 
 def machine_id() -> str:
-    return hashlib.sha256(platform.node().encode()).hexdigest()[:12]
+    return text_sha256(platform.node())[:12]
 
 
 def _json_hash(data) -> str:
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    return text_sha256(json.dumps(data, sort_keys=True))
 
 
 @dataclass
@@ -220,15 +218,6 @@ class Resolver:
 
     # -- manifests ---------------------------------------------------------------
 
-    def _relative(self, path: Path) -> Optional[tuple[str, str]]:
-        for root, kind in [(self.ctx.root, KIND_PROJECT), *[(d, KIND_FRAMEWORK) for d in slide_templates.framework_dirs(self.ctx.root)]]:
-            try:
-                rel = Path(os.path.normpath(path)).relative_to(os.path.normpath(root))
-            except ValueError:
-                continue
-            return kind, rel.as_posix()
-        return None
-
     def build_manifest(self, inputs: list[str]) -> Manifest:
         """The manifest of a finished render from the inputs it recorded (absolute paths)."""
         manifest = Manifest()
@@ -242,7 +231,14 @@ class Resolver:
             if key in seen or any(part in key for part in _SKIPPED_PARTS):
                 continue
             seen.add(key)
-            where = self._relative(path)
+            where = None
+            for root, kind in [(self.ctx.root, KIND_PROJECT), *[(d, KIND_FRAMEWORK) for d in slide_templates.framework_dirs(self.ctx.root)]]:
+                try:
+                    rel = Path(os.path.normpath(path)).relative_to(os.path.normpath(root))
+                except ValueError:
+                    continue
+                where = kind, rel.as_posix()
+                break
             if where is None:
                 state = states(path)
                 if state is not None:
@@ -253,7 +249,11 @@ class Resolver:
                 manifest.stable = False
                 continue
             manifest.entries.append([where[0], where[1], digest])
-        manifest.entries = self.narrow_alt_text(manifest.entries)
+        # Another picture's alt text must leave this render current (v8.69.0).
+        for entry in manifest.entries:
+            kind, rel, _sha = entry
+            if kind == KIND_PROJECT and Path(rel).name in EVERY_RENDER_READS:
+                entry[:] = [KIND_ALT_TEXT, rel, self._alt_digest(self.ctx.root / rel, manifest.entries)]
         manifest.entries.sort()
         tex.sort()
         manifest.tex_files = tex
@@ -293,19 +293,6 @@ class Resolver:
 
     # -- the alt-text files ----------------------------------------------------------
 
-    def narrow_alt_text(self, entries: list) -> list:
-        """`entries` with each project alt-text file (EVERY_RENDER_READS) turned into a KIND_ALT_TEXT entry: the hash
-        of its rows for the files the render read, not of the whole file, so a new alt text for another slide's
-        picture leaves this render current (every preview went out of date with each new alt text up to v8.68.0, v8.69.0)."""
-        out = []
-        for entry in entries:
-            kind, rel, _sha = entry
-            if kind == KIND_PROJECT and Path(rel).name in EVERY_RENDER_READS:
-                path = self.ctx.root / rel
-                entry = [KIND_ALT_TEXT, rel, self._alt_digest(path, entries)]
-            out.append(entry)
-        return out
-
     def _alt_digest(self, path: Path, entries: list, *, strict=False) -> str:
         """The hash of the rows of the alt-text file `path` for the files in `entries`, matched as Slidemaster_alt.lua
         matches a picture: by its lower-case file name, or by the name without its extension."""
@@ -318,7 +305,7 @@ class Resolver:
         by_name, by_stem = self._alt_rows(path, strict=strict)
         rows = {row for name in names for row in by_name.get(name, ())}
         rows |= {row for stem in stems for row in by_stem.get(stem, ())}
-        return hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest()
+        return text_sha256("\n".join(sorted(rows)))
 
     def _alt_rows(self, path: Path, *, strict=False) -> tuple[dict, dict]:
         """The rows of an alt-text file by lower-case file name and by stem, each a JSON string; read once per
@@ -347,12 +334,11 @@ class Resolver:
         self._alt_memo[str(path)] = (sha, (by_name, by_stem))
         return by_name, by_stem
 
-    def tex_current(self, record: dict, validation=None) -> bool:
+    def tex_current(self, record: dict, validation) -> bool:
         """Content checks with FileStates' process memo for unchanged TeX distribution files."""
         digest = record.get("tex_digest")
         if not digest or record.get("machine") != machine_id():
             return True
-        validation = validation or render_evidence.ValidationPass()
         if digest not in validation.tex:
             files = self.store.tex_files(digest)
             if files is None:

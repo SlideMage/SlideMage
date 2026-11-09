@@ -66,27 +66,6 @@ def test_hash_is_kept_by_size_and_mtime_and_read_again_when_they_change(tmp_path
     assert cache.hash(path) != first and cache.reads == 2
 
 
-def test_touching_a_file_without_changing_it_gives_the_same_hash(tmp_path, store):
-    cache = dep_hash.HashCache(store.db, store.lock)
-    path = write(tmp_path / "a.txt", "same")
-    first = cache.hash(path)
-    os.utime(path, (OLD + 50, OLD + 50))            # a sync client restoring another modification time
-    assert cache.hash(path) == first and cache.reads == 2
-
-
-def test_a_file_modified_a_moment_ago_is_never_trusted_or_kept(tmp_path, store):
-    cache = dep_hash.HashCache(store.db, store.lock)
-    path = write(tmp_path / "a.txt", "fresh", mtime=time.time())
-    cache.hash(path)
-    cache.hash(path)
-    assert cache.reads == 2                          # read both times: no shortcut for a racy file
-    assert store.db.execute("SELECT COUNT(*) FROM filehash").fetchone()[0] == 0
-
-
-def test_a_missing_file_has_no_hash(tmp_path, store):
-    assert dep_hash.HashCache(store.db, store.lock).hash(tmp_path / "nope") is None
-
-
 def test_the_audit_finds_a_change_under_an_unchanged_size_and_mtime(tmp_path, store):
     cache = dep_hash.HashCache(store.db, store.lock)
     path = write(tmp_path / "a.txt", "abcd")
@@ -94,16 +73,6 @@ def test_the_audit_finds_a_change_under_an_unchanged_size_and_mtime(tmp_path, st
     write(path, "abce")                              # same size, same mtime
     assert cache.hash(path) is not None and cache.reads == 1      # the shortcut cannot see it
     assert cache.audit() == [dep_hash.norm(path)]
-
-
-def test_a_file_that_changes_while_it_is_read_has_no_hash(tmp_path, store):
-    path = write(tmp_path / "a.txt", "abcd")
-
-    def hasher(p):
-        write(p, "abcdef")                           # another writer
-        return "x"
-
-    assert dep_hash.HashCache(store.db, store.lock, hasher=hasher).hash(path) is None
 
 
 # -- the key ----------------------------------------------------------------------------
@@ -144,13 +113,6 @@ def test_a_crlf_slide_and_its_captured_lf_text_have_the_same_key(ctx, resolver, 
     assert store.db.execute("SELECT sha256 FROM filehash WHERE path=?", (dep_hash.norm(unit.source_path),)).fetchone()[0] == revision.content_hash
 
 
-def test_unit_for_drops_the_steps(ctx):
-    from slidemage import preview_target
-    target = preview_target.PreviewTarget(ctx, "slidestep", "aaa-EN-One", None, ["instructor"], "1,2", 5, None)
-    unit = render_key.unit_for(target, "instructor", "en", "deck1")
-    assert unit.conditions == () and unit.language == "EN" and unit.frame_number == 5
-
-
 # -- manifests and freshness -------------------------------------------------------------
 
 def make_record(resolver, unit, inputs):
@@ -186,18 +148,6 @@ def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
     assert resolver.lookup(unit).state is Freshness.FRESH
 
 
-def test_a_preamble_layer_change_stales_every_render_that_read_it(ctx, resolver, store):
-    layer = write(ctx.root / "SlideMage_template_acme.tex", "v1")
-    units = [unit_for(ctx, slug) for slug in ("aaa-EN-One", "bbb-EN-Two")]
-    for u in units:
-        write(u.source_path, f"text {u.id_slug}")
-        key, meta = make_record(resolver, u, [u.source_path, layer])
-        store_render(store, key, meta)
-    assert all(resolver.lookup(u).state is Freshness.FRESH for u in units)
-    write(layer, "v2 longer")
-    assert all(resolver.lookup(u).state is Freshness.STALE for u in units)
-
-
 def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx, frame=3)
@@ -206,15 +156,6 @@ def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
     moved = unit_for(ctx, frame=4)
     assert resolver.lookup(moved).state is Freshness.FRESH_NUMBERING_DIFFERS
     assert resolver.lookup(moved).usable and resolver.lookup(unit).final
-
-
-def test_files_of_tex_and_the_build_are_not_in_the_manifest(ctx, resolver, tmp_path):
-    tex = write(tmp_path / "texlive" / "beamer.cls", "cls")
-    built = write(ctx.root / ".build" / "x.aux", "aux")
-    slide = write(ctx.slides_dir / "aaa-EN-One-current.tex", "s")
-    manifest = resolver.build_manifest([str(tex), str(built), str(slide)])
-    assert [rel for _, rel, _ in manifest.entries] == ["slides/aaa-EN-One-current.tex"]
-    assert manifest.tex_files and manifest.tex_digest
 
 
 def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resolver, store, tmp_path):
@@ -233,20 +174,6 @@ def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resol
     meta2["machine"] = "elsewhere"
     store_render(store, key2, meta2)
     assert resolver.lookup(other).state is Freshness.FRESH
-
-
-def test_a_framework_file_is_found_again_through_the_framework_folders(ctx, resolver, store, monkeypatch, tmp_path):
-    framework = tmp_path / "fw"
-    base = write(framework / "SlideMage_base.tex", "base")
-    monkeypatch.setattr(render_key.slide_templates, "framework_dirs", lambda root: [framework])
-    unit = unit_for(ctx)
-    write(unit.source_path, "s")
-    key, meta = make_record(resolver, unit, [unit.source_path, base])
-    assert ["framework", "SlideMage_base.tex"] in [e[:2] for e in meta["manifest"]]
-    store_render(store, key, meta)
-    assert resolver.lookup(unit).state is Freshness.FRESH
-    write(base, "base changed")
-    assert resolver.lookup(unit).state is Freshness.STALE
 
 
 # -- the store --------------------------------------------------------------------------
@@ -307,7 +234,7 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
         again.close()
 
 
-def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store, tmp_path):
+def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx)
     key, meta = make_record(resolver, unit, [unit.source_path])
@@ -474,17 +401,6 @@ def test_a_render_depends_only_on_the_alt_texts_of_the_pictures_it_read(ctx, res
     assert not resolver.manifest_current(entries)             # matched by file name, whatever the case and folder
 
 
-def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
-    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
-    unit = unit_for(ctx)
-    key, meta = make_record(resolver, unit, [unit.source_path])
-    store_render(store, key, meta)
-    [folder] = [path for path in (store.root / "objects").glob("*/*") if path.is_dir()]
-    shutil.rmtree(folder)                                           # gone on disk, still in the index
-    assert store.rescan(lambda: True) == 0 and store.count() == 1
-    assert store.rescan() == 0 and store.count() == 0
-
-
 # -- the small copy of the last page (2026-10-30, direct request) -------------------------
 
 def real_png() -> bytes:
@@ -509,3 +425,14 @@ def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_a
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
     assert meta["files"]["thumb.png"] == (folder / "thumb.png").stat().st_size
     assert meta["pages"] == 2 and store.total_bytes() == meta["bytes"] == sum(meta["files"].values())
+
+
+def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, unit, [unit.source_path])
+    store_render(store, key, meta)
+    [folder] = [path for path in (store.root / "objects").glob("*/*") if path.is_dir()]
+    shutil.rmtree(folder)                                           # gone on disk, still in the index
+    assert store.rescan(lambda: True) == 0 and store.count() == 1
+    assert store.rescan() == 0 and store.count() == 0

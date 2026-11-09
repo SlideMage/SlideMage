@@ -14,13 +14,13 @@ what the Preview shows without compiling anything.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-import hashlib
 from pathlib import Path
 from typing import Optional
 
 from . import deck_context, project, slide_language, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
+from .fileio import text_sha256
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ class PreviewTarget:
         """What a render depends on besides the view and the language."""
         return (self.macro, self.id_slug, self.version, tuple(self.conditions or ()), self.steps,
                 self.frame_number, self.template,
-                hashlib.sha256((self.preamble_text or '').encode()).hexdigest(),
+                text_sha256(self.preamble_text or ''),
                 self.deck_hash if self.needs_context else "") + ((self.occurrence_key,) if self.occurrence_key else ()) + (
                     (self.presenter_frame_number,) if self.presenter_frame_number is not None else ())
 
@@ -107,7 +107,7 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     if not found:
         return target
     return replace(target, deck=deck, needs_context=found,
-                   deck_hash=hashlib.sha256(deck.text.encode()).hexdigest())
+                   deck_hash=text_sha256(deck.text))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:
