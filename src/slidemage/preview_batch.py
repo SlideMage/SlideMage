@@ -63,11 +63,8 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
                     if not announced:
                         notify(BatchProgress(spec.view, index, len(requests), 'rendering'))
                     try:
-                        options = spec.options
                         request = service.request(spec.target, spec.revision.text, spec.view, spec.language,
-                                                  log or (lambda _: None),
-                                                  saved=options.saved, presenter=options.presenter,
-                                                  mode=options.mode, overlay=options.overlay, spec=spec,
+                                                  log or (lambda _: None), spec=spec,
                                                   **({'prebuilt': prebuilt} if prebuilt is not None else {}))
                         artifact = request.wait(cancel)
                         result = (replace(request.preview_result, request=spec) if request.preview_result else

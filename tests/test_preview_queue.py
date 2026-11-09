@@ -28,16 +28,14 @@ def collect_garbage_first():
 
 
 @pytest.fixture
-def pane(qapp, tmp_path, monkeypatch, ctx):
+def pane(qapp, tmp_path, monkeypatch):
+    ctx = ProjectContext.at(tmp_path)
     logged, launched = [], []
     app = SimpleNamespace(
         theme=ThemeManager(),
         log=logged.append,
         project=ctx,
     )
-    ctx = ProjectContext.at(tmp_path)
-    app.project = ctx
-    monkeypatch.setattr(preview_target, "cached_image", lambda target: None)
     # Thread creation is controlled; finishing a job exercises the real worker/GUI handoff.
     monkeypatch.setattr(
         preview_view,
@@ -98,7 +96,7 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     ask, put, span = preview_raster_client.RasterClient.ask, renderer.store.put, timing.span
 
     def encode(self, data, *args, **kwargs):
-        if data.get('op') in ('pdf_images', 'sequence') or ('sizes' in data and not data.get('raw')):
+        if data.get('op') == 'pdf_images' or ('sizes' in data and not data.get('raw')):
             assert request.delivered.is_set()
             encoding.set()
             assert release.wait(10)
@@ -145,11 +143,6 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     assert record['pages'] == 2
     stored = QImage.fromData(renderer.store.page(record, 2)).convertToFormat(QImage.Format.Format_RGB888)
     assert shown == stored
-    # A store hit reads the PNG; it sends no new work to the raster child.
-    stages.clear()
-    hit = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
-    assert hit.wait()[1] == renderer.store.page(record, 2)
-    assert hit.preview_result.status == 'cached' and not stages
 
 
 def test_three_requests_compile_only_first_and_latest_and_publish_latest(

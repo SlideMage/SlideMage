@@ -100,20 +100,8 @@ def find_tool(name: str, path: str | None):
     return known[0]
 
 
-def input_state(paths, states=None) -> dict:
-    states = states or file_state
-    return {str(Path(path).absolute()): states(Path(path)) for path in sorted(set(map(str, paths)))}
-
-
-def dependency_state(paths, states=None):
-    paths = tuple(paths)
-    result = input_state(paths, states)
-    for path in paths:
-        try:
-            count('dependency_bytes_read', Path(path).stat().st_size)
-        except FileNotFoundError:
-            pass
-    return result
+def input_state(paths) -> dict:
+    return {str(Path(path).absolute()): file_state(Path(path)) for path in sorted(set(map(str, paths)))}
 
 
 def thumbnail_png(png: bytes) -> bytes | None:
@@ -149,13 +137,8 @@ def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
     return tuple(dict.fromkeys(path.absolute() for path in roots))
 
 
-def search_state(project_root: Path, env: dict, *, stability=False) -> dict:
-    """Inventory search candidates, not generated output or unrelated file contents.
-
-    The stability variant also detects writes during a render, before its recorder
-    has told us which files the engine read. ctime is used only for that race check;
-    cache freshness itself always uses content digests.
-    """
+def search_state(project_root: Path, env: dict) -> dict:
+    """Inventory search candidates for the precompiled format."""
     inventories = {}
     for root in search_roots(project_root, env):
         entries = []
@@ -173,11 +156,7 @@ def search_state(project_root: Path, env: dict, *, stability=False) -> dict:
                     continue
                 path = parent / name
                 relative = path.relative_to(root).as_posix()
-                entry = [relative, str(path.resolve()) if path.is_symlink() else None]
-                if stability:
-                    stat = path.stat()
-                    entry.extend([stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns])
-                entries.append(entry)
+                entries.append([relative, str(path.resolve()) if path.is_symlink() else None])
         inventories[str(root)] = entries
     return inventories
 
@@ -190,7 +169,7 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     """Capture names before TeX starts; reuse directory listings until their mtimes change.
 
     Sweep planning forces a full re-list; strict checks re-list the directories of
-    recorded inputs. Keep this separate from the preview cache's whole-tree search_state.
+    recorded inputs. The precompiled format uses whole-tree search_state instead.
     """
     relist = {Path(path).absolute().parent for path in inputs}
     conservative, stems = {}, {}
@@ -278,11 +257,9 @@ class ValidationPass:
         self._files = {}
         self._env = {}
         self.tex = {}
-        self._evidence = {}
         self._configuration = {}
         self._inventories = {}
         self.hashed_bytes = 0
-        self.dependency_bytes = 0
         self.dependency_seconds = 0.0
         self.configuration_seconds = 0.0
 
@@ -310,12 +287,6 @@ class ValidationPass:
             result[key] = self._files[key]
         return result
 
-    def dependency_inputs(self, paths, states=None):
-        before = self.hashed_bytes
-        result = self.inputs(paths, states)
-        self.dependency_bytes += self.hashed_bytes - before
-        return result
-
     def configuration(self, project_root, env):
         key = (str(project_root), digest(env))
         if key not in self._configuration:
@@ -329,13 +300,3 @@ class ValidationPass:
         if key not in self._inventories:
             self._inventories[key] = search_inventory(project_root, env, force=force)
         return self._inventories[key]
-
-    def evidence(self, cache, env):
-        key = (str(cache.project_root), digest(env))
-        if key not in self._evidence:
-            configuration = self.configuration(cache.project_root, env)
-            start = time.perf_counter()
-            self._evidence[key] = {'configuration': configuration,
-                                  'search': search_state(cache.project_root, env)}
-            self.configuration_seconds += time.perf_counter() - start
-        return self._evidence[key]

@@ -274,7 +274,6 @@ class SlideList(QWidget):
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,
                        'configuration_seconds': validation.configuration_seconds,
-                       'dependency_bytes': validation.dependency_bytes,
                        'hashed_bytes': validation.hashed_bytes}
             return updated, metrics, revisions
 

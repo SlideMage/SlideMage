@@ -174,8 +174,7 @@ def prepare_preview_images(pdf_path: Path, snapshots: bool, widths, *, raw=False
     """Pane and tool display sizes in one raster subprocess, with optional snapshots.
 
     With `raw`, write only the last page at the first width to a PPM beside the PDF and return its path.
-    The display PNGs come back in `widths` order, followed by one more: the cache's list thumbnail
-    (render_evidence.THUMBNAIL_MAX, aspect kept), so the cache need not decode and re-encode a display PNG for it.
+    Otherwise return the display PNGs in `widths` order, followed by the list thumbnail.
     """
     if raw:
         from .preview_raster_client import render

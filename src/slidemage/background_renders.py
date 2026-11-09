@@ -852,7 +852,14 @@ class BackgroundRenderer:
             return None
         except BaseException as exc:
             if not cancel.is_set():
-                self._record_failure(key, exc, unit)
+                kind = getattr(exc, "kind", None) or (render_store.DETERMINISTIC if str(exc).startswith("Render failed") else render_store.TRANSIENT)
+                inputs = [str(unit.source_path)] + list(getattr(exc, "preview_inputs", ()))
+                manifest = self.resolver.build_manifest(inputs).entries
+                manifest += [self.resolver.missing_input_entry(name) for name in set(getattr(exc, "missing_inputs", ()))]
+                self.store.record_failure(key, kind, str(exc), manifest)
+                with self._working_lock:
+                    if self._current is None or key in self._current.keys:
+                        self._failure_keys.add(key)
             raise
 
     def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
@@ -874,12 +881,6 @@ class BackgroundRenderer:
         name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
         self._drop_stale(unit, key)
         return name
-
-    @staticmethod
-    def _recorded_inputs(pdf: Path) -> list[str]:
-        """The files the render of `pdf` read (preview_build.write_inputs)."""
-        inputs_file = pdf.with_suffix(".inputs.json")
-        return json.loads(inputs_file.read_text(encoding="utf-8")) if inputs_file.is_file() else []
 
     def render_batch(self, units: tuple, rank: tuple, cancel) -> None:
         """Render `units` (one deck, view, language and preamble, one per bare slide id) in one document and store
@@ -928,7 +929,8 @@ class BackgroundRenderer:
         raster = self._raster or self._shared_raster()
         response = raster.read_document(pdf, "pdf", 1, ALL_PAGES)
         runs = slide_snapshot.batch_runs(response["texts"], [slide_language.bare_id(unit.id_slug) for unit, _key in todo])
-        inputs = [Path(name) for name in self._recorded_inputs(pdf)]
+        inputs_file = pdf.with_suffix(".inputs.json")
+        inputs = [Path(name) for name in json.loads(inputs_file.read_text(encoding="utf-8"))] if inputs_file.is_file() else []
         for number, ((unit, key), pages) in enumerate(zip(todo, runs)):
             if cancel.is_set():
                 raise Cancelled("Preview cancelled")
@@ -979,18 +981,6 @@ class BackgroundRenderer:
         if getattr(self, "_own_raster", None) is None:
             self._own_raster = RasterClient()
         return self._own_raster
-
-    def _record_failure(self, key: str, exc: BaseException, unit: render_key.Unit, pdf: Optional[Path] = None) -> None:
-        kind = getattr(exc, "kind", None) or (render_store.DETERMINISTIC if str(exc).startswith("Render failed") else render_store.TRANSIENT)
-        inputs = [str(unit.source_path)] + list(getattr(exc, "preview_inputs", ()))
-        if pdf is not None:
-            inputs += self._recorded_inputs(pdf)
-        manifest = self.resolver.build_manifest(inputs).entries
-        manifest += [self.resolver.missing_input_entry(name) for name in set(getattr(exc, "missing_inputs", ()))]
-        self.store.record_failure(key, kind, str(exc), manifest)
-        with self._working_lock:
-            if self._current is None or key in self._current.keys:
-                self._failure_keys.add(key)
 
     def _failed(self, job: Job, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()

@@ -180,16 +180,6 @@ class RenderRequest:
         metrics['compile_avoided'] = int(metrics['cache_hit'])
         return metrics
 
-    def _deliver(self, artifact):
-        """Called by the work once a fresh render's pixels exist, before it records them (worker thread)."""
-        if self.spec is not None:
-            self.preview_result = self._result_of(artifact)
-        self.metrics = self._metrics_of(self._collector)     # up to the pixels; _run replaces it when recorded
-        self._delivered_artifact = artifact
-        if self.spec is not None:
-            timing.event(self.spec.target.context.root, 'preview.delivered')
-        self.delivered.set()
-
     def _run(self):
         with PreviewMetrics() as metrics:
             self._collector = metrics
@@ -227,15 +217,6 @@ class RenderRequest:
                 # still start this request after a pane drops its queued job.
                 self._finished()
 
-    def _await(self, event, cancel, deadline):
-        while True:
-            if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
-                raise RuntimeError('Preview cancelled')
-            if event.wait(.05):
-                return
-            if time.monotonic() >= deadline:
-                raise RuntimeError('Preview timed out')
-
     def wait(self, cancel=None, timeout=TIMEOUT, *, pixels_only=False):
         """Attach this consumer until completion, cancellation or timeout.
 
@@ -259,7 +240,14 @@ class RenderRequest:
                     self._started = True
                     self.cancel.low_priority = getattr(cancel, 'low_priority', False)
                     threading.Thread(target=self._run, daemon=True).start()
-            self._await(self.delivered if pixels_only else self.done, cancel, deadline)
+            event = self.delivered if pixels_only else self.done
+            while True:
+                if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
+                    raise RuntimeError('Preview cancelled')
+                if event.wait(.05):
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Preview timed out')
             if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
                 raise RuntimeError('Preview cancelled')
             if self.error is not None:
@@ -293,7 +281,7 @@ class RenderService:
             if self._closed:
                 return
             self._closed = True
-            requests = set(self._requests.values())
+            requests = list(self._requests.values())
             self._requests.clear()
         for request in requests:
             request.cancel.request_stop()
@@ -392,7 +380,11 @@ class RenderService:
                 displays, images = slide_snapshot.prepare_preview_images(
                     pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
             artifact = pdf, displays[0], images, None if raw else displays[1]
-            request._deliver(artifact)       # the pixels are what the pane waits for; the rest is bookkeeping
+            request.preview_result = request._result_of(artifact)
+            request.metrics = request._metrics_of(request._collector)
+            request._delivered_artifact = artifact
+            timing.event(target.context.root, 'preview.delivered')
+            request.delivered.set()
             if presenter:
                 return artifact
             pages = []
@@ -433,8 +425,8 @@ class RenderService:
 
         def finished():
             with self._lock:
-                for pending in [key for key, value in self._requests.items() if value is request]:
-                    del self._requests[pending]
+                if self._requests.get(key) is request:
+                    del self._requests[key]
 
         with self._lock:
             if self._closed:

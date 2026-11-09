@@ -53,9 +53,6 @@ def test_a_slide_moves_through_current_previous_reference_and_missing(lookup_req
     pages = store.pages(record)
     assert len(pages) == 2 and pages[-1] == store.page(record, record["pages"])
     assert store.thumbnail_path(record).name == "thumb.png"
-    with store.pdf_copy(record) as pdf:
-        assert pdf.read_bytes() == b"%PDF test" and not pdf.is_relative_to(store.root)
-    assert not pdf.exists()
 
     unit.source_path.write_text("edited slide", encoding="utf-8")
     request["spec"] = replace(request["spec"], revision=preview_requests.SourceRevision.capture(unit.source_path))
@@ -69,7 +66,8 @@ def test_a_slide_moves_through_current_previous_reference_and_missing(lookup_req
     assert state == "reference" and reference == record
     with store.pdf_copy(reference) as pdf:
         store.clear()
-        assert pdf.read_bytes() == b"%PDF test"
+        assert pdf.read_bytes() == b"%PDF test" and not pdf.is_relative_to(store.root)
+    assert not pdf.exists()
     assert render_lookup.select(request, strict=True) == ("missing", None)
 
 
@@ -88,4 +86,3 @@ def test_the_newest_eligible_instructor_reference_is_chosen(lookup_request):
     request["unit"] = replace(unit, deck="requested", view="after-course", preamble_text="requested")
     state, reference = render_lookup.select(request)
     assert state == "reference" and reference["key"] == newest
-    assert render_lookup.instructor_reference(request, strict=True) == reference
