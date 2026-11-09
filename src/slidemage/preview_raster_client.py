@@ -50,9 +50,12 @@ class RasterClient:
             finally:
                 process.stdout.close()
 
-    def render(self, data, sizes, full_size):
+    def render(self, data, sizes, full_size, raw=None):
         request = dict(pdf=base64.b64encode(data).decode("ascii"), sizes=sizes, full_size=full_size)
-        return tuple(self.ask(request, "Cannot prepare preview images", len(sizes))["images"])
+        if raw is not None:
+            request["raw"] = str(raw)
+        response = self.ask(request, "Cannot prepare preview images", 0 if raw is not None else len(sizes))
+        return response["raw"] if raw is not None else tuple(response["images"])
 
     def read_document(self, path, op, start=1, count=1, dpi=110, width=None, out=None):
         """Ask the child to read a file for the chat (ops of preview_raster.document): the response with
@@ -189,9 +192,9 @@ def close():
     _pool.close()
 
 
-def render(data, sizes, full_size):
+def render(data, sizes, full_size, raw=None):
     with _pool.lease() as client:
-        return client.render(data, sizes, full_size)
+        return client.render(data, sizes, full_size, raw)
 
 
 def render_sequence(data):

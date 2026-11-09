@@ -41,7 +41,7 @@ from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShor
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from ... import (deck_context, deck_editor, languages, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
-                 slide_versioning)
+                 slide_versioning, timing)
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
 from ...deck_outline import SlideRow
@@ -182,6 +182,7 @@ class _Job:
     """A finished render, handed from the worker thread to the GUI thread."""
     pdf: Optional[Path] = None
     png: Optional[bytes] = None
+    image: Optional[QImage] = None
     error: Optional[str] = None
     target_key: tuple = ()
     view: str = ""
@@ -925,10 +926,11 @@ class PreviewPane(Surface):
         if getattr(request, 'done', None) is not None and not request.done.is_set():
             QTimer.singleShot(50, poll)
 
-    def _remember(self, key: tuple, pixmap: QPixmap, png: bytes, mtime: int, text: Optional[str]) -> None:
+    def _remember(self, key: tuple, pixmap: QPixmap, png: Optional[bytes], mtime: int, text: Optional[str]) -> None:
         """Hold the page of a saved render of `text` (the saved file's) for display."""
         self._pixmaps.put(key, pixmap, mtime, text_sha256(text)
-                          if text is not None else None, hashlib.sha256(png).hexdigest())
+                          if text is not None else None,
+                          hashlib.sha256(png).hexdigest() if png is not None else str(pixmap.cacheKey()))
 
     def _stored_pixmap(self, target: PreviewTarget, view: str, language: str,
                        keep: Optional[tuple] = None) -> Optional[QPixmap]:
@@ -1807,7 +1809,16 @@ class PreviewPane(Surface):
             try:
                 if job.request is not None:
                     # The pixels are enough to show the slide; the cache record follows on the request's worker.
-                    job.pdf, job.png, job.images, _ = job.request.wait(job.cancel, pixels_only=True)
+                    job.pdf, job.png, job.images, _ = job.request.wait(job.cancel, pixels_only=not job.external)
+                    if isinstance(job.png, Path):
+                        with timing.span('preview.decode_raw'):
+                            job.image = QImage(str(job.png))
+                        job.png = None
+                        if job.image.isNull():
+                            # Recording continues independently; its PNG is the fallback if the temp file vanished.
+                            job.pdf, job.png, job.images, _ = job.request.wait(job.cancel)
+                    if job.png is not None:
+                        job.image = QImage.fromData(job.png)
                 else:
                     job.pdf = work()
                 if job.request is None and not job.external and not self._closed and job.generation == self._generation:
@@ -1882,8 +1893,8 @@ class PreviewPane(Surface):
             if job.external:
                 slide_preview.open_pdf(job.pdf)
             else:
-                pixmap = QPixmap()
-                if job.png is not None and pixmap.loadFromData(job.png):
+                pixmap = QPixmap.fromImage(job.image) if job.image is not None else QPixmap()
+                if not pixmap.isNull() or (job.png is not None and pixmap.loadFromData(job.png)):
                     try:
                         spec = job.request.spec if job.request is not None else PreviewRequest(
                             self._target, SourceRevision.capture(job.source, job.revision_text),

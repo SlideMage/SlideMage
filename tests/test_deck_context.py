@@ -242,7 +242,7 @@ def test_only_a_render_in_the_deck_may_refresh_the_snapshot_of_a_slide_that_need
     pdf = tmp_path / "r.pdf"
     pdf.write_bytes(b"%PDF")
     deck_context.remember_mode(pdf, mode) if mode else None
-    monkeypatch.setattr(preview_target, "render", lambda *a, **k: pdf)
+    monkeypatch.setattr(preview_target, "render_text", lambda *a, **k: pdf)
     asked = []
     monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
                         lambda path, snapshots, widths: asked.append(snapshots) or ((b"a", b"b"), ()))

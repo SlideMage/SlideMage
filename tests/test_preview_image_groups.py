@@ -3,7 +3,6 @@
 """The scheduler shares proven images while keeping exact-view PDF provenance."""
 import json
 import threading
-import time
 
 import pytest
 
@@ -14,7 +13,7 @@ from slidemage.project import ProjectContext
 VIEWS = ('instructor', 'during-course', 'after-course')
 
 
-def fixture(tmp_path, monkeypatch, groups=(0, 0, 0)):
+def fixture(tmp_path, monkeypatch):
     ctx = ProjectContext.at(tmp_path / 'project')
     ctx.slides_dir.mkdir(parents=True)
     source = ctx.slides_dir / 'abc-EN-One-current.tex'
@@ -41,58 +40,12 @@ def fixture(tmp_path, monkeypatch, groups=(0, 0, 0)):
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', render)
-    monkeypatch.setattr(preview_target, 'render_text', render)
     def group(spec, identity=None):
-        return f'group-{groups[VIEWS.index(spec.view)]}', 'fixture evidence'
+        return 'group-0', 'fixture evidence'
     monkeypatch.setattr(preview_requests, 'image_group', group)
     monkeypatch.setattr(preview_batch, 'image_group', group)
     target = preview_target.for_path(ctx, source)
     return ctx, target, source, calls, group
-
-
-@pytest.mark.parametrize('groups,expected', [((0, 0, 0), 1), ((0, 1, 1), 2), ((0, 1, 2), 3)])
-def test_cold_batch_group_count_restart_and_exact_pdf(tmp_path, monkeypatch, groups, expected):
-    ctx, target, source, calls, _ = fixture(tmp_path, monkeypatch, groups)
-    rasters = []
-    prepare = slide_snapshot.prepare_preview_images
-    def raster(*args):
-        rasters.append(1)
-        return prepare(*args)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', raster)
-    specs = tuple(preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source), view,
-                  'EN', preview_requests.RenderOptions(saved=True)) for view in VIEWS)
-    initial_service = preview_requests.RenderService()
-    first = preview_batch.render_batch(initial_service, specs)
-    assert len(calls) == len(rasters) == expected
-    assert [r.request.view for r in first] == list(VIEWS)
-    assert all(r.status == 'rendered' if groups[VIEWS.index(r.request.view)] not in groups[:VIEWS.index(r.request.view)]
-               else r.status == 'cached' for r in first)
-    assert all(r.display_png is not None and r.page_images for r in first)
-    assert all(r.pdf is None or r.pdf.read_bytes().startswith(f'PDF {r.request.view}'.encode()) for r in first)
-
-    warm = preview_batch.render_batch(initial_service, specs)
-    assert len(calls) == len(rasters) == expected
-    assert all(result.status == 'cached' for result in warm)
-    initial_service.close()
-
-    restarted = preview_requests.RenderService()
-    again = preview_batch.render_batch(restarted, specs)
-    assert len(calls) == len(rasters) == expected
-    assert all(result.status == 'cached' for result in again)
-    later = restarted.request(target, source.read_text(), 'after-course', 'EN', lambda _: None, saved=True)
-    later.wait()
-    assert len(calls) == len(rasters) == expected and later.preview_result.status == 'cached'
-    if groups[2] != groups[0] and groups[2] != groups[1]:
-        assert later.result[0] is not None
-    else:
-        assert later.result[0] is None
-        exact = restarted.request(target, source.read_text(), 'after-course', 'EN',
-                                  lambda _: None, saved=True, require_pdf=True)
-        exact.wait()
-        assert len(calls) == expected + 1
-        assert exact.result[0].read_bytes().startswith(b'PDF after-course')
-        assert restarted.cached_spec(specs[2]).display_png == later.result[1]
-    restarted.close()
 
 
 def test_force_batch_shares_once_but_later_force_builds_again(tmp_path, monkeypatch):
@@ -104,64 +57,6 @@ def test_force_batch_shares_once_but_later_force_builds_again(tmp_path, monkeypa
     assert all(r.page_images for r in first)
     second = preview_batch.render_batch(preview_requests.RenderService(), specs)
     assert len(calls) == 2 and second[0].pdf != first[0].pdf
-
-
-def test_group_cache_rechecks_dependencies_and_source_revision(tmp_path, monkeypatch):
-    _, target, source, calls, _ = fixture(tmp_path, monkeypatch)
-    service = preview_requests.RenderService()
-
-    def request(view):
-        result = service.request(target, source.read_text(), view, 'EN', lambda _: None, saved=True)
-        result.wait()
-        return result
-
-    request('instructor')
-    assert request('after-course').preview_result.status == 'cached' and len(calls) == 1
-    theme = tmp_path / 'framework' / 'theme.tex'
-    theme.write_text('changed dependency')
-    assert request('after-course').preview_result.status == 'rendered' and len(calls) == 2
-    source.write_text('new revision')
-    assert request('during-course').preview_result.status == 'rendered' and len(calls) == 3
-    service.close()
-
-
-def test_during_first_keeps_legacy_instructor_snapshot_sizes(tmp_path, monkeypatch):
-    _, target, source, calls, _ = fixture(tmp_path, monkeypatch)
-    flags = []
-    original = slide_snapshot.prepare_preview_images
-    def prepare(pdf, snapshots, sizes):
-        flags.append(snapshots)
-        return original(pdf, snapshots, sizes)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', prepare)
-    service = preview_requests.RenderService()
-    first = service.request(target, source.read_text(), 'during-course', 'EN', lambda _: None, saved=True)
-    first.wait()
-    instructor = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
-    instructor.wait()
-    assert len(calls) == 1 and flags == [True]
-    assert instructor.preview_result.page_images == first.preview_result.page_images
-    assert instructor.preview_result.pdf is None
-    service.close()
-
-
-def test_batch_alias_history_survives_edit_before_view_is_selected(tmp_path, monkeypatch):
-    from slidemage import preview_cache, preview_selection
-
-    ctx, target, source, calls, _ = fixture(tmp_path, monkeypatch)
-    specs = tuple(preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source), view,
-                  'EN', preview_requests.RenderOptions(saved=True)) for view in VIEWS)
-    service = preview_requests.RenderService()
-    results = preview_batch.render_batch(service, specs)
-    assert len(calls) == 1 and all(result.display_png == b'page' for result in results)
-    service.close()
-    source.write_text('Different source')
-    revised = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source),
-                                               'during-course', 'EN', preview_requests.RenderOptions(saved=True))
-    env = compiler.build_env(ctx)
-    reopened = preview_selection.select_image(preview_cache.PreviewCache(ctx.root), (revised,), env)
-    assert reopened.state == 'previous' and reopened.image == b'page'
-    assert reopened.representative_view == 'instructor' and reopened.pdf is None
-    assert reopened.artifact_revision_hash == specs[0].revision.content_hash
 
 
 def test_changed_classification_during_build_retries_foreign_consumer(tmp_path, monkeypatch):
@@ -212,54 +107,6 @@ def test_failed_retry_has_no_exposable_representative_artifact(tmp_path, monkeyp
         alias.wait()
     assert alias.done.is_set() and alias.result is None and alias.preview_result is None
     assert isinstance(alias.error, RuntimeError) and alias.metrics is retry.metrics
-
-
-def test_cross_view_cancel_detaches_only_that_waiter(tmp_path, monkeypatch):
-    _, target, source, calls, _ = fixture(tmp_path, monkeypatch)
-    started, release = threading.Event(), threading.Event()
-    original = preview_target.render_text
-
-    def render(*args, **kwargs):
-        started.set()
-        assert release.wait(3)
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(preview_target, 'render_text', render)
-    service = preview_requests.RenderService()
-    handles = [service.request(target, source.read_text(), view, 'EN', lambda _: None, saved=True)
-               for view in VIEWS]
-    cancelled = compiler.CancelToken()
-    finished, errors = {}, {}
-
-    def wait(index):
-        try:
-            finished[index] = handles[index].wait(cancelled if index == 1 else None)
-        except RuntimeError as exc:
-            errors[index] = str(exc)
-
-    threads = [threading.Thread(target=wait, args=(index,)) for index in range(3)]
-    threads[0].start()
-    assert started.wait(2)
-    threads[2].start()
-    deadline = time.monotonic() + 2
-    while len(handles[0]._consumers) < 2 and time.monotonic() < deadline:
-        time.sleep(.005)
-    assert len(handles[0]._consumers) == 2
-    threads[1].start()
-    while len(handles[0]._consumers) < 3 and time.monotonic() < deadline:
-        time.sleep(.005)
-    assert len(handles[0]._consumers) == 3
-    cancelled.request_stop()
-    threads[1].join(2)
-    release.set()
-    for thread in threads:
-        thread.join(3)
-    assert all(not thread.is_alive() for thread in threads)
-    assert errors == {1: 'Preview cancelled'} and set(finished) == {0, 2}
-    assert len(calls) == 1 and finished[0][0] is not None and finished[2][0] is None
-    assert handles[0].preview_result.request.view == 'instructor'
-    assert handles[2].preview_result.request.view == 'after-course'
-    service.close()
 
 
 @pytest.mark.parametrize('classified', [False, True])

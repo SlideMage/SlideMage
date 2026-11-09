@@ -19,7 +19,7 @@ import time
 import weakref
 
 from . import diagnostics
-from . import busy, compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_raster_client, preview_target, render_evidence, render_key, render_lookup, slide_snapshot
+from . import busy, compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_raster_client, preview_target, render_evidence, render_key, render_lookup, slide_snapshot, timing
 from .fileio import text_sha256
 from .preview_metrics import PreviewMetrics
 
@@ -99,7 +99,7 @@ class PreviewResult:
     dependencies: tuple[Path, ...] = ()
     publication_status: str = "unpublished"
     error: str | None = None
-    display_png: bytes | None = None
+    display_png: bytes | Path | None = None
     secondary_png: bytes | None = None
     render_stamp: str | None = None
     _artifact_owner: object | None = field(default=None, repr=False, compare=False)
@@ -212,7 +212,7 @@ class RenderRequest:
 
     wait() returns when the request is done: the cache entry, `preview_result` and `result` are final. A consumer
     that needs only pixels (the Preview pane) calls wait(pixels_only=True): it returns at delivery with the
-    rendered temp PDF, which stays valid for as long as the request object is alive.
+    rendered temp PDF and image (raw when the pane started the build), valid while the request is alive.
     """
     def __init__(self, work, finished):
         self.cancel = compiler.CancelToken()
@@ -232,13 +232,11 @@ class RenderRequest:
         self.lent = False                   # a pixels_only waiter holds that PDF: the temp folder outlives the record
         self._loans_closed = False          # no more loans: the temp folder is removed or the work is over (_start_lock)
         self._collector = None
-        self._representative_identity = None
-        self._representative_view = None
-        self._representative_evidence = None
         self._consumers = {}
         self._work, self._finished = work, finished
         self._start_lock = threading.Lock()
         self._started = False
+        self._pixels_only = False
 
     def _result_of(self, artifact):
         result = PreviewResult.from_artifact(self.spec, artifact)
@@ -264,6 +262,8 @@ class RenderRequest:
             self.preview_result = self._result_of(artifact)
         self.metrics = self._metrics_of(self._collector)     # up to the pixels; _run replaces it when recorded
         self._delivered_artifact = artifact
+        if self.spec is not None:
+            timing.event(self.spec.target.context.root, 'preview.delivered')
         self.delivered.set()
 
     def drop_temp(self, folder):
@@ -329,7 +329,7 @@ class RenderRequest:
         Only active waiters reserve a build; merely holding a request before
         calling wait does not prevent its last active waiter from stopping it.
         `pixels_only` returns as soon as a fresh render's pixels exist, before it is recorded in the cache:
-        the artifact's PDF is then the render's temp PDF, `preview_result` is not final, no cache entry exists
+        the artifact holds the render's temp PDF and image, `preview_result` is not final, no cache entry exists
         yet and the display history is written once the record is done. Otherwise (a cache hit, a finished
         request) it returns what a plain wait() returns.
         """
@@ -345,6 +345,7 @@ class RenderRequest:
                     raise RuntimeError('Preview cancelled')
                 if not self._started:
                     self._started = True
+                    self._pixels_only = pixels_only
                     self.cancel.low_priority = getattr(cancel, 'low_priority', False)
                     threading.Thread(target=self._run, daemon=True).start()
             early = False
@@ -584,8 +585,6 @@ class RenderService:
         complete = spec.complete
         store_key = renderer.resolver.fast_key(unit, text) if complete else None
         identity = cache_identity(spec)
-        group = image_group(spec, identity)
-        group_key = group[0] if group is not None else None
         key = (('render', store_key, unit.frame_number) if store_key is not None
                else ('pdf', render_evidence.digest(identity)), options.force)
         cache = preview_cache.PreviewCache(target.context.root)
@@ -594,65 +593,28 @@ class RenderService:
         def delivered(waiter):
             source = waiter.source if isinstance(waiter, _ImageConsumer) else waiter
             if source._cache_entry is not None:
-                cache.remember_display(identity, source._representative_identity or identity,
-                                       source._representative_view or view,
-                                       evidence=source._representative_evidence, observed_at=observed_at)
+                cache.remember_display(identity, identity, view, observed_at=observed_at)
             elif waiter.result is not None:
                 from .preview_selection import remember_transient
                 remember_transient(spec, waiter.result[1], waiter.result[0], observed_at=observed_at)
 
-        def pin(entry, status, *, representative=view, representative_identity=None, evidence=None):
+        def pin(entry, status):
             lease = _ArtifactLease(cache.lease(entry))
             request._artifact_lease = lease
             request._cache_entry, request._cache_status = entry, status
-            request._representative_identity = representative_identity or identity
-            request._representative_view = representative
-            request._representative_evidence = evidence
             with self._lock:
                 if self._closed:
                     request.release_artifact()
                     raise RuntimeError('Preview service closed')
                 self._completed.add(request)
-            return (entry.pdf if representative == view else None,
-                    entry.display_png, entry.page_images, entry.secondary_png)
-
-        def record(artifact, pdf, env, stamp, displays, images, dependencies, before):
-            """Everything after the pixels: the reveal sequence, the cache entry and its group, pruning, cleanup.
-
-            Runs on the worker right after the delivery. The artifact is already valid, so a failure here is
-            logged and the delivered artifact stays the result; a cancel does not stop it (store is atomic).
-            """
-            sequence = None
-            if dependencies and before is not None and not presenter and mode == 'slide' and overlay is None:
-                try:
-                    sequence = slide_snapshot.preview_sequence(pdf)
-                except (OSError, RuntimeError, ValueError):
-                    pass  # optional equality evidence must not fail a valid preview
-            entry = cache.store(identity, env, pdf=pdf, display_png=displays[0], secondary_png=displays[1],
-                                page_images=images, dependencies=dependencies, render_stamp=stamp, before=before,
-                                raster_sequence=sequence, thumbnail=displays[2] if len(displays) > 2 else None,
-                                audited_resolution=group is not None and image_group(spec, identity) == group)
-            if entry is None:
-                return artifact
-            result = pin(entry, 'rendered')
-            if group_key is not None and not require_pdf:
-                # Recorder checks above guard TeX inputs. Reclassify
-                # as well: an included rule may have changed during
-                # the build even if the source buffer was captured.
-                if image_group(spec, identity) == group:
-                    cache.publish_group(group_key, identity, view, evidence=group[1])
-            if pdf.parent.name.startswith('slidemage_preview_'):
-                request.drop_temp(pdf.parent)
-            cache.maybe_prune()
-            return result
+            return entry.pdf, entry.display_png, entry.page_images, entry.secondary_png
 
         def work(cancel):
             env = compiler.build_env(target.context)
             background = cancel.low_priority
             publish = complete and (not target.needs_context or background)
-            evidence = (prebuilt.evidence if prebuilt is not None else
-                        renderer.resolver.capture(unit, None if target.needs_context else text) if publish else None)
-            if prebuilt is None and not options.force and publish:
+            if (prebuilt is None and not options.force and publish and store_key is not None
+                    and renderer.store.find(store_key) is not None):
                 state, stored = render_lookup.select(dict(resolver=renderer.resolver, unit=unit, spec=spec), strict=True)
                 if state == 'current' and (not background or stored.get('frame_number') == unit.frame_number):
                     lease = _ArtifactLease(renderer.store.pdf_copy(stored))
@@ -661,29 +623,23 @@ class RenderService:
                     with self._lock:
                         self._completed.add(request)
                     pdf = lease.artifact
-                    displays, images = slide_snapshot.prepare_preview_images(
-                        pdf, view == 'instructor' and not target.is_frozen_alone, (slide_snapshot.FULL_SIZE[0], 1280))
-                    return pdf, displays[0], images, displays[1]
+                    png = renderer.store.page(stored, stored['pages'])
+                    if pdf is not None and png is not None:
+                        return pdf, png, (), png
+                    request.release_artifact()
+                    request._store_record = None
 
             if prebuilt is not None:
                 prebuilt.used = True
             elif not options.force and not background and not all_steps:
-                validation = render_evidence.ValidationPass()    # the two lookups share one evidence and one read per file
-                if group_key is not None and not require_pdf:
-                    found = cache.group_lookup(group_key, env, validation=validation)
-                    if found is not None and image_group(spec, identity) == group:
-                        try:
-                            return pin(found[0], 'cached', representative=found[1],
-                                       representative_identity=found[2], evidence=found[3])
-                        except OSError:
-                            pass
-                entry = cache.lookup(identity, env, validation=validation)
+                entry = cache.lookup(identity, env)
                 if entry is not None:
                     try:
                         return pin(entry, 'cached')
                     except OSError:
                         pass  # eviction won the interval between lookup and pin
-            before = cache.begin(env) if prebuilt is None else prebuilt.before
+            evidence = (prebuilt.evidence if prebuilt is not None else
+                        renderer.resolver.capture(unit, None if background and target.needs_context else text))
             stamp = options.render_stamp or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             if prebuilt is not None:
                 pdf = prebuilt.pdf
@@ -699,49 +655,94 @@ class RenderService:
                     **({'workspace': renderer.store.work_dir} if background else {}))
             if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
                 weakref.finalize(request, shutil.rmtree, pdf.parent, True)
-            snapshots = (view == 'instructor' or group_key is not None) and not target.is_frozen_alone \
-                        and not presenter and mode == 'slide' and overlay is None
-            if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
-                snapshots = False        # a slide that needs its deck keeps the picture a whole-deck compile made
             try:
                 preview_build.check_cancel(cancel)
                 if presenter:
                     displays, images = (None, None), ()
+                elif request._pixels_only:
+                    with timing.span('preview.raw'):
+                        displays, images = slide_snapshot.prepare_preview_images(
+                            pdf, False, (slide_snapshot.FULL_SIZE[0],), raw=True)
                 else:
-                    displays, images = slide_snapshot.prepare_preview_images(pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
-                try:
-                    dependencies = (prebuilt.dependencies if prebuilt is not None
-                                    else json.loads(pdf.with_suffix('.inputs.json').read_text()))
-                except (OSError, ValueError):
-                    dependencies = ()
+                    snapshots = (view == 'instructor' or image_group(spec, identity) is not None) and not target.is_frozen_alone \
+                                and mode == 'slide' and overlay is None
+                    if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
+                        snapshots = False
+                    displays, images = slide_snapshot.prepare_preview_images(
+                        pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
             except Exception:
                 if pdf.parent.name.startswith('slidemage_preview_'):
                     shutil.rmtree(pdf.parent, ignore_errors=True)
                 raise
-            artifact = pdf, displays[0], images, displays[1]
+            artifact = pdf, displays[0], images, None if request._pixels_only else displays[1]
             request._deliver(artifact)       # the pixels are what the pane waits for; the rest is bookkeeping
+            if presenter:
+                return artifact
+            try:
+                dependencies = (prebuilt.dependencies if prebuilt is not None
+                                else json.loads(pdf.with_suffix('.inputs.json').read_text()))
+            except (OSError, ValueError):
+                dependencies = ()
+            source = unit.source_path.resolve()
+            manifest = renderer.resolver.build_manifest([path for path in dependencies if Path(path).resolve() != source])
+            manifest.entries.append([render_key.KIND_PROJECT, source.relative_to(target.context.root).as_posix(),
+                                     spec.revision.content_hash])
+            manifest.entries.sort()
+            pages = []
             if publish and evidence is not None:
                 try:
-                    source = unit.source_path.resolve()
-                    manifest = renderer.resolver.build_manifest([path for path in dependencies if Path(path).resolve() != source])
-                    manifest.entries.append([render_key.KIND_PROJECT, source.relative_to(target.context.root).as_posix(),
-                                             spec.revision.content_hash])
-                    manifest.entries.sort()
-                    pages = renderer._rasterise(pdf, cancel)
+                    with timing.span('preview.pages'):
+                        pages = renderer._rasterise(pdf, cancel)
                     if not pages:
                         raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
                     from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
                     renderer._store_render(
-                        unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL), pdf, pages, manifest, evidence)
+                        unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL),
+                        pdf, pages, manifest, evidence)
                 except Exception as exc:
                     if background:
                         exc.preview_inputs = dependencies
                         raise
                     log(f'Preview not recorded in the store: {exc}')
-            if presenter or mode != 'slide' or overlay is not None:
+            if request._pixels_only:
+                with timing.span('preview.png'):
+                    displays, images = slide_snapshot.prepare_preview_images(
+                        pdf, False, (1280,) if pages else (slide_snapshot.FULL_SIZE[0], 1280))
+                if pages:
+                    displays = (pages[-1], *displays)
+            elif pages:
+                displays = (pages[-1], *displays[1:])
+            artifact = pdf, displays[0], images, displays[1]
+            if mode != 'slide' or overlay is not None:
+                return artifact
+            if prebuilt is None and (evidence is None or not renderer.resolver.publishable(unit, evidence, manifest)):
                 return artifact
             try:
-                return record(artifact, pdf, env, stamp, displays, images, dependencies, before)
+                before = cache.begin(env) if prebuilt is None else prebuilt.before
+                sequence = None
+                if dependencies and before is not None:
+                    try:
+                        sequence = slide_snapshot.preview_sequence(pdf)
+                    except (OSError, RuntimeError, ValueError):
+                        pass  # optional equality evidence must not fail a valid preview
+                group = image_group(spec, identity)
+                entry = cache.store(identity, env, pdf=pdf, display_png=displays[0], secondary_png=displays[1],
+                                    page_images=images, dependencies=dependencies, render_stamp=stamp, before=before,
+                                    raster_sequence=sequence, thumbnail=displays[2] if len(displays) > 2 else None,
+                                    audited_resolution=group is not None and image_group(spec, identity) == group)
+                if entry is None:
+                    return artifact
+                result = pin(entry, 'rendered')
+                if group is not None and not require_pdf:
+                    # Recorder checks above guard TeX inputs. Reclassify
+                    # as well: an included rule may have changed during
+                    # the build even if the source buffer was captured.
+                    if image_group(spec, identity) == group:
+                        cache.publish_group(group[0], identity, view, evidence=group[1])
+                if pdf.parent.name.startswith('slidemage_preview_'):
+                    request.drop_temp(pdf.parent)
+                cache.maybe_prune()
+                return result
             except Exception as exc:  # noqa: BLE001 -- the delivered render stays valid
                 log(f'Preview not recorded in the cache: {exc}')
                 return artifact
@@ -755,8 +756,6 @@ class RenderService:
             if self._closed:
                 raise RuntimeError('Preview service closed')
             request = self._requests.get(key)
-            if request is None and group_key is not None and not require_pdf:
-                request = self._requests.get((('image', group_key), options.force))
             if request is None or request.cancel.is_set():
                 diagnostics.event(_log, "preview requested", target=spec.target.key, view=spec.view,
                                   language=spec.language, force=options.force)
@@ -764,11 +763,9 @@ class RenderService:
                 request.spec = spec
                 request._delivery = delivered
                 self._requests[key] = request
-                if group_key is not None and not require_pdf:
-                    self._requests[(('image', group_key), options.force)] = request
             if request.spec == spec and not require_pdf:
                 return request
-            return _ImageConsumer(request, spec, group,
+            return _ImageConsumer(request, spec,
                                   fallback=lambda: self.request(target, text, view, language, log,
                                                                 spec=spec, require_pdf=True),
                                   require_pdf=require_pdf, delivery=delivered)

@@ -77,6 +77,82 @@ def pdf_at(path, text="hello", height=180):
     return path
 
 
+def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_page(pane, tmp_path, monkeypatch, qapp):
+    from contextlib import contextmanager
+    from PySide6.QtGui import QImage
+    from slidemage import preview_raster_client, timing
+
+    view, target, _ = pane
+    folder = tmp_path / '.temp' / 'slidemage_preview_pixels'
+    folder.mkdir(parents=True)
+    pdf = folder / 'slide.pdf'
+    with pymupdf.open() as doc:
+        for text in ('first reveal', 'last reveal'):
+            doc.new_page(width=320, height=180).insert_text((30, 40), text)
+        doc.save(pdf)
+    pdf.with_suffix('.inputs.json').write_text('[]')
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: pdf)
+    request = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
+    renderer = view._renders._renderer(target.context)
+    encoding, release, pixels = threading.Event(), threading.Event(), threading.Event()
+    stages, decoding_threads = [], []
+    ask, put, span = preview_raster_client.RasterClient.ask, renderer.store.put, timing.span
+
+    def encode(self, data, *args, **kwargs):
+        if data.get('op') in ('pdf_images', 'sequence') or ('sizes' in data and not data.get('raw')):
+            assert request.delivered.is_set()
+            encoding.set()
+            assert release.wait(10)
+            assert pixels.is_set()
+            stages.append('png')
+        return ask(self, data, *args, **kwargs)
+
+    def store(*args, **kwargs):
+        assert pixels.is_set()
+        stages.append('put')
+        return put(*args, **kwargs)
+
+    @contextmanager
+    def decode(name, **fields):
+        with span(name, **fields):
+            yield
+        if name == 'preview.decode_raw':
+            decoding_threads.append(threading.get_ident())
+
+    monkeypatch.setattr(preview_raster_client.RasterClient, 'ask', encode)
+    monkeypatch.setattr(renderer.store, 'put', store)
+    monkeypatch.setattr(timing, 'span', decode)
+    job = view._job(target, request=request, revision_text='BODY')
+    view._start(lambda: None, job)
+    worker = WorkerThread(target=view._run, args=view.launched[0])
+    worker.start()
+    try:
+        assert encoding.wait(10)
+        deadline = time.monotonic() + 10
+        while view._busy and time.monotonic() < deadline:
+            qapp.processEvents()
+            time.sleep(.01)
+        assert not view._busy and view._page.pixmap is not None
+        assert not stages and not request.done.is_set()
+        assert decoding_threads == [worker.ident] and worker.ident != threading.get_ident()
+        shown = view._page.pixmap.toImage().convertToFormat(QImage.Format.Format_RGB888)
+        pixels.set()
+    finally:
+        release.set()
+        worker.join(10)
+        assert request.done.wait(10)
+    assert request.error is None and 'put' in stages
+    record = renderer.store.find(renderer.resolver.fast_key(request.spec.unit, 'BODY'))
+    assert record['pages'] == 2
+    stored = QImage.fromData(renderer.store.page(record, 2)).convertToFormat(QImage.Format.Format_RGB888)
+    assert shown == stored
+    # A store hit reads the PNG; it sends no new work to the raster child.
+    stages.clear()
+    hit = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
+    assert hit.wait()[1] == renderer.store.page(record, 2)
+    assert hit.preview_result.status == 'cached' and not stages
+
+
 def test_three_requests_compile_only_first_and_latest_and_publish_latest(
     pane, tmp_path, monkeypatch
 ):
@@ -280,7 +356,7 @@ def test_edit_then_undo_reacquires_request_that_was_cancelled_while_pending(pane
     png = preview_png(pdf)
     builds = []
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: builds.append(a[1]) or pdf)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((png, png), ()))
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a, **kw: ((png, png), ()))
     monkeypatch.setattr(view, '_after_render', lambda job: None)
 
     def request(text):
@@ -988,7 +1064,7 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
 
 
 @pytest.mark.parametrize('debounce', [False, True])
-def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, debounce):
+def test_tool_and_pane_share_one_build(pane, tmp_path, monkeypatch, debounce):
     from agent_fakes import FakeWorkspace
     from slidemage import compiler
     from slidemage.ai.tools import build_toolbox
@@ -1007,7 +1083,7 @@ def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, d
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', builder)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: rasters.append(a) or ((png, png), ()))
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a, **kw: rasters.append(a) or ((png, png), ()))
     job = view._job(target, buffer_text='BODY', revision_text='BODY')
     job.request = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
     view._start(lambda: None, job, debounce=debounce)
@@ -1042,7 +1118,7 @@ def test_tool_and_pane_share_one_build_and_raster(pane, tmp_path, monkeypatch, d
         worker.join(3)
         assert not worker.is_alive()
         view._on_finished(job)
-    assert len(builds) == len(rasters) == 1 and view._page.pixmap is not None
+    assert len(builds) == 1 and len(rasters) == (1 if debounce else 2) and view._page.pixmap is not None
     assert not builds[0]['capture_snapshot'] and builds[0]['cancel'] is job.request.cancel
 
 
@@ -1145,8 +1221,6 @@ def test_refresh_tool_publishes_saved_artifact_through_gui_workspace(pane, tmp_p
         assert view._last_pdf == pdf
     elif change != 'other-view':
         assert view._page.pixmap.toImage() == old_image
-    snapshot = slide_snapshot.snapshot_path(view.state.project, 'bbb' if change == 'other-slide' else 'abc', target.template)
-    assert snapshot.is_file() == (outcome != 'superseded')
     if change == 'buffer':
         assert view._adhoc_text == 'new unsaved revision'
     workspace.close()

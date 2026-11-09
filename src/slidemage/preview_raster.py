@@ -4,7 +4,7 @@
 
 MuPDF objects stay in this process and never cross a GUI/worker thread boundary.
 Requests and results are newline-delimited JSON on private pipes, with PNG bytes
-encoded as base64. No GUI or project writes happen here.
+encoded as base64, or a path to a raw last-page image in the request's temp folder.
 """
 
 from __future__ import annotations
@@ -17,13 +17,17 @@ import os
 import sys
 
 
-def raster(data, sizes, full_size):
+def raster(data, sizes, full_size, raw=None):
     import pymupdf
 
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         if not doc.page_count:
             return []
         page = doc[-1]
+        if raw is not None:
+            zoom = sizes[0][0] / page.rect.width
+            page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).save(raw)
+            return raw
         # Parse the PDF page once; replay it for the display, tool image and thumbnails.
         display = page.get_displaylist()
         images = {}
@@ -155,8 +159,11 @@ def serve():
                         base64.b64decode(request["pdf"]),
                         request["sizes"],
                         request["full_size"],
+                        request.get("raw"),
                     )
-                    response = {}
+                    response = dict(raw=images) if request.get("raw") else {}
+                    if request.get("raw"):
+                        images = []
             response |= dict(
                 ok=True,
                 images=[base64.b64encode(image).decode("ascii") for image in images],

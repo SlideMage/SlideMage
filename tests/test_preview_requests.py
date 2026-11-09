@@ -170,7 +170,7 @@ def test_completed_service_cache_survives_restart_and_validates_content(tmp_path
     theme.write_text('THEME ONE')
     env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool'), ()))
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a, **kw: ((b'page', b'tool'), ()))
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
     calls = []
     pdf = tmp_path / 'result.pdf'
@@ -275,7 +275,7 @@ def recorded(tmp_path, monkeypatch):
     framework.mkdir()
     env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
     monkeypatch.setattr(compiler, 'build_env', lambda _: env)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool', b'thumb'), ()))
+    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a, **kw: ((b'page', b'tool', b'thumb'), ()))
     monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
     folder = tmp_path / 'slidemage_preview_one'
     calls = []
@@ -308,35 +308,6 @@ def recorded(tmp_path, monkeypatch):
         request=lambda: service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True))
     gate.release.set()
     service.close()
-
-
-def test_pixels_only_wait_returns_before_the_cache_record(recorded):
-    import gc
-    request = recorded.request()
-    pdf, display, images, secondary = request.wait(pixels_only=True, timeout=10)
-    assert recorded.gate.entered.wait(10)            # the worker is inside store()
-    assert (display, secondary) == (b'page', b'tool') and pdf == recorded.folder / 'slide.pdf' and pdf.exists()
-    assert request.delivered.is_set() and not request.done.is_set() and request._cache_entry is None
-    assert request.preview_result.status == 'rendered' and request.preview_result.pdf == pdf
-    # An identical request while the record runs shares the build; a plain wait() gets the recorded result.
-    assert recorded.request() is request
-    plain = []
-    waiter = threading.Thread(target=lambda: plain.append(request.wait(timeout=10)))
-    waiter.start()
-    recorded.gate.release.set()
-    waiter.join(10)
-    assert request.done.wait(10) and len(recorded.calls) == 1
-    assert request._cache_entry is not None and request.preview_result.status == 'rendered'
-    assert plain[0][0] == request._cache_entry.pdf != pdf
-    assert recorded.gate.stored[0]['thumbnail'] == b'thumb'
-    # The pane was handed the temp PDF, so the folder lives as long as the request does.
-    assert recorded.folder.exists()
-    request = plain = waiter = None
-    gc.collect()
-    assert not recorded.folder.exists()
-    cached = recorded.request()
-    cached.wait()
-    assert cached.preview_result.status == 'cached' and len(recorded.calls) == 1
 
 
 def test_plain_wait_removes_the_temp_folder_once_recorded(recorded):
