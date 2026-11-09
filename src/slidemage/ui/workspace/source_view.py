@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...ai import routes
-from ... import languages, latex_edit, slide_versioning
+from ... import languages, latex_edit, slide_templates, slide_versioning, theme_colors
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert, multilingual_for
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs import qr_code as qr_dialog
@@ -560,10 +560,22 @@ class SourcePane(Surface):
         menu.closed.connect(menu.deleteLater)
         menu.popup_below(anchor)
 
+    def _deck_swatches(self) -> dict[str, str]:
+        """The Color menu's colours under the open deck's theme (the project's render template with no deck), read
+        when the menu opens, so a switched deck or a changed theme shows at once."""
+        state = getattr(self.app, "state", None)
+        deck = getattr(state, "deck", None)
+        project = self.app.project
+        if deck is not None:
+            template = slide_templates.detect_template(deck.text)
+        else:
+            template = slide_templates.render_template(project)
+        return theme_colors.swatches(template, project.root)
+
     def _open_color_menu(self) -> None:
         menu = PopoverMenu(self, min_width=220)
-        for name in latex_edit.TEXTCOLOR_PALETTE:
-            menu.add_item(name, name, swatch=latex_edit.TEXTCOLOR_SWATCHES[name])
+        for name, swatch in self._deck_swatches().items():
+            menu.add_item(name, name, swatch=swatch)
         menu.triggered.connect(lambda name: self._wrap(f"textcolor{{{name}}}"))
         self._popup(menu, self._color_button)
 
