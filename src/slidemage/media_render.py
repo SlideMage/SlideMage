@@ -26,8 +26,7 @@ import pymupdf as fitz
 from . import project
 
 
-# Gitignored (see .gitignore), same as .previews/slide_previews/ -- a
-# regeneratable, best-effort cache, not project content worth tracking.
+# Gitignored (see .gitignore): a regeneratable cache, not project content worth tracking.
 # Moved under previews/ 2026-09-18, then .previews/ the same day (was a
 # project-root folder before that; dot-prefixed since nothing here is ever
 # something the user needs to interact with).

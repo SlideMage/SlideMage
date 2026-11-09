@@ -223,7 +223,6 @@ def steps_renders(tmp_path, monkeypatch):
         return render
 
     monkeypatch.setattr(slide_snapshot, "FULL_SIZE", (160, 90))
-    monkeypatch.setattr(slide_snapshot, "THUMB_SIZE", (80, 45))
     monkeypatch.setattr(preview_target, "render", fake("saved"))
     monkeypatch.setattr(preview_target, "render_text", fake("buffer"))
     monkeypatch.setattr(preview_view, "PROBE_MS", 50)

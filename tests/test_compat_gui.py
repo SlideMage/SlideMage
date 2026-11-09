@@ -137,3 +137,36 @@ def test_an_applied_change_is_told_once_without_the_compatibility_sheet(tmp_path
     assert not compat.evaluate(root, "v5.30.0", [AUTO]).everything                 # not told again
     maintenance.check_project_compat(win)
     assert len(logged) == 1
+
+
+def test_flat_snapshots_are_removed_and_the_notice_is_shown_only_on_first_start(tmp_path, monkeypatch, qapp):
+    from slidemage import cli, project
+
+    root = make_project(tmp_path, "v0.14.58")
+    folder = root / ".previews" / "slide_previews"
+    folder.mkdir(parents=True)
+    (folder / "abc-EN-UniGraz-1920-1080.png").write_bytes(b"old PNG")
+    win = window(root, monkeypatch, compat.CHANGES, project_compat.NOT_NOW, [])
+    monkeypatch.setattr(version_mod, "VERSION_NUMBER", "v0.15.0")
+    shown = []
+
+    def notice(parent, evaluation, app_version, name):
+        sheet = ProjectUpdatedSheet(None, evaluation, app_version, name)
+        shown.append(texts(sheet))
+        return SimpleNamespace(exec=lambda: None)
+
+    monkeypatch.setattr(maintenance, "ProjectUpdatedSheet", notice)
+    assert cli.check_project_format(root, "v0.15.0")
+    assert not folder.exists()
+    assert project.read_project_json(root)["flat_snapshots_removed"] is True
+    assert not (root / ".slidemage" / "backups").exists()
+    maintenance.check_project_compat(win)
+    assert len(shown) == 1
+    assert ".previews/slide_previews/ is gone" in shown[0] and "deletion syncs" in shown[0]
+    assert "every computer" in shown[0] and "References rebuild from the local render store" in shown[0]
+
+    # Even if an older computer syncs the folder back, migration runs only once.
+    folder.mkdir()
+    assert cli.check_project_format(root, "v0.15.0")
+    maintenance.check_project_compat(win)
+    assert folder.exists() and len(shown) == 1

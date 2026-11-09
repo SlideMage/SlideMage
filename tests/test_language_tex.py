@@ -57,8 +57,7 @@ def ctx_on_tex_path(tmp_path):
 
 def render(ctx, id_slug: str, language: str = "en"):
     """The text of the slide's page."""
-    pdf = slide_preview.render_slide_text_to_pdf(ctx, id_slug, BODY, deck_version="instructor", deck_language=language,
-                                                 capture_snapshot=False)
+    pdf = slide_preview.render_slide_text_to_pdf(ctx, id_slug, BODY, deck_version="instructor", deck_language=language)
     with pymupdf.open(pdf) as doc:
         return " ".join(doc[0].get_text().split())
 
@@ -120,7 +119,7 @@ def render_labels(ctx, language: str):
     """The page text and the TeX log of a slide in `language` that shows the two automatic texts."""
     body = f"\\begin{{standardframe}}{{Texts}}\n{LABELS}\n\\end{{standardframe}}\n"
     pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-EN-Test", body, deck_version="instructor",
-                                                 deck_language=language, capture_snapshot=False)
+                                                 deck_language=language)
     logs = ctx.build_dir.glob("preview-cache/*/*.log")
     log = max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8", errors="replace")
     with pymupdf.open(pdf) as doc:
@@ -160,7 +159,7 @@ def test_a_keyed_multilingual_text_falls_back_to_the_main_language(ctx):
             "\\multilingualtext*{EN={only}, FR={seul}}\n\\end{standardframe}\n")
     for language, expected in (("fr", "Bonjour and seul"), ("de", "Hallo and seul")):
         pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-mult-Test", body, deck_version="instructor",
-                                                     deck_language=language, capture_snapshot=False)
+                                                     deck_language=language)
         with pymupdf.open(pdf) as doc:
             assert expected in " ".join(doc[0].get_text().split())
 
@@ -173,8 +172,7 @@ def render_hyphenation(ctx, language: str, slide: str | None = None):
     """The page text and the TeX log (its lines joined as TeX wrapped them) of a slide with one long word in a narrow
     box, in a deck in `language`; the slide's own language is `slide`, by default the deck's."""
     pdf = slide_preview.render_slide_text_to_pdf(ctx, f"zz7-{slide or language.upper()}-Test", HYPHENATION,
-                                                 deck_version="instructor", deck_language=language,
-                                                 capture_snapshot=False)
+                                                 deck_version="instructor", deck_language=language)
     logs = ctx.build_dir.glob("preview-cache/*/*.log")
     log = max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8", errors="replace")
     with pymupdf.open(pdf) as doc:
@@ -218,7 +216,7 @@ def test_the_shipped_patterns_hyphenate_without_the_distributions(ctx):
             "\\directlua{texio.write_nl('PATTERNS ' .. (kpse.find_file('hyphenation/hyph-de-1996.pat.txt') or ''))}\n"
             "\\end{standardframe}\n")
     pdf = slide_preview.render_slide_text_to_pdf(ctx, "zz7-DE-Test", body, deck_version="instructor",
-                                                 deck_language="de", capture_snapshot=False)
+                                                 deck_language="de")
     logs = ctx.build_dir.glob("preview-cache/*/*.log")
     log = "".join(max(logs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8").splitlines())
     with pymupdf.open(pdf) as doc:                                    # every break taken: German's, not English's

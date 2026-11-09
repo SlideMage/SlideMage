@@ -338,7 +338,7 @@ class RenderService:
                 else:
                     pdf = preview_target.render_text(
                         target, text, view, language, log=log,
-                        presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
+                        presenter=presenter, mode=mode, overlay=overlay, cancel=cancel,
                         all_steps=options.all_steps, force_build=True,
                         **({'workspace': renderer.store.work_dir} if background else {}))
                 if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
@@ -357,12 +357,8 @@ class RenderService:
                         displays, images = slide_snapshot.prepare_preview_images(
                             pdf, False, (slide_snapshot.FULL_SIZE[0],), raw=True)
                 else:
-                    snapshots = view == 'instructor' and not target.is_frozen_alone \
-                                and mode == 'slide' and overlay is None
-                    if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
-                        snapshots = False
                     displays, images = slide_snapshot.prepare_preview_images(
-                        pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
+                        pdf, False, (slide_snapshot.FULL_SIZE[0], 1280))
                 artifact = pdf, displays[0], images, None if raw else displays[1]
                 request.preview_result = request._result_of(artifact)
                 request.metrics = request._metrics_of(request._collector)

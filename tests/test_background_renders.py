@@ -409,7 +409,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
     foreground = slide_preview.render_slide_to_pdf(
         project, unit.macro, unit.id_slug, unit.version, list(unit.conditions) or None, deck_version=unit.view,
         deck_language=unit.language.lower(), preamble_text=unit.preamble_text, frame_number=unit.frame_number,
-        log=lambda line: None, capture_snapshot=False, all_steps=True)
+        log=lambda line: None, all_steps=True)
     with store.lock, pymupdf.open(foreground) as theirs, pymupdf.open(Path(found.record["dir"]) / "slide.pdf") as ours:
         assert len(ours) == len(theirs) == found.record["pages"]
         assert [p.get_text() for p in ours] == [p.get_text() for p in theirs]

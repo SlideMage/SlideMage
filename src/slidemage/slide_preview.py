@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, compile_log, compiler, open_path, preview_build, project
-from . import slide_language, slide_snapshot, slide_templates
+from . import slide_templates
 from .compiler import build_env
 from .deck_editor import format_call
 from .deck_language import language_lines
@@ -376,7 +376,6 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 @measure('build')
 def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
-                         snapshot_template: Optional[str] = None,
                          reuse_build: bool = True, cancel=None, force_build: bool = False, workspace: Optional[Path] = None) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
@@ -387,26 +386,12 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
 
     With reuse_build=True, keep latexmk state in an isolated, locked cache;
     reuse_build=False retains the original fresh-job behavior for comparison.
-
-    `snapshot_template` (only ever passed by render_slide_to_pdf(), and
-    only when it compiled the instructor version -- see there), when not
-    None, refreshes .previews/slide_previews/<bare id>-<Template>-*.png from this
-    render's last page as a side effect, at that template. Never lets a
-    snapshot failure fail the render itself: a stale or missing preview
-    image is a much smaller problem than losing a PDF the user actually
-    asked to see.
     """
     env = build_env(ctx)
     build_options = {'force': True} if force_build else {}
     dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel, workspace=workspace,
                                              **build_options) if reuse_build
                 else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
-    if snapshot_template is not None:
-        try:
-            slide_snapshot.capture_single_slide(
-                ctx, dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
-        except Exception as exc:
-            log(f"    (preview snapshot not updated: {exc})")
     log(compile_log.render_passed(id_slug, dest_pdf))
     return dest_pdf
 
@@ -472,7 +457,6 @@ def render_slide_to_pdf(
     steps: Optional[str] = None,
     reuse_build: bool = True,
     overlay: Optional[int] = None,
-    capture_snapshot: bool = True,
     cancel=None,
     all_steps: bool = False,
     context_before: str = "",
@@ -499,34 +483,14 @@ def render_slide_to_pdf(
 
     reuse_build retains dependency-checked auxiliary state between requests.
     overlay selects a positive reveal number per frame; None keeps all pages.
-    Explicit overlay selections do not update canonical snapshots, and neither
-    does `capture_snapshot=False` (a frozen version looked at on its own is not
-    what the slide's thumbnail should show).
-
-    Refreshes this slide's compile-time PNG snapshot (slide_snapshot.py) as
-    a side effect, but only when rendering the instructor version -- `None`
-    here means "whatever the preamble defaults to", which is instructor
-    for GENERIC_PREAMBLE (SlideMage_base.tex's own default) and,
-    in practice, for every real deck's preamble too. An explicit
-    during-course/after-course request is a deliberate look at a *partial*
-    version, and must never overwrite the canonical (fullest-content)
-    snapshot with it. The snapshot is captured under whichever institution
-    template `preamble` itself selects (slide_templates.detect_template()),
-    not a fixed one -- a deck row previewing under its own preamble ends up
-    caching the *right* template's image, not always the default one.
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     wrapper_text = _wrapper_text(
         ctx, preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
-    snapshot_template = (
-        slide_templates.detect_template(preamble)
-        if capture_snapshot and deck_version in (None, "instructor") and overlay is None and not all_steps
-        and not (context_before or context_after) else None
-    )
     return _with_context(compile_and_extract(
-        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        ctx, wrapper_text, id_slug, log,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
 
@@ -571,7 +535,6 @@ def render_slide_text_to_pdf(
     preview_mode: str = "slide",
     overlay: Optional[int] = None,
     frame_number: Optional[int] = None,
-    capture_snapshot: bool = True,
     cancel=None,
     all_steps: bool = False,
     context_before: str = "",
@@ -615,8 +578,7 @@ def render_slide_text_to_pdf(
     always instructor (the combo's own caller passes deck_version=
     "instructor" whenever "Presenter" is picked), this flag is what
     actually switches on the dual-screen layout.
-
-    Also refreshes the legacy Instructor snapshot for whole-slide renders."""
+    """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     if overlay is not None and preview_mode == "element":
@@ -628,14 +590,8 @@ def render_slide_text_to_pdf(
         ctx, f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
         _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
-    snapshot_template = (
-        slide_templates.detect_template(preamble)
-        if capture_snapshot and deck_version in (None, "instructor") and not presenter
-        and preview_mode == "slide" and overlay is None and not all_steps
-        and not (context_before or context_after) else None
-    )
     return _with_context(compile_and_extract(
-        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        ctx, wrapper_text, id_slug, log,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
 
@@ -694,7 +650,7 @@ def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
 
     A region must be a complete frame or a self-contained fragment; arbitrary
     unbalanced selections are deliberately left to TeX's normal diagnostics.
-    Element previews have their own crop and never refresh full-slide snapshots.
+    Element previews have their own crop.
     """
     if mode == "slide":
         return preamble, body

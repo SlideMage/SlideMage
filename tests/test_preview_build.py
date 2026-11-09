@@ -145,17 +145,6 @@ def test_the_wrappers_left_in_decks_before_v8_58_are_removed_once(tmp_path):
     assert preview_build.remove_legacy_wrappers(ctx) == 0          # once per project and session
 
 
-def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
-    calls = []
-    monkeypatch.setattr(slide_preview, 'compile_and_extract',
-                        lambda *args, **kwargs: calls.append((args, kwargs)))
-    pre = r'\documentclass{beamer}\begin{document}'
-    slide_preview.render_slide_to_pdf(EXAMPLE_PROJECT, 'slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
-    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
-    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
-    assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
-
-
 def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
     produce = True
 

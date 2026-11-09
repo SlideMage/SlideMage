@@ -45,8 +45,6 @@ def project(monkeypatch, tmp_path):
     fake_temp = tmp_path / "temp"
     fake_temp.mkdir()
     monkeypatch.setattr(slide_preview.tempfile, "tempdir", str(fake_temp))
-    monkeypatch.setattr(
-        slide_preview.slide_snapshot, "capture_single_slide", lambda *a, **k: None)
     monkeypatch.setattr(compiler, "run_streamed", _fake_run_streamed(build))
     return build
 

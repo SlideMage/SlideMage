@@ -47,7 +47,7 @@ def test_the_code_links_and_a_caption_href_keeps_its_underline(tmp_path):
             # room on the left: the caption is wider than its code and overhangs it on both sides
             f"\\hspace*{{1cm}}{link}\\hspace{{1cm}}{old}\\hspace{{1cm}}{plain}\n\\end{{standardframe}}\n")
     pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz8-EN-QR-Test", body,
-                                                 deck_version="instructor", capture_snapshot=False)
+                                                 deck_version="instructor")
     with pymupdf.open(pdf) as doc:
         page = doc[0]
         links = [(item["uri"], item["from"]) for item in page.get_links() if item.get("uri")]
@@ -70,7 +70,7 @@ def test_an_href_wider_than_its_line_keeps_its_underline_under_its_text_anywhere
             "\\parbox[t]{1.5cm}{\\href{https://example.org/narrow}{a link much wider than its box}}\n"
             "\\end{standardframe}\n")
     pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz9-EN-Link-Test", body,
-                                                 deck_version="instructor", capture_snapshot=False)
+                                                 deck_version="instructor")
     with pymupdf.open(pdf) as doc:
         gaps = underline_gaps(doc[0])
     body_gap = next(gap for text, gap in gaps.items() if text.startswith("the body link"))
@@ -98,7 +98,7 @@ def test_a_caption_wider_than_its_code_is_centred_under_it_and_the_code_keeps_it
     body = (f"\\begin{{standardframe}}{{QR}}\n\\hspace*{{3cm}}{wide}\\hspace{{2cm}}{narrow}\\hspace{{2cm}}{last}\n"
             "\\end{standardframe}\n")
     pdf = slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, "zz7-EN-QR-Wide", body,
-                                                 deck_version="instructor", capture_snapshot=False)
+                                                 deck_version="instructor")
     with pymupdf.open(pdf) as doc:
         page = doc[0]
         codes = {item["uri"]: item["from"] for item in page.get_links() if item.get("uri")}

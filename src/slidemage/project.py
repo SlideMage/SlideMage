@@ -355,7 +355,7 @@ def _newer_version(a: str, b: str) -> str:
 
 
 def record_project_open(root: Path, app_version: str) -> None:
-    """Write project.json after the project was opened with `app_version`.
+    """Remove legacy flat snapshots once and record this open in project.json.
     A project newer than this app keeps its format and last version, so
     the warning still names the release that changed it. Other keys stay
     (compat.py keeps its state in "compat"), and "highest_app_version"
@@ -367,9 +367,12 @@ def record_project_open(root: Path, app_version: str) -> None:
     info = read_project_info(root)
     if info["format"] > PROJECT_FORMAT:
         return
-    # Migrations from an older format go here (none exist yet); each
-    # must back up what it rewrites first.
     data = read_project_json(root)
+    if not data.get("flat_snapshots_removed"):
+        folder = root / ".previews" / "slide_previews"
+        # A sync client may hold a file open (Windows, Nextcloud): never fail the open; try again next start.
+        shutil.rmtree(folder, ignore_errors=True)
+        data["flat_snapshots_removed"] = not folder.exists()
     previous = info["last_app_version"]
     data["format"] = PROJECT_FORMAT
     data["last_app_version"] = app_version
@@ -552,7 +555,6 @@ class ProjectContext:
     pdf_dir = _Under("pdf")
     temp_dir = _Under(".temp")
     previews_dir = _Under(".previews")
-    slide_previews_dir = _Under(".previews", "slide_previews")
     tikz_previews_dir = _Under(".previews", "tikz_illustration_previews")
     pdf_render_cache_dir = _Under(".previews", "pdf_render_cache")
     settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json

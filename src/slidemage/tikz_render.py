@@ -33,8 +33,7 @@ from PIL import Image, ImageChops
 from . import alt_blocks, alt_images, compile_log, project
 from .slide_preview import compile_and_extract, default_preamble
 
-# Gitignored, same regeneratable-cache reasoning as slide_previews/ and
-# pdf_render_cache/ (media_render.py) -- nothing here is ever authored, it
+# Gitignored, like pdf_render_cache/ (media_render.py): nothing here is ever authored, it
 # is entirely derived from a slide's own current tikz source. Moved under
 # previews/ 2026-09-18, then .previews/ the same day (was a project-root
 # folder before that; dot-prefixed since nothing here is ever something

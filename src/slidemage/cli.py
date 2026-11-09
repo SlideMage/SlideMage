@@ -60,7 +60,7 @@ def _confirm_newer_project(root: Path, info: dict) -> bool:
 def check_project_format(root: Path, app_version: str) -> bool:
     """False if the user chose not to open a project from a newer
     SlideMage; otherwise records this open in project.json and, for a project from before the languages key,
-    writes it (languages.migrate), and converts image descriptions saved by an older SlideMage
+    writes it (languages.migrate), removes flat slide snapshots once, and converts old image descriptions
     (alt_images.convert_store, which keeps the old file)."""
     info = project.read_project_info(root)
     if info["format"] > project.PROJECT_FORMAT:

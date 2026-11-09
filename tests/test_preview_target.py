@@ -45,7 +45,6 @@ def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(r
     assert args[1:3] == ("slidestep", "bbb-EN-Two")
     assert kwargs["deck_version"] == "during-course" and kwargs["deck_language"] == "de"
     assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2"
-    assert kwargs["capture_snapshot"]
     assert kwargs["preamble_text"].startswith("\\documentclass{beamer}")
 
 
@@ -62,9 +61,7 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
     assert presenter["deck_version"] == "instructor" and presenter["presenter"]
 
 
-def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_snapshots(
-    tmp_path, renders,
-):
+def test_a_slide_file_alone_has_no_deck_context(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     slides = tmp_path / "slides"
     slides.mkdir()
@@ -76,9 +73,7 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     assert frozen.source_path == slides / "abc-EN-Demo-v1-0-0.tex"
     assert preview_target.for_path(ctx, slides / "deck.tex") is None
     assert frozen.is_frozen_alone
-    preview_target.render(frozen, "instructor", "EN", log=print)
-    assert renders[0][2]["capture_snapshot"] is False
-    # a deck that pins the version does show it, so the snapshot is its to refresh
+    # A pinned slide belongs to the deck.
     _, pinned = target_of("\\slideversion{abc-EN-Demo}{1-0-0}\n")
     assert not pinned.is_frozen_alone
 

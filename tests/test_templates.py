@@ -22,7 +22,6 @@ def _no_framework_override(monkeypatch):
 def test_slidemage_template_detected():
     preamble = "\\input{SlideMage_template_slidemage}\n"
     assert slide_templates.detect_template(preamble) == "slidemage"
-    assert slide_templates.TEMPLATES["slidemage"] == "SlideMage"
 
 
 def test_institution_templates_unchanged():
@@ -133,7 +132,6 @@ def test_templates_are_found_in_the_project_and_named_from_their_keys(tmp_path):
     root = _project(tmp_path / "project", "my-uni", "other")
     (root / "SlideMage_template_my-uni.tex").write_text("%% SlideMage template name: My University\n", encoding="utf-8")
     assert slide_templates.detect_template("\\input{SlideMage_template_my-uni}") == "my-uni"
-    assert slide_templates.TEMPLATES["my-uni"] == "MyUni" and slide_templates.TEMPLATES["slidemage"] == "SlideMage"
     assert slide_templates.template_label("my-uni", root) == "My University"      # declared in the file
     assert slide_templates.template_label("other", root) == "Other"               # read from the key
     assert slide_templates.template_label("slidemage") == "SlideMage"

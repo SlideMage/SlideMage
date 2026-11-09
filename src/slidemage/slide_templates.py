@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Institution templates: which one a deck selects, where their preamble files are, and which one single-slide
-renders use. Moved out of slide_snapshot.py (code review plan of 2026-11-06, step 4.4), which keeps the flat
-Instructor-snapshot cache."""
+renders use."""
 from __future__ import annotations
 
 import re
@@ -24,25 +23,6 @@ DEFAULT_TEMPLATE = "slidemage"
 _LABEL_RE = re.compile(r"^%+\s*SlideMage template name:\s*(.+?)\s*$", re.MULTILINE)
 
 
-def template_name(key: str) -> str:
-    """The name a template has in cached preview file names: "my-template" -> "MyTemplate" (each hyphen-separated part
-    capitalised), the app's own "slidemage" -> "SlideMage"."""
-    return "SlideMage" if key == DEFAULT_TEMPLATE else "".join(part.capitalize() for part in key.split("-"))
-
-
-class _TemplateNames:
-    """TEMPLATES[key] / TEMPLATES.get(key, default): the file-name form of any template key."""
-
-    def __getitem__(self, key: str) -> str:
-        return template_name(key)
-
-    def get(self, key: str, default: str = "") -> str:
-        return template_name(key) if key else default
-
-
-TEMPLATES = _TemplateNames()
-
-
 def template_label(key: str, root: Path | None = None) -> str:
     """How the dialogs name a template: the `% SlideMage template name: ...` line in the first lines of its preamble
     file when it has one, else its key read as words ("my-template" -> "My Template")."""
@@ -61,10 +41,6 @@ def detect_template(preamble_text: str) -> str:
     """The template key a deck's own preamble selects, defaulting to DEFAULT_TEMPLATE when the pattern isn't found."""
     match = TEMPLATE_RE.search(preamble_text)
     return match.group(1) if match else DEFAULT_TEMPLATE
-
-
-def _template_name(template: str) -> str:
-    return template_name(template)
 
 
 # The template a slide is rendered in when no deck is involved -- the slide

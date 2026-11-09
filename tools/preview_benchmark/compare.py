@@ -25,7 +25,7 @@ from experiment import (SCHEMA, EDIT_VERSION, atomic_json, bind, digest,
                         tree_hashes, validate_record, observed_rules)
 
 import pymupdf
-from slidemage import deck_editor, deck_scan, project, slide_preview, slide_language, slide_snapshot
+from slidemage import deck_editor, deck_scan, project, slide_preview, slide_snapshot
 from slidemage.preview_build import build_lock
 
 
@@ -123,11 +123,6 @@ def main():
     parser.add_argument("--order-seed", type=int, default=0)
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--no-images", action="store_true")
-    parser.add_argument(
-        "--defer-images",
-        action="store_true",
-        help="Use the new GUI prepare/publish path",
-    )
     args = parser.parse_args()
     if args.repeats < 1 or args.time_budget <= 0:
         parser.error("Positive edit count and time budget required")
@@ -173,7 +168,7 @@ def main():
     )
     identity = implementation_identity(Path(slide_preview.__file__).parent,
         dict(configs=args.configs, repeats=args.repeats, no_cache=args.no_cache,
-             no_images=args.no_images, defer_images=args.defer_images, order_seed=args.order_seed),
+             no_images=args.no_images, order_seed=args.order_seed),
         slide_preview.build_env(ctx))
     identity["pymupdf"] = pymupdf.VersionBind
     experiment_id = digest(dict(manifest=manifest, implementation=identity))
@@ -182,14 +177,6 @@ def main():
     def stopped():
         return ((args.output / "STOP").exists() or time.monotonic() >= deadline
                 or (args.deadline is not None and time.time() >= args.deadline))
-    original_compile = slide_preview.compile_and_extract
-
-    def frozen_compile(ctx, wrapper, *a, **kw):
-        if args.no_images:
-            kw["snapshot_template"] = None
-        return original_compile(ctx, wrapper, *a, **kw)
-
-    slide_preview.compile_and_extract = frozen_compile
     try:
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
@@ -246,8 +233,6 @@ def main():
                             overlay=1 if "overlay" in config else None,
                             log=log_line,
                         )
-                        if args.defer_images:
-                            common["capture_snapshot"] = False
                         start = time.perf_counter()
                         try:
                             with trace:
@@ -277,21 +262,7 @@ def main():
                                 # The GUI includes this additional rasterization; measure it explicitly.
                                 if not args.no_images:
                                     png_start = time.perf_counter()
-                                    if args.defer_images:
-                                        canonical = config in ("saved", "buffer")
-                                        _, images = slide_snapshot.prepare_preview(
-                                            pdf, canonical
-                                        )
-                                        if images:
-                                            slide_snapshot.publish_preview(ctx,
-                                                images,
-                                                slide_language.bare_id(call.id_slug),
-                                                slide_snapshot.detect_template(
-                                                    deck.preamble_text
-                                                ),
-                                            )
-                                    else:
-                                        slide_snapshot.page_png(pdf)
+                                    slide_snapshot.prepare_preview_images(pdf, False, (slide_snapshot.FULL_SIZE[0],))
                                     png_seconds = time.perf_counter() - png_start
                                 else:
                                     png_seconds = 0

@@ -145,44 +145,33 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     assert shown == stored
 
 
-def test_three_requests_compile_only_first_and_latest_and_publish_latest(
-    pane, tmp_path, monkeypatch
-):
+def test_three_requests_compile_only_first_and_latest(pane, tmp_path):
     view, target, _ = pane
-    publications = []
-    monkeypatch.setattr(
-        slide_snapshot, "publish_preview", lambda *a: publications.append(a)
-    )
     pdf1, pdf2 = (
         pdf_at(tmp_path / "old.pdf", "old"),
         pdf_at(tmp_path / "new.pdf", "new"),
     )
-    first = view._job(target, snapshot_template=target.template)
-    newest = view._job(target, snapshot_template=target.template)
+    first = view._job(target)
+    newest = view._job(target)
     view._start(lambda: pdf1, first)
     view._start(lambda: pytest.fail("superseded middle request ran"), view._job(target))
     view._start(lambda: pdf2, newest)
     assert len(view.launched) == 1 and view._busy
     view._run(*view.launched[0])
-    assert len(view.launched) == 2 and not publications and view._record is None
+    assert len(view.launched) == 2 and view._record is None
     view._run(*view.launched[1])
-    assert len(publications) == 1 and not view._busy
+    assert not view._busy
 
 
 @pytest.mark.parametrize(
     "change", ["slide", "view", "language", "preamble", "disk", "buffer"]
 )
-def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
-    pane, tmp_path, monkeypatch, change
+def test_obsolete_results_never_replace_the_page(
+    pane, tmp_path, change
 ):
     view, target, path = pane
-    publications = []
-    monkeypatch.setattr(
-        slide_snapshot, "publish_preview", lambda *a: publications.append(a)
-    )
     job = view._job(
         target,
-        snapshot_template=target.template,
         buffer_text="BODY" if change == "buffer" else None,
     )
     pdf = pdf_at(tmp_path / "old.pdf")
@@ -211,7 +200,7 @@ def test_obsolete_results_never_replace_the_page_or_publish_snapshots(
     else:
         view.buffer[0] = "newer unsaved content"
     view._run(*view.launched[0])
-    assert not publications and view._record is None and not view._busy
+    assert view._record is None and not view._busy
 
 
 def test_old_error_is_ignored_but_current_error_is_reported(pane):
@@ -253,7 +242,7 @@ def test_presentation_opens_pdf_without_rasterizing(pane, tmp_path, monkeypatch)
     monkeypatch.setattr(preview_view.slide_preview, "open_pdf", opened.append)
     monkeypatch.setattr(
         slide_snapshot,
-        "prepare_preview",
+        "prepare_preview_images",
         lambda *a: pytest.fail("presenter rasterized"),
     )
     view._start(lambda: pdf, view._job(target, external=True))
@@ -392,28 +381,11 @@ def test_prepared_images_preserve_pixels_aspect_ratio_and_cache_by_pdf_content(
 ):
     pdf = pdf_at(tmp_path / "preview.pdf", text, height)
     slide_snapshot._PNG_CACHE.clear()
-    images1, snapshots1 = slide_snapshot.prepare_preview(pdf, True)
-    assert [size for size, _ in snapshots1] == [
-        slide_snapshot.FULL_SIZE,
-        slide_snapshot.THUMB_SIZE,
-    ]
-    display = pymupdf.Pixmap(images1)
+    images1, _ = slide_snapshot.prepare_preview_images(pdf, False, (slide_snapshot.FULL_SIZE[0],))
+    display = pymupdf.Pixmap(images1[0])
     assert (display.width, display.height) == (
         slide_snapshot.FULL_SIZE[0], slide_snapshot.FULL_SIZE[0] * height // 320,
     )
-    with pymupdf.open(pdf) as doc:
-        page = doc[-1]
-        for (width, pixel_height), png in snapshots1:
-            original = page.get_pixmap(
-                matrix=pymupdf.Matrix(
-                    width / page.rect.width, pixel_height / page.rect.height
-                )
-            )
-            current = pymupdf.Pixmap(png)
-            assert (current.width, current.height) == (width, pixel_height)
-            assert (current.width, current.height, current.samples) == (
-                original.width, original.height, original.samples,
-            )
     # A second request must not enter the raster process.
     from slidemage import preview_raster_client
     original_render = preview_raster_client.render
@@ -422,11 +394,11 @@ def test_prepared_images_preserve_pixels_aspect_ratio_and_cache_by_pdf_content(
         "render",
         lambda *a: pytest.fail("cache miss for unchanged PDF"),
     )
-    assert slide_snapshot.prepare_preview(pdf, True) == (images1, snapshots1)
+    assert slide_snapshot.prepare_preview_images(pdf, False, (slide_snapshot.FULL_SIZE[0],))[0] == images1
     monkeypatch.setattr(preview_raster_client, "render", original_render)
     pdf.unlink()
     pdf_at(pdf, "changed in the same path", height)
-    assert slide_snapshot.prepare_preview(pdf, True)[0] != images1
+    assert slide_snapshot.prepare_preview_images(pdf, False, (slide_snapshot.FULL_SIZE[0],))[0] != images1
 
 
 def test_session_pixmaps_are_bounded_and_keep_the_most_recent(pane, tmp_path):
@@ -469,8 +441,7 @@ def test_actual_parent_destruction_closes_lifetime_and_discards_worker_result(
         return output
 
     monkeypatch.setattr(preview_view, "Thread", thread)
-    monkeypatch.setattr(slide_snapshot, "prepare_preview", lambda *a: pytest.fail("raster after destruction"))
-    monkeypatch.setattr(slide_snapshot, "publish_preview", lambda *a: pytest.fail("published after destruction"))
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: pytest.fail("raster after destruction"))
     monkeypatch.setattr(preview_view.slide_preview, "open_pdf", lambda *a: pytest.fail("opened after destruction"))
     view._start(work, view._job(target))
     assert started.wait(1)
@@ -491,7 +462,7 @@ def test_destroyed_pane_discards_a_completion_already_queued_to_qt(pane, tmp_pat
     output = tmp_path / "slidemage_preview_queued" / "preview.pdf"
     output.parent.mkdir()
     output.write_bytes(b"finished PDF")
-    monkeypatch.setattr(slide_snapshot, "prepare_preview", lambda *a: (b"", ()))
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", lambda *a: ((b"",), ()))
     job = view._job(target)
     view._start(lambda: output, job)
     thread = WorkerThread(target=view._run, args=view.launched[0])
@@ -514,7 +485,7 @@ def test_raster_failure_discards_the_new_temp_pdf(pane, tmp_path, monkeypatch):
     def fails(*args):
         raise RuntimeError("image helper failed")
 
-    monkeypatch.setattr(slide_snapshot, "prepare_preview", fails)
+    monkeypatch.setattr(slide_snapshot, "prepare_preview_images", fails)
     view._start(lambda: output, view._job(target))
     view._run(*view.launched[0])
     assert not output.exists()
@@ -573,9 +544,7 @@ def test_composite_show_focuses_slide_and_displays_returned_image_in_student_vie
 def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, monkeypatch, change):
     view, target, path = pane
     png = preview_png(pdf_at(tmp_path / "composite.pdf"), 1280)
-    publications = []
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: tmp_path / 'composite.pdf')
-    monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
     request = view.request_render(target, 'BODY', 'instructor', 'EN')
     assert request.wait()[3] == png
     if change == "slide":
@@ -593,7 +562,7 @@ def test_composite_preview_does_not_publish_an_obsolete_image(pane, tmp_path, mo
         else:
             path.unlink()
     view.finish_render(request)
-    assert view._adhoc is None and not view._pixmaps and not publications
+    assert view._adhoc is None and not view._pixmaps
 
 
 @pytest.mark.parametrize('debounce', [False, True])
@@ -656,7 +625,7 @@ def test_tool_and_pane_share_one_build(pane, tmp_path, monkeypatch, debounce):
         assert not worker.is_alive()
         view._on_finished(job)
     assert len(builds) == 1 and len(rasters) == (1 if debounce else 2) and view._page.pixmap is not None
-    assert not builds[0]['capture_snapshot'] and builds[0]['cancel'] is job.request.cancel
+    assert builds[0]['cancel'] is job.request.cancel
 
 
 def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkeypatch):
@@ -668,12 +637,10 @@ def test_tool_returns_image_when_pane_shows_another_slide(pane, tmp_path, monkey
     path.write_text('OTHER')
     target = preview_target.for_path(view.state.project, path)
     pdf = pdf_at(tmp_path / 'other.pdf')
-    publications = []
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pdf)
-    monkeypatch.setattr(slide_snapshot, 'publish_preview', lambda *a: publications.append(a))
     workspace = GuiWorkspace(SimpleNamespace(project=view.state.project, centre=SimpleNamespace(preview=view)))
     png = workspace.render_preview(target, 'OTHER', 'instructor', 'EN', compiler.CancelToken())
-    assert png.startswith(b'\x89PNG') and not publications and view._page.pixmap is None
+    assert png.startswith(b'\x89PNG') and view._page.pixmap is None
 
 
 @pytest.mark.parametrize("change, outcome", [
@@ -711,7 +678,6 @@ def test_refresh_tool_publishes_saved_artifact_through_gui_workspace(pane, tmp_p
     started, release = threading.Event(), threading.Event()
 
     def render(*a, **kw):
-        assert not kw['capture_snapshot']
         started.set()
         assert release.wait(5)
         return pdf

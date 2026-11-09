@@ -187,8 +187,6 @@ class _Job:
     generation: int = 0
     source: Optional[Path] = None
     buffer_text: Optional[str] = None
-    snapshot_template: Optional[str] = None
-    images: tuple = ()
     requested: float = 0
     metrics: Optional[dict] = None
     request: Optional[RenderRequest] = None
@@ -406,7 +404,7 @@ class PageView(QWidget):
 
 
 class PreviewPane(Surface):
-    rendered = Signal()           # a render finished; the slide's snapshot (the list's thumbnail) may be new
+    rendered = Signal()           # a render finished; the list's thumbnail may be new
     rendered_target = Signal(object)  # exact source path for affected thumbnail rows
     partner_requested = Signal(object)   # the language chip: the Path of the slide's file in the other language
     compile_requested = Signal(str)      # the deck-context chip: compile the deck in this view
@@ -1606,20 +1604,21 @@ class PreviewPane(Surface):
             try:
                 if job.request is not None:
                     # The pixels are enough to show the slide; the cache record follows on the request's worker.
-                    job.pdf, job.png, job.images, _ = job.request.wait(job.cancel, pixels_only=not job.external)
+                    job.pdf, job.png, _, _ = job.request.wait(job.cancel, pixels_only=not job.external)
                     if isinstance(job.png, Path):
                         with timing.span('preview.decode_raw'):
                             job.image = QImage(str(job.png))
                         job.png = None
                         if job.image.isNull():
                             # Recording continues independently; its PNG is the fallback if the temp file vanished.
-                            job.pdf, job.png, job.images, _ = job.request.wait(job.cancel)
+                            job.pdf, job.png, _, _ = job.request.wait(job.cancel)
                     if job.png is not None:
                         job.image = QImage.fromData(job.png)
                 else:
                     job.pdf = work()
                 if job.request is None and not job.external and not self._closed and job.generation == self._generation:
-                    job.png, job.images = slide_snapshot.prepare_preview(job.pdf, bool(job.snapshot_template))
+                    displays, _ = slide_snapshot.prepare_preview_images(job.pdf, False, (slide_snapshot.FULL_SIZE[0],))
+                    job.png = displays[0]
             except Exception as exc:  # noqa: BLE001 -- shown as the error; the render must always end
                 job.error = str(exc) or type(exc).__name__
         job.metrics = dict(job.request.metrics or {}) if job.request is not None else metrics.to_dict()
@@ -1676,11 +1675,6 @@ class PreviewPane(Surface):
             self._error = job.error
             self.app.log(f"*** Render failed: {job.error} ***")
         else:
-            if job.images and job.snapshot_template:
-                try:
-                    slide_snapshot.publish_preview(self.app.project, job.images, self._target.bare_id, job.snapshot_template)
-                except Exception as exc:
-                    self.app.log(f"    (preview snapshot not updated: {exc})")
             self._last_request = job.request
             self._stored_asked = None
             self._check_when_recorded(job.request)
@@ -1755,8 +1749,7 @@ class PreviewPane(Surface):
             return
         view, language = self.state.view, self.language
         text = path.read_text(encoding='utf-8')
-        job = self._job(target, revision_text=text, snapshot_template=target.template
-                        if view == 'instructor' and not target.is_frozen_alone else None)
+        job = self._job(target, revision_text=text)
         self._batch_status = ''
         job.request = self._renders.request(target, text, view, language, self.app.log, saved=True, force=force)
         self._start(lambda: None, job, debounce=debounce)
@@ -1817,8 +1810,6 @@ class PreviewPane(Surface):
         view, language = self.state.view, self.language
         overlay = None if scope == "element" else (self._overlay or None)
         job = self._job(target, external=presenter, buffer_text=text, revision_text=text,
-                        snapshot_template=target.template if view == 'instructor' and not presenter
-                        and scope == 'slide' and overlay is None and not target.is_frozen_alone else None,
                         note="Rendered from the editor buffer, not the saved file",
                         steps_ok=scope == "slide" and overlay is None and not presenter)
         job.request = self._renders.request(target, body, view, language, self.app.log,
@@ -1943,7 +1934,6 @@ class PreviewPane(Surface):
                    view=view, language=language, generation=self._generation,
                    revision_text=text, buffer_text=None if saved else text,
                    note='' if saved else 'Rendered from the editor buffer, not the saved file',
-                   snapshot_template=target.template if view == 'instructor' and not target.is_frozen_alone else None,
                    requested=time.perf_counter(), request=request, remote=True)
         self._remote[request] = job
         return request
@@ -1964,7 +1954,7 @@ class PreviewPane(Surface):
         if request.error is not None:
             job.error = str(request.error)
         else:
-            job.pdf, job.png, job.images, _ = request.result
+            job.pdf, job.png, _, _ = request.result
         job.metrics = dict(request.metrics or {})
         self._on_finished(job)
         job.remote = False
@@ -2011,7 +2001,7 @@ class PreviewPane(Surface):
         return 'displayed'
 
     def publish_refresh(self, target, text, revision, view, language, artifact, generation) -> str:
-        """GUI-thread publication of a saved snapshot refresh, without changing the focus."""
+        """GUI-thread publication of a saved preview refresh, without changing the focus."""
         if self._closed:
             return 'superseded'
         try:
@@ -2024,12 +2014,10 @@ class PreviewPane(Surface):
         # A changed buffer or a later pane render owns the visible page, even if disk is unchanged.
         if matching and (generation != self._generation or (self._buffer() is not None and self._buffer()[0] != text)):
             return 'superseded'
-        pdf, png, images, _ = artifact
+        pdf, png, _, _ = artifact
         pixmap = QPixmap()
         if png is None or not pixmap.loadFromData(png):
             raise RuntimeError('The rendered preview image could not be read')
-        if view == 'instructor' and not target.is_frozen_alone:
-            slide_snapshot.publish_preview(target.context, images, target.bare_id, target.template)
         key = (target.key, view, language)
         self._remember(key, pixmap, png, revision, text)
         if matching:

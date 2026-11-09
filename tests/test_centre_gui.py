@@ -57,7 +57,6 @@ def project(tmp_path, monkeypatch):
     (slides / "bbb-EN-Two-current.tex").write_text(FRAME % "Second now", encoding="utf-8")
     (slides / "bbb-EN-Two-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + FRAME % "Second then", encoding="utf-8")
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     return slides
@@ -89,9 +88,8 @@ def renders(tmp_path, monkeypatch):
             return pdf
         return render
 
-    # Exercise the prepare/publish path; GUI state tests do not need full-HD rasterization.
+    # Exercise preview rasterization; GUI state tests do not need full-HD rasterization.
     monkeypatch.setattr(slide_snapshot, "FULL_SIZE", (160, 90))
-    monkeypatch.setattr(slide_snapshot, "THUMB_SIZE", (80, 45))
     monkeypatch.setattr(preview_target, "render", fake("saved"))
     monkeypatch.setattr(preview_target, "render_text", fake("buffer"))
     monkeypatch.setattr(preview_view.slide_preview, "open_pdf", lambda path: calls.append(("open", path)))

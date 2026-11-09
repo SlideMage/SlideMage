@@ -66,7 +66,7 @@ class PreviewTarget:
     @property
     def is_frozen_alone(self) -> bool:
         """A frozen version shown on its own, not as a deck pins it: it is not what the
-        slide's cached snapshot (the current version, or what the decks typeset) shows."""
+        slide's cached preview (the current version, or what the decks typeset) shows."""
         return self.version is not None and self.preamble_text is None
 
     @property
@@ -127,7 +127,7 @@ def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]
 
 
 def render(target: PreviewTarget, view: str, language: str, *, log,
-           capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False) -> Path:
+           cancel=None, all_steps: bool = False, force_build=False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     `all_steps` keeps every reveal step (page k = step k) whatever the call or the slide restricts.
     A slide that needs its deck (target.needs_context) is typeset in the deck's last compile when there is one, else
@@ -152,7 +152,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
         target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(),
         preamble_text=target.preamble_text, frame_number=target.frame_number,
-        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
+        log=log, steps=target.steps, cancel=cancel,
         all_steps=all_steps, **context,
         **({'force_build': True} if force_build else {}))
 
@@ -160,7 +160,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False, workspace=None,
+    cancel=None, all_steps: bool = False, force_build=False, workspace=None,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -186,7 +186,7 @@ def render_text(
         final=target.macro == "slidefinal" and mode == "slide",
         slide_version=target.version if mode == "slide" else None,
         omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
-        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps,
+        cancel=cancel, all_steps=all_steps,
         workspace=workspace,
         **context,
         **({'force_build': True} if force_build else {}))

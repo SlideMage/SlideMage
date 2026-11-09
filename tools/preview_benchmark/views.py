@@ -123,7 +123,7 @@ def run(output):
     for result in cold:
         spec = result.request
         saved_pdf = preview_target.render(spec.target, spec.view, spec.language,
-            log=lambda _: None, capture_snapshot=False, force_build=True)
+            log=lambda _: None, force_build=True)
         assert preview_raster.sequence(saved_pdf.read_bytes())['signature'] == \
                preview_raster.sequence(result.pdf.read_bytes())['signature']
     records.append(dict(phase='saved-versus-captured-reference', seconds=time.perf_counter()-start,

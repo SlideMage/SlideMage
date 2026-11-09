@@ -103,7 +103,7 @@ def test_the_slide_command_checks_a_draft_of_the_slide_in_view_and_shows_the_fin
     assert env.panel.title.text() == "Readability · abc · Hello" and "Typesetting the slide as a draft" in env.panel.summary.text()
     finished(env)
     (bare_id, text, view, language, kwargs), = env.renders
-    assert (bare_id, view, language, kwargs["capture_snapshot"]) == ("abc", "during-course", "EN", False)
+    assert (bare_id, view, language) == ("abc", "during-course", "EN")
     assert text == env.window.centre.slide_text(env.path)                         # a draft of the Source view's text
     assert env.panel.summary.text() == "1 slide checked · 1 with errors · 0 with warnings."
     texts = labels(env.panel)

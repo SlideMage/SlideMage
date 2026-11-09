@@ -47,7 +47,7 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot, slide_templates
+from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_templates
 from . import citations, diagnostics, render_evidence, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
@@ -845,26 +845,10 @@ def _relocate_pdf_and_finish(
         _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
         return
 
-    # Recorded before the preview refresh below: a generated appendix shows
-    # the cached previews, and the record must describe what this compile
-    # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
         wrapper_path, wrapper_text, compile_started, inventory, configuration = record
         compile_records.write_record(ctx, jobname, build_dir, wrapper_path, wrapper_text,
                                      dest_pdf, compile_started, inventory, configuration, log, deck_path=job.deck.path)
-
-    # Refresh slide snapshots only from this invocation's immutable source,
-    # and only if no newer successful compile has replaced it as current.
-    if (job.version in (None, "instructor") and not job.presenter
-            and _is_latest_output_success(destination_key, generation)):
-        try:
-            template = slide_templates.detect_template(job.deck.preamble_text)
-            n = slide_snapshot.capture_deck(ctx, pdf_source, template)
-            if n:
-                log(f"    (refreshed {n} slide preview snapshot(s), "
-                    f"{slide_templates.TEMPLATES[template]})")
-        except Exception as exc:
-            log(f"    (preview snapshots not updated: {exc})")
 
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""

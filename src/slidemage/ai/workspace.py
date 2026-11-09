@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from .. import background_renders, compiler, batch_render, preview_target, slide_snapshot
+from .. import background_renders, compiler, batch_render, preview_target
 from ..deck_scan import Deck
 from ..project import ProjectContext
 from ..selection import Selection, SelectionError
@@ -131,7 +131,7 @@ class Workspace:
         """Receive batch compiler output; headless callers have no log drawer."""
 
     def publish_preview_result(self, result, ticket) -> str:
-        """Retain completed views and refresh compatible instructor thumbnails."""
+        """Accept only a still-current revision of the source."""
         spec = result.request
         target, revision, options = spec.target, spec.revision, spec.options
         try:
@@ -142,9 +142,6 @@ class Workspace:
             return 'superseded'
         if options.saved and not saved:
             return 'superseded'
-        if (saved and spec.view == 'instructor' and not target.is_frozen_alone
-                and not options.presenter and options.mode == 'slide' and options.overlay is None):
-            slide_snapshot.publish_preview(target.context, result.page_images, target.bare_id, target.template)
         return 'cached'
 
     def prepare_preview_batch(self, path: Path, view='all', *, saved=False, force=False, context=None):
@@ -191,7 +188,6 @@ class Workspace:
                 return 'superseded'
         except OSError:
             return 'superseded'
-        slide_snapshot.publish_preview(self.project, artifact[2], target.bare_id, target.template)
         return 'cached'
 
     def refresh_preview(self, target, view, language, cancel) -> str:
@@ -229,7 +225,7 @@ class Workspace:
 
     def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> batch_render.DeckResult:
         """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the
-        snapshots are written (the Stop of the chat ends it through `cancel`). The window overrides this
+        results are stored (the Stop of the chat ends it through `cancel`). The window overrides this
         to run it on the compile slot, with its job panel; raises RuntimeError when it cannot run."""
         context = self.context()
         requests = batch_render.plan_deck(self.project, deck, scope=scope, selected_view=context.view,

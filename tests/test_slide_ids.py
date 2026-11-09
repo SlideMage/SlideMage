@@ -60,9 +60,6 @@ def rename_project(project, monkeypatch):
     decks.mkdir()
     (decks / "d.tex").write_text("\\slide{2du-EN-Old}\n", encoding="utf-8", newline="")
     (project / "slides" / "2du-EN-Old-current.tex").write_text("old", encoding="utf-8")
-    previews = project / ".previews" / "slide_previews"
-    previews.mkdir(parents=True)
-    (previews / "2du-EN-UniGraz-1920-1080.png").write_bytes(b"png")
     monkeypatch.setattr(processes, "is_git_repo", lambda _root: False)
     monkeypatch.setattr(slide_rename, "regenerate_translation_links", lambda _ctx: None)
     monkeypatch.setattr(deck_headers, "regenerate_headers", lambda _ctx: None)
@@ -76,7 +73,6 @@ def test_rename_to_letter_first_id(ctx, rename_project):
     assert mapping == {"2du-EN-Old": "k7m-EN-Old"}
     assert (rename_project / "slides" / "k7m-EN-Old-current.tex").is_file()
     assert (rename_project / "decks" / "d.tex").read_text(encoding="utf-8") == "\\slide{k7m-EN-Old}\n"
-    assert (rename_project / ".previews" / "slide_previews" / "k7m-EN-UniGraz-1920-1080.png").is_file()
     assert '"k7m"' in (rename_project / "slide_ids.csv").read_text(encoding="utf-8")
 
 
