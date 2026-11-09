@@ -3809,3 +3809,8 @@ v0.14.58 (2026-11-09, direct request: find why the text on slide bij sits too lo
 NEW: Section slides: the text after a section figure starts where it should.
 - A section figure can be written before the text or the agenda without pushing them down.
 - On a section slide with a long list and the figure last, the first line moves down 1.5pt to where the other slides have it.
+
+v0.14.59 (2026-11-09, direct request: the toolbar colours follow the deck theme): The Color menu in the source toolbar now shows the colours of the theme the open deck uses, read from the same template files the render loads. Before, it always showed one fixed list, so on an Innsbruck deck c_primary_highlight was yellow in the menu while the slide rendered it orange. The colours are read when the menu opens, so switching decks or changing the theme in the deck settings shows at once; with no deck open the default render template counts. Names a theme leaves out keep the fixed swatch, and c_custom_brown now appears where a theme defines it.
+
+NEW: Toolbar colour menu shows the deck theme colours.
+- Each swatch has the colour the render gives that name, checked for the two shipped templates.
