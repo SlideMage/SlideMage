@@ -115,10 +115,10 @@ def test_file_changed_during_the_compile_is_not_recorded(compiled):
 
 
 def test_slide_previews_are_kept_not_compared(compiled):
-    """The generated appendix's thumbnails (.previews/) are refreshed after
+    """The generated appendix's thumbnails (the previews folder) are refreshed after
     every instructor compile; the record keeps the ones the compile read."""
     c = compiled
-    preview = write(c["root"] / ".previews" / "slide_previews" / "1aa-EN-SlideMage-304-171.png",
+    preview = write(ProjectContext.at(c["root"]).slide_previews_dir / "1aa-EN-SlideMage-304-171.png",
                     b"thumb v1")
     fls = c["inv"] / "t-Deck-instructor.fls"
     fls.write_text(fls.read_text() + f"INPUT {preview}\n", encoding="utf-8")

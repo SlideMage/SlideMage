@@ -90,7 +90,8 @@ ALWAYS_PROJECT_FILES = (
 # Project folders whose files never belong in a snapshot even if a compile
 # reads them (build output, caches, other snapshots).
 # (.previews: the slide previews a generated appendix shows are copied per
-# version instead, see copy_job_previews().)
+# version instead, see copy_job_previews(). In the project they are in the user's cache folder
+# (ctx.previews_dir); inside a snapshot they keep the name .previews/<jobname>/.)
 EXCLUDED_PROJECT_DIRS = (".build", ".previews", ".git", SNAPSHOTS_DIRNAME, ".slidemage")
 PREVIEWS_DIRNAME = ".previews"
 ISOLATING_ENV_VARS = project.SNAPSHOT_ISOLATING_ENV_VARS
@@ -466,11 +467,16 @@ class _Collected:
     warnings: list[str]
 
 
+def _previews_dir(project_root: Path) -> Path:
+    """Where the project's slide previews are (the user's cache folder, not the project)."""
+    return project.ProjectContext.at(project_root).previews_dir
+
+
 def classify_input(path: Path, *, project_root: Path, framework_dir: Optional[Path],
                    build_dirs: Iterable[Path], roots: Iterable[Path]) -> str:
-    """"build" (the compile's own aux/output), "framework", "project", "tex"
-    (the TeX distribution) or "external" (anything else -- not allowed)."""
-    if any(is_within(path, b) for b in build_dirs):
+    """"build" (the compile's own aux/output, and the slide previews: copy_job_previews() takes those),
+    "framework", "project", "tex" (the TeX distribution) or "external" (anything else -- not allowed)."""
+    if any(is_within(path, b) for b in build_dirs) or is_within(path, _previews_dir(project_root)):
         return "build"
     if framework_dir is not None and is_within(path, framework_dir):
         return "framework"
@@ -554,6 +560,10 @@ def relative_wrapper(text: str, project_root: Path, jobname: Optional[str] = Non
     so the snapshot reads its own copies (the decks' graphicspath has ../);
     with `jobname`, the previews point into that version's own folder
     (job_previews_rel())."""
+    # The previews live in the cache folder: name them as the snapshot holds them, under .previews/.
+    previews = _previews_dir(project_root)
+    for folder in {previews.as_posix(), previews.resolve().as_posix()}:
+        text = text.replace(folder.rstrip("/") + "/", f"{PREVIEWS_DIRNAME}/")
     for root in {project_root.as_posix(), project_root.resolve().as_posix()}:
         text = text.replace(root.rstrip("/") + "/", "")
     if jobname:
@@ -575,12 +585,11 @@ def copy_job_previews(out: "_JobOutput", jobname: str, project_root: Path,
     copies, else the current files) into the snapshot's per-version folder.
     Returns how many."""
     copied = 0
+    previews = _previews_dir(project_root)
     for path in out.inputs:
-        if not is_within(path, project_root):
+        if not is_within(path, previews):
             continue
-        rel = _rel(path.resolve(), project_root.resolve())
-        if not rel.startswith(f"{PREVIEWS_DIRNAME}/"):
-            continue
+        rel = f"{PREVIEWS_DIRNAME}/{_rel(path.resolve(), previews.resolve())}"
         source = out.copies.get(_norm(path), path)
         if not source.is_file():
             continue

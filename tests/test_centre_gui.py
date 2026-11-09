@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from slidemage import alt_images, app_settings, deck_outline, open_path, preview_target, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
+from slidemage.project import ProjectContext
 from slidemage.ui.dialogs import transcript_preview
 from slidemage.ui import layout_settings
 from slidemage.ui.kit.theme import ThemeManager
@@ -59,7 +60,7 @@ def project(tmp_path, monkeypatch):
     (slides / "bbb-EN-Two-current.tex").write_text(FRAME % "Second now", encoding="utf-8")
     (slides / "bbb-EN-Two-v1-0-0.tex").write_text("\\setSlideVersion{1-0-0}\n" + FRAME % "Second then", encoding="utf-8")
     (slides / "ccc-DE-Drei-current.tex").write_text(FRAME % "Dritte", encoding="utf-8")
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
+    ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
     monkeypatch.setattr(alt_images, "load_slide_notes", lambda _ctx: {})
     monkeypatch.setattr(slide_templates, "render_template", lambda root=None: "acme")
     return slides

@@ -43,7 +43,7 @@ KIND_FRAMEWORK = "framework"    # under a LaTeX framework folder (slide_template
 KIND_ALT_TEXT = "alt-text"      # a project alt-text file: the hash of its rows for the render's pictures (v8.69.0)
 KIND_MISSING_INPUT = "missing-input"   # a failed run's missing file: retry when it appears in a search folder
 
-_SKIPPED_PARTS = ("luatex-cache", ".build", ".previews", "slidemage_preview_", "_slidemage_")
+_SKIPPED_PARTS = ("luatex-cache", ".build", "slidemage_preview_", "_slidemage_")
 EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
 
 
@@ -60,7 +60,7 @@ def unit_inputs(ctx: ProjectContext, paths, source_path: Path, text: Optional[st
     kept, maybe = [], []
     for path in paths:
         key = norm(path)
-        if any(part in key for part in _SKIPPED_PARTS):
+        if any(part in key for part in _SKIPPED_PARTS) or compile_records.is_within(path, ctx.previews_dir):
             continue
         if compile_records.is_within(path, slides):
             if key == norm(source_path):
@@ -204,7 +204,7 @@ class Resolver:
         for name in inputs:
             path = Path(name)
             key = norm(path)
-            if key in seen or any(part in key for part in _SKIPPED_PARTS):
+            if key in seen or any(part in key for part in _SKIPPED_PARTS) or compile_records.is_within(path, self.ctx.previews_dir):
                 continue
             seen.add(key)
             where = self._relative(path)
