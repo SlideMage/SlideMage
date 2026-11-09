@@ -28,7 +28,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compiler, compile_records, deck_language, render_evidence, slide_templates
+from . import citations, compiler, compile_records, deck_language, render_evidence, slide_templates
 from .dep_hash import HashCache, norm
 from .fileio import text_sha256
 from .preview_target import PreviewTarget
@@ -269,7 +269,8 @@ class Resolver:
 
     def missing_input_entry(self, name: str) -> list:
         """Remember even a dependency TeX could not read, so restoring it invalidates a stored failure."""
-        paths = {folder / name for folder in [self.ctx.decks_dir, *slide_templates.template_dirs(self.ctx.root)]}
+        paths = {folder / name for folder in [self.ctx.decks_dir, *slide_templates.template_dirs(self.ctx.root),
+                                            *citations.citation_dirs()]}
         state = [[str(path), self.hashes.hash(path)] for path in sorted(paths)]
         return [KIND_MISSING_INPUT, name, _json_hash(state)]
 

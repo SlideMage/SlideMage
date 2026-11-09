@@ -148,7 +148,7 @@ Run: the full suite and ruff. Report the net lines removed (src and tests) and e
 | 1.3 | Scoped, cached file inventory and the probe test | sol high | done | 12840dd0 | +61 / +122 | Probe counts corrected (4 IfFileExists, 3 io.open active). Not wired yet. |
 | 1.4 | One object per key, same-label cleanup, schema bump | sol high + 1 fix round | done | 7dbfc527 | -53 / -103 | First start re-renders (STORE_FORMAT 2 via SQLite user_version; old rows, failures, filehash dropped). Reveal reader no longer capped at 60 pages. Fix round: readers validate outside the store lock. |
 | 1.5 | Publication guard for every producer | sol high + orchestrator fix | done | 46a08a46 | 25 / -23 | All puts via _store_render → Resolver.publishable. Fast key holds configuration_state; orchestrator removed PATH from it (terminal vs desktop start would re-render all). tex_current now content states (FileStates memo). Compile import off until 1.6. |
-| 1.6 | Compile import under the publication rule | hard | open | | | |
+| 1.6 | Compile import under the publication rule | sol high + 1 fix round | done | 7994af31 | 16 / 41 | Record format 2 (inventory, float start, text_sha256 per typeset slide). Per-slide sha256 check of its inputs (fix round: was deck-wide). Repeated slide ids skipped. |
 | 1.7 | Failure bookkeeping kept and widened | routine | open | | | |
 | 1.R | Stage 1 review and full suite | reviewer | open | | | |
 | 1.S | Stage 1 simplify pass | routine | open | | | |
