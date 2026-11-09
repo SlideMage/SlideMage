@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import batch_render, deck_editor, preview_target, slide_preview, slide_snapshot
+from slidemage import batch_render, deck_editor, preview_target, slide_preview
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
@@ -63,12 +63,11 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
 
 
 def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_snapshots(
-    tmp_path, monkeypatch, renders,
+    tmp_path, renders,
 ):
     ctx = ProjectContext.at(tmp_path)
     slides = tmp_path / "slides"
     slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     current = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
     frozen = preview_target.for_path(ctx, slides / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
@@ -77,32 +76,11 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     assert frozen.source_path == slides / "abc-EN-Demo-v1-0-0.tex"
     assert preview_target.for_path(ctx, slides / "deck.tex") is None
     assert frozen.is_frozen_alone
-    slide_snapshot.snapshot_path(ctx, "abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
-    assert preview_target.cached_image(frozen) is None
     preview_target.render(frozen, "instructor", "EN", log=print)
     assert renders[0][2]["capture_snapshot"] is False
     # a deck that pins the version does show it, so the snapshot is its to refresh
     _, pinned = target_of("\\slideversion{abc-EN-Demo}{1-0-0}\n")
     assert not pinned.is_frozen_alone
-
-
-def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, monkeypatch):
-    import os
-
-    ctx = ProjectContext.at(tmp_path)
-    slides = tmp_path / "slides"
-    slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
-    target = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
-    assert preview_target.cached_image(target) is None
-    source = slides / "abc-EN-Demo-current.tex"
-    source.write_text("x", encoding="utf-8")
-    png = slide_snapshot.snapshot_path(ctx, "abc", target.template, slide_snapshot.FULL_SIZE)
-    png.write_bytes(b"png")
-    os.utime(png, (1, source.stat().st_mtime + 10))
-    assert preview_target.cached_image(target) == (png, True)
-    os.utime(png, (1, source.stat().st_mtime - 10))
-    assert preview_target.cached_image(target) == (png, False)
 
 
 def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_path):

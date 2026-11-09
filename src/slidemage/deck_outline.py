@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 
-from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language, slide_snapshot, slide_templates
+from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -101,11 +101,9 @@ def slide_file_title(ctx: ProjectContext, path: Path, id_slug: str) -> str:
     return _title(ctx, path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "", id_slug)
 
 
-def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, position: int, template: str, view: str, language: str,
+def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, position: int, view: str, language: str,
          links: slide_language.TranslationLinks, unreviewed_paths: set[str]) -> SlideRow:
     call = slot.call
-    path = ctx.slides_dir / call.source_filename
-    png = slide_snapshot.snapshot_path(ctx, call.id, template, slide_snapshot.THUMB_SIZE, call.id_slug)
     badge = slide_language.badge_for(ctx, call.id_slug, links=links)
     lint_error, title = _source_facts(ctx, call)
     return SlideRow(
@@ -114,9 +112,9 @@ def _row(ctx: ProjectContext, slot: deck_language.SlideSlot, key: tuple, positio
         position=position,
         title=title,
         badge=badge.text(),
-        thumbnail=png if png.is_file() else None,
+        thumbnail=None,
         lint_error=lint_error,
-        stale_preview=png.is_file() and _older(png, path),
+        stale_preview=False,
         hidden=not call.included_in(view),
         missing_translation=badge.own not in (None, slide_language.MULT) and badge.own != language,
         original_call=slot.original,
@@ -163,12 +161,11 @@ def resolve_slots(ctx: ProjectContext, deck: Deck, view: str, language: str, *,
 
 def _sections(ctx: ProjectContext, deck: Deck, view: str, language: str, resolved: tuple[ResolvedSlot, ...],
               links: slide_language.TranslationLinks) -> list[SectionRow]:
-    template = slide_templates.detect_template(deck.preamble_text)
     by_section: dict[Optional[int], list[SlideRow]] = {None: []}
     unreviewed_paths = set(ai_review.unreviewed(ctx))
     for slot in resolved:
         call = slot.slot.original
-        row = _row(ctx, slot.slot, slot.key, slot.position, template, view, language, links, unreviewed_paths)
+        row = _row(ctx, slot.slot, slot.key, slot.position, view, language, links, unreviewed_paths)
         by_section.setdefault(call.chapter.start if call.chapter else None, []).append(
             replace(row, frame_number=slot.frame_number))
     sections = [SectionRow(None, UNSECTIONED, False, by_section[None])] if by_section[None] else []
@@ -249,22 +246,14 @@ def slide_row(ctx: ProjectContext, deck: Deck, slide_id: str, view: str, languag
     (or, when `outline` describes this deck, view and language, without resolving anything)."""
     if outline is not None and outline.matches(ctx, deck, language, view):
         return outline.row(slide_id, occurrence_key)
-    template = slide_templates.detect_template(deck.preamble_text)
     links = slide_language.links_for(ctx)
     unreviewed_paths = set(ai_review.unreviewed(ctx))
     matches = [r for r in resolve_slots(ctx, deck, view, language, links=links) if r.slot.matches(slide_id)]
     selected = next((r for r in matches if r.key == occurrence_key), matches[0] if matches else None)
     if selected is not None:
-        return replace(_row(ctx, selected.slot, selected.key, selected.position, template, view, language,
+        return replace(_row(ctx, selected.slot, selected.key, selected.position, view, language,
                             links, unreviewed_paths), frame_number=selected.frame_number)
     return None
-
-
-def _older(png: Path, source: Path) -> bool:
-    try:
-        return png.stat().st_mtime < source.stat().st_mtime
-    except OSError:
-        return False
 
 
 def ordered_items(outline: list[SectionRow]) -> list[Chapter | SlideRow]:

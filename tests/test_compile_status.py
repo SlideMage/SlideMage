@@ -148,7 +148,7 @@ def test_run_jobs_leaves_out_the_jobs_taken_out_of_the_queue(ctx, monkeypatch):
                 uses_biblatex=False, preamble_end=0, chapters=[], output_folders={})
     jobs = [compiler.CompileJob(deck, v, None) for v in ("instructor", "during-course", "after-course")]
     ran: list[str] = []
-    monkeypatch.setattr(compiler, "run_job", lambda ctx, job, log, cancel=None, dest_override=None: ran.append(job.jobname) or True)
+    monkeypatch.setattr(compiler, "run_job", lambda ctx, job, log, cancel=None, dest_override=None, **kwargs: ran.append(job.jobname) or True)
     token, log = compiler.CancelToken(), []
     token.skip("d-during-course")
     results = compiler.run_jobs(ctx, jobs, log.append, cancel=token)

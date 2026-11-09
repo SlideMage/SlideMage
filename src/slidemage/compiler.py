@@ -641,7 +641,7 @@ def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_lin
     return lines
 
 
-def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
+def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None) -> str:
     from . import deck_language
     lines = override_lines(ctx, job, appendix_link=job._appendix_applies)
     language = deck_language.language_for_job(job)
@@ -674,7 +674,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         lines.append(preamble)
         lines.append(body_without_end)
         lines.append(appendix_toc.generate_appendix_tex(
-            ctx, resolved_deck, template, job.version or "instructor"))
+            ctx, resolved_deck, template, job.version or "instructor", resolver=resolver, language=language))
         lines.append("\\end{document}")
     elif language_lines or resolved != job.deck.text:
         lines.append(preamble)
@@ -903,6 +903,7 @@ def run_job(
     ctx: project.ProjectContext, job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None,
     dest_override: Optional[tuple[Path, str]] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
+    *, resolver=None,
 ) -> bool:
     """Compile one job and background publication of its invocation PDF.
 
@@ -929,7 +930,7 @@ def run_job(
 
     log(compile_log.compiling(job.deck.name, jobname))
     try:
-        wrapper = wrapper_text(ctx, job)
+        wrapper = wrapper_text(ctx, job, resolver=resolver)
         with wrapper_file(wrapper_path, wrapper):
             ctx.build_dir.mkdir(parents=True, exist_ok=True)
             build_dir.mkdir(parents=True, exist_ok=False)
@@ -1044,7 +1045,7 @@ def _disambiguated_destinations(
 
 
 def unchanged_jobs(
-    ctx: project.ProjectContext, jobs: list[CompileJob], destinations: dict[str, Path]
+    ctx: project.ProjectContext, jobs: list[CompileJob], destinations: dict[str, Path], *, resolver=None
 ) -> list[tuple[CompileJob, str]]:
     """The whole-deck jobs whose last compile is still current
     (compile_records.py: nothing it read changed, same settings, the PDF
@@ -1056,7 +1057,7 @@ def unchanged_jobs(
     for job in jobs:
         if job.chapter is not None or job.pages or job.jobname not in destinations:
             continue
-        fresh, _why = compile_records.fresh_output(ctx.build_dir, job.jobname, wrapper_text(ctx, job))
+        fresh, _why = compile_records.fresh_output(ctx.build_dir, job.jobname, wrapper_text(ctx, job, resolver=resolver))
         if fresh is not None and (compile_records.norm(fresh.pdf)
                                   == compile_records.norm(destinations[job.jobname])):
             unchanged.append((job, fresh.created))
@@ -1110,7 +1111,8 @@ def build_jobs(deck: Deck, kind: str, pages: Optional[list[int]] = None) -> list
 
 
 def run_jobs(
-    ctx: project.ProjectContext, jobs: list[CompileJob], log: LogCallback, cancel: Optional[CancelToken] = None
+    ctx: project.ProjectContext, jobs: list[CompileJob], log: LogCallback, cancel: Optional[CancelToken] = None,
+    *, resolver=None,
 ) -> dict[str, bool]:
     """Run every job in order; one failure doesn't stop the rest. Returns
     {jobname: success} for a summary. If `cancel` is set partway through
@@ -1129,6 +1131,6 @@ def run_jobs(
             log(compile_log.skipped(job.jobname))
             continue
         results[job.jobname] = run_job(
-            ctx, job, log, cancel=cancel, dest_override=destinations[id(job)]
+            ctx, job, log, cancel=cancel, dest_override=destinations[id(job)], resolver=resolver
         )
     return results

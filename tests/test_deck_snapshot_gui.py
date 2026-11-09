@@ -75,7 +75,7 @@ def test_unchanged_versions_are_compiled_only_after_asking(ctx, qapp, monkeypatc
     names = ["t-A-instructor", "t-A-during-course"] if button else ["t-A-instructor"]
     jobs = [SimpleNamespace(jobname=name) for name in names]
     monkeypatch.setattr(compile_actions.compiler, "unchanged_jobs",
-                        lambda ctx, jobs, dests: [(jobs[0], "2026-10-08T07:51:00+02:00")] if button else [])
+                        lambda ctx, jobs, dests, **kwargs: [(jobs[0], "2026-10-08T07:51:00+02:00")] if button else [])
     seen: list = []
     if button:
         press_on_exec(monkeypatch, button, seen)
@@ -84,6 +84,8 @@ def test_unchanged_versions_are_compiled_only_after_asking(ctx, qapp, monkeypatc
     win = QWidget()
     win.log = lambda line: None
     win.project = None
+    win.centre = SimpleNamespace(preview=SimpleNamespace(_renders=SimpleNamespace(
+        _renderer=lambda _ctx: SimpleNamespace(resolver=None))))
     result = compile_actions._confirm_unchanged_jobs(win, jobs, {})
     assert [j.jobname for j in result] == expected
     if button:
@@ -168,6 +170,9 @@ def run_window(monkeypatch, settings, running=False, ctx=EXAMPLE_PROJECT):
     started: list = []
     win = SimpleNamespace(
         project=ctx,
+        centre=SimpleNamespace(source=SimpleNamespace(flush_all=lambda: None),
+                               preview=SimpleNamespace(_renders=SimpleNamespace(
+            _renderer=lambda _ctx: SimpleNamespace(resolver=None)))),
         build_options=SimpleNamespace(
             appendix_toc_checkbox=SimpleNamespace(isChecked=lambda: False)),
         compile=SimpleNamespace(running=running, start=lambda *args, **kwargs: started.append((args, kwargs))))
@@ -184,7 +189,7 @@ def test_run_asks_about_old_snapshots_and_passes_the_answer_on(qapp, monkeypatch
                         lambda parent, existing: snapshot_sheets.DELETE_OLD)
     seen = {}
 
-    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None, ctx=None):
+    def fake_snapshot_decks(decks, options, log, cancel=None, delete_old=None, ctx=None, resolver=None):
         seen.update(decks=[d.name for d in decks], options=options, delete_old=delete_old)
         return [SnapshotResult(d.name, ok=True, path=tmp_path / d.name) for d in decks]
 

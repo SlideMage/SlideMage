@@ -95,10 +95,10 @@ def test_stale_when_settings_or_engine_change(compiled, monkeypatch):
 
 
 def test_slide_previews_are_kept_not_compared(compiled):
-    """The generated appendix's thumbnails (.previews/) are refreshed after
+    """The generated appendix's thumbnails (.build/appendix-thumbs/) are refreshed after
     every instructor compile; the record keeps the ones the compile read."""
     c = compiled
-    preview = write(c["root"] / ".previews" / "slide_previews" / "1aa-EN-SlideMage-304-171.png",
+    preview = write(c["root"] / ".build" / "appendix-thumbs" / "slidemage" / "1aa-EN-SlideMage-304-171.png",
                     b"thumb v1")
     fls = c["inv"] / "t-Deck-instructor.fls"
     fls.write_text(fls.read_text() + f"INPUT {preview}\n", encoding="utf-8")

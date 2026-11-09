@@ -402,21 +402,6 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
                                              **build_options) if reuse_build
                 else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
     if snapshot_template is not None:
-        # bare id, not the full id_slug -- capture_deck() (the "Update
-        # previews"/full-compile path) always keys a snapshot by the
-        # bare id it parses straight out of the compiled page's own
-        # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
-        # derives from everything before the *first* "-"). Passing the
-        # full id_slug here instead produced e.g.
-        # "kcc-Reasons-Repurchases-<Template>-1920-1080.png" alongside the
-        # correct "kcc-<Template>-1920-1080.png" a full compile would
-        # cache -- two different files for the same slide, one of them
-        # never found by any lookup (snapshot_path()/is_fresh() only
-        # ever look up the bare id) and therefore silently dead weight.
-        # Root-caused 2026-08-17 (direct instruction: "some slides have
-        # now turned up with full slugs instead of the typical
-        # nomenclature") from every "Preview -> Render now" render,
-        # not just this project's own recently-touched slides.
         try:
             slide_snapshot.capture_single_slide(
                 ctx, dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
@@ -631,22 +616,7 @@ def render_slide_text_to_pdf(
     "instructor" whenever "Presenter" is picked), this flag is what
     actually switches on the dual-screen layout.
 
-    Also refreshes this slide's compile-time PNG snapshot (2026-08-31,
-    direct report: "Render to PDF" succeeded but "Preview" then said no
-    preview had been generated yet) -- this function used to call
-    compile_and_extract() without a `snapshot_template`, so it silently
-    skipped the capture_single_slide() side effect that
-    render_slide_to_pdf() above already documents and performs; the
-    Preview (preview_target.cached_image()) reads
-    exactly that cached PNG, so it never found one. Same
-    instructor-version-only guard as render_slide_to_pdf(), for the same
-    reason: an explicit during-course/after-course request is a
-    deliberate look at a *partial* version, and must never overwrite the
-    canonical (fullest-content) snapshot with it -- a presenter render
-    is excluded from caching too, same reasoning as compiler.py's own
-    skip-normal-PDF-handling branch for it (its page count/per-page
-    layout is nothing like a normal compile's, so reading it the normal
-    way would corrupt the snapshot cache)."""
+    Also refreshes the legacy Instructor snapshot for whole-slide renders."""
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     if overlay is not None and preview_mode == "element":

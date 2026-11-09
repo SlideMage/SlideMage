@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from slidemage import deck_outline, slide_language, slide_snapshot, slide_templates
+from slidemage import deck_outline, slide_language
 from slidemage.deck_scan import Deck, parse_chapters
 
 GOOD = "\\begin{standardframe}{Title}Text\\end{standardframe}\n"
@@ -15,11 +15,10 @@ BROKEN = "\\begin{standardframe}{Title}{Text\\end{standardframe}\n"   # an unclo
 
 
 @pytest.fixture
-def project(tmp_path, monkeypatch):
-    """An empty slides/ folder and preview cache the outline looks at."""
+def project(tmp_path):
+    """An empty slides/ folder."""
     slides = tmp_path / "slides"
     slides.mkdir()
-    (tmp_path / ".previews" / "slide_previews").mkdir(parents=True)
     deck_outline.forget_lint()
     return slides
 
@@ -83,20 +82,6 @@ def test_lint_errors_are_found_and_remembered_until_the_file_changes(ctx, tmp_pa
     os.utime(project / "bbb-EN-Broken-current.tex", (1, 4_000_000_000))
     assert errors() == [False, False, True]
     assert linted[2:] == ["bbb-EN-Broken-current.tex"]
-
-
-def test_a_preview_older_than_its_source_is_stale_and_none_is_just_missing(ctx, tmp_path, project):
-    for name in ("aaa-EN-Fresh", "bbb-EN-Stale", "ccc-EN-NoPreview"):
-        slide(project, name)
-    deck = make_deck(tmp_path, "\\slide{aaa-EN-Fresh}\n\\slide{bbb-EN-Stale}\n\\slide{ccc-EN-NoPreview}\n")
-    template = slide_templates.detect_template(deck.preamble_text)
-    for slide_id, mtime in (("aaa", 4_000_000_000), ("bbb", 1)):
-        png = slide_snapshot.snapshot_path(ctx, slide_id, template, slide_snapshot.THUMB_SIZE, f"{slide_id}-EN-X")
-        png.write_bytes(b"png")
-        os.utime(png, (mtime, mtime))
-    fresh, stale, none = rows_of(deck_outline.build_outline(ctx, deck, "instructor", "EN"))
-    assert (fresh.stale_preview, stale.stale_preview, none.stale_preview) == (False, True, False)
-    assert fresh.thumbnail is not None and none.thumbnail is None
 
 
 def test_hidden_slides_follow_the_view(ctx, tmp_path, project):

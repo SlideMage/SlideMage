@@ -14,12 +14,13 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from slidemage.project import ProjectContext
-from slidemage import ai_review, deck_editor, deck_scan, slide_add
+from slidemage import ai_review, deck_editor, deck_scan, preview_requests, slide_add
 from slidemage.ai import resolver
 from slidemage.ai.ai_profile import Route, TRANSLATION
 from slidemage.ai.providers import Cancelled, ChatReply
 from slidemage.ui.dialogs import add_slide
 from slidemage.ui.dialogs.add_slide import AddSlideSheet
+from slidemage.ui.workspace.state import WorkspaceState
 
 from conftest import use_new_slide_files, wait_until
 
@@ -35,7 +36,9 @@ class FakeWindow(QWidget):
         self.project = project
         self.dirty: set = set()
         self.edits, self.opened, self.slots = [], [], []
-        self.centre = SimpleNamespace(unsaved=lambda path: path in self.dirty)
+        self.centre = SimpleNamespace(unsaved=lambda path: path in self.dirty,
+                                      preview=SimpleNamespace(_renders=preview_requests.RenderService()))
+        self.state = WorkspaceState(project, self)
 
     def after_deck_edit(self, path, summary, previous_text=None):
         self.edits.append((path, summary, previous_text))
@@ -105,6 +108,7 @@ def make(project, qapp):
     yield make
     for window, sheet in keep:
         sheet.close()
+        window.centre.preview._renders.close()
         window.deleteLater()
         sheet.deleteLater()
     QCoreApplication.sendPostedEvents(None, 0)
@@ -176,8 +180,28 @@ def test_the_gallery_lists_the_frames_and_warns_about_pictures(make):
 # -- Existing ----------------------------------------------------------------------------------
 
 def test_an_existing_slide_is_found_by_id_or_title_and_added_live(make, project):
+    from io import BytesIO
+    from PIL import Image
+    from slidemage import preview_target, render_key
+    from slidemage.fileio import text_sha256
+
     sheet, window = make(source="existing")
     assert sheet.picker.label.text() == "Slide" and sheet.listbox.count() == 3 and not sheet.ok.isEnabled()
+    assert all(sheet.listbox.item(i).icon().isNull() for i in range(sheet.listbox.count()))
+    renderer = window.centre.preview._renders._renderer(window.project)
+    target = preview_target.for_path(window.project, project.slides / "xyz-EN-Other-current.tex")
+    unit = render_key.unit_for(target, "instructor", "EN")
+    pdf = project.slides.parent / "reference.pdf"
+    pdf.write_bytes(b"%PDF reference")
+    pixels = BytesIO()
+    Image.new("RGB", (1920, 1080), "red").save(pixels, format="PNG")
+    renderer.store.put("reference", "background", pdf, [pixels.getvalue()],
+                       dict(unit=unit.label, template=unit.template, inventory=[],
+                            manifest=[["project", "slides/xyz-EN-Other-current.tex", text_sha256(target.source_path.read_text())]]))
+    sheet._fill_list()
+    sheet._select("xyz-EN-Other")
+    assert not sheet.listbox.currentItem().icon().isNull()
+    assert "Instructor reference" in sheet.listbox.currentItem().toolTip()
     sheet.search.setText("dritt")
     assert sheet.listbox.count() == 1
     sheet.search.setText("XYZ")

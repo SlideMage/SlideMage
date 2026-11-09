@@ -7,9 +7,7 @@ A target is the \\slide{}-family call plus the deck context the render needs
 (the deck's preamble, so theme and footer match, and the slide's frame number).
 A slide that is not in the open deck, or a frozen version opened by itself,
 renders alone under the default template. Rendering goes through
-slide_preview (reusable latexmk builds, see preview_build.py); a render
-of the instructor view also refreshes the slide's cached snapshot, which is
-what the Preview shows without compiling anything.
+slide_preview (reusable latexmk builds, see preview_build.py).
 """
 from __future__ import annotations
 
@@ -17,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_snapshot, slide_templates
+from . import deck_context, project, slide_language, slide_preview, slide_templates
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
 from .fileio import text_sha256
@@ -126,19 +124,6 @@ def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]
     except ValueError:
         return None
     return PreviewTarget(ctx, macro, id_slug, version, None, None, None, None)
-
-
-def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
-    """The slide's cached snapshot (strictly in the target's template) and
-    whether it is at least as new as the slide's source; None if none was
-    captured yet. Only the instructor view is cached, and not for a frozen version
-    shown on its own."""
-    if target.is_frozen_alone:
-        return None
-    png = slide_snapshot.snapshot_path(target.context, target.bare_id, target.template, slide_snapshot.FULL_SIZE)
-    if not png.is_file():
-        return None
-    return png, slide_snapshot.is_fresh(target.context, target.bare_id, target.source_path, target.template)
 
 
 def render(target: PreviewTarget, view: str, language: str, *, log,

@@ -262,7 +262,7 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     """The instructor compile reads the previews from before its own refresh,
     the versions compiled after it the refreshed ones: one snapshot holds both."""
     root, target = tmp_path / "Proj", tmp_path / "snap" / "Proj"
-    preview = write(root / ".previews" / "slide_previews" / "1aa-304-171.png", b"refreshed")
+    preview = write(root / ".build" / "appendix-thumbs" / "slidemage" / "1aa-304-171.png", b"refreshed")
     kept = write(tmp_path / "kept" / "0-1aa-304-171.png", b"as the instructor compile read it")
 
     def out(copies):
@@ -272,19 +272,19 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     assert deck_snapshot.copy_job_previews(
         out({deck_snapshot._norm(preview): kept}), "t-instructor", root, target) == 1
     assert deck_snapshot.copy_job_previews(out({}), "t-after-course", root, target) == 1
-    base = target / ".previews"
-    assert (base / "t-instructor" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+    base = target / ".build" / "appendix-thumbs"
+    assert (base / "t-instructor" / "slidemage" / "1aa-304-171.png").read_bytes() \
         == b"as the instructor compile read it"
-    assert (base / "t-after-course" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+    assert (base / "t-after-course" / "slidemage" / "1aa-304-171.png").read_bytes() \
         == b"refreshed"
-    wrapper = f"\\includegraphics{{{root.as_posix()}/.previews/slide_previews/1aa-304-171.png}}"
+    wrapper = f"\\includegraphics{{{root.as_posix()}/.build/appendix-thumbs/slidemage/1aa-304-171.png}}"
     assert deck_snapshot.relative_wrapper(wrapper, root, "t-instructor") == (
-        "\\includegraphics{.previews/t-instructor/slide_previews/1aa-304-171.png}")
+        "\\includegraphics{.build/appendix-thumbs/t-instructor/slidemage/1aa-304-171.png}")
 
-    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.previews/slide_previews/x.png}}\n"
+    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.build/appendix-thumbs/slidemage/x.png}}\n"
             "\\input{t-Deck.tex}\n")
     assert deck_snapshot.relative_wrapper(text, root) == (
-        "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
+        "\\includegraphics[width=1cm]{.build/appendix-thumbs/slidemage/x.png}\n\\input{t-Deck.tex}\n")
 
 
 def test_root_of_prefers_the_deepest_root(tmp_path):

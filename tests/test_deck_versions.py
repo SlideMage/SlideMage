@@ -86,7 +86,7 @@ def test_full_and_partial_wrappers_keep_the_same_override_header(ctx, tmp_path, 
     deck = next(d for d in deck_scan.scan_decks(ctx) if d.name == "talk")
     job = compiler.CompileJob(deck, version, None, **overrides)
     plan = partial_compile.PartialPlan(ctx, job, [], [], [], tmp_path / "full.pdf", tmp_path / "aux", {})
-    monkeypatch.setattr(compiler.appendix_toc, "generate_appendix_tex", lambda *_: "GENERATED APPENDIX")
+    monkeypatch.setattr(compiler.appendix_toc, "generate_appendix_tex", lambda *_, **kwargs: "GENERATED APPENDIX")
     full, partial = compiler.wrapper_text(ctx, job), partial_compile.wrapper_text(plan)
     assert full.partition(r"\documentclass")[0] == partial.partition(r"\documentclass")[0] == header
     assert ("GENERATED APPENDIX" in full) == job.appendix_toc

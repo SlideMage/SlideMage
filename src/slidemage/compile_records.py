@@ -71,7 +71,6 @@ _SKIPPED_INPUT_PARTS = ("luatex-cache",)
 # Files derived from the deck's own slides (the slide previews a generated
 # appendix shows): copied into the record (DERIVED_DIRNAME) as read, not
 # compared -- they change with every compile of a slide that shows a time.
-_DERIVED_INPUT_PARTS = (".previews",)
 DERIVED_DIRNAME = "derived"
 
 
@@ -263,7 +262,7 @@ def write_record(
             seen.add(key)
             if any(part in key for part in _SKIPPED_INPUT_PARTS) or not path.is_file():
                 continue
-            if any(part in Path(key).parts for part in _DERIVED_INPUT_PARTS):
+            if is_within(path, ctx.build_dir / "appendix-thumbs"):
                 # A slide preview (the generated appendix's thumbnails): kept as
                 # this compile read it, never a reason to call the PDF stale.
                 copy = Path(DERIVED_DIRNAME) / f"{len(entries)}-{path.name}"
