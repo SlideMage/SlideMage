@@ -93,11 +93,11 @@ def _no_scrolling(monkeypatch):
 @pytest.fixture(autouse=True)
 def _fresh_tool_lookups():
     """The preview remembers where `which` found the TeX tools; a test that patches `which` or PATH starts and leaves it empty."""
-    from slidemage import preview_cache
+    from slidemage import render_evidence
 
-    preview_cache._TOOLS.clear()
+    render_evidence._TOOLS.clear()
     yield
-    preview_cache._TOOLS.clear()
+    render_evidence._TOOLS.clear()
 
 
 @pytest.fixture(autouse=True)

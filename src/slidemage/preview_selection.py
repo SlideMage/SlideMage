@@ -12,7 +12,7 @@ import hashlib
 from pathlib import Path
 import time
 
-from . import preview_cache, slide_snapshot
+from . import preview_cache, render_evidence, slide_snapshot
 from .preview_requests import PreviewRequest, cache_identity, image_group
 
 _transient_pdfs: dict[tuple[str, str, str], Path] = {}
@@ -57,7 +57,7 @@ def remember_transient(spec: PreviewRequest, png: bytes | None, pdf: Path | None
     identity = cache_identity(spec)
     cache.remember_transient(identity, png, spec.view, observed_at=observed_at)
     if pdf is not None:
-        context = preview_cache.digest(cache.display_context(identity))
+        context = render_evidence.digest(cache.display_context(identity))
         checksum = hashlib.sha256(png).hexdigest()
         _transient_pdfs[(str(cache.project_root), context, checksum)] = pdf
         while len(_transient_pdfs) > 64:
@@ -126,7 +126,7 @@ def select_image(cache: preview_cache.PreviewCache, specs: tuple[PreviewRequest,
                        image.stem if thumbnail else hashlib.sha256(image).hexdigest())
         pdf = artifact.pdf if artifact is not None and not thumbnail and representative_view == spec.view else None
         if transient and not thumbnail and representative_view == spec.view:
-            key = (str(cache.project_root), preview_cache.digest(cache.display_context(cache_identity(spec))), artifact_id)
+            key = (str(cache.project_root), render_evidence.digest(cache.display_context(cache_identity(spec))), artifact_id)
             candidate = _transient_pdfs.get(key)
             pdf = candidate if candidate is not None and candidate.is_file() else None
         return SelectedImage('previous', image, spec, artifact_id, representative_view, pdf,
@@ -147,7 +147,7 @@ def validate_captured(specs: tuple[PreviewRequest, ...], reference=None):
 
     started = time.perf_counter()
     cache = preview_cache.PreviewCache(specs[0].target.context.root)
-    validation = preview_cache.ValidationPass()
+    validation = render_evidence.ValidationPass()
     env = compiler.build_env(specs[0].target.context)
     selected = select_image(cache, specs, env,
                             validation=validation, reference=reference)
@@ -168,7 +168,7 @@ def validate_scoped(spec: PreviewRequest):
 
     started = time.perf_counter()
     cache = preview_cache.PreviewCache(spec.target.context.root)
-    validation = preview_cache.ValidationPass()
+    validation = render_evidence.ValidationPass()
     env = compiler.build_env(spec.target.context)
     entry = cache.display_lookup(cache_identity(spec), env, validation=validation)
     if entry is not None and entry.display_png is not None:

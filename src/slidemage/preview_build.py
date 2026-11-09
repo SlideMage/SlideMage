@@ -26,7 +26,7 @@ from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
 from . import compiler, preview_format
-from .preview_cache import find_tool
+from .render_evidence import find_tool
 from .project import ProjectContext
 
 _ACTIVE_LOCK = threading.RLock()

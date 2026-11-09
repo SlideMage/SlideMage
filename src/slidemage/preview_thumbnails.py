@@ -16,7 +16,7 @@ import time
 from dataclasses import replace
 
 from . import timing
-from . import compiler, deck_outline, preview_cache, preview_target, slide_templates
+from . import compiler, deck_outline, preview_cache, preview_target, render_evidence, slide_templates
 from .preview_requests import PreviewRequest, RenderOptions, SourceRevision
 from .preview_selection import SelectedImage, legacy_reference, select_image
 
@@ -27,7 +27,7 @@ def for_outline(ctx, deck, outline, view, language, *, read_source=None, paths=N
     current one is there (background_previews.stored_page_path, which works with background rendering switched off).
     A store page ranks after the saved single-slide render of the preview cache and before any older image."""
     cache = preview_cache.PreviewCache(ctx.root)
-    validation = validation or preview_cache.ValidationPass()
+    validation = validation or render_evidence.ValidationPass()
     env = None
     frames = None
     revisions = {}

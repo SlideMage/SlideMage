@@ -264,8 +264,8 @@ class SlideList(QWidget):
         outline = tuple(outline)
 
         def work():
-            from ... import compiler, preview_cache
-            validation = preview_cache.ValidationPass()
+            from ... import compiler, preview_cache, render_evidence
+            validation = render_evidence.ValidationPass()
             revisions = {}
             started = time.perf_counter()
             with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):

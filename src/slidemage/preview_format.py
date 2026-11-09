@@ -41,7 +41,7 @@ import subprocess
 from .compiler import FATAL_ERROR_RE, run_streamed
 from .preview_metrics import stage
 from .processes import no_console_kwargs
-from .preview_cache import FileStates, configuration_state, find_tool, search_roots, search_state
+from .render_evidence import FileStates, configuration_state, find_tool, search_roots, search_state
 from .fileio import atomic_write
 
 SCHEMA = 4           # 4: formats work on Windows/MiKTeX (before, every one there was marked bad)

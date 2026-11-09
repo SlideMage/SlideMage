@@ -81,7 +81,7 @@ PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is ask
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
 LOADING = "Loading…"
 _log = logging.getLogger("slidemage.preview")
-# Checks of one slide in a row that saw an input change while they ran (preview_cache.ValidationPass.stable) before
+# Checks of one slide in a row that saw an input change while they ran (render_evidence.ValidationPass.stable) before
 # the pane stops asking again: a file that cannot be read at all (a synced folder whose client is not running) reads
 # as changing every time, and the slide stayed on "Loading…" for good (2026-11-05).
 UNSTABLE_RETRIES = 20

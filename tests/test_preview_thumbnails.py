@@ -8,7 +8,7 @@ from unittest.mock import Mock
 from PIL import Image
 import pytest
 
-from slidemage import deck_outline, preview_cache, preview_requests, preview_thumbnails, slide_snapshot, slide_templates
+from slidemage import deck_outline, preview_cache, preview_requests, preview_thumbnails, render_evidence, slide_snapshot, slide_templates
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 
@@ -176,10 +176,10 @@ def test_list_validation_reads_shared_evidence_once_and_does_not_load_all_images
     original = rows(deck_outline.build_outline(ctx, selected, 'instructor', 'EN'))
     for row, color in zip(original, ('red', 'blue')):
         store(project, selected, occurrence=row.key, color=color)
-    configuration = Mock(wraps=preview_cache.configuration_state)
-    files = Mock(wraps=preview_cache.file_state)
-    monkeypatch.setattr(preview_cache, 'configuration_state', configuration)
-    monkeypatch.setattr(preview_cache, 'file_state', files)
+    configuration = Mock(wraps=render_evidence.configuration_state)
+    files = Mock(wraps=render_evidence.file_state)
+    monkeypatch.setattr(render_evidence, 'configuration_state', configuration)
+    monkeypatch.setattr(render_evidence, 'file_state', files)
     monkeypatch.setattr(preview_cache.PreviewCache, '_read', lambda *a: pytest.fail('thumbnails must not load every PNG'))
     result = lookup(project, selected)
     assert all(row.thumbnail_verified for row in result)

@@ -20,7 +20,7 @@ import time
 import weakref
 
 from . import diagnostics
-from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, slide_snapshot
+from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, render_evidence, slide_snapshot
 from .fileio import text_sha256
 from .preview_metrics import PreviewMetrics
 
@@ -160,7 +160,7 @@ def image_group(spec: PreviewRequest, identity=None):
     if not decision.certain or decision.group is None:
         return None
     identity = identity or cache_identity(spec)
-    key = preview_cache.digest({'classifier_group': decision.group, 'raster': identity['raster'],
+    key = render_evidence.digest({'classifier_group': decision.group, 'raster': identity['raster'],
                                 'cache_schema': preview_cache.SCHEMA})
     return 'group-' + key, classified.evidence
 
@@ -470,7 +470,7 @@ class RenderService:
         cache = preview_cache.PreviewCache(spec.target.context.root)
         identity = cache_identity(spec)
         env = compiler.build_env(spec.target.context)
-        validation = preview_cache.ValidationPass()
+        validation = render_evidence.ValidationPass()
         group = image_group(spec, identity)
         if group is not None and cache.group_lookup(group[0], env, validation=validation) is not None:
             return True
@@ -533,7 +533,7 @@ class RenderService:
         identity = cache_identity(spec)
         group = image_group(spec, identity)
         group_key = group[0] if group is not None else None
-        key = (('pdf', preview_cache.digest(identity)) if require_pdf or group_key is None
+        key = (('pdf', render_evidence.digest(identity)) if require_pdf or group_key is None
                else ('image', group_key), options.force)
         cache = preview_cache.PreviewCache(target.context.root)
         observed_at = time.time_ns()
@@ -598,7 +598,7 @@ class RenderService:
             if prebuilt is not None:
                 prebuilt.used = True
             elif not options.force:
-                validation = preview_cache.ValidationPass()    # the two lookups share one evidence and one read per file
+                validation = render_evidence.ValidationPass()    # the two lookups share one evidence and one read per file
                 if group_key is not None and not require_pdf:
                     found = cache.group_lookup(group_key, env, validation=validation)
                     if found is not None and image_group(spec, identity) == group:

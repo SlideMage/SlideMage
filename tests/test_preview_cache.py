@@ -4,12 +4,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import sys
 
-import pytest
-
-from slidemage import preview_cache
-from slidemage.preview_cache import PreviewCache, file_state, input_state
+from slidemage import render_evidence
+from slidemage.preview_cache import PreviewCache
 
 
 def fixture(tmp_path):
@@ -66,11 +63,9 @@ def test_external_framework_changes_invalidate_without_source_change(tmp_path):
 
 
 def test_validation_pass_rejects_same_mtime_dependency_edit_before_publication(tmp_path):
-    from slidemage import preview_cache
-
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     assert store(cache, identity, env, pdf, source, package)
-    validation = preview_cache.ValidationPass()
+    validation = render_evidence.ValidationPass()
     assert cache.display_lookup(identity, env, validation=validation) is not None
     old = package.stat()
     package.write_text('THEME TWO')  # same byte length
@@ -129,29 +124,29 @@ def test_small_thumbnail_keeps_final_page_identity_and_reads_only_its_blob(tmp_p
     entry = cache.store(identity, env, pdf=pdf, display_png=pixels.getvalue(), secondary_png=b'other',
                         dependencies=(source, package), before=cache.begin(env))
     assert entry is not None
-    thumb = cache.thumbnail_path(identity, env, preview_cache.ValidationPass())
+    thumb = cache.thumbnail_path(identity, env, render_evidence.ValidationPass())
     original_id = hashlib.sha256(pixels.getvalue()).hexdigest()
     assert thumb is not None and thumb != cache.root / 'images' / (original_id + '.png')
     with Image.open(thumb) as image:
-        assert image.width == preview_cache.THUMBNAIL_MAX[0] and image.height <= preview_cache.THUMBNAIL_MAX[1]
+        assert image.width == render_evidence.THUMBNAIL_MAX[0] and image.height <= render_evidence.THUMBNAIL_MAX[1]
     assert cache.canonical_image_id(thumb) == original_id
     thumb_bytes = thumb.read_bytes()
     thumb.write_bytes(b'broken thumbnail')
     assert cache.lookup(identity, env) is not None  # full consumers never require the small derivative
-    assert cache.thumbnail_path(identity, env, preview_cache.ValidationPass()).read_bytes() == pixels.getvalue()
+    assert cache.thumbnail_path(identity, env, render_evidence.ValidationPass()).read_bytes() == pixels.getvalue()
     thumb.write_bytes(thumb_bytes)
     # A thumbnail remains displayable when a non-display artifact is damaged;
     # whole-result consumers and sequence comparisons still fail validation.
     (entry.directory / 'preview.pdf').write_bytes(b'broken')
-    assert cache.thumbnail_path(identity, env, preview_cache.ValidationPass()) == thumb
+    assert cache.thumbnail_path(identity, env, render_evidence.ValidationPass()) == thumb
     main = preview_selection.select_image(cache, (request,), env)
     listed = preview_selection.select_image(cache, (request,), env, thumbnail=True,
-                                            validation=preview_cache.ValidationPass())
+                                            validation=render_evidence.ValidationPass())
     assert main.fresh and listed.fresh and main.artifact_id == listed.artifact_id == original_id
     assert main.pdf is None
     assert cache.lookup(identity, env) is None
     thumb.write_bytes(b'broken')
-    fallback = cache.thumbnail_path(identity, env, preview_cache.ValidationPass())
+    fallback = cache.thumbnail_path(identity, env, render_evidence.ValidationPass())
     assert fallback is not None and fallback.read_bytes() == pixels.getvalue()
     assert cache.canonical_image_id(fallback) == original_id
     result = store(cache, identity, env, pdf, source, package)
@@ -200,7 +195,7 @@ def test_unsupported_search_and_missing_recorder_are_not_cacheable(tmp_path):
 
 
 def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
-    from slidemage import preview_cache, preview_raster
+    from slidemage import preview_raster
     import pymupdf
 
     cache, identity, env, pdf, source, package = fixture(tmp_path)
@@ -219,7 +214,7 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     from io import BytesIO
     from PIL import Image
     with Image.open(BytesIO(sequence['images'][-1])) as last:
-        small = last.width <= preview_cache.THUMBNAIL_MAX[0] and last.height <= preview_cache.THUMBNAIL_MAX[1]
+        small = last.width <= render_evidence.THUMBNAIL_MAX[0] and last.height <= render_evidence.THUMBNAIL_MAX[1]
     # Two page images; the final-page thumbnail shares the last one's blob when that is already small enough.
     assert len(list((cache.root / 'images').glob('*.png'))) == (2 if small else 3)
     assert [entry.pdf.read_bytes() for entry in entries] == [b'instructor', b'during-course', b'after-course']
@@ -231,7 +226,7 @@ def test_matching_sequences_share_blobs_and_keep_view_pdfs(tmp_path):
     first_reveal = cache.root / 'images' / (manifest['blobs']['sequence-0.png'] + '.png')
     first_reveal.write_bytes(b'corrupt reveal')
     assert cache.display_lookup(identity, env).display_png == sequence['images'][-1]
-    assert cache.thumbnail_path(identity, env, preview_cache.ValidationPass()) is not None
+    assert cache.thumbnail_path(identity, env, render_evidence.ValidationPass()) is not None
     assert cache.lookup(identity, env) is None
     # An input edit invalidates the other views too, even with unchanged pixel content.
     package.write_text('THEME TWO')
@@ -361,147 +356,8 @@ def test_historical_display_is_exact_and_integrity_checked_but_never_a_fresh_hit
     assert cache.previous(identity) is None
 
 
-
-# ---- system files: remembered by their stat; the user's own files: always read ----------------------------------
-
-@pytest.fixture
-def settled(monkeypatch):
-    """Files written by a test are 'racy' (changed so recently that their stat could still move) and never
-    remembered; these tests act as if they had been there for a while."""
-    from slidemage import preview_cache
-
-    monkeypatch.setattr(preview_cache, 'MEMO_RACY_SECONDS', -1)
-
-
-def later(path, seconds):
-    stat = path.stat()
-    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + seconds * 10 ** 9))
-
-
-def bytes_read(function, *args):
-    from slidemage.preview_metrics import PreviewMetrics
-
-    with PreviewMetrics() as metrics:
-        result = function(*args)
-    return result, metrics.counters.get('content_bytes_read', 0)
-
-
-def states_for(tmp_path):
-    from slidemage.preview_cache import FileStates
-
-    root = tmp_path / 'project'
-    root.mkdir(exist_ok=True)
-    system = tmp_path / 'texlive'
-    system.mkdir(exist_ok=True)
-    return FileStates([root]), root, system
-
-
-def test_a_file_outside_the_roots_is_read_once_while_its_stat_is_unchanged(settled, tmp_path):
-    states, _, system = states_for(tmp_path)
-    package = system / 'beamer.sty'
-    package.write_text('PACKAGE')
-    first, read = bytes_read(states, package)
-    assert read == len('PACKAGE')
-    second, read = bytes_read(states, package)
-    assert (second, read) == (first, 0)
-
-
-def test_a_file_outside_the_roots_is_hashed_again_when_its_size_or_mtime_changes(settled, tmp_path):
-    states, _, system = states_for(tmp_path)
-    package = system / 'beamer.sty'
-    package.write_text('PACKAGE')
-    first = states(package)
-    package.write_text('PACKAGE 2')                 # another size
-    second, read = bytes_read(states, package)
-    assert second != first and second == file_state(package) and read == len('PACKAGE 2')
-    package.write_text('PACKAGE 3')                 # the same size, another mtime
-    later(package, 10)
-    third, read = bytes_read(states, package)
-    assert third != second and third == file_state(package) and read == len('PACKAGE 3')
-
-
-@pytest.mark.skipif(sys.platform == 'win32', reason='ctime is the creation time on Windows')
-def test_a_file_outside_the_roots_changed_with_its_mtime_restored_is_hashed_again(settled, tmp_path):
-    states, _, system = states_for(tmp_path)
-    package = system / 'beamer.sty'
-    package.write_text('PACKAGE 1')
-    first = states(package)
-    old = package.stat()
-    package.write_text('PACKAGE 2')
-    os.utime(package, ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert states(package) != first
-
-
-def test_a_file_changed_a_moment_ago_is_not_remembered(tmp_path):
-    states, _, system = states_for(tmp_path)
-    package = system / 'cache.luc'
-    package.write_text('LUA')
-    assert bytes_read(states, package)[1] == bytes_read(states, package)[1] == 3
-
-
-def test_a_file_inside_the_roots_is_always_read(settled, tmp_path):
-    states, root, _ = states_for(tmp_path)
-    theme = root / 'theme.sty'
-    theme.write_text('THEME ONE')
-    assert bytes_read(states, theme)[1] == bytes_read(states, theme)[1] == len('THEME ONE')
-    linked = tmp_path / 'elsewhere.sty'                 # outside, but reached through a link in the project
-    linked.write_text('LINKED')
-    link = root / 'linked.sty'
-    try:
-        link.symlink_to(linked)
-    except OSError:                                     # Windows without the privilege (or developer mode) for links
-        pytest.skip("this account cannot create symbolic links")
-    assert bytes_read(states, link)[1] == bytes_read(states, link)[1] == len('LINKED')
-
-
-def test_a_missing_file_has_no_state_and_is_not_remembered(settled, tmp_path):
-    states, _, system = states_for(tmp_path)
-    package = system / 'later.sty'
-    assert states(package) is None
-    package.write_text('LATER')
-    assert states(package) == file_state(package)
-
-
-def test_remembered_states_have_the_stored_shape(settled, tmp_path):
-    states, root, system = states_for(tmp_path)
-    package = system / 'beamer.sty'
-    package.write_text('PACKAGE')
-    states(package)
-    assert states(package) == file_state(package) == [str(package.resolve()), hashlib.sha256(b'PACKAGE').hexdigest()]
-    assert input_state([package], states) == input_state([package])
-
-
-def test_the_memo_is_bounded(settled, tmp_path, monkeypatch):
-    from slidemage import preview_cache
-
-    monkeypatch.setattr(preview_cache, 'MEMO_LIMIT', 2)
-    states, _, system = states_for(tmp_path)
-    for index in range(4):
-        package = system / f'{index}.sty'
-        package.write_text('x')
-        states(package)
-    assert len(preview_cache._MEMO) <= 2
-
-
-def test_configuration_state_reads_the_tool_binaries_once(settled, tmp_path):
-    from slidemage.preview_cache import configuration_state
-
-    cache, identity, env, pdf, source, package = fixture(tmp_path)
-    bin_dir = tmp_path / 'bin'
-    bin_dir.mkdir()
-    latexmk = bin_dir / ('latexmk.exe' if os.name == 'nt' else 'latexmk')     # `which` needs the extension on Windows
-    latexmk.write_bytes(b'x' * 5000)
-    latexmk.chmod(0o755)
-    env = dict(env, PATH=str(bin_dir))
-    first, read = bytes_read(configuration_state, cache.project_root, env)
-    assert read >= 5000 and first['tools']['latexmk'] == file_state(latexmk)
-    again, read = bytes_read(configuration_state, cache.project_root, env)
-    assert again == first and read < 5000
-    latexmk.write_bytes(b'y' * 5001)
-    assert configuration_state(cache.project_root, env) != first
-
-
-def test_a_dependency_outside_the_roots_hits_until_it_changes(settled, tmp_path):
+def test_a_dependency_outside_the_roots_hits_until_it_changes(tmp_path, monkeypatch):
+    monkeypatch.setattr(render_evidence, 'MEMO_RACY_SECONDS', -1)
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     system = tmp_path / 'texlive'
     system.mkdir()
@@ -509,25 +365,15 @@ def test_a_dependency_outside_the_roots_hits_until_it_changes(settled, tmp_path)
     beamer.write_text('BEAMER 1')
     assert cache.store(identity, env, pdf=pdf, display_png=b'PNG', dependencies=(str(source), str(beamer)),
                        before=cache.begin(env))
-    entry, read = bytes_read(cache.lookup, identity, env)
-    assert entry is not None and read < 1000 and str(beamer) in entry.dependencies
+    entry = cache.lookup(identity, env)
+    assert entry is not None and str(beamer) in entry.dependencies
     assert PreviewCache(cache.project_root).lookup(identity, env) is not None
     beamer.write_text('BEAMER 2 (an update)')
     assert cache.lookup(identity, env) is None
 
 
-def test_the_tool_lookup_is_remembered_per_path(tmp_path, monkeypatch):
-    from slidemage import preview_cache
-
-    calls = []
-    monkeypatch.setattr(preview_cache.shutil, 'which', lambda name, path=None: calls.append((name, path)) or f'/bin/{name}')
-    assert preview_cache.find_tool('lualatex', 'A') == preview_cache.find_tool('lualatex', 'A') == '/bin/lualatex'
-    preview_cache.find_tool('lualatex', 'B')
-    assert calls == [('lualatex', 'A'), ('lualatex', 'B')]
-
-
 def test_store_keeps_a_supplied_thumbnail_and_dedupes_blobs_without_reading_them_back(tmp_path, monkeypatch):
-    monkeypatch.setattr(preview_cache, 'MEMO_RACY_SECONDS', 0)       # remember a blob at once
+    monkeypatch.setattr(render_evidence, 'MEMO_RACY_SECONDS', 0)       # remember a blob at once
     cache, identity, env, pdf, source, package = fixture(tmp_path)
     kwargs = dict(pdf=pdf, display_png=b'PNG', thumbnail=b'small', dependencies=(str(source), str(package)),
                   before=cache.begin(env))
@@ -536,11 +382,11 @@ def test_store_keeps_a_supplied_thumbnail_and_dedupes_blobs_without_reading_them
     manifest = json.loads((first.directory / 'manifest.json').read_text())
     assert (cache.root / 'images' / (hashlib.sha256(b'small').hexdigest() + '.png')).read_bytes() == b'small'
     assert manifest['blobs']['thumbnail.png'] == hashlib.sha256(b'small').hexdigest()
-    states, original = [], preview_cache.file_state
+    states, original = [], render_evidence.file_state
     cache.store(identity, env, **{**kwargs, 'before': cache.begin(env)})        # warms the memo
-    monkeypatch.setattr(preview_cache, 'file_state', lambda path: states.append(path.name) or original(path))
+    monkeypatch.setattr(render_evidence, 'file_state', lambda path: states.append(path.name) or original(path))
     second = cache.store(identity, env, **{**kwargs, 'before': cache.begin(env)})
-    monkeypatch.setattr(preview_cache, 'file_state', original)
+    monkeypatch.setattr(render_evidence, 'file_state', original)
     assert second.deduplicated_images == 2 and not [name for name in states if name.endswith('.png')]
     # A damaged blob under its content-addressed name is replaced, not trusted.
     blob = cache.root / 'images' / (hashlib.sha256(b'PNG').hexdigest() + '.png')

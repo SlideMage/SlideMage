@@ -519,7 +519,7 @@ def put_real(store, ctx, resolver, pages=2):
 
 def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_and_lists_it(ctx, resolver, store):
     from PIL import Image
-    from slidemage.preview_cache import THUMBNAIL_MAX
+    from slidemage.render_evidence import THUMBNAIL_MAX
     _unit, key, name = put_real(store, ctx, resolver)
     folder = render_store.object_dir(store.root, name)
     with Image.open(folder / "thumb.png") as im:

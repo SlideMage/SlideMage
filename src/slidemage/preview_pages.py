@@ -17,7 +17,8 @@ from pathlib import Path
 from . import preview_raster_client
 from .fileio import atomic_write
 from .filelock import build_lock
-from .preview_cache import digest, MAX_BYTES
+from .preview_cache import MAX_BYTES
+from .render_evidence import digest
 
 SCHEMA = 1
 PNG = b'\x89PNG\r\n\x1a\n'

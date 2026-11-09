@@ -8,7 +8,7 @@ hash of the project's folder, so two projects (or two copies of one) never share
 
 **Objects** are write-once folders, `objects/<ab>/<name>/`, holding `slide.pdf`, one `pNNN.png` per page (every
 reveal step) and `meta.json`, written last, with the sizes of the other files. `thumb.png` is the last page
-at preview_cache.THUMBNAIL_MAX (168x95, the size of the preview cache's own small copy), so the slide list does not
+at render_evidence.THUMBNAIL_MAX (168x95, the size of the preview cache's own small copy), so the slide list does not
 decode a 1920 px PNG for a 112 px thumbnail; an object stored before it existed gets it from thumbnail_path(). `<name>` is the render's key, or
 `<key>.bg` for a render made by the background sweep (the reveal slider's own render of the same key is the
 provisional `<key>`, which the `.bg` one replaces). An object without a complete `meta.json` is ignored.
@@ -32,7 +32,7 @@ from typing import Callable, Iterable, Optional
 
 from . import project
 from .fileio import write_json
-from .preview_cache import thumbnail_png
+from .render_evidence import thumbnail_png
 
 STORE_FORMAT = 1
 ORIGIN_BACKGROUND = "background"
