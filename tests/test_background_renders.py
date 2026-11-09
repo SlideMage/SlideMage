@@ -146,7 +146,7 @@ def test_rendering_a_unit_stores_every_step_and_then_it_is_fresh(project, store,
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     name = r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    assert name.endswith(".bg")
+    assert name == r.resolver.fast_key(unit)
     found = r.resolver.lookup(unit)
     assert found.state is Freshness.FRESH and found.final and found.record["pages"] == 3
     assert store.page(found.record, 3).startswith(b"\x89PNG") and store.page(found.record, 4) is None
@@ -168,20 +168,6 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
     again = r.resolver.lookup(unit)
     assert again.state is Freshness.MISSING or again.state is Freshness.STALE
     assert not again.final
-
-
-def test_a_render_by_the_slider_is_provisional_and_the_sweep_replaces_it(project, store, raster):
-    tex = FakeTeX(project)
-    r = make(project, store, raster, tex=tex)
-    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[1]
-    cancel = CancelToken
-    r.render_unit(unit, background_renders.ORIGIN_REVEAL, cancel())
-    first = r.resolver.lookup(unit)
-    assert first.state is Freshness.FRESH and not first.final and first.record["origin"] == "reveal"
-    r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, cancel())
-    assert r.resolver.lookup(unit).final and len(tex.calls) == 2
-    r.render_unit(unit, background_renders.ORIGIN_REVEAL, cancel())                 # the slider on an unchanged slide: no render
-    assert len(tex.calls) == 2 and store.count() == 1
 
 
 def test_a_page_number_that_moved_is_refreshed_last(project, store, raster):
@@ -424,7 +410,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
         project, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
         deck_language=unit.language.lower(), preamble_text=unit.preamble_text, frame_number=unit.frame_number,
         log=lambda line: None, capture_snapshot=False, all_steps=True)
-    with pymupdf.open(foreground) as theirs, pymupdf.open(store.pdf_path(found.record)) as ours:
+    with store.lock, pymupdf.open(foreground) as theirs, pymupdf.open(Path(found.record["dir"]) / "slide.pdf") as ours:
         assert len(ours) == len(theirs) == found.record["pages"]
         assert [p.get_text() for p in ours] == [p.get_text() for p in theirs]
 
@@ -464,7 +450,7 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert r.ingest_compile(job, pdf, _record(pdf, deck, units, project)) >= 1
     unit = units[0]
     found = r.resolver.lookup(unit)
-    assert found.usable and not found.record.get("partial") and found.record["origin"] == render_store.ORIGIN_COMPILE
+    assert found.usable and found.record["origin"] == render_store.ORIGIN_COMPILE
     assert store.page(found.record, 1) is not None and found.record["pages"] == 2
     assert found.final                          # a plain \slide call: the compile already has every one of its steps
     # another slide changing does not change this slide's page ...
@@ -536,29 +522,6 @@ def test_a_contents_slide_is_finished_from_the_compile_that_is_its_context(proje
     assert r.ingest_compile(job, pdf, _record(pdf, deck, [unit], project)) == 1
     found = r.resolver.lookup(unit)
     assert found.final and found.record["pages"] == 1
-
-
-def test_an_old_partial_compile_record_still_gives_way_to_the_steps_render(project, store, raster, tmp_path):
-    """A render stored before this step, marked `partial` (a last-page-only compile record), is not finished -- the
-    idle sweep still renders it in full -- and the reveal bar's own all-steps render still replaces it
-    (docs/plans/render-store-cleanup.md, step 4: `stored_pages` and `store_reveal` keep their `partial` tests)."""
-    from slidemage import render_key
-
-    r = make(project, store, raster)
-    deck = deck_named(r, "slidemage-manual")
-    unit = background_renders.deck_units(project, deck, "instructor", "EN")[0]
-    key = r.resolver.fast_key(unit)
-    old_meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=[], tex_digest="",
-                    machine=render_key.machine_id(), engine_fp=r.resolver.engine_fp,
-                    frame_number=unit.frame_number, unstable=False, width=background_renders.STORE_WIDTH, partial=True)
-    store.put(key, render_store.ORIGIN_COMPILE, None, [b"png1"], old_meta, decks=[unit.deck])
-    found = r.resolver.lookup(unit)
-    assert found.usable and found.record["partial"] and not found.final
-    steps_pdf = _compiled_pdf(tmp_path, [unit])
-    pages = [b"png1", b"png2"]
-    r.store_reveal(unit, steps_pdf, pages)
-    record = r.resolver.lookup(unit).record
-    assert not record.get("partial") and record["pages"] == 2
 
 
 # -- batches: several slides in one document -----------------------------------------------------
@@ -648,12 +611,12 @@ def test_a_batch_stores_each_slide_as_a_single_render_would(project, store, rast
     for unit in units[:3]:
         found = r.resolver.lookup(unit)
         record = found.record
-        assert found.state is Freshness.FRESH and found.final and record["origin"] == "background" and record["name"].endswith(".bg")
+        assert found.state is Freshness.FRESH and found.final and record["origin"] == "background" and record["name"] == r.resolver.fast_key(unit)
         assert record["pages"] == 2 and store.page(record, 2).startswith(b"\x89PNG") and store.page(record, 3) is None
         for field in ("format", "width", "machine", "engine_fp", "unstable", "decks", "pages", "origin"):
             assert record[field] == reference[field]
         assert set(record) == set(reference) and record["unit"] == unit.label and record["frame_number"] == unit.frame_number
-        with pymupdf.open(store.pdf_path(record)) as own:                              # its own pages only
+        with store.lock, pymupdf.open(Path(record["dir"]) / "slide.pdf") as own:  # its own pages only
             assert [p.get_text().split()[2] for p in own] == [unit.id_slug.split("-")[0]] * 2
         files = {entry[1] for entry in record["manifest"]}
         assert "media/alt-text.csv" in files and "SlideMage.bib" in files
@@ -968,7 +931,8 @@ def test_a_lookup_during_the_rescan_finds_an_indexed_record_and_a_render_stored_
     r = make(project, store, raster)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     meta_key = r.resolver.fast_key(unit)
-    store.put(meta_key, "background", None, [b"\x89PNG1"], dict(unit=unit.label, manifest=[], rendered_at=1.0), decks=["d"])
+    pdf = _compiled_pdf(store.local_dir, [unit], steps=1)
+    store.put(meta_key, "background", pdf, [_png()], dict(unit=unit.label, manifest=[], rendered_at=1.0), decks=["d"])
     results, errors = [], []
     stop = threading.Event()
 
@@ -984,7 +948,7 @@ def test_a_lookup_during_the_rescan_finds_an_indexed_record_and_a_render_stored_
     later = []
     try:
         for i in range(30):
-            later.append(store.put(f"{i:02x}" + "e" * 62, "background", None, [b"\x89PNG1"], dict(unit=f"u{i}", manifest=[], rendered_at=1.0)))
+            later.append(store.put(f"{i:02x}" + "e" * 62, "background", pdf, [_png()], dict(unit=f"u{i}", manifest=[], rendered_at=1.0)))
             store.rescan()
     finally:
         stop.set()
@@ -1040,10 +1004,14 @@ def _png():
     return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 4, 4)).tobytes("png")
 
 
-def _leftover(store, label, deck, key, age=3600.0):
+def _leftover(store, label, deck, key):
     """A render stored long ago under `key` (a key no deck uses now)."""
-    meta = dict(unit=label, rendered_at=time.time() - age, manifest=[], tex_digest="", frame_number=1, unstable=False)
-    return store.put(key, render_store.ORIGIN_BACKGROUND, None, [_png()], meta, decks=[deck])
+    meta = dict(unit=label, rendered_at=time.time() - 3600, manifest=[], tex_digest="", frame_number=1, unstable=False)
+    pdf = store.local_dir / "leftover.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page()
+        doc.save(pdf)
+    return store.put(key, render_store.ORIGIN_BACKGROUND, pdf, [_png()], meta, decks=[deck] if deck else [])
 
 
 def _call_twice(project, slide="1cx-EN-Slide-IDs"):
@@ -1116,7 +1084,7 @@ def test_a_slide_called_twice_in_two_ways_keeps_both_current_renders_whichever_i
     r.render_unit(both[1], background_renders.ORIGIN_BACKGROUND, CancelToken())
     assert _keys_of(store, both[0].label) == keys
     for unit in both:                                   # storing either again (the reveal bar's render) keeps the other
-        store.delete(r.resolver.fast_key(unit) + render_store.BG_SUFFIX)
+        store.delete(r.resolver.fast_key(unit))
         r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
         assert _keys_of(store, unit.label) == keys
         r.scan()
@@ -1170,7 +1138,7 @@ def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, ra
     assert not store.flag(render_store.LEFTOVERS_CLEARED)           # left for a scan that reads every deck
     for unit in units:
         r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-        assert len(_keys_of(store, unit.label)) == 2                # the new render, and the old one kept
+        assert _keys_of(store, unit.label) == [r.resolver.fast_key(unit)]  # put clears the superseded key
     monkeypatch.setattr(background_renders, "deck_units", real)
     r.scan()
     assert not store._exists(gone) and store.flag(render_store.LEFTOVERS_CLEARED)
@@ -1184,14 +1152,15 @@ def test_the_leftovers_in_a_store_are_cleared_once_and_only_what_the_scan_read(p
     unit = background_renders.deck_units(project, deck, "instructor", "EN")[1]
     r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
     current = r.resolver.fast_key(unit)
+    r.scan()
+    store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.LEFTOVERS_CLEARED,))
     stale = _leftover(store, unit.label, deck.name, "a" * 64)                                   # an old key
     removed = _leftover(store, "slidemage-manual:zzz-EN-Gone:instructor:EN", deck.name, "b" * 64)   # not in the deck
     german = _leftover(store, "slidemage-manual:1jh-EN-Title-Slide:instructor:DE", deck.name, "c" * 64)  # not swept
     off = _leftover(store, "slidemage-manual-copy:zzz-EN-Gone:instructor:EN", "slidemage-manual-copy", "d" * 64)
     shared = _leftover(store, "slidemage-manual:zzz-EN-Gone:during-course:EN", deck.name, "e" * 64)
     store.link_decks(shared, ["slidemage-manual-copy"])                     # also a render of the deck switched off
-    no_deck = store.put("9" * 64, render_store.ORIGIN_REVEAL, None, [_png()],
-                        dict(unit="-:zzz-EN-Gone:instructor:EN", rendered_at=time.time() - 3600, manifest=[]))
+    no_deck = _leftover(store, "-:zzz-EN-Gone:instructor:EN", "", "9" * 64)
     r.scan()
     assert not store._exists(stale) and not store._exists(removed)
     assert all(store._exists(name) for name in (german, off, shared, no_deck))
@@ -1202,16 +1171,8 @@ def test_the_leftovers_in_a_store_are_cleared_once_and_only_what_the_scan_read(p
     assert store._exists(later)                         # once per store: after that, only by label, when stored
 
 
-def test_drop_stale_keeps_every_key_it_is_told_to_and_whatever_was_rendered_after_the_scan(project, store):
-    label = "deck:1cx-EN-Slide-IDs:instructor:EN"
-    one, two, old = (_leftover(store, label, "deck", k * 64) for k in "123")
-    young = _leftover(store, label, "deck", "4" * 64, age=-10)
-    assert store.drop_stale(lambda unit: True, {"1" * 64, "2" * 64}, {"deck"}, time.time(), label=label) == 1
-    assert store._exists(one) and store._exists(two) and not store._exists(old) and store._exists(young)
-    assert store.drop_stale(lambda unit: True, set(), {"another deck"}, time.time()) == 0      # not a deck read in full
-
-
 # -- the double renders stop (docs/plans/render-store-cleanup.md, step 3) ----------------------------------------------
+
 
 def _one_pass(r, label):
     """Render what a scan plans for `label`, as the sweep would; returns how many units it planned."""

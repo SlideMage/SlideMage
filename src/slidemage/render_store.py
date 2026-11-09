@@ -6,12 +6,10 @@ Everything lives on this computer, in the user's cache folder (`project.cache_di
 never in the project: projects live in cloud-synced folders and the renders can be gigabytes. The project id is a
 hash of the project's folder, so two projects (or two copies of one) never share a store.
 
-**Objects** are write-once folders, `objects/<ab>/<name>/`, holding `slide.pdf`, one `pNNN.png` per page (every
-reveal step) and `meta.json`, written last, with the sizes of the other files. `thumb.png` is the last page
-at render_evidence.THUMBNAIL_MAX (168x95, the size of the preview cache's own small copy), so the slide list does not
-decode a 1920 px PNG for a 112 px thumbnail; an object stored before it existed gets it from thumbnail_path(). `<name>` is the render's key, or
-`<key>.bg` for a render made by the background sweep (the reveal slider's own render of the same key is the
-provisional `<key>`, which the `.bg` one replaces). An object without a complete `meta.json` is ignored.
+**Objects** are folders, `objects/<ab>/<key>/`, holding `slide.pdf`, one 1920 px `pNNN.png` per
+page (every reveal step), `thumb.png` shrunk from the last page, and `meta.json`, written last with the
+sizes of the other files. Publication replaces the previous object of the key under the store lock.
+An object without a complete `meta.json` is ignored.
 
 The **index** is a SQLite file beside them: a cache of the `meta.json` files (rebuilt by rescan()), the file hashes
 (dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
@@ -34,11 +32,10 @@ from . import project
 from .fileio import write_json
 from .render_evidence import thumbnail_png
 
-STORE_FORMAT = 1
+STORE_FORMAT = 2
 ORIGIN_BACKGROUND = "background"
 ORIGIN_REVEAL = "reveal"
-ORIGIN_COMPILE = "compile"      # a slide's own pages, taken from a deck compile (no slide PDF of its own)
-BG_SUFFIX = ".bg"
+ORIGIN_COMPILE = "compile"
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 DEFAULT_KEEP_DAYS = 30
 LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of drop_stale(None, ...) ran in this store
@@ -93,6 +90,14 @@ class RenderStore:
             self.db.executescript(SCHEMA)
             self.db.commit()
         self.lock = self._lock
+        self.current_keys: frozenset[str] = frozenset()
+        with self._lock:
+            if self.db.execute("PRAGMA user_version").fetchone()[0] != STORE_FORMAT:
+                self.db.execute("DELETE FROM renders")
+                self.db.execute("DROP TABLE IF EXISTS filehash")
+                self.forget_failure()
+                self.db.execute(f"PRAGMA user_version={STORE_FORMAT}")
+                self.db.commit()
         # Older failures often recorded only the slide, having searched the project's build folder instead of the
         # background workspace. Their dependency state cannot be recovered: retry once with correct tracking.
         if not self.flag(FAILURE_INPUTS_TRACKED):
@@ -111,64 +116,46 @@ class RenderStore:
 
     # -- objects -----------------------------------------------------------------
 
-    def put(self, key: str, origin: str, pdf: Optional[Path], pages: list[bytes], meta: dict, *,
-            decks: Iterable[str] = (), replace: bool = False) -> str:
-        """Store a render and return its object name. A background render replaces the provisional render of
-        the same key; a reveal render is not stored when the background one is there."""
-        name = key + BG_SUFFIX if origin == ORIGIN_BACKGROUND else key
+    def put(self, key: str, origin: str, pdf: Path, pages: list[bytes], meta: dict, *,
+            decks: Iterable[str] = ()) -> str:
+        """Publish a complete render, replacing the object of this key and obsolete keys of its unit."""
+        small = thumbnail_png(pages[-1]) if pages else None
+        if small is None:
+            raise ValueError("a render needs page images and a thumbnail")
         with self._lock:
-            if origin == ORIGIN_REVEAL and self._exists(key + BG_SUFFIX) and self._same_render(key + BG_SUFFIX, meta):
-                self.link_decks(key + BG_SUFFIX, decks)
-                return key + BG_SUFFIX
-            if replace or (self._exists(name) and not self._same_render(name, meta)):
-                # Same inputs, other page number; or the same key with other inputs (the key leaves out the
-                # framework and the media, the manifest has them): the new render takes its place.
-                self.delete(name)
-            if self._exists(name):
-                self.link_decks(name, decks)
-                return name
-            target = object_dir(self.root, name)
+            decks = set(decks)
+            row = self.db.execute("SELECT decks FROM renders WHERE name=?", (key,)).fetchone()
+            if row:
+                decks.update(json.loads(row[0]))
+            target = object_dir(self.root, key)
             tmp = self.root / "tmp" / uuid.uuid4().hex
             tmp.mkdir(parents=True)
             try:
-                sizes = {}
-                if pdf is not None:                 # a deck compile's page has no PDF of its own
-                    shutil.copyfile(pdf, tmp / "slide.pdf")
-                    sizes["slide.pdf"] = (tmp / "slide.pdf").stat().st_size
+                shutil.copyfile(pdf, tmp / "slide.pdf")
+                sizes = {"slide.pdf": (tmp / "slide.pdf").stat().st_size}
                 for number, data in enumerate(pages, start=1):
                     (tmp / f"p{number:03d}.png").write_bytes(data)
                     sizes[f"p{number:03d}.png"] = len(data)
-                small = thumbnail_png(pages[-1]) if pages else None      # from the bytes in memory: no new raster
-                if small is not None:
-                    (tmp / THUMB_NAME).write_bytes(small)
-                    sizes[THUMB_NAME] = len(small)
-                tex_files = meta.pop("tex_files", None)      # kept in the local index only, not in the shared object
-                meta = dict(meta, format=STORE_FORMAT, key=key, origin=origin, pages=len(pages), files=sizes,
+                (tmp / THUMB_NAME).write_bytes(small)
+                sizes[THUMB_NAME] = len(small)
+                meta = dict(meta)
+                tex_files = meta.pop("tex_files", None)
+                meta.update(format=STORE_FORMAT, key=key, origin=origin, pages=len(pages), files=sizes,
                             bytes=sum(sizes.values()), decks=sorted(set(decks)))
                 write_json(tmp / "meta.json", meta, indent=0)       # last: the object is complete only now
                 target.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    os.replace(tmp, target)
-                except OSError:
-                    if not target.exists():
-                        raise
+                self.delete(key)
+                os.replace(tmp, target)
+                self._index(key, meta, tex_files)
+                for (name,) in self.db.execute("SELECT name FROM renders WHERE unit=? AND name!=?", (meta["unit"], key)).fetchall():
+                    if name not in self.current_keys:
+                        self.delete(name)
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
-            self._index(name, meta, tex_files)
-            if origin == ORIGIN_BACKGROUND:
-                self.delete(key)                    # the provisional render
-            return name
+            return key
 
     def _exists(self, name: str) -> bool:
         return (object_dir(self.root, name) / "meta.json").is_file()
-
-    def _same_render(self, name: str, meta: dict) -> bool:
-        """Whether the stored object `name` was rendered from the inputs `meta` describes (an unreadable one: no)."""
-        try:
-            stored = json.loads((object_dir(self.root, name) / "meta.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return False
-        return all(stored.get(field) == meta.get(field) for field in ("manifest", "tex_digest", "frame_number", "unstable"))
 
     def _index(self, name: str, meta: dict, tex_files: Optional[list] = None) -> None:
         now = self._clock()
@@ -181,75 +168,40 @@ class RenderStore:
         self.db.commit()
 
     def find(self, key: str) -> list[dict]:
-        """The renders of `key` that are complete on disk, the background one first."""
+        """The current-format object of `key`, if present on disk."""
         with self._lock:
-            rows = self.db.execute("SELECT name, meta FROM renders WHERE fast_key=? ORDER BY name DESC", (key,)).fetchall()
-        found = []
-        for name, meta in rows:
-            if not self._exists(name):
-                continue
-            record = json.loads(meta)
-            record["name"] = name
-            record["dir"] = str(object_dir(self.root, name))
-            found.append(record)
-        found.sort(key=lambda r: r["origin"] != ORIGIN_BACKGROUND)
-        return found
+            row = self.db.execute("SELECT meta FROM renders WHERE name=?", (key,)).fetchone()
+            if row is None or not self._exists(key):
+                return []
+            record = json.loads(row[0])
+            if record.get("format") != STORE_FORMAT:
+                return []
+            record["name"], record["dir"] = key, str(object_dir(self.root, key))
+            return [record]
 
     def latest_for_unit(self, unit: str) -> Optional[dict]:
         with self._lock:
-            row = self.db.execute("SELECT name, meta FROM renders WHERE unit=? ORDER BY rendered_at DESC LIMIT 1", (unit,)).fetchone()
-        if row is None or not self._exists(row[0]):
-            return None
-        record = json.loads(row[1])
-        record["name"], record["dir"] = row[0], str(object_dir(self.root, row[0]))
-        return record
+            rows = self.db.execute("SELECT fast_key FROM renders WHERE unit=? ORDER BY rendered_at DESC", (unit,)).fetchall()
+            for (key,) in rows:
+                if found := self.find(key):
+                    return found[0]
+        return None
 
     def page(self, record: dict, number: int) -> Optional[bytes]:
-        """The PNG of page `number` (1-based) of a record, and the use is remembered for the eviction."""
-        try:
-            data = (Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
-        except OSError:
-            return None
-        self.touch(record["name"])
-        return data
+        """The PNG of page `number` (1-based), read under the publication lock."""
+        with self._lock:
+            try:
+                data = (Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
+            except OSError:
+                return None
+            self.touch(record["name"])
+            return data
 
     def thumbnail_path(self, record: dict) -> Optional[Path]:
-        """The small copy of the last page of a record (THUMB_NAME), made now from the last page's PNG if the object
-        has none (stored before thumbnails existed, or its page was too odd to scale), else None: then the caller takes
-        the full page. Runs on the thumbnail worker, never the GUI thread.
-
-        (2026-10-30, direct request: a lazily made thumb is not listed in meta.json and the index's meta stays as it
-        was, so the rescan's size check, which covers the listed files only, and concurrent readers see nothing
-        change; it is written beside the others by a temporary name and os.replace, so a reader sees all of it or
-        none. Only the index's byte count grows by its size, under the lock, for the disk limit.)"""
-        folder = Path(record["dir"])
-        thumb = folder / THUMB_NAME
-        if thumb.is_file():
-            return thumb
-        try:
-            data = (folder / f"p{int(record['pages']):03d}.png").read_bytes()
-            small = thumbnail_png(data)
-            if small is None:
-                return None
-            tmp = folder / f".{uuid.uuid4().hex}.tmp"
-            with self._lock:
-                if not self._exists(record["name"]):        # deleted or evicted meanwhile: do not write into it
-                    return None
-                if thumb.is_file():
-                    return thumb
-                try:
-                    tmp.write_bytes(small)
-                    os.replace(tmp, thumb)
-                finally:
-                    tmp.unlink(missing_ok=True)
-                self.db.execute("UPDATE renders SET bytes=bytes+? WHERE name=?", (len(small), record["name"]))
-                self.db.commit()
-            return thumb
-        except Exception:  # noqa: BLE001 -- the thumbnail is a help; the full page serves
-            return None
-
-    def pdf_path(self, record: dict) -> Path:
-        return Path(record["dir"]) / "slide.pdf"
+        """The slide list's small copy of the last page; eviction may remove it after this returns."""
+        with self._lock:
+            path = Path(record["dir"]) / THUMB_NAME
+            return path if path.is_file() else None
 
     def touch(self, name: str) -> None:
         with self._lock:
@@ -390,6 +342,9 @@ class RenderStore:
             for folder in folders:
                 meta = self._checked_meta(folder.path, indexed.get(folder.name))
                 if meta is None:
+                    with self._lock:
+                        if self._checked_meta(folder.path, None) is None:
+                            self.delete(folder.name)
                     continue
                 known.add(folder.name)
                 if folder.name not in indexed:
@@ -444,23 +399,19 @@ class RenderStore:
 
     def enforce_limit(self, limit_bytes: int, *, protected_decks: Iterable[str] = (),
                       keep_days: int = DEFAULT_KEEP_DAYS, is_orphan: Callable[[list], bool] = lambda decks: False) -> int:
-        """Delete renders until the store fits `limit_bytes`: first provisional renders that have a background
-        one, renders older than `keep_days`, renders of nothing that exists any more (`is_orphan(decks)`), then
-        the least recently used outside `protected_decks`; the protected ones only when the store is still more
+        """Delete renders until the store fits `limit_bytes`: renders older than `keep_days`, renders of nothing
+        that exists any more (`is_orphan(decks)`), then the least recently used outside `protected_decks`; the protected ones only when the store is still more
         than twice over. Returns how many were deleted."""
         protected = set(protected_decks)
         deleted = 0
         with self._lock:
-            rows = self.db.execute("SELECT name, fast_key, origin, bytes, last_used, decks FROM renders").fetchall()
-            names = {r[0] for r in rows}
-            total = sum(r[3] for r in rows)
+            rows = self.db.execute("SELECT name, bytes, last_used, decks FROM renders").fetchall()
+            total = sum(r[1] for r in rows)
             order: list[tuple] = []
             cutoff = self._clock() - keep_days * 86400
-            for name, key, origin, size, used, decks in rows:
+            for name, size, used, decks in rows:
                 deck_list = json.loads(decks)
-                if origin in (ORIGIN_REVEAL, ORIGIN_COMPILE) and key + BG_SUFFIX in names:
-                    rank = 0
-                elif used < cutoff and not set(deck_list) & protected:
+                if used < cutoff and not set(deck_list) & protected:
                     rank = 1
                 elif is_orphan(deck_list):
                     rank = 2

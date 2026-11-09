@@ -346,7 +346,7 @@ class Resolver:
         key = key or self.fast_key(unit)
         if key is None:
             return Lookup(Freshness.MISSING, None, None)
-        records = self.store.find(key)        # background version first
+        records = self.store.find(key)
         for record in records:
             if record.get("unstable"):
                 continue
@@ -377,13 +377,5 @@ class Lookup:
 
     @property
     def final(self) -> bool:
-        """Nothing more for the background sweep to do for this unit now (a render by the reveal slider is
-        provisional, a render with another page number is refreshed last, and a deck compile's page of a
-        \\slidestep or \\slidefinal call -- still marked `partial`, docs/plans/render-store-cleanup.md step 4 --
-        is only a selection of its steps, not every one)."""
-        if self.state is Freshness.FAILED:
-            return True
-        if self.state is not Freshness.FRESH or self.record is None:
-            return False
-        origin = self.record.get("origin")
-        return origin == "background" or (origin == "compile" and not self.record.get("partial"))
+        """Nothing more for the background sweep to do, apart from retrying failures when eligible."""
+        return self.state in (Freshness.FRESH, Freshness.FAILED)

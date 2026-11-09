@@ -142,10 +142,10 @@ Run: the full suite and ruff. Report the net lines removed (src and tests) and e
 
 | Step | Title | Implementer | State | Commit | Net src / tests lines | Notes for the changelog |
 | --- | --- | --- | --- | --- | ---: | --- |
-| 0 | Branch, carry §7 work, baseline | orchestrator + sol high | done | (this) | 0 / 0 (0b: 2 lines) | §7 speed-ups (text below) |
-| 1.1 | Canonical text hash, key for a just-saved slide | hard | open | | | |
-| 1.2 | Evidence helpers move out of the preview cache | routine | open | | | |
-| 1.3 | Scoped, cached file inventory and the probe test | hard | open | | | |
+| 0 | Branch, carry §7 work, baseline | orchestrator + sol high | done | 716c218f | 0 / 0 (0b: 2 lines) | §7 speed-ups (text below); bench edit 1.77 s pixels, latexmk 1.63 s |
+| 1.1 | Canonical text hash, key for a just-saved slide | sol high | done | 5f328569 | +8 / +15 | Slide list finds a just-saved slide at once. fileio.text_sha256 is the one hash; 3 s rule kept for non-source inputs (manifests). For 1.4: the schema bump must also clear filehash rows (old CRLF byte digests). |
+| 1.2 | Evidence helpers move out of the preview cache | sol high | done | 0757bd6e | +29 / −66 | ValidationPass.configuration once per pass |
+| 1.3 | Scoped, cached file inventory and the probe test | sol high | done | 12840dd0 | +61 / +122 | Probe counts corrected (4 IfFileExists, 3 io.open active). Not wired yet. |
 | 1.4 | One object per key, same-label cleanup, schema bump | hard | open | | | |
 | 1.5 | Publication guard for every producer | hard | open | | | |
 | 1.6 | Compile import under the publication rule | hard | open | | | |
@@ -306,7 +306,7 @@ Goal, in render_evidence.py:
   \InputIfFileExists, io.open, kpse.find_file and lfs.attributes; checks each probe's folder against the rule and
   the alt-text exception, with the allow-list of the design (\jobname.ovl, \jobname.top, kpse lookups of
   hyphenation patterns and of SlideMage_alt.lua / SlideMage_measure.lua, the io.open of a kpse result). Counts on
-  develop: 6 \IfFileExists (+2 in comments), 2 \InputIfFileExists, 6 kpse.find_file, 4 io.open.
+  develop (active calls, recounted in 1.3): 4 \IfFileExists (+2 in comments), 2 \InputIfFileExists, 6 kpse.find_file, 3 io.open.
 Do not wire it into the store yet (step 1.5 does); the preview cache keeps its own inventory until 2.6.
 Essential tests (at most 2): one scope test in tests/test_render_evidence.py (a new unrelated picture keeps a
 check current; a same-stem picture and a new file in decks/ make it stale; it runs through the cached inventory,

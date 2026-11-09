@@ -164,7 +164,7 @@ The rule instead:
 
 - **Not inventoried:** what SlideMage writes and TeX does not search: `pdf/`, `.temp/`, `snapshots/`, plus the
   existing skips.
-- **`slides/`, `media/`, `snippets/`:** TeX reads files there only by name. Every `\IfFileExists` in `latex/` (6)
+- **`slides/`, `media/`, `snippets/`:** TeX reads files there only by name. Every `\IfFileExists` in `latex/` (4)
   names a file in the project root, `decks/` or `latex/`. So a name added or removed there invalidates only the
   results that read a file with the same stem. That covers shadowing and graphicx's extension alternatives (a new
   `fig.pdf` beside a recorded `fig.png`).
@@ -183,7 +183,7 @@ the framework's TeX and Lua for probes (`\IfFileExists`, `\InputIfFileExists`, `
 a project-folder probe, or it fails on day one: the job's own auxiliary files (`\InputIfFileExists{\jobname.ovl}`,
 `\jobname.top`), TeX-tree lookups (`kpse.find_file` of the hyphenation patterns and of the framework's own
 `SlideMage_alt.lua` and `SlideMage_measure.lua`) and the `io.open` of a path `kpse.find_file` returned. Counted on
-0ef8ba38 and unchanged on f168d0a8: 6 `\IfFileExists` calls (plus 2 in comments), 2 `\InputIfFileExists`, 6 `kpse.find_file`.
+0ef8ba38 and unchanged on f168d0a8 (recounted in step 1.3): 4 `\IfFileExists` calls (plus 2 in comments), 2 `\InputIfFileExists`, 6 `kpse.find_file`, 3 `io.open`.
 
 **The inventory is cached per directory.** Adding, removing or renaming a file always changes its directory's
 mtime, so the inventory keeps each directory's names with that mtime and lists a directory again only when it

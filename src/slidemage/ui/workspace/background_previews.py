@@ -17,7 +17,6 @@ from collections.abc import Callable
 
 import os
 import sys
-from pathlib import Path
 from weakref import WeakSet
 from typing import Optional
 
@@ -511,25 +510,26 @@ class BackgroundPreviews(QObject):
         read by the caller on the GUI thread."""
         try:
             found = self._stored_found(target, view, language, deck_name)
-            return None if found is None else self.store.page(found.record, found.record["pages"])
+            if found is None:
+                return None
+            with self.store.lock:
+                if found.record not in self.store.find(found.key):
+                    return None
+                return self.store.page(found.record, found.record["pages"])
         except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
             return None
 
     def stored_page_path(self, target, view: str, language: str, deck_name: str):
-        """The PNG file of `stored_page` (what the slide list's thumbnail shows: the store's small copy of it), else
-        None. Runs on the thumbnail worker; it reads the index and looks for the file, and makes the small copy of an
-        older object once."""
+        """The slide list's thumbnail of the current render, read on its thumbnail worker."""
         try:
             found = self._stored_found(target, view, language, deck_name)
             if found is None:
                 return None
-            path = Path(found.record["dir"]) / f"p{int(found.record['pages']):03d}.png"
-            if not path.is_file():
-                return None
-            self.store.touch(found.record["name"])
-            # (2026-10-30, direct request: the small copy, made now for an object stored without one; the full
-            # page when there is none)
-            return self.store.thumbnail_path(found.record) or path
+            with self.store.lock:
+                if found.record not in self.store.find(found.key):
+                    return None
+                self.store.touch(found.record["name"])
+                return self.store.thumbnail_path(found.record)
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
 
@@ -545,10 +545,13 @@ class BackgroundPreviews(QObject):
         try:
             unit = render_key.unit_for(target, view, language, deck_name)
             found = renderer.resolver.lookup(unit)
-            if not found.usable or found.record.get("partial"):
-                return None                 # a deck compile's page is the last step only: not the list of steps
-            pages = [self.store.page(found.record, number) for number in range(1, int(found.record["pages"]) + 1)]
-            return pages if pages and all(pages) else None
+            if not found.usable:
+                return None
+            with self.store.lock:
+                if found.record not in self.store.find(found.key):
+                    return None
+                pages = [self.store.page(found.record, number) for number in range(1, int(found.record["pages"]) + 1)]
+                return pages if pages and all(pages) else None
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
 
