@@ -209,3 +209,39 @@ theme_of = partial(packages.owner_of, KIND)
 install_file = partial(packages.install_file, KIND)
 remove = partial(packages.remove, KIND)
 cleanup = partial(packages.cleanup, KIND)
+
+
+def copy_to_project(key: str, root: Path) -> Path:
+    """Copy the installed theme `key` into the project folder `root` so that it can be edited there: its template
+    file, its scheme folder (logos and the like) and its own layout profile, each only where the project has no file
+    or folder of that name yet (nothing of the project's is overwritten). TeX finds the project's copy of the key
+    first, so the decks that use it follow the copy at once. Returns the template's path in the project. Raises
+    ThemeError when no theme of that key is installed."""
+    folder = next((f for f in installed_dirs() if f.name == key), None)
+    if folder is None:
+        raise ThemeError(f"The theme {key!r} is not installed.")
+    manifest = None
+    try:
+        manifest = read_manifest(folder)
+    except ThemeError:
+        pass        # a broken theme.toml does not stop the copy of the files that are there
+    copies = [(folder / template_file(key), root / template_file(key))]
+    schemes = folder / "schemes" / scheme_dir(key)
+    if schemes.is_dir():
+        copies.append((schemes, root / "schemes" / scheme_dir(key)))
+    if manifest is not None and manifest.layout not in BUNDLED_PROFILES:
+        own = f"{LAYOUT_PREFIX}{manifest.layout}.tex"
+        if (folder / own).is_file():
+            copies.append((folder / own, root / own))
+    for source, target in copies:
+        if target.exists():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if source.is_dir():
+                shutil.copytree(source, target)
+            else:
+                shutil.copyfile(source, target)
+        except OSError as exc:
+            raise ThemeError(f"Could not copy {source.name} into the project: {exc}") from None
+    return root / template_file(key)
