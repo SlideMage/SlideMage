@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from slidemage import deck_scan, preview_requests
+from slidemage import batch_render, deck_scan, preview_requests
 from slidemage.project import ProjectContext
 
 
@@ -24,7 +24,7 @@ def run(root, framework, output):
     path = ctx.decks_dir / 'pins.tex'
     path.write_text(original.preamble_text + '\n\\slideversion{aaa-EN-Probe}{1-0-0}\n\\end{document}\n')
     deck = deck_scan.read_deck(path)
-    spec, = preview_requests.resolve_requests(ctx, deck, source, 'instructor', 'EN',
+    spec, = batch_render.plan_slide(ctx, deck, source, 'instructor', 'EN',
                                               options=preview_requests.RenderOptions(saved=True))
     service = preview_requests.RenderService()
     def request():

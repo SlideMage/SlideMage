@@ -15,7 +15,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, compile_records, compiler, deck_scan, render_evidence, render_store, slide_versioning
+from slidemage import background_renders, compile_records, compiler, deck_scan, render_evidence, render_store, slide_preview, slide_versioning
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
@@ -407,7 +407,7 @@ def test_a_real_background_render_creates_nothing_in_the_project_and_matches_the
     assert found.final and found.record["pages"] >= 1
 
     foreground = slide_preview.render_slide_to_pdf(
-        project, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
+        project, unit.macro, unit.id_slug, unit.version, list(unit.conditions) or None, deck_version=unit.view,
         deck_language=unit.language.lower(), preamble_text=unit.preamble_text, frame_number=unit.frame_number,
         log=lambda line: None, capture_snapshot=False, all_steps=True)
     with store.lock, pymupdf.open(foreground) as theirs, pymupdf.open(Path(found.record["dir"]) / "slide.pdf") as ours:
@@ -579,34 +579,6 @@ def test_a_contents_slide_is_finished_from_the_compile_that_is_its_context(proje
 # -- batches: several slides in one document -----------------------------------------------------
 
 
-class FakeBatchTeX:
-    """Stands for slide_preview.render_slides_to_pdf: one PDF with `pages` pages per unit, each naming its slide id in
-    the footer text, and the files the document read (every unit's slide, the alt texts, the bibliography)."""
-
-    def __init__(self, project, pages=2):
-        self.project, self.pages, self.calls, self.during = project, pages, [], None
-        self.order = None                       # a function of the ids that scrambles them, to break the split
-
-    def __call__(self, units, cancel):
-        self.calls.append([u.id_slug for u in units])
-        if self.during:
-            self.during(units)
-        ids = [u.id_slug.split("-")[0] for u in units]
-        if self.order:
-            ids = self.order(ids)
-        folder = Path(tempfile.mkdtemp(prefix="slidemage_preview_"))
-        pdf = folder / "batch-x.pdf"
-        doc = pymupdf.open()
-        for bare in ids:
-            for number in range(self.pages):
-                doc.new_page(width=453, height=255).insert_text((20, 40), f"slide id: {bare}  step {number + 1}")
-        doc.save(pdf)
-        doc.close()
-        files = [u.source_path for u in units] + [self.project.root / "media" / "alt-text.csv", self.project.root / "SlideMage.bib"]
-        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(f) for f in files]), encoding="utf-8")
-        return pdf
-
-
 def batch_units(project, r, count=4, view="instructor"):
     units = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), view, "EN")
     chosen, seen = [], set()
@@ -652,45 +624,6 @@ def test_units_already_queued_are_not_batched_again_after_a_replan(project, stor
     assert r.scheduler.pending(P_IDLE) == queued and r._plan == []
 
 
-def test_a_batch_stores_each_slide_as_a_single_render_would(project, store, raster):
-    single, batch = FakeTeX(project, pages=2), FakeBatchTeX(project, pages=2)
-    r = make(project, store, raster, tex=single, batch_renderer=batch)
-    units = batch_units(project, r, 4)
-    r.render_unit(units[3], background_renders.ORIGIN_BACKGROUND, CancelToken())
-    r.render_batch(tuple(units[:3]), (), CancelToken())
-    assert batch.calls == [[u.id_slug for u in units[:3]]] and r.scheduler.pending() == 0
-    reference = r.resolver.lookup(units[3]).record
-    for unit in units[:3]:
-        found = r.resolver.lookup(unit)
-        record = found.record
-        assert found.state is Freshness.FRESH and found.final and record["origin"] == "background" and record["name"] == r.resolver.fast_key(unit)
-        assert record["pages"] == 2 and store.page(record, 2).startswith(b"\x89PNG") and store.page(record, 3) is None
-        for field in ("format", "width", "machine", "engine_fp", "decks", "pages", "origin"):
-            assert record[field] == reference[field]
-        assert set(record) == set(reference) and record["unit"] == unit.label and record["frame_number"] == unit.frame_number
-        with store.lock, pymupdf.open(Path(record["dir"]) / "slide.pdf") as own:  # its own pages only
-            assert [p.get_text().split()[2] for p in own] == [unit.id_slug.split("-")[0]] * 2
-        files = {entry[1] for entry in record["manifest"]}
-        assert "media/alt-text.csv" in files and "SlideMage.bib" in files
-        assert unit.source_path.relative_to(project.root).as_posix() in files
-        assert not any(other.source_path.relative_to(project.root).as_posix() in files for other in units if other is not unit)
-    assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))
-
-
-def test_a_batch_leaves_out_what_is_current_and_counts_what_it_stores(project, store, raster):
-    batch = FakeBatchTeX(project)
-    r = make(project, store, raster, tex=FakeTeX(project, pages=2), batch_renderer=batch)
-    units = batch_units(project, r, 4)
-    r.scan()
-    before = r.progress.deck("slidemage-manual").fresh
-    r.render_unit(units[1], background_renders.ORIGIN_BACKGROUND, CancelToken())
-    r.render_batch(tuple(units), (), CancelToken())
-    assert batch.calls == [[units[0].id_slug, units[2].id_slug, units[3].id_slug]]
-    assert all(r.resolver.lookup(u).final for u in units) and r.progress.deck("slidemage-manual").fresh == before + 4   # 3 stored, 1 found current
-    r.render_batch(tuple(units), (), CancelToken())
-    assert len(batch.calls) == 1                                                  # all current: no document at all
-
-
 def test_a_dependency_edited_during_the_render_is_never_stored(project, store, raster, monkeypatch):
     r = make(project, store, raster)
     unit = batch_units(project, r, 1)[0]
@@ -705,79 +638,11 @@ def test_a_dependency_edited_during_the_render_is_never_stored(project, store, r
         os.utime(dependency, ns=(old.st_atime_ns, old.st_mtime_ns))
         return pdf
 
-    monkeypatch.setattr(background_renders.slide_preview, "render_slide_text_to_pdf", compile)
+    monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", compile)
     r._render = None
     assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) is None
     assert store.count() == 0 and store.failures() == []
     assert not r.resolver.lookup(unit).usable
-
-
-@pytest.mark.parametrize("how", ["compile fails", "wrong order", "missing slide"])
-def test_a_batch_that_cannot_be_split_or_compiled_stores_nothing_and_its_slides_run_singly(project, store, raster, how):
-    batch = FakeBatchTeX(project)
-    r = make(project, store, raster, batch_renderer=batch)
-    units = batch_units(project, r, 3)
-    if how == "compile fails":
-        batch.during = lambda _units: (_ for _ in ()).throw(RuntimeError("Render failed for batch:\n! Undefined control sequence."))
-    elif how == "wrong order":
-        batch.order = lambda ids: ids[::-1]
-    else:
-        batch.order = lambda ids: ids[:-1]
-    r.render_batch(tuple(units), ("rank",), CancelToken())
-    assert store.count() == 0 and store.failures() == [] and r.progress.failures == 0
-    jobs = sorted(r.scheduler._queue.values(), key=lambda j: j.order())
-    assert sorted(job.key for job in jobs) == sorted(u.label for u in units) and all(len(job.payload[0]) == 1 for job in jobs)
-    assert all(job.rank == ("rank",) and job.group == "slidemage-manual" and job.priority == P_IDLE for job in jobs)
-    assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))
-
-
-def test_a_cancelled_batch_stores_nothing_more_and_leaves_its_slides_outstanding(project, store, raster):
-    batch = FakeBatchTeX(project)
-    r = make(project, store, raster, batch_renderer=batch)
-    units = batch_units(project, r, 3)
-    cancel = CancelToken()
-    batch.during = lambda _units: cancel.request_stop()
-    with pytest.raises(RuntimeError):
-        r.render_batch(tuple(units), (), cancel)
-    assert store.count() == 0 and r.scheduler.pending() == 0 and store.failures() == []
-
-
-def test_a_batch_job_shows_as_one_running_entry(project, store, raster):
-    batch = FakeBatchTeX(project)
-    r = make(project, store, raster, batch_renderer=batch, tex=FakeTeX(project, pages=1))
-    units = batch_units(project, r, 3)
-    seen = []
-    batch.during = lambda _units: seen.extend(r.running())
-    r.scheduler.submit("batch", (tuple(units), background_renders.ORIGIN_BACKGROUND), P_IDLE, (1,), group="slidemage-manual")
-    r.scheduler.run_next()
-    assert [e["slide"] for e in seen] == ["3 slides"] and seen[0]["deck"] == "slidemage-manual" and r.progress.working is None
-    assert all(r.resolver.lookup(u).final for u in units)
-
-
-@pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
-def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(project, store, tmp_path):
-    os.environ.setdefault("SLIDEMAGE_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
-    decks = deck_scan.scan_decks(project)
-    gate = IdleGate(startup_delay=0, idle_after=0, only_on_mains=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
-    batched = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks)
-    batched.test_decks = decks
-    other = render_store.RenderStore(project, tmp_path / "local-singles")
-    singles = BackgroundRenderer(project, other, gate=gate, decks=lambda: decks)
-    try:
-        units = [u for u in batch_units(project, batched, 40) if u.macro != "slidestep"][3:6]
-        batched.render_batch(tuple(units), (), CancelToken())
-        assert batched.scheduler.pending() == 0, "the batch fell back to single renders"
-        for unit in units:
-            singles.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-            ours, theirs = batched.resolver.lookup(unit).record, singles.resolver.lookup(unit).record
-            assert ours["pages"] == theirs["pages"] >= 1
-            assert [store.page(ours, n) for n in range(1, ours["pages"] + 1)] == [other.page(theirs, n) for n in range(1, theirs["pages"] + 1)]
-            assert ours["manifest"] == theirs["manifest"] and ours["frame_number"] == theirs["frame_number"]
-            assert ours["origin"] == theirs["origin"] == "background"
-    finally:
-        other.close()
-        singles.stop()
-        batched.stop()
 
 
 def test_what_runs_comes_from_the_workers_not_from_a_copy_of_the_progress(project, store, raster, caplog):

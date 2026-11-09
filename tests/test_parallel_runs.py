@@ -8,7 +8,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from slidemage import parallel_runs, preview_batch
+from slidemage import parallel_runs, batch_render
 
 
 def tasks(count, seconds=0.2):
@@ -140,12 +140,12 @@ def test_a_batch_renders_its_views_at_once_and_keeps_their_order(monkeypatch):
                                options=SimpleNamespace(force=False, saved=True, presenter=False,
                                                        mode="slide", overlay=None),
                                revision=SimpleNamespace(text="T"), language="EN")
-    monkeypatch.setattr(preview_batch, "replace", lambda obj, **changes: (
+    monkeypatch.setattr(batch_render, "replace", lambda obj, **changes: (
         obj.__dict__.update(changes) or obj) if isinstance(obj, SimpleNamespace) else _replace(obj, **changes))
     events = []
     views = ("instructor", "during-course", "after-course")
     monkeypatch.setattr(parallel_runs, "BUDGET", parallel_runs.RenderBudget(8))
-    results = preview_batch.render_batch(Service(), [spec(v) for v in views], progress=events.append, workers=3,
+    results = batch_render.render_batch(Service(), [spec(v) for v in views], progress=events.append, workers=3,
                                          may_add=lambda: True)
     assert state["peak"] == 3
     assert [r.request.view for r in results] == list(views)

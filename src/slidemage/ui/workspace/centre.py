@@ -1166,7 +1166,7 @@ class CentreColumn(QFrame):
         picks = []
         for distance in range(1, 4):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
-        # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
+        # Built as the focused slide's target is (batch_render.plan_slide), so a neighbour's step count is found
         # under the same key once that slide is focused.
         frames = self._english_frames(state)
         targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,

@@ -17,7 +17,7 @@ Usage, from the repository root (no Qt, nothing is collected by pytest)::
 Scenarios (``--scenarios``, comma separated; default cold,unchanged,edit,view-switch): ``cold`` a forced render;
 ``unchanged`` the same text again (a cache hit); ``edit`` the text plus a unique ``%`` comment, ``--repeat`` times;
 ``view-switch`` instructor, during-course, instructor again, each with a fresh edit (one shared build folder);
-``deck-refresh`` ``update_all_previews.rerender_deck`` of the whole deck with wall time and child-process CPU
+``deck-refresh`` ``batch_render.render_batch`` of the whole deck with wall time and child-process CPU
 seconds (wall only on Windows), ``--batch-size`` slides per document (1: one each);
 ``background-batch`` the background renders of the deck in ``--view`` (``--units`` of them, default all), one document
 each against ``--batch-size`` (16) in one document, wall time and child-process CPU seconds of each.
@@ -237,8 +237,8 @@ class Bench:
         self.results = {}
 
     def target(self, view):
-        from slidemage import preview_target
-        return preview_target.resolve_views(self.ctx, self.deck, self.slide, view, self.language)[0][1]
+        from slidemage import batch_render
+        return batch_render.plan_slide(self.ctx, self.deck, self.slide, view, self.language)[0].target
 
     def edited(self):
         return f'{self.text}\n% bench edit {uuid.uuid4().hex}\n'
@@ -301,11 +301,12 @@ class Bench:
             self.record('view-switch', f'{step + 1}. {view}', [r[step] for r in rounds])
 
     def deck_refresh(self):
-        from slidemage import background_renders, update_all_previews
-        background_renders.batch_size = lambda ctx: self.args.batch_size       # slides per document; 1: one each
+        from slidemage import batch_render
         children = lambda: (resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None)  # noqa: E731
         before, own, start = children(), time.process_time(), time.perf_counter()
-        result = update_all_previews.rerender_deck(self.ctx, self.deck, lambda line: None, service=self.service, force=True)
+        requests = batch_render.plan_deck(self.ctx, self.deck, force=True, language=self.language)
+        result = batch_render.DeckResult.from_results(batch_render.render_batch(
+            self.service, requests, batch_size=self.args.batch_size), 'all', self.language)
         wall, after = time.perf_counter() - start, children()
         self.results['deck-refresh'] = {
             'deck': self.deck.name, 'batch_size': self.args.batch_size, 'wall_seconds': wall, 'own_cpu_seconds': time.process_time() - own,

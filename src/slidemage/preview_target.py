@@ -33,7 +33,6 @@ class PreviewTarget:
     steps: Optional[str]
     frame_number: Optional[int]
     preamble_text: Optional[str]    # the deck's; None: the default template's
-    # Callers pass these three by position (deck_preview_refresh.plan): keep them right after preamble_text.
     occurrence_key: tuple = ()
     hidden: bool = False
     presenter_frame_number: Optional[int] = None
@@ -117,33 +116,6 @@ def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> t
     if requested not in VIEWS:
         raise ValueError(f"Invalid preview view: {requested!r}; expected {', '.join((*VIEWS, 'all'))}")
     return (requested,)
-
-
-def resolve_views(ctx: project.ProjectContext, deck: Deck | None, path: Path, view: str | None,
-                  language: str, *, selected_view: str = VIEW_INSTRUCTOR,
-                  occurrence_key: tuple | None = None) -> tuple[tuple[str, PreviewTarget], ...]:
-    """Resolve one occurrence independently in each view, without changing workspace state.
-
-    A slide-id lookup uses the focused occurrence when supplied, otherwise the first logical
-    occurrence. A frozen file opened separately remains standalone unless the deck pins it.
-    Hidden deck calls retain their identity and are never rendered as standalone slides.
-    """
-    from . import deck_outline
-
-    views = requested_views(view, selected_view)
-    result = []
-    for canonical in views:
-        row = (deck_outline.slide_row(ctx, deck, slide_language.bare_id(path.name), canonical, language,
-                                      occurrence_key=occurrence_key) if deck is not None else None)
-        if row is not None and (row.call.source_filename == path.name or '-current.tex' in path.name):
-            target = for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number,
-                              occurrence_key=row.key, hidden=row.hidden)
-        else:
-            target = for_path(ctx, path)
-        if target is None:
-            raise ValueError(f"{path.name} is not a slide file")
-        result.append((canonical, target))
-    return tuple(result)
 
 
 def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]:

@@ -13,7 +13,7 @@ import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import ai_review, compiler, preview_target, slide_snapshot, slide_templates, update_all_previews
+from slidemage import ai_review, compiler, preview_target, slide_snapshot, slide_templates, batch_render
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -613,25 +613,10 @@ def test_refresh_preview_reports_the_first_latex_error_and_other_problems(box, r
     assert "publication failed: disk full" in box.error("refresh_preview", view="instructor")
 
 
-def test_refresh_deck_previews_reports_counts_and_lists(box, root):
-    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"],
-                                                           error="! Undefined control sequence.")
-    out = box.ok("refresh_deck_previews")                                       # the open deck
-    assert box.ws.refreshed == ["test"]
-    assert out == ("test: 1 of 2 slide preview(s) refreshed, 1 failed.\nRefreshed: abc\nFailed: abd\n"
-                   "First error: ! Undefined control sequence.")
-    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello", "abd-EN-Second"])
-    assert box.ok("refresh_deck_previews", deck="test") == "test: 2 of 2 slide preview(s) refreshed, 0 failed.\nRefreshed: abc, abd"
-    box.ws.refresh_result = update_all_previews.DeckResult()
-    assert "no slides to refresh" in box.ok("refresh_deck_previews")
-    assert "There is no deck 'nope'" in box.error("refresh_deck_previews", deck="nope")
-    assert box.ws.refreshed == ["test"] * 3
-
-
 def test_refresh_deck_previews_says_why_it_could_not_run_or_was_stopped(box):
     box.ws.refresh_result = RuntimeError("SlideMage is busy with another compile run.")
     assert box.error("refresh_deck_previews") == "SlideMage is busy with another compile run."
-    box.ws.refresh_result = update_all_previews.DeckResult()
+    box.ws.refresh_result = batch_render.DeckResult()
     box.box.ctx.cancel.request_stop()
     assert "stopped by the user" in box.error("refresh_deck_previews")
 
@@ -643,7 +628,7 @@ def test_refresh_deck_previews_is_stopped_after_its_deadline(box, monkeypatch):
         end = time.monotonic() + 5
         while not cancel.is_set() and time.monotonic() < end:
             time.sleep(0.02)
-        return update_all_previews.DeckResult()
+        return batch_render.DeckResult()
 
     monkeypatch.setattr(box.ws, "refresh_deck_previews", slow)
     assert "longer than" in box.error("refresh_deck_previews")
@@ -791,25 +776,6 @@ def test_render_preview_default_is_selected_view_and_refresh_default_is_all_view
     assert sorted(row[2] for row in seen[-3:]) == sorted(['instructor', 'during-course', 'after-course'])     # the views render at once, in any order
     assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
     assert box.ws.context().view == 'during-course'
-
-
-@pytest.mark.parametrize('args', [{}, {'view': 'all'}])
-def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root, monkeypatch, args):
-    seen = fake_render(monkeypatch, root)
-    box.ws.open(root / SLIDE, 'UNSAVED')
-    captures = []
-    render = preview_target.render_text
-
-    def capture(target, text, *args, **kwargs):
-        captures.append(text)
-        return render(target, text, *args, **kwargs)
-
-    monkeypatch.setattr(preview_target, 'render_text', capture)
-    result = box.run('refresh_preview', **args)
-    assert not result.is_error and result.images == []
-    assert sorted(row[2] for row in seen) == sorted(['instructor', 'during-course', 'after-course'])          # the views render at once, in any order
-    assert all(text == (root / SLIDE).read_text() for text in captures)
-    assert 'saved source' in result.text and 'cached for after-course' in result.text
 
 
 def test_preview_tools_reject_invalid_view(box):

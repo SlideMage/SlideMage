@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from .. import compiler, preview_batch, preview_target, slide_snapshot, update_all_previews
+from .. import background_renders, compiler, batch_render, preview_target, slide_snapshot
 from ..deck_scan import Deck
 from ..project import ProjectContext
 from ..selection import Selection, SelectionError
-from ..preview_requests import RenderOptions, RenderService, resolve_requests
+from ..preview_requests import RenderOptions, RenderService
 from .providers import ChatProvider
 
 
@@ -164,7 +164,7 @@ class Workspace:
                 return self.buffer_snapshot(source)[0]
             return None
 
-        return resolve_requests(self.project, context.deck, path, view, context.language,
+        return batch_render.plan_slide(self.project, context.deck, path, view, context.language,
                                 selected_view=context.view, occurrence_key=occurrence,
                                 options=options, read_source=read_source)
 
@@ -175,8 +175,9 @@ class Workspace:
             requests = self.prepare_preview_batch(path, view, saved=saved, force=force, context=context)
         if ticket is None:
             ticket = self.begin_preview_refresh()
-        return preview_batch.render_batch(self.preview_service(), requests, cancel=cancel,
+        return batch_render.render_batch(self.preview_service(), requests, cancel=cancel,
                                           progress=progress, log=self.preview_log,
+                                          batch_size=background_renders.batch_size(self.project),
                                           publish=lambda result: self.publish_preview_result(result, ticket))
 
     def begin_preview_refresh(self):
@@ -225,12 +226,15 @@ class Workspace:
         the jobs through its job panel."""
         return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel)
 
-    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> update_all_previews.DeckResult:
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> batch_render.DeckResult:
         """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the
         snapshots are written (the Stop of the chat ends it through `cancel`). The window overrides this
         to run it on the compile slot, with its job panel; raises RuntimeError when it cannot run."""
         context = self.context()
-        return update_all_previews.rerender_deck(
-            self.project, deck, self.preview_log, cancel, service=self.preview_service(),
-            scope=scope, selected_view=context.view, language=context.language,
+        requests = batch_render.plan_deck(self.project, deck, scope=scope, selected_view=context.view,
+                                           language=context.language)
+        results = batch_render.render_batch(
+            self.preview_service(), requests, cancel=cancel, log=self.preview_log,
+            batch_size=background_renders.batch_size(self.project),
             publish=lambda result: self.publish_preview_result(result, None))
+        return batch_render.DeckResult.from_results(results, scope, context.language)

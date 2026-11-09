@@ -12,7 +12,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from slidemage import deck_outline, deck_scan, preview_target, preview_thumbnails, render_key, render_lookup, update_all_previews
+from slidemage import background_renders, deck_outline, deck_scan, preview_target, preview_thumbnails, render_key, render_lookup, batch_render
 from slidemage.preview_requests import PreviewRequest, RenderService, SourceRevision
 from slidemage.project import ProjectContext
 
@@ -41,15 +41,17 @@ def run(root, framework, output):
     service = MeasuredService()
     events = []
     started = time.perf_counter()
-    first = update_all_previews.rerender_deck(ctx, deck, lambda _: None, service=service,
-                                             language='EN', progress=events.append)
+    requests = batch_render.plan_deck(ctx, deck, language='EN')
+    first = batch_render.DeckResult.from_results(batch_render.render_batch(
+        service, requests, progress=events.append, batch_size=background_renders.batch_size(ctx)), 'all', 'EN')
     assert first and first.details.total == 9, first
     cold_seconds = time.perf_counter() - started
     compile_count = sum(not request.metrics['cache_hit'] for request in service.requests)
-    assert events[-1].index == events[-1].total == 9
+    assert events[-1].done == events[-1].total == 9
     service.requests.clear()
     started = time.perf_counter()
-    warm = update_all_previews.rerender_deck(ctx, deck, lambda _: None, service=service, language='EN')
+    warm = batch_render.DeckResult.from_results(batch_render.render_batch(
+        service, requests, batch_size=background_renders.batch_size(ctx)), 'all', 'EN')
     warm_seconds = time.perf_counter() - started
     assert warm and warm.details.count('cached') == 9
     assert all(request.metrics['cache_hit'] for request in service.requests)

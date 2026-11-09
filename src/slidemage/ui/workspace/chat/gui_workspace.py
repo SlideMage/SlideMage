@@ -29,7 +29,8 @@ from ....compile_status import DONE
 from ....deck_scan import Deck
 from ....selection import Selection
 from ....slide_language import bare_id, own_language
-from ....update_all_previews import DeckResult, needed_slides_by_template
+from .... import batch_render
+from ....batch_render import DeckResult
 from .. import compile_actions
 from ...ai_models import confirm_cloud_request
 
@@ -375,11 +376,9 @@ class GuiWorkspace(Workspace):
         def start() -> bool:
             if window.compile.running:
                 return False
-            needed = needed_slides_by_template(window.project, deck)
-            if any(needed.values()):
-                compile_actions.start_deck_previews(window, deck, needed, on_done, scope=scope)
-            else:
-                on_done(DeckResult())
+            requests = batch_render.plan_deck(window.project, deck, scope=scope,
+                                               selected_view=window.state.view, language=window.state.language)
+            compile_actions.start_deck_previews(window, deck, requests, on_done, scope=scope)
             return True
 
         if not self.on_gui(start, False):

@@ -15,6 +15,7 @@ from pathlib import Path
 from ... import (
     ai_review,
     alt_blocks,
+    batch_render,
     bibliography,
     compile_status,
     deck_editor,
@@ -244,8 +245,8 @@ def slide_target(project, deck: Deck | None, path: Path, view: str, language: st
     """The slide file `path` as a preview renders it: as `deck` calls it in `view` and `language`, else alone
     (None when it is no slide file)."""
     try:
-        return preview_target.resolve_views(project, deck, path, view, language,
-                                            occurrence_key=occurrence_key)[0][1]
+        return batch_render.plan_slide(project, deck, path, view, language,
+                                       occurrence_key=occurrence_key)[0].target
     except ValueError:
         return None
 

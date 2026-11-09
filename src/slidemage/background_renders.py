@@ -15,9 +15,7 @@ Free of Qt: the window supplies the gate's input events and the status chip read
 from __future__ import annotations
 
 import os
-import json
 import logging
-import shutil
 import tempfile
 import threading
 import time
@@ -27,7 +25,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
-from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_requests, preview_target, slide_preview, slide_snapshot, slide_templates
+from . import compile_records, deck_context, parallel_runs, batch_render, power_status, preview_requests, preview_target, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
@@ -197,7 +195,7 @@ class BackgroundRenderer:
     def __init__(self, ctx: ProjectContext, store: RenderStore, *, gate: Optional[IdleGate] = None,
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
-                 raster: Optional[RasterClient] = None, batch_renderer: Optional[Callable] = None,
+                 raster: Optional[RasterClient] = None,
                  renders: Optional[preview_requests.RenderService] = None,
                  on_change: Callable[[], None] = lambda: None,
                  plugin_soon: Optional[Callable[[Deck], bool]] = None,
@@ -215,14 +213,14 @@ class BackgroundRenderer:
         self._render = renderer
         self.renders = renders or preview_requests.RenderService()
         self.renders._background, self.renders._owns_background = self, False   # the window owns the store
-        self._render_batch = batch_renderer or self._render_batch_pdf
         self._raster = raster
         self._on_change = on_change
         self._clock = clock
         profile = setting(ctx, PROFILE_KEY, DEFAULT_PROFILE)
         workers, duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
         self.scheduler = RenderScheduler(self._work, can_start=self._may_start,
-                                         on_change=self._changed, on_error=self._failed, workers=workers, duty=duty,
+                                         on_change=self._changed, on_error=lambda job, exc: self._failed(job.payload[0][0], exc),
+                                         workers=workers, duty=duty,
                                          may_add=self._cpu_has_room, budget=parallel_runs.BUDGET)
         self.progress = Progress()
         self._plan: list = []
@@ -770,14 +768,23 @@ class BackgroundRenderer:
     # -- the work ----------------------------------------------------------------------------
 
     def _work(self, job: Job, cancel) -> None:
-        units, origin = job.payload
+        units = job.payload[0]
         self._set_working(job.key, True)
         self.trace(f"start {job.key}")
         try:
-            if len(units) > 1:
-                self.render_batch(units, job.rank, cancel)
-            elif self.render_unit(units[0], origin, cancel) is not None:
-                self._count_fresh(units[0])
+            cancel.low_priority = True
+            requests = tuple(self.request_for(unit) for unit in units)
+            results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
+            for unit, result in zip(units, results):
+                if result.status in ('rendered', 'cached'):
+                    found = self.resolver.lookup(unit)
+                    if found.state is render_key.Freshness.FRESH:
+                        self.store.link_decks(found.record['name'], [unit.deck])
+                        self._count_fresh(unit)
+                elif result.status == 'failed':
+                    self._failed(unit, RuntimeError(result.error))
+            if cancel.is_set():
+                raise Cancelled('Preview cancelled')
         finally:
             self._set_working(job.key, False)
             self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
@@ -819,48 +826,40 @@ class BackgroundRenderer:
         """(how many may render at once, the processor's load now: None when unknown)."""
         return self.scheduler.workers, self._cpu.load()
 
-    def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
-        """Render `unit` into the store unless a current render is there. Returns the object name, or None."""
+    def request_for(self, unit: render_key.Unit) -> preview_requests.PreviewRequest:
+        """Capture a saved sweep unit, retaining its deck and unrestricted reveal steps."""
         try:
             revision = preview_requests.SourceRevision.capture(unit.source_path)
+            error = None
         except OSError:
-            raise _transient("the slide file is being written") from None
-        key = self.resolver.fast_key(unit, revision.text)
-        found = self.resolver.lookup(unit, key)
-        if found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
-            if unit.label not in self._last_try or self.store.tried_last(key):
-                return None
-            self.store.note_last_try(key)       # noted first: a try that never ends is not made again and again
-        if found.state is render_key.Freshness.FRESH:
-            self.store.link_decks(found.record["name"], [unit.deck])
-            return found.record["name"]
+            revision = preview_requests.SourceRevision.capture(unit.source_path, '')
+            error = 'the slide file is being written'
         deck = next((deck for deck in self._decks() if deck.name == unit.deck), None)
         target = preview_target.PreviewTarget(
             self.ctx, unit.macro, unit.id_slug, unit.version, unit.conditions, None,
             unit.frame_number, unit.preamble_text, deck=deck, needs_context=(unit.context,) if unit.context else ())
-        spec = preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
-                                              preview_requests.RenderOptions(saved=True, all_steps=True))
+        return preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
+                                              preview_requests.RenderOptions(saved=True, all_steps=True), error)
+
+    def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
+        """Render one saved unit; return its stored object name, or None when held back."""
+        spec = self.request_for(unit)
+        if spec.capture_error:
+            raise _transient(spec.capture_error)
         cancel.low_priority = True
-        request = self.renders.request(target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
+        request = self.renders.request(spec.target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
         request.origin = origin
         try:
             request.wait(cancel)
-            stored = self.store.find(key)
-            if stored is not None:
-                self.store.link_decks(stored['name'], [unit.deck])
-                return stored['name']
-            return None
-        except BaseException as exc:
-            if not cancel.is_set():
-                kind = getattr(exc, "kind", None) or (render_store.DETERMINISTIC if str(exc).startswith("Render failed") else render_store.TRANSIENT)
-                inputs = [str(unit.source_path)] + list(getattr(exc, "preview_inputs", ()))
-                manifest = self.resolver.build_manifest(inputs).entries
-                manifest += [self.resolver.missing_input_entry(name) for name in set(getattr(exc, "missing_inputs", ()))]
-                self.store.record_failure(key, kind, str(exc), manifest)
-                with self._working_lock:
-                    if self._current is None or key in self._current.keys:
-                        self._failure_keys.add(key)
+        except RuntimeError:
+            if request.preview_result is not None and request.preview_result.status == 'failed':
+                return None
             raise
+        stored = self.store.find(self.resolver.fast_key(unit, spec.revision.text))
+        if stored is not None:
+            self.store.link_decks(stored['name'], [unit.deck])
+            return stored['name']
+        return None
 
     def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
                       pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
@@ -881,76 +880,6 @@ class BackgroundRenderer:
         name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
         self._drop_stale(unit, key)
         return name
-
-    def render_batch(self, units: tuple, rank: tuple, cancel) -> None:
-        """Render `units` (one deck, view, language and preamble, one per bare slide id) in one document and store
-        each one's pages with the record `render_unit` would make. A unit that is current already is left out. If the
-        document does not compile or its pages cannot be told apart, nothing is stored and the units are queued singly,
-        so a broken slide is found and remembered by its own render. A unit edited meanwhile is left for the next plan."""
-        todo, singly = [], []
-        validation = render_evidence.ValidationPass()
-        for unit in units:
-            key = self.resolver.fast_key(unit, validation=validation)
-            found = self.resolver.lookup(unit, key, validation=validation) if key is not None else None
-            if found is None:
-                singly.append(unit)                     # the file is being written: its own job raises "transient"
-            elif found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
-                continue
-            elif found.state is render_key.Freshness.FRESH:
-                self.store.link_decks(found.record["name"], [unit.deck])
-                self._count_fresh(unit)
-            else:
-                todo.append((unit, key))
-        if len(todo) == 1:
-            singly += [todo.pop()[0]]
-        done: set[str] = set()
-        pdf = None
-        if todo:
-            try:
-                started = time.time()
-                inventory = render_evidence.search_inventory(self.ctx.root, slide_preview.build_env(self.ctx))
-                pdf = self._render_batch([unit for unit, _key in todo], cancel)
-                if cancel.is_set():
-                    raise Cancelled("Preview cancelled")
-                self._store_batch(pdf, todo, dict(started=started, inventory=inventory), cancel, done)
-            except Exception:  # noqa: BLE001 -- whatever went wrong, the units are tried one by one
-                if cancel.is_set():
-                    raise
-            finally:
-                if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                    shutil.rmtree(pdf.parent, ignore_errors=True)
-            singly += [unit for unit, _key in todo if unit.label not in done]
-        for unit in singly:
-            self.scheduler.submit(unit.label, ((unit,), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
-
-    def _store_batch(self, pdf: Path, todo: list, evidence: dict, cancel, done: set[str]) -> None:
-        """Split the batch PDF by slide (the slide id on each page) and store every unit; `done` collects the labels
-        of the units dealt with. RuntimeError when the pages are not the planned slides'."""
-        raster = self._raster or self._shared_raster()
-        response = raster.read_document(pdf, "pdf", 1, ALL_PAGES)
-        runs = slide_snapshot.batch_runs(response["texts"], [slide_language.bare_id(unit.id_slug) for unit, _key in todo])
-        inputs_file = pdf.with_suffix(".inputs.json")
-        inputs = [Path(name) for name in json.loads(inputs_file.read_text(encoding="utf-8"))] if inputs_file.is_file() else []
-        for number, ((unit, key), pages) in enumerate(zip(todo, runs)):
-            if cancel.is_set():
-                raise Cancelled("Preview cancelled")
-            own = pdf.parent / f"unit-{number}.pdf"
-            raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
-            images = self._rasterise(own, cancel)
-            if len(images) != len(pages):
-                raise RuntimeError("the pages of a slide were not all rendered")
-            manifest = self.resolver.build_manifest([str(path) for path in render_key.unit_inputs(self.ctx, inputs, unit.source_path)])
-            name = self._store_render(unit, ORIGIN_BACKGROUND, own, images, manifest, dict(evidence, key=key))
-            done.add(unit.label)
-            if name is not None:
-                self._count_fresh(unit)
-
-    def _render_batch_pdf(self, units: list, cancel) -> Path:
-        first = units[0]
-        return slide_preview.render_slides_to_pdf(
-            self.ctx, [(u.macro, u.id_slug, u.version, u.render_conditions, u.frame_number) for u in units],
-            first.view, first.language.lower(), first.preamble_text, log=lambda line: None, cancel=cancel,
-            workspace=self.store.work_dir)
 
     def _render_in_deck(self, unit: render_key.Unit, cancel) -> Path:
         """A slide that needs its deck, typeset in the deck's last whole-deck compile (deck_context.render_in_deck)."""
@@ -982,14 +911,12 @@ class BackgroundRenderer:
             self._own_raster = RasterClient()
         return self._own_raster
 
-    def _failed(self, job: Job, exc: BaseException) -> None:
+    def _failed(self, unit: render_key.Unit, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()
-        unit = job.payload[0][0]
         counted = self.progress.deck(unit.deck)
-        if counted is not None and getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed"):
-            if counted is not None:
-                counted.failed += 1
-                counted.count(unit.view, 2)
+        if counted is not None and (getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed")):
+            counted.failed += 1
+            counted.count(unit.view, 2)
 
     def _changed(self) -> None:
         try:

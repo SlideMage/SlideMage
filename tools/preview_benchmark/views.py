@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 
 import pymupdf
 from PIL import Image
-from slidemage import deck_scan, preview_batch, preview_requests, preview_raster, preview_target, render_lookup, slide_snapshot
+from slidemage import deck_scan, batch_render, preview_requests, preview_raster, preview_target, render_lookup, slide_snapshot
 from slidemage.project import ProjectContext
 
 
@@ -79,10 +79,10 @@ def run(output):
     service = MeasuredService()
 
     def phase(name, selected_deck, *, view='all', force=False):
-        specs = preview_requests.resolve_requests(ctx, selected_deck, source, view, 'EN',
+        specs = batch_render.plan_slide(ctx, selected_deck, source, view, 'EN',
                     options=preview_requests.RenderOptions(saved=True, force=force))
         start, offset = time.perf_counter(), len(service.observed)
-        results = preview_batch.render_batch(service, specs)
+        results = batch_render.render_batch(service, specs)
         assert all(r.status in ('rendered', 'cached', 'hidden') for r in results), [(r.status, r.error) for r in results]
         requests = service.observed[offset:]
         metrics = [r.metrics for r in requests]
@@ -172,11 +172,11 @@ def run(output):
     phase('warm-after-edits-all', current_deck)
     assert records[-1]['compile_count'] == 0
     numbering = deck(conditional=True)
-    specs = preview_requests.resolve_requests(ctx, numbering, source, 'all', 'EN')
+    specs = batch_render.plan_slide(ctx, numbering, source, 'all', 'EN')
     assert [r.target.frame_number for r in specs] == [3, 2, 2]
-    hidden = preview_requests.resolve_requests(ctx, numbering,
+    hidden = batch_render.plan_slide(ctx, numbering,
                     ctx.slides_dir / 'bbb-EN-Hidden-current.tex', 'all', 'EN')
-    hidden_results = preview_batch.render_batch(service, hidden)
+    hidden_results = batch_render.render_batch(service, hidden)
     assert [r.status for r in hidden_results] == ['rendered', 'hidden', 'hidden']
     # Resolve actual pinned/translated fixture files, then compile those selected inputs.
     pinned = source.with_name('aaa-EN-Probe-v1-0-0.tex')
@@ -186,12 +186,12 @@ def run(output):
     source.write_text('%% DE translation: ccc-DE-Probe\n' + source.read_text())
     deck_path = numbering.path
     deck_path.write_text(numbering.text.replace('\\slide{aaa-EN-Probe}', '\\slideversion{aaa-EN-Probe}{1-0-0}'))
-    pinned_specs = preview_requests.resolve_requests(ctx, deck_scan.read_deck(deck_path), source, 'instructor', 'EN')
+    pinned_specs = batch_render.plan_slide(ctx, deck_scan.read_deck(deck_path), source, 'instructor', 'EN')
     assert pinned_specs[0].revision.path == pinned
-    assert preview_batch.render_batch(service, pinned_specs)[0].status == 'rendered'
-    translated_specs = preview_requests.resolve_requests(ctx, deck(), source, 'during-course', 'DE')
+    assert batch_render.render_batch(service, pinned_specs)[0].status == 'rendered'
+    translated_specs = batch_render.plan_slide(ctx, deck(), source, 'during-course', 'DE')
     assert translated_specs[0].revision.path == translated
-    result = preview_batch.render_batch(service, translated_specs)[0]
+    result = batch_render.render_batch(service, translated_specs)[0]
     assert result.status == 'rendered', result.error
     with pymupdf.open(result.pdf) as pdf:
         assert 'Deutscher Inhalt' in ''.join(page.get_text() for page in pdf)

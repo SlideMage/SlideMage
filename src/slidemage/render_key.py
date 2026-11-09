@@ -120,10 +120,6 @@ class Unit:
     def label(self) -> str:
         return f"{self.deck or '-'}:{self.id_slug}:{self.view}:{self.language}"
 
-    @property
-    def render_conditions(self) -> Optional[list]:
-        """What the wrapper's call carries: \\slidestep keeps no conditions (it is shown in every view)."""
-        return None if self.macro == "slidestep" else (list(self.conditions) or None)
 
 
 def unit_for(target: PreviewTarget, view: str, language: str, deck: str = "") -> Unit:

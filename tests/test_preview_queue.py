@@ -812,7 +812,7 @@ def test_all_view_scope_disabled_and_hidden_current_render_is_safe(pane, monkeyp
 
 
 def test_ui_batch_progress_partial_failure_and_close_cancellation(pane):
-    from slidemage.preview_batch import BatchProgress
+    from slidemage.batch_render import BatchProgress
 
     view, _, _ = pane
     cancel = threading.Event()
@@ -849,7 +849,8 @@ def test_ui_batch_preparation_error_is_reported_without_worker(pane, monkeypatch
 
 @pytest.mark.parametrize("mode", ["source", "details"])
 def test_palette_all_views_resolves_current_focus_when_preview_is_hidden(pane, tmp_path, monkeypatch, mode):
-    from slidemage.preview_requests import RenderOptions, resolve_requests
+    from slidemage.preview_requests import RenderOptions
+    from slidemage.batch_render import plan_slide
     view, old_target, _ = pane
     path = tmp_path / "slides" / "bbb-EN-New-current.tex"
     path.write_text("NEW FOCUSED SLIDE")
@@ -857,7 +858,7 @@ def test_palette_all_views_resolves_current_focus_when_preview_is_hidden(pane, t
     captured = []
     def prepare(source, **kwargs):
         captured.append(source)
-        return resolve_requests(view.state.project, None, source, "all", "EN", options=RenderOptions(saved=True))
+        return plan_slide(view.state.project, None, source, "all", "EN", options=RenderOptions(saved=True))
     view.app.assistant = SimpleNamespace(workspace=SimpleNamespace(prepare_preview_batch=prepare))
     view.app.centre = SimpleNamespace(preview=view, _preview_context=lambda: (target, None, "New", None))
     view.state.set_mode(mode)

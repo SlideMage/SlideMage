@@ -547,32 +547,6 @@ def render_slide_to_pdf(
 
 
 @measure('render')
-def render_slides_to_pdf(
-    ctx: project.ProjectContext,
-    slides: list[tuple],
-    deck_version: str,
-    deck_language: str,
-    preamble_text: Optional[str],
-    log: Optional[LogCallback] = None,
-    cancel=None,
-    workspace: Optional[Path] = None,
-) -> Path:
-    """Compile several slides of one deck, view and language in ONE document (every reveal step, as
-    render_slide_to_pdf(all_steps=True) does) and return its PDF: the pages of the slides follow one another in
-    the order of `slides`, [(macro, id_slug, version, conditions, frame_number)], each page set apart by the slide id
-    in its footer. Two LuaLaTeX passes and one biber run serve them all, which is several times less work than one
-    document each (docs/findings.md, plan 5); the pages are the same pixel for pixel. Raises RuntimeError on failure
-    of any slide. A bare slide id may appear once only (the pages of a repeated one cannot be told apart), and no slide
-    may need its deck's context (a contents or agenda slide shows its links only in a document that holds them)."""
-    calls = [(frame_number, _slide_call(macro, id_slug, version, conditions)) for macro, id_slug, version, conditions, frame_number in slides]
-    preamble = default_preamble(ctx) if preamble_text is None else preamble_text
-    wrapper_text = _wrapper_text(ctx, preamble, deck_version, deck_language, calls, all_steps=True)
-    # A short job name: the slide ids in it would make the file name too long.
-    job = 'batch-' + hashlib.sha256(''.join(f'{n}{call}' for n, call in calls).encode()).hexdigest()[:12]
-    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, workspace=workspace)
-
-
-@measure('render')
 def render_slide_texts_to_pdf(
     ctx: project.ProjectContext,
     slides: list[tuple],
@@ -581,6 +555,7 @@ def render_slide_texts_to_pdf(
     preamble_text: Optional[str],
     log: Optional[LogCallback] = None,
     cancel=None,
+    *, all_steps: bool = False, workspace: Optional[Path] = None,
 ) -> Path:
     """Compile several slides of one deck, view and language in ONE document, each as render_slide_text_to_pdf
     typesets it (a whole slide, every overlay a page), and return its PDF: the pages of the slides follow one another
@@ -590,10 +565,11 @@ def render_slide_texts_to_pdf(
     appear once only (the pages of a repeated one cannot be told apart), and no slide may need its deck's context (a
     contents or agenda slide shows its links only in a document that holds them)."""
     wrapper_text = _text_wrapper(ctx, default_preamble(ctx) if preamble_text is None else preamble_text,
-                                 deck_version, deck_language, "".join(_text_slide(*slide) for slide in slides))
+                                 deck_version, deck_language, "".join(_text_slide(*slide) for slide in slides),
+                                 all_steps=all_steps)
     # A short job name: the slide ids in it would make the file name too long.
     job = 'batch-' + hashlib.sha256(wrapper_text.encode()).hexdigest()[:12]
-    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True)
+    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True, workspace=workspace)
 
 
 @measure('render')

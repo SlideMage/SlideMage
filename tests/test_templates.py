@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The generic SlideMage template is a known template like the institution
-ones: detected from a deck's preamble, previews named after it, the
-"Update previews" preamble built from it, and shipped with the framework
+ones: detected from a deck's preamble, used for previews and shipped with the framework
 (latex/), so every project next to it can use it."""
 from pathlib import Path
 
 import pytest
 
-from slidemage import app_settings, project, slide_preview, slide_templates, update_all_previews
+from slidemage import app_settings, project, slide_preview, slide_templates
 from slidemage.project import ProjectContext
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "example"
@@ -32,16 +31,6 @@ def test_institution_templates_unchanged():
             f"\\input{{SlideMage_template_{key}}}") == key
     assert slide_templates.detect_template("no template here") == "slidemage"
     assert slide_templates.detect_template("\\input{SlideMage_base}") == "slidemage"
-
-
-def test_update_previews_preamble_uses_slidemage_template():
-    preamble = update_all_previews._preamble_for("slidemage")
-    assert "\\input{SlideMage_template_slidemage}" in preamble
-    assert "\\input{SlideMage_template_beta}" not in preamble
-
-
-def test_preview_filenames_recognized():
-    assert update_all_previews._SNAPSHOT_FILENAME_RE.match("ZZZ-EN-SlideMage-1920-1080.png")
 
 
 def test_framework_ships_the_template_and_its_logo():

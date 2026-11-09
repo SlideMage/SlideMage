@@ -14,7 +14,7 @@ import time
 import weakref
 
 from . import diagnostics
-from . import busy, compiler, deck_context, preview_build, preview_raster_client, preview_target, render_key, render_lookup, slide_snapshot, timing
+from . import busy, compiler, deck_context, preview_build, preview_raster_client, preview_target, render_key, render_lookup, render_store, slide_snapshot, timing
 from .fileio import text_sha256
 from .preview_metrics import PreviewMetrics
 
@@ -103,33 +103,6 @@ class PreviewResult:
 
     def artifact(self):
         return self.pdf, self.display_png, self.page_images, self.secondary_png
-
-
-def resolve_requests(ctx, deck, path, view, language, *, selected_view="instructor",
-                     occurrence_key=None, options=RenderOptions(), read_source=None):
-    """Capture each distinct source once for a selected/all-view request.
-
-    `read_source` may return an editor buffer; pinned calls always use their own source path.
-    """
-    targets = preview_target.resolve_views(ctx, deck, path, view, language,
-                                          selected_view=selected_view, occurrence_key=occurrence_key)
-    revisions = {}
-    capture_errors = {}
-    result = []
-    for canonical, target in targets:
-        source = target.source_path.resolve()
-        if source not in revisions:
-            try:
-                text = read_source(source) if read_source is not None else None
-                revisions[source] = SourceRevision.capture(source, text)
-            except OSError as exc:
-                # Visibility is resolvable without a slide file. Record capture
-                # failures per view so other views can still complete normally.
-                revisions[source] = SourceRevision.capture(source, '')
-                capture_errors[source] = str(exc)
-        result.append(PreviewRequest(target, revisions[source], canonical, language, options,
-                                     capture_errors.get(source)))
-    return tuple(result)
 
 
 class PrebuiltRender:
@@ -324,104 +297,130 @@ class RenderService:
         def work(cancel):
             store_key = renderer.resolver.fast_key(unit, text) if complete else None
             background = cancel.low_priority
-            publish = complete and (not target.needs_context or background)
-            if (prebuilt is None and not options.force and publish and store_key is not None
-                    and renderer.store.find(store_key) is not None):
-                state, stored = render_lookup.select(dict(resolver=renderer.resolver, unit=unit, spec=spec), strict=True)
-                if state == 'current' and (not background or stored.get('frame_number') == unit.frame_number):
-                    owner = renderer.store.pdf_copy(stored)
-                    pdf = owner.__enter__()
+            in_deck = target.needs_context and (background or (
+                options.saved and options.all_steps and target.deck is not None
+                and deck_context.in_deck_ready(target.context, target.deck, view, language)))
+            publish = complete and (not target.needs_context or in_deck)
+            if background and not options.force and store_key is not None and renderer.store.failure(store_key) is not None:
+                found = renderer.resolver.lookup(unit, store_key, strict=True)
+                if found.state is render_key.Freshness.FAILED and not renderer.store.may_retry(found.failure):
+                    if unit.label not in renderer._last_try or renderer.store.tried_last(store_key):
+                        request.preview_result = PreviewResult(spec, status='failed', error=found.failure['error'])
+                        raise RuntimeError(found.failure['error'])
+                    renderer.store.note_last_try(store_key)
+            try:
+                if (prebuilt is None and not options.force and publish and store_key is not None
+                        and renderer.store.find(store_key) is not None):
+                    state, stored = render_lookup.select(dict(resolver=renderer.resolver, unit=unit, spec=spec), strict=True)
+                    if state == 'current' and (not background or stored.get('frame_number') == unit.frame_number):
+                        owner = renderer.store.pdf_copy(stored)
+                        pdf = owner.__enter__()
+                        request._artifact_owner = owner
+                        request._store_record = stored
+                        with self._lock:
+                            self._completed.add(owner)
+                        png = renderer.store.page(stored, stored['pages'])
+                        if pdf is not None and png is not None:
+                            return pdf, png, (), png
+                        owner.__exit__(None, None, None)
+                        request._store_record = None
+
+                if prebuilt is not None:
+                    prebuilt.used = True
+                evidence = (prebuilt.evidence if prebuilt is not None else
+                            renderer.resolver.capture(unit, None if in_deck else text)) if publish else None
+                if prebuilt is not None:
+                    pdf = prebuilt.pdf
+                elif background and renderer._render is not None:
+                    pdf = renderer._render(unit, cancel)
+                elif in_deck:
+                    pdf = renderer._render_in_deck(unit, cancel)
+                else:
+                    pdf = preview_target.render_text(
+                        target, text, view, language, log=log,
+                        presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
+                        all_steps=options.all_steps, force_build=True,
+                        **({'workspace': renderer.store.work_dir} if background else {}))
+                if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
+                    owner = ExitStack()
+                    owner.callback(weakref.finalize(owner, shutil.rmtree, pdf.parent, ignore_errors=True))
                     request._artifact_owner = owner
-                    request._store_record = stored
                     with self._lock:
                         self._completed.add(owner)
-                    png = renderer.store.page(stored, stored['pages'])
-                    if pdf is not None and png is not None:
-                        return pdf, png, (), png
-                    owner.__exit__(None, None, None)
-                    request._store_record = None
-
-            if prebuilt is not None:
-                prebuilt.used = True
-            evidence = (prebuilt.evidence if prebuilt is not None else
-                        renderer.resolver.capture(unit, None if background and target.needs_context else text)) if publish else None
-            if prebuilt is not None:
-                pdf = prebuilt.pdf
-            elif background and renderer._render is not None:
-                pdf = renderer._render(unit, cancel)
-            elif background and target.needs_context:
-                pdf = renderer._render_in_deck(unit, cancel)
-            else:
-                pdf = preview_target.render_text(
-                    target, text, view, language, log=log,
-                    presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
-                    all_steps=options.all_steps, force_build=True,
-                    **({'workspace': renderer.store.work_dir} if background else {}))
-            if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                owner = ExitStack()
-                owner.callback(weakref.finalize(owner, shutil.rmtree, pdf.parent, ignore_errors=True))
-                request._artifact_owner = owner
-                with self._lock:
-                    self._completed.add(owner)
-            preview_build.check_cancel(cancel)
-            with request._start_lock:
-                raw = any(request._consumers.values())
-            if presenter:
-                displays, images = (None, None), ()
-            elif raw:
-                with timing.span('preview.raw'):
+                preview_build.check_cancel(cancel)
+                with request._start_lock:
+                    raw = any(request._consumers.values())
+                if presenter:
+                    displays, images = (None, None), ()
+                elif raw:
+                    with timing.span('preview.raw'):
+                        displays, images = slide_snapshot.prepare_preview_images(
+                            pdf, False, (slide_snapshot.FULL_SIZE[0],), raw=True)
+                else:
+                    snapshots = view == 'instructor' and not target.is_frozen_alone \
+                                and mode == 'slide' and overlay is None
+                    if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
+                        snapshots = False
                     displays, images = slide_snapshot.prepare_preview_images(
-                        pdf, False, (slide_snapshot.FULL_SIZE[0],), raw=True)
-            else:
-                snapshots = view == 'instructor' and not target.is_frozen_alone \
-                            and mode == 'slide' and overlay is None
-                if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
-                    snapshots = False
-                displays, images = slide_snapshot.prepare_preview_images(
-                    pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
-            artifact = pdf, displays[0], images, None if raw else displays[1]
-            request.preview_result = request._result_of(artifact)
-            request.metrics = request._metrics_of(request._collector)
-            request._delivered_artifact = artifact
-            timing.event(target.context.root, 'preview.delivered')
-            request.delivered.set()
-            if presenter:
-                return artifact
-            pages = []
-            if evidence is not None:
-                try:
-                    dependencies = (prebuilt.dependencies if prebuilt is not None
-                                    else json.loads(pdf.with_suffix('.inputs.json').read_text()))
-                except (OSError, ValueError):
-                    dependencies = ()
-                source = unit.source_path.resolve()
-                manifest = renderer.resolver.build_manifest([path for path in dependencies if Path(path).resolve() != source])
-                manifest.entries.append([render_key.KIND_PROJECT, source.relative_to(target.context.root).as_posix(),
-                                         spec.revision.content_hash])
-                manifest.entries.sort()
-                try:
-                    with timing.span('preview.pages'):
-                        pages = renderer._rasterise(pdf, cancel)
-                    if not pages:
-                        raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
-                    from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
-                    renderer._store_render(
-                        unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL),
-                        pdf, pages, manifest, evidence)
-                except Exception as exc:
-                    if background:
-                        exc.preview_inputs = dependencies
-                        raise
-                    log(f'Preview not recorded in the store: {exc}')
-            if raw:
-                with timing.span('preview.png'):
-                    displays, images = slide_snapshot.prepare_preview_images(
-                        pdf, False, (1280,) if pages else (slide_snapshot.FULL_SIZE[0], 1280))
-                if pages:
-                    displays = (pages[-1], *displays)
-            elif pages:
-                displays = (pages[-1], *displays[1:])
-            return pdf, displays[0], images, displays[1]
+                        pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
+                artifact = pdf, displays[0], images, None if raw else displays[1]
+                request.preview_result = request._result_of(artifact)
+                request.metrics = request._metrics_of(request._collector)
+                request._delivered_artifact = artifact
+                timing.event(target.context.root, 'preview.delivered')
+                request.delivered.set()
+                if presenter:
+                    return artifact
+                pages = []
+                if evidence is not None:
+                    try:
+                        dependencies = (prebuilt.dependencies if prebuilt is not None
+                                        else json.loads(pdf.with_suffix('.inputs.json').read_text()))
+                    except (OSError, ValueError):
+                        dependencies = ()
+                    source = unit.source_path.resolve()
+                    manifest = renderer.resolver.build_manifest([path for path in dependencies if Path(path).resolve() != source])
+                    manifest.entries.append([render_key.KIND_PROJECT, source.relative_to(target.context.root).as_posix(),
+                                             spec.revision.content_hash])
+                    manifest.entries.sort()
+                    try:
+                        with timing.span('preview.pages'):
+                            pages = renderer._rasterise(pdf, cancel)
+                        if not pages:
+                            raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
+                        from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
+                        renderer._store_render(
+                            unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL),
+                            pdf, pages, manifest, evidence)
+                    except Exception as exc:
+                        if background:
+                            exc.preview_inputs = dependencies
+                            raise
+                        log(f'Preview not recorded in the store: {exc}')
+                if raw:
+                    with timing.span('preview.png'):
+                        displays, images = slide_snapshot.prepare_preview_images(
+                            pdf, False, (1280,) if pages else (slide_snapshot.FULL_SIZE[0], 1280))
+                    if pages:
+                        displays = (pages[-1], *displays)
+                elif pages:
+                    displays = (pages[-1], *displays[1:])
+                return pdf, displays[0], images, displays[1]
+            except Exception as exc:
+                if complete and store_key is not None and not cancel.is_set():
+                    kind = getattr(exc, 'kind', None) or (render_store.DETERMINISTIC if str(exc).startswith('Render failed')
+                                                       else render_store.TRANSIENT)
+                    inputs = list(getattr(exc, 'preview_inputs', ()))
+                    manifest = renderer.resolver.build_manifest(inputs).entries
+                    source = unit.source_path.relative_to(target.context.root).as_posix()
+                    manifest = [entry for entry in manifest if entry[:2] != [render_key.KIND_PROJECT, source]]
+                    manifest.append([render_key.KIND_PROJECT, source, spec.revision.content_hash])
+                    manifest += [renderer.resolver.missing_input_entry(name) for name in set(getattr(exc, 'missing_inputs', ()))]
+                    renderer.store.record_failure(store_key, kind, str(exc), manifest)
+                    with renderer._working_lock:
+                        if renderer._current is None or store_key in renderer._current.keys:
+                            renderer._failure_keys.add(store_key)
+                raise
 
         def finished():
             with self._lock:
