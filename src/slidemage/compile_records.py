@@ -222,7 +222,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 
 def write_record(
     ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
-    pdf: Path, started: float, inventory: dict, log: Optional[Callable[[str], None]] = None,
+    pdf: Path, started: float, inventory: dict, configuration: str, log: Optional[Callable[[str], None]] = None,
     deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Record a successful compile whose output sits in `invocation_dir` and
@@ -288,6 +288,7 @@ def write_record(
             "created": datetime.now().astimezone().isoformat(timespec="seconds"),
             "started": started,
             "inventory": inventory,
+            "configuration": configuration,
             "engine": engine_version(),
             "wrapper_sha256": wrapper_sha256(wrapper_text),
             "pdf": str(pdf),

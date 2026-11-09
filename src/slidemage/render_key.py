@@ -181,7 +181,7 @@ class Resolver:
         if slide_sha is None:
             return None
         validation = validation or render_evidence.ValidationPass()
-        configuration = validation.configuration(self.ctx.root, compiler.build_env(self.ctx))
+        configuration = validation.configuration(self.ctx.root, validation.build_env(self.ctx))
         return _json_hash({
             "schema": RENDER_SCHEMA, "slide": slide_sha,
             "call": [unit.macro, unit.id_slug, unit.version, list(unit.conditions)],
@@ -203,6 +203,7 @@ class Resolver:
         if not manifest.stable or evidence["key"] is None or self.fast_key(unit, strict=True) != evidence["key"]:
             return False
         paths = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in manifest.entries]]
+        paths += [Path(path) for path, _state in manifest.tex_files]
         paths += [self.ctx.root / name for name in (".latexmkrc", "decks/.latexmkrc")
                   if (self.ctx.root / name).is_file()]
         try:
@@ -351,13 +352,16 @@ class Resolver:
         digest = record.get("tex_digest")
         if not digest or record.get("machine") != machine_id():
             return True
-        files = self.store.tex_files(digest)
-        if files is None:
-            return False
         validation = validation or render_evidence.ValidationPass()
-        states = render_evidence.FileStates(render_evidence.search_roots(self.ctx.root, compiler.build_env(self.ctx)))
-        current = validation.inputs([path for path, _state in files], states)
-        return all(current[str(Path(path).absolute())] == state for path, state in files)
+        if digest not in validation.tex:
+            files = self.store.tex_files(digest)
+            if files is None:
+                validation.tex[digest] = False
+            else:
+                states = render_evidence.FileStates(render_evidence.search_roots(self.ctx.root, validation.build_env(self.ctx)))
+                current = validation.inputs([path for path, _state in files], states)
+                validation.tex[digest] = all(current[str(Path(path).absolute())] == state for path, state in files)
+        return validation.tex[digest]
 
     # -- freshness ---------------------------------------------------------------
 
@@ -371,7 +375,13 @@ class Resolver:
             inventory = record.get("inventory")
             if inventory is None:
                 continue
-            current = validation.inventory(self.ctx.root, compiler.build_env(self.ctx), force=strict)
+            env = validation.build_env(self.ctx)
+            if strict:
+                inputs = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in record["manifest"]],
+                          *[Path(path) for path, _state in self.store.tex_files(record.get("tex_digest", "")) or []]]
+                current = render_evidence.search_inventory(self.ctx.root, env, inputs=[path for path in inputs if path is not None])
+            else:
+                current = validation.inventory(self.ctx.root, env)
             paths = [unit.source_path, *[rel for _kind, rel, _sha in record["manifest"]]]
             if render_evidence.inventory_state(current, paths) != inventory:
                 continue

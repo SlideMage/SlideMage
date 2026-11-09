@@ -439,8 +439,10 @@ def _record(pdf, job, units, ctx, paths=None):
         "".join(f"INPUT {path}\n" for path in paths if path.is_file()), encoding="utf-8")
     (invocation / f"{job.jobname}.log").write_text("ok\n", encoding="utf-8")
     started = time.time()
-    inventory = render_evidence.search_inventory(ctx.root, compiler.build_env(ctx))
-    assert compile_records.write_record(ctx, job.jobname, invocation, job.deck.path, "", pdf, started, inventory,
+    env = compiler.build_env(ctx)
+    inventory = render_evidence.search_inventory(ctx.root, env)
+    configuration = render_evidence.digest(render_evidence.configuration_state(ctx.root, env))
+    assert compile_records.write_record(ctx, job.jobname, invocation, job.deck.path, "", pdf, started, inventory, configuration,
                                         deck_path=job.deck.path)
     return compile_records.read_record(ctx.build_dir, job.jobname)
 
@@ -483,7 +485,7 @@ def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, stor
     os.utime(external, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert r.ingest_compile(job, pdf, record) == 0 and store.count() == 0
     assert compile_records.write_record(project, job.jobname, project.build_dir / f"{job.jobname}-test",
-                                        deck.path, "", pdf, record["started"], record["inventory"]) is None
+                                        deck.path, "", pdf, record["started"], record["inventory"], record["configuration"]) is None
     assert compile_records.read_record(project.build_dir, job.jobname) is None
 
 

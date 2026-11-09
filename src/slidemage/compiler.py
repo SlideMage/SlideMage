@@ -757,10 +757,10 @@ def _relocate_pdf_and_finish(
     log: LogCallback, cancel: Optional["CancelToken"] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
     *, build_dir: Path, destination_key: str, generation: int,
-    record: Optional[tuple[Path, str, float, dict]] = None,
+    record: Optional[tuple[Path, str, float, dict, str]] = None,
 ) -> None:
     """Retry publication of one immutable invocation PDF in the background.
-    `record` (wrapper path, wrapper text, compile start time, inventory): once published,
+    `record` (wrapper path, wrapper text, compile start time, inventory, configuration digest): once published,
     the compile is recorded for deck snapshots (compile_records.py)."""
     started = time.monotonic()
     done = threading.Event()
@@ -849,9 +849,9 @@ def _relocate_pdf_and_finish(
     # the cached previews, and the record must describe what this compile
     # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
-        wrapper_path, wrapper_text, compile_started, inventory = record
+        wrapper_path, wrapper_text, compile_started, inventory, configuration = record
         compile_records.write_record(ctx, jobname, build_dir, wrapper_path, wrapper_text,
-                                     dest_pdf, compile_started, inventory, log, deck_path=job.deck.path)
+                                     dest_pdf, compile_started, inventory, configuration, log, deck_path=job.deck.path)
 
     # Refresh slide snapshots only from this invocation's immutable source,
     # and only if no newer successful compile has replaced it as current.
@@ -940,6 +940,7 @@ def run_job(
             env = build_env(ctx)
             try:
                 inventory = render_evidence.search_inventory(ctx.root, env)
+                configuration = render_evidence.digest(render_evidence.configuration_state(ctx.root, env))
             except (OSError, ValueError) as exc:
                 log(f"    (compile cannot be recorded: {exc})")
                 inventory = None
@@ -995,7 +996,7 @@ def run_job(
                 "destination_key": destination_key,
                 "generation": generation,
                 # whole-deck compiles only: those are what a snapshot reuses
-                "record": ((wrapper_path, wrapper, compile_started, inventory)
+                "record": ((wrapper_path, wrapper, compile_started, inventory, configuration)
                            if job.chapter is None and inventory is not None else None),
             },
             daemon=True,

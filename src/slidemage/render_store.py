@@ -171,10 +171,10 @@ class RenderStore:
         """The current-format object of `key`, if present on disk."""
         with self._lock:
             row = self.db.execute("SELECT meta FROM renders WHERE name=?", (key,)).fetchone()
-            if row is None or not self._exists(key):
+            if row is None:
                 return []
-            record = json.loads(row[0])
-            if record.get("format") != STORE_FORMAT:
+            record = self._checked_meta(str(object_dir(self.root, key)), row[0])
+            if record is None:
                 return []
             record["name"], record["dir"] = key, str(object_dir(self.root, key))
             return [record]

@@ -48,15 +48,17 @@ def compiled(tmp_path, monkeypatch):
     write(inv / "t-Deck-instructor.blg", f"INFO - Found BibTeX data source '{bib}'\n")
     write(inv / "t-Deck-instructor.aux", "aux")
     pdf = write(root / "pdf" / "t-Deck-instructor.pdf", b"%PDF instructor")
-    inventory = render_evidence.search_inventory(root, compiler.build_env(ProjectContext.at(root)))
+    env = compiler.build_env(ProjectContext.at(root))
+    inventory = render_evidence.search_inventory(root, env)
+    configuration = render_evidence.digest(render_evidence.configuration_state(root, env))
     started = time.time() + 1          # every file above is older than the compile
     return dict(root=root, build=build, inv=inv, wrapper=wrapper, pdf=pdf, started=started,
-                deck=deck, slide=slide, image=image, bib=bib, inventory=inventory)
+                deck=deck, slide=slide, image=image, bib=bib, inventory=inventory, configuration=configuration)
 
 
 def record(c, wrapper_text=WRAPPER):
     return write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
-                        c["pdf"], c["started"], c["inventory"])
+                        c["pdf"], c["started"], c["inventory"], c["configuration"])
 
 
 def test_a_recorded_compile_is_fresh_until_something_changes(compiled):
@@ -132,7 +134,7 @@ def test_unchanged_jobs_need_the_same_destination(compiled, monkeypatch):
     job = compiler.CompileJob(deck, "instructor", None)
     wrapper_text = compiler.wrapper_text(ctx, job)
     write_record(ProjectContext(c["root"], c["build"]), "t-Deck-instructor", c["inv"], c["wrapper"], wrapper_text,
-                 c["pdf"], c["started"], c["inventory"])
+                 c["pdf"], c["started"], c["inventory"], c["configuration"])
     assert [j.jobname for j, _ in compiler.unchanged_jobs(ctx, [job], {"t-Deck-instructor": c["pdf"]})] \
         == ["t-Deck-instructor"]
     # published elsewhere now (a new \deckoutputfolder): not "unchanged"
@@ -177,7 +179,7 @@ def test_compiler_records_a_published_whole_deck_compile(compiled, monkeypatch):
     compiler._relocate_pdf_and_finish(
         ctx, c["inv"] / "t-Deck-during-course.pdf", dest, "t-Deck-during-course", job, print,
         build_dir=c["inv"], destination_key=key, generation=generation,
-        record=(c["wrapper"], WRAPPER, c["started"], c["inventory"]))
+        record=(c["wrapper"], WRAPPER, c["started"], c["inventory"], c["configuration"]))
     fresh, why = fresh_output(c["build"], "t-Deck-during-course", WRAPPER)
     assert why == "" and fresh.pdf == dest and dest.read_bytes() == b"%PDF during"
 

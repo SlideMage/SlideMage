@@ -333,7 +333,8 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
                                             next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
                                             None, None)), pdf, started,
-                                        render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)))
+                                        render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)),
+                                        render_evidence.digest(render_evidence.configuration_state(ctx.root, compiler.build_env(ctx))))
     return pdf
 
 

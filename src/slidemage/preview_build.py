@@ -110,7 +110,7 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
             if size != '-1':
                 names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
-    formats = project_root / '.build' / 'preview-formats'
+    formats = (cache.parent.parent if cache.parent.name == 'preview-cache' else project_root / '.build') / 'preview-formats'
     # Normalize roots once. Path.is_relative_to walks every ancestor on some Python versions;
     # doing that four times for thousands of recorder inputs delays the first preview pixels.
     cache_roots = {os.path.normcase(str(root)) for root in

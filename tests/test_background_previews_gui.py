@@ -577,7 +577,8 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         units = background_renders.deck_units(ctx, deck, "instructor", "EN")[:6]
         pdf = _compiled_pdf(tmp_path, units)
         job = CompileJob(deck, "instructor", None)
-        monkeypatch.setattr(compile_records, "read_record", lambda *args: _record(pdf, deck, units, ctx))
+        record = _record(pdf, job, units, ctx)
+        monkeypatch.setattr(compile_records, "read_record", lambda *args: record)
         told = []
         controller.ingested.connect(lambda: told.append(True))
         controller._on_compiled(ctx, job, pdf)                  # ingest happens although the feature is off

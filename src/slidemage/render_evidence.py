@@ -13,6 +13,7 @@ import shutil
 import threading
 import time
 
+from . import project
 from .preview_metrics import count
 
 # The slide list's thumbnail is 56x31.5 logical pixels (ui/workspace/slide_tree.THUMB_W): this is enough for a
@@ -140,7 +141,9 @@ def thumbnail_png(png: bytes) -> bytes | None:
 
 
 def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
-    roots = [project_root, Path(env.get('SLIDEMAGE_LATEX') or project_root.parent / 'latex')]
+    framework = ([Path(env['SLIDEMAGE_LATEX'])] if env.get('SLIDEMAGE_LATEX')
+                 else project.sibling_framework_dirs(project_root))
+    roots = [project_root, *framework]
     for name in ('TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS', 'LUAINPUTS'):
         for value in env.get(name, '').split(os.pathsep):
             if not value:
@@ -197,7 +200,6 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     recorded inputs. Keep this separate from the preview cache's whole-tree search_state.
     """
     relist = {Path(path).absolute().parent for path in inputs}
-    skipped = _SKIP_DIRS | {'pdf', '.temp', 'snapshots'}
     conservative, stems = {}, {}
     project_root = project_root.absolute()
     for root in search_roots(project_root, env):
@@ -219,7 +221,8 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
                     with os.scandir(directory) as entries:
                         for entry in entries:
                             if entry.is_dir():
-                                if entry.name in skipped:
+                                if entry.name in _SKIP_DIRS or (directory == project_root
+                                        and entry.name in {'pdf', '.temp', 'snapshots'}):
                                     continue
                                 if entry.is_symlink():
                                     raise ValueError('Unsupported symlinked TeX search directory')
@@ -281,6 +284,8 @@ class ValidationPass:
     """
     def __init__(self):
         self._files = {}
+        self._env = {}
+        self.tex = {}
         self._evidence = {}
         self._configuration = {}
         self._inventories = {}
@@ -290,6 +295,13 @@ class ValidationPass:
         self.configuration_seconds = 0.0
         self.stability_seconds = 0.0
         self.stability_bytes = 0
+
+    def build_env(self, ctx):
+        from . import compiler
+
+        if ctx.root not in self._env:
+            self._env[ctx.root] = compiler.build_env(ctx)
+        return self._env[ctx.root]
 
     def inputs(self, paths, states=None):
         states = states or file_state

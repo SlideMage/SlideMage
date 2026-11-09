@@ -406,7 +406,7 @@ class BackgroundRenderer:
         longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
         started = time.time()               # the renders' own clock (meta "rendered_at"), not the injected one
         validation = render_evidence.ValidationPass()
-        validation.inventory(self.ctx.root, slide_preview.build_env(self.ctx), force=True)
+        validation.inventory(self.ctx.root, validation.build_env(self.ctx), force=True)
         keys_now: set[str] = set()          # every unit's key, of the decks read in full
         clean_decks: set[str] = set()       # the decks read in full: every view and language, every unit's key
         rendered: dict[str, bool] = {}      # label -> each of its units has a render of its own current key
@@ -699,12 +699,16 @@ class BackgroundRenderer:
         the sweep. The dependencies are the compile record's (compile_records.py): every file the compile read, with
         its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
         slides were stored. Run off the GUI thread."""
-        if "inventory" not in record or "started" not in record:
+        if "inventory" not in record or "started" not in record or "configuration" not in record:
             return 0
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
             return 0
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
             return 0                                    # not the PDF the record describes
+        validation = render_evidence.ValidationPass()
+        configuration = validation.configuration(self.ctx.root, validation.build_env(self.ctx))
+        if render_evidence.digest(configuration) != record["configuration"]:
+            return 0
         view = job.version or VIEW_INSTRUCTOR
         language = (getattr(job, "language", None) or deck_language_code(self.ctx, job.deck)).upper()
         recorded = {norm(entry["path"]): entry
@@ -735,8 +739,8 @@ class BackgroundRenderer:
             text = unit.source_path.read_text(encoding="utf-8", errors="replace")
             if known.get("text_sha256") != text_sha256(text):
                 continue                                # a frozen file or metadata-only read cannot vouch for this text
-            key = self.resolver.fast_key(unit, text)
-            found = self.resolver.lookup(unit, key)
+            key = self.resolver.fast_key(unit, text, validation=validation)
+            found = self.resolver.lookup(unit, key, validation=validation)
             if found.final:
                 continue                                # nothing more for the sweep, or this compile, to do for it
             paths = render_key.unit_inputs(self.ctx, inputs, unit.source_path, {unit.source_path: text})

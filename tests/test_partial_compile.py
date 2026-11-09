@@ -146,6 +146,7 @@ def deck_on_record(tmp_path, monkeypatch, request):
     assert compile_records.write_record(ProjectContext(root, build), "t-D", inv, deck_file / "_w.tex",
                                         compiler.wrapper_text(ctx, job), pdf, time.time() + 1,
                                         render_evidence.search_inventory(root, compiler.build_env(ctx)),
+                                        render_evidence.digest(render_evidence.configuration_state(root, compiler.build_env(ctx))),
                                         deck_path=deck_file)
     return root, job, pdf
 
