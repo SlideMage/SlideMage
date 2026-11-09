@@ -52,7 +52,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import languages, timing
+from . import languages, slide_language, timing
 from .fileio import StaleFileError, atomic_write, read_text_exact
 from .project import ProjectContext
 
@@ -117,6 +117,10 @@ def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Pat
 
     # id -> sorted list of deck display names that include it
     id_to_decks: dict[str, set[str]] = {}
+    # One scan of the slides folder and one read of the languages for every deck: slots() made its own scan for
+    # each deck and language (34 on the user's project, 8-12 s of reading on this thread, v0.14.57).
+    links = slide_language.links_for(ctx)
+    codes = languages.project_languages(ctx).codes
     for deck_path in deck_paths:
         deck_name = _deck_display_name(deck_path)
         text = read_text_exact(deck_path)
@@ -125,8 +129,8 @@ def _deck_membership(ctx: ProjectContext) -> tuple[dict[str, set[str]], list[Pat
         calls = deck_editor.parse_slide_calls(SimpleNamespace(text=text, chapters=[]))
         for call in calls:
             id_to_decks.setdefault(call.id, set()).add(deck_name)
-        for language in languages.project_languages(ctx).codes:
-            for slot in deck_language.slots(ctx, calls, language):
+        for language in codes:
+            for slot in deck_language.slots(ctx, calls, language, links=links):
                 id_to_decks.setdefault(slot.call.id, set()).add(deck_name)
     return id_to_decks, deck_paths
 

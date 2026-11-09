@@ -31,6 +31,7 @@ once) and kept honest afterward by slide_rename.regenerate_translation_links().
 """
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
@@ -123,6 +124,47 @@ def _header(path: Path) -> str:
         return ""
 
 
+# What every TranslationLinks shares (v0.14.57): the text read from each current file, and the groups a scan found, each
+# kept with the (mtime, size) of the files it came from, so a scan reads only the files that changed since the last one.
+# Each scan used to read the whole text of every *-current.tex: 1015 files and 2.3 MB on the user's project, 319 times in
+# 4 minutes (75 s), up to three times in a row on the GUI thread, and 0.9 s each while header sync and the thumbnail,
+# planner and preview threads scanned at the same time (stalls of 2-3 s after a deck save).
+_cache_lock = threading.Lock()
+_texts: dict[Path, tuple[tuple[int, int], str]] = {}                              # path -> (stamp, text)
+_groups_cache: dict[tuple[Path, tuple[str, ...]], tuple[frozenset, dict]] = {}   # (folder, codes) -> (stamps, groups)
+# A file changed this recently is read again every time: Windows moves a file's mtime on only every 15 ms or so, and a
+# second write of the same size inside that keeps the stamp (git's "racy" files). A sync client can be later still.
+_RACY_NS = 2_000_000_000
+
+
+def _listing(slides_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[int, int]]]:
+    """(bare id -> current file, file name -> (mtime_ns, size)) of `slides_dir`. On Windows os.scandir gives the
+    stamps with the listing, so this costs no more than the glob it replaces."""
+    paths: dict[str, Path] = {}
+    stamps: dict[str, tuple[int, int]] = {}
+    try:
+        with os.scandir(slides_dir) as entries:
+            for entry in entries:
+                if not os.path.normcase(entry.name).endswith(CURRENT_SUFFIX):   # glob's case rule on Windows
+                    continue
+                try:
+                    stat = entry.stat()
+                except OSError:
+                    continue
+                paths[bare_id(entry.name)] = slides_dir / entry.name
+                stamps[entry.name] = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        pass
+    return paths, stamps
+
+
+def clear_cache() -> None:
+    """Forget every text and group read so far (tests, and nothing else needs it: stamps tell a changed file)."""
+    with _cache_lock:
+        _texts.clear()
+        _groups_cache.clear()
+
+
 @dataclass(frozen=True)
 class Group:
     """A slide's translation group: the slide that is nobody's translation and its translations."""
@@ -139,26 +181,41 @@ class TranslationLinks:
     def __init__(self, slides_dir: Path, codes: tuple[str, ...]) -> None:
         self.slides_dir = slides_dir
         self.codes = codes
-        self.paths = {bare_id(p.name): p
-                      for p in self.slides_dir.glob("*-current.tex")}
+        self._listed_ns = time.time_ns()
+        self.paths, self.stamps = _listing(slides_dir)
         self.headers: dict[str, str] = {}
         self._groups: dict[str, Group] | None = None
         self.read_files, self.read_chars, self.read_seconds, self.slowest = 0, 0, 0.0, 0.0   # for the debug log
+
+    def _racy(self, stamp: tuple[int, int]) -> bool:
+        return stamp[0] >= self._listed_ns - _RACY_NS
 
     def own(self, id_slug: str) -> str | None:
         return own_language(id_slug, self.codes)
 
     def header(self, id_slug: str) -> str:
         if id_slug not in self.headers:
-            if timing.enabled():
-                began = time.perf_counter()
-                self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
-                self.read_seconds += time.perf_counter() - began
-                self.read_files += 1
-                self.read_chars += len(self.headers[id_slug])
-                self.slowest = max(self.slowest, time.perf_counter() - began)
+            name = current_name(id_slug)
+            path = self.slides_dir / name
+            stamp = self.stamps.get(name)
+            with _cache_lock:
+                cached = _texts.get(path)
+            if stamp is not None and cached is not None and cached[0] == stamp and not self._racy(stamp):
+                self.headers[id_slug] = cached[1]
             else:
-                self.headers[id_slug] = _header(self.slides_dir / current_name(id_slug))
+                began = time.perf_counter()
+                text = _header(path)
+                if timing.enabled():
+                    self.read_seconds += time.perf_counter() - began
+                    self.read_files += 1
+                    self.read_chars += len(text)
+                    self.slowest = max(self.slowest, time.perf_counter() - began)
+                if stamp is not None and not self._racy(stamp):
+                    # Read after the listing: a file written in between is newer than its stamp, and the next
+                    # listing's new stamp reads it again.
+                    with _cache_lock:
+                        _texts[path] = (stamp, text)
+                self.headers[id_slug] = text
         return self.headers[id_slug]
 
     def group(self, id_slug: str) -> Group:
@@ -166,11 +223,24 @@ class TranslationLinks:
         current file, is its own group. Links count from either side, as "Translation of:" and as
         "<LANG> translation:"."""
         if self._groups is None:
+            # The groups depend on the project's languages and the current files' text alone: unchanged stamps give
+            # the groups of the last scan (the Group objects are frozen and shared, never changed).
+            key, stamps = (self.slides_dir, self.codes), frozenset(self.stamps.items())
+            settled = not any(self._racy(stamp) for stamp in self.stamps.values())
+            with _cache_lock:
+                cached = _groups_cache.get(key)
+            if settled and cached is not None and cached[0] == stamps:
+                self._groups = cached[1]
+                return self._groups.get(bare_id(id_slug)) or Group(id_slug, {}, True)
             began = time.perf_counter()
             self._groups = self._scan()
+            if settled:
+                with _cache_lock:
+                    _groups_cache[key] = (stamps, self._groups)
             if timing.enabled():
                 # its own logger: the `timing` area is the prompt-to-preview timeline of one request
-                diagnostics.event(_perf_log, "slide_language.scan", files=self.read_files, chars=self.read_chars,
+                diagnostics.event(_perf_log, "slide_language.scan", listed=len(self.paths), files=self.read_files,
+                                  chars=self.read_chars,
                                   reading_s=round(self.read_seconds, 3), slowest_read_s=round(self.slowest, 3),
                                   total_s=round(time.perf_counter() - began, 3),
                                   gui=threading.current_thread() is threading.main_thread())
