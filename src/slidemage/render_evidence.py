@@ -243,8 +243,13 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
 
 def inventory_state(inventory: dict, inputs) -> dict:
     """Evidence to record, or compare with a record: conservative names and input-stem candidates."""
+    stems = set()
+    for name in inputs:
+        path = Path(name)
+        if not path.is_absolute() or str(path) in inventory['stems'].get(path.stem, ()):
+            stems.add(path.stem)
     return {'conservative': inventory['conservative'],
-            'stems': {stem: inventory['stems'].get(stem, []) for stem in sorted({Path(path).stem for path in inputs})}}
+            'stems': {stem: inventory['stems'].get(stem, []) for stem in sorted(stems)}}
 
 
 def configuration_state(project_root: Path, env: dict) -> dict:

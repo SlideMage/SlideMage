@@ -52,7 +52,7 @@ from .fileio import sha256_file as sha256, text_sha256, write_json
 from .processes import command_output
 from .project import ProjectContext
 
-RECORD_FORMAT = 1
+RECORD_FORMAT = 2
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
 DECK_COPY_NAME = "deck.tex"
@@ -222,7 +222,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 
 def write_record(
     ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
-    pdf: Path, started: float, log: Optional[Callable[[str], None]] = None,
+    pdf: Path, started: float, inventory: dict, log: Optional[Callable[[str], None]] = None,
     deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Record a successful compile whose output sits in `invocation_dir` and
@@ -255,7 +255,8 @@ def write_record(
                 for language in languages.project_languages(ctx).codes:
                     _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
                     inline_inputs.extend(inputs)
-        for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:
+        typeset_inputs = parse_fls(fls)
+        for path in [*typeset_inputs, *bib_sources, *inline_inputs]:
             key = norm(path)
             if key in seen or is_within(path, invocation_dir) or key == norm(wrapper_path):
                 continue
@@ -271,17 +272,22 @@ def write_record(
                 entries.append({"path": str(path), "sha256": sha256(aux / copy),
                                 "copy": copy.as_posix()})
                 continue
-            if path.stat().st_mtime > started:
+            info = path.stat()
+            if max(info.st_mtime, info.st_ctime) >= started:
                 log(f"    (compile not recorded for snapshots: {path.name} changed during it)")
                 shutil.rmtree(aux, ignore_errors=True)
                 target.unlink(missing_ok=True)
                 return None
-            entries.append({"path": str(path), "sha256": sha256(path)})
+            entry = {"path": str(path), "sha256": sha256(path)}
+            if is_within(path, ctx.slides_dir) and path in typeset_inputs:
+                entry["text_sha256"] = text_sha256(path.read_text(encoding="utf-8", errors="replace"))
+            entries.append(entry)
         record = {
             "format": RECORD_FORMAT,
             "jobname": jobname,
             "created": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "started": int(started),
+            "started": started,
+            "inventory": inventory,
             "engine": engine_version(),
             "wrapper_sha256": wrapper_sha256(wrapper_text),
             "pdf": str(pdf),

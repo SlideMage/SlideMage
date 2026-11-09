@@ -12,7 +12,7 @@ from pathlib import Path
 import pymupdf as fitz
 import pytest
 
-from slidemage import compile_records, compiler, deck_scan, partial_compile
+from slidemage import compile_records, compiler, deck_scan, partial_compile, render_evidence
 from slidemage.partial_compile import PartialError, format_page_spec, parse_page_spec
 from slidemage.project import ProjectContext
 
@@ -145,6 +145,7 @@ def deck_on_record(tmp_path, monkeypatch, request):
     pdf = make_pdf(root / "pdf" / "t-D.pdf", full_pages())
     assert compile_records.write_record(ProjectContext(root, build), "t-D", inv, deck_file / "_w.tex",
                                         compiler.wrapper_text(ctx, job), pdf, time.time() + 1,
+                                        render_evidence.search_inventory(root, compiler.build_env(ctx)),
                                         deck_path=deck_file)
     return root, job, pdf
 

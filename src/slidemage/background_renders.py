@@ -21,6 +21,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -30,6 +31,7 @@ from . import compile_records, deck_context, parallel_runs, power_status, previe
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
+from .fileio import text_sha256
 from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
@@ -698,15 +700,16 @@ class BackgroundRenderer:
         its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
         slides were stored. Run off the GUI thread."""
         if "inventory" not in record or "started" not in record:
-            return 0                                    # step 1.6 adds pre-compile evidence to compile_records
+            return 0
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
             return 0
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
-            return 0                                    # not the PDF the record describes (another compile replaced it)
+            return 0                                    # not the PDF the record describes
         view = job.version or VIEW_INSTRUCTOR
         language = (getattr(job, "language", None) or deck_language_code(self.ctx, job.deck)).upper()
-        recorded = {norm(entry["path"]): (Path(entry["path"]), entry["sha256"])
+        recorded = {norm(entry["path"]): entry
                     for entry in record.get("inputs", []) if not entry.get("copy")}
+        inputs = [Path(entry["path"]) for entry in recorded.values()]
         import pymupdf
         try:
             doc = pymupdf.open(pdf)
@@ -719,22 +722,33 @@ class BackgroundRenderer:
         finally:
             doc.close()
         raster, stored = self._raster or self._shared_raster(), 0
-        for unit in deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True):
-            pages = runs.get(slide_language.bare_id(unit.id_slug))
+        units = deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True)
+        counts = Counter(slide_language.bare_id(unit.id_slug) for unit in units)
+        for unit in units:
+            slide_id = slide_language.bare_id(unit.id_slug)
+            if counts[slide_id] != 1:
+                continue                                # footers cannot distinguish repeated calls or versions
+            pages = runs.get(slide_id)
             known = recorded.get(norm(unit.source_path))
             if unit.macro in ("slidestep", "slidefinal") or not pages or known is None:
                 continue
-            key = self.resolver.fast_key(unit)
-            if key is None or compile_records.sha256(unit.source_path) != known[1]:
-                continue                                # the slide changed since the compile
+            text = unit.source_path.read_text(encoding="utf-8", errors="replace")
+            if known.get("text_sha256") != text_sha256(text):
+                continue                                # a frozen file or metadata-only read cannot vouch for this text
+            key = self.resolver.fast_key(unit, text)
             found = self.resolver.lookup(unit, key)
             if found.final:
                 continue                                # nothing more for the sweep, or this compile, to do for it
-            entries = self._compile_manifest(recorded, unit)
+            paths = render_key.unit_inputs(self.ctx, inputs, unit.source_path, {unit.source_path: text})
+            try:
+                if any(compile_records.sha256(path) != recorded[norm(path)]["sha256"] for path in paths):
+                    continue
+            except OSError:
+                continue
+            manifest = self.resolver.build_manifest([str(path) for path in paths])
             response = raster.read_document(pdf, "pdf_images", pages[0] + 1, len(pages), width=STORE_WIDTH)
             if len(response["images"]) != len(pages):
                 continue
-            manifest = render_key.Manifest(entries=entries)
             evidence = dict(started=record["started"], inventory=record["inventory"], key=key)
             with tempfile.TemporaryDirectory(prefix="slidemage_compile_") as folder:
                 own = Path(folder) / "slide.pdf"
@@ -742,18 +756,6 @@ class BackgroundRenderer:
                 if self._store_render(unit, ORIGIN_COMPILE, own, response["images"], manifest, evidence) is not None:
                     stored += 1
         return stored
-
-    def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
-        """What a slide's page in a deck compile depends on, from the compile record's hashes."""
-        entries = []
-        for path in render_key.unit_inputs(self.ctx, [path for path, _sha in recorded.values()], unit.source_path):
-            where = self.resolver._relative(path)
-            if where is not None:
-                digest = self.hashes.hash(path) if norm(path) == norm(unit.source_path) else recorded[norm(path)][1]
-                entries.append([where[0], where[1], digest])
-        entries = self.resolver.narrow_alt_text(entries, recorded)
-        entries.sort()
-        return entries
 
     def deck_archived(self, deck: Deck) -> None:
         self.scheduler.cancel_group(deck.name)

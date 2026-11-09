@@ -48,7 +48,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot, slide_templates
-from . import citations, diagnostics, slide_versioning, themes
+from . import citations, diagnostics, render_evidence, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -757,10 +757,10 @@ def _relocate_pdf_and_finish(
     log: LogCallback, cancel: Optional["CancelToken"] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
     *, build_dir: Path, destination_key: str, generation: int,
-    record: Optional[tuple[Path, str, float]] = None,
+    record: Optional[tuple[Path, str, float, dict]] = None,
 ) -> None:
     """Retry publication of one immutable invocation PDF in the background.
-    `record` (wrapper path, wrapper text, compile start time): once published,
+    `record` (wrapper path, wrapper text, compile start time, inventory): once published,
     the compile is recorded for deck snapshots (compile_records.py)."""
     started = time.monotonic()
     done = threading.Event()
@@ -849,9 +849,9 @@ def _relocate_pdf_and_finish(
     # the cached previews, and the record must describe what this compile
     # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
-        wrapper_path, wrapper_text, compile_started = record
+        wrapper_path, wrapper_text, compile_started, inventory = record
         compile_records.write_record(ctx, jobname, build_dir, wrapper_path, wrapper_text,
-                                     dest_pdf, compile_started, log, deck_path=job.deck.path)
+                                     dest_pdf, compile_started, inventory, log, deck_path=job.deck.path)
 
     # Refresh slide snapshots only from this invocation's immutable source,
     # and only if no newer successful compile has replaced it as current.
@@ -937,6 +937,12 @@ def run_job(
             # or prior-build fallback that can pass as fresh.
             cmd = latexmk_command(wrapper_path, jobname, build_dir.resolve(), "-f", "-recorder", cwd=ctx.root)
             compile_started = time.time()
+            env = build_env(ctx)
+            try:
+                inventory = render_evidence.search_inventory(ctx.root, env)
+            except (OSError, ValueError) as exc:
+                log(f"    (compile cannot be recorded: {exc})")
+                inventory = None
             passes = 0
 
             def count_passes(line: str) -> None:
@@ -946,7 +952,7 @@ def run_job(
                     passes = max(passes, int(run.group(1)))
 
             try:
-                build = run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=ctx.root, env=build_env(ctx),
+                build = run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=ctx.root, env=env,
                                     log=log, cancel=cancel, on_line=count_passes)
             except FileNotFoundError:
                 log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
@@ -989,8 +995,8 @@ def run_job(
                 "destination_key": destination_key,
                 "generation": generation,
                 # whole-deck compiles only: those are what a snapshot reuses
-                "record": ((wrapper_path, wrapper, compile_started)
-                           if job.chapter is None else None),
+                "record": ((wrapper_path, wrapper, compile_started, inventory)
+                           if job.chapter is None and inventory is not None else None),
             },
             daemon=True,
         )

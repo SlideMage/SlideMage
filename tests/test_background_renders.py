@@ -15,7 +15,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, compiler, deck_scan, render_evidence, render_store
+from slidemage import background_renders, compile_records, compiler, deck_scan, render_evidence, render_store, slide_versioning
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
@@ -431,13 +431,18 @@ def _compiled_pdf(tmp_path, units, steps=2):
     return pdf
 
 
-def _record(pdf, deck, units, ctx):
-    from slidemage import compile_records
-
-    paths = [deck.path, *{u.source_path for u in units}, ctx.root / "SlideMage.bib"]
-    return {"pdf_sha256": compile_records.sha256(pdf), "started": time.time(),
-            "inventory": render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)),
-            "inputs": [{"path": str(p), "sha256": compile_records.sha256(p)} for p in paths if p.is_file()]}
+def _record(pdf, job, units, ctx, paths=None):
+    paths = paths or [job.deck.path, *{u.source_path for u in units}, ctx.root / "SlideMage.bib"]
+    invocation = ctx.build_dir / f"{job.jobname}-test"
+    invocation.mkdir(parents=True, exist_ok=True)
+    (invocation / f"{job.jobname}.fls").write_text(
+        "".join(f"INPUT {path}\n" for path in paths if path.is_file()), encoding="utf-8")
+    (invocation / f"{job.jobname}.log").write_text("ok\n", encoding="utf-8")
+    started = time.time()
+    inventory = render_evidence.search_inventory(ctx.root, compiler.build_env(ctx))
+    assert compile_records.write_record(ctx, job.jobname, invocation, job.deck.path, "", pdf, started, inventory,
+                                        deck_path=job.deck.path)
+    return compile_records.read_record(ctx.build_dir, job.jobname)
 
 
 def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_depends_on_changes(project, store, raster, tmp_path):
@@ -448,7 +453,7 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     units = background_renders.deck_units(project, deck, "instructor", "EN")[:6]
     pdf = _compiled_pdf(tmp_path, units)
     job = CompileJob(deck, "instructor", None)
-    assert r.ingest_compile(job, pdf, _record(pdf, deck, units, project)) >= 1
+    assert r.ingest_compile(job, pdf, _record(pdf, job, units, project)) >= 1
     unit = units[0]
     found = r.resolver.lookup(unit)
     assert found.usable and found.record["origin"] == render_store.ORIGIN_COMPILE
@@ -463,6 +468,48 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert not r.resolver.lookup(unit).usable
 
 
+def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, store, raster, tmp_path):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:2]
+    job = compiler.CompileJob(deck, "instructor", None)
+    pdf = _compiled_pdf(tmp_path, units)
+    external = tmp_path / "references.bib"
+    external.write_text("@book{x}\n", encoding="utf-8")
+    record = _record(pdf, job, units, project, [deck.path, *[u.source_path for u in units], external])
+    # Restoring mtime does not hide changed external content from the recorded hash.
+    before = external.stat()
+    external.write_text("@book{y}\n", encoding="utf-8")
+    os.utime(external, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert r.ingest_compile(job, pdf, record) == 0 and store.count() == 0
+    assert compile_records.write_record(project, job.jobname, project.build_dir / f"{job.jobname}-test",
+                                        deck.path, "", pdf, record["started"], record["inventory"]) is None
+    assert compile_records.read_record(project.build_dir, job.jobname) is None
+
+
+def test_a_deck_compile_imports_other_slides_but_skips_a_frozen_plus_slide(project, store, raster, tmp_path):
+    r = make(project, store, raster)
+    deck = deck_named(r, "slidemage-manual")
+    units = background_renders.deck_units(project, deck, "instructor", "EN")[:4]
+    changed, other, _, unrelated = units
+    text = changed.source_path.read_text(encoding="utf-8")
+    frozen = slide_versioning.frozen_path(changed.source_path, changed.id_slug, (1, 0, 0))
+    frozen.write_text(slide_versioning.set_marker(text, (1, 0, 0)), encoding="utf-8")
+    changed.source_path.write_text(slide_versioning.set_marker(text + "\nChanged content\n", (1, 0, 0), changed=True),
+                                   encoding="utf-8")
+    assert frozen.name in "\n".join(slide_versioning.saved_version_lines(project, deck, "EN"))
+    # The other slide's canonical text hash also works with Windows line endings.
+    other.source_path.write_bytes(other.source_path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    job = compiler.CompileJob(deck, "instructor", None)
+    pdf = _compiled_pdf(tmp_path, units)
+    record = _record(pdf, job, units, project, [deck.path, frozen, *[u.source_path for u in units[1:]]])
+    unrelated.source_path.write_text(unrelated.source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    assert r.ingest_compile(job, pdf, record) == 2
+    assert store.latest_for_unit(changed.label) is None
+    assert store.latest_for_unit(unrelated.label) is None
+    assert all(r.resolver.lookup(unit).final for unit in units[1:3])
+
+
 def test_a_slidestep_call_is_left_to_the_sweep_not_finished_by_a_compile(project, store, raster, tmp_path):
     """\\slidestep and \\slidefinal calls stay with the sweep (docs/plans/render-store-cleanup.md, step 4): their
     page in a deck compile is only a selection of the slide's steps, never every one, so the compile stores nothing
@@ -475,7 +522,7 @@ def test_a_slidestep_call_is_left_to_the_sweep_not_finished_by_a_compile(project
     unit = next(u for u in units if u.macro == "slidestep")
     pdf = _compiled_pdf(tmp_path, [unit])
     job = CompileJob(deck, "instructor", None)
-    assert r.ingest_compile(job, pdf, _record(pdf, deck, [unit], project)) == 0
+    assert r.ingest_compile(job, pdf, _record(pdf, job, [unit], project)) == 0
     found = r.resolver.lookup(unit)
     assert not found.usable and not found.final
     r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken())
@@ -497,13 +544,15 @@ def test_a_final_state_for_students_slide_is_finished_from_the_compile_with_one_
 
     (tmp_path / "i").mkdir()
     i_pdf = _compiled_pdf(tmp_path / "i", [i_unit], steps=3)
-    assert r.ingest_compile(CompileJob(deck, "instructor", None), i_pdf, _record(i_pdf, deck, [i_unit], project)) == 1
+    i_job = CompileJob(deck, "instructor", None)
+    assert r.ingest_compile(i_job, i_pdf, _record(i_pdf, i_job, [i_unit], project)) == 1
     i_found = r.resolver.lookup(i_unit)
     assert i_found.final and i_found.record["pages"] == 3
 
     (tmp_path / "s").mkdir()
     s_pdf = _compiled_pdf(tmp_path / "s", [s_unit], steps=1)
-    assert r.ingest_compile(CompileJob(deck, "during-course", None), s_pdf, _record(s_pdf, deck, [s_unit], project)) == 1
+    s_job = CompileJob(deck, "during-course", None)
+    assert r.ingest_compile(s_job, s_pdf, _record(s_pdf, s_job, [s_unit], project)) == 1
     s_found = r.resolver.lookup(s_unit)
     assert s_found.final and s_found.record["pages"] == 1
 
@@ -520,7 +569,7 @@ def test_a_contents_slide_is_finished_from_the_compile_that_is_its_context(proje
     assert unit.context                                  # needs its deck
     pdf = _compiled_pdf(tmp_path, [unit], steps=1)
     job = CompileJob(deck, "instructor", None)
-    assert r.ingest_compile(job, pdf, _record(pdf, deck, [unit], project)) == 1
+    assert r.ingest_compile(job, pdf, _record(pdf, job, [unit], project)) == 1
     found = r.resolver.lookup(unit)
     assert found.final and found.record["pages"] == 1
 

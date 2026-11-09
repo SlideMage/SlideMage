@@ -22,7 +22,7 @@ import pytest
 
 from conftest import write_test_file as write
 
-from slidemage import compiler, deck_scan, deck_snapshot, project, sm_rename
+from slidemage import compiler, deck_scan, deck_snapshot, project, render_evidence, sm_rename
 from slidemage.deck_snapshot import SnapshotOptions
 from slidemage.project import ProjectContext
 
@@ -332,7 +332,8 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
                                         compiler.wrapper_text(ctx, compiler.CompileJob(
                                             next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
-                                            None, None)), pdf, started)
+                                            None, None)), pdf, started,
+                                        render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)))
     return pdf
 
 

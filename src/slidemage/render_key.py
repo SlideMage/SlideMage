@@ -291,19 +291,16 @@ class Resolver:
 
     # -- the alt-text files ----------------------------------------------------------
 
-    def narrow_alt_text(self, entries: list, recorded: Optional[dict] = None) -> list:
+    def narrow_alt_text(self, entries: list) -> list:
         """`entries` with each project alt-text file (EVERY_RENDER_READS) turned into a KIND_ALT_TEXT entry: the hash
         of its rows for the files the render read, not of the whole file, so a new alt text for another slide's
-        picture leaves this render current (every preview went out of date with each new alt text up to v8.68.0, v8.69.0).
-        `recorded`, the file hashes of a compile record: an alt-text file changed since then keeps its whole-file
-        entry, which the check then finds out of date."""
+        picture leaves this render current (every preview went out of date with each new alt text up to v8.68.0, v8.69.0)."""
         out = []
         for entry in entries:
-            kind, rel, sha = entry
+            kind, rel, _sha = entry
             if kind == KIND_PROJECT and Path(rel).name in EVERY_RENDER_READS:
                 path = self.ctx.root / rel
-                if recorded is None or self.hashes.hash(path) == sha:
-                    entry = [KIND_ALT_TEXT, rel, self._alt_digest(path, entries)]
+                entry = [KIND_ALT_TEXT, rel, self._alt_digest(path, entries)]
             out.append(entry)
         return out
 
