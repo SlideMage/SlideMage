@@ -734,7 +734,8 @@ views.
      a new deck PDF leave other results current; the slide list and the Preview agree right after a save; the
      first start shows the notice once and removes `.previews/slide_previews/`.
    - A problem found here: switch off A, B, C and D to tell stages 1–3 from stage 4; findings become fix tasks.
-6. After the user's go: open the PR from `JuergenFleiss/SlideMage` to `SlideMage/SlideMage` `develop`, with the
+6. Open the PR as a **draft** right after step 4 (user, 2026-11-09), before the user's test; mark it ready only
+   after the user's go. From `JuergenFleiss/SlideMage` to `SlideMage/SlideMage` `develop`, with the
    design's "Why" section and the §7 gains table (all columns measured) in the description; link #112.
 
 ## Size and cost

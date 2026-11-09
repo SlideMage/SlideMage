@@ -148,7 +148,7 @@ class RenderRequest:
 
     wait() returns when the request is done: `preview_result` and `result` are final. A consumer
     that needs only pixels (the Preview pane) calls wait(pixels_only=True): it returns at delivery with the
-    image (raw when the pane started the build), without lending the temp PDF.
+    image (raw when a pane is waiting at rasterization), without lending the temp PDF.
     """
     def __init__(self, work, finished):
         self.cancel = compiler.CancelToken()
@@ -168,7 +168,6 @@ class RenderRequest:
         self._work, self._finished = work, finished
         self._start_lock = threading.Lock()
         self._started = False
-        self._pixels_only = False
 
     def _result_of(self, artifact):
         result = PreviewResult.from_artifact(self.spec, artifact)
@@ -251,14 +250,13 @@ class RenderRequest:
         consumer = object()
         deadline = time.monotonic() + timeout
         with self._start_lock:
-            self._consumers[consumer] = cancel
+            self._consumers[consumer] = pixels_only
         try:
             with self._start_lock:
                 if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
                     raise RuntimeError('Preview cancelled')
                 if not self._started:
                     self._started = True
-                    self._pixels_only = pixels_only
                     self.cancel.low_priority = getattr(cancel, 'low_priority', False)
                     threading.Thread(target=self._run, daemon=True).start()
             self._await(self.delivered if pixels_only else self.done, cancel, deadline)
@@ -331,12 +329,12 @@ class RenderService:
         renderer = self._renderer(target.context)
         unit = spec.unit
         complete = spec.complete
-        store_key = renderer.resolver.fast_key(unit, text) if complete else None
-        key = (('render', store_key, unit.frame_number) if store_key is not None else
+        key = ((replace(unit, deck=""), spec.revision.content_hash) if complete else
                (target.key, spec.revision.content_hash, view, language,
                 replace(options, saved=False, force=False)), options.force)
 
         def work(cancel):
+            store_key = renderer.resolver.fast_key(unit, text) if complete else None
             background = cancel.low_priority
             publish = complete and (not target.needs_context or background)
             if (prebuilt is None and not options.force and publish and store_key is not None
@@ -378,9 +376,11 @@ class RenderService:
                 with self._lock:
                     self._completed.add(owner)
             preview_build.check_cancel(cancel)
+            with request._start_lock:
+                raw = any(request._consumers.values())
             if presenter:
                 displays, images = (None, None), ()
-            elif request._pixels_only:
+            elif raw:
                 with timing.span('preview.raw'):
                     displays, images = slide_snapshot.prepare_preview_images(
                         pdf, False, (slide_snapshot.FULL_SIZE[0],), raw=True)
@@ -391,7 +391,7 @@ class RenderService:
                     snapshots = False
                 displays, images = slide_snapshot.prepare_preview_images(
                     pdf, snapshots, (slide_snapshot.FULL_SIZE[0], 1280))
-            artifact = pdf, displays[0], images, None if request._pixels_only else displays[1]
+            artifact = pdf, displays[0], images, None if raw else displays[1]
             request._deliver(artifact)       # the pixels are what the pane waits for; the rest is bookkeeping
             if presenter:
                 return artifact
@@ -421,7 +421,7 @@ class RenderService:
                         exc.preview_inputs = dependencies
                         raise
                     log(f'Preview not recorded in the store: {exc}')
-            if request._pixels_only:
+            if raw:
                 with timing.span('preview.png'):
                     displays, images = slide_snapshot.prepare_preview_images(
                         pdf, False, (1280,) if pages else (slide_snapshot.FULL_SIZE[0], 1280))

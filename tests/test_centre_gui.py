@@ -397,6 +397,7 @@ def test_the_render_menu_offers_scope_reveal_step_presenter_transcript_and_the_l
     wait_idle(centre)
     assert [e for e in centre.preview._menu._entries if e[0] == "item" and e[1] == "open_pdf"][0][6]
     centre.preview._on_menu("open_pdf")
+    wait_idle(centre)
     assert renders[-1][0] == "open"
 
 

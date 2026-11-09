@@ -387,8 +387,8 @@ def test_while_idle_the_neighbouring_slides_get_their_steps_counted_too(centre, 
     counted = sorted({call[1] for call in steps_renders})
     assert counted == ["aaa-EN-One", "bbb-EN-Two", "ccc-DE-Drei"]
     assert all(call[3].get("all_steps") for call in steps_renders)
-    centre.state.set_focused_slide("bbb")                            # already counted: the bar is there at once
-    assert preview._reveal.isVisibleTo(preview) and preview._reveal.track.stops == [1, 2, 3, 4]
+    centre.state.set_focused_slide("bbb")
+    wait_for(lambda: preview._reveal.isVisibleTo(preview) and preview._reveal.track.stops == [1, 2, 3, 4], 40)
 
 
 def test_a_slide_with_reveal_commands_shows_the_bar_counting_until_its_steps_are_known(centre, steps_renders, project):

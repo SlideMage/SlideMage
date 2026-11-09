@@ -605,7 +605,10 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
         assert len(request._consumers) == 1 and not tex.calls
         release.set()
         pane.join(5)
-        assert not pane.is_alive() and pixels[0][1].startswith(b'\x89PNG')
+        from pathlib import Path
+        from PySide6.QtGui import QImage
+        assert not pane.is_alive() and isinstance(pixels[0][1], Path)
+        assert not QImage(str(pixels[0][1])).isNull()
         assert request.done.wait(5) and len(tex.calls) == 1
         assert r.resolver.lookup(unit).final
     finally:
@@ -616,9 +619,11 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
         r.stop()
 
 
-def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypatch):
+def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypatch, tmp_path):
+    import json
     import threading
     import time
+    from dataclasses import replace
 
     from PySide6.QtGui import QImage
     from slidemage import deck_editor, preview_target, render_lookup
@@ -629,16 +634,23 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
     deck = window.state.deck
     target = next(t for i, call in enumerate(deck_editor.parse_slide_calls(deck), 1)
                   if (t := preview_target.for_call(window.project, deck, call, i)) is not None
-                  and PreviewRequest(t, SourceRevision.capture(t.source_path), "instructor", "EN").complete
-                  and not t.needs_context)
+                  and PreviewRequest(t, SourceRevision.capture(t.source_path), "instructor", "EN").complete)
+    target = replace(target, deck=deck, needs_context=('contents',))
     renderer = window.background.renderer
     preview = window.centre.preview
     assert preview._renders is renderer.renders
-    renderer._render = FakeTeX(window.project, pages=2)
-    monkeypatch.setattr(preview_target, "render_text", lambda *a, **kw: renderer._render(unit, kw["cancel"]))
-    unit = background_renders.render_key.unit_for(target, "instructor", "EN", deck.name)
-    sweep_key = renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    request = dict(resolver=renderer.resolver, unit=unit)
+    unit = background_renders.render_key.unit_for(target, "instructor", "EN")
+    dependency = tmp_path / 'picture.tex'
+    dependency.write_text('original')
+    tex = FakeTeX(window.project, pages=1)
+
+    def render(unit, cancel):
+        pdf = tex(unit, cancel)
+        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(unit.source_path), str(dependency)]))
+        return pdf
+
+    monkeypatch.setattr(renderer, '_render', render)
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: render(unit, kw['cancel']))
     select, calls = render_lookup.select, []
 
     def choose(request, *, strict=False):
@@ -646,34 +658,41 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
         return select(request, strict=strict)
 
     monkeypatch.setattr(render_lookup, 'select', choose)
-    path, original = target.source_path, target.source_path.read_text(encoding='utf-8')
+    preview.show_slide(target, None, "One", "")
+    deadline = time.monotonic() + 10
+    while (preview._adhoc is None or preview._busy
+           or preview._current_steps(target)[0] not in preview._step_pages
+           or preview._steps.pending(preview._current_steps(target)[0])) and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(.01)
+    assert preview._adhoc is not None and preview._record is None
+    temporary = preview._adhoc[1].toImage()
+    source = target.source_path.read_text(encoding='utf-8')
     try:
-        for producer in ('sweep', 'foreground'):
-            if producer == 'foreground':
-                foreground = preview._renders.request(target, path.read_text(encoding='utf-8'),
-                                                      'instructor', 'EN', window.log, saved=True)
-                assert foreground.spec.unit == unit
-                foreground.wait()
-                assert renderer.store.find(sweep_key) is None  # the same-label put removed the sweep's old key
-            for state in ('current', 'previous'):
-                if state == 'previous':
-                    path.write_text(path.read_text(encoding='utf-8') + '\n% edited\n', encoding='utf-8')
-                preview.show_slide(target, None, "One", "")
-                preview._stored_asked = None
-                preview._refresh()
-                expected_state, record = select(request, strict=True)
-                assert expected_state == state and record['unit'] == unit.label
-                deadline = time.monotonic() + 10
-                while (preview._record != record or preview._checking()) and time.monotonic() < deadline:
-                    QApplication.processEvents()
-                    time.sleep(.01)
-                assert preview._record == record
-                assert preview._page.pixmap.toImage() == QImage.fromData(renderer.store.page(record, record['pages']))
-                assert ('Previous render' in preview._status_chip.text()) == (state == 'previous')
+        for state, count in (('current', 2), ('previous', 2), ('current', 3)):
+            if state == 'previous':
+                dependency.write_text('changed')
+            else:
+                tex.pages = count
+                assert renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
+            preview._stored_asked = None
+            preview._refresh()
+            expected_state, record = select(dict(resolver=renderer.resolver, unit=unit), strict=True)
+            assert expected_state == state and record['unit'] == unit.label
+            deadline = time.monotonic() + 10
+            while (preview._record != record or preview._checking()
+                   or preview._reveal.track.stops != list(range(1, count + 1))) and time.monotonic() < deadline:
+                QApplication.processEvents()
+                time.sleep(.01)
+            assert preview._record == record
+            pages = renderer.store.pages(record)
+            preview._reveal.track.selected.emit(count)
+            assert preview._page.pixmap.toImage() == QImage.fromData(pages[-1])
+            assert preview._page.pixmap.toImage() != temporary
+            assert ('Previous render' in preview._status_chip.text()) == (state == 'previous')
+            preview._reveal.track.selected.emit(1)
+            assert preview._page.pixmap.toImage() == QImage.fromData(pages[0])
+        assert target.source_path.read_text(encoding='utf-8') == source
         assert any(strict for strict, _on_main in calls) and not any(on_main for _strict, on_main in calls)
-        calls.clear()
-        assert render_lookup.select(dict(resolver=renderer.resolver, unit=unit), strict=False)[1]
-        assert (False, True) in calls
     finally:
-        path.write_text(original, encoding='utf-8')
         renderer.store.clear()

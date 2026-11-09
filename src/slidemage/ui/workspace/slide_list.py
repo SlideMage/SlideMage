@@ -168,7 +168,7 @@ class SlideList(QWidget):
         self.destroyed.connect(lambda *_: self._thumbnail_executor.shutdown(wait=False, cancel_futures=True))
         self._thumbnail_timer = QTimer(self)
         self._thumbnail_timer.setSingleShot(True)
-        self._thumbnail_timer.setInterval(450)
+        self._thumbnail_timer.setInterval(0)
         self._thumbnail_timer.timeout.connect(self._refresh_preview_rows)
 
         state.deck_changed.connect(lambda _deck: self.rebuild())
@@ -330,7 +330,7 @@ class SlideList(QWidget):
         self._thumbnail_metrics['publication_seconds'] = time.perf_counter() - publishing
 
     def preview_source_changed(self, path: Path) -> None:
-        """Refresh image age after typing pauses, without rebuilding the slide tree."""
+        """Refresh affected thumbnails without rebuilding the slide tree."""
         timing.caller("thumbnails.source_changed", file=path.name)
         if self.deck is not None:
             if not self._thumbnail_full_requested:
@@ -353,6 +353,7 @@ class SlideList(QWidget):
         self._refresh_preview_rows()
 
     def _refresh_preview_rows(self) -> None:
+        self._thumbnail_timer.stop()
         if self.deck is None:
             return
         paths = None if self._thumbnail_full_requested else set(self._thumbnail_paths) or None

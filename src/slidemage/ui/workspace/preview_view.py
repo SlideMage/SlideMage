@@ -493,7 +493,7 @@ class PreviewPane(Surface):
         self._adhoc: Optional[tuple[tuple, QPixmap, str]] = None
         self._adhoc_spec = None
         self._adhoc_text: Optional[str] = None
-        self._adhoc_full = False       # the buffer render is a whole slide (the step bar may use it)
+        self._adhoc_full = False       # the temporary render is a whole slide (the step bar may use it)
         # The step bar: page lists of all-steps renders, rendered one at a time in the background.
         self._steps = StepRenderQueue(self._steps_busy, self._steps_done, read_pages=lambda pages: pages)
         self._step_pages: OrderedDict[tuple, list[bytes]] = OrderedDict()
@@ -643,6 +643,8 @@ class PreviewPane(Surface):
     def _poll_selection(self):
         if self._target is not None and self.isVisible() and not self._closed:
             self._stored_asked = None
+            self._step_pages = OrderedDict((key, pages) for key, pages in self._step_pages.items() if key[0] == 'draft')
+            self._step_pixmap = self._step_image = None
             self._refresh()
 
     def _image(self, target: PreviewTarget) -> Optional[tuple[QPixmap, bool, str]]:
@@ -658,8 +660,7 @@ class PreviewPane(Surface):
         except (OSError, ValueError):
             return None
         adhoc_here = self._adhoc is not None and self._adhoc[0] == key
-        if adhoc_here and self._adhoc_spec is not None and (not self._adhoc_spec.complete
-                                                                     or self._adhoc_spec.target.needs_context):
+        if adhoc_here and self._adhoc_spec is not None and not self._adhoc_spec.complete:
             same = text == self._adhoc_text
             return self._adhoc[1], same, self._adhoc[2] if same else 'Older than the editor buffer'
         request = self._last_request
@@ -675,24 +676,30 @@ class PreviewPane(Surface):
         if not self._defer_checks and self._stored_asked != (self._generation, ident):
             self._stored_asked = (self._generation, ident)
             renderer = self._renders._renderer(target.context)
+            choice = self._step_choice.get(target.source_path)
 
             def select():
                 state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec),
                                                      strict=True)
-                data = renderer.store.page(record, record['pages']) if record is not None else None
+                pages = renderer.store.pages(record) if record is not None else None
+                data = pages[-1] if pages else None
                 image = QImage.fromData(data) if data is not None else QImage()
-                return state, record, hashlib.sha256(data).hexdigest() if data else None, image
+                n = len(pages or ())
+                step = min(max(choice if choice is not None else n, 1), n)
+                step_image = QImage.fromData(pages[step - 1]) if pages and step != n else image
+                return state, record, hashlib.sha256(data).hexdigest() if data else None, image, (pages, step, step_image)
 
             self._look_up('page', ident, select, lambda found: self._page_found(ident, keep, found))
         if self._stored is not None and self._stored[0] == ident and not self._checking():
             _, pixmap, _, state, record = self._stored
+            if (state != 'current' and adhoc_here and self._adhoc_text == text
+                    and (pixmap is None or (self._adhoc_spec is not None and self._adhoc_spec.target.needs_context))):
+                return self._adhoc[1], False, 'Temporary preview; render to verify current source and settings.'
             if pixmap is not None:
                 self._record = record
                 note = {'current': '', 'previous': 'Previous render; render to verify current source and settings.',
                         'reference': 'Instructor reference; not verified for this deck, view or reveal steps.'}[state]
                 return pixmap, state == 'current', note
-            if state == 'missing' and adhoc_here and self._adhoc_text == text:
-                return self._adhoc[1], False, 'Temporary preview; render to verify current source and settings.'
             return None
         held = self._pixmaps.get(key)
         if held is not None and (held.mtime, held.content_hash) == (mtime, text_hash):
@@ -703,14 +710,16 @@ class PreviewPane(Surface):
     def _check_when_recorded(self, request) -> None:
         """Check the delivered pixels as soon as publication finishes."""
         def poll():
-            if self._closed or self._last_request is not request:
+            if self._closed:
                 return
             if not request.done.is_set():
                 QTimer.singleShot(50, poll)
                 return
-            self._last_request = None
-            self._stored_asked = None
-            self._refresh()
+            self.rendered_target.emit(request.spec.target.source_path)
+            if self._last_request is request:
+                self._last_request = None
+                self._stored_asked = None
+                self._refresh()
         if getattr(request, 'done', None) is not None:
             QTimer.singleShot(50, poll)
 
@@ -777,7 +786,7 @@ class PreviewPane(Surface):
         if text_sha256(text) != ident[4]:
             self._refresh()
             return
-        state, record, digest, image = found if found is not None else ('missing', None, None, QImage())
+        state, record, digest, image, steps = found if found is not None else ('missing', None, None, QImage(), None)
         pixmap = None
         if not image.isNull():
             held = self._pixmaps.get(ident[:3])
@@ -790,9 +799,16 @@ class PreviewPane(Surface):
                 if keep is not None:
                     pixmap = self._pixmaps.put(ident[:3], pixmap, *keep, digest)
         self._stored = (ident, pixmap, digest, state, record)
-        if pixmap is not None and target.needs_context:
+        if state == 'current' and pixmap is not None and target.needs_context:
             self._context_modes[ident[:3]] = deck_context.DECK
-        self._refresh()
+            if self._adhoc is not None and self._adhoc[0] == ident[:3]:
+                self._adhoc = self._adhoc_spec = None
+                self._adhoc_full = False
+        if (steps is not None and steps[0]
+                and (state == 'current' or self._adhoc_spec is None or not self._adhoc_spec.target.needs_context)):
+            self._steps_found(self._current_steps(target)[0], steps)
+        else:
+            self._refresh()
 
     def _preload_order(self) -> list:
         """The slides whose stored pages are read ahead, nearest first: one after, one before, two after, ... through
@@ -1065,10 +1081,10 @@ class PreviewPane(Surface):
 
     def _steps_key(self, target: PreviewTarget, view: str, language: str, draft: bool,
                    stamp) -> tuple:
-        """What a page list depends on. `stamp`: the source's mtime (a saved render) or the buffer's text."""
+        """Pane state for an all-steps selection or a temporary buffer render."""
         identity = target.key[1:3] + target.key[5:]       # not the macro, the versions or the steps of the call
         return ("draft" if draft else "saved", str(target.source_path), identity, view, language,
-                hash(stamp) if draft else stamp)
+                hash(stamp) if draft else self._generation)
 
     def _scan_of(self, path: Path, text: Optional[str], stamp) -> reveal_steps.SlideScan:
         key = (str(path), stamp if text is not None else _mtime(path))
@@ -1091,9 +1107,9 @@ class PreviewPane(Surface):
         if self._adhoc is not None and self._adhoc[0] == shown and self._adhoc_full and self._adhoc_text is not None:
             text = self._adhoc_text
             key = self._steps_key(target, view, language, True, text)
-            return key, text, True, self._scan_of(target.source_path, text, hash(text))
+            return key, text, bool(self._adhoc[2]), self._scan_of(target.source_path, text, hash(text))
         mtime = _mtime(target.source_path)
-        return (self._steps_key(target, view, language, False, mtime), None, False,
+        return (self._steps_key(target, view, language, False, None), None, False,
                 self._scan_of(target.source_path, None, mtime))
 
     def _after_render(self, job: _Job) -> None:
@@ -1103,21 +1119,20 @@ class PreviewPane(Surface):
             return
         draft = bool(job.note)
         text = job.buffer_text if draft else job.revision_text
-        key = self._steps_key(target, job.view, job.language, draft,
-                              text if draft else job.mtime)
+        key = self._steps_key(target, job.view, job.language, draft or bool(target.needs_context), text)
         if key in self._step_pages or self._steps.pending(key):
             return
         self._request_steps(target, key, text, draft, FOREGROUND)
 
     def _request_steps(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
                        priority: int) -> None:
-        """Queue the all-steps render for `key` (kind, path, target key, view, language, stamp)."""
+        """Queue the all-steps render for this pane selection."""
         if text is None:
             try:
                 text = target.source_path.read_text(encoding='utf-8')
             except OSError:
                 return
-        if draft:
+        if key[0] == 'draft':
             self._queue_steps(target, key, text, draft, priority)
         elif key not in self._step_pages:      # the store's pages first (off the GUI thread), a render if it has none
             self._adopt_stored_steps(target, key, lambda: self._queue_steps(target, key, text, draft, priority))
@@ -1139,9 +1154,7 @@ class PreviewPane(Surface):
 
     def _adopt_stored_steps(self, target: PreviewTarget, key: tuple,
                             render: Optional[Callable[[], None]] = None) -> None:
-        """Take the step pages of the saved slide from a current render in the store (the background sweep's, or the
-        bar's own earlier one) instead of rendering them. The display worker looks (once per key and selection) and
-        the pane refreshes when it has them; `render` runs if it has none and the slide is still the one asked for."""
+        """Read the chooser's step pages off-thread; `render` runs if none were found for this selection."""
         background = getattr(self.app, "background", None)
         if key in self._step_pages:
             return
@@ -1159,30 +1172,29 @@ class PreviewPane(Surface):
                 return None
             spec = PreviewRequest(target, SourceRevision.capture(target.source_path), key[3], key[4],
                                   RenderOptions(all_steps=True))
-            state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
-            pages = renderer.store.pages(record) if state == 'current' else None
+            _state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+            pages = renderer.store.pages(record) if record is not None else None
             if not pages:
                 return None
             step = min(max(choice if choice is not None else len(pages), 1), len(pages))
             image = QImage.fromData(pages[step - 1]) if len(pages) > 1 else None
             return pages, step, image
 
-        self._look_up(('steps', key), key, read, lambda found: self._steps_found(target, key, choice, found))
+        self._look_up(('steps', key), key, read, lambda found: self._steps_found(key, found))
 
-    def _steps_found(self, target: PreviewTarget, key: tuple, choice: Optional[int], found) -> None:
+    def _steps_found(self, key: tuple, found) -> None:
         render = self._count_after.pop(key, None)
-        if key in self._step_pages or _mtime(target.source_path) != key[5]:
-            return                           # counted meanwhile, or the file changed: the store's pages are not its steps
         if found is None:
             if render is not None:
                 render()
             return
         pages, step, image = found
+        self._step_pixmap = None
         self._step_pages[key] = pages
         self._step_pages.move_to_end(key)
         while len(self._step_pages) > STEP_CACHE:
             self._step_pages.popitem(last=False)
-        if image is not None and self._step_choice.get(target.source_path) == choice:
+        if image is not None:
             self._step_image = (key, step, image)
         self._refresh()
 
@@ -1213,7 +1225,7 @@ class PreviewPane(Surface):
             self._request_other_views(target, key, text, draft, self._served_views())
         view, language = self.state.view, self.language
         for other, _row in self.neighbours()[:NEIGHBOURS]:
-            other_key = self._steps_key(other, view, language, False, _mtime(other.source_path))
+            other_key = self._steps_key(other, view, language, False, None)
             if other_key not in self._step_pages and other_key not in self._step_failed:
                 self._request_steps(other, other_key, None, False, BACKGROUND)
 
@@ -1348,7 +1360,7 @@ class PreviewPane(Surface):
             return False, ("The slide's own frame decides which steps exist (\\begin{frame}<spec> or "
                            "allowframebreaks); \\slidestep has no effect on it.")
         if draft:
-            saved = self._step_pages.get(("saved",) + key[1:6] + (_mtime(self._target.source_path),)) \
+            saved = self._step_pages.get(("saved",) + key[1:5] + (self._generation,)) \
                 if self._target is not None else None
             if saved is None or len(saved) != counts[view]:
                 return False, "Save the slide to edit its steps: the editor buffer may have other steps."
@@ -1370,7 +1382,7 @@ class PreviewPane(Surface):
             bar.setVisible(False)
             return
         key, text, draft, scan = self._current_steps(target)
-        if key not in self._step_pages and not draft and key not in self._step_failed and not self._defer_checks:
+        if key not in self._step_pages and key[0] != 'draft' and key not in self._step_failed and not self._defer_checks:
             self._adopt_stored_steps(target, key)           # a current render in the store: no counting at all
         pages = self._step_pages.get(key)
         if pages is None:
@@ -1483,10 +1495,28 @@ class PreviewPane(Surface):
     def _open_pdf(self) -> None:
         """Open a copy independent of store replacement and eviction."""
         if self._record is not None:
-            store = self._renders._renderer(self._target.context).store
-            pdf = self._pdf_copies.enter_context(store.pdf_copy(self._record))
-            if pdf is not None:
-                slide_preview.open_pdf(pdf)
+            target, view, language = self._target, self.state.view, self.language
+            buffer = self._buffer()
+            text = buffer[0] if buffer is not None else None
+            renderer = self._renders._renderer(target.context)
+
+            def copy():
+                spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language)
+                _state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec),
+                                                      strict=True)
+                if record is None:
+                    return None
+                owner = renderer.store.pdf_copy(record)
+                return owner, owner.__enter__()
+
+            def open_copy(found):
+                if found is not None:
+                    owner, pdf = found
+                    self._pdf_copies.push(owner)
+                    if pdf is not None:
+                        slide_preview.open_pdf(pdf)
+
+            self._look_up('pdf', (target.key, view, language, text), copy, open_copy)
         elif self._target is not None and self._adhoc_spec is not None and not self._busy:
             spec = self._adhoc_spec
             job = self._job(self._target, external=True, revision_text=self._adhoc_text)
@@ -1513,6 +1543,8 @@ class PreviewPane(Surface):
             future.cancel()
         self._lookups.clear()
         self._count_after.clear()
+        self._step_pages.clear()
+        self._step_pixmap = self._step_image = None
         self._stored = None
         self._record = None
         if self._batch_cancel is None:
@@ -1670,7 +1702,7 @@ class PreviewPane(Surface):
                                                                or job.request.spec.target.needs_context)):
                         self._adhoc = (key, pixmap, job.note)
                         self._adhoc_text = job.revision_text
-                        self._adhoc_full = bool(job.note) and job.steps_ok
+                        self._adhoc_full = job.steps_ok
                         self._adhoc_spec = job.request.spec if job.request is not None else None
                     else:
                         self._remember(key, pixmap, job.png, job.mtime, job.revision_text)
@@ -1678,7 +1710,8 @@ class PreviewPane(Surface):
             self.rendered.emit()
             if not job.external:
                 self._after_render(job)
-            self.rendered_target.emit(job.source)
+            if job.request is None:
+                self.rendered_target.emit(job.source)
         self._launch_pending()
         self._refresh()
         if job.metrics is not None:
