@@ -599,3 +599,62 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         assert controller.stored_page(target, "instructor", "EN", deck.name) is None
     finally:
         raster.close()
+
+
+def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monkeypatch):
+    import threading
+    import time
+    from slidemage import preview_target, render_store
+    from slidemage.render_scheduler import P_IDLE
+    from test_background_renders import FakeTeX
+
+    started, release = threading.Event(), threading.Event()
+    r = window.background.renderer
+    service = window.centre.preview._renders
+    assert r.renders is service and service._renderer(window.project) is r
+    assert service._renderer(window.project).store is window.background.store
+    tex = FakeTeX(window.project)
+
+    def render(unit, cancel):
+        started.set()
+        assert release.wait(5)
+        assert not cancel.is_set()
+        return tex(unit, cancel)
+
+    monkeypatch.setattr(r, '_render', render)
+    deck = next(deck for deck in window.decks if deck.name == 'slidemage-manual')
+    unit = background_renders.deck_units(window.project, deck, 'instructor', 'EN')[0]
+    target = preview_target.PreviewTarget(window.project, unit.macro, unit.id_slug, unit.version, unit.conditions,
+                                         None, unit.frame_number, unit.preamble_text, deck=deck)
+    monkeypatch.setattr(r.scheduler, '_can_start', lambda job: True)
+    r.scheduler.submit(unit.label, ((unit,), render_store.ORIGIN_BACKGROUND), P_IDLE)
+    sweep = threading.Thread(target=r.scheduler.run_next)
+    sweep.start()
+    pane = None
+    try:
+        assert started.wait(5)
+        request = service.request(target, unit.source_path.read_text(encoding='utf-8'), 'instructor', 'EN', lambda _: None)
+        build = request.source
+        pixels = []
+        pane = threading.Thread(target=lambda: pixels.append(request.wait(pixels_only=True)))
+        pane.start()
+        deadline = time.monotonic() + 5
+        while len(build._consumers) < 2 and time.monotonic() < deadline:
+            time.sleep(.005)
+        assert len(build._consumers) == 2
+        r.gate.in_front = True
+        r.user_active()
+        sweep.join(5)
+        assert not sweep.is_alive() and not build.cancel.is_set()
+        assert len(build._consumers) == 1 and not tex.calls
+        release.set()
+        pane.join(5)
+        assert not pane.is_alive() and pixels[0][1].startswith(b'\x89PNG')
+        assert build.done.wait(5) and len(tex.calls) == 1
+        assert r.resolver.lookup(unit).final
+    finally:
+        release.set()
+        sweep.join(5)
+        if pane is not None:
+            pane.join(5)
+        r.stop()

@@ -307,7 +307,7 @@ def _write_inputs(ctx: ProjectContext, the_plan, output, pdf: Path) -> None:
     jobname = the_plan.job.jobname
     compiled = [the_plan.aux / f"{jobname}{ext}" for ext in (*partial_compile._RESTORED_EXTENSIONS, ".top")]
     inputs = preview_build.recorded_inputs(
-        output.build_dir / f"{jobname}.fls", output.build_dir / f"{jobname}.fdb_latexmk", project_root=ctx.root,
+        output.build_dir / f"{jobname}.fls", output.build_dir / f"{jobname}.fdb_latexmk", ctx=ctx,
         cache=output.build_dir, extra=[str(path) for path in compiled if path.is_file()])
     # By name: latexmk's database may spell the build folder as Git's Perl does (/d/...), which no path comparison
     # with the folder matches.

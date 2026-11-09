@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_store, slide_language
-from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot, slide_templates
+from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_requests, preview_target, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
@@ -198,6 +198,7 @@ class BackgroundRenderer:
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
                  raster: Optional[RasterClient] = None, batch_renderer: Optional[Callable] = None,
+                 renders: Optional[preview_requests.RenderService] = None,
                  on_change: Callable[[], None] = lambda: None,
                  plugin_soon: Optional[Callable[[Deck], bool]] = None,
                  clock: Callable[[], float] = time.time) -> None:
@@ -211,7 +212,9 @@ class BackgroundRenderer:
             free_bytes=lambda: power_status.free_bytes(store.root), cpu_load=self._cpu.load)
         self._decks, self._open_deck = decks, open_deck
         self.plugin_soon = plugin_soon          # the loaded plugins' rule (plugins.host.plugin_render_priority); settable
-        self._render = renderer or self._render_pdf
+        self._render = renderer
+        self.renders = renders or preview_requests.RenderService()
+        self.renders._background, self.renders._owns_background = self, False   # the window owns the store
         self._render_batch = batch_renderer or self._render_batch_pdf
         self._raster = raster
         self._on_change = on_change
@@ -277,6 +280,7 @@ class BackgroundRenderer:
         self._stop.set()
         self._replan.set()
         self.scheduler.stop()
+        self.renders.close()
         if self._thread is not None:
             self._thread.join(5)
 
@@ -681,11 +685,6 @@ class BackgroundRenderer:
 
     # -- foreground helpers ------------------------------------------------------------------
 
-    def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes], evidence: dict) -> Optional[str]:
-        """Keep the reveal bar's complete render under the same publication rule as the sweep."""
-        manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
-        return self._store_render(unit, ORIGIN_REVEAL, pdf, pages, manifest, evidence)
-
     def ingest_compile(self, job, pdf: Path, record: dict) -> int:
         """Keep the slides of a whole-deck compile in the store: every page of each slide's run (every reveal step
         the PDF shows), for the view and language the deck was compiled in, so the Preview shows it as a finished
@@ -820,10 +819,11 @@ class BackgroundRenderer:
 
     def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
         """Render `unit` into the store unless a current render is there. Returns the object name, or None."""
-        evidence = self.resolver.capture(unit)
-        key = evidence["key"]
-        if key is None:
-            raise _transient("the slide file is being written")
+        try:
+            revision = preview_requests.SourceRevision.capture(unit.source_path)
+        except OSError:
+            raise _transient("the slide file is being written") from None
+        key = self.resolver.fast_key(unit, revision.text)
         found = self.resolver.lookup(unit, key)
         if found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
             if unit.label not in self._last_try or self.store.tried_last(key):
@@ -832,24 +832,26 @@ class BackgroundRenderer:
         if found.state is render_key.Freshness.FRESH:
             self.store.link_decks(found.record["name"], [unit.deck])
             return found.record["name"]
-        pdf: Optional[Path] = None
+        deck = next((deck for deck in self._decks() if deck.name == unit.deck), None)
+        target = preview_target.PreviewTarget(
+            self.ctx, unit.macro, unit.id_slug, unit.version, unit.conditions, None,
+            unit.frame_number, unit.preamble_text, deck=deck, needs_context=(unit.context,) if unit.context else ())
+        spec = preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
+                                              preview_requests.RenderOptions(saved=True, all_steps=True))
+        cancel.low_priority = True
+        request = self.renders.request(target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
+        request.origin = origin
         try:
-            pdf = self._render(unit, cancel)
-            if cancel.is_set():
-                raise Cancelled("Preview cancelled")
-            manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
-            pages = self._rasterise(pdf, cancel)
-            if not pages:
-                raise _deterministic("the render has no pages (the slide is not typeset in this view)")
-            return self._store_render(unit, origin, pdf, pages, manifest, evidence)
+            request.wait(cancel)
+            stored = self.store.find(key)
+            if stored is not None:
+                self.store.link_decks(stored['name'], [unit.deck])
+                return stored['name']
+            return None
         except BaseException as exc:
-            if cancel.is_set():
-                raise
-            self._record_failure(key, exc, unit, pdf)
+            if not cancel.is_set():
+                self._record_failure(key, exc, unit)
             raise
-        finally:
-            if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                shutil.rmtree(pdf.parent, ignore_errors=True)
 
     def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
                       pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
@@ -946,15 +948,6 @@ class BackgroundRenderer:
             first.view, first.language.lower(), first.preamble_text, log=lambda line: None, cancel=cancel,
             workspace=self.store.work_dir)
 
-    def _render_pdf(self, unit: render_key.Unit, cancel) -> Path:
-        if unit.context:
-            return self._render_in_deck(unit, cancel)
-        return slide_preview.render_slide_to_pdf(
-            self.ctx, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
-            deck_language=unit.language.lower(), preamble_text=unit.preamble_text,
-            frame_number=unit.frame_number, log=lambda line: None, steps=None, capture_snapshot=False, cancel=cancel,
-            all_steps=True, workspace=self.store.work_dir)
-
     def _render_in_deck(self, unit: render_key.Unit, cancel) -> Path:
         """A slide that needs its deck, typeset in the deck's last whole-deck compile (deck_context.render_in_deck)."""
         deck = next((d for d in self._decks() if d.name == unit.context), None)
@@ -1048,10 +1041,4 @@ class _Once:
 def _transient(message: str) -> RuntimeError:
     error = RuntimeError(message)
     error.kind = render_store.TRANSIENT          # type: ignore[attr-defined]
-    return error
-
-
-def _deterministic(message: str) -> RuntimeError:
-    error = RuntimeError(message)
-    error.kind = render_store.DETERMINISTIC      # type: ignore[attr-defined]
     return error

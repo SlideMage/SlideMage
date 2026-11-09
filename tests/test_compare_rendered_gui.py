@@ -86,9 +86,9 @@ def env(fake):  # noqa: F811
 
 
 @pytest.fixture
-def renders(monkeypatch):
+def renders(env, monkeypatch):
     service = FakeRenders()
-    monkeypatch.setattr(compare_rendered, "RenderService", lambda: service)
+    monkeypatch.setattr(env.window.centre.preview, "_renders", service)
     monkeypatch.setattr(compare_rendered, "read_pages", service.read_pages)
     return service
 
@@ -199,7 +199,7 @@ def test_closing_cancels_the_pending_renders(env, renders):  # noqa: F811
     pump(0.1)
     assert chips(dialog) == ["Rendering…", "Rendering…"] and not renders.closed
     QTest.keyClick(dialog, Qt.Key.Key_Escape)
-    assert dialog.closed and renders.closed and dialog._cancel.is_set()
+    assert dialog.closed and not renders.closed and dialog._cancel.is_set()
     wait_until(lambda: all(entry[0].cancelled for entry in renders.requests))
     assert all(not side.worker.isRunning() or side.worker.wait(2000) for side in dialog._sides)
 

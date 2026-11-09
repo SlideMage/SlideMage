@@ -195,12 +195,15 @@ class Resolver:
         """Evidence captured before the render starts, never reconstructed from its finished inputs."""
         started = time.time()
         inventory = render_evidence.search_inventory(self.ctx.root, compiler.build_env(self.ctx))
-        return dict(started=started, inventory=inventory, key=self.fast_key(unit, text, strict=True))
+        return dict(started=started, inventory=inventory, key=self.fast_key(unit, text, strict=True), text=text)
 
     def publishable(self, unit: Unit, evidence: dict, manifest: Manifest) -> bool:
-        if not manifest.stable or evidence["key"] is None or self.fast_key(unit, strict=True) != evidence["key"]:
+        text = evidence.get("text")
+        if not manifest.stable or evidence["key"] is None or self.fast_key(unit, text, strict=True) != evidence["key"]:
             return False
         paths = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in manifest.entries]]
+        if text is not None:
+            paths = [path for path in paths if path != unit.source_path]
         paths += [Path(path) for path, _state in manifest.tex_files]
         paths += [self.ctx.root / name for name in (".latexmkrc", "decks/.latexmkrc")
                   if (self.ctx.root / name).is_file()]

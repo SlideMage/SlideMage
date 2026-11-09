@@ -131,7 +131,11 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
             for index, spec in batch:
                 notify(BatchProgress(spec.view, index, len(requests), 'rendering'))
             try:
+                evidence = {index: service._renderer(spec.target.context).resolver.capture(spec.unit, spec.revision.text)
+                            for index, spec in batch}
                 built = batch_render.build(batch, cancel, log)
+                for index, prebuilt in built.items():
+                    prebuilt.evidence = evidence[index]
             except Exception:  # noqa: BLE001 -- whatever went wrong, the requests render singly
                 pass
             for index, _spec in batch:
@@ -142,9 +146,12 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
     batches = ([] if cancel is not None and cancel.is_set() else
                batch_render.groups(service, [members[0] for members in units.values()], batch_size))
     batched = {index for batch in batches for index, _spec in batch}
-    parallel_runs.run_all([batch_task(batch) for batch in batches]
-                          + [unit_task(members) for members in units.values() if members[0][0] not in batched],
-                          workers=workers, may_add=may_add or parallel_runs.cpu_has_room)
+    tasks = ([batch_task(batch) for batch in batches]
+             + [unit_task(members) for members in units.values() if members[0][0] not in batched])
+    if len(requests) == 1:
+        tasks[0]()                            # a single tool request may join the pane's foreground build
+    else:
+        parallel_runs.run_all(tasks, workers=workers, may_add=may_add or parallel_runs.cpu_has_room, cancel=cancel)
     for index, original in enumerate(requests, 1):          # a unit that never started (cancelled first)
         if results[index - 1] is None:
             results[index - 1] = PreviewResult(original, status='cancelled', error='Preview cancelled')

@@ -776,7 +776,7 @@ class TaskRunner(QObject):
             target, view, language = context
             try:
                 outcome.measured = readability_check.check_slide(window.project, target, outcome.text, view, language,
-                                                                 cancel, log=window.log)
+                                                                 cancel, renders=self._workspace.preview_service(), log=window.log)
             except Exception as exc:  # noqa: BLE001 -- why the draft could not be measured is the card's text
                 if cancel.is_set():
                     outcome.status = CANCELLED

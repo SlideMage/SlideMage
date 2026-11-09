@@ -138,12 +138,13 @@ def test_clicking_a_finding_focuses_that_slide_in_the_centre(env):
     wait_until(lambda: env.window.state.focused_slide == "abc")
 
 
-def test_check_again_renders_the_slide_again_and_reports_the_new_state(env):
+def test_check_again_reports_the_changed_slide(env):
     open_slide(env)
     env.pdfs = [slide(pct=2.8), slide(pct=4.0)]
     env.window.commands.run("slide:readability", env.window)
     finished(env)
     assert env.panel.report.slides[0].findings
+    env.window.centre.source.current.editor.insertPlainText("% edited\n")
     env.panel.again.click()
     assert "Typesetting" in env.panel.summary.text() and env.panel.report is None
     finished(env)

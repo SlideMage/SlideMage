@@ -81,6 +81,8 @@ def test_an_explicit_slide_by_id_or_path_and_the_refusals(box, rendered):
     assert "not a slide file" in box.error("check_readability", slide="SlideMage.bib")
     assert "not both" in box.error("check_readability", slide="abc", deck="test")
     rendered.draws[0] = None
+    for path in (box.root / SLIDE, box.root / "slides/abd-EN-Second-current.tex"):
+        path.write_text(path.read_text() + "\n% edited\n")
     assert box.error("check_readability").endswith("! Undefined control sequence.")
     assert "did not compile, so it was not checked" in box.error("check_readability", slide="abd")
 

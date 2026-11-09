@@ -84,7 +84,7 @@ class CompareRendered(QDialog):
         self.setMinimumSize(760, 480)
         self._page: Optional[int] = None                # None until the user moves: the last page both sides have
         self._cancel = threading.Event()
-        self._renders = renders or RenderService()
+        self._renders = renders or app.centre.preview._renders
         self.closed = False
 
         root = QVBoxLayout(self)
@@ -237,10 +237,9 @@ class CompareRendered(QDialog):
     # -- closing -----------------------------------------------------------------------------
 
     def done(self, result: int) -> None:
-        """Esc, Close and the window's close button: cancel what is pending (the renders end at their next check), go."""
+        """Esc, Close and the window's close button detach this dialog's waiters."""
         self.closed = True
         self._cancel.set()
-        self._renders.close()
         for side in self._sides:
             side.worker.stop(wait_ms=0)
         super().done(result)

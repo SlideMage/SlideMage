@@ -17,6 +17,8 @@ import threading
 import time
 from typing import Callable, Optional, Sequence
 
+from . import busy
+
 POLL = 0.25
 CEILING = 32                  # a LaTeX run takes about 300 MB: 32 at once is about 10 GB
 
@@ -93,6 +95,10 @@ def run_all(tasks: Sequence[Callable[[], None]], *, workers: Optional[int] = Non
         for task in pending:
             if cancel is not None and cancel.is_set():
                 break
+            while 'foreground preview' in busy.reasons():
+                if cancel is not None and cancel.is_set():
+                    return
+                time.sleep(POLL)
             budget.take()
             try:
                 _run(task)
@@ -109,6 +115,9 @@ def run_all(tasks: Sequence[Callable[[], None]], *, workers: Optional[int] = Non
                 while True:
                     if not pending or (cancel is not None and cancel.is_set()):
                         return
+                    if 'foreground preview' in busy.reasons():
+                        lock.wait(POLL)
+                        continue
                     if running["n"] == 0:
                         budget.take()        # the batch's own first: never waits
                     elif not (running["n"] < workers and budget.try_take(may_add)):

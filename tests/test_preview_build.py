@@ -331,7 +331,7 @@ def test_recorder_expands_format_inputs_without_depending_on_generated_format(tm
     fls = out / 'slide.fls'
     fls.write_text(f'PWD {root}\nINPUT {fmt / "preamble.fmt"}\nINPUT {fmt / "capture.lua"}\nINPUT {source}\n')
     deps = preview_build.recorded_inputs(fls, out / 'missing.fdb_latexmk',
-                                        project_root=root, cache=out, extra=[str(theme)])
+                                        ctx=ProjectContext.at(root), cache=out, extra=[str(theme)])
     assert deps == sorted([str(source), str(theme)])
 
 
@@ -349,7 +349,7 @@ def test_recorder_keeps_similar_prefixes_and_normalizes_relative_inputs(tmp_path
     database = out / 'slide.fdb_latexmk'
     database.write_text('  "../references with spaces.bib" 123 42 abc\n'
                         '  "../missing.bib" 0 -1 0\n')
-    assert preview_build.recorded_inputs(fls, database, project_root=root, cache=out) == sorted(map(str, (
+    assert preview_build.recorded_inputs(fls, database, ctx=ProjectContext.at(root), cache=out) == sorted(map(str, (
         source, sibling, framework, root / 'references with spaces.bib')))
 
 
@@ -377,7 +377,7 @@ def _latexmk_runs(monkeypatch, tmp_path, logs):
         return compiler.Build(0 if pdf.exists() else 1, pdf, outdir / f'{jobname}.log', log_text, False)
     monkeypatch.setattr(compiler, 'run_latexmk', run_latexmk)
     monkeypatch.setattr(preview_build, '_pause', lambda seconds, cancel=None: None)
-    ctx = SimpleNamespace(root=tmp_path, decks_dir=tmp_path / 'decks')
+    ctx = ProjectContext.at(tmp_path)
     (tmp_path / 'decks').mkdir(exist_ok=True)
     out = tmp_path / 'out'
     out.mkdir(exist_ok=True)

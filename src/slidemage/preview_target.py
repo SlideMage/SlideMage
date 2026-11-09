@@ -203,7 +203,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False,
+    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False, workspace=None,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -230,5 +230,6 @@ def render_text(
         slide_version=target.version if mode == "slide" else None,
         omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
         capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps,
+        workspace=workspace,
         **context,
         **({'force_build': True} if force_build else {}))

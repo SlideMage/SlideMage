@@ -91,10 +91,10 @@ def wrapper_dir(ctx: ProjectContext) -> Path:
     return ctx.build_dir / WRAPPER_FOLDER
 
 
-def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Path,
+def recorded_inputs(fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
                     extra=()) -> list[str]:
     """TeX recorder plus latexmk's bibliography inputs, excluding generated output."""
-    cwd = project_root / 'decks'
+    cwd = ctx.decks_dir
     names = list(extra)
     if fls.is_file():
         for line in fls.read_text(errors='replace').splitlines():
@@ -110,7 +110,7 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
             if size != '-1':
                 names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
-    formats = (cache.parent.parent if cache.parent.name == 'preview-cache' else project_root / '.build') / 'preview-formats'
+    formats = ctx.build_dir / 'preview-formats'
     # Normalize roots once. Path.is_relative_to walks every ancestor on some Python versions;
     # doing that four times for thousands of recorder inputs delays the first preview pixels.
     cache_roots = {os.path.normcase(str(root)) for root in
@@ -126,10 +126,10 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
     return sorted(paths)
 
 
-def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, cache: Path,
+def write_inputs(pdf: Path, fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
                 extra=()):
     pdf.with_suffix('.inputs.json').write_text(json.dumps(recorded_inputs(
-        fls, database, project_root=project_root, cache=cache, extra=extra)), encoding='utf-8')
+        fls, database, ctx=ctx, cache=cache, extra=extra)), encoding='utf-8')
 
 
 PRUNE_EVERY = 600.0      # seconds between two prune_unused passes over one folder (maybe_prune_unused)
@@ -486,7 +486,7 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
         # build tree can pick another concurrent render, and background jobs build outside the project entirely.
         try:
             failure.preview_inputs = recorded_inputs(outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
-                                                     project_root=ctx.root, cache=outdir)
+                                                     ctx=ctx, cache=outdir)
         except OSError:
             failure.preview_inputs = []
         failure.missing_inputs = re.findall(r"LaTeX Error: File [`']([^\n]+?)' not found", build.log_text)
@@ -502,5 +502,5 @@ def publish_preview(ctx: ProjectContext, pdf: Path, id_slug: str, outdir: Path, 
         copy(pdf, dest)
     with stage('dependencies'):
         write_inputs(dest, outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
-                     project_root=ctx.root, cache=outdir, extra=extra)
+                     ctx=ctx, cache=outdir, extra=extra)
     return dest

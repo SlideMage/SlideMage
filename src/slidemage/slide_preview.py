@@ -620,6 +620,7 @@ def render_slide_text_to_pdf(
     omitted: bool = False,
     final: bool = False,
     force_build: bool = False,
+    workspace: Optional[Path] = None,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -689,7 +690,7 @@ def render_slide_text_to_pdf(
     )
     return _with_context(compile_and_extract(
         ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build, cancel=cancel, **({'force_build': True} if force_build else {}),
+        reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
 
 

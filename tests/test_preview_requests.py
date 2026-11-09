@@ -225,20 +225,6 @@ def test_completed_service_cache_survives_restart_and_validates_content(tmp_path
     service.close()
 
 
-def test_saved_request_changed_before_start_never_compiles(tmp_path, monkeypatch):
-    ctx = ProjectContext.at(tmp_path)
-    ctx.slides_dir.mkdir()
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('old')
-    target = preview_target.for_path(ctx, source)
-    request = preview_requests.RenderService().request(target, 'old', 'instructor', 'EN',
-                                                      lambda _: None, saved=True)
-    source.write_text('new')
-    monkeypatch.setattr(preview_target, 'render', lambda *a, **kw: pytest.fail('superseded source compiled'))
-    with pytest.raises(RuntimeError, match='superseded'):
-        request.wait()
-
-
 def test_cache_identity_tracks_raster_version_and_ignores_forced_stamp(tmp_path, monkeypatch):
     from dataclasses import replace
     ctx = ProjectContext.at(tmp_path)

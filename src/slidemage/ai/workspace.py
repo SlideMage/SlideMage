@@ -45,7 +45,7 @@ class Workspace:
     def __init__(self, project: ProjectContext, context: WorkspaceContext | None = None) -> None:
         self.project = project
         self._context = context or WorkspaceContext()
-        self._preview_service = RenderService()
+        self._preview_service = None
 
     @property
     def root(self) -> Path:
@@ -123,6 +123,8 @@ class Workspace:
 
     def preview_service(self):
         """The service shared by this workspace's preview consumers."""
+        if self._preview_service is None:
+            self._preview_service = RenderService()
         return self._preview_service
 
     def preview_log(self, line):
@@ -196,7 +198,7 @@ class Workspace:
         ticket = self.begin_preview_refresh()
         revision = target.source_path.stat().st_mtime_ns
         text = target.source_path.read_text(encoding='utf-8')
-        request = RenderService().request(target, text, view, language, lambda _: None, saved=True)
+        request = self.preview_service().request(target, text, view, language, lambda _: None, saved=True)
         artifact = request.wait(cancel)
         try:
             return self.publish_preview_refresh(target, text, revision, view, language, artifact, ticket)

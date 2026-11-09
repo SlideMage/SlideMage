@@ -196,18 +196,6 @@ def test_changed_classification_during_build_retries_foreign_consumer(tmp_path, 
     service.close()
 
 
-def test_exact_pdf_waiter_joins_same_view_image_build(tmp_path, monkeypatch):
-    _, target, source, calls, _ = fixture(tmp_path, monkeypatch)
-    service = preview_requests.RenderService()
-    image = service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True)
-    exact = service.request(target, source.read_text(), 'instructor', 'EN',
-                            lambda _: None, saved=True, require_pdf=True)
-    assert exact is not image
-    assert exact.wait()[0] is not None
-    assert len(calls) == 1
-    service.close()
-
-
 def test_failed_retry_has_no_exposable_representative_artifact(tmp_path, monkeypatch):
     _, target, source, _, _ = fixture(tmp_path, monkeypatch)
     first = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source),

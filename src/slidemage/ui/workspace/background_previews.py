@@ -384,7 +384,8 @@ class BackgroundPreviews(QObject):
             return
         self.renderer = BackgroundRenderer(
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
-            on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project))
+            on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project),
+            renders=window.centre.preview._renders)
         self.renderer.gate._busy = self._busy_reasons
         self._chip_said = None
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
@@ -543,13 +544,6 @@ class BackgroundPreviews(QObject):
             return self.store.pages(found.record)
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
-
-    def store_steps(self, unit, pdf, pages, evidence) -> None:
-        """Keep the reveal bar's own all-steps render in the store (called from its worker thread)."""
-        renderer = self.renderer
-        if renderer is None or self.store is None or not renderer.enabled:
-            return
-        renderer.store_reveal(unit, pdf, pages, evidence)
 
     # -- the chip --------------------------------------------------------------------------------
 

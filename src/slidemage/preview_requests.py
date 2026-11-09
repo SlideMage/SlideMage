@@ -1,9 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""In-flight preview sharing; pixels and build state keep their existing caches.
+"""Shared captured-text builds for the Preview and sweep, with guarded store publication.
 
-Requests own immutable source/context keys. Consumers may await the same build,
-while the pane alone decides whether to publish its image and snapshots.
+The preview cache is also written until its readers move to the render store.
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ import time
 import weakref
 
 from . import diagnostics
-from . import compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_target, render_evidence, slide_snapshot
+from . import busy, compiler, deck_context, preview_build, preview_cache, preview_equivalence, preview_raster_client, preview_target, render_evidence, render_key, render_lookup, slide_snapshot
 from .fileio import text_sha256
 from .preview_metrics import PreviewMetrics
 
@@ -72,6 +71,23 @@ class PreviewRequest:
         if self.view == "all":
             raise ValueError("A preview request must have one canonical view")
         object.__setattr__(self, 'language', self.language.upper())
+
+    @property
+    def unit(self):
+        return render_key.unit_for(self.target, self.view, self.language, self.target.deck.name if self.target.deck else '')
+
+    @property
+    def complete(self):
+        options = self.options
+        if (self.capture_error or self.target.hidden or options.presenter or options.mode != 'slide'
+                or options.overlay is not None):
+            return False
+        if options.all_steps:
+            return True
+        from .reveal_steps import scan_slide
+        return (self.target.macro != 'slidefinal'
+                and not (self.target.macro == 'slidestep' and self.target.steps)
+                and scan_slide(self.revision.text).own_frame_spec is None)
 
 
 @dataclass(frozen=True)
@@ -172,13 +188,14 @@ class PrebuiltRender:
     def __init__(self, pdf: Path, dependencies, before):
         self.pdf, self.dependencies, self.before = pdf, tuple(dependencies), before
         self.used = False
+        self.evidence = None
 
 
 class _ArtifactLease:
     """Shared by the future and immutable results, without a reference cycle."""
     def __init__(self, context):
         self._context = context
-        context.__enter__()
+        self.artifact = context.__enter__()
 
     def close(self):
         context, self._context = self._context, None
@@ -205,8 +222,10 @@ class RenderRequest:
         self.error = None
         self.metrics = None
         self.spec = None
+        self.origin = None
         self.preview_result = None
         self._cache_entry = None
+        self._store_record = None
         self._artifact_lease = None
         self._delivery = None
         self._delivered_artifact = None     # the fresh render before it is recorded (its PDF is in the temp folder)
@@ -227,11 +246,13 @@ class RenderRequest:
             result = replace(result, status=self._cache_status,
                              dependencies=tuple(Path(path) for path in self._cache_entry.dependencies),
                              render_stamp=self._cache_entry.render_stamp, _artifact_owner=self._artifact_lease)
+        elif self._store_record is not None:
+            result = replace(result, status='cached', _artifact_owner=self._artifact_lease)
         return result
 
     def _metrics_of(self, collector):
         metrics = collector.to_dict()
-        metrics['cache_hit'] = self._cache_entry is not None and self._cache_status == 'cached'
+        metrics['cache_hit'] = self._store_record is not None or (self._cache_entry is not None and self._cache_status == 'cached')
         metrics['compile_avoided'] = int(metrics['cache_hit'])
         metrics['deduplicated_images'] = (self._cache_entry.deduplicated_images
                                           if self._cache_entry is not None and not metrics['cache_hit'] else 0)
@@ -249,7 +270,6 @@ class RenderRequest:
         """Remove a render's temp folder: now, or when this request is released if a waiter was handed its PDF."""
         with self._start_lock:
             if self.lent:
-                weakref.finalize(self, shutil.rmtree, folder, True)
                 return
             self._loans_closed = True
         shutil.rmtree(folder, ignore_errors=True)
@@ -313,6 +333,8 @@ class RenderRequest:
         yet and the display history is written once the record is done. Otherwise (a cache hit, a finished
         request) it returns what a plain wait() returns.
         """
+        if pixels_only:
+            busy.acquire('foreground preview')
         consumer = object()
         deadline = time.monotonic() + timeout
         with self._start_lock:
@@ -323,6 +345,7 @@ class RenderRequest:
                     raise RuntimeError('Preview cancelled')
                 if not self._started:
                     self._started = True
+                    self.cancel.low_priority = getattr(cancel, 'low_priority', False)
                     threading.Thread(target=self._run, daemon=True).start()
             early = False
             self._await(self.delivered if pixels_only else self.done, cancel, deadline)
@@ -341,6 +364,8 @@ class RenderRequest:
             self._deliver_history()
             return self.result
         finally:
+            if pixels_only:
+                busy.release('foreground preview')
             with self._start_lock:
                 self._consumers.pop(consumer, None)
                 if not self.delivered.is_set() and not self._consumers:    # a delivered build is only recording: let it
@@ -398,10 +423,11 @@ class _ImageConsumer:
         self.source.forget_unstarted()
 
     def wait(self, cancel=None, timeout=TIMEOUT, *, pixels_only=False):
-        """Always waits for the shared build to be recorded: `pixels_only` is accepted for the pane's sake only,
-        as this view's display history needs the cache entry."""
+        """Same-view consumers can take early pixels; other views wait for the cache's equivalence evidence."""
+        if pixels_only:
+            busy.acquire('foreground preview')
         try:
-            artifact = self.source.wait(cancel, timeout)
+            artifact = self.source.wait(cancel, timeout, pixels_only=pixels_only and self.same_view)
             if ((self._group is not None and image_group(self.spec) != self._group)
                     or (self._require_pdf and artifact[0] is None)):
                 # A relevant rule/input changed while the representative built.
@@ -428,6 +454,8 @@ class _ImageConsumer:
             self._cancelled = cancel is not None and cancel.is_set()
             raise
         finally:
+            if pixels_only:
+                busy.release('foreground preview')
             self.done.set()
 
 
@@ -439,11 +467,15 @@ class RenderService:
         self._closed = False
         self._display_lease = None
         self._display_entry = None
+        self._background = None
+        self._owns_background = False
 
     def close(self):
         with self._lock:
+            if self._closed:
+                return
             self._closed = True
-            requests = tuple(self._requests.values())
+            requests = set(self._requests.values())
             self._requests.clear()
         for request in requests:
             request.cancel.request_stop()
@@ -452,6 +484,20 @@ class RenderService:
         if self._display_lease is not None:
             self._display_lease.__exit__(None, None, None)
             self._display_lease = None
+        if self._owns_background:
+            self._background.store.close()
+
+    def _renderer(self, ctx):
+        from .background_renders import BackgroundRenderer
+        from .render_store import RenderStore
+
+        with self._lock:
+            if self._background is None:
+                self._background = BackgroundRenderer(ctx, RenderStore(ctx), raster=preview_raster_client, renders=self)
+                self._owns_background = True
+            elif self._background.ctx.root.resolve() != ctx.root.resolve():
+                raise ValueError('A render service handles one project')
+            return self._background
 
     def _retain_display(self, cache, entry, *, blocking=True):
         if self._display_entry is not None and self._display_entry.directory == entry.directory:
@@ -467,6 +513,10 @@ class RenderService:
     def is_cached(self, spec) -> bool:
         """Whether a verified entry of `spec`, its own or its image group's, exists now: what a request would find. Nothing
         is retained or changed."""
+        if spec.complete and not spec.target.needs_context:
+            renderer = self._renderer(spec.target.context)
+            if render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)[0] == 'current':
+                return True
         cache = preview_cache.PreviewCache(spec.target.context.root)
         identity = cache_identity(spec)
         env = compiler.build_env(spec.target.context)
@@ -521,20 +571,23 @@ class RenderService:
                 require_pdf=False, all_steps=False, prebuilt=None):
         """`prebuilt` (PrebuiltRender): the slide's PDF is made already, by a document of several slides: record it
         instead of looking it up and rendering."""
-        captured = spec is not None
         spec = spec or PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language,
                                       RenderOptions(saved, presenter, mode, overlay, force, render_stamp, all_steps))
         target, text, view, language = spec.target, spec.revision.text, spec.view, spec.language
         options = spec.options
-        saved, presenter, mode, overlay = options.saved, options.presenter, options.mode, options.overlay
+        presenter, mode, overlay = options.presenter, options.mode, options.overlay
         all_steps = options.all_steps
         if target.hidden and not presenter:
             raise ValueError(f'Slide {target.id_slug} is hidden in {view}')
+        renderer = self._renderer(target.context)
+        unit = spec.unit
+        complete = spec.complete
+        store_key = renderer.resolver.fast_key(unit, text) if complete else None
         identity = cache_identity(spec)
         group = image_group(spec, identity)
         group_key = group[0] if group is not None else None
-        key = (('pdf', render_evidence.digest(identity)) if require_pdf or group_key is None
-               else ('image', group_key), options.force)
+        key = (('render', store_key, unit.frame_number) if store_key is not None
+               else ('pdf', render_evidence.digest(identity)), options.force)
         cache = preview_cache.PreviewCache(target.context.root)
         observed_at = time.time_ns()
 
@@ -595,9 +648,26 @@ class RenderService:
 
         def work(cancel):
             env = compiler.build_env(target.context)
+            background = cancel.low_priority
+            publish = complete and (not target.needs_context or background)
+            evidence = (prebuilt.evidence if prebuilt is not None else
+                        renderer.resolver.capture(unit, None if target.needs_context else text) if publish else None)
+            if prebuilt is None and not options.force and publish:
+                state, stored = render_lookup.select(dict(resolver=renderer.resolver, unit=unit, spec=spec), strict=True)
+                if state == 'current' and (not background or stored.get('frame_number') == unit.frame_number):
+                    lease = _ArtifactLease(renderer.store.pdf_copy(stored))
+                    request._artifact_lease = lease
+                    request._store_record = stored
+                    with self._lock:
+                        self._completed.add(request)
+                    pdf = lease.artifact
+                    displays, images = slide_snapshot.prepare_preview_images(
+                        pdf, view == 'instructor' and not target.is_frozen_alone, (slide_snapshot.FULL_SIZE[0], 1280))
+                    return pdf, displays[0], images, displays[1]
+
             if prebuilt is not None:
                 prebuilt.used = True
-            elif not options.force:
+            elif not options.force and not background and not all_steps:
                 validation = render_evidence.ValidationPass()    # the two lookups share one evidence and one read per file
                 if group_key is not None and not require_pdf:
                     found = cache.group_lookup(group_key, env, validation=validation)
@@ -615,28 +685,20 @@ class RenderService:
                         pass  # eviction won the interval between lookup and pin
             before = cache.begin(env) if prebuilt is None else prebuilt.before
             stamp = options.render_stamp or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            if saved and not captured:
-                if target.source_path.read_text(encoding='utf-8') != text:
-                    raise RuntimeError('Preview superseded: saved source changed before rendering')
-            # Saved and draft requests execute the same immutable captured text.
-            # The saved flag controls publication guards, never TeX semantics.
             if prebuilt is not None:
                 pdf = prebuilt.pdf
-            elif saved and target.needs_context and not presenter and mode == 'slide' and overlay is None:
-                # A slide that needs its deck is typeset in the deck's last compile when there is one
-                # (deck_context.render_in_deck), which reads the saved file, not the captured text.
-                pdf = preview_target.render(target, view, language, log=log,
-                                            capture_snapshot=False, cancel=cancel, all_steps=all_steps,
-                                            force_build=True)
+            elif background and renderer._render is not None:
+                pdf = renderer._render(unit, cancel)
+            elif background and target.needs_context:
+                pdf = renderer._render_in_deck(unit, cancel)
             else:
                 pdf = preview_target.render_text(
                     target, text, view, language, log=log,
                     presenter=presenter, mode=mode, overlay=overlay, capture_snapshot=False, cancel=cancel,
-                    all_steps=all_steps, force_build=True)
-            if all_steps:
-                # The reveal-step bar's all-steps render: step_renders reads its pages; it is not cached here.
-                preview_build.check_cancel(cancel)
-                return pdf, None, (), None
+                    all_steps=all_steps, force_build=True,
+                    **({'workspace': renderer.store.work_dir} if background else {}))
+            if pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
+                weakref.finalize(request, shutil.rmtree, pdf.parent, True)
             snapshots = (view == 'instructor' or group_key is not None) and not target.is_frozen_alone \
                         and not presenter and mode == 'slide' and overlay is None
             if target.needs_context and deck_context.mode_of(pdf) != deck_context.DECK:
@@ -652,14 +714,32 @@ class RenderService:
                                     else json.loads(pdf.with_suffix('.inputs.json').read_text()))
                 except (OSError, ValueError):
                     dependencies = ()
-                if saved and not captured and target.source_path.read_text(encoding='utf-8') != text:
-                    before = None  # publication reports superseded; never persist mixed saved input
             except Exception:
                 if pdf.parent.name.startswith('slidemage_preview_'):
                     shutil.rmtree(pdf.parent, ignore_errors=True)
                 raise
             artifact = pdf, displays[0], images, displays[1]
             request._deliver(artifact)       # the pixels are what the pane waits for; the rest is bookkeeping
+            if publish and evidence is not None:
+                try:
+                    source = unit.source_path.resolve()
+                    manifest = renderer.resolver.build_manifest([path for path in dependencies if Path(path).resolve() != source])
+                    manifest.entries.append([render_key.KIND_PROJECT, source.relative_to(target.context.root).as_posix(),
+                                             spec.revision.content_hash])
+                    manifest.entries.sort()
+                    pages = renderer._rasterise(pdf, cancel)
+                    if not pages:
+                        raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
+                    from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
+                    renderer._store_render(
+                        unit, request.origin or (ORIGIN_BACKGROUND if background else ORIGIN_REVEAL), pdf, pages, manifest, evidence)
+                except Exception as exc:
+                    if background:
+                        exc.preview_inputs = dependencies
+                        raise
+                    log(f'Preview not recorded in the store: {exc}')
+            if presenter or mode != 'slide' or overlay is not None:
+                return artifact
             try:
                 return record(artifact, pdf, env, stamp, displays, images, dependencies, before)
             except Exception as exc:  # noqa: BLE001 -- the delivered render stays valid
@@ -668,20 +748,15 @@ class RenderService:
 
         def finished():
             with self._lock:
-                if self._requests.get(key) is request:
-                    del self._requests[key]
+                for pending in [key for key, value in self._requests.items() if value is request]:
+                    del self._requests[pending]
 
         with self._lock:
             if self._closed:
                 raise RuntimeError('Preview service closed')
             request = self._requests.get(key)
-            if request is None and require_pdf and group_key is not None:
-                image_request = self._requests.get((('image', group_key), options.force))
-                if image_request is not None and not image_request.cancel.is_set() and image_request.spec.view == view:
-                    return _ImageConsumer(image_request, spec, group,
-                                          fallback=lambda: self.request(target, text, view, language, log,
-                                                                        spec=spec, require_pdf=True), require_pdf=True,
-                                          delivery=delivered)
+            if request is None and group_key is not None and not require_pdf:
+                request = self._requests.get((('image', group_key), options.force))
             if request is None or request.cancel.is_set():
                 diagnostics.event(_log, "preview requested", target=spec.target.key, view=spec.view,
                                   language=spec.language, force=options.force)
@@ -689,8 +764,11 @@ class RenderService:
                 request.spec = spec
                 request._delivery = delivered
                 self._requests[key] = request
-            if request.spec == spec:
+                if group_key is not None and not require_pdf:
+                    self._requests[(('image', group_key), options.force)] = request
+            if request.spec == spec and not require_pdf:
                 return request
             return _ImageConsumer(request, spec, group,
                                   fallback=lambda: self.request(target, text, view, language, log,
-                                                                spec=spec, require_pdf=True), delivery=delivered)
+                                                                spec=spec, require_pdf=True),
+                                  require_pdf=require_pdf, delivery=delivered)

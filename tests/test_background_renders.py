@@ -209,7 +209,7 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
     from slidemage import compiler
 
     r = make(project, store, raster)
-    r._render = r._render_pdf
+    r._render = None
     monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     dependency = project.root / "preview-shared.tex"
@@ -705,8 +705,8 @@ def test_a_dependency_edited_during_the_render_is_never_stored(project, store, r
         os.utime(dependency, ns=(old.st_atime_ns, old.st_mtime_ns))
         return pdf
 
-    monkeypatch.setattr(background_renders.slide_preview, "render_slide_to_pdf", compile)
-    r._render = r._render_pdf
+    monkeypatch.setattr(background_renders.slide_preview, "render_slide_text_to_pdf", compile)
+    r._render = None
     assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) is None
     assert store.count() == 0 and store.failures() == []
     assert not r.resolver.lookup(unit).usable
@@ -913,7 +913,7 @@ def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(pr
         return FakeTeX(project, pages=1)(unit, cancel) if id_slug == unit.id_slug else None
 
     monkeypatch.setattr(deck_context, "render_in_deck", in_deck)
-    r._render = r._render_pdf
+    r._render = None
     assert r.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken()) is not None
     assert asked == [(deck.name, "instructor", unit.id_slug, True, "EN")] and not tex.calls
     assert r.resolver.lookup(unit).state is Freshness.FRESH
@@ -1150,3 +1150,46 @@ def test_a_deck_the_scan_could_not_read_keeps_all_its_renders(project, store, ra
     r.scan()
     assert not store._exists(gone) and store.flag(render_store.LEFTOVERS_CLEARED)
     assert all(_keys_of(store, u.label) == [r.resolver.fast_key(u)] for u in units)
+
+
+def test_saving_the_captured_text_is_a_store_hit_without_tex(project, store, raster, monkeypatch):
+    from slidemage import preview_cache, preview_requests, preview_target
+
+    r = make(project, store, raster)
+    deck = deck_named(r, 'slidemage-manual')
+    unit = background_renders.deck_units(project, deck, 'instructor', 'EN')[0]
+    target = preview_target.PreviewTarget(project, unit.macro, unit.id_slug, unit.version, unit.conditions,
+                                         None, unit.frame_number, unit.preamble_text, deck=deck)
+    text = unit.source_path.read_text(encoding='utf-8') + '\n% captured unsaved text\n'
+    builds = []
+    monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '0')
+
+    def compile(command, *, jobname, outdir, **kwargs):
+        wrapper = next(arg for arg in command if str(arg).endswith('.tex'))
+        assert text in Path(wrapper).read_text(encoding='utf-8')
+        builds.append(command)
+        pdf = outdir / (jobname + '.pdf')
+        with pymupdf.open() as doc:
+            doc.new_page().insert_text((20, 40), 'captured unsaved text')
+            doc.save(pdf)
+        (outdir / (jobname + '.fls')).write_text(f'PWD {project.decks_dir}\n')
+        return compiler.Build(0, pdf, outdir / (jobname + '.log'), 'clean compile', False)
+
+    monkeypatch.setattr(compiler, 'run_latexmk', compile)
+    pending = r.renders.request(target, text, 'instructor', 'EN', lambda _: None)
+    # A later disk revision cannot change what this request compiles or keys.
+    unit.source_path.write_text('a different saved revision', encoding='utf-8')
+    pending.wait()
+    key = r.resolver.fast_key(unit, text)
+    assert store.find(key) is not None and len(builds) == 1
+    r.renders.close()
+    preview_cache.PreviewCache(project.root).prune(max_bytes=0)
+    r.renders = preview_requests.RenderService()
+    r.renders._background = r
+    unit.source_path.write_text(text, encoding='utf-8')
+    assert r.resolver.lookup(unit).final
+    saved = r.renders.request(target, text, 'instructor', 'EN', lambda _: None, saved=True)
+    saved.wait()
+    assert saved.metrics['cache_hit'] and len(builds) == 1
+    assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) == key
+    r.stop()

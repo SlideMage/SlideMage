@@ -209,9 +209,10 @@ def test_each_slide_of_the_document_is_the_text_a_single_render_would_compile(tm
 
 # -- render_batch ---------------------------------------------------------------------------------
 
-class Service:
+class Service(preview_requests.RenderService):
     """A service that renders nothing: it records what it was asked and which requests came with a made PDF."""
     def __init__(self, cached=()):
+        super().__init__()
         self.cached, self.requests = set(cached), []
 
     def is_cached(self, spec):

@@ -59,7 +59,7 @@ def test_recorded_inputs_include_bib_spaces_and_missing_files_but_exclude_output
     )
     # the second: a source latexmk recorded as missing (size -1; biber never ran), named as the .bcf gives it
     db.write_text('  "../references.bib" 123 10 "hash"\n  "Unresolved.bib" 0 -1 0 ""\n')
-    paths = preview_build.recorded_inputs(fls, db, project_root=tmp_path, cache=cache)
+    paths = preview_build.recorded_inputs(fls, db, ctx=ProjectContext.at(tmp_path), cache=cache)
     assert paths == sorted(
         str(tmp_path / p)
         for p in ("slides/a.tex", "media/with space.pdf", "references.bib")

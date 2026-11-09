@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from . import busy
 from .compiler import CancelToken
 from .parallel_runs import RenderBudget
 
@@ -178,6 +179,8 @@ class RenderScheduler:
             return None                          # the cap: as many at once as the profile allows
         adding_checked = None                    # the CPU rule, asked once per pick
         for job in sorted(self._queue.values(), key=Job.order):
+            if job.priority != P_FOREGROUND and 'foreground preview' in busy.reasons():
+                continue
             if job.priority == P_IDLE and not self._can_start(job):
                 continue
             if self._budget is not None:

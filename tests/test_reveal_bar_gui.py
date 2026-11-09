@@ -418,9 +418,6 @@ def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_
         def stored_page(self, target, view, language, deck_name):
             return None
 
-        def store_steps(self, *args):
-            raise AssertionError("nothing was rendered, so nothing is stored")
-
     (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
     centre.preview.app.background = Stored()
     centre.state.set_focused_slide("aaa")
@@ -598,9 +595,6 @@ class StoredPages:
     def stored_pages(self, target, view, language, deck_name=""):
         self.calls.append(("pages", threading.current_thread() is threading.main_thread()))
         return self.steps
-
-    def store_steps(self, *args):
-        pass
 
 
 @pytest.fixture
