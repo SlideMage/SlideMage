@@ -15,7 +15,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, deck_scan, render_store
+from slidemage import background_renders, compiler, deck_scan, render_evidence, render_store
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
@@ -435,7 +435,8 @@ def _record(pdf, deck, units, ctx):
     from slidemage import compile_records
 
     paths = [deck.path, *{u.source_path for u in units}, ctx.root / "SlideMage.bib"]
-    return {"pdf_sha256": compile_records.sha256(pdf),
+    return {"pdf_sha256": compile_records.sha256(pdf), "started": time.time(),
+            "inventory": render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)),
             "inputs": [{"path": str(p), "sha256": compile_records.sha256(p)} for p in paths if p.is_file()]}
 
 
@@ -613,7 +614,7 @@ def test_a_batch_stores_each_slide_as_a_single_render_would(project, store, rast
         record = found.record
         assert found.state is Freshness.FRESH and found.final and record["origin"] == "background" and record["name"] == r.resolver.fast_key(unit)
         assert record["pages"] == 2 and store.page(record, 2).startswith(b"\x89PNG") and store.page(record, 3) is None
-        for field in ("format", "width", "machine", "engine_fp", "unstable", "decks", "pages", "origin"):
+        for field in ("format", "width", "machine", "engine_fp", "decks", "pages", "origin"):
             assert record[field] == reference[field]
         assert set(record) == set(reference) and record["unit"] == unit.label and record["frame_number"] == unit.frame_number
         with store.lock, pymupdf.open(Path(record["dir"]) / "slide.pdf") as own:  # its own pages only
@@ -639,21 +640,25 @@ def test_a_batch_leaves_out_what_is_current_and_counts_what_it_stores(project, s
     assert len(batch.calls) == 1                                                  # all current: no document at all
 
 
-def test_a_slide_edited_while_the_batch_renders_is_not_stored(project, store, raster):
-    batch = FakeBatchTeX(project)
-    r = make(project, store, raster, batch_renderer=batch)
-    units = batch_units(project, r, 3)
+def test_a_dependency_edited_during_the_render_is_never_stored(project, store, raster, monkeypatch):
+    r = make(project, store, raster)
+    unit = batch_units(project, r, 1)[0]
+    dependency = project.root / "snippets/shared.tex"
+    dependency.write_text("before", encoding="utf-8")
+    old = dependency.stat()
 
-    def edit(_units):
-        units[1].source_path.write_text(units[1].source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
-        old = time.time() - 60
-        os.utime(units[1].source_path, (old, old))
+    def compile(*args, **kwargs):
+        pdf = FakeTeX(project)(unit, kwargs["cancel"])
+        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path), str(dependency)]))
+        dependency.write_text("after!", encoding="utf-8")
+        os.utime(dependency, ns=(old.st_atime_ns, old.st_mtime_ns))
+        return pdf
 
-    batch.during = edit
-    r.render_batch(tuple(units), (), CancelToken())
-    assert r.resolver.lookup(units[0]).final and r.resolver.lookup(units[2]).final
-    assert not r.resolver.lookup(units[1]).usable and store.count() == 2
-    assert r.scheduler.pending() == 0 and store.failures() == []              # left for the next plan
+    monkeypatch.setattr(background_renders.slide_preview, "render_slide_to_pdf", compile)
+    r._render = r._render_pdf
+    assert r.render_unit(unit, render_store.ORIGIN_BACKGROUND, CancelToken()) is None
+    assert store.count() == 0 and store.failures() == []
+    assert not r.resolver.lookup(unit).usable
 
 
 @pytest.mark.parametrize("how", ["compile fails", "wrong order", "missing slide"])
@@ -698,24 +703,6 @@ def test_a_batch_job_shows_as_one_running_entry(project, store, raster):
     assert all(r.resolver.lookup(u).final for u in units)
 
 
-def test_the_compile_manifest_keeps_the_alt_texts_every_render_reads(project, store, raster):
-    from slidemage import compile_records
-    from slidemage.dep_hash import norm
-
-    r = make(project, store, raster)
-    units = batch_units(project, r, 2)
-    root = project.root
-    named = next(p for p in (root / "media").iterdir() if p.suffix == ".png")
-    unit = units[0]
-    unit.source_path.write_text(unit.source_path.read_text(encoding="utf-8") + f"\n% {named.stem}\n", encoding="utf-8")
-    paths = [unit.source_path, units[1].source_path, root / "media" / "alt-text.csv", root / "media" / "alt-text.json",
-             named, root / "media" / "illustration-bar-chart.pdf", root / "SlideMage.bib"]
-    recorded = {norm(p): (p, compile_records.sha256(p)) for p in paths}
-    files = {entry[1] for entry in r._compile_manifest(recorded, unit)}
-    assert files == {unit.source_path.relative_to(root).as_posix(), "media/alt-text.csv", "media/alt-text.json",
-                     f"media/{named.name}", "SlideMage.bib"}
-
-
 @pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
 def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(project, store, tmp_path):
     os.environ.setdefault("SLIDEMAGE_LATEX", str(Path(__file__).resolve().parent.parent / "latex"))
@@ -735,7 +722,7 @@ def test_a_real_batch_gives_the_pages_and_the_evidence_of_the_single_renders(pro
             assert ours["pages"] == theirs["pages"] >= 1
             assert [store.page(ours, n) for n in range(1, ours["pages"] + 1)] == [other.page(theirs, n) for n in range(1, theirs["pages"] + 1)]
             assert ours["manifest"] == theirs["manifest"] and ours["frame_number"] == theirs["frame_number"]
-            assert not ours["unstable"] and ours["origin"] == theirs["origin"] == "background"
+            assert ours["origin"] == theirs["origin"] == "background"
     finally:
         other.close()
         singles.stop()

@@ -16,6 +16,7 @@ from before it, a few of them per deck.
 """
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -271,7 +272,8 @@ class SlideList(QWidget):
             with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):
                 updated = preview_thumbnails.for_outline(
                     ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                    paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
+                    paths=selected_paths, validation=validation, revision_sink=revisions,
+                    stored_page=partial(stored_page, validation=validation) if stored_page else None)
             with timing.span("thumbnails.stable"):
                 stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
             metrics = {'validation_seconds': time.perf_counter() - started,

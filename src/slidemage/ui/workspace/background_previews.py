@@ -490,7 +490,7 @@ class BackgroundPreviews(QObject):
             self.store.close()
             self.store = None
 
-    def _stored_found(self, target, view: str, language: str, deck_name: str):
+    def _stored_found(self, target, view: str, language: str, deck_name: str, *, strict=False, validation=None):
         """The usable store lookup of `target`'s whole-slide render, else None. It does not ask whether background
         rendering is switched on: that setting stops the idle rendering, not the use of renders that exist
         (2026-10-30, direct request). Reads only; nothing is rendered or started here."""
@@ -500,7 +500,7 @@ class BackgroundPreviews(QObject):
         if target.macro == "slidestep" and target.steps:
             return None
         unit = render_key.unit_for(target, view, language, deck_name)
-        found = renderer.resolver.lookup(unit)
+        found = renderer.resolver.lookup(unit, strict=strict, validation=validation)
         return found if found.usable else None
 
     def stored_page(self, target, view: str, language: str, deck_name: str):
@@ -509,7 +509,7 @@ class BackgroundPreviews(QObject):
         unrestricted render does not show. Runs on the Preview's display worker: `deck_name` is the open deck's,
         read by the caller on the GUI thread."""
         try:
-            found = self._stored_found(target, view, language, deck_name)
+            found = self._stored_found(target, view, language, deck_name, strict=True)
             if found is None:
                 return None
             with self.store.lock:
@@ -519,10 +519,10 @@ class BackgroundPreviews(QObject):
         except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
             return None
 
-    def stored_page_path(self, target, view: str, language: str, deck_name: str):
+    def stored_page_path(self, target, view: str, language: str, deck_name: str, *, validation=None):
         """The slide list's thumbnail of the current render, read on its thumbnail worker."""
         try:
-            found = self._stored_found(target, view, language, deck_name)
+            found = self._stored_found(target, view, language, deck_name, validation=validation)
             if found is None:
                 return None
             with self.store.lock:
@@ -544,7 +544,7 @@ class BackgroundPreviews(QObject):
             return None
         try:
             unit = render_key.unit_for(target, view, language, deck_name)
-            found = renderer.resolver.lookup(unit)
+            found = renderer.resolver.lookup(unit, strict=True)
             if not found.usable:
                 return None
             with self.store.lock:
@@ -555,16 +555,12 @@ class BackgroundPreviews(QObject):
         except Exception:  # noqa: BLE001 -- the store is a help
             return None
 
-    def store_steps(self, target, view: str, language: str, pdf, pages) -> None:
+    def store_steps(self, unit, pdf, pages, evidence) -> None:
         """Keep the reveal bar's own all-steps render in the store (called from its worker thread)."""
         renderer = self.renderer
         if renderer is None or self.store is None or not renderer.enabled:
             return
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
-            return
-        deck = self.window.state.deck
-        unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
-        renderer.store_reveal(unit, pdf, pages)
+        renderer.store_reveal(unit, pdf, pages, evidence)
 
     # -- the chip --------------------------------------------------------------------------------
 

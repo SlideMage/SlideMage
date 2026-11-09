@@ -146,7 +146,7 @@ Run: the full suite and ruff. Report the net lines removed (src and tests) and e
 | 1.1 | Canonical text hash, key for a just-saved slide | sol high | done | 5f328569 | +8 / +15 | Slide list finds a just-saved slide at once. fileio.text_sha256 is the one hash; 3 s rule kept for non-source inputs (manifests). For 1.4: the schema bump must also clear filehash rows (old CRLF byte digests). |
 | 1.2 | Evidence helpers move out of the preview cache | sol high | done | 0757bd6e | +29 / −66 | ValidationPass.configuration once per pass |
 | 1.3 | Scoped, cached file inventory and the probe test | sol high | done | 12840dd0 | +61 / +122 | Probe counts corrected (4 IfFileExists, 3 io.open active). Not wired yet. |
-| 1.4 | One object per key, same-label cleanup, schema bump | hard | open | | | |
+| 1.4 | One object per key, same-label cleanup, schema bump | sol high + 1 fix round | done | 7dbfc527 | -53 / -103 | First start re-renders (STORE_FORMAT 2 via SQLite user_version; old rows, failures, filehash dropped). Reveal reader no longer capped at 60 pages. Fix round: readers validate outside the store lock. |
 | 1.5 | Publication guard for every producer | hard | open | | | |
 | 1.6 | Compile import under the publication rule | hard | open | | | |
 | 1.7 | Failure bookkeeping kept and widened | routine | open | | | |
@@ -165,7 +165,7 @@ Run: the full suite and ruff. Report the net lines removed (src and tests) and e
 | 3.3 | Flat snapshots removed, migration and notice | routine | open | | | BREAKING |
 | 3.R | Stage 3 review, full and plugin suites | reviewer | open | | | |
 | 3.S | Stage 3 simplify pass | routine | open | | | |
-| G1 | **USER GATE**: Windows and real-project checks of stages 1–3 | user | open | | | |
+| G1 | (dropped 2026-11-09: its checks move to Step R's user test) | — | dropped | | | |
 | 4.1 | B: direct `lualatex` with latexmk fallback | hard | open | | | |
 | 4.2 | A: pre-started TeX | hard | open | | | |
 | 4.3 | C: render on a typing pause | routine | open | | | |
@@ -633,17 +633,11 @@ Run: tests/test_compat.py tests/test_compat_gui.py tests/test_deck_snapshot.py t
   `develop` first; Ruff; the §7 timing run again, now filling the "Stages 1–3" column with measured values.
   Commit; push the branch to the fork.
 
-### G1 — USER GATE: Windows and real-project checks
+### G1 — dropped (user, 2026-11-09)
 
-The orchestrator asks the user to run, on the pushed branch:
-
-- Windows: open a slide's PDF and keep it open while the slide re-renders (replacement must not fail); a slide
-  with CRLF line endings renders once (Preview and sweep share the result).
-- Real project: "Render all previews now", "Rerender all" and a full sweep finish; a new picture in `media/` and a
-  new deck PDF leave other results current; the slide list and the Preview agree right after a save; the first
-  start shows the notice once and removes `.previews/slide_previews/`.
-
-Stage 4 starts after the user reports back. Findings become fix tasks first.
+The user tests once, at Step R, after 4.S; G1's checks are part of that test. Stage 4 starts right after 3.S. The
+branch is still pushed to the fork after 3.R, so an early test is possible but not waited for. A problem found at
+Step R is narrowed down by switching off A (its setting) and B, C, D (their constants).
 
 ---
 
@@ -733,8 +727,13 @@ views.
 3. Update the design: status line "implemented", §7 checklist ticked, measured columns filled; this file's
    progress table complete. Update issue #112 to match (ask before the edit if auto mode blocks it).
 4. Full suite, plugin suites, Ruff. Push to the fork.
-5. **USER GATE:** the user tests the branch (Windows: the spare's stdin and wrapper name, PDF lifetime; real
-   project: the G1 list again).
+5. **USER GATE:** the user tests the branch.
+   - Windows: open a slide's PDF and keep it open while the slide re-renders (replacement must not fail); a slide
+     with CRLF line endings renders once (Preview and sweep share the result); the spare's stdin and wrapper name.
+   - Real project: "Render all previews now", "Rerender all" and a full sweep finish; a new picture in `media/` and
+     a new deck PDF leave other results current; the slide list and the Preview agree right after a save; the
+     first start shows the notice once and removes `.previews/slide_previews/`.
+   - A problem found here: switch off A, B, C and D to tell stages 1–3 from stage 4; findings become fix tasks.
 6. After the user's go: open the PR from `JuergenFleiss/SlideMage` to `SlideMage/SlideMage` `develop`, with the
    design's "Why" section and the §7 gains table (all columns measured) in the description; link #112.
 
@@ -752,7 +751,7 @@ Orchestrator share of the 5-hour window (estimate of 2026-11-09, at the measured
 | Step 0 | 2 | ~60k | ~3% |
 | Stage 1 (1.1–1.7, 1.R, 1.S) | 9 | ~400k | ~20% |
 | Stage 2 (2.1–2.6, 2.R with timing run, 2.S) | 8 | ~450k | ~22% |
-| Stage 3 (3.1–3.3, 3.R with plugin suites, 3.S), G1 | 6 | ~260k | ~13% |
+| Stage 3 (3.1–3.3, 3.R with plugin suites, 3.S) | 6 | ~260k | ~13% |
 | Stage 4 (4.1–4.4, 4.R with timing run, 4.S) | 6 | ~270k | ~13% |
 | Step R | 1 | ~60k | ~3% |
 | Margin for extra fix rounds (agents overshot most estimates in October) | | ~300k | ~15% |

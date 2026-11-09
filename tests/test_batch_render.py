@@ -164,8 +164,8 @@ def test_the_document_is_split_by_the_slide_ids_into_a_pdf_and_the_dependencies_
     assert [len(pymupdf.open(built[key].pdf)) for key in (1, 2)] == [2, 1]
     assert built[1].pdf.parent.name.startswith('slidemage_preview_') and built[1].pdf.name == 'aaa-EN-X.pdf'
     media = ctx.root / 'media'
-    assert set(built[1].dependencies) == {str(media / 'named.png'), str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme)}
-    assert set(built[2].dependencies) == {str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme),
+    assert set(built[1].dependencies) == {str(media / 'named.png'), str(media / 'other.png'), str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme)}
+    assert set(built[2].dependencies) == {str(media / 'other.png'), str(media / 'logo.png'), str(media / 'alt-text.csv'), str(theme),
                                           str(ctx.slides_dir / 'bbb-EN-X-current.tex')}
     assert built[1].before is built[2].before is not None and not document.folder.exists()
 

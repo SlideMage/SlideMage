@@ -84,13 +84,6 @@ class HashCache:
                 self._db.commit()
         return digest
 
-    def is_racy(self, path: Path | str) -> bool:
-        """A non-source input is too recent to trust without publication evidence."""
-        try:
-            return not _is_source(path) and self._clock() - os.stat(path).st_mtime < RACY_SECONDS
-        except OSError:
-            return False
-
     def audit(self, limit: int = 20) -> list[str]:
         """Re-read up to `limit` of the oldest-checked files ignoring the shortcut; the paths whose content
         had changed under an unchanged size and mtime (what only a sync client can produce)."""

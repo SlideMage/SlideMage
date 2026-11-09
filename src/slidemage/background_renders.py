@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_language, deck_settings, languages, render_key, render_store, slide_language
+from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -403,6 +403,8 @@ class BackgroundRenderer:
         It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
         longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
         started = time.time()               # the renders' own clock (meta "rendered_at"), not the injected one
+        validation = render_evidence.ValidationPass()
+        validation.inventory(self.ctx.root, slide_preview.build_env(self.ctx), force=True)
         keys_now: set[str] = set()          # every unit's key, of the decks read in full
         clean_decks: set[str] = set()       # the decks read in full: every view and language, every unit's key
         rendered: dict[str, bool] = {}      # label -> each of its units has a render of its own current key
@@ -442,16 +444,16 @@ class BackgroundRenderer:
                         progress.total += 1
                         progress.count(view, 0)
                         if unit.template not in templates:
-                            deck_clean = self._note_key(unit, self.resolver.fast_key(unit), False, keys_now, rendered) and deck_clean
+                            deck_clean = self._note_key(unit, self.resolver.fast_key(unit, validation=validation), False, keys_now, rendered) and deck_clean
                             progress.blocked += 1
                             decks = missing.setdefault(unit.template, [])
                             if deck.name not in decks:
                                 decks.append(deck.name)
                             continue
-                        found = self.resolver.lookup(unit)
+                        found = self.resolver.lookup(unit, validation=validation)
                         if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
                             self.store.forget_failure(found.key)       # it failed only for want of the template
-                            found = self.resolver.lookup(unit)
+                            found = self.resolver.lookup(unit, validation=validation)
                         if found.key is not None:
                             key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable and found.record is not None and found.record.get("key") == found.key
@@ -677,23 +679,10 @@ class BackgroundRenderer:
 
     # -- foreground helpers ------------------------------------------------------------------
 
-    def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
-        """Keep the reveal bar's complete render for later lookups."""
-        key = self.resolver.fast_key(unit)
-        if key is None:
-            return None
-        found = self.resolver.lookup(unit, key)
-        if found.state is render_key.Freshness.FRESH:
-            return None
+    def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes], evidence: dict) -> Optional[str]:
+        """Keep the reveal bar's complete render under the same publication rule as the sweep."""
         manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
-        if not manifest.stable or not pages:
-            return None
-        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=manifest.entries,
-                    tex_digest=manifest.tex_digest, tex_files=manifest.tex_files, machine=render_key.machine_id(),
-                    engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
-        name = self.store.put(key, ORIGIN_REVEAL, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
-        self._drop_stale(unit, key)
-        return name
+        return self._store_render(unit, ORIGIN_REVEAL, pdf, pages, manifest, evidence)
 
     def ingest_compile(self, job, pdf: Path, record: dict) -> int:
         """Keep the slides of a whole-deck compile in the store: every page of each slide's run (every reveal step
@@ -708,6 +697,8 @@ class BackgroundRenderer:
         the sweep. The dependencies are the compile record's (compile_records.py): every file the compile read, with
         its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
         slides were stored. Run off the GUI thread."""
+        if "inventory" not in record or "started" not in record:
+            return 0                                    # step 1.6 adds pre-compile evidence to compile_records
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
             return 0
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
@@ -743,16 +734,13 @@ class BackgroundRenderer:
             response = raster.read_document(pdf, "pdf_images", pages[0] + 1, len(pages), width=STORE_WIDTH)
             if len(response["images"]) != len(pages):
                 continue
-            meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=entries, tex_digest="",
-                        machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp,
-                        frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
+            manifest = render_key.Manifest(entries=entries)
+            evidence = dict(started=record["started"], inventory=record["inventory"], key=key)
             with tempfile.TemporaryDirectory(prefix="slidemage_compile_") as folder:
                 own = Path(folder) / "slide.pdf"
                 raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
-                self.store.put(key, ORIGIN_COMPILE, own, response["images"], meta,
-                               decks=[unit.deck] if unit.deck else [])
-            self._drop_stale(unit, key)
-            stored += 1
+                if self._store_render(unit, ORIGIN_COMPILE, own, response["images"], manifest, evidence) is not None:
+                    stored += 1
         return stored
 
     def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
@@ -826,7 +814,8 @@ class BackgroundRenderer:
 
     def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
         """Render `unit` into the store unless a current render is there. Returns the object name, or None."""
-        key = self.resolver.fast_key(unit)
+        evidence = self.resolver.capture(unit)
+        key = evidence["key"]
         if key is None:
             raise _transient("the slide file is being written")
         found = self.resolver.lookup(unit, key)
@@ -837,7 +826,6 @@ class BackgroundRenderer:
         if found.state is render_key.Freshness.FRESH:
             self.store.link_decks(found.record["name"], [unit.deck])
             return found.record["name"]
-        started = time.time()
         pdf: Optional[Path] = None
         try:
             pdf = self._render(unit, cancel)
@@ -847,7 +835,7 @@ class BackgroundRenderer:
             pages = self._rasterise(pdf, cancel)
             if not pages:
                 raise _deterministic("the render has no pages (the slide is not typeset in this view)")
-            return self._store_render(unit, key, origin, pdf, pages, manifest, started)
+            return self._store_render(unit, origin, pdf, pages, manifest, evidence)
         except BaseException as exc:
             if cancel.is_set():
                 raise
@@ -857,18 +845,23 @@ class BackgroundRenderer:
             if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
                 shutil.rmtree(pdf.parent, ignore_errors=True)
 
-    def _store_render(self, unit: render_key.Unit, key: str, origin: str, pdf: Path,
-                      pages: list[bytes], manifest: render_key.Manifest, started: float) -> str:
-        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - started) * 1000),
+    def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
+                      pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
+        if not pages or not self.resolver.publishable(unit, evidence, manifest):
+            return None
+        key = evidence["key"]
+        paths = [unit.source_path, *[rel for _kind, rel, _sha in manifest.entries]]
+        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - evidence["started"]) * 1000),
                     manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
+                    inventory=render_evidence.inventory_state(evidence["inventory"], paths),
                     machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number,
-                    unstable=not manifest.stable, width=STORE_WIDTH)
+                    width=STORE_WIDTH)
         if self.store.failure(key) is not None:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
         with self._working_lock:
             self._failure_keys.discard(key)
         self.progress.failures = self.store_failures_count()
-        name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck])
+        name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
         self._drop_stale(unit, key)
         return name
 
@@ -884,9 +877,10 @@ class BackgroundRenderer:
         document does not compile or its pages cannot be told apart, nothing is stored and the units are queued singly,
         so a broken slide is found and remembered by its own render. A unit edited meanwhile is left for the next plan."""
         todo, singly = [], []
+        validation = render_evidence.ValidationPass()
         for unit in units:
-            key = self.resolver.fast_key(unit)
-            found = self.resolver.lookup(unit, key) if key is not None else None
+            key = self.resolver.fast_key(unit, validation=validation)
+            found = self.resolver.lookup(unit, key, validation=validation) if key is not None else None
             if found is None:
                 singly.append(unit)                     # the file is being written: its own job raises "transient"
             elif found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
@@ -899,13 +893,15 @@ class BackgroundRenderer:
         if len(todo) == 1:
             singly += [todo.pop()[0]]
         done: set[str] = set()
-        started, pdf = time.time(), None
+        pdf = None
         if todo:
             try:
+                started = time.time()
+                inventory = render_evidence.search_inventory(self.ctx.root, slide_preview.build_env(self.ctx))
                 pdf = self._render_batch([unit for unit, _key in todo], cancel)
                 if cancel.is_set():
                     raise Cancelled("Preview cancelled")
-                self._store_batch(pdf, todo, started, cancel, done)
+                self._store_batch(pdf, todo, dict(started=started, inventory=inventory), cancel, done)
             except Exception:  # noqa: BLE001 -- whatever went wrong, the units are tried one by one
                 if cancel.is_set():
                     raise
@@ -916,7 +912,7 @@ class BackgroundRenderer:
         for unit in singly:
             self.scheduler.submit(unit.label, ((unit,), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
 
-    def _store_batch(self, pdf: Path, todo: list, started: float, cancel, done: set[str]) -> None:
+    def _store_batch(self, pdf: Path, todo: list, evidence: dict, cancel, done: set[str]) -> None:
         """Split the batch PDF by slide (the slide id on each page) and store every unit; `done` collects the labels
         of the units dealt with. RuntimeError when the pages are not the planned slides'."""
         raster = self._raster or self._shared_raster()
@@ -926,18 +922,16 @@ class BackgroundRenderer:
         for number, ((unit, key), pages) in enumerate(zip(todo, runs)):
             if cancel.is_set():
                 raise Cancelled("Preview cancelled")
-            if self.resolver.fast_key(unit) != key:
-                done.add(unit.label)                    # edited since it was planned
-                continue
             own = pdf.parent / f"unit-{number}.pdf"
             raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
             images = self._rasterise(own, cancel)
             if len(images) != len(pages):
                 raise RuntimeError("the pages of a slide were not all rendered")
             manifest = self.resolver.build_manifest([str(path) for path in render_key.unit_inputs(self.ctx, inputs, unit.source_path)])
-            self._store_render(unit, key, ORIGIN_BACKGROUND, own, images, manifest, started)
+            name = self._store_render(unit, ORIGIN_BACKGROUND, own, images, manifest, dict(evidence, key=key))
             done.add(unit.label)
-            self._count_fresh(unit)
+            if name is not None:
+                self._count_fresh(unit)
 
     def _render_batch_pdf(self, units: list, cancel) -> Path:
         first = units[0]

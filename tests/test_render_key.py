@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from slidemage import dep_hash, preview_requests, render_key, render_store
+from slidemage import compiler, dep_hash, preview_requests, render_evidence, render_key, render_store
 from slidemage.project import ProjectContext
 from slidemage.render_key import Freshness, Unit
 
@@ -77,7 +77,6 @@ def test_touching_a_file_without_changing_it_gives_the_same_hash(tmp_path, store
 def test_a_file_modified_a_moment_ago_is_never_trusted_or_kept(tmp_path, store):
     cache = dep_hash.HashCache(store.db, store.lock)
     path = write(tmp_path / "a.txt", "fresh", mtime=time.time())
-    assert cache.is_racy(path)
     cache.hash(path)
     cache.hash(path)
     assert cache.reads == 2                          # read both times: no shortcut for a racy file
@@ -159,7 +158,9 @@ def make_record(resolver, unit, inputs):
     key = resolver.fast_key(unit)
     meta = dict(unit=unit.label, rendered_at=time.time(), manifest=manifest.entries, frame_number=unit.frame_number,
                 machine=render_key.machine_id(), tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
-                unstable=not manifest.stable)
+                inventory=render_evidence.inventory_state(
+                    render_evidence.search_inventory(resolver.ctx.root, compiler.build_env(resolver.ctx)),
+                    [unit.source_path, *[rel for _kind, rel, _sha in manifest.entries]]))
     return key, meta
 
 
@@ -207,16 +208,6 @@ def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
     assert resolver.lookup(moved).usable and resolver.lookup(unit).final
 
 
-def test_a_render_made_while_a_file_was_written_is_not_trusted(ctx, resolver, store):
-    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
-    busy = write(ctx.media_dir / "pic.png", "being written", mtime=time.time())
-    unit = unit_for(ctx)
-    key, meta = make_record(resolver, unit, [unit.source_path, busy])
-    assert meta["unstable"]
-    store_render(store, key, meta)
-    assert resolver.lookup(unit).state is not Freshness.FRESH
-
-
 def test_files_of_tex_and_the_build_are_not_in_the_manifest(ctx, resolver, tmp_path):
     tex = write(tmp_path / "texlive" / "beamer.cls", "cls")
     built = write(ctx.root / ".build" / "x.aux", "aux")
@@ -233,7 +224,6 @@ def test_a_changed_tex_file_stales_a_render_made_on_this_machine_only(ctx, resol
     key, meta = make_record(resolver, unit, [unit.source_path, tex])
     store_render(store, key, meta)
     assert resolver.lookup(unit).state is Freshness.FRESH
-    resolver._tex_memo.clear()
     write(tex, "a package update")
     assert resolver.lookup(unit).state is Freshness.STALE
     # the same render made on another machine is trusted on the engine and the project files

@@ -40,7 +40,7 @@ from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
-from ... import (deck_context, deck_editor, languages, latex_lint, reveal_steps, slide_preview, slide_snapshot, slide_source,
+from ... import (deck_context, deck_editor, languages, latex_lint, render_key, reveal_steps, slide_preview, slide_snapshot, slide_source,
                  slide_versioning)
 from ...ai.workspace import WorkspaceContext
 from ...ai.tools.slidemage import slide_target
@@ -1351,19 +1351,22 @@ class PreviewPane(Surface):
         view, language = key[3], key[4]
         service, log = self._renders, self.app.log
 
+        background = getattr(self.app, "background", None)
+        renderer = getattr(background, "renderer", None)
+        unit = render_key.unit_for(target, view, language, self._deck_name())
+        evidence = None
+
         def build(cancel):
+            nonlocal evidence
+            if keep is not None:
+                evidence = renderer.resolver.capture(unit, text)
             request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
             return request.wait(cancel)[0]
 
         keep = None
-        background = getattr(self.app, "background", None)
-        if not draft and background is not None:
-            stamp = key[5]
-
+        if not draft and renderer is not None and not target.needs_context and not (target.macro == "slidestep" and target.steps):
             def keep(pdf, pages):
-                # Only when the slide is still the one that was typeset (the store keys a render by the file's hash).
-                if _mtime(target.source_path) == stamp:
-                    background.store_steps(target, view, language, pdf, pages)
+                background.store_steps(unit, pdf, pages, evidence)
 
         self._steps.submit(key, priority, build, keep)
 

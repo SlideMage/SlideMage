@@ -76,12 +76,13 @@ def build(batch: list, cancel=None, log=None) -> dict:
         texts = preview_raster_client.read_document(pdf, 'pdf', 1, ALL_PAGES)['texts']
         runs = slide_snapshot.batch_runs(texts, [spec.target.bare_id for _key, spec in batch])
         inputs = [Path(name) for name in json.loads(pdf.with_suffix('.inputs.json').read_text())]
+        captured = {spec.target.source_path: spec.revision.text + (spec.target.preamble_text or "")
+                    for _key, spec in batch}
         for (key, spec), pages in zip(batch, runs):
             folders.append(Path(tempfile.mkdtemp(prefix=preview_build.RENDER_FOLDER_PREFIX)))
             own = folders[-1] / f'{spec.target.id_slug}.pdf'
             preview_raster_client.read_document(pdf, 'extract_pages', pages[0] + 1, len(pages), out=own)
-            files = render_key.unit_inputs(ctx, inputs, spec.target.source_path,
-                                           spec.revision.text + (spec.target.preamble_text or ''))
+            files = render_key.unit_inputs(ctx, inputs, spec.target.source_path, captured)
             built[key] = PrebuiltRender(own, map(str, files), before)
         return built
     except BaseException:

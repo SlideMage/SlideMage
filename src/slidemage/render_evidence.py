@@ -259,9 +259,11 @@ def configuration_state(project_root: Path, env: dict) -> dict:
     for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
         executable = find_tool(name, env.get('PATH'))
         tools[name] = states(Path(executable)) if executable else None
+    # Not PATH (2026-11-09): it is part of the render store's fast key now, and a terminal start and a desktop
+    # start differ in PATH; the tools' resolved paths and contents above cover what it changes.
     relevant = {name: value for name, value in env.items() if name.startswith(
         ('TEX', 'LUA', 'BIB', 'BST', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
-        ('SLIDEMAGE_LATEX', 'PATH', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
+        ('SLIDEMAGE_LATEX', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 
@@ -276,6 +278,7 @@ class ValidationPass:
         self._files = {}
         self._evidence = {}
         self._configuration = {}
+        self._inventories = {}
         self.hashed_bytes = 0
         self.dependency_bytes = 0
         self.dependency_seconds = 0.0
@@ -313,6 +316,12 @@ class ValidationPass:
             self._configuration[key] = configuration_state(project_root, env)
             self.configuration_seconds += time.perf_counter() - start
         return self._configuration[key]
+
+    def inventory(self, project_root, env, *, force=False):
+        key = (str(project_root), digest(env))
+        if key not in self._inventories:
+            self._inventories[key] = search_inventory(project_root, env, force=force)
+        return self._inventories[key]
 
     def evidence(self, cache, env):
         key = (str(cache.project_root), digest(env))

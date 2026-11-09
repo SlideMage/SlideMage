@@ -9,8 +9,7 @@ call, view, language, the deck's preamble, the template, the TeX engine and the 
 settings. The **manifest** of a render lists every project file the run read (taken from the inputs the
 render recorded, see preview_build.recorded_inputs) with its SHA-256. A stored render is current iff
 the fast key is the same *and* every manifest file still has its hash; TeX's own files (packages,
-fonts) are covered by the engine line, and for a render made on this machine by a stamp of their sizes
-and modification times as well. The page number in the footer (`frame_number`) and the time of the render
+fonts) are covered by the engine line and, for a render made on this machine, their content states. The page number in the footer (`frame_number`) and the time of the render
 are not part of the key: a render that differs only in the page number is FRESH_NUMBERING_DIFFERS.
 
 Free of Qt; the TeX run itself is in background_renders.py.
@@ -29,7 +28,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import compile_records, deck_language, slide_templates
+from . import compiler, compile_records, deck_language, render_evidence, slide_templates
 from .dep_hash import HashCache, norm
 from .fileio import text_sha256
 from .preview_target import PreviewTarget
@@ -48,15 +47,18 @@ _SKIPPED_PARTS = ("luatex-cache", ".build", ".previews", "slidemage_preview_", "
 EVERY_RENDER_READS = ("alt-text.csv", "alt-text.json")      # media files every render reads, whatever its slide names
 
 
-def unit_inputs(ctx: ProjectContext, paths, source_path: Path, text: Optional[str] = None) -> list[Path]:
-    """The files among `paths`, what a document of several slides read, that the pages of the slide at `source_path`
-    depend on: not the other slides, and of the media and snippets those whose name its text (`text`, else the
-    file's) or a snippet it uses mentions (a name without its extension too), and the alt texts every render reads."""
-    if text is None:
-        try:
-            text = source_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
+def unit_inputs(ctx: ProjectContext, paths, source_path: Path, texts: Optional[dict] = None) -> list[Path]:
+    """The document's shared inputs, this slide's named inputs, and optional inputs no slide names.
+
+    `texts` supplies captured buffers in place of saved sources, including any inlined by the wrapper.
+    """
+    texts = dict(texts or {})
+    for path in {source_path, *[path for path in paths if compile_records.is_within(path, ctx.slides_dir)]}:
+        if path not in texts:
+            try:
+                texts[path] = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                texts[path] = ""
     slides, optional = ctx.slides_dir, (ctx.root / "media", ctx.root / "snippets")
     kept, maybe = [], []
     for path in paths:
@@ -70,20 +72,26 @@ def unit_inputs(ctx: ProjectContext, paths, source_path: Path, text: Optional[st
             (kept if path.name in EVERY_RENDER_READS else maybe).append(path)
         else:
             kept.append(path)
-    grown = True
-    while grown:                                        # a snippet may name the picture
-        grown = False
-        for path in maybe[:]:
-            if path.stem in text:
-                maybe.remove(path)
-                kept.append(path)
-                grown = True
-                if path.suffix == ".tex":
-                    try:
-                        text += path.read_text(encoding="utf-8", errors="replace")
-                    except OSError:
-                        pass
-    return kept
+    def named(text):
+        remaining, found = list(maybe), []
+        grown = True
+        while grown:                                    # a snippet may name the picture
+            grown = False
+            for path in remaining[:]:
+                if path.stem in text:
+                    remaining.remove(path)
+                    found.append(path)
+                    grown = True
+                    if path.suffix == ".tex":
+                        try:
+                            text += path.read_text(encoding="utf-8", errors="replace")
+                        except OSError:
+                            pass
+        return found
+
+    own = named(texts[source_path])
+    claimed = set(named("\n".join(texts.values())))
+    return kept + own + [path for path in maybe if path not in claimed]
 
 
 class Freshness(Enum):
@@ -144,21 +152,19 @@ def _json_hash(data) -> str:
 @dataclass
 class Manifest:
     entries: list = field(default_factory=list)     # [kind, rel, sha256]
-    tex_digest: str = ""                            # of the TeX files' (path, size, mtime_ns); local only
-    tex_files: list = field(default_factory=list)   # [[path, size, mtime_ns]] behind tex_digest
-    stable: bool = True                             # False: a file was being written while the render ran
+    tex_digest: str = ""                            # of the TeX files' content states; local only
+    tex_files: list = field(default_factory=list)   # [[path, state]] behind tex_digest
+    stable: bool = True                             # False: a recorded input could not be hashed
 
 
 class Resolver:
     """Keys, manifests and freshness for one project, over a HashCache and a store."""
 
     def __init__(self, ctx: ProjectContext, hashes: HashCache, store,
-                 engine_fp: Optional[Callable[[], str]] = None, clock: Callable[[], float] = time.time) -> None:
+                 engine_fp: Optional[Callable[[], str]] = None) -> None:
         self.ctx, self.hashes, self.store = ctx, hashes, store
         self._engine_fp = engine_fp or default_engine_fp
-        self._clock = clock
         self._engine_cache: Optional[str] = None
-        self._tex_memo: dict[str, tuple[float, bool]] = {}
         self._alt_memo: dict[str, tuple[Optional[str], tuple[dict, dict]]] = {}
 
     @property
@@ -169,22 +175,47 @@ class Resolver:
 
     # -- the fast key ------------------------------------------------------------
 
-    def fast_key(self, unit: Unit, text: Optional[str] = None) -> Optional[str]:
+    def fast_key(self, unit: Unit, text: Optional[str] = None, *, strict=False, validation=None) -> Optional[str]:
         """The key of captured `text` (else the saved source), or None when the source cannot be read stably."""
-        slide_sha = self.hashes.hash(unit.source_path) if text is None else text_sha256(text)
+        slide_sha = self.hashes.hash(unit.source_path, verify=strict) if text is None else text_sha256(text)
         if slide_sha is None:
             return None
-        rc = [self.hashes.hash(self.ctx.root / name) or "" for name in (".latexmkrc", "decks/.latexmkrc")]
+        validation = validation or render_evidence.ValidationPass()
+        configuration = validation.configuration(self.ctx.root, compiler.build_env(self.ctx))
         return _json_hash({
             "schema": RENDER_SCHEMA, "slide": slide_sha,
             "call": [unit.macro, unit.id_slug, unit.version, list(unit.conditions)],
             "view": unit.view, "language": unit.language, "template": unit.template,
             "preamble": text_sha256(unit.preamble_text or ""),
-            "engine": self.engine_fp, "rc": rc,
+            "engine": self.engine_fp, "configuration": configuration,
             **({"context": unit.context} if unit.context else {}),
             # What the wrapper tells TeX about the project's languages.
             "languages": deck_language.language_lines(self.ctx, unit.language),
         })
+
+    def capture(self, unit: Unit, text: Optional[str] = None) -> dict:
+        """Evidence captured before the render starts, never reconstructed from its finished inputs."""
+        started = time.time()
+        inventory = render_evidence.search_inventory(self.ctx.root, compiler.build_env(self.ctx))
+        return dict(started=started, inventory=inventory, key=self.fast_key(unit, text, strict=True))
+
+    def publishable(self, unit: Unit, evidence: dict, manifest: Manifest) -> bool:
+        if not manifest.stable or evidence["key"] is None or self.fast_key(unit, strict=True) != evidence["key"]:
+            return False
+        paths = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in manifest.entries]]
+        paths += [self.ctx.root / name for name in (".latexmkrc", "decks/.latexmkrc")
+                  if (self.ctx.root / name).is_file()]
+        try:
+            for path in paths:
+                if path is None:
+                    return False
+                info = path.stat()
+                if max(info.st_mtime, info.st_ctime) >= evidence["started"]:
+                    return False
+            current = render_evidence.search_inventory(self.ctx.root, compiler.build_env(self.ctx))
+            return render_evidence.inventory_state(current, paths) == render_evidence.inventory_state(evidence["inventory"], paths)
+        except (OSError, ValueError):
+            return False
 
     # -- manifests ---------------------------------------------------------------
 
@@ -202,7 +233,9 @@ class Resolver:
         manifest = Manifest()
         seen: set[str] = set()
         tex = []
-        for name in inputs:
+        states = render_evidence.FileStates(render_evidence.search_roots(self.ctx.root, compiler.build_env(self.ctx)))
+        for name in [*inputs, *[str(self.ctx.media_dir / name) for name in EVERY_RENDER_READS
+                                if (self.ctx.media_dir / name).is_file()]]:
             path = Path(name)
             key = norm(path)
             if key in seen or any(part in key for part in _SKIPPED_PARTS):
@@ -210,14 +243,12 @@ class Resolver:
             seen.add(key)
             where = self._relative(path)
             if where is None:
-                try:
-                    info = os.stat(path)
-                except OSError:
-                    continue
-                tex.append([key, info.st_size, info.st_mtime_ns])
+                state = states(path)
+                if state is not None:
+                    tex.append([key, state])
                 continue
-            digest = self.hashes.hash(path)
-            if digest is None or self.hashes.is_racy(path):
+            digest = self.hashes.hash(path, verify=True)
+            if digest is None:
                 manifest.stable = False
                 continue
             manifest.entries.append([where[0], where[1], digest])
@@ -242,19 +273,19 @@ class Resolver:
         state = [[str(path), self.hashes.hash(path)] for path in sorted(paths)]
         return [KIND_MISSING_INPUT, name, _json_hash(state)]
 
-    def manifest_current(self, entries: list) -> bool:
+    def manifest_current(self, entries: list, *, strict=False) -> bool:
         for kind, rel, sha in entries:
             if kind == KIND_MISSING_INPUT:
                 if self.missing_input_entry(rel)[2] != sha:
                     return False
                 continue
             path = self._resolve(kind, rel)
-            if path is None or self.hashes.is_racy(path):
+            if path is None:
                 return False
             if kind == KIND_ALT_TEXT:
-                if self._alt_digest(path, entries) != sha:
+                if self._alt_digest(path, entries, strict=strict) != sha:
                     return False
-            elif self.hashes.hash(path) != sha:
+            elif self.hashes.hash(path, verify=strict) != sha:
                 return False
         return True
 
@@ -276,7 +307,7 @@ class Resolver:
             out.append(entry)
         return out
 
-    def _alt_digest(self, path: Path, entries: list) -> str:
+    def _alt_digest(self, path: Path, entries: list, *, strict=False) -> str:
         """The hash of the rows of the alt-text file `path` for the files in `entries`, matched as Slidemaster_alt.lua
         matches a picture: by its lower-case file name, or by the name without its extension."""
         names, stems = set(), set()
@@ -285,15 +316,15 @@ class Resolver:
             if name not in EVERY_RENDER_READS:
                 names.add(name)
                 stems.add(Path(name).stem)
-        by_name, by_stem = self._alt_rows(path)
+        by_name, by_stem = self._alt_rows(path, strict=strict)
         rows = {row for name in names for row in by_name.get(name, ())}
         rows |= {row for stem in stems for row in by_stem.get(stem, ())}
         return hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest()
 
-    def _alt_rows(self, path: Path) -> tuple[dict, dict]:
+    def _alt_rows(self, path: Path, *, strict=False) -> tuple[dict, dict]:
         """The rows of an alt-text file by lower-case file name and by stem, each a JSON string; read once per
         content (the scan asks for every unit of every deck)."""
-        sha = self.hashes.hash(path)
+        sha = self.hashes.hash(path, verify=strict)
         memo = self._alt_memo.get(str(path))
         if memo is not None and memo[0] == sha:
             return memo[1]
@@ -317,44 +348,40 @@ class Resolver:
         self._alt_memo[str(path)] = (sha, (by_name, by_stem))
         return by_name, by_stem
 
-    def tex_current(self, record: dict) -> bool:
-        """The TeX files a render made on this machine read are as they were (stat only; remembered 60 s)."""
+    def tex_current(self, record: dict, validation=None) -> bool:
+        """Content checks with FileStates' process memo for unchanged TeX distribution files."""
         digest = record.get("tex_digest")
         if not digest or record.get("machine") != machine_id():
             return True
-        memo = self._tex_memo.get(digest)
-        if memo and self._clock() - memo[0] < 60:
-            return memo[1]
         files = self.store.tex_files(digest)
-        ok = True
-        if files is not None:
-            for path, size, mtime in files:
-                try:
-                    info = os.stat(path)
-                except OSError:
-                    ok = False
-                    break
-                if (info.st_size, info.st_mtime_ns) != (size, mtime):
-                    ok = False
-                    break
-        self._tex_memo[digest] = (self._clock(), ok)
-        return ok
+        if files is None:
+            return False
+        validation = validation or render_evidence.ValidationPass()
+        states = render_evidence.FileStates(render_evidence.search_roots(self.ctx.root, compiler.build_env(self.ctx)))
+        current = validation.inputs([path for path, _state in files], states)
+        return all(current[str(Path(path).absolute())] == state for path, state in files)
 
     # -- freshness ---------------------------------------------------------------
 
-    def lookup(self, unit: Unit, key: Optional[str] = None) -> "Lookup":
-        key = key or self.fast_key(unit)
+    def lookup(self, unit: Unit, key: Optional[str] = None, *, strict=False, validation=None) -> "Lookup":
+        validation = validation or render_evidence.ValidationPass()
+        key = self.fast_key(unit, strict=strict, validation=validation) if strict or key is None else key
         if key is None:
             return Lookup(Freshness.MISSING, None, None)
         records = self.store.find(key)
         for record in records:
-            if record.get("unstable"):
+            inventory = record.get("inventory")
+            if inventory is None:
                 continue
-            if self.manifest_current(record["manifest"]) and self.tex_current(record):
+            current = validation.inventory(self.ctx.root, compiler.build_env(self.ctx), force=strict)
+            paths = [unit.source_path, *[rel for _kind, rel, _sha in record["manifest"]]]
+            if render_evidence.inventory_state(current, paths) != inventory:
+                continue
+            if self.manifest_current(record["manifest"], strict=strict) and self.tex_current(record, validation):
                 same = record.get("frame_number") == unit.frame_number
                 return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
         failure = self.store.failure(key)
-        if failure is not None and self.manifest_current(failure["manifest"]):
+        if failure is not None and self.manifest_current(failure["manifest"], strict=strict):
             return Lookup(Freshness.FAILED, None, key, failure)
         if records:
             return Lookup(Freshness.STALE, records[0], key)
