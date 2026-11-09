@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QByteArray, QSize, QTimer, Qt, Signal
+from PySide6.QtCore import QByteArray, QEvent, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import timing
+from ... import preview_build, timing
 from ...stall_monitor import StallMonitor
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
@@ -313,6 +313,13 @@ class WorkspaceWindow(QMainWindow):
 
     # -- column widths and visibility ------------------------------------------
 
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and hasattr(self, 'centre'):
+            target, _row, _title, language = self.centre._preview_context()
+            focus = (target, self.state.view, language or self.state.language) if target and self.isActiveWindow() else None
+            preview_build.set_focus(self.project, focus)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if not self._columns_sized:
@@ -568,6 +575,7 @@ class WorkspaceWindow(QMainWindow):
         if not plugin_ui.HOST_UI.close_plugin_windows():
             event.ignore()
             return
+        preview_build.set_focus(self.project, None)
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         self.assistant.shutdown()
         self.images_page.shutdown()

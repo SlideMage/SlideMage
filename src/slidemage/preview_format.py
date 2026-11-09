@@ -212,6 +212,8 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
 
 
 def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
+    from . import preview_build
+    preview_build.discard_spare(project_root)
     for old in directory.glob(NAME + '.*'):
         old.unlink(missing_ok=True)
     source = stem(directory).with_suffix('.tex')

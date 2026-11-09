@@ -3,18 +3,20 @@
 """Opt-in pixel comparison of the warm fast lane with latexmk."""
 import os
 import shutil
+import time
 
 import pymupdf
 import pytest
 
-from slidemage import compiler, deck_scan, preview_build, slide_preview
+from slidemage import app_settings, compiler, deck_scan, preview_build, preview_target, slide_preview
 from slidemage.project import ProjectContext, _ignore_template_build_output
 from conftest import EXAMPLE_PROJECT
 
 
 @pytest.mark.skipif(os.environ.get('SLIDEMAGE_REAL_LATEX') != '1',
                     reason='set SLIDEMAGE_REAL_LATEX=1 to run real LuaLaTeX acceptance fixtures')
-def test_direct_lualatex_matches_latexmk_pixels(tmp_path, monkeypatch):
+@pytest.mark.parametrize('spare', [False, True], ids=['B', 'A'])
+def test_direct_lualatex_matches_latexmk_pixels(tmp_path, monkeypatch, spare, request):
     root = tmp_path / 'project'
     shutil.copytree(EXAMPLE_PROJECT.root, root, ignore=_ignore_template_build_output)
     ctx = ProjectContext.at(root)
@@ -30,12 +32,23 @@ def test_direct_lualatex_matches_latexmk_pixels(tmp_path, monkeypatch):
         return run(command, **kwargs)
 
     monkeypatch.setattr(compiler, 'run_streamed', observed)
-    kwargs = dict(preamble_text=deck.preamble_text, deck_version='instructor', deck_language='EN', all_steps=True)
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    app_settings.set(ctx, preview_build.SPARE_TEX_SETTING_KEY, spare)
+    focus = (preview_target.for_path(ctx, source), 'instructor', 'EN')
+    preview_build.set_focus(ctx, focus)
+    request.addfinalizer(lambda: preview_build.set_focus(ctx, None))
+    cancel = compiler.CancelToken()
+    cancel.preview_focus = focus
+    kwargs = dict(preamble_text=deck.preamble_text, deck_version='instructor', deck_language='EN', all_steps=True,
+                  cancel=cancel)
     slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', text, **kwargs)
     calls.clear()
+    if spare:
+        time.sleep(2)
     edited = text.replace(r'\emph{Rename\ldots}', r'\emph{Retitle\ldots}')
     direct = slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', edited, **kwargs)
-    assert len(calls) == 1 and calls[0][0] != 'latexmk', calls
+    preview_build.set_focus(ctx, None)
+    assert calls == [] if spare else len(calls) == 1 and calls[0][0] != 'latexmk', calls
     monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', False)
     reference = slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', edited, force_build=True, **kwargs)
     with pymupdf.open(direct) as actual, pymupdf.open(reference) as expected:

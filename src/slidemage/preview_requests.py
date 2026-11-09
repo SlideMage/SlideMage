@@ -259,6 +259,8 @@ class RenderService:
             request.cancel.request_stop()
         for owner in tuple(self._completed):
             owner.__exit__(None, None, None)
+        if self._background is not None:
+            preview_build.set_focus(self._background.ctx, None)
         if self._owns_background:
             self._background.store.close()
 
@@ -296,6 +298,7 @@ class RenderService:
         def work(cancel):
             store_key = renderer.resolver.fast_key(unit, text) if complete else None
             background = cancel.low_priority
+            cancel.preview_focus = (target, view, language)
             in_deck = target.needs_context and (background or (
                 options.saved and options.all_steps and target.deck is not None
                 and deck_context.in_deck_ready(target.context, target.deck, view, language)))
@@ -328,6 +331,7 @@ class RenderService:
                     prebuilt.used = True
                 evidence = (prebuilt.evidence if prebuilt is not None else
                             renderer.resolver.capture(unit, None if in_deck else text)) if publish else None
+                cancel.preview_evidence = evidence
                 if prebuilt is not None:
                     pdf = prebuilt.pdf
                 elif background and renderer._render is not None:

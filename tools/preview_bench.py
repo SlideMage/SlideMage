@@ -245,13 +245,17 @@ class Bench:
 
     def render_once(self, view, text, force=False):
         """One render through the service, as the Preview pane asks for it."""
+        from slidemage import preview_build
         from slidemage.preview_metrics import PreviewMetrics
+        target = self.target(view)
+        preview_build.set_focus(self.ctx, (target, view, self.language))
+        time.sleep(2)       # let the spare reach stdin, outside the measured render
         with _STATS_LOCK:
             STATS.clear()
         start = time.perf_counter()
         error = ''
         with PreviewMetrics() as metrics:
-            request = self.service.request(self.target(view), text, view, self.language, lambda line: None,
+            request = self.service.request(target, text, view, self.language, lambda line: None,
                                            saved=False, force=force)
             try:
                 request.wait(pixels_only=True)

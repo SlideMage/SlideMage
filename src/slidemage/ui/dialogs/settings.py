@@ -40,7 +40,7 @@ import shiboken6
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QMessageBox, QSpinBox, QWidget
 
-from ... import app_settings, diagnostics, slide_preview, slide_templates, slide_versioning, updater, version
+from ... import app_settings, diagnostics, preview_build, slide_preview, slide_templates, slide_versioning, updater, version
 from ...ai import ai_profile, routes
 from ...plugins import session
 from ...latex_edit import DEFAULT_TAB_WIDTH_CHARS, TAB_WIDTH_SETTING_KEY
@@ -107,6 +107,13 @@ class GeneralTab(Page):
             "While you type in the Source view, the slide is rendered again a moment after each autosave, "
             "when the Preview or Split view is showing it and its source has no errors. Off by default: "
             "each render is a LaTeX run."))
+
+        self.spare_tex_check = QCheckBox("Keep TeX ready for the focused slide (about 250 MB)")
+        self.spare_tex_check.setChecked(bool(app_settings.get(app.project, preview_build.SPARE_TEX_SETTING_KEY, True)))
+        self.spare_tex_check.toggled.connect(
+            lambda on: app_settings.set(app.project, preview_build.SPARE_TEX_SETTING_KEY, bool(on)))
+        self.spare_tex_check.toggled.connect(lambda _on: preview_build.discard_spare(app.project.root))
+        layout.addWidget(Field("Preview performance", self.spare_tex_check))
 
         self.ask_version_check = QCheckBox("Ask about Update version when leaving a changed slide")
         self.ask_version_check.setChecked(

@@ -597,3 +597,61 @@ def test_a_changed_aux_falls_back_to_latexmk(tmp_path, monkeypatch):
     preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None, ctx=ctx, env={})
     assert [cmd[0] == 'latexmk' for cmd in commands] == [True, False, True]
     assert '-g' in commands[-1]
+
+
+def test_a_spare_is_used_once_and_a_preamble_change_discards_it(tmp_path, monkeypatch):
+    import io
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    ctx = ProjectContext.at(tmp_path)
+    focus = ('abc', 'instructor', 'EN')
+    preview_build.set_focus(ctx, focus)
+    cancel = compiler.CancelToken()
+    cancel.preview_focus = focus
+    cancel.preview_evidence = dict(started=0, inventory={})
+    processes = []
+    discarded = []
+    commands = []
+
+    def run(command, *, jobname, outdir, cwd, env, **kwargs):
+        commands.append(command)
+        pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
+        pdf.write_bytes(b'%PDF fresh')
+        log.write_text('Success')
+        (outdir / (jobname + '.direct.json')).write_text(json.dumps(dict(
+            command=f'lualatex "{command[-1]}"', cwd=str(cwd), env=env)))
+        return compiler.Build(0, pdf, log, 'Success', False)
+
+    def popen(command, **kwargs):
+        assert kwargs['stdin'] == compiler.subprocess.PIPE
+        proc = Mock(stdin=io.StringIO())
+
+        def wait():
+            if proc.stdin.getvalue():
+                wrapper = Path(proc.stdin.getvalue().strip())
+                cache = ctx.build_dir / 'preview-cache' / wrapper.stem.removeprefix('_slidemage_preview-')
+                (cache / (wrapper.stem.removeprefix('_slidemage_') + '.pdf')).write_bytes(b'%PDF spare')
+            return 0
+
+        proc.wait = wait
+        processes.append(proc)
+        return proc
+
+    monkeypatch.setattr(compiler, 'run_latexmk', run)
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
+    monkeypatch.setattr(compiler.CancelToken, '_kill', lambda proc: discarded.append(proc))
+    text = r'\documentclass{article}\begin{document}First\end{document}'
+    try:
+        preview_build.compile_cached(text, 'abc', lambda _: None, ctx=ctx, env={}, cancel=cancel)
+        first = processes[0]
+        started = preview_build._FOCUSED[ctx.root]['spare']['started']
+        preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None,
+                                     ctx=ctx, env={}, cancel=cancel)
+        assert first.stdin.closed and len(processes) == 2 and len(commands) == 1
+        assert cancel.preview_evidence['started'] == started
+        preview_build.compile_cached(text.replace('article', 'report'), 'abc', lambda _: None,
+                                     ctx=ctx, env={}, cancel=cancel)
+        assert discarded == [processes[1]] and len(commands) == 2 and len(processes) == 3
+    finally:
+        preview_build.set_focus(ctx, None)

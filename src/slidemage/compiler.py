@@ -346,6 +346,8 @@ class CancelToken:
         # Background renders run their process at below-normal priority (set right after it starts, so
         # what it launches inherits it).
         self.low_priority = False
+        self.preview_focus = None
+        self.preview_evidence = None      # a spare replaces the request's start and input inventory
 
     def is_set(self) -> bool:
         return self._event.is_set()
