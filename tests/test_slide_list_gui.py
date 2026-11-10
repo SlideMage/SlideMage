@@ -1150,3 +1150,10 @@ def test_remove_section_can_take_out_every_section_and_keep_every_slide(make_lis
     slide_list.run_section("remove_section")
     assert deck_lines(path) == ["\\slide{aaa-Front}", "\\slide{bbb-One}", "\\slide{ccc-Two}", "\\slide{ddd-Two}"]
     assert ids(slide_list) == ["aaa", "bbb", "ccc", "ddd"]
+
+
+def test_a_click_on_an_item_the_list_rebuilt_meanwhile_is_ignored(make_list):
+    slide_list, _window, _path = make_list("\\slide{aaa-EN-One}\n")
+    slide_list.tree._extends_selection = False
+    slide_list.tree._on_clicked(None, 0)          # Qt passes None for an item deleted between press and release
+    assert ids(slide_list) == ["aaa"]

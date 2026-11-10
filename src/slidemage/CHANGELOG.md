@@ -3897,3 +3897,8 @@ v0.15.10 (2026-11-10, direct request: colour roles, second framework slice): Mor
 
 NEW: More parts of a slide can have their own colour per mode.
 - Not visible in the app yet.
+
+v0.15.11 (2026-11-10, the log of a test session: 26 times "AttributeError: 'NoneType' object has no attribute 'parent'" in slide_tree._on_clicked): Qt reports a click with no item when the slide list was rebuilt between the press and the release, which background previews do often while they refresh. The click is now ignored. This release also restores src/slidemage/version.py, which the merge of v0.15.10 had left empty (an editing slip while renumbering).
+
+NEW: Fewer errors in the log when you click the slide list.
+- A click while the slide list is being refreshed no longer logs an error.
