@@ -1120,7 +1120,8 @@ class PreviewPane(Surface):
         key = self._steps_key(target, job.view, job.language, draft or bool(target.needs_context), text)
         if key in self._step_pages or self._steps.pending(key):
             return
-        self._request_steps(target, key, text, draft, FOREGROUND)
+        self._request_steps(target, key, job.request.spec.revision.text if job.request is not None else text,
+                            draft, FOREGROUND)
 
     def _request_steps(self, target: PreviewTarget, key: tuple, text: Optional[str], draft: bool,
                        priority: int) -> None:
@@ -1738,7 +1739,7 @@ class PreviewPane(Surface):
         except OSError:
             return False
 
-    def _render_saved(self, precheck: bool, *, debounce: bool = False, force: bool = False) -> None:
+    def _render_saved(self, precheck: bool, *, force: bool = False) -> None:
         target = self._target
         if target is None or target.hidden or self._batch_cancel is not None:
             return
@@ -1752,7 +1753,7 @@ class PreviewPane(Surface):
         job = self._job(target, revision_text=text)
         self._batch_status = ''
         job.request = self._renders.request(target, text, view, language, self.app.log, saved=True, force=force)
-        self._start(lambda: None, job, debounce=debounce)
+        self._start(lambda: None, job)
 
     def _render_context_slide(self, target: PreviewTarget) -> None:
         """A slide that needs its deck has no picture yet (the background previews wait for a deck compile): render it
@@ -1782,14 +1783,26 @@ class PreviewPane(Surface):
         QTimer.singleShot(0, start)
 
     def render_after_save(self) -> None:
-        """The slide was saved: render it again, unless its source has errors (then
-        the page just stays older than the source, and Render asks)."""
+        """Render the current buffer after a typing pause or save, unless it has syntax errors."""
         target = self._target
-        if target is not None and not latex_lint.check_slide_files(self.app.project, [target.source_path]).errors:
-            self._render_saved(precheck=False, debounce=True)
-        elif target is not None:
+        if target is None or target.hidden or self._batch_cancel is not None:
+            return
+        path = target.source_path
+        saved_text = slide_source.read_slide_source(path)[0]
+        text = (self._buffer() or (saved_text, ""))[0]
+        if latex_lint.check_buffer(self.app.project, text, path.name, path).errors:
             self._invalidate()
             self._refresh()
+            return
+        render_text = text
+        if text != saved_text and slide_versioning.is_current_slide(path):
+            # Autosave adds the version marker; capture the same text now so its later write is a store hit.
+            render_text, _ = slide_versioning.prepare_autosave(path, target.id_slug, saved_text, text)
+        job = self._job(target, revision_text=text, buffer_text=text,
+                        note="Rendered from the editor buffer, not the saved file" if text != saved_text else "")
+        job.request = self._renders.request(target, render_text, self.state.view, self.language, self.app.log,
+                                            saved=text == saved_text)
+        self._start(lambda: None, job, debounce=True)
 
     def render_buffer(self, presenter: bool = False) -> None:
         """Compile the editor's buffer, saved or not, per the scope and reveal step chosen."""

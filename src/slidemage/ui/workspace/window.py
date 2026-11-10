@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import preview_build, timing
+from ... import background_renders, power_status, preview_build, timing
 from ...stall_monitor import StallMonitor
 from ... import app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check, updater
 from ... import version as version_mod
@@ -273,6 +273,7 @@ class WorkspaceWindow(QMainWindow):
                                                                        ms=AFTER_WRITE_REFRESH_MS),
                                                           self._after_write.start()))
         self.centre.source.written.connect(self._live_render)
+        self.centre.source.preview_requested.connect(lambda path: self._live_render(path, typing=True))
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
@@ -512,11 +513,13 @@ class WorkspaceWindow(QMainWindow):
         if not dirty:
             self._refresh_after_write()
 
-    def _live_render(self, path: Path) -> None:
-        """The Settings switch "Render the Preview after each autosave": render the slide that was just written
-        (Ctrl+S renders on its own, so this is only for the autosave) when the Preview shows it."""
+    def _live_render(self, path: Path, *, typing: bool = False) -> None:
+        """Live preview after a typing pause or write, for the slide on show. Only the typing-pause renders (extra TeX
+        runs while typing, 2026-11-10) wait for mains power when the background renders do; a write renders as before."""
         from ..dialogs.settings import LIVE_RENDER_SETTING_KEY
         if self.state.mode not in ("preview", "split") or not app_settings.get(self.project, LIVE_RENDER_SETTING_KEY, False):
+            return
+        if typing and app_settings.get(self.project, background_renders.ONLY_MAINS_KEY, True) and power_status.on_battery():
             return
         target = self.centre.preview._target
         if target is not None and target.source_path == path and not self.compiling:
