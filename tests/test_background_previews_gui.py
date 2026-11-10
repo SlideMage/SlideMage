@@ -561,7 +561,7 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
 def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monkeypatch):
     import threading
     import time
-    from slidemage import preview_target, render_store
+    from slidemage import preview_target
     from slidemage.render_scheduler import P_IDLE
     from test_background_renders import FakeTeX
 
@@ -584,7 +584,7 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
     target = preview_target.PreviewTarget(window.project, unit.macro, unit.id_slug, unit.version, unit.conditions,
                                          None, unit.frame_number, unit.preamble_text, deck=deck)
     monkeypatch.setattr(r.scheduler, '_can_start', lambda job: True)
-    r.scheduler.submit(unit.label, ((unit,), render_store.ORIGIN_BACKGROUND), P_IDLE)
+    r.scheduler.submit(unit.label, ((unit,), ()), P_IDLE)
     sweep = threading.Thread(target=r.scheduler.run_next)
     sweep.start()
     pane = None

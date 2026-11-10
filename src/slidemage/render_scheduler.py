@@ -121,6 +121,7 @@ class RenderScheduler:
                 dropped += 1
             for job in self._running.values():
                 if job.group == group:
+                    job.cancelled_for_requeue = False
                     job.cancel.request_stop()
             self._cond.notify_all()
         self._on_change()

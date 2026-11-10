@@ -632,7 +632,10 @@ class PreviewPane(Surface):
         self._refresh()
 
     def buffer_changed(self, path: Path) -> None:
-        """Refresh a buffer preview's age after typing pauses, without compiling."""
+        """Cancel this slide's queued views and refresh its age after typing pauses."""
+        renderer = self._renders._background
+        if renderer is not None:
+            renderer.scheduler.cancel_group(f"other:{path.resolve()}")
         if self._target is not None and path == self._target.source_path:
             if self._batch_cancel is None:
                 self._batch_status = ''
@@ -1704,6 +1707,8 @@ class PreviewPane(Surface):
             job.pdf = None
             self.rendered.emit()
             if not job.external:
+                if job.request is not None:
+                    self._renders._renderer(job.request.spec.target.context).submit_other_views(job.request.spec)
                 self._after_render(job)
             if job.request is None:
                 self.rendered_target.emit(job.source)

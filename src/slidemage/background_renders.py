@@ -34,7 +34,7 @@ from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
 from .render_scheduler import P_IDLE, Job, RenderScheduler
-from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, RenderStore
+from .render_store import ORIGIN_COMPILE, RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
@@ -42,6 +42,7 @@ QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
 MIN_REPLAN_SECONDS = 15.0
+RENDER_OTHER_VIEWS = True
 
 ENABLED_KEY = "bg_previews_enabled"
 ONLY_MAINS_KEY = "bg_previews_only_on_mains"
@@ -350,6 +351,28 @@ class BackgroundRenderer:
         self.gate.note_started()
         return True
 
+    def submit_other_views(self, spec: preview_requests.PreviewRequest) -> None:
+        """Prepare the focused revision's other views through the idle queue, ahead of the sweep."""
+        if (not RENDER_OTHER_VIEWS or spec.options.presenter or spec.options.mode != 'slide'
+                or spec.options.overlay is not None):
+            return
+        target = spec.target
+        views = self.versions_for(target.deck) if target.deck is not None else VIEWS
+        requests = batch_render.plan_slide(
+            self.ctx, target.deck, target.source_path, 'all', spec.language,
+            occurrence_key=target.occurrence_key,
+            options=preview_requests.RenderOptions(saved=spec.options.saved, all_steps=True),
+            read_source=lambda path: spec.revision.text if path == spec.revision.path else None)
+        group = f"other:{spec.revision.path}"
+        for other in requests:
+            if other.view == spec.view or other.view not in views or other.target.hidden or other.capture_error:
+                continue
+            unit = other.unit
+            if unit.context and not deck_context.in_deck_ready(self.ctx, other.target.deck, other.view, other.language):
+                continue
+            key = f"{group}:{unit.label}:{other.revision.content_hash}"
+            self.scheduler.submit(key, ((unit,), (other,)), P_IDLE, (-1,), group=group)
+
     def trace(self, event: str) -> None:
         """What background rendering decided and when (focus, input, starts, stops, the chip), for finding out on a
         user's machine why it rendered or waited: one debug line (area `background`) with what the gate knows at
@@ -638,7 +661,7 @@ class BackgroundRenderer:
                     continue
                 batch = self._take_batch(i, size, on_its_way)
                 key = batch[0].label if len(batch) == 1 else f"{batch[0].label}+{len(batch) - 1}"
-                self.scheduler.submit(key, (tuple(batch), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
+                self.scheduler.submit(key, (tuple(batch), ()), P_IDLE, rank, group=unit.deck)
             return held or (keep is not None and any(unit.deck not in keep for _rank, unit in self._plan[i:]))
 
     def _take_batch(self, i: int, size: int, on_its_way: set) -> list[render_key.Unit]:
@@ -768,12 +791,12 @@ class BackgroundRenderer:
     # -- the work ----------------------------------------------------------------------------
 
     def _work(self, job: Job, cancel) -> None:
-        units = job.payload[0]
+        units, requests = job.payload
         self._set_working(job.key, True)
         self.trace(f"start {job.key}")
         try:
             cancel.low_priority = True
-            requests = tuple(self.request_for(unit) for unit in units)
+            requests = requests or tuple(self.request_for(unit) for unit in units)
             results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
             for unit, result in zip(units, results):
                 if result.status in ('rendered', 'cached'):
@@ -814,11 +837,11 @@ class BackgroundRenderer:
         now = self.scheduler._clock()
         entries = []
         for job in self.scheduler.running_jobs():
-            units, origin = job.payload
+            units = job.payload[0]
             unit = units[0]
             entries.append(dict(deck=unit.deck, slide=unit.id_slug if len(units) == 1 else f"{len(units)} slides",
                                 view=unit.view, language=unit.language,
-                                kind="reveal steps" if origin == ORIGIN_REVEAL else "background",
+                                kind="background",
                                 seconds=max(0.0, now - job.started)))
         return entries
 

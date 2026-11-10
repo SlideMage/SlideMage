@@ -74,6 +74,57 @@ def pdf_at(path, text="hello", height=180):
     return path
 
 
+def test_a_focused_render_prepares_other_views_for_a_store_hit_until_the_next_edit(pane, tmp_path, monkeypatch):
+    from slidemage import background_renders
+    from slidemage.render_scheduler import P_IDLE
+
+    view, target, path = pane
+    folder = tmp_path / '.temp'
+    folder.mkdir()
+    pdf = pdf_at(folder / 'slide.pdf')
+    pdf.with_suffix('.inputs.json').write_text('[]')
+    compiled = []
+
+    def render(_target, text, canonical, language, **kwargs):
+        compiled.append((text, canonical, kwargs['cancel'].low_priority))
+        return pdf
+
+    monkeypatch.setattr(preview_target, 'render_text', render)
+    renderer = view._renders._renderer(target.context)
+    renderer.gate.force()
+    view.buffer[0] = '\\setSlideVersion{1-0-0+}\nunsaved edit'
+    text = view.buffer[0]
+    monkeypatch.setattr(background_renders, 'RENDER_OTHER_VIEWS', False)
+    view.render_after_save()
+    QTest.qWait(20)
+    view._run(*view.launched[-1])
+    assert view._last_request.done.wait(10)
+    assert not renderer.scheduler.pending()
+
+    monkeypatch.setattr(background_renders, 'RENDER_OTHER_VIEWS', True)
+    view.render_after_save()
+    QTest.qWait(20)
+    view._run(*view.launched[-1])
+    assert renderer.scheduler.pending(P_IDLE) == 2
+    renderer.gate.paused = True
+    assert not renderer.scheduler.run_next()
+    renderer.gate.paused = False
+    assert renderer.scheduler.run_next()
+    assert compiled == [(text, 'instructor', False), (text, 'during-course', True)]
+
+    view.state.set_view('during-course')
+    view._settled()
+    deadline = time.monotonic() + 10
+    while view._record is None and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert view._record is not None and len(compiled) == 2
+    assert view._record['pages'] == 1
+    assert renderer.scheduler.pending(P_IDLE) == 1
+    view.buffer[0] = 'next edit'
+    view.buffer_changed(path)
+    assert not renderer.scheduler.pending() and not renderer.scheduler.run_next()
+
+
 def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_page(pane, tmp_path, monkeypatch, qapp):
     from contextlib import contextmanager
     from PySide6.QtGui import QImage
