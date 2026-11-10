@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...ai import routes
-from ... import languages, latex_edit, slide_templates, slide_versioning, theme_colors
+from ... import languages, latex_edit, slide_templates, slide_versioning, theme_colors, view_themes
 from ...latex_edit import ASKS, INSERT_BLOCK_COMMANDS, INSERT_COMMANDS, INSERT_LIST_COMMANDS, Insert, multilingual_for
 from ...selection import NO_SELECTION, Selection, SelectionError, capture
 from ..dialogs import qr_code as qr_dialog
@@ -569,7 +569,7 @@ class SourcePane(Surface):
         deck = getattr(state, "deck", None)
         project = self.app.project
         if deck is not None:
-            template = slide_templates.detect_template(deck.text)
+            template = view_themes.template_for(deck.text, getattr(state, "view", None))
         else:
             template = slide_templates.render_template(project)
         return theme_colors.swatches(template, project.root)

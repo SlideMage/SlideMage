@@ -27,7 +27,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import citations, compiler, compile_records, deck_language, render_evidence, slide_templates
+from . import citations, compiler, compile_records, deck_language, render_evidence, slide_templates, view_themes
 from .dep_hash import HashCache, norm
 from .fileio import text_sha256
 from .preview_target import PreviewTarget
@@ -125,9 +125,13 @@ class Unit:
 def unit_for(target: PreviewTarget, view: str, language: str, deck: str = "") -> Unit:
     """The unit of a Preview target: its steps are dropped (all steps are rendered)."""
     deck = deck or (target.deck.name if target.deck is not None else "")
+    # The preamble as this view sees it (view_themes): its theme and mode are part of the unit, so views with different
+    # themes never share a render.
+    preamble = view_themes.preamble_for_view(target.preamble_text, view)
+    template = target.template if preamble is None else slide_templates.detect_template(preamble)
     return Unit(deck, target.macro, target.id_slug, target.version,
                 () if target.macro == "slidestep" else tuple(target.conditions or ()), view, language.upper(),
-                target.frame_number, target.preamble_text, target.template, target.source_path,
+                target.frame_number, preamble, template, target.source_path,
                 deck if target.needs_context and deck else "")
 
 

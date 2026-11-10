@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_templates
+from . import deck_context, project, slide_language, slide_preview, slide_templates, view_themes
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
 from .fileio import text_sha256
@@ -151,7 +151,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
     return slide_preview.render_slide_to_pdf(
         target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(),
-        preamble_text=target.preamble_text, frame_number=target.frame_number,
+        preamble_text=view_themes.preamble_for_view(target.preamble_text, view), frame_number=target.frame_number,
         log=log, steps=target.steps, cancel=cancel,
         all_steps=all_steps, **context,
         **({'force_build': True} if force_build else {}))
@@ -179,7 +179,7 @@ def render_text(
     return slide_preview.render_slide_text_to_pdf(
         target.context, target.id_slug, text,
         deck_version=VIEW_INSTRUCTOR if presenter else view, deck_language=language.lower(),
-        presenter=presenter, preamble_text=target.preamble_text,
+        presenter=presenter, preamble_text=view_themes.preamble_for_view(target.preamble_text, VIEW_INSTRUCTOR if presenter else view),
         frame_number=(target.presenter_frame_number if presenter and target.presenter_frame_number is not None
                       else target.frame_number), log=log, preview_mode=mode, overlay=overlay,
         steps=target.steps if mode == "slide" else None,
