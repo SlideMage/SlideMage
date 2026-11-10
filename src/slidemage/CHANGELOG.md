@@ -3854,3 +3854,8 @@ v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking
 
 NEW: A steadier Preview.
 - The Preview no longer flickers to "Checking…" every few seconds while a slide is open.
+
+v0.15.5 (2026-11-10, every slide rendered again after SlideMage started from another folder): A render's evidence named the framework SlideMage bundles by its absolute path: $SLIDEMAGE_LATEX in the configuration of the fast key, and the search inventory's folder and file names. A one-file build unpacks that framework into a new temporary folder (_MEI...) at every start, and an install or update may move it, so every stored render went stale although no file had changed. The bundled framework is now named "<bundled framework>" in the configuration and the inventory (render_evidence._label), and the inventory lists each search folder's files relative to that folder. Its files themselves were already recorded by their path inside the framework. Stored renders from v0.15.4 and before are rendered once more; v0.15 is not released yet, and its first start renders everything anyway.
+
+NEW: Slide previews stay current when SlideMage starts from another folder.
+- The one-file build no longer renders every slide again at each start.
