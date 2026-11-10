@@ -576,30 +576,28 @@ def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, 
     assert ran == [one, two, one]
 
 
-def test_direct_environment_keeps_latexmk_deletions():
-    env = dict(TEXINPUTS='shadow', PATH='inherited', HOME='home')
-    assert preview_build._direct_env(env, dict(PATH='recorded')) == dict(PATH='recorded', HOME='home')
-
-
 def test_a_changed_aux_falls_back_to_latexmk(tmp_path, monkeypatch):
     monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
     commands = []
 
     def run(command, *, jobname, outdir, cwd, env, **kwargs):
         commands.append(command)
+        if command[0] != 'latexmk':
+            assert env == dict(PATH='recorded', HOME='home')
         pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
         pdf.write_bytes(b'%PDF fresh')
         log.write_text('Success')
         (outdir / (jobname + '.aux')).write_text(str(len(commands)))
         (outdir / (jobname + '.direct.json')).write_text(
-            json.dumps(dict(command='lualatex', cwd=str(cwd), env=env)))
+            json.dumps(dict(command='lualatex', cwd=str(cwd), env=dict(PATH='recorded'))))
         return compiler.Build(0, pdf, log, 'Success', False)
 
     monkeypatch.setattr(compiler, 'run_latexmk', run)
     ctx = ProjectContext.at(tmp_path)
     text = r'\begin{document}First\end{document}'
-    preview_build.compile_cached(text, 'abc', lambda _: None, ctx=ctx, env={})
-    preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None, ctx=ctx, env={})
+    kwargs = dict(ctx=ctx, env=dict(TEXINPUTS='shadow', PATH='inherited', HOME='home'))
+    preview_build.compile_cached(text, 'abc', lambda _: None, **kwargs)
+    preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None, **kwargs)
     assert [cmd[0] == 'latexmk' for cmd in commands] == [True, False, True]
     assert '-g' in commands[-1]
 

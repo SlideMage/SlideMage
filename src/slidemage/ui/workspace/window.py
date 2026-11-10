@@ -514,8 +514,7 @@ class WorkspaceWindow(QMainWindow):
             self._refresh_after_write()
 
     def _live_render(self, path: Path, *, typing: bool = False) -> None:
-        """Live preview after a typing pause or write, for the slide on show. Only the typing-pause renders (extra TeX
-        runs while typing, 2026-11-10) wait for mains power when the background renders do; a write renders as before."""
+        # Only typing-pause renders add TeX runs; writes still render on battery (2026-11-10).
         from ..dialogs.settings import LIVE_RENDER_SETTING_KEY
         if self.state.mode not in ("preview", "split") or not app_settings.get(self.project, LIVE_RENDER_SETTING_KEY, False):
             return

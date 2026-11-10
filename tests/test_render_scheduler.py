@@ -102,25 +102,17 @@ def test_user_input_never_stops_a_running_idle_job():
 
 def test_cancel_group_drops_queued_and_stops_running_jobs():
     s = make()
+
+    def cancel_then_interrupt(job):
+        assert s.cancel_group(job.group) == 2
+        assert s.interrupt(P_IDLE) == 0
+
+    s.box["during"] = {"u0": cancel_then_interrupt}
     for n in range(3):
         s.submit(f"u{n}", None, P_IDLE, (n,), group="deck-a")
     s.submit("other", None, P_IDLE, (9,), group="deck-b")
-    assert s.cancel_group("deck-a") == 3
     drain(s)
-    assert [k for k, _ in s.ran] == ["other"]
-
-
-def test_interrupt_does_not_requeue_a_cancelled_group():
-    s = make()
-
-    def cancel_then_interrupt(job):
-        s.cancel_group(job.group)
-        assert s.interrupt(P_IDLE) == 0
-
-    s.box["during"] = {"obsolete": cancel_then_interrupt}
-    s.submit("obsolete", None, P_IDLE, group="other-views")
-    assert s.run_next()
-    assert s.pending() == 0 and not s.run_next() and not s.errors
+    assert [k for k, _ in s.ran] == ["u0", "other"] and not s.errors
 
 
 def test_a_failing_job_is_reported_once_and_not_repeated():

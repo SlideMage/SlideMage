@@ -71,92 +71,6 @@ def _direct_env(env, recorded):
                                r'^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$', key)}, **recorded}
 
 
-def _start_spare(ctx, outdir, env, cancel):
-    with _SPARE_LOCK:
-        state = _FOCUSED.get(ctx.root)
-        if (not DIRECT_LUALATEX or cancel is None or cancel.is_set() or cancel.low_priority
-                or state is None or state['focus'] != cancel.preview_focus or state['spare'] is not None
-                or not app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
-            return
-        try:
-            direct = next(outdir.glob('*.direct.json'))
-            invocation = json.loads(direct.read_text(encoding='utf-8'))
-        except (OSError, ValueError, StopIteration):
-            return
-        source = re.search(r'(?:^|\s)("[^"]*"|[^\s]+)\s*$', invocation['command'])
-        if source is None or source[1] != invocation.get('source'):
-            return
-        wait = r"\directlua{token.set_macro('smnext', io.read('l'))}\input{\smnext}"
-        quoted = '"' + wait + '"' if os.name == 'nt' else shlex.quote(wait)
-        command = invocation['command'][:source.start(1)] + quoted
-        try:
-            output = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='replace')
-        except OSError:
-            return
-        started = time.time()
-        try:
-            inventory = search_inventory(ctx.root, compiler.build_env(ctx))
-            proc = subprocess.Popen(
-                command if os.name == 'nt' else ['/bin/sh', '-c', command], shell=os.name == 'nt',
-                cwd=invocation['cwd'], env=_direct_env(env, invocation['env']),
-                stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True,
-                encoding='utf-8', errors='replace', **no_console_kwargs(),
-                **({'start_new_session': True} if os.name != 'nt' else {}))
-        except (OSError, ValueError):
-            output.close()
-            return
-        spare = dict(process=proc, output=output, started=started, inventory=inventory, cache=outdir, invocation=invocation)
-
-        def expire():
-            with _SPARE_LOCK:
-                if state['spare'] is spare:
-                    discard_spare(ctx.root)
-
-        spare['timer'] = threading.Timer(600, expire)
-        spare['timer'].daemon = True
-        state['spare'] = spare
-        spare['timer'].start()
-
-
-def _run_spare(ctx, outdir, invocation, wrapper, log, on_line, cancel):
-    with _SPARE_LOCK:
-        state = _FOCUSED.get(ctx.root)
-        spare = state['spare'] if state is not None else None
-        if spare is None:
-            return None
-        if (cancel is None or cancel.low_priority or state['focus'] != cancel.preview_focus
-                or spare['cache'] != outdir or spare['invocation'] != invocation
-                or not app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
-            return None
-        state['spare'] = None              # used once; focus loss now leaves this render to its cancel token
-        spare['timer'].cancel()
-    proc = spare['process']
-    cancel._set_process(proc)
-    try:
-        try:
-            proc.stdin.write(wrapper.as_posix() + '\n')
-            proc.stdin.flush()
-        except OSError:
-            compiler.CancelToken._kill(proc)
-            proc.wait()
-            return None
-        if cancel.preview_evidence is not None:
-            cancel.preview_evidence.update(started=spare['started'], inventory=spare['inventory'])
-        log('    (pre-started LuaLaTeX pass)')
-        returncode = proc.wait()
-        spare['output'].seek(0)
-        for line in spare['output']:
-            on_line(line)
-            log(line.rstrip('\n'))
-        log_path = outdir / (wrapper.stem.removeprefix('_slidemage_') + '.log')
-        return compiler.Build(returncode, log_path.with_suffix('.pdf'), log_path,
-                              log_path.read_text(encoding='utf-8', errors='replace'), cancel.job_stopped())
-    finally:
-        cancel._remove_process(proc)
-        with suppress(OSError):
-            proc.stdin.close()
-        spare['output'].close()
-
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
 
@@ -549,8 +463,49 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         unstable.unlink(missing_ok=True)
     result = publish_preview(ctx, pdf, id_slug, cache, jobname,
                              extra=preview_format.inputs(format_dir) if format_dir is not None else ())
-    if not rerun_limit:
-        _start_spare(ctx, cache, env, cancel)
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if (rerun_limit or not DIRECT_LUALATEX or cancel is None or cancel.is_set() or cancel.low_priority
+                or state is None or state['focus'] != cancel.preview_focus or state['spare'] is not None
+                or not app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+            return result
+        try:
+            invocation = json.loads((cache / (jobname + '.direct.json')).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return result
+        source = re.search(r'(?:^|\s)("[^"]*"|[^\s]+)\s*$', invocation['command'])
+        if source is None or source[1] != invocation.get('source'):
+            return result
+        wait = r"\directlua{token.set_macro('smnext', io.read('l'))}\input{\smnext}"
+        quoted = '"' + wait + '"' if os.name == 'nt' else shlex.quote(wait)
+        command = invocation['command'][:source.start(1)] + quoted
+        try:
+            output = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='replace')
+        except OSError:
+            return result
+        started = time.time()
+        try:
+            inventory = search_inventory(ctx.root, compiler.build_env(ctx))
+            proc = subprocess.Popen(
+                command if os.name == 'nt' else ['/bin/sh', '-c', command], shell=os.name == 'nt',
+                cwd=invocation['cwd'], env=_direct_env(env, invocation['env']),
+                stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True,
+                encoding='utf-8', errors='replace', **no_console_kwargs(),
+                **({'start_new_session': True} if os.name != 'nt' else {}))
+        except (OSError, ValueError):
+            output.close()
+            return result
+        spare = dict(process=proc, output=output, started=started, inventory=inventory, cache=cache, invocation=invocation)
+
+        def expire():
+            with _SPARE_LOCK:
+                if state['spare'] is spare:
+                    discard_spare(ctx.root)
+
+        spare['timer'] = threading.Timer(600, expire)
+        spare['timer'].daemon = True
+        state['spare'] = spare
+        spare['timer'].start()
     return result
 
 
@@ -615,7 +570,6 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
     else:
         command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
         run_cwd = ctx.root
-    # The cold latexmk run records its own expanded command, cwd and TeX search environment.
     # Never bypass an explicit -g: unchanged text may hide a repaired or otherwise changed input.
     direct = outdir / (jobname + '.direct.json')
     log_path = outdir / (jobname + '.log')
@@ -640,7 +594,45 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
             log('    (direct LuaLaTeX pass)')
             with stage('lualatex'):
                 try:
-                    build = _run_spare(ctx, outdir, invocation, wrapper, log, on_line, cancel)
+                    with _SPARE_LOCK:
+                        state = _FOCUSED.get(ctx.root)
+                        spare = state['spare'] if state is not None else None
+                        if (spare is not None and cancel is not None and not cancel.low_priority
+                                and state['focus'] == cancel.preview_focus and spare['cache'] == outdir
+                                and spare['invocation'] == invocation
+                                and app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+                            state['spare'] = None   # focus loss now leaves this render to its cancel token
+                            spare['timer'].cancel()
+                        else:
+                            spare = None
+                    build = None
+                    if spare is not None:
+                        proc = spare['process']
+                        cancel._set_process(proc)
+                        try:
+                            try:
+                                proc.stdin.write(wrapper.as_posix() + '\n')
+                                proc.stdin.flush()
+                            except OSError:
+                                compiler.CancelToken._kill(proc)
+                                proc.wait()
+                            else:
+                                if cancel.preview_evidence is not None:
+                                    cancel.preview_evidence.update(started=spare['started'], inventory=spare['inventory'])
+                                log('    (pre-started LuaLaTeX pass)')
+                                returncode = proc.wait()
+                                spare['output'].seek(0)
+                                for line in spare['output']:
+                                    on_line(line)
+                                    log(line.rstrip('\n'))
+                                build = compiler.Build(returncode, pdf, log_path,
+                                                       log_path.read_text(encoding='utf-8', errors='replace'),
+                                                       cancel.job_stopped())
+                        finally:
+                            cancel._remove_process(proc)
+                            with suppress(OSError):
+                                proc.stdin.close()
+                            spare['output'].close()
                     if build is None:
                         discard_spare(ctx.root, outdir)
                         build = compiler.run_latexmk(
