@@ -490,6 +490,8 @@ fills (`block_title_fill`, `alerted_`, `example_`, `reference_`, `info_block_tit
 standout fills, the quote box, table rules and the other `c_primary_dark` uses inside the framework (they are unmapped
 hard-coded names; each is a decision about which role it is).
 
+**Built: CR slice F3 (v0.15.12, branch `feat/color-roles-framework-3`).** The framework's remaining hard-coded colours are roles: `highlight_fill`, `standout_fill`, `standout_text`, `quote_attribution`, `table_rule` (inside a block: `block_body_text`), `image_border`, `marker` (SMHighlight, SMDottedHighlight, warning sign), `citation`, `strip_fill` (its text is `c_text_on_accent`). What is left in the framework's code is the white text of a button and the red of the DRAFT watermark. Base mode identical: 873 pages of the manual set, 292 of the manual under Uni Graz, light and with \SMDarkMode. This ends the framework-only slices of CR; what follows needs the app: the wrapper writing \SMModeOverride and the mode drop-down, the `% SlideMage modes:` header, then the slide migration and the BREAKING cut.
+
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |

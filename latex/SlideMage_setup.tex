@@ -306,11 +306,19 @@
 %   block_body_fill          the fill of a block body (and SMProcess)   c_tertiary_gray
 %   block_body_text          text and bullets in a block body, SMProcess text   c_primary_dark
 %   link_underline           the rule under a link                  c_secondary_blue
+%   highlight_fill           highlightframe's title bar and footer box   c_primary_gray
+%   standout_fill            a [standout] frame's background        the title bar's fill (\SMTitleBoxColor)
+%   quote_attribution        the attribution under a quoteframe     c_custom_gray
+%   table_rule               rules of an SMTable outside a block (inside one: block_body_text)   c_primary_highlight
+%   image_border             the border SMImageBorder draws          c_primary_highlight
+%   marker                   SMHighlight, SMDottedHighlight and the warning sign   c_custom_red
+%   citation                 the colour of a citation mark          black
+%   strip_fill               the \progressstrip's fill (its text is c_text_on_accent)   c_tertiary_yellow
 %   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
 % Roles that set a hook of the catalog above (no colour name for slides): title_fill
 % (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
 % alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
-% reference_block_title_text, info_block_title_text. A mode's line replaces the macro; without one it stays what
+% reference_block_title_text, info_block_title_text, standout_text. A mode's line replaces the macro; without one it stays what
 % the template made it.
 \definecolor{c_true_black}{HTML}{000000}
 \definecolor{c_true_white}{HTML}{FFFFFF}
@@ -348,6 +356,13 @@
 \colorlet{SMBlockBodyText}{c_primary_dark}
 \colorlet{SMProcessFill}{c_tertiary_gray}
 \colorlet{SMLinkUnderline}{c_secondary_blue}
+\colorlet{SMStandoutFill}{c_primary_dark}
+\colorlet{SMQuoteAttributionColor}{c_custom_gray}
+\colorlet{SMTableRuleColor}{c_primary_highlight}
+\colorlet{SMImageBorderColor}{c_primary_highlight}
+\colorlet{SMMarkerColor}{c_custom_red}
+\colorlet{SMCitationColor}{black}
+\colorlet{SMStripFill}{c_tertiary_yellow}
 % Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
 % then the roles (an explicit line, else the derived value, else the base mode's source).
 \newcommand{\SM@togray}[1]{%
@@ -420,6 +435,12 @@
 	\@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}%
 	\@ifundefinedcolor{SMCodeBackgroundColor}{\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}}{}%
 	\@ifundefinedcolor{SMCodeTextColor}{\colorlet{SMCodeTextColor}{c_primary_dark}}{}%
+	\SM@rolecolour{quote_attribution}{SMQuoteAttributionColor}{c_custom_gray}%
+	\SM@rolecolour{table_rule}{SMTableRuleColor}{c_primary_highlight}%
+	\SM@rolecolour{image_border}{SMImageBorderColor}{c_primary_highlight}%
+	\SM@rolecolour{marker}{SMMarkerColor}{c_custom_red}%
+	\SM@rolecolour{citation}{SMCitationColor}{black}%
+	\SM@rolecolour{strip_fill}{SMStripFill}{c_tertiary_yellow}%
 	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
 	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
 	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
@@ -435,7 +456,9 @@
 	\SM@rolehook{alerted_block_title_text}\SMAlertedBlockTitleTextColor
 	\SM@rolehook{example_block_title_text}\SMExampleBlockTitleTextColor
 	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
-	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor}
+	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor
+	\SM@rolehook{standout_text}\SMStandoutTextColor
+	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}}
 \makeatother
 
 % ---------------------------------------------------------------------------

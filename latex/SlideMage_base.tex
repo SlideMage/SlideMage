@@ -121,7 +121,7 @@
 % applies deck-wide to every citation command (`\cite`, `\textcite`,
 % `\parencite`, ...) that ends up as a colored link, not just 64m's own
 % call site.
-\hypersetup{colorlinks=true, urlcolor=c_link, linkcolor=c_link, citecolor=black}
+\hypersetup{colorlinks=true, urlcolor=c_link, linkcolor=c_link, citecolor=SMCitationColor}
 
 
 \let\SMOrigHref\href
@@ -473,7 +473,7 @@
 % (\cornerfigure's node, for an unbordered image) doesn't take it away. A
 % slide that writes outer sep=0pt *after* the style opts out again -- ts8 did,
 % and its border stuck out 1.25pt past the Right Margin.
-\tikzset{SMImageBorder/.style={draw=c_primary_highlight, line width=\SMImageBorderWidth, outer sep=0.5\pgflinewidth}}
+\tikzset{SMImageBorder/.style={draw=SMImageBorderColor, line width=\SMImageBorderWidth, outer sep=0.5\pgflinewidth}}
 
 % Named styles for the drawing conventions slides repeat by hand
 % (2026-09-30): a restyle -- "make the arrows a bit bolder", "all
@@ -481,8 +481,8 @@
 % Each is exactly the option list the slides used, so switching a slide to
 % the name changes nothing on the page.
 \tikzset{
-	SMHighlight/.style={c_custom_red, very thick, rounded corners},   % red box around part of a figure/table (18x)
-	SMDottedHighlight/.style={densely dotted, thick, c_custom_red},  % red dotted guide line (19x)
+	SMHighlight/.style={SMMarkerColor, very thick, rounded corners},   % red box around part of a figure/table (18x)
+	SMDottedHighlight/.style={densely dotted, thick, SMMarkerColor},  % red dotted guide line (19x)
 	SMArrow/.style={-{Stealth[length=2mm]}},                         % the usual arrow tip (54x)
 }
 
@@ -751,7 +751,7 @@
 \newsavebox{\SMWarningSignBox}
 \newlength{\SMWarningSignW}
 \newlength{\SMWarningSignH}
-\newcommand{\SMWarningSign}[6][c_custom_red]{%
+\newcommand{\SMWarningSign}[6][SMMarkerColor]{%
 	\savebox{\SMWarningSignBox}{\bfseries\color{#1}#4}%
 	\pgfmathsetlength{\SMWarningSignW}{sqrt((#5)*\wd\SMWarningSignBox*(\ht\SMWarningSignBox+\dp\SMWarningSignBox))}%
 	\savebox{\SMWarningSignBox}{\parbox{\SMWarningSignW}{\centering\bfseries\color{#1}#4}}%
@@ -2731,9 +2731,9 @@
 \NewDocumentEnvironment{SMTable}{O{}m}{%
 	\begingroup
 	\ifSM@inblock
-		\arrayrulecolor{c_primary_dark}%
+		\arrayrulecolor{SMBlockBodyText}%
 	\else
-		\arrayrulecolor{c_primary_highlight}%
+		\arrayrulecolor{SMTableRuleColor}%
 	\fi
 	\let\SMTable@gap\@empty
 	\pgfqkeys{/SMTable}{#1}%
@@ -5687,7 +5687,7 @@
 		\begin{tikzpicture}[overlay, remember picture]
 			\node[anchor=north east, inner sep=0pt, outer sep=0pt]
 				at ($(current page.north west)+(\SMTitleframeBoxWidth,-\SMQuoteBoxHeight-\SMQuoteAttributionGap)$)
-				{\normalfont\itshape\color{c_custom_gray} #2};
+				{\normalfont\itshape\color{SMQuoteAttributionColor} #2};
 		\end{tikzpicture}%
 		}%
 	\fi
@@ -5765,7 +5765,7 @@
 % \SMChapterLogoPath's comment for why plain macros need \global\def but
 % beamer's own set-commands don't), but the footer box's fill is read from a
 % plain macro inside a tikz key, same category as \SMChapterLogoPath.
-\colorlet{SMHighlightColor}{c_primary_gray}
+\makeatletter\SM@rolecolour{highlight_fill}{SMHighlightColor}{c_primary_gray}\makeatother
 \newenvironment{highlightframe}[2][t]{%
 	\begingroup
 	\setbeamercolor{frametitle}{bg=SMHighlightColor, fg=\SMHighlightTitleTextColor}% the catalog's role (v10.18.0)
@@ -5808,11 +5808,11 @@
 	\csname SM@topstrip\endcsname% the text below the strip: Top Margin + the strip's height (measured, like any frame)
 	\vbox to 0pt{\vss
 	\begin{tikzpicture}[overlay, remember picture]
-		\node[fill=c_tertiary_yellow, anchor=north west, outer sep=0pt,
+		\node[fill=SMStripFill, anchor=north west, outer sep=0pt,
 		      inner xsep=\SMFrametitleLeftPadding, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
 		      minimum height=11.19pt,
 		      text width=\dimexpr\paperwidth-2\SMFrametitleLeftPadding\relax,
-		      align=left, text=c_primary_dark, font=\fontsize{6.3}{7.5}\selectfont]
+		      align=left, text=c_text_on_accent, font=\fontsize{6.3}{7.5}\selectfont]
 			at ($(current page.north west)+(0,-\SMTitleBarBottomAlign)$)
 			{\foreach \SMStepName [count=\SMStepIndex] in {#1}{%
 				\ifnum\SMStepIndex>1\ $\rightarrow$\ \fi

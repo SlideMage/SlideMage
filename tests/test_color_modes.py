@@ -27,6 +27,7 @@ TEMPLATE = r"""\input{SlideMage_setup}
 \SMSetRole{text}{mine}{c_secondary_yellow}
 \SMSetRole{block_body_fill}{mine}{red}
 \SMSetRole{alerted_block_title_fill}{mine}{blue}
+\SMSetRole{standout_fill}{mine}{green}
 \input{SlideMage_base}
 """
 DECK = r"""\documentclass[aspectratio=169]{beamer}
@@ -36,6 +37,7 @@ DECK = r"""\documentclass[aspectratio=169]{beamer}
 \begin{frame}{Modes}
 \begin{alertblock}{Alert}body\end{alertblock}
 \end{frame}
+\begin{frame}[standout]Standout\end{frame}
 \end{document}
 """
 
@@ -43,7 +45,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not
                                 reason="set SLIDEMAGE_TEX_TESTS and install lualatex to compile")
 
 
-def compile_mode(tmp_path: Path, mode: str | None, flag: bool = False):
+def compile_mode(tmp_path: Path, mode: str | None, flag: bool = False, page: int = 0):
     work = tmp_path / (mode or "base")
     work.mkdir()
     (work / "template.tex").write_text(TEMPLATE, encoding="utf-8")
@@ -58,7 +60,7 @@ def compile_mode(tmp_path: Path, mode: str | None, flag: bool = False):
                    capture_output=True, timeout=300)
     pdf = work / "deck.pdf"
     assert pdf.exists(), (work / "deck.log").read_text(encoding="utf-8", errors="replace")[-2000:]
-    pix = pymupdf.open(pdf)[0].get_pixmap(dpi=72)
+    pix = pymupdf.open(pdf)[page].get_pixmap(dpi=72)
     return pix
 
 
@@ -105,3 +107,8 @@ def test_block_roles_set_the_fill_of_a_block_body_and_title(tmp_path):
     mine, dark = compile_mode(tmp_path, "mine"), compile_mode(tmp_path, "dark")
     assert count(mine, (255, 0, 0)) > 50 and count(dark, (255, 0, 0)) == 0   # block_body_fill
     assert count(mine, (0, 0, 255)) > 50 and count(dark, (0, 0, 255)) == 0   # alerted_block_title_fill
+
+
+def test_the_standout_fill_role_sets_a_standout_frames_background(tmp_path):
+    mine, dark = compile_mode(tmp_path, "mine", page=1), compile_mode(tmp_path, "dark", page=1)
+    assert canvas(mine) == (0, 255, 0) and canvas(dark) != (0, 255, 0)
