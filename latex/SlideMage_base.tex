@@ -229,7 +229,7 @@
 		\SMHrefUnderlineMeasureRefHeights
 		\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
 		\SMHrefUnderlineSetThickness
-		\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+		\raisebox{-0.35ex}[0pt][0pt]{\textcolor{SMLinkUnderline}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
 	}%
 }
 % Underline only text links (2026-10-29, direct instruction): a link whose content contains an
@@ -397,7 +397,7 @@
 \makeatother
 \tikzset{
 	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_text},
-	SMProcess/.style={draw=none, fill=c_tertiary_gray, text=c_primary_dark},
+	SMProcess/.style={draw=none, fill=SMProcessFill, text=SMBlockBodyText},
 }
 
 % The theme's divider frames for \part, \section, \subsection and \subsubsection
@@ -3373,7 +3373,7 @@
 	% beamer's own "frame" isn't a plain \newenvironment etoolbox can patch
 	% that way -- so this resets directly in standardframe's own opening
 	% code instead, exactly where this project already has full control.
-	\color{c_primary_dark}%
+	\color{c_text}%
 	% Defensive: the tokens after \begin{frame} are collected into the frame
 	% body and replayed once per overlay slide, so this clears the side-
 	% footnote collector at the start of every slide's pass -- normally a
@@ -6218,7 +6218,7 @@
 	\SMHrefUnderlineMeasureRefHeights
 	\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
 	\SMHrefUnderlineSetThickness
-	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{c_secondary_blue}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
+	\raisebox{-0.35ex}[0pt][0pt]{\textcolor{SMLinkUnderline}{\rule{\wd\SMHrefTextBox}{\SMHrefUnderlineThickness}}}%
 }
 \newcommand{\SM@nav@link}[2]{{\hypersetup{linkcolor=\SMFooterTextColor}\hyperlink{#1}{\SMLinkUnderline{#2}}}}
 % \SMLink{target}{text} -- a link to a slide (or any \hypertarget) in running

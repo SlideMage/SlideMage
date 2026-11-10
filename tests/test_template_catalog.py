@@ -43,7 +43,8 @@ PROFILE_LENGTHS: set[str] = set()
 PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
-PALETTE_FOR_SLIDES = {"c_true_black", "c_true_white", "c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
+# (v0.15.10: the four block-title fills are read by the setup layer's role colours, not by the base or theme directly.)
+PALETTE_FOR_SLIDES = {"c_secondary_green", "c_secondary_orange", "c_secondary_red", "c_secondary_violet", "c_true_black", "c_true_white", "c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
                       "c_tertiary_orange", "c_tertiary_red", "c_tertiary_violet"}
 # \newfontfamily names a profile may define (v10.9.0: a profile holds the code fonts besides its macros and
 # the font files themselves -- nothing else is a font of the profile's own).
