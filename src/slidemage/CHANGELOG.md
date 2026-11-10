@@ -3872,3 +3872,8 @@ NEW: A steadier step bar.
 - The step bar and the page of the picked step no longer flicker every few seconds.
 - Slides that need their deck no longer have their steps rendered again and again in the background.
 - Section slides no longer say "Rendered without the deck".
+
+v0.15.6 (2026-11-10, every slide rendered again after SlideMage started from another folder): A render's evidence named the framework SlideMage bundles by its absolute path: $SLIDEMAGE_LATEX in the configuration of the fast key, and the search inventory's folder and file names. A one-file build unpacks that framework into a new temporary folder (_MEI...) at every start, and an install or update may move it, so every stored render went stale although no file had changed. The bundled framework is now named "<bundled framework>" in the configuration and the inventory (render_evidence._label), and the inventory lists each search folder's files relative to that folder. Its files themselves were already recorded by their path inside the framework. Stored renders from v0.15.4 and before are rendered once more; v0.15 is not released yet, and its first start renders everything anyway.
+
+NEW: Slide previews stay current when SlideMage starts from another folder.
+- The one-file build no longer renders every slide again at each start.
