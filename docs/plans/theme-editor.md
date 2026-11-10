@@ -2,7 +2,7 @@
 
 Status: **draft for the user's review, nothing of Part C built.** Parts A and B (list personal themes in Settings →
 Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the project) are in v0.14.62
-(PR SlideMage/SlideMage#145, branch `feat/personal-themes-extensions`, not merged).
+(PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0); stage C0 built (v0.15.3).
 
 ## 0. Where this stands (read this first; written 2026-11-09 evening for the next session)
 
@@ -22,7 +22,9 @@ Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into 
 **Decided by the user so far:** per-view themes go in the plan; the roles strategy "in principle"; clean transition over
 aliases; modes not hard-coded. **Nothing else is decided, and nothing may be built before their OK on a stage.**
 
-**Open questions, with my recommendation** (all in section 5; the user had not answered them when this was written):
+**All nine questions answered by the user on 2026-11-10** (1 to 5 as recommended: tier order as written, Graz route A plus B with the round-trip test, form beside the source tab, the form may add a marked block, a purpose-written theme sample deck, block-title text and link colours as the first roles; 6 to 9 as noted in the table). **Stage C0 approved and built** (section 3.7, v0.15.3, branch `feat/theme-per-view`); CR is next, not yet approved.
+
+**Open questions, with my recommendation (kept for the record)** (all in section 5; the user had not answered them when this was written):
 
 | # | Question | My recommendation |
 |---|---|---|
@@ -31,10 +33,10 @@ aliases; modes not hard-coded. **Nothing else is decided, and nothing may be bui
 | 3 | May the form add a marked block to a hand-written theme | yes |
 | 4 | Sample deck for the live render | a purpose-written theme sample deck |
 | 5 | Which framework hooks first | block title text and link colours, as the first roles of CR |
-| 6 | A mode is colours only; Greyscale as shipped stays a theme | yes |
-| 7 | Derived modes live in TeX with explicit lines winning, or only explicit values written by the editor | live defaults, explicit lines override |
-| 8 | One BREAKING release with migration and regression proof; old installed themes refused until updated | yes |
-| 9 | Role names for slides (`c_text`, `c_background`, `c_surface`, `c_line`, `c_muted`, `c_on_accent`, `c_link`) | as listed, final names to be agreed |
+| 6 | A mode is colours only; Greyscale as shipped stays a theme | **ANSWERED 2026-11-10: a mode may change colours AND the logo** (not fonts, margins, bullets); Greyscale stays a theme. See 3.8 |
+| 7 | Derived modes live in TeX with explicit lines winning, or only explicit values written by the editor | **ANSWERED: live defaults in TeX, explicit lines win; add a `colorblind` derivation preset** (also offered by the form's "Add mode") |
+| 8 | One BREAKING release with migration and regression proof; old installed themes refused until updated | **ANSWERED: yes, agreed** |
+| 9 | Role names for slides | **ANSWERED 2026-11-10 (final): `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`** |
 
 **Suggested way on, when the user has answered:** (1) settle 6 to 9 and fold the answers into 3.8; (2) C0 as its own task
 and PR (small, framework-free, fourteen call sites); (3) CR as its own task (this is also the plan for handover task
@@ -382,6 +384,8 @@ already carries the template per render unit (`unit.template`). In the deck the 
 Order: this is its own step, before the form: a small framework-free app change with focused tests (the twelve call
 sites, the wrapper, equivalence, deck settings). The editor's per-view table then edits the same settings line.
 
+**Built (v0.15.3, stage C0, 2026-11-10); what differs from the text above.** Develop had fewer `detect_template` calls than counted (five outside `slide_templates`). Instead of a view-aware function at each call site, `view_themes.preamble_for_view(preamble, view)` returns the preamble as a view sees it and is applied where a view meets a deck: `compiler.wrapper_text` (inline branch for a mapped view), `render_key.unit_for` (so the unit's preamble, template and key follow and `preview_equivalence` needs no change), `preview_target.render` / `render_text`, `batch_render`. `view_themes.template_for` / `templates_used` serve the toolbar colours and `maintenance.on_theme_installed`. The only mode is `dark` (the existing `\SMDarkMode` switch); an entry fully describes its view (an entry without `:dark` turns a dark deck default off). Deck settings, General, has the "Theme per view" table (decks without views skip it). Not done: the Compile-menu one-off; the Presenter app (not checked).
+
 ### 3.8 Colours: palette, roles, modes, and a clean transition
 
 Decided in discussion (2026-11-09): no legacy aliases and no leftovers; dark is not hard-coded; Greyscale-like colour
@@ -404,8 +408,8 @@ cannot fix that; separating the meanings does.
   highlightframe, standout, bullet, alert, progress bar), the five block kinds (title fill, title text, body fill, body
   text), code (keyword, comment, panel, text, inline code) and the quote box. Nine exist as internal roles today
   (`\SMTitleBoxColor` and the others, plus the `SMColor...` names `\SMApplyColorRoles` resolves after the template).
-* **C. Role names a slide can use** as real colour names: `c_text`, `c_background`, `c_surface`, `c_line`, `c_muted`,
-  `c_on_accent`, `c_link` (final names to be decided). `\SMApplyColorRoles`, the one place that already runs after the
+* **C. Role names a slide can use** as real colour names: `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
+  `c_text_on_accent`, `c_link` (final names to be decided). `\SMApplyColorRoles`, the one place that already runs after the
   template, resolves them for the active mode with `\colorlet`. A slide author uses a role for "follow the theme and the
   mode" and a slot for "this exact colour".
 
@@ -413,7 +417,7 @@ cannot fix that; separating the meanings does.
 
 * A theme lists its modes in its header (`% SlideMage modes: light, dark, grey`, ids with labels). The framework knows no
   mode name. The first is the **base mode** (conventionally `light`); the others inherit everything they do not set.
-* A mode is a **colour scheme only**: palette overrides and role assignments. Fonts, margins, bullets and footnote
+* **Answer of 2026-11-10 (Q6): a mode is a colour scheme plus the logo**: palette overrides, role assignments, and which logo file the theme shows (a dark mode typically needs the white logo; a `\SMSetLogo{mode}{file}` data line, falling back to the base mode's logo). Fonts, margins, bullets and footnote markers still belong to the theme. **Q7:** a third derivation preset joins `dark` and `grey`: `colorblind` (palette remapped to a colour-vision-safe set with roles following; the exact set is chosen when CR is built and shown on the sample deck). The bullet as first written: a mode is a **colour scheme only**: palette overrides and role assignments. Fonts, margins, bullets and footnote
   markers are the theme's design, so a mode never changes them; that is the line between a mode and a theme. Greyscale as
   it ships (Latin Modern Roman, en dashes, numbered footnotes, taller title bar, wider margins, grey palette) stays a
   **theme**; a `grey` mode gives any theme a grey version of its own colours.
@@ -442,7 +446,7 @@ included. This is the third such change.
   internals. Nothing is kept as an alias. A palette name keeps one meaning (a physical colour).
 * **Migration of slides:** each use of the role-like names (`c_primary_dark`, `c_primary_white`, `c_custom_gray`, and the
   accents when used as text or lines) is rewritten by context to a role: lines, rules and text on the canvas to `c_text`;
-  dark text on a coloured fill to `c_on_accent`; an ink-filled box with white text to `c_text` on `c_background`.
+  dark text on a coloured fill to `c_text_on_accent`; an ink-filled box with white text to `c_text` on `c_canvas`.
   What the rules cannot classify is left as it is **and listed in the compat report** with file and line.
 * **Proof:** in the base mode the roles resolve to the same colours as before, so `tools/framework_regression.py` must
   show identical PDFs before and after for the decks of the real project. Dark and grey need a look: the report lists how
@@ -485,4 +489,4 @@ to "Add from file…" in Settings → Themes.
 6. **Modes (3.8):** is "a mode is colours only; fonts, margins and bullets are the theme" the right line, so Greyscale as shipped stays a theme and a `grey` mode is separate?
 7. **Derived modes:** live defaults in TeX (a theme that declares `dark` with `derive=dark` works at once) with explicit lines overriding, or only explicit values written by the editor?
 8. **Clean cut:** one BREAKING release with the compat migration of slides and the regression proof, and the themes released with it. Agreed, including that old installed themes are refused until updated?
-9. **Role names for slides:** `c_text`, `c_background`, `c_surface`, `c_line`, `c_muted`, `c_on_accent`, `c_link`; changes?
+9. **Role names for slides:** `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`; changes?

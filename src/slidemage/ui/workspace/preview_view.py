@@ -36,7 +36,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
@@ -79,6 +79,7 @@ PRELOAD_PAUSE = 0.01     # seconds the read-ahead worker rests before each store
 PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is asked again
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
 LOADING = "Loading…"
+SOURCE_CHANGED = "Source changed"   # the page shows an older text: said on the page and in the status
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
 BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
@@ -321,12 +322,13 @@ class PageView(QWidget):
         self._scaled: Optional[tuple[QSize, QPixmap]] = None    # the pixmap at the page's size: not rescaled per paint
         self.message = ""
         self.dimmed = False     # the page of the slide shown before, kept faint while the new one loads
+        self.badge = ""         # a short note drawn on the page's top-right corner
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
 
-    def show_image(self, pixmap: QPixmap) -> None:
-        self.pixmap, self.message, self._scaled, self.dimmed = pixmap, "", None, False
+    def show_image(self, pixmap: QPixmap, badge: str = "") -> None:
+        self.pixmap, self.message, self._scaled, self.dimmed, self.badge = pixmap, "", None, False, badge
         self.render_button.hide()
         self.update()
 
@@ -396,6 +398,14 @@ class PageView(QWidget):
                 painter.setOpacity(0.35)
             painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
             painter.setOpacity(1.0)
+            if self.badge:
+                metrics = painter.fontMetrics()
+                box = QRectF(0, 0, metrics.horizontalAdvance(self.badge) + 16, metrics.height() + 8)
+                box.moveTopRight(page.topRight() + QPointF(-8, 8))
+                painter.setBrush(QColor(tokens.warning_solid))
+                painter.drawRoundedRect(box, RADIUS_SM, RADIUS_SM)
+                painter.setPen(QColor(tokens.on_solid))
+                painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self.badge)
         elif self.message:
             painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
@@ -500,6 +510,8 @@ class PreviewPane(Surface):
         self._step_image: Optional[tuple[tuple, int, QImage]] = None   # the picked step of a stored render, decoded off-thread
         self._scans: dict[tuple, reveal_steps.SlideScan] = {}
         self._step_failed: set[tuple] = set()      # page lists that did not render: not asked for again
+        self._step_recheck: set[tuple] = set()     # saved page lists shown until the store confirms or replaces them
+        self._step_stored: set[tuple] = set()      # page lists read from the store, not rendered in this session
         self._context_modes: dict[tuple, Optional[str]] = {}   # (target key, view, language) -> deck_context mode
         self._auto_rendered: set[tuple] = set()    # (target key, view, language, mtime) of slides rendered on show
         # An edit of the open deck, (failed title, summary, change(path, text), cleanup) -> done: the slide list's
@@ -643,8 +655,9 @@ class PreviewPane(Surface):
     def _poll_selection(self):
         if self._target is not None and self.isVisible() and not self._closed:
             self._stored_asked = None
-            self._step_pages = OrderedDict((key, pages) for key, pages in self._step_pages.items() if key[0] == 'draft')
-            self._step_pixmap = self._step_image = None
+            # Ask the store again for the saved step lists, but keep showing them until it answers: dropping them
+            # here put "Counting…" in the step bar and the last step on the page every 5 s.
+            self._step_recheck = {key for key in self._step_pages if key[0] != 'draft'}
             self._refresh()
 
     def _image(self, target: PreviewTarget) -> Optional[tuple[QPixmap, bool, str]]:
@@ -700,7 +713,10 @@ class PreviewPane(Surface):
                 note = {'current': '', 'previous': 'Previous render; render to verify current source and settings.',
                         'reference': 'Instructor reference; not verified for this deck, view or reveal steps.'}[state]
                 return pixmap, state == 'current', note
-            return None
+            # Nothing stored shows this text (typing): keep the last page of this slide, marked as older
+            held = self._pixmaps.get(key)
+            older = self._adhoc[1] if adhoc_here else held.pixmap if held is not None else None
+            return (older, False, SOURCE_CHANGED) if older is not None else None
         held = self._pixmaps.get(key)
         if held is not None and (held.mtime, held.content_hash) == (mtime, text_hash):
             return held.pixmap, False, CHECKING
@@ -1024,7 +1040,7 @@ class PreviewPane(Surface):
                 if not busy_here:
                     self._render_context_slide(target)
             else:
-                self._page.show_image(found[0])
+                self._page.show_image(found[0], SOURCE_CHANGED if found[2] == SOURCE_CHANGED else "")
                 if found[2]:
                     status, tone, icon, can_render = found[2], "info" if found[1] else "warning", "edit_note", not found[1]
                 elif not found[1]:
@@ -1081,10 +1097,10 @@ class PreviewPane(Surface):
 
     def _steps_key(self, target: PreviewTarget, view: str, language: str, draft: bool,
                    stamp) -> tuple:
-        """Pane state for an all-steps selection or a temporary buffer render."""
+        """Pane state for an all-steps selection or a temporary buffer render; a saved one follows the file's mtime."""
         identity = target.key[1:3] + target.key[5:]       # not the macro, the versions or the steps of the call
         return ("draft" if draft else "saved", str(target.source_path), identity, view, language,
-                hash(stamp) if draft else self._generation)
+                hash(stamp) if draft else (self._generation, _mtime(target.source_path)))
 
     def _scan_of(self, path: Path, text: Optional[str], stamp) -> reveal_steps.SlideScan:
         key = (str(path), stamp if text is not None else _mtime(path))
@@ -1157,7 +1173,7 @@ class PreviewPane(Surface):
                             render: Optional[Callable[[], None]] = None) -> None:
         """Read the chooser's step pages off-thread; `render` runs if none were found for this selection."""
         background = getattr(self.app, "background", None)
-        if key in self._step_pages:
+        if key in self._step_pages and key not in self._step_recheck:
             return
         if background is None:
             if render is not None:
@@ -1185,16 +1201,25 @@ class PreviewPane(Surface):
 
     def _steps_found(self, key: tuple, found) -> None:
         render = self._count_after.pop(key, None)
+        recheck = key in self._step_recheck
+        self._step_recheck.discard(key)
         if found is None:
+            if recheck and key in self._step_stored:
+                # The store no longer has them as current (settings, dependencies): count again. Pages this session
+                # rendered stay: a slide that needs its deck never has standalone steps stored (that looped).
+                self._step_pages.pop(key, None)
+                self._step_stored.discard(key)
+                self._step_pixmap = None
+                self._refresh()
             if render is not None:
                 render()
             return
         pages, step, image = found
+        if recheck and self._step_pages.get(key) == pages:
+            return                          # the 5 s re-check found what is shown
         self._step_pixmap = None
-        self._step_pages[key] = pages
-        self._step_pages.move_to_end(key)
-        while len(self._step_pages) > STEP_CACHE:
-            self._step_pages.popitem(last=False)
+        self._keep_steps(key, pages)
+        self._step_stored.add(key)
         if image is not None:
             self._step_image = (key, step, image)
         self._refresh()
@@ -1263,11 +1288,16 @@ class PreviewPane(Surface):
             self.app.log(f"    (reveal steps not counted: {error})")
             return
         self._step_failed.discard(key)
+        self._keep_steps(key, pages)
+        self._refresh()
+
+    def _keep_steps(self, key: tuple, pages: list[bytes]) -> None:
         self._step_pages[key] = pages
         self._step_pages.move_to_end(key)
+        self._step_stored.discard(key)
         while len(self._step_pages) > STEP_CACHE:
-            self._step_pages.popitem(last=False)
-        self._refresh()
+            old, _ = self._step_pages.popitem(last=False)
+            self._step_stored.discard(old)
 
     def _on_tick_toggled(self, view: str, step: int) -> None:
         """A tick of the step bar was clicked: add the step to (or take it from) what `view` typesets at this place of
@@ -1361,7 +1391,7 @@ class PreviewPane(Surface):
             return False, ("The slide's own frame decides which steps exist (\\begin{frame}<spec> or "
                            "allowframebreaks); \\slidestep has no effect on it.")
         if draft:
-            saved = self._step_pages.get(("saved",) + key[1:5] + (self._generation,)) \
+            saved = self._step_pages.get(self._steps_key(self._target, key[3], key[4], False, None)) \
                 if self._target is not None else None
             if saved is None or len(saved) != counts[view]:
                 return False, "Save the slide to edit its steps: the editor buffer may have other steps."
@@ -1383,7 +1413,8 @@ class PreviewPane(Surface):
             bar.setVisible(False)
             return
         key, text, draft, scan = self._current_steps(target)
-        if key not in self._step_pages and key[0] != 'draft' and key not in self._step_failed and not self._defer_checks:
+        if ((key not in self._step_pages or key in self._step_recheck) and key[0] != 'draft'
+                and key not in self._step_failed and not self._defer_checks):
             self._adopt_stored_steps(target, key)           # a current render in the store: no counting at all
         pages = self._step_pages.get(key)
         if pages is None:
@@ -1545,6 +1576,8 @@ class PreviewPane(Surface):
         self._lookups.clear()
         self._count_after.clear()
         self._step_pages.clear()
+        self._step_recheck.clear()
+        self._step_stored.clear()
         self._step_pixmap = self._step_image = None
         self._stored = None
         self._record = None

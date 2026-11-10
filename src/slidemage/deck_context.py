@@ -44,11 +44,11 @@ REASON_TEXT = {
 
 # What a slide's own text uses that only means something inside a deck. The footer's frame number is not here:
 # every slide has it, and the frame number line of the preview wrapper gives it.
+# Nor is sectionframe: it takes its title from its argument and reads no section data of the deck.
 _REASON_PATTERNS = (
     ("contents", re.compile(r"\\(?:tableofcontents|SMDeckAgenda|SMChapterAgenda|SMSubsectionAgenda)(?![A-Za-z@])")),
     ("section", re.compile(r"\\(?:insertsection|insertsubsection|insertsectionhead|insertsubsectionhead|"
-                           r"insertsectionnumber|insertsubsectionnumber|secname|subsecname)(?![A-Za-z@])"
-                           r"|\\begin\s*\{sectionframe\}")),
+                           r"insertsectionnumber|insertsubsectionnumber|secname|subsecname)(?![A-Za-z@])")),
     ("numbers", re.compile(r"\\(?:inserttotalframenumber|insertpresentationendpage|insertframenumber|"
                            r"insertpagenumber|progressstrip)(?![A-Za-z@])")),
     ("references", re.compile(r"\\(?:ref|pageref|cref|Cref|autoref|nameref|hyperlink)(?![A-Za-z@])")),
