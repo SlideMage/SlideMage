@@ -3907,3 +3907,8 @@ v0.15.12 (2026-11-10, direct request: colour roles, third framework slice): The 
 
 NEW: Every part of a slide the framework draws can have its own colour per mode.
 - Not visible in the app yet.
+
+v0.15.13 (2026-11-10, direct request: colour modes, the app side): A deck chooses the colour mode of its theme in Deck settings -> General ("Colours", in place of the "Dark slides" check box), and each view can have its own mode in "Theme per view". A template says which modes it has in its header, `% SlideMage modes: light, dark, grey=Greyscale` (the first is its base mode, a label may follow `=`; the older `% SlideMage dark mode: true` still means light and dark), and declares the same modes to the framework with \SMDeclareMode. The app writes the mode as the deck's dark switch for `dark` (as before) and as \newcommand{\SMModeOverride}{<id>} before the template for any other mode, in the deck's preamble and in the preamble each view sees, so renders and PDFs of different modes are never shared. No shipped template declares modes yet: that waits for the migration of slides to the role colours, because a slide that still uses `c_primary_dark` for ink would not turn light. A deck that is dark today stays dark. This release also fixes what v0.15.9 broke in the toolbar: the Color menu read the colour-blind preset's accents and three role colours as palette swatches (the framework now defines them in a form the app's palette reader skips), which a test of the menu caught only now.
+
+NEW: Choose a theme's colour mode for the deck and for each view.
+- The Dark slides check box became a Colours list of the modes the theme offers.

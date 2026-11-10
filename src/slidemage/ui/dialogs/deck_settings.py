@@ -20,7 +20,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 
-from ... import deck_settings, languages, project, view_themes
+from ... import deck_settings, languages, project
 from ...deck_editor import VIEWS
 from ...deck_scan import OPEN_PDF_CHOICES, Deck
 from ...deck_settings import DeckSettings
@@ -81,16 +81,16 @@ class DeckSettingsSheet(ModalSheet):
         self.plugin_button.clicked.connect(self._on_plugin_action)
 
         self._initial = self._values()
-        self.template_combo.currentIndexChanged.connect(self._sync_dark_mode)
+        self.template_combo.currentIndexChanged.connect(self._sync_mode_combo)
         for widget in (self.template_combo, self.language_combo, self.open_pdf_combo):
             widget.currentIndexChanged.connect(self._sync_footer)
         for widget in (self.footer_edit, *self.output_edits.values()):
             widget.textChanged.connect(self._sync_footer)
-        self.dark_mode_check.toggled.connect(self._sync_footer)
+        self.mode_combo.currentIndexChanged.connect(self._sync_footer)
         self.appendix_check.toggled.connect(self._sync_footer)
         for view in self.view_combos:
             self.view_combos[view].currentIndexChanged.connect(self._sync_footer)
-            self.view_dark[view].toggled.connect(self._sync_footer)
+            self.view_mode[view].currentIndexChanged.connect(self._sync_footer)
         for check in self.footer_checks.values():
             check.toggled.connect(self._sync_footer)
         for _tab, page in self.plugin_tabs.values():
@@ -134,15 +134,12 @@ class DeckSettingsSheet(ModalSheet):
             edit.setText(settings.output_folders.get(key, ""))
         for key, check in self.footer_checks.items():
             check.setChecked(key not in settings.footer_hide)
-        self.dark_mode_check.setChecked(settings.dark_mode)
-        self._sync_dark_mode()
+        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.dark_mode, settings.mode))
         self._view_modes = {view: mode for view, (_key, mode) in settings.view_themes.items()}
         for view, combo in self.view_combos.items():
             chosen = settings.view_themes.get(view, ("", ""))[0]
             combo.setCurrentIndex(max(combo.findData(chosen), 0))
-            self._sync_view_dark(view)
-            self.view_dark[view].setChecked(self._view_modes.get(view) == view_themes.DARK
-                                            and self.view_dark[view].isEnabled())
+            self._fill_view_mode(view, self._view_modes.get(view, ""))
         self._initial = self._values()
         self._sync_footer()
 
@@ -174,14 +171,13 @@ class DeckSettingsSheet(ModalSheet):
             "the language of its transcript and of \\multilingualtext.")
         layout.addWidget(columns(Field("Template", self.template_combo), Field("Language", self.language_combo)))
 
-        self.dark_mode_check = QCheckBox("Dark slides")
-        self.dark_mode_check.setToolTip(
-            "Use a dark background for this deck's slides and PDFs. "
-            "Available when the selected template supports dark slides.")
-        self.dark_mode_check.setChecked(settings.dark_mode)
-        self._sync_dark_mode()
-        layout.addWidget(self.dark_mode_check)
-        layout.addWidget(caption("Dark slides are available when the selected template supports them."))
+        self.mode_combo = QComboBox()
+        self.mode_combo.setToolTip(
+            "The colour mode of this deck's slides and PDFs, for example a dark background. "
+            "Available when the selected template declares more than one mode.")
+        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.dark_mode, settings.mode))
+        layout.addWidget(Field("Colours", self.mode_combo))
+        layout.addWidget(caption("A template declares its colour modes (light, dark, grey ...); a mode changes colours only."))
         self._build_view_themes(layout, entries)
 
         self.footer_edit = QLineEdit(settings.footer_text)
@@ -266,7 +262,7 @@ class DeckSettingsSheet(ModalSheet):
         return (self.template_combo.currentData(), self.language_combo.currentData(), self.footer_edit.text(),
                 tuple(edit.text() for edit in self.output_edits.values()),
                 self.appendix_check.isChecked(), self.open_pdf_combo.currentData(), self._footer_hide(),
-                self.dark_mode_check.isEnabled() and self.dark_mode_check.isChecked(),
+                self._mode_settings(),
                 tuple(sorted(self._view_theme_entries().items())))
 
     def dirty(self) -> bool:
@@ -282,14 +278,14 @@ class DeckSettingsSheet(ModalSheet):
             appendix_toc=self.appendix_check.isChecked(),
             open_pdf=self.open_pdf_combo.currentData() or "instructor",
             footer_hide=self._footer_hide(),
-            dark_mode=self.dark_mode_check.isEnabled() and self.dark_mode_check.isChecked(),
+            dark_mode=self._mode_settings()[0], mode=self._mode_settings()[1],
             view_themes=self._view_theme_entries() if self.deck.supports_version else None)
 
     def _build_view_themes(self, layout, entries: list[tuple[str, str]]) -> None:
-        """"Theme per view": a theme (and dark or not) for each view, so one deck is dark for projection and light for
+        """"Theme per view": a theme and colour mode for each view, so one deck is dark for projection and light for
         print. A view left at "Same as the deck" has no entry. Decks without views skip it."""
         self.view_combos: dict[str, QComboBox] = {}
-        self.view_dark: dict[str, QCheckBox] = {}
+        self.view_mode: dict[str, QComboBox] = {}
         self._view_modes = {view: mode for view, (_key, mode) in self.original.view_themes.items()}
         if not self.deck.supports_version:
             return
@@ -304,27 +300,39 @@ class DeckSettingsSheet(ModalSheet):
             for key, label in entries + ([(chosen, f"{chosen} (not found in this project)")] if chosen and chosen not in known else []):
                 combo.addItem(label, key)
             combo.setCurrentIndex(max(combo.findData(chosen), 0))
-            dark = QCheckBox("Dark")
-            dark.setChecked(self._view_modes.get(view) == view_themes.DARK)
+            mode = QComboBox()
             grid.addWidget(QLabel(view.replace("-", " ").capitalize()), row, 0)
             grid.addWidget(combo, row, 1)
-            grid.addWidget(dark, row, 2)
-            self.view_combos[view], self.view_dark[view] = combo, dark
-            combo.currentIndexChanged.connect(lambda _i, v=view: self._sync_view_dark(v))
-            self._sync_view_dark(view)
+            grid.addWidget(mode, row, 2)
+            self.view_combos[view], self.view_mode[view] = combo, mode
+            self._fill_view_mode(view, self._view_modes.get(view, ""))
+            combo.currentIndexChanged.connect(lambda _i, v=view: self._fill_view_mode(v, self._view_mode_choice(v)))
         layout.addWidget(Field("Theme per view", grid_box))
         layout.addWidget(caption(
             "A view can use another theme than the deck's, for example a dark one for the instructor view and a light "
             "one for the handouts. Written as a comment line the app reads; compiling the deck outside SlideMage uses "
             "the deck's own template."))
 
-    def _sync_view_dark(self, view: str) -> None:
+    def _view_mode_choice(self, view: str) -> str:
+        """The mode a view's drop-down shows now ("" for the theme's base mode)."""
+        combo = self.view_mode[view]
+        return (combo.currentData() or "") if combo.isEnabled() else self._view_modes.get(view, "")
+
+    def _fill_view_mode(self, view: str, chosen: str) -> None:
+        """The modes of the theme a view uses, the base mode first (data ""); a mode the theme does not declare stays
+        listed, so saving does not drop it silently."""
         key = self.view_combos[view].currentData() or ""
-        check = self.view_dark[view]
-        supported = bool(key) and deck_settings.template_supports_dark_mode(self._project_root, key)
-        check.setEnabled(supported)
-        if not supported:
-            check.setChecked(False)
+        modes = deck_settings.template_modes(self._project_root, key) if key else []
+        combo = self.view_mode[view]
+        combo.blockSignals(True)
+        combo.clear()
+        for position, (mode_id, label) in enumerate(modes):
+            combo.addItem(label, "" if position == 0 else mode_id)
+        if chosen and combo.findData(chosen) < 0 and modes:
+            combo.addItem(f"{chosen} (not in this theme)", chosen)
+        combo.setCurrentIndex(max(combo.findData(chosen), 0))
+        combo.setEnabled(len(modes) > 1)
+        combo.blockSignals(False)
 
     def _view_theme_entries(self) -> dict[str, tuple[str, str]]:
         entries = {}
@@ -332,14 +340,37 @@ class DeckSettingsSheet(ModalSheet):
             key = combo.currentData() or ""
             if not key:
                 continue
-            kept = self._view_modes.get(view, "")
-            mode = view_themes.DARK if self.view_dark[view].isChecked() else (kept if kept not in ("", view_themes.DARK) else "")
-            entries[view] = (key, mode)
+            mode_combo = self.view_mode[view]
+            entries[view] = (key, (mode_combo.currentData() or "") if mode_combo.isEnabled() else "")
         return entries
 
-    def _sync_dark_mode(self) -> None:
-        self.dark_mode_check.setEnabled(deck_settings.template_supports_dark_mode(
-            self._project_root, self.template_combo.currentData() or ""))
+    def _template_modes(self) -> list[tuple[str, str]]:
+        return deck_settings.template_modes(self._project_root, self.template_combo.currentData() or "")
+
+    def _fill_mode_combo(self, chosen: str) -> None:
+        """The modes of the deck's template, the base mode first. A mode the template does not declare stays listed (the
+        deck says it), so saving does not drop it silently; with fewer than two modes the drop-down is off."""
+        modes = self._template_modes()
+        combo = self.mode_combo
+        combo.blockSignals(True)
+        combo.clear()
+        for mode_id, label in modes:
+            combo.addItem(label, mode_id)
+        if chosen and combo.findData(chosen) < 0 and modes:
+            combo.addItem(f"{chosen} (not in this template)", chosen)
+        combo.setCurrentIndex(max(combo.findData(chosen), 0))
+        combo.setEnabled(len(modes) > 1)
+        combo.blockSignals(False)
+
+    def _sync_mode_combo(self) -> None:
+        """The template changed: its modes replace the list; the mode stays when the new template has it."""
+        self._fill_mode_combo(self.mode_combo.currentData() or "")
+
+    def _mode_settings(self) -> tuple[bool, str]:
+        """(dark_mode, mode) the drop-down stands for; nothing when the template offers no choice."""
+        if not self.mode_combo.isEnabled():
+            return False, ""
+        return deck_settings.mode_to_settings(self._template_modes(), self.mode_combo.currentData() or "")
 
     def _footer_hide(self) -> tuple[str, ...]:
         return tuple(key for key, check in self.footer_checks.items() if not check.isChecked())
