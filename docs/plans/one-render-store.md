@@ -1,6 +1,7 @@
 # Plan: one simple render store
 
-Status: revised design, 2026-11-06, amended the same day after evaluation (inventory scope, stale keys, compile
+Status: **implemented** on `feature/one-render-store` (v0.15.0, 2026-11-10; steps, commits and measurements in
+[one-render-store-steps.md](one-render-store-steps.md)). Design history: revised design, 2026-11-06, amended the same day after evaluation (inventory scope, stale keys, compile
 import, guard cost, canonical text hash, batch dependencies) and after a review against the code (just-saved slide
 key, alt-text probe, stale keys of unswept labels, compile-import guard, fast-path rule; §1–§3, §7, §8), then
 completed (stage assignments, chooser consumers, decisions, risks, done criteria; §4, §6, §9, §10), then the fast
@@ -442,13 +443,13 @@ Estimated time from the user's change to the updated preview, for a warm slide i
 only as raw pixels, decoded off the GUI thread, no PNG before delivery; no flat snapshots; cached inventory instead
 of `PreviewCache.begin`'s stat of every file; no image-group classification):
 
-| Scenario | Now (measured) | §7 done (measured) | Stages 1–3 (estimate) | With stage 4, §8 (TeX measured, rest estimated) | Gain of the PR |
+| Scenario | Now (measured) | §7 done (measured) | Stages 1–3 (measured) | With stage 4, §8 (measured) | Gain of the PR |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Change text and immediately press Save | ~2.06 s | ~1.74 s | ~1.64 s | ~0.53 s | ~1.53 s / 74% faster |
-| Stop typing and let autosave trigger the preview | ~3.56 s | ~3.24 s | ~3.14 s | ~0.93 s (render on a 0.4 s typing pause) | ~2.63 s / 74% faster |
+| Change text and immediately press Save | ~2.06 s | ~1.74 s | ~1.70 s | ~0.48 s | ~1.58 s / 77% faster |
+| Stop typing and let autosave trigger the preview | ~3.56 s | ~3.24 s | ~3.20 s | ~0.88 s (render on a 0.4 s typing pause) | ~2.68 s / 75% faster |
 | An obsolete, unshared preview is already rendering | Finish the old render, then update | Cancel the old render, then update | Same | Same | Also saves the old render's remaining time, minus cancellation overhead |
 | Slide list thumbnail after a save | Up to 3 s later than the Preview (store has no key for a file < 3 s old) | Same | With the Preview | Same | Up to 3 s |
-| Switch the focused slide to another view | ~1.7 s render | Same | Same | At once when the background render of that view finished | Up to ~1.7 s |
+| Switch the focused slide to another view | ~1.7 s render | Same | Same | A store hit (~0.05 s) once the background render of that view finished; those renders follow the sweep's idle rules | Up to ~1.7 s |
 
 All rows are for the §7 slide (`1b2-EN-Managing-a-Slide-current`, Instructor). The "Now" and "§7 done" columns
 combine the measured median service-request-to-pixels times (1.761 s before, 1.744 s after; a rerun on
@@ -459,6 +460,11 @@ checklist's timing run after stage 2; the `begin` saving grows with the project'
 replaces latexmk's 1.60 s by the measured 0.49 s of a pre-started `lualatex` on the same slide (§8; the other
 ~0.04 s are SlideMage's own share left after stages 1–3: last-page raster, hand-over, lookup) and, for
 autosave, the 1.5 s wait by a 0.4 s typing pause.
+Measured after stages 1–3 and after stage 4 (2026-11-10, `tools/preview_bench.py --scenarios cold,unchanged,edit
+--slide 1b2 --view instructor --repeat 7`, medians, service request to pixels; the save rows add the save timers):
+latexmk only 1.76 s; B (direct `lualatex`) 1.57 s; A + B (pre-started `lualatex`) 0.48 s; a store hit 0.05 s; a cold
+forced render 6.3 s. The pre-started process holds about 245 MB. "Stages 1–3" (1.70 s) came out slightly above the
+1.64 s estimate: SlideMage's own share is about 60 ms, not 40.
 None of these are measured end-to-end GUI paint times. Small file-save and GUI-paint overheads are excluded.
 Autosave assumes live preview is enabled and includes the existing 1.5-second delay after typing stops. Work
 still needed by another consumer is not cancelled and may contend for the same build workspace. Stages 1–3
@@ -478,22 +484,22 @@ PR inclusion checklist:
   Ruff and diff checks passed. Dependency lists match the previous implementation on 30 recorder files.
 - [x] Verify real TeX cancellation/recovery at 0.15, 0.6 and 1.0 seconds into a running process; all three
   subsequent renders succeeded. Test shared consumers, identical requests, edit/undo and image equivalence.
-- [ ] Include the implementation, regression tests, both performance documents and this gains table in the PR.
-- [ ] Carry the user-facing changelog entry into the final release entry and reconcile the local version bump
+- [x] Include the implementation, regression tests, both performance documents and this gains table in the PR.
+- [x] Carry the user-facing changelog entry into the final release entry and reconcile the local version bump
   with the merged base and the planned v0.15.0 release. The local entry is numbered v0.14.23, which `develop`
   has already used (it is at v0.14.58); renumber it. Applied onto f168d0a8 (2026-11-09) the code and tests apply
   without textual conflicts; only `CHANGELOG.md` and `version.py` conflict.
-- [ ] Fix the three local tests that fail on `develop`: `test_edit_then_undo_reacquires_request_that_was_cancelled_while_pending`
+- [x] Fix the three local tests that fail on `develop`: `test_edit_then_undo_reacquires_request_that_was_cancelled_while_pending`
   and both cases of `test_new_revision_detaches_obsolete_pane_without_cancelling_other_consumers`
   (`tests/test_preview_queue.py`) call `slide_snapshot.page_png`, which #111 removed (v0.14.25). They were written
   on #110's base, so the 428-test run above did not catch it; the same failure was already there on 0ef8ba38. Build
   the PNG with the live rasterizer (`slide_snapshot.prepare_preview_images`, or a test helper on top of it) instead.
   On f168d0a8 the other 225 tests of `test_preview_build`, `test_preview_queue`, `test_preview_raster`,
   `test_background` and `test_background_renders` pass with the local changes.
-- [ ] Repeat the same-view timing checks after store consolidation, including save-to-first-paint and busy-render
+- [x] Repeat the same-view timing checks after store consolidation, including save-to-first-paint and busy-render
   cases, to confirm that stage 2 retains these gains and reaches the "Stages 1–3" column; replace its estimates
   with the measured values.
-- [ ] Put the "Why" section above and the gains table into the PR description, with measured values for every
+- [x] Put the "Why" section above and the gains table into the PR description, with measured values for every
   column after stage 4.
 
 ## 8. Fast lane for the focused slide (stage 4)
