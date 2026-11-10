@@ -459,6 +459,29 @@ included. This is the third such change.
   second-number version bump with a BREAKING paragraph, against the staged route with aliases that would have cost
   nothing at the start and something forever. The regression proof makes the base-mode part checkable.
 
+**Built: CR slice F1, the framework side (v0.15.9, branch `feat/color-roles-framework`).** Additive: nothing is removed, so
+this is not the BREAKING release yet; every old name and flag still works, and in the base mode the PDFs are identical
+(tools/framework_regression.py, 873 pages). It lives in `SlideMage_setup.tex` (section "Colour modes and role colours"), is
+resolved by `\SMApplyColorRoles` (which calls `\SM@applymode`) and is read by the theme and the base.
+
+* **Data lines, as in the plan:** `\SMDeclareMode{id}{derive}` (the first declared is the base mode), `\SMSetRole{role}{mode}{colour}`,
+  `\SMSetColor{name}{mode}{model}{spec}`. A line of a mode that is not the active one does nothing.
+* **How a deck chooses the mode (changed from the text above):** the wrapper defines the macro `\SMModeOverride` before the
+  template (`\newcommand{\SMModeOverride}{dark}`), like `\SMDarkMode`, not a call. Order: `\SMModeOverride`, else `dark` when
+  `\SMDarkMode` is defined, else the base mode. `view_themes` does not write it yet (its non-dark modes still have no effect).
+* **Presets** (`derive`): `dark` (canvas and card from `c_primary_dark` mixed 17 % and 23 % with white; text, line and link white;
+  text on an accent black), `grey` (every palette colour to its grey), `colorblind` (Okabe-Ito accents). Order: preset, palette
+  lines, role lines, so an explicit line wins.
+* **Roles with colour names:** `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`, `c_text_on_accent`, `c_link`. The
+  framework reads them for body text, footnotes, links, buttons, the canvas and `SMCard`. **Roles that set a catalog hook:**
+  `title_fill`, `title_text`, `footer_fill`, `footer_text`, `bullet`, `alert`, `progress`, `block_title_text`.
+  `c_true_black` and `c_true_white` are framework colours.
+* **Not done (the next slices):** the other ~20 roles (block fills and bodies, code, quote box, link underline, standout...);
+  moving the framework's remaining `c_primary_dark` uses (table rules, block-body text, bullets in blocks) to roles; the
+  app side (the wrapper writing `\SMModeOverride`, a mode drop-down, the header `% SlideMage modes:` line); the slide migration
+  with `compat.py`; removing `\SMDarkMode` and the flip of `c_primary_dark`; the themes' releases. In a non-base mode a slide that
+  uses `c_primary_dark` as ink does not turn light until it is migrated to `c_text`.
+
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |

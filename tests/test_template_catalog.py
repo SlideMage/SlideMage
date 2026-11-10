@@ -21,7 +21,13 @@ SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideM
 # moved nothing; the other two were renamed.
 REMOVED = {"SMFootlineHeight", "SMFootlineDepth", "SMRightFooterPadding"}
 RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep": "SMSideFootnoteTitleBlockSep"}
-NOT_HOOKS = {"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)
+# v0.16.0: the colour-mode layer (setup layer, section "Colour modes and role colours"): its internals, and the data lines a
+# theme writes (declared, not hooks a template reads).
+MODE_LAYER = {"SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
+              "SM@preset@grey", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
+              "SMDeclareMode", "SMSetColor", "SMSetRole"}
+NOT_HOOKS = ({"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)
+             | MODE_LAYER)
 # The names the base derives (v10.7.0, v10.8.0, v10.9.0): the setup layer holds an error-raising macro under each, so a template or a
 # profile that sets one is told; they are in the catalog's text but are not hooks.
 DERIVED = {"SMContentTopAlign", "SMTitleBarBottomAlign", "SMFootnoteRightShift", "SMFooterRightShift",
@@ -37,7 +43,7 @@ PROFILE_LENGTHS: set[str] = set()
 PROFILE_MACROS = {"SMFontAscender", "SMLinespread", "SMParskip", "SMCardHeadingFont"}
 # Palette colors only slides read (the manual's slide 1pf shows them): a template still redefines them, but
 # neither the base nor the theme uses them. Any other palette color nothing reads is a finding.
-PALETTE_FOR_SLIDES = {"c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
+PALETTE_FOR_SLIDES = {"c_true_black", "c_true_white", "c_custom_brown", "c_custom_green", "c_secondary_yellow", "c_tertiary_blue", "c_tertiary_green",
                       "c_tertiary_orange", "c_tertiary_red", "c_tertiary_violet"}
 # \newfontfamily names a profile may define (v10.9.0: a profile holds the code fonts besides its macros and
 # the font files themselves -- nothing else is a font of the profile's own).
@@ -67,7 +73,7 @@ def catalog() -> dict[str, set[str]]:
     return {
         "lengths": defined(setup, ("newlength",)) - NOT_HOOKS,
         "macros": defined(setup, ("newcommand",)) - NOT_HOOKS - DERIVED,
-        "colors": defined(setup, ("definecolor",)),
+        "colors": defined(setup, ("definecolor",)) - {"c_true_black", "c_true_white"},  # physical colours no template sets
     }
 
 

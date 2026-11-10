@@ -215,11 +215,11 @@
 % white unless the template defined SMCanvasColor (dark mode).
 \NewDocumentCommand \SMApplyColorRoles { }
   {
-    \colorlet{SMColorDark}{c_primary_dark}
+    \SM@applymode
+    \colorlet{SMColorDark}{c_text}
     \colorlet{SMColorA}{\SMTitleBoxColor}
     \colorlet{SMColorC}{\SMProgressBarColor}
     \colorlet{SMColorD}{\SMAlertTextColor}
-    \@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}
     \__SM_apply_color_roles:
   }
 
@@ -270,15 +270,15 @@
   parent=progress~bar
 }
 % The footnote text is the palette's dark colour, so that a link in it contrasts as in the body text.
-\setbeamercolor{footnote}{fg=c_primary_dark}
+\setbeamercolor{footnote}{fg=c_text}
 \setbeamercolor{footnote~mark}{fg=.}
 
 % Footer text, slide canvas and the buttons of \beamergotobutton and its relatives (white text on a
 % solid pill in the hyperlink grey); the roles are the template's (SlideMage_setup.tex).
 \setbeamercolor{footline}{fg=\SMFooterTextColor}
 \setbeamercolor{background~canvas}{bg=SMCanvasColor}
-\setbeamercolor{button}{bg=c_custom_gray, fg=white}
-\setbeamercolor{button~border}{fg=c_custom_gray}
+\setbeamercolor{button}{bg=c_link, fg=white}
+\setbeamercolor{button~border}{fg=c_link}
 \setbeamercolor{SMFrametitleSection}{use=structure, fg=structure.bg}
 \setbeamercolor{standout}{use=primary~palette, bg=SMColorStandout, fg=primary~palette.bg}
 

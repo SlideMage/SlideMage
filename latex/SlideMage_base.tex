@@ -121,7 +121,7 @@
 % applies deck-wide to every citation command (`\cite`, `\textcite`,
 % `\parencite`, ...) that ends up as a colored link, not just 64m's own
 % call site.
-\hypersetup{colorlinks=true, urlcolor=c_custom_gray, linkcolor=c_custom_gray, citecolor=black}
+\hypersetup{colorlinks=true, urlcolor=c_link, linkcolor=c_link, citecolor=black}
 
 
 \let\SMOrigHref\href
@@ -224,7 +224,7 @@
 \newcommand{\SMHrefUnderline}[1]{%
 	\mbox{%
 		\sbox{\SMHrefTextBox}{#1}%
-		\textcolor{c_custom_gray}{\usebox{\SMHrefTextBox}}%
+		\textcolor{c_link}{\usebox{\SMHrefTextBox}}%
 		\hspace{-\wd\SMHrefTextBox}%
 		\SMHrefUnderlineMeasureRefHeights
 		\setbox\SMHrefUnderlineBox=\hbox{M}\SMHrefUnderlineNowHeight=\ht\SMHrefUnderlineBox
@@ -396,7 +396,7 @@
 \@ifundefinedcolor{SMProcessBorderColor}{\colorlet{SMProcessBorderColor}{c_tertiary_gray}}{}
 \makeatother
 \tikzset{
-	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_primary_dark},
+	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_text},
 	SMProcess/.style={draw=none, fill=c_tertiary_gray, text=c_primary_dark},
 }
 
