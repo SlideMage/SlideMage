@@ -25,6 +25,9 @@ from slidemage.project import ProjectContext
 from slidemage.render_key import Freshness
 from slidemage.render_scheduler import P_IDLE
 
+# An edit that puts the mtime back changes only the ctime, and Windows' st_ctime is the creation time.
+CTIME_SEES_EDITS = pytest.mark.skipif(os.name == 'nt', reason='st_ctime is the creation time on Windows')
+
 
 @pytest.fixture
 def project(tmp_path):
@@ -488,6 +491,7 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert not r.resolver.lookup(unit).usable
 
 
+@CTIME_SEES_EDITS
 def test_a_compile_with_an_input_changed_during_it_imports_nothing(project, store, raster, tmp_path):
     r = make(project, store, raster)
     deck = deck_named(r, "slidemage-manual")
@@ -642,6 +646,7 @@ def test_units_already_queued_are_not_batched_again_after_a_replan(project, stor
     assert r.scheduler.pending(P_IDLE) == queued and r._plan == []
 
 
+@CTIME_SEES_EDITS
 def test_a_dependency_edited_during_the_render_is_never_stored(project, store, raster, monkeypatch):
     r = make(project, store, raster)
     unit = batch_units(project, r, 1)[0]

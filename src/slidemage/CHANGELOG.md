@@ -3849,3 +3849,8 @@ v0.15.1 (2026-11-10, direct request: the slides scrolled with the mouse wheel ke
 
 NEW: Scrolling the slides with the mouse wheel stops the background previews, even when another program has the focus.
 - No new background preview starts for 3 seconds after the last wheel turn.
+
+v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking current source and settings…" every 5 seconds): The Preview's 5-second re-check of the slide on show keeps showing the last answer for the same content until the new one arrives, instead of "Checking…" in between (a slide with only a temporary render was re-checked, and flickered, on every poll). The search inventory lists a folder again while its mtime is less than 3 s old: on Windows a name added in the same clock tick (about 16 ms) left the mtime unchanged and the old listing was reused. The two tests of an edit that puts its mtime back are skipped on Windows, where st_ctime is the creation time and such an edit cannot be seen.
+
+NEW: A steadier Preview.
+- The Preview no longer flickers to "Checking…" every few seconds while a slide is open.

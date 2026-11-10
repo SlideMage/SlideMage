@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
+import time
 
 from slidemage import render_evidence
 from slidemage.render_evidence import ValidationPass, file_state
@@ -40,6 +41,12 @@ def test_inventory_stays_current_only_when_changed_names_cannot_affect_its_input
         (root / folder).mkdir(parents=True)
     picture = root / 'media/fig.png'
     picture.write_bytes(b'picture')
+
+    def settle():                       # a listing is reused only once its directory's mtime is not recent
+        for folder in (root, root / 'media', root / 'decks', root / 'pdf'):
+            os.utime(folder, (time.time() - 60, time.time() - 60))
+
+    settle()
     env = {'SLIDEMAGE_LATEX': str(tmp_path / 'latex')}
     inputs = [picture]
     listed = []
@@ -74,6 +81,8 @@ def test_inventory_stays_current_only_when_changed_names_cannot_affect_its_input
 
     assert render_evidence.inventory_state(render_evidence.search_inventory(root, env), inputs) == recorded
 
+    settle()                            # then listed once more
+    render_evidence.search_inventory(root, env)
     listed.clear()
     assert render_evidence.search_inventory(root, env, inputs=inputs) == current
     assert listed == [picture.parent]

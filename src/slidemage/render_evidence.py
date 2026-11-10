@@ -168,6 +168,9 @@ _INVENTORY_LOCK = threading.Lock()
 def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -> dict:
     """Capture names before TeX starts; reuse directory listings until their mtimes change.
 
+    A listing taken within MEMO_RACY_SECONDS of its directory's mtime is taken again: a name added in the same
+    clock tick (about 16 ms on Windows) leaves the mtime unchanged.
+
     Sweep planning forces a full re-list; strict checks re-list the directories of
     recorded inputs. The precompiled format uses whole-tree search_state instead.
     """
@@ -188,7 +191,8 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
                 continue
             with _INVENTORY_LOCK:
                 known = _INVENTORY_DIRS.get(directory)
-                if force or directory in relist or known is None or known[0] != mtime:
+                if (force or directory in relist or known is None or known[0] != mtime
+                        or time.time_ns() - mtime < MEMO_RACY_SECONDS * 1e9):
                     dirs, files = [], []
                     with os.scandir(directory) as entries:
                         for entry in entries:
