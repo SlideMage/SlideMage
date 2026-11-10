@@ -71,7 +71,7 @@ def produce(copy: Path) -> dict:
     for slug in SLIDES:
         for reuse in (True, False):
             pdf = slide_preview.render_slide_to_pdf(
-                ctx, "slide", slug, reuse_build=reuse, capture_snapshot=False)
+                ctx, "slide", slug, reuse_build=reuse)
             out[f"preview:{slug}:{'cached' if reuse else 'fresh'}"] = page_hashes(pdf)
     return out
 

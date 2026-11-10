@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from . import busy
 from .compiler import CancelToken
 from .parallel_runs import RenderBudget
 
@@ -88,8 +89,9 @@ class RenderScheduler:
                 if priority >= running.priority:
                     return running                      # already on its way, at least as urgent
                 # Never wait for a worse job, not even for the same key: stop it, run this one.
-                running.cancelled_for_requeue = True
-                running.cancel.request_stop()
+                if not running.cancel.is_set():
+                    running.cancelled_for_requeue = True
+                    running.cancel.request_stop()
                 job = Job(key, payload, priority, rank, group, next(self._seq))
                 self._queue[key] = job
                 self._cond.notify_all()
@@ -104,7 +106,7 @@ class RenderScheduler:
             else:
                 job = self._queue[key] = Job(key, payload, priority, rank, group, next(self._seq))
             for other in list(self._running.values()):
-                if priority < other.priority and not other.cancelled_for_requeue:
+                if priority < other.priority and not other.cancel.is_set():
                     other.cancelled_for_requeue = True
                     other.cancel.request_stop()
             self._cond.notify_all()
@@ -120,6 +122,7 @@ class RenderScheduler:
                 dropped += 1
             for job in self._running.values():
                 if job.group == group:
+                    job.cancelled_for_requeue = False
                     job.cancel.request_stop()
             self._cond.notify_all()
         self._on_change()
@@ -130,7 +133,7 @@ class RenderScheduler:
         stopped = 0
         with self._cond:
             for job in self._running.values():
-                if job.priority == priority and not job.cancelled_for_requeue:
+                if job.priority == priority and not job.cancel.is_set():
                     job.cancelled_for_requeue = True
                     # Not waiting for the kill: the caller is the GUI (focus, input), and this holds the queue's lock.
                     job.cancel.request_stop(wait=False)
@@ -178,6 +181,8 @@ class RenderScheduler:
             return None                          # the cap: as many at once as the profile allows
         adding_checked = None                    # the CPU rule, asked once per pick
         for job in sorted(self._queue.values(), key=Job.order):
+            if job.priority != P_FOREGROUND and 'foreground preview' in busy.reasons():
+                continue
             if job.priority == P_IDLE and not self._can_start(job):
                 continue
             if self._budget is not None:

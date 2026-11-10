@@ -130,7 +130,7 @@ def test_a_target_of_a_slide_that_needs_the_deck_says_so_and_keeps_renders_of_ot
     target = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1bb"), 2)
     assert target.needs_context == ("contents",) and target.deck is deck
     plain = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1aa"), 1)
-    assert plain.needs_context == () and plain.deck is None and plain.key[-1] == ""
+    assert plain.needs_context == () and plain.deck is deck and plain.key[-1] == ""
     assert target.key[-1] == target.deck_hash != ""
 
 
@@ -231,22 +231,3 @@ def test_the_flush_frame_page_comes_off(tmp_path):
     deck_context.drop_last_page(path)                                        # one page: nothing to take off
     with pymupdf.open(path) as doc:
         assert len(doc) == 1
-
-
-@pytest.mark.parametrize("mode, snapshot", [(deck_context.DECK, True), (deck_context.SKELETON, False), (None, False)])
-def test_only_a_render_in_the_deck_may_refresh_the_snapshot_of_a_slide_that_needs_it(ctx, deck, monkeypatch, tmp_path,
-                                                                                   mode, snapshot):
-    from slidemage import preview_requests, slide_snapshot
-
-    target = preview_target.for_call(ctx, deck, deck_scan_call(ctx, deck, "1bb"), 2)
-    pdf = tmp_path / "r.pdf"
-    pdf.write_bytes(b"%PDF")
-    deck_context.remember_mode(pdf, mode) if mode else None
-    monkeypatch.setattr(preview_target, "render", lambda *a, **k: pdf)
-    asked = []
-    monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
-                        lambda path, snapshots, widths: asked.append(snapshots) or ((b"a", b"b"), ()))
-    saved = target.source_path.read_text(encoding="utf-8")    # a saved request renders the file as it is on disk
-    request = preview_requests.RenderService().request(target, saved, "instructor", "EN", print, saved=True)
-    request.wait()
-    assert asked == [snapshot]

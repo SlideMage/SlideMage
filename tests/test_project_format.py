@@ -34,7 +34,7 @@ def test_project_format_is_recorded_and_upgraded(tmp_path, monkeypatch, previous
     assert _info(tmp_path) == {
         "format": project.PROJECT_FORMAT, "last_app_version": "v4.1.0",
         "highest_app_version": "v4.1.0", "compat": {"checked_version": previous or "v4.1.0"},
-        "languages": {"main": "en", "secondary": []}}
+        "languages": {"main": "en", "secondary": []}, "flat_snapshots_removed": True}
 
 
 def test_newer_format_asks_and_is_left_alone(tmp_path, monkeypatch):

@@ -19,7 +19,6 @@ from __future__ import annotations
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-import hashlib
 import time
 from typing import Callable, Optional
 import weakref
@@ -42,6 +41,7 @@ from ... import ai_review, deck_editor, deck_outline, preview_thumbnails, reveal
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
+from ...fileio import text_sha256
 from .. import layout_settings
 from ..dialogs.remove_section import ALL_SECTIONS, WITH_SLIDES, RemoveSectionSheet
 from ..kit.tokens import SPACE
@@ -168,7 +168,7 @@ class SlideList(QWidget):
         self.destroyed.connect(lambda *_: self._thumbnail_executor.shutdown(wait=False, cancel_futures=True))
         self._thumbnail_timer = QTimer(self)
         self._thumbnail_timer.setSingleShot(True)
-        self._thumbnail_timer.setInterval(450)
+        self._thumbnail_timer.setInterval(0)
         self._thumbnail_timer.timeout.connect(self._refresh_preview_rows)
 
         state.deck_changed.connect(lambda _deck: self.rebuild())
@@ -223,14 +223,12 @@ class SlideList(QWidget):
         buffer = reader(path) if reader is not None else None
         return buffer[0] if buffer is not None else None
 
-    def _stored_page_path(self):
-        """The background previews' reader of the render store (a whole-deck compile's pages are in it), or None."""
-        return getattr(getattr(self.app, 'background', None), 'stored_page_path', None)
-
     def _preview_images(self, outline, *, paths=None):
+        renderer = getattr(getattr(self.app, "background", None), "renderer", None)
         return preview_thumbnails.for_outline(
             self.app.project, self.deck, outline, self.state.view, self.state.language,
-            read_source=self._thumbnail_source, paths=paths, stored_page=self._stored_page_path())
+            read_source=self._thumbnail_source, paths=paths,
+            resolver=renderer.resolver if renderer is not None else None)
 
     def _queue_preview_images(self, outline, *, paths=None):
         deck = self.deck
@@ -252,7 +250,7 @@ class SlideList(QWidget):
                                              time.perf_counter() - dispatched))
         ctx, view, language = self.app.project, self.state.view, self.state.language
         selected_paths = None if paths is None else frozenset(path.resolve() for path in paths)
-        stored_page = self._stored_page_path()
+        renderer = getattr(getattr(self.app, "background", None), "renderer", None)
         self._thumbnail_pending_paths = selected_paths
         self._thumbnail_full_requested = False
         buffers = {}
@@ -264,24 +262,20 @@ class SlideList(QWidget):
         outline = tuple(outline)
 
         def work():
-            from ... import compiler, preview_cache
-            validation = preview_cache.ValidationPass()
+            from ... import render_evidence
+            validation = render_evidence.ValidationPass()
             revisions = {}
             started = time.perf_counter()
             with timing.span("thumbnails.for_outline", rows=sum(len(s.rows) for s in outline)):
                 updated = preview_thumbnails.for_outline(
                     ctx, deck, outline, view, language, read_source=lambda path: buffers.get(path.resolve()),
-                    paths=selected_paths, validation=validation, revision_sink=revisions, stored_page=stored_page)
-            with timing.span("thumbnails.stable"):
-                stable = validation.stable(preview_cache.PreviewCache(ctx.root), compiler.build_env(ctx))
+                    paths=selected_paths, validation=validation, revision_sink=revisions,
+                    resolver=renderer.resolver if renderer is not None else None)
             metrics = {'validation_seconds': time.perf_counter() - started,
                        'dependency_hash_seconds': validation.dependency_seconds,
                        'configuration_seconds': validation.configuration_seconds,
-                       'stability_seconds': validation.stability_seconds,
-                       'stability_bytes': validation.stability_bytes,
-                       'dependency_bytes': validation.dependency_bytes,
-                       'hashed_bytes': validation.hashed_bytes, 'unstable': not stable}
-            return updated if stable else None, metrics, revisions
+                       'hashed_bytes': validation.hashed_bytes}
+            return updated, metrics, revisions
 
         future = self._thumbnail_executor.submit(work)
         self._thumbnail_future = future
@@ -317,16 +311,13 @@ class SlideList(QWidget):
             try:
                 text = self._thumbnail_source(source)
                 current = text if text is not None else source.read_text(encoding='utf-8')
-                if hashlib.sha256(current.encode('utf-8')).hexdigest() != content_hash:
+                if text_sha256(current) != content_hash:
                     self._queue_preview_images(self._outline, paths=paths)
                     return
             except OSError:
                 self._queue_preview_images(self._outline, paths=paths)
                 return
         if outline is None:
-            if metrics.get('unstable'):
-                QTimer.singleShot(150, lambda: self._queue_preview_images(self._outline, paths=paths)
-                                  if ticket == self._thumbnail_ticket and self.deck is not None else None)
             return
         self._thumbnail_metrics = metrics
         self._thumbnail_metrics['gui_event_latency_seconds'] = self._thumbnail_gui_latency
@@ -338,7 +329,7 @@ class SlideList(QWidget):
         self._thumbnail_metrics['publication_seconds'] = time.perf_counter() - publishing
 
     def preview_source_changed(self, path: Path) -> None:
-        """Refresh image age after typing pauses, without rebuilding the slide tree."""
+        """Refresh affected thumbnails without rebuilding the slide tree."""
         timing.caller("thumbnails.source_changed", file=path.name)
         if self.deck is not None:
             if not self._thumbnail_full_requested:
@@ -361,6 +352,7 @@ class SlideList(QWidget):
         self._refresh_preview_rows()
 
     def _refresh_preview_rows(self) -> None:
+        self._thumbnail_timer.stop()
         if self.deck is None:
             return
         paths = None if self._thumbnail_full_requested else set(self._thumbnail_paths) or None

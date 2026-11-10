@@ -17,7 +17,6 @@ from collections.abc import Callable
 
 import os
 import sys
-from pathlib import Path
 from weakref import WeakSet
 from typing import Optional
 
@@ -26,7 +25,7 @@ from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
                                QProgressBar, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_key, render_store
+from ... import app_settings, background_renders, compile_records, compiler, idle_gate, render_store
 from ...background_renders import BackgroundRenderer
 from ...plugins import session
 from ...plugins.host import plugin_render_priority
@@ -385,7 +384,8 @@ class BackgroundPreviews(QObject):
             return
         self.renderer = BackgroundRenderer(
             self.project, self.store, decks=lambda: window.decks, open_deck=lambda: window.state.deck,
-            on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project))
+            on_change=self.changed.emit, plugin_soon=plugin_render_priority(session.loaded(), self.project),
+            renders=window.centre.preview._renders)
         self.renderer.gate._busy = self._busy_reasons
         self._chip_said = None
         compiler.COMPILE_LISTENERS.append(self._on_compiled)
@@ -490,78 +490,6 @@ class BackgroundPreviews(QObject):
         if self.store is not None:
             self.store.close()
             self.store = None
-
-    def _stored_found(self, target, view: str, language: str, deck_name: str):
-        """The usable store lookup of `target`'s whole-slide render, else None. It does not ask whether background
-        rendering is switched on: that setting stops the idle rendering, not the use of renders that exist
-        (2026-10-30, direct request). Reads only; nothing is rendered or started here."""
-        renderer = self.renderer
-        if renderer is None or self.store is None:
-            return None
-        if target.macro == "slidestep" and target.steps:
-            return None
-        unit = render_key.unit_for(target, view, language, deck_name)
-        found = renderer.resolver.lookup(unit)
-        return found if found.usable else None
-
-    def stored_page(self, target, view: str, language: str, deck_name: str):
-        """The last page (every reveal step has been shown) of the stored render of `target` as PNG bytes if a
-        current one is there, else None. A slidestep call keeps its own step restriction, which a stored
-        unrestricted render does not show. Runs on the Preview's display worker: `deck_name` is the open deck's,
-        read by the caller on the GUI thread."""
-        try:
-            found = self._stored_found(target, view, language, deck_name)
-            return None if found is None else self.store.page(found.record, found.record["pages"])
-        except Exception:  # noqa: BLE001 -- the store is a help; a broken one must not break the Preview
-            return None
-
-    def stored_page_path(self, target, view: str, language: str, deck_name: str):
-        """The PNG file of `stored_page` (what the slide list's thumbnail shows: the store's small copy of it), else
-        None. Runs on the thumbnail worker; it reads the index and looks for the file, and makes the small copy of an
-        older object once."""
-        try:
-            found = self._stored_found(target, view, language, deck_name)
-            if found is None:
-                return None
-            path = Path(found.record["dir"]) / f"p{int(found.record['pages']):03d}.png"
-            if not path.is_file():
-                return None
-            self.store.touch(found.record["name"])
-            # (2026-10-30, direct request: the small copy, made now for an object stored without one; the full
-            # page when there is none)
-            return self.store.thumbnail_path(found.record) or path
-        except Exception:  # noqa: BLE001 -- the store is a help
-            return None
-
-    def stored_pages(self, target, view: str, language: str, deck_name: str):
-        """Every page (reveal step) of the stored render of `target` as PNG bytes if a current one is there, else
-        None. The reveal bar takes its steps from here instead of counting them with a render. Like `stored_page`,
-        it runs on the display worker."""
-        renderer = self.renderer
-        if renderer is None or self.store is None:        # switched off or not: renders that exist are used
-            return None
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
-            return None
-        try:
-            unit = render_key.unit_for(target, view, language, deck_name)
-            found = renderer.resolver.lookup(unit)
-            if not found.usable or found.record.get("partial"):
-                return None                 # a deck compile's page is the last step only: not the list of steps
-            pages = [self.store.page(found.record, number) for number in range(1, int(found.record["pages"]) + 1)]
-            return pages if pages and all(pages) else None
-        except Exception:  # noqa: BLE001 -- the store is a help
-            return None
-
-    def store_steps(self, target, view: str, language: str, pdf, pages) -> None:
-        """Keep the reveal bar's own all-steps render in the store (called from its worker thread)."""
-        renderer = self.renderer
-        if renderer is None or self.store is None or not renderer.enabled:
-            return
-        if target.needs_context or (target.macro == "slidestep" and target.steps):
-            return
-        deck = self.window.state.deck
-        unit = render_key.unit_for(target, view, language, deck.name if deck is not None else "")
-        renderer.store_reveal(unit, pdf, pages)
 
     # -- the chip --------------------------------------------------------------------------------
 

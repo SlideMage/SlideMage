@@ -223,10 +223,8 @@ def steps_renders(tmp_path, monkeypatch):
         return render
 
     monkeypatch.setattr(slide_snapshot, "FULL_SIZE", (160, 90))
-    monkeypatch.setattr(slide_snapshot, "THUMB_SIZE", (80, 45))
     monkeypatch.setattr(preview_target, "render", fake("saved"))
     monkeypatch.setattr(preview_target, "render_text", fake("buffer"))
-    monkeypatch.setattr(preview_target, "cached_image", lambda target: None)
     monkeypatch.setattr(preview_view, "PROBE_MS", 50)
     return calls
 
@@ -387,8 +385,8 @@ def test_while_idle_the_neighbouring_slides_get_their_steps_counted_too(centre, 
     counted = sorted({call[1] for call in steps_renders})
     assert counted == ["aaa-EN-One", "bbb-EN-Two", "ccc-DE-Drei"]
     assert all(call[3].get("all_steps") for call in steps_renders)
-    centre.state.set_focused_slide("bbb")                            # already counted: the bar is there at once
-    assert preview._reveal.isVisibleTo(preview) and preview._reveal.track.stops == [1, 2, 3, 4]
+    centre.state.set_focused_slide("bbb")
+    wait_for(lambda: preview._reveal.isVisibleTo(preview) and preview._reveal.track.stops == [1, 2, 3, 4], 40)
 
 
 def test_a_slide_with_reveal_commands_shows_the_bar_counting_until_its_steps_are_known(centre, steps_renders, project):
@@ -400,7 +398,7 @@ def test_a_slide_with_reveal_commands_shows_the_bar_counting_until_its_steps_are
     assert bar.label.full_text().startswith("Step 4 of 4")
 
 
-def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_renders, project):
+def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_renders, project, monkeypatch):
     from PySide6.QtCore import QBuffer, QByteArray, QIODevice
     from PySide6.QtGui import QImage
 
@@ -411,18 +409,18 @@ def test_a_current_stored_render_gives_the_steps_without_counting(centre, steps_
     image.save(buffer, "PNG")
     png = bytes(data)
 
-    class Stored:                      # the background renders' store, with a current render of the slide
-        def stored_pages(self, target, view, language, deck_name):
-            return [png] * 4
+    from types import SimpleNamespace
+    from slidemage import render_lookup
 
-        def stored_page(self, target, view, language, deck_name):
-            return None
-
-        def store_steps(self, *args):
-            raise AssertionError("nothing was rendered, so nothing is stored")
+    store = SimpleNamespace(pages=lambda record: [png] * 4)
+    resolver = SimpleNamespace(store=store)
+    def select(request, *, strict=False):
+        assert strict and request['resolver'] is resolver and request['spec'].options.all_steps
+        return 'current', {}
+    monkeypatch.setattr(render_lookup, 'select', select)
 
     (project / "aaa-EN-One-current.tex").write_text(FRAME % "First" + "\\pause\nMore\n", encoding="utf-8")
-    centre.preview.app.background = Stored()
+    centre.preview.app.background = SimpleNamespace(renderer=SimpleNamespace(resolver=resolver, store=store))
     centre.state.set_focused_slide("aaa")
     bar = centre.preview._reveal
     wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)       # the store is asked off the GUI thread
@@ -585,24 +583,6 @@ def png_of(color):
     return bytes(data)
 
 
-class StoredPages:
-    """app.background: a stored page for every slide, and (when `steps`) its step pages; calls are recorded."""
-
-    def __init__(self, page, steps=None):
-        self.page, self.steps, self.calls = page, steps, []
-
-    def stored_page(self, target, view, language, deck_name=""):
-        self.calls.append(("page", threading.current_thread() is threading.main_thread()))
-        return self.page
-
-    def stored_pages(self, target, view, language, deck_name=""):
-        self.calls.append(("pages", threading.current_thread() is threading.main_thread()))
-        return self.steps
-
-    def store_steps(self, *args):
-        pass
-
-
 @pytest.fixture
 def pausing(project):
     for name in ("aaa-EN-One", "bbb-EN-Two", "ccc-DE-Drei"):
@@ -656,18 +636,6 @@ def test_selecting_a_b_and_c_in_a_row_counts_only_c(centre, steps_renders, pausi
     wait_for(lambda: preview._reveal.track.stops == [1, 2, 3, 4], 40)
 
 
-def test_the_slide_image_shows_before_the_count_starts(centre, steps_renders, pausing, monkeypatch):
-    preview = centre.preview
-    preview._settle.setInterval(300)
-    preview.app.background = StoredPages(png_of(0x00FF00))            # a stored page, but no counted steps
-    asked = foreground_asks(centre, monkeypatch)
-    centre.state.set_focused_slide("aaa")
-    wait_for(lambda: preview._page.pixmap is not None, 40)
-    assert not asked and preview._reveal.track.counting              # the image first, "Counting" meanwhile
-    wait_for(lambda: asked, 40)
-    assert asked == [("aaa-EN-One", True)]
-
-
 def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_renders, pausing, monkeypatch):
     loads, preview = [], centre.preview
 
@@ -678,12 +646,24 @@ def test_the_stored_steps_are_read_and_decoded_off_the_gui_thread(centre, steps_
 
     monkeypatch.setattr(preview_view, "QPixmap", Counting)
     colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00]
-    store = StoredPages(None, [png_of(color) for color in colors])    # steps, but no whole-slide page
-    preview.app.background = store
+    from types import SimpleNamespace
+    from slidemage import render_lookup
+
+    calls = []
+    def pages(record):
+        calls.append(("pages", threading.current_thread() is threading.main_thread()))
+        return [png_of(color) for color in colors]
+    store = SimpleNamespace(pages=pages)
+    resolver = SimpleNamespace(store=store)
+    def select(request, *, strict=False):
+        assert request['resolver'] is resolver
+        return ('current', {}) if strict else ('missing', None)
+    monkeypatch.setattr(render_lookup, 'select', select)
+    preview.app.background = SimpleNamespace(renderer=SimpleNamespace(resolver=resolver, store=store))
     centre.state.set_focused_slide("aaa")
     bar = preview._reveal
     wait_for(lambda: bar.track.stops == [1, 2, 3, 4], 40)
     wait_for(lambda: preview._page.pixmap is not None, 40)           # no slide page: the step bar's page is shown
     assert not any(loads) and not steps_renders
-    assert store.calls and not any(on_main for _what, on_main in store.calls)
-    assert {what for what, _ in store.calls} == {"page", "pages"}
+    assert calls and not any(on_main for _what, on_main in calls)
+    assert {what for what, _ in calls} == {"pages"}

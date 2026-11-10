@@ -85,3 +85,40 @@ def test_wrapper_carries_appendix_after_body_for_whole_deck(version, presenter, 
     if applies and version in ("during-course", "after-course"):
         assert f"\\def\\deckversionoverride{{{version}}}" in text
         assert "\\hyperlink{ddd}" in text and "\\hyperlink{ccc}" not in text
+
+
+def test_the_appendix_uses_the_stored_instructor_reference_or_a_box(ctx):
+    from io import BytesIO
+    from PIL import Image
+    from slidemage import dep_hash, preview_target, render_key, render_store
+    from slidemage.fileio import text_sha256
+
+    ctx.slides_dir.mkdir()
+    source = ctx.slides_dir / "aaa-EN-Intro-slide-current.tex"
+    source.write_text("saved slide")
+    deck = make_deck()
+    store = render_store.RenderStore(ctx)
+    try:
+        resolver = render_key.Resolver(ctx, dep_hash.HashCache(store.db, store.lock), store)
+        target = preview_target.for_path(ctx, source)
+        unit = render_key.unit_for(target, "instructor", "EN", "another-deck")
+        pdf = ctx.root / "reference.pdf"
+        pdf.write_bytes(b"%PDF reference")
+        first, last = BytesIO(), BytesIO()
+        Image.new("RGB", (1920, 1080), "red").save(first, format="PNG")
+        Image.new("RGB", (1920, 1080), "blue").save(last, format="PNG")
+        store.put("reference", "background", pdf, [first.getvalue(), last.getvalue()],
+                  dict(unit=unit.label, template=unit.template, inventory=[],
+                       manifest=[["project", "slides/aaa-EN-Intro-slide-current.tex", text_sha256(source.read_text())]]))
+        tex = appendix_toc.generate_appendix_tex(ctx, deck, unit.template, resolver=resolver)
+        png, = (ctx.build_dir / "appendix-thumbs" / unit.template).glob("*.png")
+        assert png.as_posix() in tex
+        with Image.open(png) as image:
+            assert image.size == (304, 171) and image.getpixel((150, 85)) == (0, 0, 255)
+        store.clear()
+        assert png.is_file()  # the running compile owns its copy
+        tex = appendix_toc.generate_appendix_tex(ctx, deck, unit.template, resolver=resolver)
+        assert r"\includegraphics" not in tex
+        assert r"\hyperlink{aaa}{\fbox" in tex
+    finally:
+        store.close()

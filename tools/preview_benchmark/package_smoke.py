@@ -26,7 +26,7 @@ def run(binary, output):
     help_result = subprocess.run([str(binary), '--help'], capture_output=True, text=True, timeout=60)
     assert help_result.returncode == 0 and '--project' in help_result.stdout, help_result.stderr
     requests = [dict(op='pdf_images', path=str(pdf), start=1, count=2, dpi=130),
-                dict(op='sequence', pdf=base64.b64encode(pdf.read_bytes()).decode('ascii'))]
+                dict(op='pdf', path=str(pdf), start=1, count=2)]
     child = subprocess.run([str(binary), '--preview-raster'],
                            input=''.join(json.dumps(item) + '\n' for item in requests),
                            capture_output=True, text=True, timeout=60)
@@ -35,10 +35,10 @@ def run(binary, output):
     assert len(replies) == 2 and all(reply['ok'] for reply in replies), child.stdout
     expected = preview_raster.document(pdf, 'pdf_images', 1, 2, 130)
     assert [base64.b64decode(item) for item in replies[0]['images']] == expected['images']
-    assert replies[1]['signature'] == preview_raster.sequence(pdf.read_bytes())['signature']
+    assert replies[1]['count'] == 2 and replies[1]['texts'] == preview_raster.document(pdf, 'pdf', 1, 2)['texts']
     result = dict(binary=str(binary), sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                   help=True, persistent_raster_requests=2, page_images_equal=True,
-                  full_sequence_equal=True)
+                  page_texts_equal=True)
     (output / 'results.json').write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
 

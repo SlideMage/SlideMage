@@ -32,7 +32,6 @@ def main():
                 body,
                 preamble_text=preamble or deck.preamble_text,
                 log=logs.append,
-                capture_snapshot=False,
                 **options,
             )
         (args.output / (name + ".log")).write_text("\n".join(logs))

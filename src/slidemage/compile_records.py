@@ -38,7 +38,6 @@ every version again). Free of Qt and of compiler.py (which imports this).
 from __future__ import annotations
 
 import functools
-import hashlib
 import json
 import os
 import re
@@ -49,11 +48,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import languages
-from .fileio import sha256_file as sha256, write_json
+from .fileio import sha256_file as sha256, text_sha256, write_json
 from .processes import command_output
 from .project import ProjectContext
 
-RECORD_FORMAT = 1
+RECORD_FORMAT = 2
 RECORDS_DIRNAME = "compile-records"
 # The auxiliary files kept with a record (aux_dir()).
 DECK_COPY_NAME = "deck.tex"
@@ -69,9 +68,8 @@ BLG_SOURCE_RE = re.compile(r"Found BibTeX data source '([^']+)'")
 BIBER_NEEDED_RE = re.compile(r"Package biblatex Warning: Please \(re\)run Biber")
 # Derived caches the engine may rewrite at any time -- never part of a hash.
 _SKIPPED_INPUT_PARTS = ("luatex-cache",)
-# Files derived from the deck's own slides (the slide previews a generated
-# appendix shows, in ctx.previews_dir): copied into the record (DERIVED_DIRNAME) as read, not
-# compared -- they change with every compile of a slide that shows a time.
+# Derived images (appendix thumbnails, TikZ pictures and PDF media pages):
+# copied into the record (DERIVED_DIRNAME) as read, never compared for freshness.
 DERIVED_DIRNAME = "derived"
 
 
@@ -87,10 +85,6 @@ def is_within(path: Path | str, root: Path | str) -> bool:
     insensitive on Windows, where .fls paths also mix "d:" and "D:")."""
     p, r = norm(path), norm(root)
     return p == r or p.startswith(r.rstrip("\\/") + os.sep)
-
-
-def text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------
@@ -226,7 +220,7 @@ def aux_dir(build_dir: Path, jobname: str) -> Path:
 
 def write_record(
     ctx: ProjectContext, jobname: str, invocation_dir: Path, wrapper_path: Path, wrapper_text: str,
-    pdf: Path, started: float, log: Optional[Callable[[str], None]] = None,
+    pdf: Path, started: float, inventory: dict, configuration: str, log: Optional[Callable[[str], None]] = None,
     deck_path: Optional[Path] = None,
 ) -> Optional[Path]:
     """Record a successful compile whose output sits in `invocation_dir` and
@@ -259,33 +253,39 @@ def write_record(
                 for language in languages.project_languages(ctx).codes:
                     _resolved, inputs = deck_language.compile_deck(ctx, deck, language)
                     inline_inputs.extend(inputs)
-        for path in [*parse_fls(fls), *bib_sources, *inline_inputs]:
+        typeset_inputs = parse_fls(fls)
+        for path in [*typeset_inputs, *bib_sources, *inline_inputs]:
             key = norm(path)
             if key in seen or is_within(path, invocation_dir) or key == norm(wrapper_path):
                 continue
             seen.add(key)
             if any(part in key for part in _SKIPPED_INPUT_PARTS) or not path.is_file():
                 continue
-            if is_within(path, ctx.previews_dir):
-                # A slide preview (the generated appendix's thumbnails): kept as
-                # this compile read it, never a reason to call the PDF stale.
+            if is_within(path, ctx.build_dir / "appendix-thumbs") or is_within(path, ctx.previews_dir):
+                # Keep the image as read, never a reason to call the PDF stale.
                 copy = Path(DERIVED_DIRNAME) / f"{len(entries)}-{path.name}"
                 (aux / copy).parent.mkdir(exist_ok=True)
                 shutil.copy2(path, aux / copy)
                 entries.append({"path": str(path), "sha256": sha256(aux / copy),
                                 "copy": copy.as_posix()})
                 continue
-            if path.stat().st_mtime > started:
+            info = path.stat()
+            if max(info.st_mtime, info.st_ctime) >= started:
                 log(f"    (compile not recorded for snapshots: {path.name} changed during it)")
                 shutil.rmtree(aux, ignore_errors=True)
                 target.unlink(missing_ok=True)
                 return None
-            entries.append({"path": str(path), "sha256": sha256(path)})
+            entry = {"path": str(path), "sha256": sha256(path)}
+            if is_within(path, ctx.slides_dir) and path in typeset_inputs:
+                entry["text_sha256"] = text_sha256(path.read_text(encoding="utf-8", errors="replace"))
+            entries.append(entry)
         record = {
             "format": RECORD_FORMAT,
             "jobname": jobname,
             "created": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "started": int(started),
+            "started": started,
+            "inventory": inventory,
+            "configuration": configuration,
             "engine": engine_version(),
             "wrapper_sha256": wrapper_sha256(wrapper_text),
             "pdf": str(pdf),

@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-06",
+  "workload": "1b2-EN-Managing-a-Slide-current, instructor, seven comment edits; warm font cache; service request to pixels (excludes GUI save delay)",
+  "results": {
+    "before": {
+      "pixels_seconds": [
+        1.7735345649998635,
+        1.7613871759986068,
+        1.756377951000104,
+        1.7472156580006413,
+        1.7783280280000326,
+        1.7784642829992663,
+        1.7518962480007758
+      ],
+      "median_pixels_seconds": 1.7613871759986068,
+      "median_dependency_collection_seconds": 0.02476846200079308,
+      "errors": []
+    },
+    "after": {
+      "pixels_seconds": [
+        1.773166304001279,
+        1.7456603739992715,
+        1.8526871520007262,
+        1.7436561719987367,
+        1.7342778999991424,
+        1.7376512290011306,
+        1.7348777629995311
+      ],
+      "median_pixels_seconds": 1.7436561719987367,
+      "median_dependency_collection_seconds": 0.001506283999333391,
+      "errors": []
+    }
+  },
+  "environment": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43 | Python 3.14.5 | This is LuaHBTeX, Version 1.22.0 (TeX Live 2025/Debian) | Latexmk, John Collins, 15 June 2025. Version 4.87 | 16 CPUs",
+  "save_coalescing_delay_ms": {
+    "before": 300,
+    "after": 0
+  },
+  "real_tex_cancellation_recovery": {
+    "cancel_delays_seconds": [
+      0.15,
+      0.6,
+      1.0
+    ],
+    "next_render_pixels_seconds": [
+      1.886,
+      1.815,
+      1.779
+    ],
+    "all_succeeded": true
+  }
+}

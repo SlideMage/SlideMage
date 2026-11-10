@@ -7,20 +7,18 @@ A target is the \\slide{}-family call plus the deck context the render needs
 (the deck's preamble, so theme and footer match, and the slide's frame number).
 A slide that is not in the open deck, or a frozen version opened by itself,
 renders alone under the default template. Rendering goes through
-slide_preview (reusable latexmk builds, see preview_build.py); a render
-of the instructor view also refreshes the slide's cached snapshot, which is
-what the Preview shows without compiling anything.
+slide_preview (reusable latexmk builds, see preview_build.py).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-import hashlib
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_snapshot, slide_templates
+from . import deck_context, project, slide_language, slide_preview, slide_templates
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import Deck
+from .fileio import text_sha256
 
 
 @dataclass(frozen=True)
@@ -33,7 +31,6 @@ class PreviewTarget:
     steps: Optional[str]
     frame_number: Optional[int]
     preamble_text: Optional[str]    # the deck's; None: the default template's
-    # Callers pass these three by position (deck_preview_refresh.plan): keep them right after preamble_text.
     occurrence_key: tuple = ()
     hidden: bool = False
     presenter_frame_number: Optional[int] = None
@@ -69,7 +66,7 @@ class PreviewTarget:
     @property
     def is_frozen_alone(self) -> bool:
         """A frozen version shown on its own, not as a deck pins it: it is not what the
-        slide's cached snapshot (the current version, or what the decks typeset) shows."""
+        slide's cached preview (the current version, or what the decks typeset) shows."""
         return self.version is not None and self.preamble_text is None
 
     @property
@@ -77,7 +74,7 @@ class PreviewTarget:
         """What a render depends on besides the view and the language."""
         return (self.macro, self.id_slug, self.version, tuple(self.conditions or ()), self.steps,
                 self.frame_number, self.template,
-                hashlib.sha256((self.preamble_text or '').encode()).hexdigest(),
+                text_sha256(self.preamble_text or ''),
                 self.deck_hash if self.needs_context else "") + ((self.occurrence_key,) if self.occurrence_key else ()) + (
                     (self.presenter_frame_number,) if self.presenter_frame_number is not None else ())
 
@@ -102,12 +99,12 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     target = PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions, call.steps,
                            position if frame_number is None else frame_number, deck.preamble_text,
                            occurrence_key=occurrence_key, hidden=hidden, presenter_frame_number=presenter_frame,
-                           position=position)
+                           position=position, deck=deck)
     found = deck_context.reasons_for_file(target.source_path)
     if not found:
         return target
-    return replace(target, deck=deck, needs_context=found,
-                   deck_hash=hashlib.sha256(deck.text.encode()).hexdigest())
+    return replace(target, needs_context=found,
+                   deck_hash=text_sha256(deck.text))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:
@@ -117,33 +114,6 @@ def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> t
     if requested not in VIEWS:
         raise ValueError(f"Invalid preview view: {requested!r}; expected {', '.join((*VIEWS, 'all'))}")
     return (requested,)
-
-
-def resolve_views(ctx: project.ProjectContext, deck: Deck | None, path: Path, view: str | None,
-                  language: str, *, selected_view: str = VIEW_INSTRUCTOR,
-                  occurrence_key: tuple | None = None) -> tuple[tuple[str, PreviewTarget], ...]:
-    """Resolve one occurrence independently in each view, without changing workspace state.
-
-    A slide-id lookup uses the focused occurrence when supplied, otherwise the first logical
-    occurrence. A frozen file opened separately remains standalone unless the deck pins it.
-    Hidden deck calls retain their identity and are never rendered as standalone slides.
-    """
-    from . import deck_outline
-
-    views = requested_views(view, selected_view)
-    result = []
-    for canonical in views:
-        row = (deck_outline.slide_row(ctx, deck, slide_language.bare_id(path.name), canonical, language,
-                                      occurrence_key=occurrence_key) if deck is not None else None)
-        if row is not None and (row.call.source_filename == path.name or '-current.tex' in path.name):
-            target = for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number,
-                              occurrence_key=row.key, hidden=row.hidden)
-        else:
-            target = for_path(ctx, path)
-        if target is None:
-            raise ValueError(f"{path.name} is not a slide file")
-        result.append((canonical, target))
-    return tuple(result)
 
 
 def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]:
@@ -156,21 +126,8 @@ def for_path(ctx: project.ProjectContext, path: Path) -> Optional[PreviewTarget]
     return PreviewTarget(ctx, macro, id_slug, version, None, None, None, None)
 
 
-def cached_image(target: PreviewTarget) -> Optional[tuple[Path, bool]]:
-    """The slide's cached snapshot (strictly in the target's template) and
-    whether it is at least as new as the slide's source; None if none was
-    captured yet. Only the instructor view is cached, and not for a frozen version
-    shown on its own."""
-    if target.is_frozen_alone:
-        return None
-    png = slide_snapshot.snapshot_path(target.context, target.bare_id, target.template, slide_snapshot.FULL_SIZE)
-    if not png.is_file():
-        return None
-    return png, slide_snapshot.is_fresh(target.context, target.bare_id, target.source_path, target.template)
-
-
 def render(target: PreviewTarget, view: str, language: str, *, log,
-           capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False) -> Path:
+           cancel=None, all_steps: bool = False, force_build=False) -> Path:
     """Compile the saved slide in `view` and `language` ("EN"/"DE") to a PDF.
     `all_steps` keeps every reveal step (page k = step k) whatever the call or the slide restricts.
     A slide that needs its deck (target.needs_context) is typeset in the deck's last compile when there is one, else
@@ -195,7 +152,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
         target.context, target.macro, target.id_slug, target.version, target.conditions,
         deck_version=view, deck_language=language.lower(),
         preamble_text=target.preamble_text, frame_number=target.frame_number,
-        log=log, steps=target.steps, capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel,
+        log=log, steps=target.steps, cancel=cancel,
         all_steps=all_steps, **context,
         **({'force_build': True} if force_build else {}))
 
@@ -203,7 +160,7 @@ def render(target: PreviewTarget, view: str, language: str, *, log,
 def render_text(
     target: PreviewTarget, text: str, view: str, language: str, *, log,
     presenter: bool = False, mode: str = "slide", overlay: Optional[int] = None,
-    capture_snapshot: bool = True, cancel=None, all_steps: bool = False, force_build=False,
+    cancel=None, all_steps: bool = False, force_build=False, workspace=None,
 ) -> Path:
     """Compile `text` (the editor's buffer, saved or not) in place of the slide's
     file. `mode` is "slide", "region" (the text as a frame) or "element" (the
@@ -229,6 +186,7 @@ def render_text(
         final=target.macro == "slidefinal" and mode == "slide",
         slide_version=target.version if mode == "slide" else None,
         omitted=target.macro in ("omitslide", "omitslideversion") and mode == "slide",
-        capture_snapshot=capture_snapshot and not target.is_frozen_alone, cancel=cancel, all_steps=all_steps,
+        cancel=cancel, all_steps=all_steps,
+        workspace=workspace,
         **context,
         **({'force_build': True} if force_build else {}))

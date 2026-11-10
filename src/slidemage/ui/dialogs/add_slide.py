@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import ai_review, alt_draft, deck_editor, languages, slide_add, slide_import, slide_language, slide_snapshot, slide_templates, slide_versioning
+from ... import ai_review, alt_draft, deck_editor, languages, preview_target, render_key, render_lookup, slide_add, slide_import, slide_language, slide_versioning
 from ...ai import ai_profile, resolver, routes
 from ...deck_scan import Deck
 from ...project import ProjectContext
@@ -92,7 +92,6 @@ class AddSlideSheet(ModalSheet):
         self._route: Optional[ai_profile.Route] = None      # of the running translation
         self._translator = None                            # the running translator, including abort()
         self._slides = slide_add.project_slides(self.app.project)
-        self._template = slide_templates.detect_template(deck.preamble_text)
 
         body = Surface()
         self._layout = QVBoxLayout(body)
@@ -357,16 +356,22 @@ class AddSlideSheet(ModalSheet):
         query = self.search.text().strip().lower()
         keep = self.picked()
         self.listbox.clear()
+        ctx = self.app.project
+        resolver = self.app.centre.preview._renders._renderer(ctx).resolver
+        codes = languages.project_languages(ctx).codes
         for slide in self._slides:
             if query and query not in slide.id_slug.lower() and query not in slide.title.lower():
                 continue
             item = QListWidgetItem(f"{slide_language.bare_id(slide.id_slug)}   {slide.title}   {slide.badge}".rstrip())
             item.setData(Qt.ItemDataRole.UserRole, slide.id_slug)
             item.setToolTip(slide.id_slug)
-            png = slide_snapshot.snapshot_path(self.app.project, slide_language.bare_id(slide.id_slug), self._template,
-                                               slide_snapshot.THUMB_SIZE, slide.id_slug)
-            if png.is_file():   # the cached preview, loaded by the icon when the row is painted
+            target = preview_target.PreviewTarget(ctx, "slide", slide.id_slug, None, None, None, None, self.deck.preamble_text)
+            language = slide_language.own_language(slide.id_slug, codes)
+            unit = render_key.unit_for(target, "instructor", language if language in codes else self.app.state.language)
+            record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
+            if record is not None and (png := resolver.store.thumbnail_path(record)) is not None:
                 item.setIcon(QIcon(str(png)))
+                item.setToolTip(f"{slide.id_slug}\nInstructor reference")
             self.listbox.addItem(item)
         if keep:
             self._select(keep)

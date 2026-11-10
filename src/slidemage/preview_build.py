@@ -3,12 +3,12 @@
 """Reusable latexmk builds for interactive previews.
 
 Keep TeX's own dependency graph and auxiliary files between edits. This caches
-build state, not slide pixels: latexmk still checks every recorded input. Each
+build state, not slide pixels: latexmk settles cold builds and needed reruns. Each
 preamble/slide pair has a separate job and an interprocess lock.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import dataclasses
 from collections import deque
 import hashlib
@@ -18,6 +18,8 @@ import random
 from pathlib import Path
 from typing import Optional
 import shutil
+import shlex
+import subprocess
 import tempfile
 import time
 import re
@@ -25,9 +27,49 @@ import threading
 from .fileio import atomic_write
 from .filelock import build_lock, check_cancel
 from .preview_metrics import measure, stage, record_line, finish_rules
-from . import compiler, preview_format
-from .preview_cache import find_tool
+from . import app_settings, compiler, preview_format
+from .render_evidence import find_tool, search_inventory
 from .project import ProjectContext
+from .processes import no_console_kwargs
+
+DIRECT_LUALATEX = True
+SPARE_TEX_SETTING_KEY = 'prestarted_preview_tex'
+_FOCUSED = {}
+_SPARE_LOCK = threading.RLock()
+
+
+def set_focus(ctx: ProjectContext, focus) -> None:
+    """The focused (target, view, language), or None when its window is inactive."""
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if state is not None and state['focus'] == focus:
+            return
+        discard_spare(ctx.root)
+        if focus is None:
+            _FOCUSED.pop(ctx.root, None)
+        else:
+            _FOCUSED[ctx.root] = dict(focus=focus, spare=None)
+
+
+def discard_spare(root: Path, cache: Path | None = None) -> None:
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(root)
+        spare = state['spare'] if state is not None else None
+        if spare is not None and (cache is None or spare['cache'] == cache):
+            state['spare'] = None
+            spare['timer'].cancel()
+            compiler.CancelToken._kill(spare['process'])
+            spare['process'].wait()
+            with suppress(OSError):
+                spare['process'].stdin.close()
+            spare['output'].close()
+
+
+def _direct_env(env, recorded):
+    return {**{key: value for key, value in env.items()
+               if not re.match(r'^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)|'
+                               r'^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$', key)}, **recorded}
+
 
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE = {}
@@ -92,10 +134,10 @@ def wrapper_dir(ctx: ProjectContext) -> Path:
     return ctx.build_dir / WRAPPER_FOLDER
 
 
-def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Path,
+def recorded_inputs(fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
                     extra=()) -> list[str]:
     """TeX recorder plus latexmk's bibliography inputs, excluding generated output."""
-    cwd = project_root / 'decks'
+    cwd = ctx.decks_dir
     names = list(extra)
     if fls.is_file():
         for line in fls.read_text(errors='replace').splitlines():
@@ -111,22 +153,26 @@ def recorded_inputs(fls: Path, database: Path, *, project_root: Path, cache: Pat
             if size != '-1':
                 names.append(name.replace('\\"', '"').replace('\\\\', '\\'))
     paths = set()
-    formats = project_root / '.build' / 'preview-formats'
-    cache_roots = (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())
+    formats = ctx.build_dir / 'preview-formats'
+    # Normalize roots once. Path.is_relative_to walks every ancestor on some Python versions;
+    # doing that four times for thousands of recorder inputs delays the first preview pixels.
+    cache_roots = {os.path.normcase(str(root)) for root in
+                   (cache.absolute(), cache.resolve(), formats.absolute(), formats.resolve())}
+    prefixes = tuple(root.rstrip(os.sep) + os.sep for root in cache_roots)
     for name in set(names):
-        path = Path(name)
-        # Normalize . and .. without repeated filesystem/symlink walks for the
-        # hundreds of TeX package/font inputs. stat in watch follows symlinks.
-        path = Path(os.path.abspath(path if path.is_absolute() else cwd / path))
-        if not any(path.is_relative_to(root) for root in cache_roots) and not path.name.startswith(WRAPPER_PREFIX):
-            paths.add(str(path))
+        # Keep the recorder's path spelling, normalizing . and .. without resolving symlinks.
+        # Dependency validation follows those links; cache exclusion uses the OS's case rules.
+        path = os.path.abspath(name if os.path.isabs(name) else os.path.join(cwd, name))
+        key = os.path.normcase(path)
+        if key not in cache_roots and not key.startswith(prefixes) and not os.path.basename(path).startswith(WRAPPER_PREFIX):
+            paths.add(path)
     return sorted(paths)
 
 
-def write_inputs(pdf: Path, fls: Path, database: Path, *, project_root: Path, cache: Path,
+def write_inputs(pdf: Path, fls: Path, database: Path, *, ctx: ProjectContext, cache: Path,
                 extra=()):
     pdf.with_suffix('.inputs.json').write_text(json.dumps(recorded_inputs(
-        fls, database, project_root=project_root, cache=cache, extra=extra)), encoding='utf-8')
+        fls, database, ctx=ctx, cache=cache, extra=extra)), encoding='utf-8')
 
 
 PRUNE_EVERY = 600.0      # seconds between two prune_unused passes over one folder (maybe_prune_unused)
@@ -212,6 +258,27 @@ PREVIEW_LATEXMKRC = r"""# Written by SlideMage (preview_build.PREVIEW_LATEXMKRC)
 $hash_calc_ignore_pattern{'aux'} = '^\\\\abx\@aux\@read\@bbl(?:\@mdfivesum|rerun)';
 $hash_calc_ignore_pattern{'xml'} = '^\s*<(?:internal|external) package="biblatex"';
 $normalize_names = 0;
+# Capture the expanded command at the point latexmk would execute it, without running it twice.
+push @{$hooks{'before_xlatex'}}, sub {
+    return unless $rule eq 'lualatex';
+    eval { require JSON::PP; };
+    return if $@;
+    local *Run = sub {
+        my $cwd = Cwd::getcwd();
+        $cwd = Cygwin::posix_to_win_path($cwd) if defined &Cygwin::posix_to_win_path;
+        my %env = map { $_ => $ENV{$_} } grep {
+            /^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)/ || /^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$/
+        } keys %ENV;
+        my $source = $quote.($Psource ? $$Psource : $texfile_name).$quote;
+        $source =~ s(/)(\\)g if ($^O eq 'MSWin32') && $MSWin_back_slash;
+        if (open my $fh, '>', "${aux_dir1}${root_filename}.direct.json") {
+            print $fh JSON::PP->new->utf8->encode({command => $_[0], source => $source, cwd => $cwd, env => \%env});
+            close $fh;
+        }
+        return (0, 0);
+    };
+    Run_subst(undef, 0);
+};
 """
 # biblatex reads .run.xml silently at the end of the document, so latexmk learned of it only when the second run read
 # it, and ran a third to be safe. A missing one now prints the line LaTeX prints for a missing .aux, which latexmk
@@ -331,6 +398,11 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         built = (format_dir / 'preamble.fmt').stat().st_mtime_ns
         key = key[:16] + hashlib.sha256(f'{built}'.encode()).hexdigest()[:8]
     cache = ctx.build_dir / 'preview-cache' / key
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if (state is not None and state['spare'] is not None and cancel is not None
+                and state['focus'] == cancel.preview_focus and state['spare']['cache'] != cache):
+            discard_spare(ctx.root)
     root = workspace if workspace is not None else ctx.root
     maybe_prune_unused(root, ctx.build_dir)
     if workspace is None:
@@ -390,8 +462,52 @@ def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, c
         log('    (PDF produced, but latexmk reached its rerun limit; layout may not be stable)')
     else:
         unstable.unlink(missing_ok=True)
-    return publish_preview(ctx, pdf, id_slug, cache, jobname,
-                           extra=preview_format.inputs(format_dir) if format_dir is not None else ())
+    result = publish_preview(ctx, pdf, id_slug, cache, jobname,
+                             extra=preview_format.inputs(format_dir) if format_dir is not None else ())
+    with _SPARE_LOCK:
+        state = _FOCUSED.get(ctx.root)
+        if (rerun_limit or not DIRECT_LUALATEX or cancel is None or cancel.is_set() or cancel.low_priority
+                or state is None or state['focus'] != cancel.preview_focus or state['spare'] is not None
+                or not app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+            return result
+        try:
+            invocation = json.loads((cache / (jobname + '.direct.json')).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return result
+        source = re.search(r'(?:^|\s)("[^"]*"|[^\s]+)\s*$', invocation['command'])
+        if source is None or source[1] != invocation.get('source'):
+            return result
+        wait = r"\directlua{token.set_macro('smnext', io.read('l'))}\input{\smnext}"
+        quoted = '"' + wait + '"' if os.name == 'nt' else shlex.quote(wait)
+        command = invocation['command'][:source.start(1)] + quoted
+        try:
+            output = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='replace')
+        except OSError:
+            return result
+        started = time.time()
+        try:
+            inventory = search_inventory(ctx.root, compiler.build_env(ctx))
+            proc = subprocess.Popen(
+                command if os.name == 'nt' else ['/bin/sh', '-c', command], shell=os.name == 'nt',
+                cwd=invocation['cwd'], env=_direct_env(env, invocation['env']),
+                stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True,
+                encoding='utf-8', errors='replace', **no_console_kwargs(),
+                **({'start_new_session': True} if os.name != 'nt' else {}))
+        except (OSError, ValueError):
+            output.close()
+            return result
+        spare = dict(process=proc, output=output, started=started, inventory=inventory, cache=cache, invocation=invocation)
+
+        def expire():
+            with _SPARE_LOCK:
+                if state['spare'] is spare:
+                    discard_spare(ctx.root)
+
+        spare['timer'] = threading.Timer(600, expire)
+        spare['timer'].daemon = True
+        state['spare'] = spare
+        spare['timer'].start()
+    return result
 
 
 FONT_CACHE_ATTEMPTS = 3
@@ -455,6 +571,90 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
     else:
         command = compiler.latexmk_command(wrapper, jobname, outdir, '-f', *options, cwd=ctx.root, aux=reusable)
         run_cwd = ctx.root
+    # Never bypass an explicit -g: unchanged text may hide a repaired or otherwise changed input.
+    direct = outdir / (jobname + '.direct.json')
+    log_path = outdir / (jobname + '.log')
+    if (DIRECT_LUALATEX and reusable and previous_pdf is not None and '-g' not in options
+            and log_path.is_file() and not compiler.FATAL_ERROR_RE.search(log_path.read_text(errors='replace'))):
+        try:
+            invocation = json.loads(direct.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            invocation = None
+        if invocation is not None:
+            # TeX reads the .bbl, not its .bib sources; let latexmk notice bibliography edits/deletions.
+            bibs = [Path(name) for name in recorded_inputs(
+                outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'), ctx=ctx, cache=outdir)
+                    if Path(name).suffix == '.bib']
+            if any(not path.is_file() or path.stat().st_mtime_ns > direct.stat().st_mtime_ns for path in bibs):
+                invocation = None
+        if invocation is not None:
+            # Include the framework's layout/reveal helpers and bibliography control file as well.
+            auxiliaries = [outdir / (jobname + ext) for ext in
+                           ('.aux', '.nav', '.toc', '.bbl', '.bcf', '.out', '.snm', '.ovl', '.top')]
+            before = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            log('    (direct LuaLaTeX pass)')
+            with stage('lualatex'):
+                try:
+                    with _SPARE_LOCK:
+                        state = _FOCUSED.get(ctx.root)
+                        spare = state['spare'] if state is not None else None
+                        if (spare is not None and cancel is not None and not cancel.low_priority
+                                and state['focus'] == cancel.preview_focus and spare['cache'] == outdir
+                                and spare['invocation'] == invocation
+                                and app_settings.get(ctx, SPARE_TEX_SETTING_KEY, True)):
+                            state['spare'] = None   # focus loss now leaves this render to its cancel token
+                            spare['timer'].cancel()
+                        else:
+                            spare = None
+                    build = None
+                    if spare is not None:
+                        proc = spare['process']
+                        cancel._set_process(proc)
+                        try:
+                            try:
+                                proc.stdin.write(wrapper.as_posix() + '\n')
+                                proc.stdin.flush()
+                            except OSError:
+                                compiler.CancelToken._kill(proc)
+                                proc.wait()
+                            else:
+                                if cancel.preview_evidence is not None:
+                                    cancel.preview_evidence.update(started=spare['started'], inventory=spare['inventory'])
+                                log('    (pre-started LuaLaTeX pass)')
+                                returncode = proc.wait()
+                                spare['output'].seek(0)
+                                for line in spare['output']:
+                                    on_line(line)
+                                    log(line.rstrip('\n'))
+                                build = compiler.Build(returncode, pdf, log_path,
+                                                       log_path.read_text(encoding='utf-8', errors='replace'),
+                                                       cancel.job_stopped())
+                        finally:
+                            cancel._remove_process(proc)
+                            with suppress(OSError):
+                                proc.stdin.close()
+                            spare['output'].close()
+                    if build is None:
+                        discard_spare(ctx.root, outdir)
+                        build = compiler.run_latexmk(
+                            invocation['command'] if os.name == 'nt' else ['/bin/sh', '-c', invocation['command']],
+                            jobname=jobname, outdir=outdir,
+                            cwd=Path(invocation['cwd']), env=_direct_env(env, invocation['env']), log=log,
+                            on_line=on_line, bufsize=-1, cancel=cancel)
+                except OSError:
+                    build = None
+            check_cancel(cancel)
+            after = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
+            if (build is not None and build.ok and not build.returncode and before == after
+                    and pdf.stat().st_mtime_ns != previous_pdf
+                    and not re.search(r'Rerun to get|Label\(s\) may have changed|Please\s+(?:re|\(re\))?run|'
+                                      r'rerun (?:LaTeX|Biber|BibTeX)', build.log_text, re.I)):
+                return pdf, False
+            # latexmk must reread the outputs of the direct pass, even if it remembers this wrapper.
+            command.insert(command.index('-f') + 1, '-g')
+            output_tail.clear()
+            log('    (direct pass needs latexmk)')
+    discard_spare(ctx.root, outdir)
     for attempt in range(1, FONT_CACHE_ATTEMPTS + 1):
         with stage('latexmk'):
             try:
@@ -483,7 +683,7 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
         # build tree can pick another concurrent render, and background jobs build outside the project entirely.
         try:
             failure.preview_inputs = recorded_inputs(outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
-                                                     project_root=ctx.root, cache=outdir)
+                                                     ctx=ctx, cache=outdir)
         except OSError:
             failure.preview_inputs = []
         failure.missing_inputs = re.findall(r"LaTeX Error: File [`']([^\n]+?)' not found", build.log_text)
@@ -499,5 +699,5 @@ def publish_preview(ctx: ProjectContext, pdf: Path, id_slug: str, outdir: Path, 
         copy(pdf, dest)
     with stage('dependencies'):
         write_inputs(dest, outdir / (jobname + '.fls'), outdir / (jobname + '.fdb_latexmk'),
-                     project_root=ctx.root, cache=outdir, extra=extra)
+                     ctx=ctx, cache=outdir, extra=extra)
     return dest

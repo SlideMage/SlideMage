@@ -102,12 +102,17 @@ def test_user_input_never_stops_a_running_idle_job():
 
 def test_cancel_group_drops_queued_and_stops_running_jobs():
     s = make()
+
+    def cancel_then_interrupt(job):
+        assert s.cancel_group(job.group) == 2
+        assert s.interrupt(P_IDLE) == 0
+
+    s.box["during"] = {"u0": cancel_then_interrupt}
     for n in range(3):
         s.submit(f"u{n}", None, P_IDLE, (n,), group="deck-a")
     s.submit("other", None, P_IDLE, (9,), group="deck-b")
-    assert s.cancel_group("deck-a") == 3
     drain(s)
-    assert [k for k, _ in s.ran] == ["other"]
+    assert [k for k, _ in s.ran] == ["u0", "other"] and not s.errors
 
 
 def test_a_failing_job_is_reported_once_and_not_repeated():
@@ -259,6 +264,7 @@ def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monke
     # The GUI stopped ten renders one after the other, each waiting for taskkill, under the queue's lock: the window
     # froze for seconds when the user came back (v8.52.5).
     from types import SimpleNamespace
+    from unittest.mock import Mock
     from slidemage.compiler import CancelToken
     killed = threading.Event()
 
@@ -269,7 +275,7 @@ def test_a_stop_from_the_window_does_not_wait_for_the_process_to_be_killed(monke
     monkeypatch.setattr(CancelToken, "_kill", staticmethod(slow_kill))
     s = make()
     token = CancelToken()
-    token._proc = SimpleNamespace(poll=lambda: None)
+    token._set_process(Mock(poll=lambda: None))
     s._running["idle-1"] = SimpleNamespace(key="idle-1", priority=P_IDLE, cancelled_for_requeue=False, cancel=token)
     started = time.monotonic()
     assert s.interrupt(P_IDLE) == 1

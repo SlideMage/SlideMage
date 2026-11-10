@@ -25,7 +25,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QByteArray, QSize, QTimer, Qt, Signal
+from PySide6.QtCore import QByteArray, QEvent, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ... import timing
+from ... import background_renders, power_status, preview_build, timing
 from ...stall_monitor import StallMonitor
 from ... import (app_settings, bibliography, deck_headers, deck_outline, latex_edit, project, readability_check,
                  slide_templates, themes, updater)
@@ -283,6 +283,7 @@ class WorkspaceWindow(QMainWindow):
                                                                        ms=AFTER_WRITE_REFRESH_MS),
                                                           self._after_write.start()))
         self.centre.source.written.connect(self._live_render)
+        self.centre.source.preview_requested.connect(lambda path: self._live_render(path, typing=True))
         self.centre.source.saved.connect(lambda _path: self._refresh_after_write())
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
@@ -322,6 +323,13 @@ class WorkspaceWindow(QMainWindow):
         self.move(frame.topLeft())
 
     # -- column widths and visibility ------------------------------------------
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and hasattr(self, 'centre'):
+            target, _row, _title, language = self.centre._preview_context()
+            focus = (target, self.state.view, language or self.state.language) if target and self.isActiveWindow() else None
+            preview_build.set_focus(self.project, focus)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -515,11 +523,12 @@ class WorkspaceWindow(QMainWindow):
         if not dirty:
             self._refresh_after_write()
 
-    def _live_render(self, path: Path) -> None:
-        """The Settings switch "Render the Preview after each autosave": render the slide that was just written
-        (Ctrl+S renders on its own, so this is only for the autosave) when the Preview shows it."""
+    def _live_render(self, path: Path, *, typing: bool = False) -> None:
+        # Only typing-pause renders add TeX runs; writes still render on battery (2026-11-10).
         from ..dialogs.settings import LIVE_RENDER_SETTING_KEY
         if self.state.mode not in ("preview", "split") or not app_settings.get(self.project, LIVE_RENDER_SETTING_KEY, False):
+            return
+        if typing and app_settings.get(self.project, background_renders.ONLY_MAINS_KEY, True) and power_status.on_battery():
             return
         target = self.centre.preview._target
         if target is not None and target.source_path == path and not self.compiling:
@@ -578,6 +587,7 @@ class WorkspaceWindow(QMainWindow):
         if not plugin_ui.HOST_UI.close_plugin_windows():
             event.ignore()
             return
+        preview_build.set_focus(self.project, None)
         self.centre.source.stop_ai_checks()   # no worker thread outlives the window
         self.assistant.shutdown()
         self.images_page.shutdown()

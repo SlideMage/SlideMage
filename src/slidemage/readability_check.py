@@ -98,7 +98,8 @@ def check_slide(ctx: ProjectContext, target, text: str, view: str, language: str
                 renders: Optional[RenderService] = None, log=lambda _line: None) -> readability.Report:
     """Render `text` as the slide `target` (a preview_target.PreviewTarget) and check the draft. RuntimeError when
     it does not compile or `cancel` is set."""
-    pdf = (renders or RenderService()).request(target, text, view, language, log).wait(cancel)[0]
+    request = (renders or RenderService()).request(target, text, view, language, log)
+    pdf = request.wait(cancel)[0]
     return check_pdf(ctx, pdf, target.bare_id, text=text)
 
 

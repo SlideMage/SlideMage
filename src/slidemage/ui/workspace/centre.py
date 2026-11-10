@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout,
     QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, languages, open_path, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ... import app_settings, deck_editor, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
@@ -1039,8 +1039,11 @@ class CentreColumn(QFrame):
         if mode in ("source", "split"):
             self.source.set_message(message)
             self.source.show_path(self._path, self.tabs.active.on_saved)
+        target, row, title, language = self._preview_context()
+        if self.window().isActiveWindow():
+            focus = (target, self.state.view, language or self.state.language) if target else None
+            preview_build.set_focus(self.app.project, focus)
         if mode in ("preview", "split"):
-            target, row, title, language = self._preview_context()
             self.preview.show_slide(target, row, title, message, language)
         if mode == "details":
             tab_slide = self.tabs.active.slide
@@ -1166,7 +1169,7 @@ class CentreColumn(QFrame):
         picks = []
         for distance in range(1, 4):
             picks += [rows[i] for i in (index - distance, index + distance) if 0 <= i < len(rows)]
-        # Built as the focused slide's target is (preview_target.resolve_views), so a neighbour's step count is found
+        # Built as the focused slide's target is (batch_render.plan_slide), so a neighbour's step count is found
         # under the same key once that slide is focused.
         frames = self._english_frames(state)
         targets = [(for_call(state.project, state.deck, r.call, r.position, frame_number=r.frame_number,

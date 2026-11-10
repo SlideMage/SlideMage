@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import os
 import shutil
 import sys
@@ -18,6 +19,7 @@ from conftest import EXAMPLE_PROJECT
 def _no_precompiled_preamble(monkeypatch):
     # These tests fake latexmk; the format tests below opt back in.
     monkeypatch.setenv('SLIDEMAGE_PREVIEW_FORMAT', '0')
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', False)
 
 
 def test_regions_and_elements_keep_preamble_and_validate():
@@ -143,17 +145,6 @@ def test_the_wrappers_left_in_decks_before_v8_58_are_removed_once(tmp_path):
     assert [p.name for p in ctx.decks_dir.iterdir()] == ['deck.tex']
     (ctx.decks_dir / '_slidemage_preview-later.tex').write_text('x')
     assert preview_build.remove_legacy_wrappers(ctx) == 0          # once per project and session
-
-
-def test_partial_previews_never_replace_full_slide_snapshot(monkeypatch):
-    calls = []
-    monkeypatch.setattr(slide_preview, 'compile_and_extract',
-                        lambda *args, **kwargs: calls.append((args, kwargs)))
-    pre = r'\documentclass{beamer}\begin{document}'
-    slide_preview.render_slide_to_pdf(EXAMPLE_PROJECT, 'slide', 'abc-EN-Test', preamble_text=pre, overlay=2)
-    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', '$x$', preamble_text=pre, preview_mode='element')
-    slide_preview.render_slide_text_to_pdf(EXAMPLE_PROJECT, 'abc-EN-Test', 'Text', preamble_text=pre, preview_mode='region')
-    assert all(kwargs['snapshot_template'] is None for _, kwargs in calls)
 
 
 def test_rerun_limit_accepts_only_a_new_clean_pdf(tmp_path, monkeypatch):
@@ -331,8 +322,26 @@ def test_recorder_expands_format_inputs_without_depending_on_generated_format(tm
     fls = out / 'slide.fls'
     fls.write_text(f'PWD {root}\nINPUT {fmt / "preamble.fmt"}\nINPUT {fmt / "capture.lua"}\nINPUT {source}\n')
     deps = preview_build.recorded_inputs(fls, out / 'missing.fdb_latexmk',
-                                        project_root=root, cache=out, extra=[str(theme)])
+                                        ctx=ProjectContext.at(root), cache=out, extra=[str(theme)])
     assert deps == sorted([str(source), str(theme)])
+
+
+def test_recorder_keeps_similar_prefixes_and_normalizes_relative_inputs(tmp_path):
+    root = tmp_path / 'project with spaces'
+    out = root / '.build/preview-cache/slide'
+    out.mkdir(parents=True)
+    fls = out / 'slide.fls'
+    source = root / 'slides/one.tex'
+    sibling = out.with_name('slide-extra') / 'input.tex'
+    framework = root / '.build/preview-formats-extra/theme.tex'
+    fls.write_text(f'PWD {root / "decks"}\nINPUT ../slides/./one.tex\nINPUT {source}\n'
+                   f'INPUT {out / "slide.aux"}\nINPUT {sibling}\nINPUT {framework}\n'
+                   'INPUT _slidemage_preview-wrapper.tex\n')
+    database = out / 'slide.fdb_latexmk'
+    database.write_text('  "../references with spaces.bib" 123 42 abc\n'
+                        '  "../missing.bib" 0 -1 0\n')
+    assert preview_build.recorded_inputs(fls, database, ctx=ProjectContext.at(root), cache=out) == sorted(map(str, (
+        source, sibling, framework, root / 'references with spaces.bib')))
 
 
 # -- luaotfload's font-cache race (several LuaLaTeX runs starting at once) -------------------------------------------
@@ -359,7 +368,7 @@ def _latexmk_runs(monkeypatch, tmp_path, logs):
         return compiler.Build(0 if pdf.exists() else 1, pdf, outdir / f'{jobname}.log', log_text, False)
     monkeypatch.setattr(compiler, 'run_latexmk', run_latexmk)
     monkeypatch.setattr(preview_build, '_pause', lambda seconds, cancel=None: None)
-    ctx = SimpleNamespace(root=tmp_path, decks_dir=tmp_path / 'decks')
+    ctx = ProjectContext.at(tmp_path)
     (tmp_path / 'decks').mkdir(exist_ok=True)
     out = tmp_path / 'out'
     out.mkdir(exist_ok=True)
@@ -565,3 +574,87 @@ def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, 
     now["t"] += preview_build.PRUNE_EVERY + 1
     assert preview_build.maybe_prune_unused(one, tmp_path, clock=clock)
     assert ran == [one, two, one]
+
+
+def test_a_changed_aux_falls_back_to_latexmk(tmp_path, monkeypatch):
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    commands = []
+
+    def run(command, *, jobname, outdir, cwd, env, **kwargs):
+        commands.append(command)
+        if command[0] != 'latexmk':
+            assert env == dict(PATH='recorded', HOME='home')
+        pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
+        pdf.write_bytes(b'%PDF fresh')
+        log.write_text('Success')
+        (outdir / (jobname + '.aux')).write_text(str(len(commands)))
+        (outdir / (jobname + '.direct.json')).write_text(
+            json.dumps(dict(command='lualatex', cwd=str(cwd), env=dict(PATH='recorded'))))
+        return compiler.Build(0, pdf, log, 'Success', False)
+
+    monkeypatch.setattr(compiler, 'run_latexmk', run)
+    ctx = ProjectContext.at(tmp_path)
+    text = r'\begin{document}First\end{document}'
+    kwargs = dict(ctx=ctx, env=dict(TEXINPUTS='shadow', PATH='inherited', HOME='home'))
+    preview_build.compile_cached(text, 'abc', lambda _: None, **kwargs)
+    preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None, **kwargs)
+    assert [cmd[0] == 'latexmk' for cmd in commands] == [True, False, True]
+    assert '-g' in commands[-1]
+
+
+def test_a_spare_is_used_once_and_a_preamble_change_discards_it(tmp_path, monkeypatch):
+    import io
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    ctx = ProjectContext.at(tmp_path)
+    focus = ('abc', 'instructor', 'EN')
+    preview_build.set_focus(ctx, focus)
+    cancel = compiler.CancelToken()
+    cancel.preview_focus = focus
+    cancel.preview_evidence = dict(started=0, inventory={})
+    processes = []
+    discarded = []
+    commands = []
+
+    def run(command, *, jobname, outdir, cwd, env, **kwargs):
+        commands.append(command)
+        pdf, log = outdir / (jobname + '.pdf'), outdir / (jobname + '.log')
+        pdf.write_bytes(b'%PDF fresh')
+        log.write_text('Success')
+        (outdir / (jobname + '.direct.json')).write_text(json.dumps(dict(
+            command=f'lualatex "{command[-1]}"', source=f'"{command[-1]}"', cwd=str(cwd), env=env)))
+        return compiler.Build(0, pdf, log, 'Success', False)
+
+    def popen(command, **kwargs):
+        assert kwargs['stdin'] == compiler.subprocess.PIPE
+        proc = Mock(stdin=io.StringIO())
+
+        def wait():
+            if proc.stdin.getvalue():
+                wrapper = Path(proc.stdin.getvalue().strip())
+                cache = ctx.build_dir / 'preview-cache' / wrapper.stem.removeprefix('_slidemage_preview-')
+                (cache / (wrapper.stem.removeprefix('_slidemage_') + '.pdf')).write_bytes(b'%PDF spare')
+            return 0
+
+        proc.wait = wait
+        processes.append(proc)
+        return proc
+
+    monkeypatch.setattr(compiler, 'run_latexmk', run)
+    monkeypatch.setattr(compiler.subprocess, 'Popen', popen)
+    monkeypatch.setattr(compiler.CancelToken, '_kill', lambda proc: discarded.append(proc))
+    text = r'\documentclass{article}\begin{document}First\end{document}'
+    try:
+        preview_build.compile_cached(text, 'abc', lambda _: None, ctx=ctx, env={}, cancel=cancel)
+        first = processes[0]
+        started = preview_build._FOCUSED[ctx.root]['spare']['started']
+        preview_build.compile_cached(text.replace('First', 'Second'), 'abc', lambda _: None,
+                                     ctx=ctx, env={}, cancel=cancel)
+        assert first.stdin.closed and len(processes) == 2 and len(commands) == 1
+        assert cancel.preview_evidence['started'] == started
+        preview_build.compile_cached(text.replace('article', 'report'), 'abc', lambda _: None,
+                                     ctx=ctx, env={}, cancel=cancel)
+        assert discarded == [processes[1]] and len(commands) == 2 and len(processes) == 3
+    finally:
+        preview_build.set_focus(ctx, None)

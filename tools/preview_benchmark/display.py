@@ -23,7 +23,7 @@ from PIL import Image
 import pymupdf
 from PySide6.QtCore import QEvent, QObject, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
-from slidemage import compiler, deck_outline, preview_cache, preview_requests
+from slidemage import batch_render, deck_outline, preview_requests, render_store
 from slidemage.deck_scan import read_deck
 from slidemage.project import ProjectContext
 from slidemage.ui.kit.theme import ThemeManager
@@ -53,18 +53,19 @@ def run(output, rows):
     image = BytesIO()
     Image.new('RGB', (160, 90), '#f4f4f4').save(image, 'PNG')
     png = image.getvalue()
-    env = compiler.build_env(ctx)
-    cache = preview_cache.PreviewCache(ctx.root)
-    before = cache.begin(env)
+    service = preview_requests.RenderService()
+    renderer = service._renderer(ctx)
     for slot in deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN'):
-        spec, = preview_requests.resolve_requests(ctx, deck, source, 'instructor', 'EN',
+        spec, = batch_render.plan_slide(ctx, deck, source, 'instructor', 'EN',
                                                    occurrence_key=slot.key)
-        assert cache.store(preview_requests.cache_identity(spec), env, pdf=pdf, display_png=png,
-                           secondary_png=png, page_images=(), dependencies=(source, dependency), before=before)
+        evidence = renderer.resolver.capture(spec.unit, spec.revision.text)
+        manifest = renderer.resolver.build_manifest([str(source), str(dependency)])
+        assert renderer._store_render(spec.unit, render_store.ORIGIN_REVEAL, pdf, [png], manifest, evidence)
     app = QApplication.instance() or QApplication([])
     state = WorkspaceState(ctx)
     host = QWidget()
-    window = SimpleNamespace(project=ctx, commands=build_registry(), compiling=False)
+    window = SimpleNamespace(project=ctx, commands=build_registry(), compiling=False,
+                             background=SimpleNamespace(renderer=renderer))
     panel = SlideList(window, state, ThemeManager(), Toast(host))
     panel.resize(360, 700)
     panel.show()
@@ -125,6 +126,7 @@ def run(output, rows):
     panel.hide()
     panel.deleteLater()
     app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    service.close()
 
 
 if __name__ == '__main__':

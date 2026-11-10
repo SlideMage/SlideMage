@@ -12,7 +12,7 @@ from functools import partial
 
 import pytest
 
-from slidemage import slide_templates, slide_versioning
+from slidemage import slide_versioning
 from agent_fakes import ScriptedProvider, call, reply
 from conftest import build_window, make_project, wait_until as _wait_until
 from PySide6.QtCore import QPoint, QRect
@@ -680,30 +680,30 @@ def refresh(env, cancel=None):
 
 
 def test_refreshing_a_decks_previews_runs_on_the_compile_slot_and_returns_its_result(env, monkeypatch):
-    from slidemage import update_all_previews
-    given, settings = [], []
+    from slidemage import batch_render
+    given = []
 
-    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None, **options):
-        given.append((deck.name, needed))
-        settings.append(options)
-        log("==== Rerender previews of test: 2 slide(s) ====")
-        return update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"])
+    def render(service, requests, **options):
+        from slidemage.preview_requests import PreviewResult
+        given.append((service, requests))
+        return tuple(PreviewResult(spec, status='failed' if spec.target.bare_id == 'abd' else 'rendered')
+                     for spec in requests)
 
-    monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
+    monkeypatch.setattr(batch_render, "render_batch", render)
     result = refresh(env)
     assert (result.refreshed, result.failed) == (["abc-EN-Hello"], ["abd-EN-Second"])
-    assert given == [("test", {slide_templates.DEFAULT_TEMPLATE: {"abc-EN-Hello", "abd-EN-Second"}})]       # this deck's slides only
+    (service, requests), = given
+    assert service is env.window.centre.preview._renders
+    assert all(spec.target.deck.name == 'test' and not spec.options.force for spec in requests)
+    assert {spec.view for spec in requests} == set(batch_render.VIEWS)
     row, = env.window.compile.run.rows.values()
     assert row.label == "Rerender previews of test"                          # the window's own job panel
-    assert settings[0]['service'] is env.window.centre.preview._renders
-    assert settings[0]['scope'] == 'all'
-    assert settings[0]['selected_view'] == env.window.state.view
     assert row.state == 'failed'
     assert not env.window.compile.running
 
 
 def test_refreshing_previews_says_when_the_window_is_busy_or_the_run_failed(env, monkeypatch):
-    from slidemage import update_all_previews
+    from slidemage import batch_render
     monkeypatch.setattr(type(env.window.compile), "running", property(lambda _self: True))
     assert "busy with another compile run" in str(refresh(env))
     monkeypatch.undo()
@@ -711,20 +711,20 @@ def test_refreshing_previews_says_when_the_window_is_busy_or_the_run_failed(env,
     def broken(*args, **kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(update_all_previews, "rerender_deck", broken)
+    monkeypatch.setattr(batch_render, "render_batch", broken)
     assert "Log drawer" in str(refresh(env))
 
 
 def test_the_chats_stop_ends_a_preview_refresh_without_asking(env, monkeypatch):
-    from slidemage import update_all_previews
+    from slidemage import batch_render
     release = threading.Event()
     stopped = []
 
-    def rerender(ctx, deck, log, cancel=None, base_jobnames=None, needed=None, **options):
+    def render(service, requests, **options):
         release.wait(5)
-        return update_all_previews.DeckResult()
+        return ()
 
-    monkeypatch.setattr(update_all_previews, "rerender_deck", rerender)
+    monkeypatch.setattr(batch_render, "render_batch", render)
     monkeypatch.setattr(compile_actions, "stop_now", lambda _window: stopped.append(True) or release.set())
     cancel = compiler.CancelToken()
     threading.Timer(0.2, cancel.request_stop).start()

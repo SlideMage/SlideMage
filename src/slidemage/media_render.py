@@ -26,7 +26,7 @@ import pymupdf as fitz
 from . import project
 
 
-# In the user's cache folder (ctx.pdf_render_cache_dir), not the project, same as the slide previews -- a
+# In the user's cache folder (ctx.pdf_render_cache_dir), not the project -- a
 # regeneratable, best-effort cache, not project content worth syncing.
 
 # ~216 DPI at PyMuPDF's 72-DPI-per-unit default (matrix scale = DPI/72) --

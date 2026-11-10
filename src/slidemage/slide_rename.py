@@ -371,8 +371,6 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
     - slide_ids.csv gets the new id (the old one stays registered, so it is
       never handed out again), then deck-inclusion headers and translation
       cross-references are regenerated;
-    - the cached slide previews (<ctx.slide_previews_dir>/<old>-*.png) are
-      renamed too, so they need no re-render.
 
     `new_id` must start with a letter (slide_ids.regular_id_reason());
     `reserved=True` instead requires the form of the SlideMage manual and
@@ -444,12 +442,6 @@ def rename_slide_id(ctx: ProjectContext, old_id: str, new_id: str, reserved: boo
 
     with contextlib.suppress(alt_images.NewerStoreError):   # a newer SlideMage's store is left as it is
         alt_images.update_slide_notes(ctx, _move_notes)
-
-    if ctx.slide_previews_dir.is_dir():
-        for src in ctx.slide_previews_dir.glob(f"{old_id}-*.png"):
-            dest = src.with_name(new_id + src.name[len(old_id):])
-            if not dest.exists():
-                src.rename(dest)
 
     slide_ids.append_slide_id(ctx, new_id)
     deck_headers.regenerate_headers(ctx)

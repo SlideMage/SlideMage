@@ -15,6 +15,7 @@ from pathlib import Path
 from ... import (
     ai_review,
     alt_blocks,
+    batch_render,
     bibliography,
     compile_status,
     deck_editor,
@@ -25,6 +26,7 @@ from ... import (
     latex_lint,
     preview_target,
     qr_code,
+    render_lookup,
     slide_add,
     slide_ids,
     slide_language,
@@ -219,6 +221,11 @@ def preview_batch_output(ctx: ToolContext, path: Path, view: str | None, *, save
                   'superseded': 'publication superseded; visible pane unchanged',
                   'failed': f"publication failed: {result.error}"}.get(publication, publication)
         image = result.secondary_png or result.display_png
+        if not saved:
+            renderer = ctx.workspace.preview_service()._renderer(ctx.project)
+            state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+            if state == 'current':
+                image = renderer.store.page(record, record['pages']) or image
         if not saved and image is not None:
             images.append(image)
             detail += f"; image #{len(images)} = {spec.view}, {spec.language}"
@@ -238,8 +245,8 @@ def slide_target(project, deck: Deck | None, path: Path, view: str, language: st
     """The slide file `path` as a preview renders it: as `deck` calls it in `view` and `language`, else alone
     (None when it is no slide file)."""
     try:
-        return preview_target.resolve_views(project, deck, path, view, language,
-                                            occurrence_key=occurrence_key)[0][1]
+        return batch_render.plan_slide(project, deck, path, view, language,
+                                       occurrence_key=occurrence_key)[0].target
     except ValueError:
         return None
 

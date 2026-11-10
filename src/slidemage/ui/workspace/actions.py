@@ -381,7 +381,7 @@ def build_registry(mac: bool = sys.platform == "darwin") -> CommandRegistry:
     add("empty_pdf", "Empty pdf folder", PROJECT, maintenance.empty_pdf_folder)
     add("remove_temp", "Remove temp files", PROJECT, maintenance.remove_temp_files)
     add("archive_unused", "Archive unused slides and media files", PROJECT, maintenance.on_archive_unused_content)
-    add("update_previews", "Update slide previews", PROJECT, compile_actions.update_previews)
+    add("update_previews", "Render all previews now", PROJECT, compile_actions.update_previews)
     add("sync_links", "Reestablish broken translation links", PROJECT, maintenance.on_sync_translation_links)
     add("version_history", "Version history…", PROJECT, maintenance.on_open_version_history)
     add("check_updates", "Check for updates…", PROJECT, maintenance.on_check_for_updates)

@@ -296,13 +296,7 @@ def test_usage_scans_preserve_comment_policy_and_legacy_slides(ctx, project, mon
         assert "%% Included in decks: course" in (project / "slides" / filename).read_text()
 
 
-def test_preview_maintenance_renders_both_files_independently(project, monkeypatch):
-    from slidemage import update_all_previews
-
-    d = deck(project, "\\slide{aaa-EN-One}\n")
-    monkeypatch.setattr(update_all_previews, "scan_decks", lambda _ctx: [d])
-    assert next(iter(update_all_previews.needed_slides_by_template(ProjectContext.at(d.path.parent.parent)).values())) == {
-        "aaa-EN-One", "ddd-DE-Eins"}
+def test_compile_can_keep_both_language_files_independent(project):
     d = deck(project, "\\slide{aaa-EN-One}\n\\slide{ddd-DE-Eins}\n")
     job = compiler.CompileJob(d, None, None, language="DE", resolve_translations=False)
     wrapper = compiler.wrapper_text(ProjectContext.at(d.path.parent.parent), job)

@@ -50,7 +50,7 @@ def signature(path, width=None):
 
 
 def child(base, label, deadline, case_name):
-    from slidemage import deck_editor, deck_scan, project, slide_preview, slide_language, slide_snapshot
+    from slidemage import deck_editor, deck_scan, project, slide_preview, slide_snapshot
     try:
         from slidemage.preview_metrics import PreviewMetrics
     except ImportError:
@@ -106,13 +106,8 @@ def child(base, label, deadline, case_name):
                         call.version, call.conditions, steps=call.steps,
                         preamble_text=deck.preamble_text, frame_number=case["index"],
                         reuse_build=cached,
-                        capture_snapshot=not cached, log=log)
-                    if cached:
-                        _, images = slide_snapshot.prepare_preview(pdf, True)
-                        slide_snapshot.publish_preview(ctx, images, slide_language.bare_id(case["slide"]),
-                            slide_snapshot.detect_template(deck.preamble_text))
-                    else:
-                        slide_snapshot.page_png(pdf)
+                        log=log)
+                    slide_snapshot.prepare_preview_images(pdf, False, (slide_snapshot.FULL_SIZE[0],))
                 end = time.perf_counter()
                 destination = out / f"{phase}.pdf"
                 shutil.copy2(pdf, destination)

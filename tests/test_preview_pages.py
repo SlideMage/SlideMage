@@ -59,14 +59,18 @@ def test_corrupt_pages_raster_again_and_same_stat_edit_misses(pdf, tmp_path):
     assert path.stat().st_size == stat.st_size and len(calls) == 3
 
 
-def test_sequence_reuse_needs_sufficient_resolution():
-    entry = SimpleNamespace(raster_sequence={'configuration': {'dpi': 144}, 'pages': [1, 2]},
-                            sequence_images=(b'first', b'last'))
-    request = SimpleNamespace(source=SimpleNamespace(_cache_entry=entry))
-    assert preview_pages.sequence_images(request, start=2, count=1) == [b'last']
-    assert preview_pages.sequence_images(request, dpi=200) is None
-    entry.sequence_images = ()
-    assert preview_pages.sequence_images(request) is None
+def test_sequence_reuse_needs_sufficient_resolution(monkeypatch):
+    from slidemage import render_lookup
+
+    record = {'width': 1920}
+    spec = SimpleNamespace(unit='unit')
+    resolver = SimpleNamespace(store=SimpleNamespace(pages=lambda record: [b'first', b'last']))
+    def select(request, *, strict):
+        assert strict and request == dict(resolver=resolver, unit=spec.unit, spec=spec)
+        return 'current', record
+    monkeypatch.setattr(render_lookup, 'select', select)
+    assert preview_pages.sequence_images(spec, resolver, start=2, count=1) == [b'last']
+    assert preview_pages.sequence_images(spec, resolver, dpi=400) is None
 
 
 def test_cache_write_failure_still_returns_images(pdf, tmp_path, monkeypatch):

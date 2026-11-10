@@ -103,7 +103,7 @@ def test_the_slide_command_checks_a_draft_of_the_slide_in_view_and_shows_the_fin
     assert env.panel.title.text() == "Readability · abc · Hello" and "Typesetting the slide as a draft" in env.panel.summary.text()
     finished(env)
     (bare_id, text, view, language, kwargs), = env.renders
-    assert (bare_id, view, language, kwargs["capture_snapshot"]) == ("abc", "during-course", "EN", False)
+    assert (bare_id, view, language) == ("abc", "during-course", "EN")
     assert text == env.window.centre.slide_text(env.path)                         # a draft of the Source view's text
     assert env.panel.summary.text() == "1 slide checked · 1 with errors · 0 with warnings."
     texts = labels(env.panel)
@@ -138,12 +138,13 @@ def test_clicking_a_finding_focuses_that_slide_in_the_centre(env):
     wait_until(lambda: env.window.state.focused_slide == "abc")
 
 
-def test_check_again_renders_the_slide_again_and_reports_the_new_state(env):
+def test_check_again_reports_the_changed_slide(env):
     open_slide(env)
     env.pdfs = [slide(pct=2.8), slide(pct=4.0)]
     env.window.commands.run("slide:readability", env.window)
     finished(env)
     assert env.panel.report.slides[0].findings
+    env.window.centre.source.current.editor.insertPlainText("% edited\n")
     env.panel.again.click()
     assert "Typesetting" in env.panel.summary.text() and env.panel.report is None
     finished(env)

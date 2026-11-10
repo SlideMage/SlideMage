@@ -526,6 +526,71 @@ def test_an_autosave_renders_the_preview_only_with_the_live_render_setting(windo
     assert renders == [True]                                      # the Source view alone has no page to render
 
 
+def test_a_typing_pause_renders_once_and_autosave_hits_the_store(qapp, tmp_path, monkeypatch):
+    import time
+    import pymupdf
+    from slidemage import power_status, preview_target
+    from slidemage.fileio import text_sha256
+    from slidemage.ui.dialogs.settings import LIVE_RENDER_SETTING_KEY
+    from slidemage.ui.workspace import source_file
+
+    ctx = ProjectContext.at(tmp_path / "project")
+    ctx.slides_dir.mkdir(parents=True)
+    path = ctx.slides_dir / "abc-EN-Demo-current.tex"
+    original = "\\setSlideVersion{1-0-0}\n\\begin{standardframe}{Demo}Text\\end{standardframe}\n"
+    path.write_text(original)
+    pdf = tmp_path / "slide.pdf"
+    with pymupdf.open() as doc:
+        doc.new_page(width=320, height=180).insert_text((30, 40), "Edited slide")
+        doc.save(pdf)
+    pdf.with_suffix('.inputs.json').write_text('[]')
+    compiled, requests = [], []
+
+    def render(_target, text, *args, **kwargs):
+        compiled.append(text)
+        return pdf
+
+    monkeypatch.setattr(preview_target, "render_text", render)
+    monkeypatch.setattr(power_status, "on_battery", lambda: False)
+    monkeypatch.setattr(source_file, "AUTOSAVE_DELAY_MS", 30_000)
+    app_settings.set(ctx, LIVE_RENDER_SETTING_KEY, True)
+    window = build_window(monkeypatch, ctx)
+    window.open_slide_editor(path)
+    window.state.set_mode("split")
+    pane = window.centre.preview
+    request = pane._renders.request
+
+    def capture(*args, **kwargs):
+        result = request(*args, **kwargs)
+        if not kwargs.get("all_steps"):
+            requests.append(result)
+        return result
+
+    monkeypatch.setattr(pane._renders, "request", capture)
+    file = window.centre.source.current
+    file.editor.moveCursor(file.editor.textCursor().MoveOperation.End)
+    monkeypatch.setattr(source_file, "RENDER_ON_TYPING_PAUSE", False)
+    QTest.keyClicks(file.editor, "% first")
+    QTest.qWait(source_file.TYPING_PAUSE_MS + 100)
+    assert not requests
+    monkeypatch.setattr(source_file, "RENDER_ON_TYPING_PAUSE", True)
+    QTest.keyClicks(file.editor, " middle")
+    QTest.qWait(100)
+    QTest.keyClicks(file.editor, " and last")
+    deadline = time.monotonic() + 10
+    while (not requests or not requests[-1].done.is_set() or pane._busy) and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert len(compiled) == len(requests) == 1 and requests[0].error is None
+    assert path.read_text() == original and file.dirty
+    file._autosave_timer.start(0)
+    deadline = time.monotonic() + 10
+    while (file.dirty or len(requests) < 2 or not requests[-1].done.is_set() or pane._busy) and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert not file.dirty and len(requests) == 2 and len(compiled) == 1
+    assert requests[-1].error is None and requests[-1].metrics['cache_hit']
+    assert requests[0].spec.revision.content_hash == text_sha256(path.read_text())
+
+
 def test_opening_a_slide_focuses_it(window):
 
     slide = next(iter(EXAMPLE_PROJECT.slides_dir.glob("*-current.tex")))

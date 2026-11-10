@@ -11,6 +11,7 @@ the file is stat-ed once more: one that moved while it was read has no hash yet 
 Cloud-synced folders make this matter: the sync client may restore another machine's modification time
 (a changed file with an old mtime has another size or is caught by the periodic audit, see
 HashCache.audit) and may touch a file without changing it (a rehash gives the same hash again).
+Slide sources (`slides/*.tex`) use UTF-8 text with universal newlines; other files use their bytes.
 Free of Qt.
 """
 from __future__ import annotations
@@ -22,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from .fileio import sha256_file
+from .fileio import sha256_file, text_sha256
 
 RACY_SECONDS = 3.0
 
@@ -64,9 +65,11 @@ class HashCache:
             if row and row[0] == before.st_size and row[1] == before.st_mtime_ns:
                 return row[2]
         try:
-            digest = self._hasher(Path(path))
+            source = Path(key)
+            digest = (text_sha256(Path(path).read_text(encoding="utf-8"))
+                      if source.parent.name == "slides" and source.suffix == ".tex" else self._hasher(Path(path)))
             after = os.stat(path)
-        except OSError:
+        except (OSError, UnicodeError):
             return None
         self.reads += 1
         if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
@@ -77,13 +80,6 @@ class HashCache:
                                  (key, before.st_size, before.st_mtime_ns, digest))
                 self._db.commit()
         return digest
-
-    def is_racy(self, path: Path | str) -> bool:
-        """The file was modified so recently that its hash cannot be trusted yet."""
-        try:
-            return self._clock() - os.stat(path).st_mtime < RACY_SECONDS
-        except OSError:
-            return False
 
     def audit(self, limit: int = 20) -> list[str]:
         """Re-read up to `limit` of the oldest-checked files ignoring the shortcut; the paths whose content

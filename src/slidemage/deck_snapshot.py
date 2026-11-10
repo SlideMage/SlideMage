@@ -89,11 +89,9 @@ ALWAYS_PROJECT_FILES = (
 )
 # Project folders whose files never belong in a snapshot even if a compile
 # reads them (build output, caches, other snapshots).
-# (.previews: the slide previews a generated appendix shows are copied per
-# version instead, see copy_job_previews(). In the project they are in the user's cache folder
-# (ctx.previews_dir); inside a snapshot they keep the name .previews/<jobname>/.)
+# Appendix thumbnails are copied per version instead, see copy_job_previews().
 EXCLUDED_PROJECT_DIRS = (".build", ".previews", ".git", SNAPSHOTS_DIRNAME, ".slidemage")
-PREVIEWS_DIRNAME = ".previews"
+PREVIEWS_DIRNAME = ".build/appendix-thumbs"
 ISOLATING_ENV_VARS = project.SNAPSHOT_ISOLATING_ENV_VARS
 
 LogCallback = Callable[[str], None]
@@ -467,16 +465,11 @@ class _Collected:
     warnings: list[str]
 
 
-def _previews_dir(project_root: Path) -> Path:
-    """Where the project's slide previews are (the user's cache folder, not the project)."""
-    return project.ProjectContext.at(project_root).previews_dir
-
-
 def classify_input(path: Path, *, project_root: Path, framework_dir: Optional[Path],
                    build_dirs: Iterable[Path], roots: Iterable[Path]) -> str:
-    """"build" (the compile's own aux/output, and the slide previews: copy_job_previews() takes those),
+    """"build" (the compile's own aux/output and derived caches),
     "framework", "project", "tex" (the TeX distribution) or "external" (anything else -- not allowed)."""
-    if any(is_within(path, b) for b in build_dirs) or is_within(path, _previews_dir(project_root)):
+    if any(is_within(path, b) for b in build_dirs) or is_within(path, project.previews_cache_dir(project_root)):
         return "build"
     if framework_dir is not None and is_within(path, framework_dir):
         return "framework"
@@ -559,24 +552,12 @@ def relative_wrapper(text: str, project_root: Path, jobname: Optional[str] = Non
     project (a generated appendix's slide previews) made project-relative,
     so the snapshot reads its own copies (the decks' graphicspath has ../);
     with `jobname`, the previews point into that version's own folder
-    (job_previews_rel())."""
-    # The previews live in the cache folder: name them as the snapshot holds them, under .previews/.
-    previews = _previews_dir(project_root)
-    for folder in {previews.as_posix(), previews.resolve().as_posix()}:
-        text = text.replace(folder.rstrip("/") + "/", f"{PREVIEWS_DIRNAME}/")
+    under appendix-thumbs."""
     for root in {project_root.as_posix(), project_root.resolve().as_posix()}:
         text = text.replace(root.rstrip("/") + "/", "")
     if jobname:
         text = text.replace(f"{PREVIEWS_DIRNAME}/", f"{PREVIEWS_DIRNAME}/{jobname}/")
     return text
-
-
-def job_previews_rel(rel: str, jobname: str) -> str:
-    """".previews/slide_previews/x.png" -> ".previews/<jobname>/slide_previews/x.png":
-    each version of a snapshot keeps the previews its own compile read -- they
-    differ between versions compiled before and after an instructor compile
-    refreshed them."""
-    return f"{PREVIEWS_DIRNAME}/{jobname}/{rel[len(PREVIEWS_DIRNAME) + 1:]}"
 
 
 def copy_job_previews(out: "_JobOutput", jobname: str, project_root: Path,
@@ -585,15 +566,16 @@ def copy_job_previews(out: "_JobOutput", jobname: str, project_root: Path,
     copies, else the current files) into the snapshot's per-version folder.
     Returns how many."""
     copied = 0
-    previews = _previews_dir(project_root)
     for path in out.inputs:
-        if not is_within(path, previews):
+        if not is_within(path, project_root):
             continue
-        rel = f"{PREVIEWS_DIRNAME}/{_rel(path.resolve(), previews.resolve())}"
+        rel = _rel(path.resolve(), project_root.resolve())
+        if not rel.startswith(f"{PREVIEWS_DIRNAME}/"):
+            continue
         source = out.copies.get(_norm(path), path)
         if not source.is_file():
             continue
-        dest = target_project / job_previews_rel(rel, jobname)
+        dest = target_project / PREVIEWS_DIRNAME / jobname / rel[len(PREVIEWS_DIRNAME) + 1:]
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest)
         copied += 1
@@ -1097,7 +1079,7 @@ def _check_cancel(cancel: Optional[CancelToken]) -> None:
 def create_snapshot(
     deck: Deck, options: SnapshotOptions, log: LogCallback,
     cancel: Optional[CancelToken] = None, progress: Optional[ProgressCallback] = None,
-    *, ctx: project.ProjectContext, when: Optional[datetime] = None,
+    *, ctx: project.ProjectContext, when: Optional[datetime] = None, resolver=None,
 ) -> SnapshotResult:
     """Snapshot one deck into <project>/snapshots/. Never raises for an
     ordinary failure: the result says what went wrong, and nothing half-
@@ -1126,7 +1108,7 @@ def create_snapshot(
         for i, job in enumerate(jobs, 1):
             _check_cancel(cancel)
             key = progress_key(job.jobname)
-            wrapper_text = compiler.wrapper_text(ctx, job)
+            wrapper_text = compiler.wrapper_text(ctx, job, resolver=resolver)
             wrapper_texts.append(wrapper_text)
             if options.reuse:
                 fresh, why = compile_records.fresh_output(ctx.build_dir, job.jobname,
@@ -1301,7 +1283,7 @@ def snapshot_decks(
     cancel: Optional[CancelToken] = None,
     progress: Optional[Callable[[int, int, str, str], None]] = None,
     delete_old: Optional[list[ExistingSnapshot]] = None,
-    *, ctx: project.ProjectContext,
+    *, ctx: project.ProjectContext, resolver=None,
 ) -> list[SnapshotResult]:
     """Snapshot `decks` one after the other. One deck's failure doesn't stop
     the others; a cancel stops the current deck and skips the rest. Each of
@@ -1318,7 +1300,7 @@ def snapshot_decks(
             if progress is not None:
                 progress(i, len(decks), deck.name, text)
 
-        result = create_snapshot(deck, options, log, cancel, step, ctx=ctx)
+        result = create_snapshot(deck, options, log, cancel, step, ctx=ctx, resolver=resolver)
         if result.ok and delete_old:
             for old in delete_old:
                 if old.deck_name != deck.name or not old.path.exists():

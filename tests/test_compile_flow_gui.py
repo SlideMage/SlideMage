@@ -58,7 +58,7 @@ def env(ctx, window, monkeypatch):  # noqa: F811
     e.window, e.ran, e.fails, e.opened, e.opened_pdfs = window, [], set(), [], []
     e.script = lambda job: failing(job) if job.jobname in e.fails else passing(job)
 
-    def run_jobs(ctx, jobs, log, cancel=None):
+    def run_jobs(ctx, jobs, log, cancel=None, *, resolver=None):
         results = {}
         for job in jobs:
             e.ran.append(job.jobname)
@@ -71,7 +71,7 @@ def env(ctx, window, monkeypatch):  # noqa: F811
     monkeypatch.setattr(compile_actions, "run_jobs", run_jobs)
     monkeypatch.setattr(compile_progress, "count_job_slides", lambda *a: 1)
     monkeypatch.setattr(compile_progress, "spec_for_job", lambda ctx, job: compile_progress.JobSpec(3, 1))
-    monkeypatch.setattr(compiler, "unchanged_jobs", lambda ctx, jobs, outputs: [])
+    monkeypatch.setattr(compiler, "unchanged_jobs", lambda ctx, jobs, outputs, **kwargs: [])
     monkeypatch.setattr(latex_lint, "check_jobs", lambda _ctx, jobs: latex_lint.CheckResult())
     monkeypatch.setattr(window, "open_slide_editor", lambda path, on_saved=None, line=None: e.opened.append((path, line)))
     monkeypatch.setattr(window.compile_display, "open_pdf", lambda path: e.opened_pdfs.append(path.name))
@@ -163,7 +163,7 @@ def test_stopping_a_job_skips_a_queued_one_and_kills_the_running_one(ctx, env, m
     window = env.window
     release = threading.Event()
 
-    def blocking(ctx, jobs, log, cancel=None):
+    def blocking(ctx, jobs, log, cancel=None, *, resolver=None):
         log(f"==== Compiling course -> {jobs[0].jobname} ====")
         release.wait(5)
         log(f"*** FAIL: {jobs[0].jobname} -- stopped by user ***")
@@ -192,7 +192,7 @@ def test_stop_all_asks_and_stops_the_whole_run(ctx, env, monkeypatch):
     window = env.window
     release = threading.Event()
 
-    def blocking(ctx, jobs, log, cancel=None):
+    def blocking(ctx, jobs, log, cancel=None, *, resolver=None):
         log(f"==== Compiling course -> {jobs[0].jobname} ====")
         cancel._event.wait(5)
         log(f"*** FAIL: {jobs[0].jobname} -- stopped by user ***")
@@ -217,7 +217,7 @@ def test_closing_the_window_mid_compile_stops_the_run_and_its_thread(ctx, env, m
     window = env.window
     started = threading.Event()
 
-    def blocking(ctx, jobs, log, cancel=None):
+    def blocking(ctx, jobs, log, cancel=None, *, resolver=None):
         started.set()
         cancel._event.wait(10)
         return {}

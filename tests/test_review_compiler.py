@@ -90,7 +90,7 @@ def test_run_job_uses_only_its_fresh_configured_pdf(ctx, tmp_path, monkeypatch, 
     content = "line one\r\nline two\r\n"
     real_wrapper_text = compiler.wrapper_text
     expected_wrapper = real_wrapper_text(ctx, job) + content
-    monkeypatch.setattr(compiler, "wrapper_text", lambda _ctx, _job: expected_wrapper)
+    monkeypatch.setattr(compiler, "wrapper_text", lambda _ctx, _job, **kwargs: expected_wrapper)
     wrappers, lines = [], []
     _fake_latexmk(monkeypatch, ctx, [b"NEW_PDF"], commands, log_text=log_text, wrappers=wrappers)
     relocated = threading.Event()

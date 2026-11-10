@@ -22,7 +22,7 @@ import pytest
 
 from conftest import write_test_file as write
 
-from slidemage import compiler, deck_scan, deck_snapshot, project, sm_rename
+from slidemage import compiler, deck_scan, deck_snapshot, project, render_evidence, sm_rename
 from slidemage.deck_snapshot import SnapshotOptions
 from slidemage.project import ProjectContext
 
@@ -129,16 +129,6 @@ def test_parse_fls_resolves_relative_paths_and_drops_duplicates(tmp_path):
     assert inputs[2] == Path(os.path.normpath(tmp_path / "fw" / "base.tex"))
 
 
-def test_failed_biber_run_is_recognized_in_the_final_log():
-    """A compile whose biber run failed (once seen: "No space left on device"
-    while biber unpacked itself) still writes a PDF, citations as keys --
-    never acceptable as a snapshot's reference."""
-    log = ("Package biblatex Warning: Please (re)run Biber on the file:\n"
-           "(biblatex)                slidemage-manual-during-course\n")
-    assert deck_snapshot._BIBER_NEEDED_RE.search(log)
-    assert not deck_snapshot._BIBER_NEEDED_RE.search("Package biblatex Info: ... \n")
-
-
 def test_first_difference_names_the_line():
     assert deck_snapshot.first_difference("a\nb\nc", "a\nB\nc") == 'reference "b", now "B"'
     assert deck_snapshot.first_difference("a\nb", "a") == "reference has 2 lines, now 1"
@@ -173,15 +163,6 @@ def other_drive_dir(tmp_path):
     folder = Path(tempfile.mkdtemp(prefix="sm-other-drive-", dir=REPO))
     yield folder
     shutil.rmtree(folder, ignore_errors=True)
-
-
-def test_paths_on_two_drives_have_no_relative_form(tmp_path, other_drive_dir):
-    root = tmp_path / "Proj"
-    framework = other_drive_dir / "latex"
-    assert deck_snapshot.framework_relpath(root, framework) == "SlideMage/latex"
-    rel = deck_snapshot._rel(framework, root)
-    assert deck_snapshot._is_outside(rel) and not rel.startswith("..")
-    assert not deck_snapshot._is_outside(deck_snapshot._rel(root / "decks" / "a.tex", root))
 
 
 def test_files_of_another_drive_are_not_project_files(tmp_path, other_drive_dir):
@@ -281,7 +262,7 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     """The instructor compile reads the previews from before its own refresh,
     the versions compiled after it the refreshed ones: one snapshot holds both."""
     root, target = tmp_path / "Proj", tmp_path / "snap" / "Proj"
-    preview = write(project.ProjectContext.at(root).slide_previews_dir / "1aa-304-171.png", b"refreshed")
+    preview = write(root / ".build" / "appendix-thumbs" / "slidemage" / "1aa-304-171.png", b"refreshed")
     kept = write(tmp_path / "kept" / "0-1aa-304-171.png", b"as the instructor compile read it")
 
     def out(copies):
@@ -291,20 +272,19 @@ def test_each_version_keeps_the_previews_its_compile_read(tmp_path):
     assert deck_snapshot.copy_job_previews(
         out({deck_snapshot._norm(preview): kept}), "t-instructor", root, target) == 1
     assert deck_snapshot.copy_job_previews(out({}), "t-after-course", root, target) == 1
-    base = target / ".previews"
-    assert (base / "t-instructor" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+    base = target / ".build" / "appendix-thumbs"
+    assert (base / "t-instructor" / "slidemage" / "1aa-304-171.png").read_bytes() \
         == b"as the instructor compile read it"
-    assert (base / "t-after-course" / "slide_previews" / "1aa-304-171.png").read_bytes() \
+    assert (base / "t-after-course" / "slidemage" / "1aa-304-171.png").read_bytes() \
         == b"refreshed"
-    previews = project.ProjectContext.at(root).previews_dir.as_posix()
-    wrapper = f"\\includegraphics{{{previews}/slide_previews/1aa-304-171.png}}"
+    wrapper = f"\\includegraphics{{{root.as_posix()}/.build/appendix-thumbs/slidemage/1aa-304-171.png}}"
     assert deck_snapshot.relative_wrapper(wrapper, root, "t-instructor") == (
-        "\\includegraphics{.previews/t-instructor/slide_previews/1aa-304-171.png}")
+        "\\includegraphics{.build/appendix-thumbs/t-instructor/slidemage/1aa-304-171.png}")
 
-    text = (f"\\includegraphics[width=1cm]{{{previews}/slide_previews/x.png}}\n"
+    text = (f"\\includegraphics[width=1cm]{{{root.as_posix()}/.build/appendix-thumbs/slidemage/x.png}}\n"
             "\\input{t-Deck.tex}\n")
     assert deck_snapshot.relative_wrapper(text, root) == (
-        "\\includegraphics[width=1cm]{.previews/slide_previews/x.png}\n\\input{t-Deck.tex}\n")
+        "\\includegraphics[width=1cm]{.build/appendix-thumbs/slidemage/x.png}\n\\input{t-Deck.tex}\n")
 
 
 def test_root_of_prefers_the_deepest_root(tmp_path):
@@ -333,7 +313,9 @@ def record_compile(ctx, root: Path, texroot: Path, jobname: str, started: float)
                                         compiler.wrapper_text(ctx, compiler.CompileJob(
                                             next(d for d in deck_scan.scan_dir(root / "decks", False)
                                                  if d.name == "t-Deck"),
-                                            None, None)), pdf, started)
+                                            None, None)), pdf, started,
+                                        render_evidence.search_inventory(ctx.root, compiler.build_env(ctx)),
+                                        render_evidence.digest(render_evidence.configuration_state(ctx.root, compiler.build_env(ctx))))
     return pdf
 
 
@@ -717,3 +699,22 @@ def test_real_omitslide_is_instructor_only(tmp_path, monkeypatch, pinned):
             if len(expected) == 3:
                 assert "omitted from student deck" in pdf[1].get_text()
             print(f"{job.jobname}: {pdf.page_count} pages, slides {frames}")
+
+
+def test_failed_biber_run_is_recognized_in_the_final_log():
+    """A compile whose biber run failed (once seen: "No space left on device"
+    while biber unpacked itself) still writes a PDF, citations as keys --
+    never acceptable as a snapshot's reference."""
+    log = ("Package biblatex Warning: Please (re)run Biber on the file:\n"
+           "(biblatex)                slidemage-manual-during-course\n")
+    assert deck_snapshot._BIBER_NEEDED_RE.search(log)
+    assert not deck_snapshot._BIBER_NEEDED_RE.search("Package biblatex Info: ... \n")
+
+
+def test_paths_on_two_drives_have_no_relative_form(tmp_path, other_drive_dir):
+    root = tmp_path / "Proj"
+    framework = other_drive_dir / "latex"
+    assert deck_snapshot.framework_relpath(root, framework) == "SlideMage/latex"
+    rel = deck_snapshot._rel(framework, root)
+    assert deck_snapshot._is_outside(rel) and not rel.startswith("..")
+    assert not deck_snapshot._is_outside(deck_snapshot._rel(root / "decks" / "a.tex", root))

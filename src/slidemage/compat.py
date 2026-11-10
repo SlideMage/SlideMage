@@ -383,6 +383,17 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     fix="Nothing to change in the project. Update SlideMage on every computer before opening the project there.",
     detect=_detect_converted_image_descriptions,
     automatic=True,
+), Change(
+    id="flat-snapshots-removed",
+    since="v0.15.0",
+    severity=LAYOUT,
+    title="Slide previews now use the local render store",
+    description=(
+        ".previews/slide_previews/ is gone. This deletion syncs to your other computers; update SlideMage on "
+        "every computer. References rebuild from the local render store and no longer sync."),
+    detect=lambda root: [Finding(".slidemage/project.json", 0, "Flat slide snapshots removed.")]
+        if project.read_project_json(root).get("flat_snapshots_removed") else [],
+    automatic=True,
 )]
 
 # Releases from this one on need a registry entry for every "BREAKING:"

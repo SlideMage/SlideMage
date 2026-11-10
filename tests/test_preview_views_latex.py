@@ -1,18 +1,64 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Opt-in real engine gate; regular tests cover the same branches without TeX."""
+"""Opt-in pixel comparison of the warm fast lane with latexmk."""
 import os
-from pathlib import Path
-import subprocess
-import sys
+import shutil
+import time
 
+import pymupdf
 import pytest
+
+from slidemage import app_settings, compiler, deck_scan, preview_build, preview_target, slide_preview
+from slidemage.project import ProjectContext, _ignore_template_build_output
+from conftest import EXAMPLE_PROJECT
 
 
 @pytest.mark.skipif(os.environ.get('SLIDEMAGE_REAL_LATEX') != '1',
                     reason='set SLIDEMAGE_REAL_LATEX=1 to run real LuaLaTeX acceptance fixtures')
-def test_real_latex_views_and_invalidation(tmp_path):
-    script = Path(__file__).resolve().parents[1] / 'tools' / 'preview_benchmark' / 'views.py'
-    result = subprocess.run([sys.executable, str(script), '--output', str(tmp_path / 'evidence')],
-                            capture_output=True, text=True, timeout=600)
-    assert result.returncode == 0, result.stdout + result.stderr
+@pytest.mark.parametrize('spare', [False, True], ids=['B', 'A'])
+def test_direct_lualatex_matches_latexmk_pixels(tmp_path, monkeypatch, spare, request):
+    root = tmp_path / 'project'
+    shutil.copytree(EXAMPLE_PROJECT.root, root, ignore=_ignore_template_build_output)
+    ctx = ProjectContext.at(root)
+    deck = deck_scan.read_deck(ctx.decks_dir / 'slidemage-manual.tex')
+    source = ctx.slides_dir / '1b2-EN-Managing-a-Slide-current.tex'
+    text = source.read_text().replace('several also update the decks that use it.',
+                                    r'several also update the decks that use it.\footnote{\fullcite{markowitz1952}}')
+    calls = []
+    run = compiler.run_streamed
+
+    def observed(command, **kwargs):
+        calls.append(command)
+        return run(command, **kwargs)
+
+    monkeypatch.setattr(compiler, 'run_streamed', observed)
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
+    app_settings.set(ctx, preview_build.SPARE_TEX_SETTING_KEY, spare)
+    focus = (preview_target.for_path(ctx, source), 'instructor', 'EN')
+    preview_build.set_focus(ctx, focus)
+    request.addfinalizer(lambda: preview_build.set_focus(ctx, None))
+    cancel = compiler.CancelToken()
+    cancel.preview_focus = focus
+    kwargs = dict(preamble_text=deck.preamble_text, deck_version='instructor', deck_language='EN', all_steps=True,
+                  cancel=cancel)
+    slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', text, **kwargs)
+    calls.clear()
+    if spare:
+        time.sleep(2)
+    edited = text.replace(r'\emph{Rename\ldots}', r'\emph{Retitle\ldots}')
+    direct = slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', edited, **kwargs)
+    preview_build.set_focus(ctx, None)
+    assert calls == [] if spare else len(calls) == 1 and calls[0][0] != 'latexmk', calls
+    monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', False)
+    reference = slide_preview.render_slide_text_to_pdf(ctx, '1b2-EN-Managing-a-Slide', edited, force_build=True, **kwargs)
+    with pymupdf.open(direct) as actual, pymupdf.open(reference) as expected:
+        contents = ' '.join(' '.join(page.get_text().split()) for page in actual)
+        assert 'Portfolio Selection' in contents
+        assert 'Image source(s):' in contents and 'Screenshot of SlideMage' in contents
+        assert any(page.get_images() for page in actual)
+        assert len(actual) == len(expected)
+        for page, reference_page in zip(actual, expected):
+            pixels = page.get_pixmap(dpi=150)
+            reference_pixels = reference_page.get_pixmap(dpi=150)
+            assert (pixels.width, pixels.height, pixels.samples) == (
+                reference_pixels.width, reference_pixels.height, reference_pixels.samples)

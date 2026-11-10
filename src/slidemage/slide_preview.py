@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import app_settings, compile_log, compiler, open_path, preview_build, project
-from . import slide_language, slide_snapshot, slide_templates
+from . import slide_templates
 from .compiler import build_env
 from .deck_editor import format_call
 from .deck_language import language_lines
@@ -344,6 +344,7 @@ def _text_slide(id_slug: str, slide_body: str, frame_number: Optional[int], step
             call_state += f"\\gdef\\SMSlideSteps{{{steps}}}\n"
         if omitted:
             call_state += "\\global\\SMOmittedSlidetrue\n"
+            slide_body += "\n\\global\\SMOmittedSlidefalse\n"
     return (f"{_frame_number_line(frame_number)}"
             f"\\setSlideID{{{id_slug}}}\\setSlideLanguageFromSlug{{{id_slug}}}\n{call_state}{slide_body}\n")
 
@@ -376,7 +377,6 @@ def _presenter_mode_line(presenter: bool) -> str:
 
 @measure('build')
 def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug: str, log: LogCallback,
-                         snapshot_template: Optional[str] = None,
                          reuse_build: bool = True, cancel=None, force_build: bool = False, workspace: Optional[Path] = None) -> Path:
     """Shared tail end of both render_slide_to_pdf() and
     render_slide_text_to_pdf(): build the wrapper (preview_build.run_preview),
@@ -387,41 +387,12 @@ def compile_and_extract(ctx: project.ProjectContext, wrapper_text: str, id_slug:
 
     With reuse_build=True, keep latexmk state in an isolated, locked cache;
     reuse_build=False retains the original fresh-job behavior for comparison.
-
-    `snapshot_template` (only ever passed by render_slide_to_pdf(), and
-    only when it compiled the instructor version -- see there), when not
-    None, refreshes <ctx.slide_previews_dir>/<bare id>-<Template>-*.png from this
-    render's last page as a side effect, at that template. Never lets a
-    snapshot failure fail the render itself: a stale or missing preview
-    image is a much smaller problem than losing a PDF the user actually
-    asked to see.
     """
     env = build_env(ctx)
     build_options = {'force': True} if force_build else {}
     dest_pdf = (preview_build.compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, cancel=cancel, workspace=workspace,
                                              **build_options) if reuse_build
                 else _compile_fresh(ctx, wrapper_text, id_slug, log, env, cancel))
-    if snapshot_template is not None:
-        # bare id, not the full id_slug -- capture_deck() (the "Update
-        # previews"/full-compile path) always keys a snapshot by the
-        # bare id it parses straight out of the compiled page's own
-        # footer ("slide id: XXX", i.e. \slideID, which \setSlideID
-        # derives from everything before the *first* "-"). Passing the
-        # full id_slug here instead produced e.g.
-        # "kcc-Reasons-Repurchases-<Template>-1920-1080.png" alongside the
-        # correct "kcc-<Template>-1920-1080.png" a full compile would
-        # cache -- two different files for the same slide, one of them
-        # never found by any lookup (snapshot_path()/is_fresh() only
-        # ever look up the bare id) and therefore silently dead weight.
-        # Root-caused 2026-08-17 (direct instruction: "some slides have
-        # now turned up with full slugs instead of the typical
-        # nomenclature") from every "Preview -> Render now" render,
-        # not just this project's own recently-touched slides.
-        try:
-            slide_snapshot.capture_single_slide(
-                ctx, dest_pdf, slide_language.bare_id(id_slug), snapshot_template)
-        except Exception as exc:
-            log(f"    (preview snapshot not updated: {exc})")
     log(compile_log.render_passed(id_slug, dest_pdf))
     return dest_pdf
 
@@ -487,7 +458,6 @@ def render_slide_to_pdf(
     steps: Optional[str] = None,
     reuse_build: bool = True,
     overlay: Optional[int] = None,
-    capture_snapshot: bool = True,
     cancel=None,
     all_steps: bool = False,
     context_before: str = "",
@@ -514,62 +484,16 @@ def render_slide_to_pdf(
 
     reuse_build retains dependency-checked auxiliary state between requests.
     overlay selects a positive reveal number per frame; None keeps all pages.
-    Explicit overlay selections do not update canonical snapshots, and neither
-    does `capture_snapshot=False` (a frozen version looked at on its own is not
-    what the slide's thumbnail should show).
-
-    Refreshes this slide's compile-time PNG snapshot (slide_snapshot.py) as
-    a side effect, but only when rendering the instructor version -- `None`
-    here means "whatever the preamble defaults to", which is instructor
-    for GENERIC_PREAMBLE (SlideMage_base.tex's own default) and,
-    in practice, for every real deck's preamble too. An explicit
-    during-course/after-course request is a deliberate look at a *partial*
-    version, and must never overwrite the canonical (fullest-content)
-    snapshot with it. The snapshot is captured under whichever institution
-    template `preamble` itself selects (slide_templates.detect_template()),
-    not a fixed one -- a deck row previewing under its own preamble ends up
-    caching the *right* template's image, not always the default one.
     """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     wrapper_text = _wrapper_text(
         ctx, preamble, deck_version, deck_language, [(frame_number, _slide_call(macro, id_slug, version, conditions, steps))],
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
-    snapshot_template = (
-        slide_templates.detect_template(preamble)
-        if capture_snapshot and deck_version in (None, "instructor") and overlay is None and not all_steps
-        and not (context_before or context_after) else None
-    )
     return _with_context(compile_and_extract(
-        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
+        ctx, wrapper_text, id_slug, log,
         reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
-
-
-@measure('render')
-def render_slides_to_pdf(
-    ctx: project.ProjectContext,
-    slides: list[tuple],
-    deck_version: str,
-    deck_language: str,
-    preamble_text: Optional[str],
-    log: Optional[LogCallback] = None,
-    cancel=None,
-    workspace: Optional[Path] = None,
-) -> Path:
-    """Compile several slides of one deck, view and language in ONE document (every reveal step, as
-    render_slide_to_pdf(all_steps=True) does) and return its PDF: the pages of the slides follow one another in
-    the order of `slides`, [(macro, id_slug, version, conditions, frame_number)], each page set apart by the slide id
-    in its footer. Two LuaLaTeX passes and one biber run serve them all, which is several times less work than one
-    document each (docs/findings.md, plan 5); the pages are the same pixel for pixel. Raises RuntimeError on failure
-    of any slide. A bare slide id may appear once only (the pages of a repeated one cannot be told apart), and no slide
-    may need its deck's context (a contents or agenda slide shows its links only in a document that holds them)."""
-    calls = [(frame_number, _slide_call(macro, id_slug, version, conditions)) for macro, id_slug, version, conditions, frame_number in slides]
-    preamble = default_preamble(ctx) if preamble_text is None else preamble_text
-    wrapper_text = _wrapper_text(ctx, preamble, deck_version, deck_language, calls, all_steps=True)
-    # A short job name: the slide ids in it would make the file name too long.
-    job = 'batch-' + hashlib.sha256(''.join(f'{n}{call}' for n, call in calls).encode()).hexdigest()[:12]
-    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, workspace=workspace)
 
 
 @measure('render')
@@ -581,6 +505,7 @@ def render_slide_texts_to_pdf(
     preamble_text: Optional[str],
     log: Optional[LogCallback] = None,
     cancel=None,
+    *, all_steps: bool = False, workspace: Optional[Path] = None,
 ) -> Path:
     """Compile several slides of one deck, view and language in ONE document, each as render_slide_text_to_pdf
     typesets it (a whole slide, every overlay a page), and return its PDF: the pages of the slides follow one another
@@ -590,10 +515,11 @@ def render_slide_texts_to_pdf(
     appear once only (the pages of a repeated one cannot be told apart), and no slide may need its deck's context (a
     contents or agenda slide shows its links only in a document that holds them)."""
     wrapper_text = _text_wrapper(ctx, default_preamble(ctx) if preamble_text is None else preamble_text,
-                                 deck_version, deck_language, "".join(_text_slide(*slide) for slide in slides))
+                                 deck_version, deck_language, "".join(_text_slide(*slide) for slide in slides),
+                                 all_steps=all_steps)
     # A short job name: the slide ids in it would make the file name too long.
     job = 'batch-' + hashlib.sha256(wrapper_text.encode()).hexdigest()[:12]
-    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True)
+    return compile_and_extract(ctx, wrapper_text, job, log or (lambda line: None), cancel=cancel, force_build=True, workspace=workspace)
 
 
 @measure('render')
@@ -610,7 +536,6 @@ def render_slide_text_to_pdf(
     preview_mode: str = "slide",
     overlay: Optional[int] = None,
     frame_number: Optional[int] = None,
-    capture_snapshot: bool = True,
     cancel=None,
     all_steps: bool = False,
     context_before: str = "",
@@ -620,6 +545,7 @@ def render_slide_text_to_pdf(
     omitted: bool = False,
     final: bool = False,
     force_build: bool = False,
+    workspace: Optional[Path] = None,
 ) -> Path:
     """Like render_slide_to_pdf, but compiles `slide_body` (e.g. the
     slide-source editor's own in-memory buffer text) directly, instead of
@@ -653,23 +579,7 @@ def render_slide_text_to_pdf(
     always instructor (the combo's own caller passes deck_version=
     "instructor" whenever "Presenter" is picked), this flag is what
     actually switches on the dual-screen layout.
-
-    Also refreshes this slide's compile-time PNG snapshot (2026-08-31,
-    direct report: "Render to PDF" succeeded but "Preview" then said no
-    preview had been generated yet) -- this function used to call
-    compile_and_extract() without a `snapshot_template`, so it silently
-    skipped the capture_single_slide() side effect that
-    render_slide_to_pdf() above already documents and performs; the
-    Preview (preview_target.cached_image()) reads
-    exactly that cached PNG, so it never found one. Same
-    instructor-version-only guard as render_slide_to_pdf(), for the same
-    reason: an explicit during-course/after-course request is a
-    deliberate look at a *partial* version, and must never overwrite the
-    canonical (fullest-content) snapshot with it -- a presenter render
-    is excluded from caching too, same reasoning as compiler.py's own
-    skip-normal-PDF-handling branch for it (its page count/per-page
-    layout is nothing like a normal compile's, so reading it the normal
-    way would corrupt the snapshot cache)."""
+    """
     log = log or (lambda line: None)
     preamble = default_preamble(ctx) if preamble_text is None else preamble_text
     if overlay is not None and preview_mode == "element":
@@ -681,15 +591,9 @@ def render_slide_text_to_pdf(
         ctx, f"{_presenter_mode_line(presenter)}{preamble}", deck_version, deck_language,
         _text_slide(id_slug, slide_body, frame_number, steps, slide_version, omitted, final, preview_mode == "slide"),
         overlay=overlay, all_steps=all_steps, context_before=context_before, context_after=context_after)
-    snapshot_template = (
-        slide_templates.detect_template(preamble)
-        if capture_snapshot and deck_version in (None, "instructor") and not presenter
-        and preview_mode == "slide" and overlay is None and not all_steps
-        and not (context_before or context_after) else None
-    )
     return _with_context(compile_and_extract(
-        ctx, wrapper_text, id_slug, log, snapshot_template=snapshot_template,
-        reuse_build=reuse_build, cancel=cancel, **({'force_build': True} if force_build else {}),
+        ctx, wrapper_text, id_slug, log,
+        reuse_build=reuse_build, cancel=cancel, workspace=workspace, **({'force_build': True} if force_build else {}),
     ), context_after)
 
 
@@ -747,7 +651,7 @@ def _region_source(preamble: str, body: str, mode: str) -> tuple[str, str]:
 
     A region must be a complete frame or a self-contained fragment; arbitrary
     unbalanced selections are deliberately left to TeX's normal diagnostics.
-    Element previews have their own crop and never refresh full-slide snapshots.
+    Element previews have their own crop.
     """
     if mode == "slide":
         return preamble, body

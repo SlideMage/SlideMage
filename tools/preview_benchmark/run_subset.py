@@ -103,8 +103,6 @@ def main():
                        "--order-seed", str(args.order_seed)]
             if label == "before":
                 command += ["--configs", "saved"]
-            else:
-                command += ["--defer-images"]
             print(f"Call {index}, {label}; elapsed {time.time()-started:.1f}s", flush=True)
             step = dict(index=index, label=label, started=time.time(), command=command)
             order.append(step)

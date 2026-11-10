@@ -139,7 +139,7 @@ def project_id(root: Path) -> str:
 
 
 def preview_cache_dir(root: Path) -> Path:
-    """This computer's rebuildable preview caches for the project at `root` (rendered PDFs and their page images):
+    """This computer's rebuildable PDF page-image cache for the project at `root`:
     outside the project, so a synced project folder never carries them."""
     return cache_dir() / "preview-cache" / project_id(root)
 
@@ -356,7 +356,7 @@ def _newer_version(a: str, b: str) -> str:
 
 
 def record_project_open(root: Path, app_version: str) -> None:
-    """Write project.json after the project was opened with `app_version`.
+    """Remove legacy flat snapshots once and record this open in project.json.
     A project newer than this app keeps its format and last version, so
     the warning still names the release that changed it. Other keys stay
     (compat.py keeps its state in "compat"), and "highest_app_version"
@@ -368,9 +368,13 @@ def record_project_open(root: Path, app_version: str) -> None:
     info = read_project_info(root)
     if info["format"] > PROJECT_FORMAT:
         return
-    # Migrations from an older format go here (none exist yet); each
-    # must back up what it rewrites first.
     data = read_project_json(root)
+    if not data.get("flat_snapshots_removed"):
+        folders = (root / ".previews" / "slide_previews", previews_cache_dir(root) / "slide_previews")
+        # A sync client may hold a file open (Windows, Nextcloud): never fail the open; try again next start.
+        for folder in folders:
+            shutil.rmtree(folder, ignore_errors=True)
+        data["flat_snapshots_removed"] = not any(folder.exists() for folder in folders)
     previous = info["last_app_version"]
     data["format"] = PROJECT_FORMAT
     data["last_app_version"] = app_version
@@ -536,10 +540,8 @@ class _Under:
 
 
 class _InPreviews:
-    """A place in this computer's preview cache for the project: `ctx.slide_previews_dir` is
-    `cache_dir() / "previews" / <project id> / "slide_previews"`, never inside the project folder (a synced
-    folder would carry hundreds of MB of PNGs that depend on this machine's TeX, fonts and theme to every
-    computer). The first use of one in a process moves an earlier `.previews/` copy over (migrate_previews)."""
+    """A place in this computer's preview cache, outside the synced project folder.
+    The first use in a process migrates the earlier `.previews/` caches."""
 
     def __init__(self, *parts: str) -> None:
         self.parts = parts
@@ -551,7 +553,6 @@ class _InPreviews:
         return previews_cache_dir(context.root).joinpath(*self.parts)
 
 
-SLIDE_PREVIEWS = "slide_previews"
 TIKZ_PREVIEWS = "tikz_illustration_previews"
 PDF_RENDER_CACHE = "pdf_render_cache"
 _OLD_PREVIEWS = ".previews"
@@ -560,19 +561,21 @@ _MIGRATE_LOCK = threading.Lock()
 
 
 def previews_cache_dir(root: Path) -> Path:
-    """This computer's slide previews, TikZ pictures and rendered PDF pages for the project at `root`."""
+    """This computer's TikZ pictures and rendered PDF pages for the project at `root`."""
     return cache_dir() / "previews" / project_id(root)
 
 
 def migrate_previews(root: Path) -> None:
     """Move the caches an earlier version kept in the project's `.previews/` into previews_cache_dir(root) (what the
     new place already holds wins; the rest of the old copy is deleted: it is only a cache), then remove the old
-    lock file and, when nothing else is in it, `.previews/` itself. Works across drives. Never raises."""
+    lock file and, when nothing else is in it, `.previews/` itself. Flat slide snapshots are deleted.
+    Works across drives. Never raises."""
     old = Path(root) / _OLD_PREVIEWS
     if not old.is_dir():
         return
     new = previews_cache_dir(root)
-    for name in (SLIDE_PREVIEWS, TIKZ_PREVIEWS, PDF_RENDER_CACHE):
+    shutil.rmtree(old / "slide_previews", ignore_errors=True)
+    for name in (TIKZ_PREVIEWS, PDF_RENDER_CACHE):
         source = old / name
         if not source.is_dir():
             continue
@@ -618,7 +621,6 @@ class ProjectContext:
     pdf_dir = _Under("pdf")
     temp_dir = _Under(".temp")
     previews_dir = _InPreviews()                 # in the user's cache folder, not the project (see _InPreviews)
-    slide_previews_dir = _InPreviews(SLIDE_PREVIEWS)
     tikz_previews_dir = _InPreviews(TIKZ_PREVIEWS)
     pdf_render_cache_dir = _InPreviews(PDF_RENDER_CACHE)
     settings_dir = _Under(".slidemage")          # per-project state: app settings, prompts, pass counts, project.json

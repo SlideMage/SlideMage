@@ -101,7 +101,7 @@ class HousekeepingSheet(ModalSheet):
         self.pdf = _Row("Empty the pdf folder", "Empty", self._on_empty_pdf)
         self.temp = _Row("Remove temp files", "Remove", self._on_remove_temp)
         self.archive = _Row("Archive unused content", "Review…", lambda: self._show_page(ARCHIVE_PAGE))
-        self.previews = _Row("Update slide previews", "Update…", self._on_previews)
+        self.previews = _Row("Render all previews now", "Render…", self._on_previews)
         self.links = _Row("Reestablish translation links", "Check", self._on_links)
         for heading, rows in (("Cleanup", (self.pdf, self.temp, self.archive)),
                               ("Updating", (self.previews, self.links))):
@@ -165,7 +165,7 @@ class HousekeepingSheet(ModalSheet):
             if media or slides else "No unused slides or media files",
             enabled=bool(media or slides) and not compiling and self._worker is None)
         self.previews.show_state(
-            "Re-renders the previews of the slides the decks use: one very long compile that "
+            "Renders every deck and view prepared by the background sweep; "
             "occupies the compile slot" if not compiling else BUSY_NOTE, enabled=not compiling)
         self.links.show_state("Re-pairs EN and DE files after renames", enabled=True)
 

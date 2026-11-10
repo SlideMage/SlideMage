@@ -18,7 +18,7 @@ from test_tasks_gui import pump, wait_until
 from test_tasks_gui import BROKEN, FIX, LF, break_slide, click, ctx, fake, slide_file  # noqa: F401 -- fixtures
 from test_task_card_gui import area, asked, card, phase_is, press, shown_buttons  # noqa: F401 -- a fixture
 
-from slidemage import ai_review
+from slidemage import ai_review, preview_requests
 from slidemage.ui.workspace import compare_rendered, task_card_model as model
 from slidemage.ui.workspace.compare_rendered import CompareRendered
 
@@ -62,13 +62,14 @@ class FakeRenders:
 
     def request(self, target, text, view, language, log, **kwargs):
         request = FakeRequest(self, len(self.requests), text)
+        request.spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(target.source_path, text), view, language)
         self.requests.append((request, target, text, view, language, kwargs))
         return request
 
-    def read_pages(self, pdf: Path, project_root: Path) -> list[bytes]:
+    def read_pages(self, pdf: Path, **kwargs) -> dict:
         request = self.requests[int(pdf.stem)][0]
-        return [png("#c04040" if request.index % 2 == 0 else "#40a040", 320 + n)
-                for n in range(self.plans.get(request.text, {}).get("pages", 1))]
+        return dict(images=[png("#c04040" if request.index % 2 == 0 else "#40a040", 320 + n)
+                            for n in range(self.plans.get(request.text, {}).get("pages", 1))])
 
     def close(self) -> None:
         self.closed = True
@@ -86,10 +87,10 @@ def env(fake):  # noqa: F811
 
 
 @pytest.fixture
-def renders(monkeypatch):
+def renders(env, monkeypatch):
     service = FakeRenders()
-    monkeypatch.setattr(compare_rendered, "RenderService", lambda: service)
-    monkeypatch.setattr(compare_rendered, "read_pages", service.read_pages)
+    monkeypatch.setattr(env.window.centre.preview, "_renders", service)
+    monkeypatch.setattr(compare_rendered.preview_pages, "read_document", service.read_pages)
     return service
 
 
@@ -119,7 +120,7 @@ def test_both_sides_render_as_drafts_for_the_view_and_language_of_the_top_bar(en
     dialog = compare_rendered.open_compare(env.window, env.path, "old text", "new text")
     (first, second) = renders.requests
     for (request, target, text, view, language, kwargs), expected in zip((first, second), ("old text", "new text")):
-        assert text == expected and kwargs == {'require_pdf': True}  # a draft, with its own view's PDF
+        assert text == expected and kwargs == {}  # a draft, with its own view's PDF
         assert (view, language) == ("during-course", "EN") and target.source_path == env.path
     assert dialog.windowTitle() == "Compare rendered · abc · During · EN" and not dialog.isModal()
     assert chips(dialog) == ["Rendering…", "Rendering…"] and messages(dialog) == ["Rendering…", "Rendering…"]
@@ -199,7 +200,7 @@ def test_closing_cancels_the_pending_renders(env, renders):  # noqa: F811
     pump(0.1)
     assert chips(dialog) == ["Rendering…", "Rendering…"] and not renders.closed
     QTest.keyClick(dialog, Qt.Key.Key_Escape)
-    assert dialog.closed and renders.closed and dialog._cancel.is_set()
+    assert dialog.closed and not renders.closed and dialog._cancel.is_set()
     wait_until(lambda: all(entry[0].cancelled for entry in renders.requests))
     assert all(not side.worker.isRunning() or side.worker.wait(2000) for side in dialog._sides)
 
@@ -319,7 +320,7 @@ def test_the_task_card_compares_in_review_and_done(asked, renders):  # noqa: F81
     (dialog,) = renders.dialogs(env.window)
     assert dialog.texts == {"Before": BROKEN, "After": card(env).after} and "\\end{itemize}" in dialog.texts["After"]
     assert dialog.target.source_path == env.path and (dialog.view, dialog.language) == ("instructor", "EN")
-    assert len(renders.requests) == 2 and all(entry[5] == {'require_pdf': True} for entry in renders.requests)
+    assert len(renders.requests) == 2 and all(entry[5] == {} for entry in renders.requests)
     close(dialog)
     press(env, "Apply")
     wait_until(phase_is(env, model.DONE))

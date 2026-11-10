@@ -4,7 +4,7 @@
 
 MuPDF objects stay in this process and never cross a GUI/worker thread boundary.
 Requests and results are newline-delimited JSON on private pipes, with PNG bytes
-encoded as base64. No GUI or project writes happen here.
+encoded as base64, or a path to a raw last-page image in the request's temp folder.
 """
 
 from __future__ import annotations
@@ -17,13 +17,19 @@ import os
 import sys
 
 
-def raster(data, sizes, full_size):
+def raster(data, sizes, full_size, raw=None):
     import pymupdf
 
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         if not doc.page_count:
             return []
         page = doc[-1]
+        if raw is not None:
+            zoom = sizes[0][0] / page.rect.width
+            page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).save(raw)
+            return raw
+        # Parse the PDF page once; replay it for the display, tool image and thumbnails.
+        display = page.get_displaylist()
         images = {}
         for size in map(tuple, sizes):
             if size in images:
@@ -32,7 +38,7 @@ def raster(data, sizes, full_size):
             if fit:
                 # (width, height, "fit"): the largest size inside the box, aspect ratio kept (a list thumbnail)
                 zoom = min(width / page.rect.width, height / page.rect.height)
-                images[size] = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
+                images[size] = display.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")
                 continue
             if (
                 height is None
@@ -49,7 +55,7 @@ def raster(data, sizes, full_size):
             matrix = pymupdf.Matrix(
                 zoom, height / page.rect.height if height is not None else zoom
             )
-            images[size] = page.get_pixmap(matrix=matrix).tobytes("png")
+            images[size] = display.get_pixmap(matrix=matrix).tobytes("png")
         return [images[tuple(size)] for size in sizes]
 
 
@@ -142,10 +148,7 @@ def serve():
         try:
             request = json.loads(line)
             with redirect_stdout(errors):
-                if request.get("op") == "sequence":
-                    response = sequence(base64.b64decode(request["pdf"]))
-                    images = response.pop("images")
-                elif "op" in request:
+                if "op" in request:
                     response = document(**request)
                     images = response.pop("images", [])
                 else:
@@ -153,8 +156,11 @@ def serve():
                         base64.b64decode(request["pdf"]),
                         request["sizes"],
                         request["full_size"],
+                        request.get("raw"),
                     )
-                    response = {}
+                    response = dict(raw=images) if request.get("raw") else {}
+                    if request.get("raw"):
+                        images = []
             response |= dict(
                 ok=True,
                 images=[base64.b64encode(image).decode("ascii") for image in images],

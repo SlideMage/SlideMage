@@ -19,6 +19,27 @@ def pdf_bytes(text="one"):
         return doc.tobytes()
 
 
+@pytest.mark.parametrize('rotation', [0, 90])
+def test_replaying_display_list_preserves_every_size_and_annotations(rotation):
+    sizes = [(1920, 1080), (168, 95), (1920, None), (1280, None), (320, 180, 'fit')]
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=360, height=240)
+        page.insert_text((40, 45), 'Preview with text and transparency')
+        page.draw_rect((50, 70, 200, 150), color=(1, 0, 0), fill=(0, 0, 1), fill_opacity=.4)
+        page.add_rect_annot((60, 80, 190, 140)).update()
+        page.set_cropbox(pymupdf.Rect(10, 10, 330, 200))
+        page.set_rotation(rotation)
+        data = doc.tobytes()
+    with pymupdf.open(stream=data, filetype='pdf') as doc:
+        expected = []
+        for width, height, *fit in sizes:
+            page = doc[0]
+            zoom = min(width / page.rect.width, height / page.rect.height) if fit else width / page.rect.width
+            y = zoom if fit or height is None else height / page.rect.height
+            expected.append(page.get_pixmap(matrix=pymupdf.Matrix(zoom, y)).tobytes('png'))
+    assert preview_raster.raster(data, sizes, (1920, 1080)) == expected
+
+
 @pytest.mark.parametrize("failure", ["bad_pdf", "crash"])
 def test_helper_reuses_one_process_and_recovers_from_failure(failure):
     client = preview_raster_client._shared
@@ -160,43 +181,6 @@ def test_invalid_protocol_response_is_rejected_and_helper_closed(monkeypatch, re
     with pytest.raises(RuntimeError, match="Cannot prepare preview images"):
         client.render(pdf_bytes(), ((160, 90),), (160, 90))
     assert client._process is None
-
-
-def sequence_pdf(pages):
-    with pymupdf.open() as doc:
-        for text, width, height in pages:
-            page = doc.new_page(width=width, height=height)
-            page.insert_text((30, 30), text)
-        return doc.tobytes()
-
-
-def test_sequence_signature_checks_all_reveals_order_count_and_dimensions():
-    base = [('first', 320, 180), ('last', 320, 180)]
-    first = preview_raster_client.render_sequence(sequence_pdf(base))
-    assert len(first['images']) == len(first['pages']) == 2
-    assert preview_raster_client.render_sequence(sequence_pdf(base)) == first
-    assert first['pages'][0]['size'] == [320.0, 180.0]
-    for other in (
-        [('changed first', 320, 180), base[-1]],
-        list(reversed(base)),
-        [base[-1]],
-        [('first', 321, 180), base[-1]],
-        [('first footer during-course 2', 320, 180), base[-1]],
-    ):
-        rendered = preview_raster_client.render_sequence(sequence_pdf(other))
-        assert rendered['signature'] != first['signature']
-        # Same last-page pixels cannot establish complete-preview equality.
-        if other[-1] == base[-1]:
-            assert rendered['images'][-1] == first['images'][-1]
-
-
-@pytest.mark.parametrize('field,value', [('schema', 999), ('dpi', 72), ('alpha', True)])
-def test_sequence_client_rejects_incompatible_configuration(monkeypatch, field, value):
-    response = preview_raster.sequence(pdf_bytes())
-    response['configuration'][field] = value
-    monkeypatch.setattr(preview_raster_client, '_ask', lambda *args, **kwargs: response)
-    with pytest.raises(RuntimeError, match='configuration'):
-        preview_raster_client.render_sequence(pdf_bytes())
 
 
 def test_fit_size_keeps_the_page_aspect_inside_the_box():

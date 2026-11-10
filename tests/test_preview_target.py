@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from slidemage import deck_editor, preview_target, slide_preview, slide_snapshot
+from slidemage import batch_render, deck_editor, preview_target, slide_preview
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.project import ProjectContext
 from conftest import EXAMPLE_PROJECT
@@ -45,7 +45,6 @@ def test_a_call_renders_with_its_decks_preamble_frame_number_view_and_language(r
     assert args[1:3] == ("slidestep", "bbb-EN-Two")
     assert kwargs["deck_version"] == "during-course" and kwargs["deck_language"] == "de"
     assert kwargs["frame_number"] == 2 and kwargs["steps"] == "1,2"
-    assert kwargs["capture_snapshot"]
     assert kwargs["preamble_text"].startswith("\\documentclass{beamer}")
 
 
@@ -62,13 +61,10 @@ def test_a_buffer_renders_in_the_same_context_and_a_presenter_render_is_instruct
     assert presenter["deck_version"] == "instructor" and presenter["presenter"]
 
 
-def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_snapshots(
-    tmp_path, monkeypatch, renders,
-):
+def test_a_slide_file_alone_has_no_deck_context(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     slides = tmp_path / "slides"
     slides.mkdir()
-    ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
     current = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
     frozen = preview_target.for_path(ctx, slides / "abc-EN-Demo-v1-0-0.tex")
     assert (current.macro, current.version, current.preamble_text) == ("slide", None, None)
@@ -77,32 +73,9 @@ def test_a_slide_file_alone_has_no_deck_context_and_frozen_versions_do_not_use_s
     assert frozen.source_path == slides / "abc-EN-Demo-v1-0-0.tex"
     assert preview_target.for_path(ctx, slides / "deck.tex") is None
     assert frozen.is_frozen_alone
-    slide_snapshot.snapshot_path(ctx, "abc", frozen.template, slide_snapshot.FULL_SIZE).write_bytes(b"png")
-    assert preview_target.cached_image(frozen) is None
-    preview_target.render(frozen, "instructor", "EN", log=print)
-    assert renders[0][2]["capture_snapshot"] is False
-    # a deck that pins the version does show it, so the snapshot is its to refresh
+    # A pinned slide belongs to the deck.
     _, pinned = target_of("\\slideversion{abc-EN-Demo}{1-0-0}\n")
     assert not pinned.is_frozen_alone
-
-
-def test_the_cached_image_is_fresh_only_when_newer_than_the_source(tmp_path, monkeypatch):
-    import os
-
-    ctx = ProjectContext.at(tmp_path)
-    slides = tmp_path / "slides"
-    slides.mkdir()
-    ProjectContext.at(tmp_path).slide_previews_dir.mkdir(parents=True)
-    target = preview_target.for_path(ctx, slides / "abc-EN-Demo-current.tex")
-    assert preview_target.cached_image(target) is None
-    source = slides / "abc-EN-Demo-current.tex"
-    source.write_text("x", encoding="utf-8")
-    png = slide_snapshot.snapshot_path(ctx, "abc", target.template, slide_snapshot.FULL_SIZE)
-    png.write_bytes(b"png")
-    os.utime(png, (1, source.stat().st_mtime + 10))
-    assert preview_target.cached_image(target) == (png, True)
-    os.utime(png, (1, source.stat().st_mtime - 10))
-    assert preview_target.cached_image(target) == (png, False)
 
 
 def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_path):
@@ -113,13 +86,13 @@ def test_view_resolution_preserves_hidden_counters_but_skips_absent_steps(tmp_pa
             "\\slidestep{ccc-EN-Three}[instructor]{1,2}\n"
             "\\slide{ddd-EN-Four}\n")
     deck = make_deck(body)
-    resolved = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'ddd-EN-Four-current.tex', 'all', 'EN')
-    assert [v for v, _ in resolved] == ['instructor', 'during-course', 'after-course']
-    assert [t.frame_number for _, t in resolved] == [4, 3, 3]
-    hidden = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'all', 'EN')
-    assert [t.hidden for _, t in hidden] == [False, True, True]
+    resolved = batch_render.plan_slide(ctx, deck, ctx.slides_dir / 'ddd-EN-Four-current.tex', 'all', 'EN')
+    assert [r.view for r in resolved] == ['instructor', 'during-course', 'after-course']
+    assert [r.target.frame_number for r in resolved] == [4, 3, 3]
+    hidden = batch_render.plan_slide(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'all', 'EN')
+    assert [r.target.hidden for r in hidden] == [False, True, True]
     with pytest.raises(ValueError, match='hidden'):
-        preview_target.render(hidden[1][1], 'during-course', 'EN', log=print)
+        preview_target.render(hidden[1].target, 'during-course', 'EN', log=print)
 
 
 def test_duplicate_resolution_uses_occurrence_key_otherwise_first(tmp_path):
@@ -130,25 +103,21 @@ def test_duplicate_resolution_uses_occurrence_key_otherwise_first(tmp_path):
     deck = make_deck('\\slidestep{aaa-EN-One}{1}\n\\slide{bbb-EN-Two}\n\\slidestep{aaa-EN-One}{3}\n')
     path = ctx.slides_dir / 'aaa-EN-One-current.tex'
     rows = deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN')
-    first = preview_target.resolve_views(ctx, deck, path, 'instructor', 'EN')[0][1]
-    last = preview_target.resolve_views(ctx, deck, path, 'instructor', 'EN', occurrence_key=rows[2].key)[0][1]
+    first = batch_render.plan_slide(ctx, deck, path, 'instructor', 'EN')[0].target
+    last = batch_render.plan_slide(ctx, deck, path, 'instructor', 'EN', occurrence_key=rows[2].key)[0].target
     assert (first.steps, first.frame_number) == ('1', 1)
     assert (last.steps, last.frame_number) == ('3', 3)
     assert first.key != last.key
 
 
 def test_invalid_view_fails_before_source_capture(tmp_path):
-    from slidemage import preview_requests
-
     ctx = ProjectContext.at(tmp_path)
     with pytest.raises(ValueError, match='Invalid preview view'):
-        preview_requests.resolve_requests(ctx, None, tmp_path / 'aaa-EN-One-current.tex', 'student', 'EN',
+        batch_render.plan_slide(ctx, None, tmp_path / 'aaa-EN-One-current.tex', 'student', 'EN',
                                           read_source=lambda _: pytest.fail('read before validation'))
 
 
 def test_all_views_capture_one_revision_and_new_same_version_source_is_distinct(tmp_path):
-    from slidemage import preview_requests
-
     ctx = ProjectContext.at(tmp_path)
     ctx.slides_dir.mkdir()
     path = ctx.slides_dir / 'aaa-EN-One-current.tex'
@@ -159,18 +128,16 @@ def test_all_views_capture_one_revision_and_new_same_version_source_is_distinct(
         captures.append(source)
         return source.read_text()
 
-    requests = preview_requests.resolve_requests(ctx, None, path, 'all', 'en', read_source=read)
+    requests = batch_render.plan_slide(ctx, None, path, 'all', 'en', read_source=read)
     assert len(captures) == 1
     assert requests[0].revision is requests[1].revision is requests[2].revision
     assert requests[0].language == 'EN'
     path.write_text('% version 1.0.0+\nNEW')
-    newer = preview_requests.resolve_requests(ctx, None, path, None, 'EN')[0]
+    newer = batch_render.plan_slide(ctx, None, path, None, 'EN')[0]
     assert newer.revision.content_hash != requests[0].revision.content_hash
 
 
 def test_pinned_resolution_and_translation_folding(tmp_path):
-    from slidemage import preview_requests
-
     ctx = ProjectContext.at(tmp_path)
     ctx.slides_dir.mkdir()
     en = ctx.slides_dir / 'aaa-EN-One-current.tex'
@@ -180,13 +147,13 @@ def test_pinned_resolution_and_translation_folding(tmp_path):
     pinned = ctx.slides_dir / 'aaa-EN-One-v1-0-0.tex'
     pinned.write_text('EN PINNED')
     deck = make_deck('\\slideversion{aaa-EN-One}{1-0-0}\n\\slide{bbb-DE-Eins}\n\\slide{ccc-EN-Three}\n')
-    english = preview_requests.resolve_requests(ctx, deck, en, 'instructor', 'EN')[0]
+    english = batch_render.plan_slide(ctx, deck, en, 'instructor', 'EN')[0]
     assert english.target.version == '1-0-0'
     assert english.revision.text == 'EN PINNED'
-    german = preview_requests.resolve_requests(ctx, deck, en, 'all', 'DE')
+    german = batch_render.plan_slide(ctx, deck, en, 'all', 'DE')
     assert all(r.target.id_slug == 'bbb-DE-Eins' and r.target.version is None for r in german)
     assert all(r.revision.text.endswith('DE CURRENT') for r in german)
-    next_target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'ccc-EN-Three-current.tex', 'instructor', 'DE')[0][1]
+    next_target = batch_render.plan_slide(ctx, deck, ctx.slides_dir / 'ccc-EN-Three-current.tex', 'instructor', 'DE')[0].target
     assert next_target.frame_number == 2
 
 
@@ -206,7 +173,7 @@ def test_presenter_of_hidden_student_target_uses_instructor_frame_number(monkeyp
     ctx = ProjectContext.at(tmp_path)
     ctx.slides_dir.mkdir()
     deck = make_deck('\\slidestep{bbb-EN-Two}[instructor]{1}\n\\omitslide{aaa-EN-One}\n')
-    target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'after-course', 'EN')[0][1]
+    target = batch_render.plan_slide(ctx, deck, ctx.slides_dir / 'aaa-EN-One-current.tex', 'after-course', 'EN')[0].target
     assert target.hidden and target.frame_number == 1
     wrappers = []
     monkeypatch.setattr(slide_preview, 'compile_and_extract', lambda ctx, wrapper, *a, **kw: wrappers.append(wrapper))
@@ -217,7 +184,7 @@ def test_presenter_of_hidden_student_target_uses_instructor_frame_number(monkeyp
 def test_unrelated_frozen_version_stays_standalone(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     deck = make_deck('\\slideversion{aaa-EN-One}{1-0-0}\n')
-    target = preview_target.resolve_views(ctx, deck, ctx.slides_dir / 'aaa-EN-One-v2-0-0.tex', 'instructor', 'EN')[0][1]
+    target = batch_render.plan_slide(ctx, deck, ctx.slides_dir / 'aaa-EN-One-v2-0-0.tex', 'instructor', 'EN')[0].target
     assert target.version == '2-0-0' and target.preamble_text is None
 
 

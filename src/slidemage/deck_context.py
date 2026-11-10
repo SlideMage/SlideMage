@@ -298,16 +298,13 @@ def in_deck_ready(ctx: ProjectContext, deck: Deck, view: str, language: Optional
 
 
 def _write_inputs(ctx: ProjectContext, the_plan, output, pdf: Path) -> None:
-    """What the page compile read, beside `pdf` as every preview build records it: without it the preview cache
-    keeps no verified render, and the Preview said "Previous render ... render to verify" after every render of a
-    slide that needs its deck. The deck's last compile counts with its own files (its .aux gives the numbers and
-    the agendas); the page build's folder and wrapper are deleted afterwards and are left out."""
+    """The deck's .aux supplies numbers and agendas; exclude the temporary page build's files."""
     from . import preview_build
 
     jobname = the_plan.job.jobname
     compiled = [the_plan.aux / f"{jobname}{ext}" for ext in (*partial_compile._RESTORED_EXTENSIONS, ".top")]
     inputs = preview_build.recorded_inputs(
-        output.build_dir / f"{jobname}.fls", output.build_dir / f"{jobname}.fdb_latexmk", project_root=ctx.root,
+        output.build_dir / f"{jobname}.fls", output.build_dir / f"{jobname}.fdb_latexmk", ctx=ctx,
         cache=output.build_dir, extra=[str(path) for path in compiled if path.is_file()])
     # By name: latexmk's database may spell the build folder as Git's Perl does (/d/...), which no path comparison
     # with the folder matches.

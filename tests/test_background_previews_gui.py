@@ -308,53 +308,6 @@ def test_the_settings_have_the_background_controls_and_save_them(qapp, monkeypat
 
 # -- the Preview ------------------------------------------------------------------------------
 
-def test_the_preview_shows_a_current_stored_render_and_not_an_outdated_one(window, tmp_path):
-    import os
-    import time
-
-    from slidemage import deck_editor, preview_target
-    from slidemage.compiler import CancelToken
-    from test_background_renders import FakeTeX
-
-    deck = window.state.deck
-    call = deck_editor.parse_slide_calls(deck)[0]
-    target = preview_target.for_call(window.project, deck, call, 1)
-    controller = window.background
-    renderer = controller.renderer
-    renderer._render = FakeTeX(window.project, pages=2)
-    old = time.time() - 3600
-    for path in (target.source_path, *target.source_path.parent.glob("*")):
-        os.utime(path, (old, old))
-    unit = background_renders.render_key.unit_for(target, "instructor", "EN", deck.name)
-    assert controller.stored_page(target, "instructor", "EN", deck.name) is None
-    preview = window.centre.preview
-    preview.show_slide(target, None, "One", "")
-    assert preview._stored_pixmap(target, "instructor", "EN") is None
-    renderer.render_unit(unit, background_renders.ORIGIN_BACKGROUND, CancelToken())
-    deadline = time.monotonic() + 5
-    while preview._lookups and time.monotonic() < deadline:       # the first lookup (before the render) answers
-        QApplication.processEvents()
-        time.sleep(0.01)
-    preview._stored_asked = None                   # as at a poll: the store is asked again, on the display worker
-    deadline = time.monotonic() + 5
-    while preview._stored_pixmap(target, "instructor", "EN") is None and time.monotonic() < deadline:
-        QApplication.processEvents()
-        time.sleep(0.01)
-    pixmap = preview._stored_pixmap(target, "instructor", "EN")
-    assert pixmap is not None and pixmap.width() == background_renders.STORE_WIDTH
-    shown = preview._image(target)
-    assert shown is not None and shown[1] is True and shown[2] == ""
-    path = target.source_path
-    try:
-        original = path.read_bytes()
-        path.write_bytes(original + b"\n% edited\n")
-        os.utime(path, (old, old))
-        assert controller.stored_page(target, "instructor", "EN", deck.name) is None      # the slide changed: never shown as current
-    finally:
-        path.write_bytes(original)
-        os.utime(path, (old, old))
-        controller.store.clear()
-
 
 # -- the dial and the status window ---------------------------------------------------------------
 
@@ -453,7 +406,6 @@ def test_the_status_window_lists_every_deck_with_its_versions_and_state(window):
     dialog.pause.click()
     assert controller.renderer.gate.paused and dialog.pause.text() == "Resume"
     dialog.reject()
-
 
 
 def test_the_status_window_lists_every_render_running_now(window, monkeypatch):
@@ -570,7 +522,7 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
     import time
 
     from conftest import EXAMPLE, build_window
-    from slidemage import compile_records, deck_outline, deck_scan, preview_target, preview_thumbnails
+    from slidemage import compile_records, deck_outline, deck_scan, preview_requests, preview_target, preview_thumbnails, render_lookup
     from slidemage.compiler import CompileJob
     from slidemage.preview_raster_client import RasterClient
     from slidemage.project import ProjectContext
@@ -594,7 +546,8 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         units = background_renders.deck_units(ctx, deck, "instructor", "EN")[:6]
         pdf = _compiled_pdf(tmp_path, units)
         job = CompileJob(deck, "instructor", None)
-        monkeypatch.setattr(compile_records, "read_record", lambda *args: _record(pdf, deck, units, ctx))
+        record = _record(pdf, job, units, ctx)
+        monkeypatch.setattr(compile_records, "read_record", lambda *args: record)
         told = []
         controller.ingested.connect(lambda: told.append(True))
         controller._on_compiled(ctx, job, pdf)                  # ingest happens although the feature is off
@@ -602,16 +555,160 @@ def test_a_deck_compile_gives_the_preview_and_the_thumbnails_its_pages_with_back
         outline = deck_outline.build_outline(ctx, deck, "instructor", "EN")
         row = next(r for s in outline for r in s.rows if r.call.source_filename == units[0].source_path.name)
         target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number)
-        assert controller.stored_page(target, "instructor", "EN", deck.name)     # the Preview's page
-        pages = controller.stored_pages(target, "instructor", "EN", deck.name)
+        spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(target.source_path), "instructor", "EN")
+        request = dict(resolver=renderer.resolver, unit=spec.unit, spec=spec)
+        state, found = render_lookup.select(request, strict=True)
+        assert state == 'current'
+        pages = renderer.store.pages(found)
         assert pages is not None and len(pages) == 2      # a plain \slide call: the compile already has every step
         result = preview_thumbnails.for_outline(ctx, deck, outline, "instructor", "EN",
-                                                stored_page=controller.stored_page_path)
+                                                resolver=renderer.resolver)
         shown = next(r for s in result for r in s.rows if r.key == row.key)
         assert shown.thumbnail_verified and shown.thumbnail.is_file()
         assert "reference" not in shown.thumbnail_note.lower()
         # what the slide depends on changing takes the page away again
         units[0].source_path.write_text(units[0].source_path.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
-        assert controller.stored_page(target, "instructor", "EN", deck.name) is None
+        request.pop('spec')
+        state, found = render_lookup.select(request, strict=False)
+        assert state == 'previous' and renderer.store.page(found, found['pages'])
     finally:
         raster.close()
+
+
+def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monkeypatch):
+    import threading
+    import time
+    from slidemage import preview_target
+    from slidemage.render_scheduler import P_IDLE
+    from test_background_renders import FakeTeX
+
+    started, release = threading.Event(), threading.Event()
+    r = window.background.renderer
+    service = window.centre.preview._renders
+    assert r.renders is service and service._renderer(window.project) is r
+    assert service._renderer(window.project).store is window.background.store
+    tex = FakeTeX(window.project)
+
+    def render(unit, cancel):
+        started.set()
+        assert release.wait(5)
+        assert not cancel.is_set()
+        return tex(unit, cancel)
+
+    monkeypatch.setattr(r, '_render', render)
+    deck = next(deck for deck in window.decks if deck.name == 'slidemage-manual')
+    unit = background_renders.deck_units(window.project, deck, 'instructor', 'EN')[0]
+    target = preview_target.PreviewTarget(window.project, unit.macro, unit.id_slug, unit.version, unit.conditions,
+                                         None, unit.frame_number, unit.preamble_text, deck=deck)
+    monkeypatch.setattr(r.scheduler, '_can_start', lambda job: True)
+    r.scheduler.submit(unit.label, ((unit,), ()), P_IDLE)
+    sweep = threading.Thread(target=r.scheduler.run_next)
+    sweep.start()
+    pane = None
+    try:
+        assert started.wait(5)
+        request = service.request(target, unit.source_path.read_text(encoding='utf-8'), 'instructor', 'EN', lambda _: None)
+        pixels = []
+        pane = threading.Thread(target=lambda: pixels.append(request.wait(pixels_only=True)))
+        pane.start()
+        deadline = time.monotonic() + 5
+        while len(request._consumers) < 2 and time.monotonic() < deadline:
+            time.sleep(.005)
+        assert len(request._consumers) == 2
+        r.gate.in_front = True
+        r.user_active()
+        sweep.join(5)
+        assert not sweep.is_alive() and not request.cancel.is_set()
+        assert len(request._consumers) == 1 and not tex.calls
+        release.set()
+        pane.join(5)
+        from pathlib import Path
+        from PySide6.QtGui import QImage
+        assert not pane.is_alive() and isinstance(pixels[0][1], Path)
+        assert not QImage(str(pixels[0][1])).isNull()
+        assert request.done.wait(5) and len(tex.calls) == 1
+        assert r.resolver.lookup(unit).final
+    finally:
+        release.set()
+        sweep.join(5)
+        if pane is not None:
+            pane.join(5)
+        r.stop()
+
+
+def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypatch, tmp_path):
+    import json
+    import threading
+    import time
+    from dataclasses import replace
+
+    from PySide6.QtGui import QImage
+    from slidemage import deck_editor, preview_target, render_lookup
+    from slidemage.preview_requests import PreviewRequest, SourceRevision
+    from test_background_renders import FakeTeX, render_unit
+
+    deck = window.state.deck
+    target = next(t for i, call in enumerate(deck_editor.parse_slide_calls(deck), 1)
+                  if (t := preview_target.for_call(window.project, deck, call, i)) is not None
+                  and PreviewRequest(t, SourceRevision.capture(t.source_path), "instructor", "EN").complete)
+    target = replace(target, deck=deck, needs_context=('contents',))
+    renderer = window.background.renderer
+    preview = window.centre.preview
+    assert preview._renders is renderer.renders
+    unit = background_renders.render_key.unit_for(target, "instructor", "EN")
+    dependency = tmp_path / 'picture.tex'
+    dependency.write_text('original')
+    tex = FakeTeX(window.project, pages=1)
+
+    def render(unit, cancel):
+        pdf = tex(unit, cancel)
+        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(unit.source_path), str(dependency)]))
+        return pdf
+
+    monkeypatch.setattr(renderer, '_render', render)
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: render(unit, kw['cancel']))
+    select, calls = render_lookup.select, []
+
+    def choose(request, *, strict=False):
+        calls.append((strict, threading.current_thread() is threading.main_thread()))
+        return select(request, strict=strict)
+
+    monkeypatch.setattr(render_lookup, 'select', choose)
+    preview.show_slide(target, None, "One", "")
+    deadline = time.monotonic() + 10
+    while (preview._adhoc is None or preview._busy
+           or preview._current_steps(target)[0] not in preview._step_pages
+           or preview._steps.pending(preview._current_steps(target)[0])) and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(.01)
+    assert preview._adhoc is not None and preview._record is None
+    temporary = preview._adhoc[1].toImage()
+    source = target.source_path.read_text(encoding='utf-8')
+    try:
+        for state, count in (('current', 2), ('previous', 2), ('current', 3)):
+            if state == 'previous':
+                dependency.write_text('changed')
+            else:
+                tex.pages = count
+                assert render_unit(renderer, unit)
+            preview._stored_asked = None
+            preview._refresh()
+            expected_state, record = select(dict(resolver=renderer.resolver, unit=unit), strict=True)
+            assert expected_state == state and record['unit'] == unit.label
+            deadline = time.monotonic() + 10
+            while (preview._record != record or preview._checking()
+                   or preview._reveal.track.stops != list(range(1, count + 1))) and time.monotonic() < deadline:
+                QApplication.processEvents()
+                time.sleep(.01)
+            assert preview._record == record
+            pages = renderer.store.pages(record)
+            preview._reveal.track.selected.emit(count)
+            assert preview._page.pixmap.toImage() == QImage.fromData(pages[-1])
+            assert preview._page.pixmap.toImage() != temporary
+            assert ('Previous render' in preview._status_chip.text()) == (state == 'previous')
+            preview._reveal.track.selected.emit(1)
+            assert preview._page.pixmap.toImage() == QImage.fromData(pages[0])
+        assert target.source_path.read_text(encoding='utf-8') == source
+        assert any(strict for strict, _on_main in calls) and not any(on_main for _strict, on_main in calls)
+    finally:
+        renderer.store.clear()

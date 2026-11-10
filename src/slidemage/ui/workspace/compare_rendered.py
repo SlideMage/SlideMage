@@ -39,20 +39,16 @@ PAGE_DPI = 130
 MAX_PAGES = 60
 
 
-def read_pages(pdf: Path, project_root: Path) -> list[bytes]:
-    """The pages of a rendered slide as PNGs (in the raster child process, like every MuPDF read)."""
-    return preview_pages.read_document(pdf, project_root=project_root, count=MAX_PAGES, dpi=PAGE_DPI)["images"]
-
-
 def can_compare(window, path: Path) -> bool:
     """Whether `path` is a slide file: the only kind of file that is typeset."""
     return preview_target.for_path(window.project, path) is not None
 
 
-def _pages(request, cancel: threading.Event, project_root: Path) -> list[bytes]:
+def _pages(request, cancel: threading.Event, resolver) -> list[bytes]:
     artifact = request.wait(cancel)
-    pages = preview_pages.sequence_images(request, count=MAX_PAGES, dpi=PAGE_DPI)
-    return pages if pages is not None else read_pages(artifact[0], project_root)
+    pages = preview_pages.sequence_images(request.spec, resolver, count=MAX_PAGES, dpi=PAGE_DPI)
+    return pages if pages is not None else preview_pages.read_document(
+        artifact[0], project_root=request.spec.target.context.root, count=MAX_PAGES, dpi=PAGE_DPI)["images"]
 
 
 @dataclass
@@ -84,7 +80,7 @@ class CompareRendered(QDialog):
         self.setMinimumSize(760, 480)
         self._page: Optional[int] = None                # None until the user moves: the last page both sides have
         self._cancel = threading.Event()
-        self._renders = renders or RenderService()
+        self._renders = renders or app.centre.preview._renders
         self.closed = False
 
         root = QVBoxLayout(self)
@@ -170,10 +166,11 @@ class CompareRendered(QDialog):
         self._show()
         for side in self._sides:
             request = self._renders.request(self.target, self.texts[side.name], self.view, self.language,
-                                            app.log, require_pdf=True)
-            cancel, root = self._cancel, app.project.root
+                                            app.log)
+            cancel = self._cancel
+            resolver = app.background.renderer.resolver
             side.worker = background.run_in_background(
-                lambda request=request: _pages(request, cancel, root),
+                lambda request=request: _pages(request, cancel, resolver),
                 lambda pages, error, side=side: self._on_done(side, pages, error), parent=self, cancel=cancel)
 
     # -- the pages ---------------------------------------------------------------------------
@@ -237,10 +234,9 @@ class CompareRendered(QDialog):
     # -- closing -----------------------------------------------------------------------------
 
     def done(self, result: int) -> None:
-        """Esc, Close and the window's close button: cancel what is pending (the renders end at their next check), go."""
+        """Esc, Close and the window's close button detach this dialog's waiters."""
         self.closed = True
         self._cancel.set()
-        self._renders.close()
         for side in self._sides:
             side.worker.stop(wait_ms=0)
         super().done(result)

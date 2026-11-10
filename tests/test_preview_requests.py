@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Cancellation reaches lock waits and the complete TeX process tree, without sockets."""
-from types import SimpleNamespace
 import os
 import shutil
 import sys
@@ -72,7 +71,7 @@ def test_cancel_running_latexmk_kills_children_and_frees_lock(tmp_path, monkeypa
         cancel.request_stop()
         worker.join(5)
     assert not worker.is_alive() and errors == ['Preview cancelled']
-    assert cancel._proc is None and not preview_build.is_active(ctx.build_dir)
+    assert not cancel._processes and not preview_build.is_active(ctx.build_dir)
     for lock in ctx.build_dir.rglob('build.lock'):
         with preview_build.build_lock(lock, blocking=False) as acquired:
             assert acquired
@@ -114,7 +113,7 @@ def test_cancel_before_process_registration_kills_new_process(tmp_path):
                             start_new_session=os.name != 'nt')
     cancel._set_process(proc)
     assert proc.wait(timeout=2) != 0
-    cancel._set_process(None)
+    cancel._remove_process(proc)
 
 
 def test_agent_stop_cancels_current_toolbox(tmp_path):
@@ -153,223 +152,3 @@ def test_cancel_preamble_build_propagates_and_releases_format_lock(tmp_path, mon
     with preview_build.build_lock(lock, blocking=False) as acquired:
         assert acquired
     assert not (lock.parent / 'format.bad').exists()
-
-
-def test_completed_service_cache_survives_restart_and_validates_content(tmp_path, monkeypatch):
-    import json
-    from slidemage import slide_snapshot
-
-    root = tmp_path / 'project'
-    ctx = ProjectContext.at(root)
-    ctx.slides_dir.mkdir(parents=True)
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('1.2.0+ FIRST')
-    framework = tmp_path / 'framework'
-    framework.mkdir()
-    theme = framework / 'theme.tex'
-    theme.write_text('THEME ONE')
-    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
-    monkeypatch.setattr(compiler, 'build_env', lambda _: env)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool'), ()))
-    monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
-    calls = []
-    pdf = tmp_path / 'result.pdf'
-
-    def render(*args, **kwargs):
-        calls.append(kwargs)
-        pdf.write_bytes(b'PDF ' + str(len(calls)).encode())
-        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(source), str(theme)]))
-        return pdf
-
-    monkeypatch.setattr(preview_target, 'render_text', render)
-    target = preview_target.for_path(ctx, source)
-
-    def request(service, force=False, stamp=None):
-        pending = service.request(target, source.read_text(), 'instructor', 'EN',
-                                  lambda _: None, saved=True, force=force, render_stamp=stamp)
-        pending.wait()
-        return pending
-
-    first_service = preview_requests.RenderService()
-    first = request(first_service, stamp='2026-10-15 10:00:00')
-    assert first.preview_result.status == 'rendered'
-    assert first.preview_result.dependencies == (theme, source)
-    from slidemage.project import preview_cache_dir
-    assert first.result[0].is_relative_to(preview_cache_dir(root)) and not (root / '.previews' / 'render-results').exists()
-    # Immutable result records keep their PDF alive after the future is released.
-    import gc
-    from slidemage.preview_cache import PreviewCache
-    retained = first.preview_result
-    del first
-    gc.collect()
-    PreviewCache(root).prune(max_bytes=0)
-    assert retained.pdf.exists()
-    first_service.close()
-    service = preview_requests.RenderService()
-    cached = request(service)
-    assert len(calls) == 1 and cached.preview_result.status == 'cached'
-    assert cached.metrics['compile_avoided'] == 1
-    assert cached.preview_result.render_stamp == '2026-10-15 10:00:00'
-    forced = request(service, force=True, stamp='2026-10-15 11:00:00')
-    assert len(calls) == 2 and forced.result[0] != cached.result[0]
-    assert forced.preview_result.render_stamp == '2026-10-15 11:00:00'
-    assert all(call['force_build'] for call in calls)
-    old = theme.stat()
-    theme.write_text('THEME TWO')
-    os.utime(theme, ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert request(service).preview_result.status == 'rendered' and len(calls) == 3
-    old = source.stat()
-    source.write_text('1.2.0+ OTHER')
-    os.utime(source, ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert request(service).preview_result.status == 'rendered' and len(calls) == 4
-    service.close()
-
-
-def test_saved_request_changed_before_start_never_compiles(tmp_path, monkeypatch):
-    ctx = ProjectContext.at(tmp_path)
-    ctx.slides_dir.mkdir()
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('old')
-    target = preview_target.for_path(ctx, source)
-    request = preview_requests.RenderService().request(target, 'old', 'instructor', 'EN',
-                                                      lambda _: None, saved=True)
-    source.write_text('new')
-    monkeypatch.setattr(preview_target, 'render', lambda *a, **kw: pytest.fail('superseded source compiled'))
-    with pytest.raises(RuntimeError, match='superseded'):
-        request.wait()
-
-
-def test_cache_identity_tracks_raster_version_and_ignores_forced_stamp(tmp_path, monkeypatch):
-    from dataclasses import replace
-    ctx = ProjectContext.at(tmp_path)
-    ctx.slides_dir.mkdir()
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('body')
-    target = preview_target.for_path(ctx, source)
-    spec = preview_requests.PreviewRequest(target, preview_requests.SourceRevision.capture(source), 'instructor', 'EN')
-    initial = preview_requests.cache_identity(spec)
-    forced = replace(spec, options=replace(spec.options, force=True, render_stamp='different time'))
-    assert preview_requests.cache_identity(forced) == initial
-    monkeypatch.setattr(preview_requests, 'version', lambda _: 'new renderer')
-    preview_requests._raster_version.cache_clear()     # the version is read once per process (conftest clears it per test)
-    changed = preview_requests.cache_identity(spec)
-    assert changed != initial and changed['raster']['renderer'] == 'new renderer'
-
-
-def test_cache_identity_reads_the_raster_version_once(tmp_path, monkeypatch):
-    from importlib.metadata import version as installed
-    ctx = ProjectContext.at(tmp_path)
-    ctx.slides_dir.mkdir()
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('body')
-    spec = preview_requests.PreviewRequest(preview_target.for_path(ctx, source),
-                                           preview_requests.SourceRevision.capture(source), 'instructor', 'EN')
-    # The cache is the process's: a thumbnail worker an earlier GUI test left running on this xdist worker may fill it
-    # (or miss it at the same moment) while this test runs. So fill it first, then check nothing reads the version
-    # again: that holds whichever thread filled it.
-    first = preview_requests.cache_identity(spec)
-    reads = []
-    monkeypatch.setattr(preview_requests, 'version', lambda name: reads.append(name) or installed(name))
-    assert all(preview_requests.cache_identity(spec) == first for _ in range(3)) and reads == []
-    assert first['raster']['renderer'] == installed('pymupdf')
-
-
-@pytest.fixture
-def recorded(tmp_path, monkeypatch):
-    """A service whose renders land in a `slidemage_preview_` temp folder; `store` can be held back."""
-    import json
-    from slidemage import slide_snapshot
-    from slidemage.preview_cache import PreviewCache
-
-    ctx = ProjectContext.at(tmp_path / 'project')
-    ctx.slides_dir.mkdir(parents=True)
-    source = ctx.slides_dir / 'abc-EN-One-current.tex'
-    source.write_text('1.2.0+ FIRST')
-    framework = tmp_path / 'framework'
-    framework.mkdir()
-    env = {'SLIDEMAGE_LATEX': str(framework), 'PATH': '', 'HOME': str(tmp_path)}
-    monkeypatch.setattr(compiler, 'build_env', lambda _: env)
-    monkeypatch.setattr(slide_snapshot, 'prepare_preview_images', lambda *a: ((b'page', b'tool', b'thumb'), ()))
-    monkeypatch.setattr(slide_snapshot, 'preview_sequence', lambda _: None)
-    folder = tmp_path / 'slidemage_preview_one'
-    calls = []
-
-    def render(*args, **kwargs):
-        calls.append(kwargs)
-        folder.mkdir(exist_ok=True)
-        pdf = folder / 'slide.pdf'
-        pdf.write_bytes(b'PDF')
-        pdf.with_suffix('.inputs.json').write_text(json.dumps([str(source)]))
-        return pdf
-
-    monkeypatch.setattr(preview_target, 'render_text', render)
-    target = preview_target.for_path(ctx, source)
-    gate = SimpleNamespace(entered=threading.Event(), release=threading.Event(), fail=False, stored=[])
-    store = PreviewCache.store
-
-    def held_store(self, *args, **kwargs):
-        gate.entered.set()
-        assert gate.release.wait(10)
-        if gate.fail:
-            raise RuntimeError('disk gone')
-        gate.stored.append(kwargs)
-        return store(self, *args, **kwargs)
-
-    monkeypatch.setattr(PreviewCache, 'store', held_store)
-    service = preview_requests.RenderService()
-    yield SimpleNamespace(
-        service=service, folder=folder, calls=calls, gate=gate,
-        request=lambda: service.request(target, source.read_text(), 'instructor', 'EN', lambda _: None, saved=True))
-    gate.release.set()
-    service.close()
-
-
-def test_pixels_only_wait_returns_before_the_cache_record(recorded):
-    import gc
-    request = recorded.request()
-    pdf, display, images, secondary = request.wait(pixels_only=True, timeout=10)
-    assert recorded.gate.entered.wait(10)            # the worker is inside store()
-    assert (display, secondary) == (b'page', b'tool') and pdf == recorded.folder / 'slide.pdf' and pdf.exists()
-    assert request.delivered.is_set() and not request.done.is_set() and request._cache_entry is None
-    assert request.preview_result.status == 'rendered' and request.preview_result.pdf == pdf
-    # An identical request while the record runs shares the build; a plain wait() gets the recorded result.
-    assert recorded.request() is request
-    plain = []
-    waiter = threading.Thread(target=lambda: plain.append(request.wait(timeout=10)))
-    waiter.start()
-    recorded.gate.release.set()
-    waiter.join(10)
-    assert request.done.wait(10) and len(recorded.calls) == 1
-    assert request._cache_entry is not None and request.preview_result.status == 'rendered'
-    assert plain[0][0] == request._cache_entry.pdf != pdf
-    assert recorded.gate.stored[0]['thumbnail'] == b'thumb'
-    # The pane was handed the temp PDF, so the folder lives as long as the request does.
-    assert recorded.folder.exists()
-    request = plain = waiter = None
-    gc.collect()
-    assert not recorded.folder.exists()
-    cached = recorded.request()
-    cached.wait()
-    assert cached.preview_result.status == 'cached' and len(recorded.calls) == 1
-
-
-def test_plain_wait_removes_the_temp_folder_once_recorded(recorded):
-    recorded.gate.release.set()
-    request = recorded.request()
-    result = request.wait(timeout=10)
-    assert result[0] == request._cache_entry.pdf and not recorded.folder.exists()
-    assert request.done.is_set() and request.preview_result.status == 'rendered'
-
-
-def test_record_failure_keeps_the_delivered_render(recorded):
-    recorded.gate.fail = True
-    recorded.gate.release.set()
-    request = recorded.request()
-    request.wait(pixels_only=True, timeout=10)
-    assert request.done.wait(10) and request.error is None
-    assert request.result[1] == b'page' and request.result[0].exists() and request._cache_entry is None
-    assert request.preview_result.status == 'rendered'
-    recorded.gate.fail = False
-    again = recorded.request()
-    again.wait(timeout=10)
-    assert len(recorded.calls) == 2 and again._cache_entry is not None

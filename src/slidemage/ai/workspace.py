@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from .. import compiler, preview_batch, preview_target, slide_snapshot, update_all_previews
+from .. import background_renders, compiler, batch_render, preview_target
 from ..deck_scan import Deck
 from ..project import ProjectContext
 from ..selection import Selection, SelectionError
-from ..preview_requests import RenderOptions, RenderService, resolve_requests
+from ..preview_requests import RenderOptions, RenderService
 from .providers import ChatProvider
 
 
@@ -45,7 +45,7 @@ class Workspace:
     def __init__(self, project: ProjectContext, context: WorkspaceContext | None = None) -> None:
         self.project = project
         self._context = context or WorkspaceContext()
-        self._preview_service = RenderService()
+        self._preview_service = None
 
     @property
     def root(self) -> Path:
@@ -123,13 +123,15 @@ class Workspace:
 
     def preview_service(self):
         """The service shared by this workspace's preview consumers."""
+        if self._preview_service is None:
+            self._preview_service = RenderService()
         return self._preview_service
 
     def preview_log(self, line):
         """Receive batch compiler output; headless callers have no log drawer."""
 
     def publish_preview_result(self, result, ticket) -> str:
-        """Retain completed views and refresh compatible instructor thumbnails."""
+        """Accept only a still-current revision of the source."""
         spec = result.request
         target, revision, options = spec.target, spec.revision, spec.options
         try:
@@ -140,9 +142,6 @@ class Workspace:
             return 'superseded'
         if options.saved and not saved:
             return 'superseded'
-        if (saved and spec.view == 'instructor' and not target.is_frozen_alone
-                and not options.presenter and options.mode == 'slide' and options.overlay is None):
-            slide_snapshot.publish_preview(target.context, result.page_images, target.bare_id, target.template)
         return 'cached'
 
     def prepare_preview_batch(self, path: Path, view='all', *, saved=False, force=False, context=None):
@@ -162,7 +161,7 @@ class Workspace:
                 return self.buffer_snapshot(source)[0]
             return None
 
-        return resolve_requests(self.project, context.deck, path, view, context.language,
+        return batch_render.plan_slide(self.project, context.deck, path, view, context.language,
                                 selected_view=context.view, occurrence_key=occurrence,
                                 options=options, read_source=read_source)
 
@@ -173,8 +172,9 @@ class Workspace:
             requests = self.prepare_preview_batch(path, view, saved=saved, force=force, context=context)
         if ticket is None:
             ticket = self.begin_preview_refresh()
-        return preview_batch.render_batch(self.preview_service(), requests, cancel=cancel,
+        return batch_render.render_batch(self.preview_service(), requests, cancel=cancel,
                                           progress=progress, log=self.preview_log,
+                                          batch_size=background_renders.batch_size(self.project),
                                           publish=lambda result: self.publish_preview_result(result, ticket))
 
     def begin_preview_refresh(self):
@@ -188,7 +188,6 @@ class Workspace:
                 return 'superseded'
         except OSError:
             return 'superseded'
-        slide_snapshot.publish_preview(self.project, artifact[2], target.bare_id, target.template)
         return 'cached'
 
     def refresh_preview(self, target, view, language, cancel) -> str:
@@ -196,7 +195,7 @@ class Workspace:
         ticket = self.begin_preview_refresh()
         revision = target.source_path.stat().st_mtime_ns
         text = target.source_path.read_text(encoding='utf-8')
-        request = RenderService().request(target, text, view, language, lambda _: None, saved=True)
+        request = self.preview_service().request(target, text, view, language, lambda _: None, saved=True)
         artifact = request.wait(cancel)
         try:
             return self.publish_preview_refresh(target, text, revision, view, language, artifact, ticket)
@@ -221,14 +220,18 @@ class Workspace:
         """Compile `deck` as compiler.build_jobs(deck, kind) says; {jobname: success}. Blocks until
         done (the Stop of the chat ends it through `cancel`). The window overrides this to run
         the jobs through its job panel."""
-        return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel)
+        return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel,
+                                 resolver=self.preview_service()._renderer(self.project).resolver)
 
-    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> update_all_previews.DeckResult:
+    def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> batch_render.DeckResult:
         """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the
-        snapshots are written (the Stop of the chat ends it through `cancel`). The window overrides this
+        results are stored (the Stop of the chat ends it through `cancel`). The window overrides this
         to run it on the compile slot, with its job panel; raises RuntimeError when it cannot run."""
         context = self.context()
-        return update_all_previews.rerender_deck(
-            self.project, deck, self.preview_log, cancel, service=self.preview_service(),
-            scope=scope, selected_view=context.view, language=context.language,
+        requests = batch_render.plan_deck(self.project, deck, scope=scope, selected_view=context.view,
+                                           language=context.language)
+        results = batch_render.render_batch(
+            self.preview_service(), requests, cancel=cancel, log=self.preview_log,
+            batch_size=background_renders.batch_size(self.project),
             publish=lambda result: self.publish_preview_result(result, None))
+        return batch_render.DeckResult.from_results(results, scope, context.language)

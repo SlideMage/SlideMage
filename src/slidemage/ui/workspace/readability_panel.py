@@ -300,7 +300,8 @@ class ReadabilityCheck(QObject):
         target, view, language = context
         text = request.text = app.centre.slide_text(path)
         ctx = app.project
-        return lambda: readability_check.check_slide(ctx, target, text, view, language, cancel, log=app.log)
+        renders = app.centre.preview._renders
+        return lambda: readability_check.check_slide(ctx, target, text, view, language, cancel, renders=renders, log=app.log)
 
     def _done(self, worker: background.Handle, report: Optional[readability.Report], error: Optional[Exception]) -> None:
         if worker is not self._worker:         # closed or restarted meanwhile

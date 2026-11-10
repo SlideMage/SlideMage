@@ -15,25 +15,26 @@ Free of Qt: the window supplies the gate's input events and the status chip read
 from __future__ import annotations
 
 import os
-import json
 import logging
-import shutil
+import tempfile
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_language, deck_settings, languages, render_key, render_store, slide_language
-from . import compile_records, deck_context, parallel_runs, power_status, preview_build, preview_target, slide_preview, slide_snapshot, slide_templates
+from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
+from . import compile_records, deck_context, parallel_runs, batch_render, power_status, preview_requests, preview_target, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
 from .dep_hash import HashCache, norm
+from .fileio import text_sha256
 from .idle_gate import CPU_LIMIT, IN_USE, PRESENTING, IdleGate
 from .preview_raster_client import RasterClient
 from .project import ProjectContext
 from .render_scheduler import P_IDLE, Job, RenderScheduler
-from .render_store import ORIGIN_BACKGROUND, ORIGIN_COMPILE, ORIGIN_REVEAL, RenderStore
+from .render_store import ORIGIN_COMPILE, RenderStore
 
 STORE_WIDTH = 1920      # as wide as the Preview's own image (slide_snapshot.FULL_SIZE)
 RASTER_CHUNK = 4                # pages per raster request, so another reader of a raster child never waits long
@@ -41,6 +42,7 @@ QUEUE_AHEAD = 12                # idle jobs handed to the scheduler at a time
 STORE_FULL = "disk limit reached"            # Settings → Background previews → Disk limit
 REPLAN_SECONDS = 120.0
 MIN_REPLAN_SECONDS = 15.0
+RENDER_OTHER_VIEWS = True
 
 ENABLED_KEY = "bg_previews_enabled"
 ONLY_MAINS_KEY = "bg_previews_only_on_mains"
@@ -194,7 +196,8 @@ class BackgroundRenderer:
     def __init__(self, ctx: ProjectContext, store: RenderStore, *, gate: Optional[IdleGate] = None,
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
                  engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
-                 raster: Optional[RasterClient] = None, batch_renderer: Optional[Callable] = None,
+                 raster: Optional[RasterClient] = None,
+                 renders: Optional[preview_requests.RenderService] = None,
                  on_change: Callable[[], None] = lambda: None,
                  plugin_soon: Optional[Callable[[Deck], bool]] = None,
                  clock: Callable[[], float] = time.time) -> None:
@@ -208,15 +211,17 @@ class BackgroundRenderer:
             free_bytes=lambda: power_status.free_bytes(store.root), cpu_load=self._cpu.load)
         self._decks, self._open_deck = decks, open_deck
         self.plugin_soon = plugin_soon          # the loaded plugins' rule (plugins.host.plugin_render_priority); settable
-        self._render = renderer or self._render_pdf
-        self._render_batch = batch_renderer or self._render_batch_pdf
+        self._render = renderer
+        self.renders = renders or preview_requests.RenderService()
+        self.renders._background, self.renders._owns_background = self, False   # the window owns the store
         self._raster = raster
         self._on_change = on_change
         self._clock = clock
         profile = setting(ctx, PROFILE_KEY, DEFAULT_PROFILE)
         workers, duty = PROFILES.get(profile, PROFILES[DEFAULT_PROFILE])
         self.scheduler = RenderScheduler(self._work, can_start=self._may_start,
-                                         on_change=self._changed, on_error=self._failed, workers=workers, duty=duty,
+                                         on_change=self._changed, on_error=lambda job, exc: self._failed(job.payload[0][0], exc),
+                                         workers=workers, duty=duty,
                                          may_add=self._cpu_has_room, budget=parallel_runs.BUDGET)
         self.progress = Progress()
         self._plan: list = []
@@ -275,6 +280,7 @@ class BackgroundRenderer:
         self._stop.set()
         self._replan.set()
         self.scheduler.stop()
+        self.renders.close()
         if self._thread is not None:
             self._thread.join(5)
 
@@ -346,6 +352,28 @@ class BackgroundRenderer:
         self.gate.note_started()
         return True
 
+    def submit_other_views(self, spec: preview_requests.PreviewRequest) -> None:
+        """Prepare the focused revision's other views through the idle queue, ahead of the sweep."""
+        if (not RENDER_OTHER_VIEWS or spec.options.presenter or spec.options.mode != 'slide'
+                or spec.options.overlay is not None):
+            return
+        target = spec.target
+        views = self.versions_for(target.deck) if target.deck is not None else VIEWS
+        requests = batch_render.plan_slide(
+            self.ctx, target.deck, target.source_path, 'all', spec.language,
+            occurrence_key=target.occurrence_key,
+            options=preview_requests.RenderOptions(saved=spec.options.saved, all_steps=True),
+            read_source=lambda path: spec.revision.text if path == spec.revision.path else None)
+        group = f"other:{spec.revision.path}"
+        for other in requests:
+            if other.view == spec.view or other.view not in views or other.target.hidden or other.capture_error:
+                continue
+            unit = other.unit
+            if unit.context and not deck_context.in_deck_ready(self.ctx, other.target.deck, other.view, other.language):
+                continue
+            key = f"{group}:{unit.label}:{other.revision.content_hash}"
+            self.scheduler.submit(key, ((unit,), (other,)), P_IDLE, (-1,), group=group)
+
     def trace(self, event: str) -> None:
         """What background rendering decided and when (focus, input, starts, stops, the chip), for finding out on a
         user's machine why it rendered or waited: one debug line (area `background`) with what the gate knows at
@@ -403,6 +431,8 @@ class BackgroundRenderer:
         It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
         longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
         started = time.time()               # the renders' own clock (meta "rendered_at"), not the injected one
+        validation = render_evidence.ValidationPass()
+        validation.inventory(self.ctx.root, validation.build_env(self.ctx), force=True)
         keys_now: set[str] = set()          # every unit's key, of the decks read in full
         clean_decks: set[str] = set()       # the decks read in full: every view and language, every unit's key
         rendered: dict[str, bool] = {}      # label -> each of its units has a render of its own current key
@@ -443,16 +473,18 @@ class BackgroundRenderer:
                         progress.total += 1
                         progress.count(view, 0)
                         if unit.template not in templates:
-                            deck_clean = self._note_key(unit, self.resolver.fast_key(unit), False, keys_now, rendered) and deck_clean
+                            deck_clean = self._note_key(unit, self.resolver.fast_key(unit, validation=validation), False, keys_now, rendered) and deck_clean
                             progress.blocked += 1
                             decks = missing.setdefault(unit.template, [])
                             if deck.name not in decks:
                                 decks.append(deck.name)
                             continue
-                        found = self.resolver.lookup(unit)
+                        found = render_lookup.select(dict(resolver=self.resolver, unit=unit, validation=validation, state_only=True),
+                                                     strict=False)
                         if found.state is render_key.Freshness.FAILED and _template_was_missing(found.failure, unit.template):
                             self.store.forget_failure(found.key)       # it failed only for want of the template
-                            found = self.resolver.lookup(unit)
+                            found = render_lookup.select(dict(resolver=self.resolver, unit=unit, validation=validation, state_only=True),
+                                                         strict=False)
                         if found.key is not None:
                             key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable and found.record is not None and found.record.get("key") == found.key
@@ -472,7 +504,7 @@ class BackgroundRenderer:
                             else:
                                 progress.failed += 1
                                 progress.count(view, 2)
-                        elif found.usable and found.record and found.record.get("origin") == ORIGIN_BACKGROUND:
+                        elif found.usable:
                             progress.fresh += 1                  # right, apart from its page number: refreshed last
                             progress.count(view, 1)
                             counted.add(unit.label)
@@ -530,6 +562,8 @@ class BackgroundRenderer:
         no longer in it, and of every label as above (renders left over from before v0.14.2). Nothing here may stop
         the scan."""
         self._current = current
+        with self.store.lock:
+            self.store.current_keys = current.keys
         keep, decks = set(current.keys), set(current.decks)
         try:
             done = {label for label, ok in rendered.items() if ok}
@@ -638,7 +672,7 @@ class BackgroundRenderer:
                     continue
                 batch = self._take_batch(i, size, on_its_way)
                 key = batch[0].label if len(batch) == 1 else f"{batch[0].label}+{len(batch) - 1}"
-                self.scheduler.submit(key, (tuple(batch), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
+                self.scheduler.submit(key, (tuple(batch), ()), P_IDLE, rank, group=unit.deck)
             return held or (keep is not None and any(unit.deck not in keep for _rank, unit in self._plan[i:]))
 
     def _take_batch(self, i: int, size: int, on_its_way: set) -> list[render_key.Unit]:
@@ -685,26 +719,6 @@ class BackgroundRenderer:
 
     # -- foreground helpers ------------------------------------------------------------------
 
-    def store_reveal(self, unit: render_key.Unit, pdf: Path, pages: list[bytes]) -> Optional[str]:
-        """Keep the all-steps render the reveal bar made (its PDF and page images) as a provisional store object, so
-        the next count of this slide, in this session or the next, is read from the store, not rendered."""
-        key = self.resolver.fast_key(unit)
-        if key is None:
-            return None
-        found = self.resolver.lookup(unit, key)
-        if found.state is render_key.Freshness.FRESH and not (found.record or {}).get("partial"):
-            return None
-        manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
-        if not manifest.stable or not pages:
-            return None
-        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=manifest.entries,
-                    tex_digest=manifest.tex_digest, tex_files=manifest.tex_files, machine=render_key.machine_id(),
-                    engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
-        name = self.store.put(key, ORIGIN_REVEAL, pdf, pages, meta, decks=[unit.deck] if unit.deck else [],
-                              replace=bool((found.record or {}).get("partial")))        # the page of a compile gives way
-        self._drop_stale(unit, key)
-        return name
-
     def ingest_compile(self, job, pdf: Path, record: dict) -> int:
         """Keep the slides of a whole-deck compile in the store: every page of each slide's run (every reveal step
         the PDF shows), for the view and language the deck was compiled in, so the Preview shows it as a finished
@@ -718,14 +732,21 @@ class BackgroundRenderer:
         the sweep. The dependencies are the compile record's (compile_records.py): every file the compile read, with
         its SHA-256, except the other slides, and media or snippets this slide does not mention. Returns how many
         slides were stored. Run off the GUI thread."""
+        if "inventory" not in record or "started" not in record or "configuration" not in record:
+            return 0
         if job.chapter is not None or getattr(job, "pages", None) or job.presenter:
             return 0
         if compile_records.sha256(pdf) != record.get("pdf_sha256"):
-            return 0                                    # not the PDF the record describes (another compile replaced it)
+            return 0                                    # not the PDF the record describes
+        validation = render_evidence.ValidationPass()
+        configuration = validation.configuration(self.ctx.root, validation.build_env(self.ctx))
+        if render_evidence.digest(configuration) != record["configuration"]:
+            return 0
         view = job.version or VIEW_INSTRUCTOR
         language = (getattr(job, "language", None) or deck_language_code(self.ctx, job.deck)).upper()
-        recorded = {norm(entry["path"]): (Path(entry["path"]), entry["sha256"])
+        recorded = {norm(entry["path"]): entry
                     for entry in record.get("inputs", []) if not entry.get("copy")}
+        inputs = [Path(entry["path"]) for entry in recorded.values()]
         import pymupdf
         try:
             doc = pymupdf.open(pdf)
@@ -738,40 +759,40 @@ class BackgroundRenderer:
         finally:
             doc.close()
         raster, stored = self._raster or self._shared_raster(), 0
-        for unit in deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True):
-            pages = runs.get(slide_language.bare_id(unit.id_slug))
+        units = deck_units(self.ctx, job.deck, view, language, context_ready=lambda: True)
+        counts = Counter(slide_language.bare_id(unit.id_slug) for unit in units)
+        for unit in units:
+            slide_id = slide_language.bare_id(unit.id_slug)
+            if counts[slide_id] != 1:
+                continue                                # footers cannot distinguish repeated calls or versions
+            pages = runs.get(slide_id)
             known = recorded.get(norm(unit.source_path))
             if unit.macro in ("slidestep", "slidefinal") or not pages or known is None:
                 continue
-            key = self.resolver.fast_key(unit)
-            if key is None or self.hashes.hash(unit.source_path) != known[1]:
-                continue                                # the slide changed since the compile
-            found = self.resolver.lookup(unit, key)
+            text = unit.source_path.read_text(encoding="utf-8", errors="replace")
+            if known.get("text_sha256") != text_sha256(text):
+                continue                                # a frozen file or metadata-only read cannot vouch for this text
+            key = self.resolver.fast_key(unit, text, validation=validation)
+            found = self.resolver.lookup(unit, key, validation=validation)
             if found.final:
                 continue                                # nothing more for the sweep, or this compile, to do for it
-            entries = self._compile_manifest(recorded, unit)
+            paths = render_key.unit_inputs(self.ctx, inputs, unit.source_path, {unit.source_path: text})
+            try:
+                if any(compile_records.sha256(path) != recorded[norm(path)]["sha256"] for path in paths):
+                    continue
+            except OSError:
+                continue
+            manifest = self.resolver.build_manifest([str(path) for path in paths])
             response = raster.read_document(pdf, "pdf_images", pages[0] + 1, len(pages), width=STORE_WIDTH)
             if len(response["images"]) != len(pages):
                 continue
-            meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=0, manifest=entries, tex_digest="",
-                        machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp,
-                        frame_number=unit.frame_number, unstable=False, width=STORE_WIDTH)
-            self.store.put(key, ORIGIN_COMPILE, None, response["images"], meta,
-                           decks=[unit.deck] if unit.deck else [], replace=bool((found.record or {}).get("partial")))
-            self._drop_stale(unit, key)
-            stored += 1
+            evidence = dict(started=record["started"], inventory=record["inventory"], key=key)
+            with tempfile.TemporaryDirectory(prefix="slidemage_compile_") as folder:
+                own = Path(folder) / "slide.pdf"
+                raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
+                if self._store_render(unit, ORIGIN_COMPILE, own, response["images"], manifest, evidence) is not None:
+                    stored += 1
         return stored
-
-    def _compile_manifest(self, recorded: dict, unit: render_key.Unit) -> list:
-        """What a slide's page in a deck compile depends on, from the compile record's hashes."""
-        entries = []
-        for path in render_key.unit_inputs(self.ctx, [path for path, _sha in recorded.values()], unit.source_path):
-            where = self.resolver._relative(path)
-            if where is not None:
-                entries.append([where[0], where[1], recorded[norm(path)][1]])
-        entries = self.resolver.narrow_alt_text(entries, recorded)
-        entries.sort()
-        return entries
 
     def deck_archived(self, deck: Deck) -> None:
         self.scheduler.cancel_group(deck.name)
@@ -781,14 +802,23 @@ class BackgroundRenderer:
     # -- the work ----------------------------------------------------------------------------
 
     def _work(self, job: Job, cancel) -> None:
-        units, origin = job.payload
+        units, requests = job.payload
         self._set_working(job.key, True)
         self.trace(f"start {job.key}")
         try:
-            if len(units) > 1:
-                self.render_batch(units, job.rank, cancel)
-            elif self.render_unit(units[0], origin, cancel) is not None:
-                self._count_fresh(units[0])
+            cancel.low_priority = True
+            requests = requests or tuple(self.request_for(unit) for unit in units)
+            results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
+            for unit, result in zip(units, results):
+                if result.status in ('rendered', 'cached'):
+                    found = self.resolver.lookup(unit)
+                    if found.state is render_key.Freshness.FRESH:
+                        self.store.link_decks(found.record['name'], [unit.deck])
+                        self._count_fresh(unit)
+                elif result.status == 'failed':
+                    self._failed(unit, RuntimeError(result.error))
+            if cancel.is_set():
+                raise Cancelled('Preview cancelled')
         finally:
             self._set_working(job.key, False)
             self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
@@ -818,11 +848,11 @@ class BackgroundRenderer:
         now = self.scheduler._clock()
         entries = []
         for job in self.scheduler.running_jobs():
-            units, origin = job.payload
+            units = job.payload[0]
             unit = units[0]
             entries.append(dict(deck=unit.deck, slide=unit.id_slug if len(units) == 1 else f"{len(units)} slides",
                                 view=unit.view, language=unit.language,
-                                kind="reveal steps" if origin == ORIGIN_REVEAL else "background",
+                                kind="background",
                                 seconds=max(0.0, now - job.started)))
         return entries
 
@@ -830,139 +860,41 @@ class BackgroundRenderer:
         """(how many may render at once, the processor's load now: None when unknown)."""
         return self.scheduler.workers, self._cpu.load()
 
-    def render_unit(self, unit: render_key.Unit, origin: str, cancel) -> Optional[str]:
-        """Render `unit` into the store unless a current render is there. Returns the object name, or None."""
-        key = self.resolver.fast_key(unit)
-        if key is None:
-            raise _transient("the slide file is being written")
-        found = self.resolver.lookup(unit, key)
-        if found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
-            if unit.label not in self._last_try or self.store.tried_last(key):
-                return None
-            self.store.note_last_try(key)       # noted first: a try that never ends is not made again and again
-        if found.state is render_key.Freshness.FRESH and (origin == ORIGIN_REVEAL or found.final):
-            self.store.link_decks(found.record["name"], [unit.deck])
-            return found.record["name"]
-        started = time.time()
-        pdf: Optional[Path] = None
+    def request_for(self, unit: render_key.Unit) -> preview_requests.PreviewRequest:
+        """Capture a saved sweep unit, retaining its deck and unrestricted reveal steps."""
         try:
-            pdf = self._render(unit, cancel)
-            if cancel.is_set():
-                raise Cancelled("Preview cancelled")
-            manifest = self.resolver.build_manifest(self._recorded_inputs(pdf))
-            pages = self._rasterise(pdf, cancel)
-            if not pages:
-                raise _deterministic("the render has no pages (the slide is not typeset in this view)")
-            return self._store_render(unit, key, found, origin, pdf, pages, manifest, started)
-        except BaseException as exc:
-            if cancel.is_set():
-                raise
-            self._record_failure(key, exc, unit, pdf)
-            raise
-        finally:
-            if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                shutil.rmtree(pdf.parent, ignore_errors=True)
+            revision = preview_requests.SourceRevision.capture(unit.source_path)
+            error = None
+        except OSError:
+            revision = preview_requests.SourceRevision.capture(unit.source_path, '')
+            error = 'the slide file is being written'
+        deck = next((deck for deck in self._decks() if deck.name == unit.deck), None)
+        target = preview_target.PreviewTarget(
+            self.ctx, unit.macro, unit.id_slug, unit.version, unit.conditions, None,
+            unit.frame_number, unit.preamble_text, deck=deck, needs_context=(unit.context,) if unit.context else ())
+        return preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
+                                              preview_requests.RenderOptions(saved=True, all_steps=True), error)
 
-    def _store_render(self, unit: render_key.Unit, key: str, found: render_key.Lookup, origin: str, pdf: Path,
-                      pages: list[bytes], manifest: render_key.Manifest, started: float) -> str:
-        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - started) * 1000),
+    def _store_render(self, unit: render_key.Unit, origin: str, pdf: Path,
+                      pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
+        if not pages or not self.resolver.publishable(unit, evidence, manifest):
+            return None
+        key = evidence["key"]
+        paths = [unit.source_path, *[rel for _kind, rel, _sha in manifest.entries]]
+        meta = dict(unit=unit.label, rendered_at=time.time(), duration_ms=int((time.time() - evidence["started"]) * 1000),
                     manifest=manifest.entries, tex_digest=manifest.tex_digest, tex_files=manifest.tex_files,
+                    inventory=render_evidence.inventory_state(evidence["inventory"], paths),
                     machine=render_key.machine_id(), engine_fp=self.resolver.engine_fp, frame_number=unit.frame_number,
-                    unstable=not manifest.stable, width=STORE_WIDTH)
-        replace = (found.record is not None and found.state is render_key.Freshness.FRESH_NUMBERING_DIFFERS
-                   and found.record.get("origin") == origin)
-        if found.state is render_key.Freshness.FAILED or self.store.failure(key) is not None:
+                    width=STORE_WIDTH, template=unit.template)
+        if self.store.failure(key) is not None:
             self.store.forget_failure(key)      # rendered after all: no longer among the slides that cannot be
         with self._working_lock:
             self._failure_keys.discard(key)
             self._failure_slides.pop(key, None)
         self.progress.failures = self.store_failures_count()
-        name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck], replace=replace)
+        name = self.store.put(key, origin, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
         self._drop_stale(unit, key)
         return name
-
-    @staticmethod
-    def _recorded_inputs(pdf: Path) -> list[str]:
-        """The files the render of `pdf` read (preview_build.write_inputs)."""
-        inputs_file = pdf.with_suffix(".inputs.json")
-        return json.loads(inputs_file.read_text(encoding="utf-8")) if inputs_file.is_file() else []
-
-    def render_batch(self, units: tuple, rank: tuple, cancel) -> None:
-        """Render `units` (one deck, view, language and preamble, one per bare slide id) in one document and store
-        each one's pages with the record `render_unit` would make. A unit that is current already is left out. If the
-        document does not compile or its pages cannot be told apart, nothing is stored and the units are queued singly,
-        so a broken slide is found and remembered by its own render. A unit edited meanwhile is left for the next plan."""
-        todo, singly = [], []
-        for unit in units:
-            key = self.resolver.fast_key(unit)
-            found = self.resolver.lookup(unit, key) if key is not None else None
-            if found is None:
-                singly.append(unit)                     # the file is being written: its own job raises "transient"
-            elif found.state is render_key.Freshness.FAILED and not (found.failure and self.store.may_retry(found.failure)):
-                continue
-            elif found.state is render_key.Freshness.FRESH and found.final:
-                self.store.link_decks(found.record["name"], [unit.deck])
-                self._count_fresh(unit)
-            else:
-                todo.append((unit, key, found))
-        if len(todo) == 1:
-            singly += [todo.pop()[0]]
-        done: set[str] = set()
-        started, pdf = time.time(), None
-        if todo:
-            try:
-                pdf = self._render_batch([unit for unit, _key, _found in todo], cancel)
-                if cancel.is_set():
-                    raise Cancelled("Preview cancelled")
-                self._store_batch(pdf, todo, started, cancel, done)
-            except Exception:  # noqa: BLE001 -- whatever went wrong, the units are tried one by one
-                if cancel.is_set():
-                    raise
-            finally:
-                if pdf is not None and pdf.parent.name.startswith(preview_build.RENDER_FOLDER_PREFIX):
-                    shutil.rmtree(pdf.parent, ignore_errors=True)
-            singly += [unit for unit, _key, _found in todo if unit.label not in done]
-        for unit in singly:
-            self.scheduler.submit(unit.label, ((unit,), ORIGIN_BACKGROUND), P_IDLE, rank, group=unit.deck)
-
-    def _store_batch(self, pdf: Path, todo: list, started: float, cancel, done: set[str]) -> None:
-        """Split the batch PDF by slide (the slide id on each page) and store every unit; `done` collects the labels
-        of the units dealt with. RuntimeError when the pages are not the planned slides'."""
-        raster = self._raster or self._shared_raster()
-        response = raster.read_document(pdf, "pdf", 1, ALL_PAGES)
-        runs = slide_snapshot.batch_runs(response["texts"], [slide_language.bare_id(unit.id_slug) for unit, _key, _found in todo])
-        inputs = [Path(name) for name in self._recorded_inputs(pdf)]
-        for number, ((unit, key, found), pages) in enumerate(zip(todo, runs)):
-            if cancel.is_set():
-                raise Cancelled("Preview cancelled")
-            if self.resolver.fast_key(unit) != key:
-                done.add(unit.label)                    # edited since it was planned
-                continue
-            own = pdf.parent / f"unit-{number}.pdf"
-            raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
-            images = self._rasterise(own, cancel)
-            if len(images) != len(pages):
-                raise RuntimeError("the pages of a slide were not all rendered")
-            manifest = self.resolver.build_manifest([str(path) for path in render_key.unit_inputs(self.ctx, inputs, unit.source_path)])
-            self._store_render(unit, key, found, ORIGIN_BACKGROUND, own, images, manifest, started)
-            done.add(unit.label)
-            self._count_fresh(unit)
-
-    def _render_batch_pdf(self, units: list, cancel) -> Path:
-        first = units[0]
-        return slide_preview.render_slides_to_pdf(
-            self.ctx, [(u.macro, u.id_slug, u.version, u.render_conditions, u.frame_number) for u in units],
-            first.view, first.language.lower(), first.preamble_text, log=lambda line: None, cancel=cancel,
-            workspace=self.store.work_dir)
-
-    def _render_pdf(self, unit: render_key.Unit, cancel) -> Path:
-        if unit.context:
-            return self._render_in_deck(unit, cancel)
-        return slide_preview.render_slide_to_pdf(
-            self.ctx, unit.macro, unit.id_slug, unit.version, unit.render_conditions, deck_version=unit.view,
-            deck_language=unit.language.lower(), preamble_text=unit.preamble_text,
-            frame_number=unit.frame_number, log=lambda line: None, steps=None, capture_snapshot=False, cancel=cancel,
-            all_steps=True, workspace=self.store.work_dir)
 
     def _render_in_deck(self, unit: render_key.Unit, cancel) -> Path:
         """A slide that needs its deck, typeset in the deck's last whole-deck compile (deck_context.render_in_deck)."""
@@ -994,27 +926,12 @@ class BackgroundRenderer:
             self._own_raster = RasterClient()
         return self._own_raster
 
-    def _record_failure(self, key: str, exc: BaseException, unit: render_key.Unit, pdf: Optional[Path] = None) -> None:
-        kind = getattr(exc, "kind", None) or (render_store.DETERMINISTIC if str(exc).startswith("Render failed") else render_store.TRANSIENT)
-        inputs = [str(unit.source_path)] + list(getattr(exc, "preview_inputs", ()))
-        if pdf is not None:
-            inputs += self._recorded_inputs(pdf)
-        manifest = self.resolver.build_manifest(inputs).entries
-        manifest += [self.resolver.missing_input_entry(name) for name in set(getattr(exc, "missing_inputs", ()))]
-        self.store.record_failure(key, kind, str(exc), manifest)
-        with self._working_lock:
-            if self._current is None or key in self._current.keys:
-                self._failure_keys.add(key)
-                self._failure_slides.setdefault(key, set()).add((unit.deck, unit.id_slug))
-
-    def _failed(self, job: Job, exc: BaseException) -> None:
+    def _failed(self, unit: render_key.Unit, exc: BaseException) -> None:
         self.progress.failures = self.store_failures_count()
-        unit = job.payload[0][0]
         counted = self.progress.deck(unit.deck)
-        if counted is not None and getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed"):
-            if counted is not None:
-                counted.failed += 1
-                counted.count(unit.view, 2)
+        if counted is not None and (getattr(exc, "kind", None) == render_store.DETERMINISTIC or str(exc).startswith("Render failed")):
+            counted.failed += 1
+            counted.count(unit.view, 2)
 
     def _changed(self) -> None:
         try:
@@ -1058,10 +975,4 @@ class _Once:
 def _transient(message: str) -> RuntimeError:
     error = RuntimeError(message)
     error.kind = render_store.TRANSIENT          # type: ignore[attr-defined]
-    return error
-
-
-def _deterministic(message: str) -> RuntimeError:
-    error = RuntimeError(message)
-    error.kind = render_store.DETERMINISTIC      # type: ignore[attr-defined]
     return error

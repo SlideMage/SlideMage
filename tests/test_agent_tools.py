@@ -13,7 +13,7 @@ import pymupdf
 from agent_fakes import FakeWorkspace, call
 from conftest import SLIDE_TEXT
 
-from slidemage import ai_review, compiler, preview_target, slide_snapshot, slide_templates, update_all_previews
+from slidemage import ai_review, compiler, preview_target, batch_render
 from slidemage.ai import agent_context
 from slidemage.ai.agent_types import (
     EDIT_ASK,
@@ -387,14 +387,26 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
 
     def fake_render(target, text, view, language, **kwargs):
         seen.update(target=target, text=text, view=view, language=language, **kwargs)
-        return root / "x.pdf"
+        folder = root / ".build" / f"slidemage_preview_test_{target.bare_id}"
+        folder.mkdir(parents=True, exist_ok=True)
+        pdf = folder / 'slide.pdf'
+        with pymupdf.open() as doc:
+            doc.new_page(width=320, height=180)
+            doc.save(pdf)
+        return pdf
 
     monkeypatch.setattr(preview_target, "render_text", fake_render)
-    monkeypatch.setattr(slide_snapshot, "prepare_preview_images",
-                        lambda *a: ((b"\x89PNG-image", b"\x89PNG-image"), ()))
     box.ws.open(root / SLIDE, LF + "% unsaved\n")
     result = box.run("render_preview")
-    assert not result.is_error and result.images == [b"\x89PNG-image"]
+    assert not result.is_error and len(result.images) == 1
+    from slidemage import render_lookup
+    spec, = box.ws.prepare_preview_batch(root / SLIDE, 'instructor')
+    renderer = box.ws.preview_service()._renderer(box.ws.project)
+    state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
+    assert state == 'current' and result.images == [renderer.store.page(record, record['pages'])]
+    monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pytest.fail('a current store hit must not compile'))
+    assert box.run('render_preview').images == result.images
+    monkeypatch.setattr(preview_target, 'render_text', fake_render)
     assert seen["text"].endswith("% unsaved\n") and seen["view"] == "instructor" and seen["language"] == "EN"
     assert seen["target"].id_slug == "abc-EN-Hello" and seen["target"].frame_number == 1     # as the deck calls it
     assert box.run("render_preview", slide="abd").images        # another slide, from disk
@@ -403,6 +415,7 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
         raise RuntimeError("! Undefined control sequence.")
 
     monkeypatch.setattr(preview_target, "render_text", failing)
+    box.ws.open(root / SLIDE, LF + "% another edit\n")
     assert "Undefined control sequence" in box.error("render_preview")
     assert "not a slide" in box.error("render_preview", slide="SlideMage.bib")
 
@@ -550,11 +563,11 @@ def test_compile_deck_reports_per_pdf_and_the_latex_errors(box, root):
 
 
 def fake_render(monkeypatch, root, fail=None):
-    """Compile without LaTeX; exercise real rasterization and snapshot publication."""
+    """Compile without LaTeX; exercise real preview rasterization."""
     seen = []
 
     def render(target, text, view, language, **kwargs):
-        seen.append((target.id_slug, target.frame_number, view, language, kwargs.get("capture_snapshot", True)))
+        seen.append((target.id_slug, target.frame_number, view, language))
         if fail:
             raise RuntimeError(fail)
         # one folder per render, as a real render has (the service deletes it afterwards; views render at once)
@@ -573,8 +586,7 @@ def fake_render(monkeypatch, root, fail=None):
 def test_refresh_preview_rerenders_the_focused_slide_and_an_explicit_one(box, root, monkeypatch):
     seen = fake_render(monkeypatch, root)
     assert "abc: instructor, EN: rendered; cached for instructor." in box.ok("refresh_preview", view="instructor")          # the slide in focus
-    assert seen == [("abc-EN-Hello", 1, "instructor", "EN", False)]                    # as the open deck calls it
-    assert slide_snapshot.snapshot_path(box.ws.project, "abc", slide_templates.DEFAULT_TEMPLATE, id_slug="abc-EN-Hello").is_file()
+    assert seen == [("abc-EN-Hello", 1, "instructor", "EN")]                    # as the open deck calls it
     assert "abd: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="abd")
     assert seen[-1][:2] == ("abd-EN-Second", 2)
     assert "abc: instructor, EN: rendered" in box.ok("refresh_preview", view="instructor", slide="slides/abc-EN-Hello-current.tex")
@@ -595,30 +607,12 @@ def test_refresh_preview_reports_the_first_latex_error_and_other_problems(box, r
     assert "Render failed" in box.error("refresh_preview", slide="abd")
     assert "not a slide file" in box.error("refresh_preview", slide="SlideMage.bib")
     assert "frozen version" in box.error("refresh_preview", slide="slides/abc-EN-Hello-v1-0-0.tex")
-    monkeypatch.setattr(slide_snapshot, "publish_preview", lambda *a: (_ for _ in ()).throw(OSError("disk full")))
-    fake_render(monkeypatch, root)
-    assert "publication failed: disk full" in box.error("refresh_preview", view="instructor")
-
-
-def test_refresh_deck_previews_reports_counts_and_lists(box, root):
-    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello"], failed=["abd-EN-Second"],
-                                                           error="! Undefined control sequence.")
-    out = box.ok("refresh_deck_previews")                                       # the open deck
-    assert box.ws.refreshed == ["test"]
-    assert out == ("test: 1 of 2 slide preview(s) refreshed, 1 failed.\nRefreshed: abc\nFailed: abd\n"
-                   "First error: ! Undefined control sequence.")
-    box.ws.refresh_result = update_all_previews.DeckResult(refreshed=["abc-EN-Hello", "abd-EN-Second"])
-    assert box.ok("refresh_deck_previews", deck="test") == "test: 2 of 2 slide preview(s) refreshed, 0 failed.\nRefreshed: abc, abd"
-    box.ws.refresh_result = update_all_previews.DeckResult()
-    assert "no slides to refresh" in box.ok("refresh_deck_previews")
-    assert "There is no deck 'nope'" in box.error("refresh_deck_previews", deck="nope")
-    assert box.ws.refreshed == ["test"] * 3
 
 
 def test_refresh_deck_previews_says_why_it_could_not_run_or_was_stopped(box):
     box.ws.refresh_result = RuntimeError("SlideMage is busy with another compile run.")
     assert box.error("refresh_deck_previews") == "SlideMage is busy with another compile run."
-    box.ws.refresh_result = update_all_previews.DeckResult()
+    box.ws.refresh_result = batch_render.DeckResult()
     box.box.ctx.cancel.request_stop()
     assert "stopped by the user" in box.error("refresh_deck_previews")
 
@@ -630,7 +624,7 @@ def test_refresh_deck_previews_is_stopped_after_its_deadline(box, monkeypatch):
         end = time.monotonic() + 5
         while not cancel.is_set() and time.monotonic() < end:
             time.sleep(0.02)
-        return update_all_previews.DeckResult()
+        return batch_render.DeckResult()
 
     monkeypatch.setattr(box.ws, "refresh_deck_previews", slow)
     assert "longer than" in box.error("refresh_deck_previews")
@@ -762,7 +756,6 @@ def test_refresh_preview_headless_rejects_a_source_edit_during_render(box, root,
     monkeypatch.setattr(preview_target, 'render_text', changed)
     result = box.ok('refresh_preview')
     assert 'rendered' in result and 'superseded' in result and 'displayed' not in result
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE).exists()
 
 
 def test_render_preview_default_is_selected_view_and_refresh_default_is_all_views(box, root, monkeypatch):
@@ -772,31 +765,10 @@ def test_render_preview_default_is_selected_view_and_refresh_default_is_all_view
     box.ws.open(root / SLIDE, LF + '% draft\n')
     assert box.run('render_preview').images
     assert seen[-1][2] == 'during-course'
-    assert not slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE).exists()
     result = box.ok('refresh_preview')
     assert all(f'{view}, EN' in result for view in ('instructor', 'during-course', 'after-course'))
     assert sorted(row[2] for row in seen[-3:]) == sorted(['instructor', 'during-course', 'after-course'])     # the views render at once, in any order
-    assert slide_snapshot.snapshot_path(box.ws.project, 'abc', slide_templates.DEFAULT_TEMPLATE, id_slug='abc-EN-Hello').exists()
     assert box.ws.context().view == 'during-course'
-
-
-@pytest.mark.parametrize('args', [{}, {'view': 'all'}])
-def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root, monkeypatch, args):
-    seen = fake_render(monkeypatch, root)
-    box.ws.open(root / SLIDE, 'UNSAVED')
-    captures = []
-    render = preview_target.render_text
-
-    def capture(target, text, *args, **kwargs):
-        captures.append(text)
-        return render(target, text, *args, **kwargs)
-
-    monkeypatch.setattr(preview_target, 'render_text', capture)
-    result = box.run('refresh_preview', **args)
-    assert not result.is_error and result.images == []
-    assert sorted(row[2] for row in seen) == sorted(['instructor', 'during-course', 'after-course'])          # the views render at once, in any order
-    assert all(text == (root / SLIDE).read_text() for text in captures)
-    assert 'saved source' in result.text and 'cached for after-course' in result.text
 
 
 def test_preview_tools_reject_invalid_view(box):

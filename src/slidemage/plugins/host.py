@@ -317,7 +317,12 @@ class PluginHost(Registrar):
             from ..ui.workspace.chat.plugin_surface import ToolWorkspace
             if isinstance(workspace, ToolWorkspace):
                 workspace = workspace._workspace
-        return agent_toolbox(workspace or Workspace(self.ctx), scope, focus_slide, cancel, mode)
+        if workspace is None:
+            workspace = Workspace(self.ctx)
+            window = getattr(self.ui, "window", None)
+            if window is not None and window.project.root.resolve() == self.ctx.root.resolve():
+                workspace._preview_service = window.centre.preview._renders
+        return agent_toolbox(workspace, scope, focus_slide, cancel, mode)
 
     def focus(self) -> plugin_api.Focus:
         read = getattr(self.ui, "focus", None)

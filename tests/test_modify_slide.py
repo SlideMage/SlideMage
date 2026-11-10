@@ -304,9 +304,9 @@ def test_timing_records_the_request_in_order(env, monkeypatch, debug_logs, switc
     assert not modify(env).is_error
     tool = _debug_log_tool()
     records = [r for r in tool.read([debug_logs]) if r.area == "timing"]
-    assert [r.event for r in records] == ["prompt", "tool_start", "slide_written", "render_done", "tool_end"]
-    assert "tool=modify_slide" in records[1].message and "tool=modify_slide" in records[4].message
+    assert [r.event for r in records] == ["prompt", "tool_start", "slide_written", "preview.delivered", "preview.pages", "render_done", "tool_end"]
+    assert "tool=modify_slide" in records[1].message and "tool=modify_slide" in records[6].message
     lines = tool.timeline(records)
-    assert lines[0].startswith("+  0.000 s  prompt") and "[app:" in lines[0] and len(lines) == 5
+    assert lines[0].startswith("+  0.000 s  prompt") and "[app:" in lines[0] and len(lines) == 7
     [tool_call] = [r for r in tool.read([debug_logs]) if r.area == "ai"]
     assert "tool call tool=modify_slide args=" in tool_call.message and "seconds=" in tool_call.message

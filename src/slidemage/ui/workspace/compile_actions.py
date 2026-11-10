@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The flows around a build: what the Compile menu, Export PPTX, Update previews and deck snapshots
+"""The flows around a build: what the Compile menu, Export PPTX, preview renders and deck snapshots
 ask and check before a run, and the work each hands to the compile controller (compile_controller.py).
 
 Plain functions of the window (window.py), which provides `project`, `state`, `decks`, `compile` (the
@@ -9,7 +9,6 @@ controller), `build_options` and `log()`.
 from __future__ import annotations
 
 import threading
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -18,7 +17,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMessageBox
 
 from ... import app_settings, compile_log, compile_progress, compiler, deck_snapshot, latex_export, latex_lint, open_path, partial_compile
-from ... import slide_language, slide_templates, slide_versioning, update_all_previews
+from ... import background_renders, batch_render, slide_language, slide_versioning
 from ...compile_status import job_title
 from ...compiler import PDF_MOVE_RETRY_TOTAL_SECONDS, CompileJob, order_jobs, resolve_output_location, run_job, run_jobs
 from ...deck_scan import Deck
@@ -191,7 +190,8 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
         return False
 
     def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
-        results = run_jobs(window.project, jobs, log, cancel=cancel)
+        results = run_jobs(window.project, jobs, log, cancel=cancel,
+                           resolver=window.centre.preview._renders._renderer(window.project).resolver)
         passed = sum(1 for ok in results.values() if ok)
         log(f"==== Done: {passed} passed, {len(results) - passed} failed ====")
 
@@ -245,7 +245,8 @@ def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, P
     Cancel. Returns the jobs to compile ([] = nothing)."""
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
-        unchanged = compiler.unchanged_jobs(window.project, jobs, outputs)
+        unchanged = compiler.unchanged_jobs(
+            window.project, jobs, outputs, resolver=window.centre.preview._renders._renderer(window.project).resolver)
     finally:
         QApplication.restoreOverrideCursor()
     if not unchanged:
@@ -351,7 +352,8 @@ def start_snapshots(
     def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> list:
         try:
             results = deck_snapshot.snapshot_decks(
-                decks, options, log, cancel=cancel, delete_old=delete_old, ctx=window.project)
+                decks, options, log, cancel=cancel, delete_old=delete_old, ctx=window.project,
+                resolver=window.centre.preview._renders._renderer(window.project).resolver)
         except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
             log(f"*** Deck snapshots failed: {exc} ***")
             results = [deck_snapshot.SnapshotResult(d.name, ok=False, error=str(exc)) for d in decks]
@@ -402,9 +404,7 @@ def export_latex(window, deck: Deck) -> None:
 
 def export_pptx(window, deck: Deck) -> None:
     """Compiles `deck` (instructor version, direct instruction -- the
-    fullest-content version, matching what update_all_previews.py's
-    own snapshot refresh already treats as this project's "real"
-    default) and exports the result as a .pptx with one full-page
+    fullest-content version) and exports the result as a .pptx with one full-page
     image per PDF page -- see pptx_export.py's own docstring for why
     one PDF page per pptx slide (every beamer overlay/reveal as its
     own slide) rather than one pptx slide per \\slide{} call, and why
@@ -475,43 +475,33 @@ def _export_pptx(context: ProjectContext, job: CompileJob, log: Callable[[str], 
         log(f"*** couldn't auto-open {out_path.name}: {exc} ***")
 
 
-# -- Update previews ---------------------------------------------------------------------
+# -- Bulk previews -----------------------------------------------------------------------
 
 def update_previews(window) -> None:
-    """No template picker any more (2026-08-16, direct instruction:
-    "I forgot that each deck has a specific template linked to it" --
-    there's nothing to pick, every deck already carries its own).
-    Scans every deck for which (template, slide) combinations it
-    actually needs (update_all_previews.needed_slides_by_template())
-    and shows that in the confirmation dialog, so the count reflects
-    exactly what's about to be compiled -- not "every slide file in
-    the project" the way the old single-template design counted.
-    """
+    """Render the sweep's project-wide scope now, with progress and cancellation."""
     if _busy(window):
         return
-    needed = update_all_previews.needed_slides_by_template(window.project)
-    if not needed:
+    renderer = window.background.renderer
+    requests = batch_render.plan_project(renderer)
+    if not requests:
         QMessageBox.information(window, "Nothing to do", "No deck references any slides right now.")
         return
-    total_slides = sum(len(ids) for ids in needed.values())
-    template_names = [slide_templates.TEMPLATES.get(t, t) for t in sorted(needed)]
-    reply = QMessageBox.question(
-        window, "Update previews",
-        f"Scan every deck (active and archived) and refresh preview "
-        f"snapshots for {total_slides} slide-template combination(s) "
-        f"across {', '.join(template_names)}? Cached previews no "
-        f"longer used by any deck are deleted afterward.\n\nThis is "
-        f"one very long compile (well over an hour is plausible for "
-        f"this many slides) -- it runs in the background, but "
-        f"occupies the compile slot, so no other compile can start "
-        f"until it's done.",
-    )
-    if reply != QMessageBox.StandardButton.Yes or not _confirm_previews_lint(window, needed):
+    if QMessageBox.question(window, "Render all previews now",
+                            f"Render {len(requests)} previews across all prepared decks and views?") != QMessageBox.StandardButton.Yes:
         return
-    _start_previews(
-        window, needed, "Update previews",
-        lambda log, cancel, base_jobnames: update_all_previews.run(
-            window.project, log, cancel=cancel, base_jobnames=base_jobnames, needed=needed))
+    if not _confirm_previews_lint(window, requests):
+        return
+    workspace = window.assistant.chat.workspace
+    ticket = window.centre.preview._generation
+
+    def work(log, cancel):
+        return batch_render.render_batch(
+            renderer.renders, requests, cancel=cancel, progress=window.compile.preview_progress.emit,
+            publish=lambda result: workspace.publish_preview_result(result, ticket), log=log,
+            batch_size=background_renders.batch_size(window.project))
+
+    window.compile.start({"all_previews": "Render all previews now"}, {}, work, opens_pdfs=False,
+                         on_done=lambda _: window.slide_list._refresh_all_preview_rows(), failure="Preview render")
 
 
 def rerender_deck_previews(window) -> None:
@@ -519,32 +509,35 @@ def rerender_deck_previews(window) -> None:
     deck = window.state.deck
     if deck is None or _busy(window):
         return
-    needed = update_all_previews.needed_slides_by_template(window.project, deck)
-    total_slides = sum(len(ids) for ids in needed.values())
-    if not total_slides:
-        QMessageBox.information(window, "Nothing to do", f"{deck.name} has no slides to render.")
-        return
     labels = ["All course views", "Selected course view"]
     choice, accepted = QInputDialog.getItem(window, "Refresh previews", "Views to refresh", labels, 0, False)
-    if accepted and _confirm_previews_lint(window, needed):
-        start_deck_previews(window, deck, needed, scope='all' if choice == labels[0] else 'selected')
+    if not accepted:
+        return
+    scope = 'all' if choice == labels[0] else 'selected'
+    requests = batch_render.plan_deck(window.project, deck, scope=scope,
+                                      selected_view=window.state.view, language=window.state.language, force=True)
+    if not requests:
+        QMessageBox.information(window, "Nothing to do", f"{deck.name} has no slides to render.")
+        return
+    if _confirm_previews_lint(window, requests):
+        start_deck_previews(window, deck, requests, scope=scope)
 
 
-def start_deck_previews(window, deck: Deck, needed: dict[str, set[str]],
+def start_deck_previews(window, deck: Deck, requests,
                         on_done: Optional[Callable[[object], None]] = None, *, scope='all') -> None:
     """Refresh exact requests using the pane's shared scheduler on the compile slot."""
     pane = window.centre.preview
     service, generation = pane._renders, pane._generation
-    view, language = window.state.view, window.state.language
+    language = window.state.language
     # Workers may only publish to Qt through the GUI dispatcher.
     workspace = window.assistant.chat.workspace
 
-    def run(log, cancel, base_jobnames):
-        return update_all_previews.rerender_deck(
-            window.project, deck, log, cancel, base_jobnames, needed,
-            service=service, scope=scope, selected_view=view, language=language,
-            progress=window.compile.preview_progress.emit,
+    def run(log, cancel):
+        results = batch_render.render_batch(
+            service, requests, cancel=cancel, log=log, progress=window.compile.preview_progress.emit,
+            batch_size=background_renders.batch_size(window.project),
             publish=lambda result: workspace.publish_preview_result(result, generation))
+        return batch_render.DeckResult.from_results(results, scope, language)
 
     def done(result):
         from ...compile_status import DONE, FAILED, STOPPED
@@ -564,58 +557,10 @@ def start_deck_previews(window, deck: Deck, needed: dict[str, set[str]],
             on_done(result)
 
     window.compile.start({"deck_previews": f"Rerender previews of {deck.name}"}, {},
-                         lambda log, cancel: run(log, cancel, {}),
+                         run,
                          opens_pdfs=False, on_done=done, failure="Preview refresh")
 
 
-def _confirm_previews_lint(window, needed: dict[str, set[str]]) -> bool:
-    """Pre-render syntax check (2026-09-26) of every slide about to be compiled -- "everything" scope,
-    still only a few tens of ms. False when it found errors and the user cancelled."""
-    all_slides = sorted({slug for slugs in needed.values() for slug in slugs})
-    return _confirm_build(
-        window,
-        latex_lint.check_slide_files(
-            window.project,
-            (window.project.slides_dir / slide_language.current_name(slug) for slug in all_slides)),
-        f"{len(all_slides)} slides")
-
-
-def _start_previews(window, needed: dict[str, set[str]], title: str, run: Callable[..., object],
-                    on_done: Optional[Callable[[object], None]] = None) -> None:
-    """The compile-slot run behind Update previews and the deck rerender: `run(log, cancel, base_jobnames)`
-    does the work and returns what `on_done` gets (a falsy result is a failure)."""
-    # This operation builds its own temp deck/CompileJob entirely inside update_all_previews.run(),
-    # with no channel back to this module except the log stream, so the run's rows are registered
-    # here first: one jobname per template (there can be several, run one after another), generated
-    # here rather than left to run() so both sides agree on the exact strings ahead of time.
-    # "-instructor" matches CompileJob.jobname's own "-{version}" suffix (compiler.py) --
-    # update_all_previews.run() always compiles the instructor version.
-    base_jobnames = {template: f"{update_all_previews.JOBNAME_PREFIX}{uuid.uuid4().hex[:8]}" for template in needed}
-    labels = {f"{base}-instructor": f"{title} ({slide_templates.TEMPLATES.get(template, template)})"
-              for template, base in base_jobnames.items()}
-
-    def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> object:
-        try:
-            result = run(log, cancel, base_jobnames)
-        except Exception as exc:  # noqa: BLE001 -- reported, batch must still clean up state
-            log(f"*** {title} failed: {exc} ***")
-            result = None
-        log(f"==== {title}: compile finished ====" if result else f"==== {title}: FAILED ====")
-        return result
-
-    def done(result: object) -> None:
-        # The snapshots are written by now (run() waits for them): the rows know their thumbnail and whether
-        # it is stale from when the outline was built.
-        window.slide_list.rebuild(preserve_focus=True)
-        if on_done is not None:
-            on_done(result)
-
-    # One throw-away megadeck per template (with a bibliography, so 4 passes), each typesetting that
-    # template's own slides. Nobody wants a 639-slide throwaway PDF popping open, whatever the
-    # auto-open checkbox says.
-    window.compile.start(
-        labels,
-        {f"{base}-instructor": compile_progress.JobSpec(
-            compile_progress.PASSES_WITH_BIBLIOGRAPHY, len(needed[template]), estimated=True)
-         for template, base in base_jobnames.items()},
-        work, opens_pdfs=False, on_done=done)
+def _confirm_previews_lint(window, requests) -> bool:
+    sources = sorted({spec.target.source_path for spec in requests})
+    return _confirm_build(window, latex_lint.check_slide_files(window.project, sources), f"{len(sources)} slides")

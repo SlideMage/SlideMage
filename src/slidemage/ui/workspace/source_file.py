@@ -45,6 +45,8 @@ from .source_editor import FindBar, LatexPlainTextEdit
 
 LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
+TYPING_PAUSE_MS = 400
+RENDER_ON_TYPING_PAUSE = True
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
 SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
 AUTOSAVE_KEY = "autosave"   # this user's choice (layout_settings), on unless switched off
@@ -88,6 +90,7 @@ def prompt_version_level(parent, base: slide_versioning.Version) -> Optional[str
 class SourceFile(Surface):
     saved = Signal()                  # after Ctrl+S (the Preview renders it again), not after an autosave
     written = Signal()                # after every write, autosave included
+    preview_requested = Signal()      # after a typing pause
     modified_changed = Signal(bool)
     conflict_changed = Signal()       # the conflict bar was shown or hidden
     lint_changed = Signal()
@@ -155,6 +158,11 @@ class SourceFile(Surface):
         self._autosave_timer.setInterval(AUTOSAVE_DELAY_MS)
         self._autosave_timer.timeout.connect(self.write_now)
         self.editor.text_changed.connect(self._schedule_autosave)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(TYPING_PAUSE_MS)
+        self._preview_timer.timeout.connect(self.preview_requested)
+        self.editor.text_changed.connect(lambda: RENDER_ON_TYPING_PAUSE and self._preview_timer.start())
 
         # Scoped to this file's widgets, so the shortcuts of the files in the
         # same window never clash.
@@ -400,6 +408,7 @@ class SourceFile(Surface):
             # The "+" went onto the version line in what went to disk, not yet in the buffer.
             self.editor.patch_text(new_text)
         self.editor.mark_saved()
+        self._preview_timer.stop()
         if backup_path is not None:
             self.app.log(f"Saving {self.path.name} as you type (backup: {backup_path.relative_to(self.app.project.root)})")
         if self.on_saved is not None:

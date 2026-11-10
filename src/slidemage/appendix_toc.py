@@ -8,16 +8,25 @@ calls generate_appendix_tex() and appends the result right before
 \\end{document} when a job has appendix_toc=True. Relies on:
 - \\hypertarget{\\slideID}{} in \\setSlideID@aux (SlideMage_base.tex)
   as the jump target every real slide already carries, any frame type.
-- slide_snapshot.THUMB_SIZE-cached previews for the grid thumbnails.
+- stored Instructor references for the grid thumbnails.
 - \\SMInstituteLogoGraphic's own \\hyperlink to "SMAppendixAgenda"
   (SlideMage_base.tex), which this module's agenda slide is the
   landing target for.
 """
 from __future__ import annotations
 
-from . import deck_editor, languages, project, slide_snapshot
+from contextlib import ExitStack
+from dataclasses import replace
+from hashlib import sha256
+from io import BytesIO
+from pathlib import Path
+
+from PIL import Image
+
+from . import deck_editor, deck_settings, languages, project
 from .deck_editor import SlideCall
 from .deck_scan import Deck
+from .fileio import atomic_write
 
 GRID_ROWS = 4
 GRID_COLS = 5
@@ -77,12 +86,6 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
             continue
         if not c.included_in(version):
             continue
-        if deck_editor.is_commented_out(deck.text, c):
-            # A disabled "% \slide{abc-EN-Old}" is not a real slide in
-            # this compile -- included anyway, it would produce a
-            # thumbnail cell whose \hyperlink{} target doesn't exist in
-            # the PDF (2026-09-23 review finding).
-            continue
         if c.macro == "slidestep":
             if c.id in step_ids:
                 continue
@@ -99,19 +102,10 @@ def _sections(deck: Deck, version: str = "instructor") -> list[tuple[int, str, l
     return sections
 
 
-def _chunks(items: list, size: int) -> list[list]:
-    return [items[i : i + size] for i in range(0, len(items), size)]
-
-
-def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, template: str) -> str:
-    png = slide_snapshot.snapshot_path(ctx, call.id, template, slide_snapshot.THUMB_SIZE)
-    if png.is_file():
+def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, png: Path | None) -> str:
+    if png is not None:
         inner = f"\\includegraphics[width=\\SMAppendixThumbW]{{{png.as_posix()}}}"
     else:
-        # No cached preview yet (slide_snapshot's own "best-effort, never
-        # guaranteed-fresh" cache) -- a plain bordered id+title box instead
-        # of a broken \includegraphics, still wrapped in the same working
-        # \hyperlink below.
         language, _, rest = call.slug.partition("-")
         slug = rest if language in (*languages.project_languages(ctx).codes, "mult") and rest else call.slug
         label = slug.replace("-", " ")
@@ -122,13 +116,13 @@ def _thumb_cell(ctx: project.ProjectContext, call: SlideCall, template: str) -> 
     return f"\\hyperlink{{{call.id}}}{{{inner}}}"
 
 
-def _grid_slide(ctx: project.ProjectContext, title: str, page_calls: list[SlideCall], template: str, hypertarget: str | None) -> str:
+def _grid_slide(ctx: project.ProjectContext, title: str, page_calls: list[SlideCall], thumbnails: dict, hypertarget: str | None) -> str:
     rows_tex = []
     for r in range(GRID_ROWS):
         cells = []
         for c in range(GRID_COLS):
             idx = r * GRID_COLS + c
-            cells.append(_thumb_cell(ctx, page_calls[idx], template) if idx < len(page_calls) else "")
+            cells.append(_thumb_cell(ctx, page_calls[idx], thumbnails.get(page_calls[idx].source_filename)) if idx < len(page_calls) else "")
         rows_tex.append(" & ".join(cells) + " \\\\[0.5pt]")
     colspec = "c" * GRID_COLS
     table = (
@@ -173,36 +167,56 @@ def _agenda_slide(sections: list[tuple[int, str, list[SlideCall]]]) -> str:
     )
 
 
-def generate_appendix_tex(ctx: project.ProjectContext, deck: Deck, template: str, version: str = "instructor") -> str:
+def generate_appendix_tex(ctx: project.ProjectContext, deck: Deck, template: str, version: str = "instructor",
+                          *, resolver=None, language=None) -> str:
     """The full appendix block: \\appendix, the agenda slide, then each
     section's thumbnail grid (paginated at GRID_ROWS*GRID_COLS per page),
     for the slides the deck shows in `version` ("instructor", "during-course"
     or "after-course"). Empty string for a deck with no visible slides at all
-    (shouldn't happen for a real deck)."""
+    (shouldn't happen for a real deck). References are copied before TeX starts;
+    a caller without a resolver opens one store reader for this compile."""
+    from . import preview_target, render_key, render_lookup
+
     sections = _sections(deck, version)
     if not sections:
         return ""
 
-    # standardframe's own footer template always shows whatever \slideID
-    # currently holds, even on a frame that never called \setSlideID{} --
-    # left unset, every appendix page would keep displaying the *last real
-    # slide's* id in its own footer. Confirmed to be more than cosmetic: a
-    # real compile's slide_snapshot.capture_deck() scans a PDF for exactly
-    # that same footer text to key its thumbnail cache, so a stale id would
-    # make it treat the appendix pages as a later, spurious occurrence of
-    # that real slide and overwrite its cached thumbnail with an appendix
-    # page. "appendix" can never collide with a real (3-character) bare id.
-    # The last real slide's version and language must not show either
-    # ("(slide id: appendix | v1.0.0EN | ...)", seen 2026-10-04 in the
-    # SlideMage manual).
+    language = language or deck_settings.read_settings(deck.text).language
+    thumbnails = {}
+    with ExitStack() as cleanup:
+        if resolver is None:
+            from . import dep_hash, render_store
+            store = render_store.RenderStore(ctx)
+            cleanup.callback(store.close)
+            resolver = render_key.Resolver(ctx, dep_hash.HashCache(store.db, store.lock), store)
+        for _order, _title, calls in sections:
+            for call in calls:
+                if call.source_filename in thumbnails:
+                    continue
+                target = preview_target.PreviewTarget(ctx, call.macro, call.id_slug, call.version, call.conditions,
+                                                      call.steps, None, deck.preamble_text)
+                unit = replace(render_key.unit_for(target, "instructor", language), template=template)
+                record = render_lookup.instructor_reference(dict(resolver=resolver, unit=unit), strict=True)
+                data = resolver.store.page(record, record["pages"]) if record is not None else None
+                thumbnails[call.source_filename] = None
+                if data is not None:
+                    png = ctx.build_dir / "appendix-thumbs" / template / f"{sha256(data).hexdigest()}.png"
+                    if not png.is_file():
+                        output = BytesIO()
+                        with Image.open(BytesIO(data)) as image:
+                            image.resize((304, 171), Image.Resampling.LANCZOS).save(output, format="PNG")
+                        atomic_write(png, output.getvalue())
+                    thumbnails[call.source_filename] = png
+
+    # Clear the last slide's footer so compile import cannot attribute appendix pages to it.
     reset_id = ("\\renewcommand{\\slideID}{appendix}%\n"
                 "\\global\\SMSlideVersionSetfalse\\global\\SMSlideLanguageSetfalse%")
     parts = ["\\appendix", reset_id, _GEOMETRY_TEX, _agenda_slide(sections)]
     for order, title, calls in sections:
-        pages = _chunks(calls, PER_PAGE)
+        pages = [calls[i:i + PER_PAGE] for i in range(0, len(calls), PER_PAGE)]
         total = len(pages)
         for i, page_calls in enumerate(pages):
             page_title = title if total == 1 else f"{title} ({i + 1}/{total})"
             hypertarget = f"SMAppendixCh{order}" if i == 0 else None
-            parts.append(_grid_slide(ctx, page_title, page_calls, template, hypertarget))
+            parts.append(_grid_slide(ctx, page_title, page_calls, thumbnails, hypertarget))
     return "\n".join(parts)

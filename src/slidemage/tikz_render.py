@@ -33,7 +33,7 @@ from PIL import Image, ImageChops
 from . import alt_blocks, alt_images, compile_log, project
 from .slide_preview import compile_and_extract, default_preamble
 
-# In the user's cache folder (ctx.tikz_previews_dir), same regeneratable-cache reasoning as slide_previews/ and
+# In the user's cache folder (ctx.tikz_previews_dir), same regeneratable-cache reasoning as
 # pdf_render_cache/ (media_render.py) -- nothing here is ever authored, it
 # is entirely derived from a slide's own current tikz source.
 

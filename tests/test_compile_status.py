@@ -139,7 +139,14 @@ def test_stopping_the_current_job_kills_its_process_and_leaves_the_run_going(mon
     assert proc.killed and not token.is_set()
     assert token.job_stopped() and not token.job_stopped()      # read once
     other = compiler.CancelToken()
+    processes = [FakeProcess(), FakeProcess()]
+    monkeypatch.setattr(other, "_kill", lambda proc: proc.kill())
+    for process in processes:
+        other._set_process(process)
+    other._set_process(proc)
+    other._remove_process(proc)
     other.request_stop()
+    assert all(process.killed for process in processes)
     assert other.is_set() and other.job_stopped()
 
 
@@ -148,7 +155,7 @@ def test_run_jobs_leaves_out_the_jobs_taken_out_of_the_queue(ctx, monkeypatch):
                 uses_biblatex=False, preamble_end=0, chapters=[], output_folders={})
     jobs = [compiler.CompileJob(deck, v, None) for v in ("instructor", "during-course", "after-course")]
     ran: list[str] = []
-    monkeypatch.setattr(compiler, "run_job", lambda ctx, job, log, cancel=None, dest_override=None: ran.append(job.jobname) or True)
+    monkeypatch.setattr(compiler, "run_job", lambda ctx, job, log, cancel=None, dest_override=None, **kwargs: ran.append(job.jobname) or True)
     token, log = compiler.CancelToken(), []
     token.skip("d-during-course")
     results = compiler.run_jobs(ctx, jobs, log.append, cancel=token)

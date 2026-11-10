@@ -8,7 +8,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from slidemage import parallel_runs, preview_batch
+from slidemage import parallel_runs, batch_render
 
 
 def tasks(count, seconds=0.2):
@@ -115,7 +115,6 @@ def test_the_budget_first_always_then_the_limit_and_the_cpu_rule_and_the_users_o
 
 
 def test_a_batch_renders_its_views_at_once_and_keeps_their_order(monkeypatch):
-    monkeypatch.setattr(preview_batch, "image_group", lambda spec, identity=None: None)   # every view its own image
     lock = threading.Lock()
     state = {"now": 0, "peak": 0}
 
@@ -138,21 +137,13 @@ def test_a_batch_renders_its_views_at_once_and_keeps_their_order(monkeypatch):
 
     def spec(view):
         return SimpleNamespace(view=view, target=SimpleNamespace(hidden=False), capture_error=None,
-                               options=SimpleNamespace(render_stamp=None, force=False, saved=True, presenter=False,
-                                                       mode="slide", overlay=None),
+                               options=SimpleNamespace(presenter=False),
                                revision=SimpleNamespace(text="T"), language="EN")
-    monkeypatch.setattr(preview_batch, "replace", lambda obj, **changes: (
-        obj.__dict__.update(changes) or obj) if isinstance(obj, SimpleNamespace) else _replace(obj, **changes))
     events = []
     views = ("instructor", "during-course", "after-course")
     monkeypatch.setattr(parallel_runs, "BUDGET", parallel_runs.RenderBudget(8))
-    results = preview_batch.render_batch(Service(), [spec(v) for v in views], progress=events.append, workers=3,
-                                         may_add=lambda: True)
+    monkeypatch.setattr(parallel_runs, "cpu_has_room", lambda: True)
+    results = batch_render.render_batch(Service(), [spec(v) for v in views], progress=events.append)
     assert state["peak"] == 3
     assert [r.request.view for r in results] == list(views)
     assert [e.done for e in events if e.status != "rendering"] == [1, 2, 3]
-
-
-def _replace(obj, **changes):
-    from dataclasses import replace
-    return replace(obj, **changes)

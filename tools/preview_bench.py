@@ -13,14 +13,12 @@ Usage, from the repository root (no Qt, nothing is collected by pytest)::
     python tools/preview_bench.py                                   # example/, first deck and slide, Instructor
     python tools/preview_bench.py --repeat 5 --json bench.json      # medians over 5 edit renders, all data to a file
     python tools/preview_bench.py --scenarios cold,edit,deck-refresh --deck my-deck --slide 1b2 --view during-course
-    python tools/preview_bench.py --scenarios fill-cache            # prune() time with ~400 cached generations
 
 Scenarios (``--scenarios``, comma separated; default cold,unchanged,edit,view-switch): ``cold`` a forced render;
 ``unchanged`` the same text again (a cache hit); ``edit`` the text plus a unique ``%`` comment, ``--repeat`` times;
 ``view-switch`` instructor, during-course, instructor again, each with a fresh edit (one shared build folder);
-``deck-refresh`` ``update_all_previews.rerender_deck`` of the whole deck with wall time and child-process CPU
-seconds (wall only on Windows), ``--batch-size`` slides per document (1: one each); ``fill-cache`` ~400 copied
-cache generations, then the time of ``prune()``;
+``deck-refresh`` ``batch_render.render_batch`` of the whole deck with wall time and child-process CPU
+seconds (wall only on Windows), ``--batch-size`` slides per document (1: one each);
 ``background-batch`` the background renders of the deck in ``--view`` (``--units`` of them, default all), one document
 each against ``--batch-size`` (16) in one document, wall time and child-process CPU seconds of each.
 Run ``cold`` first for clean numbers: later scenarios render the base text once, unreported, if nothing ran before.
@@ -50,10 +48,9 @@ except ImportError:  # Windows
     resource = None
 
 REPO = Path(__file__).resolve().parents[1]
-SCENARIOS = ('cold', 'unchanged', 'edit', 'view-switch', 'deck-refresh', 'fill-cache', 'background-batch')
+SCENARIOS = ('cold', 'unchanged', 'edit', 'view-switch', 'deck-refresh', 'background-batch')
 DEFAULT_SCENARIOS = 'cold,unchanged,edit,view-switch'
 VIEWS = ('instructor', 'during-course', 'after-course')
-FILL_GENERATIONS = 400
 
 
 def parse_args(argv=None):
@@ -186,17 +183,14 @@ _STATS_LOCK = threading.Lock()
 def instrument():
     """Wrap the functions that make up SlideMage's own share of a render with a call counter and timer, also
     where another module imported them by name. Functions that no longer exist are skipped."""
-    from slidemage import (compiler, preview_build, preview_cache, preview_equivalence, preview_format,
-                           preview_requests, slide_preview, slide_snapshot)
-    targets = [(preview_cache, 'configuration_state'), (preview_cache, 'search_state'), (preview_cache, 'file_state'),
-               (preview_cache, 'input_state'), (preview_cache, 'dependency_state'), (preview_cache, 'thumbnail_png'),
-               (preview_cache.PreviewCache, 'prune'), (preview_cache.PreviewCache, 'store'),
-               (preview_cache.PreviewCache, '_lookup'), (preview_cache.PreviewCache, 'begin'),
+    from slidemage import compiler, preview_build, preview_format, render_evidence, render_key, render_store, slide_snapshot
+    targets = [(render_evidence, 'configuration_state'), (render_evidence, 'search_state'),
+               (render_evidence, 'file_state'), (render_evidence, 'input_state'), (render_evidence, 'thumbnail_png'),
+               (render_store.RenderStore, 'put'), (render_store.RenderStore, 'evict'),
+               (render_key.Resolver, 'capture'),
                (preview_build, 'configuration_key'), (preview_build, 'prune_unused'), (preview_build, 'publish_preview'),
                (preview_format, '_fresh'), (preview_format, 'ensure'), (compiler, 'run_latexmk'),
-               (preview_requests, 'image_group'), (preview_equivalence, 'classify_views'),
-               (slide_snapshot, 'prepare_preview_images'), (slide_snapshot, 'preview_sequence'),
-               (slide_preview, 'sweep_renders')]
+               (slide_snapshot, 'prepare_preview_images')]
     for owner, name in targets:
         original = getattr(owner, name, None)
         if original is None:
@@ -243,21 +237,25 @@ class Bench:
         self.results = {}
 
     def target(self, view):
-        from slidemage import preview_target
-        return preview_target.resolve_views(self.ctx, self.deck, self.slide, view, self.language)[0][1]
+        from slidemage import batch_render
+        return batch_render.plan_slide(self.ctx, self.deck, self.slide, view, self.language)[0].target
 
     def edited(self):
         return f'{self.text}\n% bench edit {uuid.uuid4().hex}\n'
 
     def render_once(self, view, text, force=False):
         """One render through the service, as the Preview pane asks for it."""
+        from slidemage import preview_build
         from slidemage.preview_metrics import PreviewMetrics
+        target = self.target(view)
+        preview_build.set_focus(self.ctx, (target, view, self.language))
+        time.sleep(2)       # let the spare reach stdin, outside the measured render
         with _STATS_LOCK:
             STATS.clear()
         start = time.perf_counter()
         error = ''
         with PreviewMetrics() as metrics:
-            request = self.service.request(self.target(view), text, view, self.language, lambda line: None,
+            request = self.service.request(target, text, view, self.language, lambda line: None,
                                            saved=False, force=force)
             try:
                 request.wait(pixels_only=True)
@@ -307,11 +305,12 @@ class Bench:
             self.record('view-switch', f'{step + 1}. {view}', [r[step] for r in rounds])
 
     def deck_refresh(self):
-        from slidemage import background_renders, update_all_previews
-        background_renders.batch_size = lambda ctx: self.args.batch_size       # slides per document; 1: one each
+        from slidemage import batch_render
         children = lambda: (resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None)  # noqa: E731
         before, own, start = children(), time.process_time(), time.perf_counter()
-        result = update_all_previews.rerender_deck(self.ctx, self.deck, lambda line: None, service=self.service, force=True)
+        requests = batch_render.plan_deck(self.ctx, self.deck, force=True, language=self.language)
+        result = batch_render.DeckResult.from_results(batch_render.render_batch(
+            self.service, requests, batch_size=self.args.batch_size), 'all', self.language)
         wall, after = time.perf_counter() - start, children()
         self.results['deck-refresh'] = {
             'deck': self.deck.name, 'batch_size': self.args.batch_size, 'wall_seconds': wall, 'own_cpu_seconds': time.process_time() - own,
@@ -320,7 +319,6 @@ class Bench:
 
     def background_batch(self):
         from slidemage import background_renders, render_store
-        from slidemage.compiler import CancelToken
         from slidemage.idle_gate import IdleGate
         units = background_renders.deck_units(self.ctx, self.deck, self.args.view, self.language)
         warm, units = units[-1], units[:self.args.units or None]
@@ -335,7 +333,8 @@ class Bench:
             renderer = background_renders.BackgroundRenderer(self.ctx, store, gate=gate, decks=lambda: [self.deck])
             renderer.batch_size = lambda size=size: size
             try:
-                renderer.render_unit(warm, background_renders.ORIGIN_BACKGROUND, CancelToken())     # the format, unreported
+                renderer.scheduler.submit(warm.label, ((warm,), background_renders.ORIGIN_BACKGROUND), background_renders.P_IDLE)
+                renderer.scheduler.run_next()     # warm the format, unreported
                 renderer._plan = [((n,), unit) for n, unit in enumerate(units)]
                 before, own, start = children(), time.process_time(), time.perf_counter()
                 while renderer._plan or renderer.scheduler.pending():
@@ -350,32 +349,6 @@ class Bench:
                 store.close()
                 shutil.rmtree(local, ignore_errors=True)
         self.results['background-batch'] = {'deck': self.deck.name, 'view': self.args.view, 'language': self.language, 'by_batch_size': results}
-
-    def fill_cache(self):
-        from slidemage import preview_cache
-        cache = preview_cache.PreviewCache(self.root)
-        generations = sorted(cache.root.glob('*/*/manifest.json'), key=lambda path: path.stat().st_mtime)
-        if not generations:
-            self.cold()
-            generations = sorted(cache.root.glob('*/*/manifest.json'), key=lambda path: path.stat().st_mtime)
-        if not generations:
-            raise SystemExit('fill-cache: the render left no cache generation to copy')
-        source = generations[-1].parent
-        size = sum(path.stat().st_size for path in source.iterdir() if path.is_file())
-        count = max(0, min(FILL_GENERATIONS, int(preview_cache.MAX_BYTES * .8 // max(size, 1))) - len(generations))
-        for _ in range(count):  # new digest folders: prune() only scans them, nothing looks them up
-            shutil.copytree(source, cache.root / uuid.uuid4().hex / source.name,
-                            ignore=shutil.ignore_patterns('.lease-*.lock'))
-        manifests = list(cache.root.glob('*/*/manifest.json'))
-        seconds = []
-        for _ in range(self.args.repeat):
-            start = time.perf_counter()
-            cache.prune()
-            seconds.append(time.perf_counter() - start)
-        self.results['fill-cache'] = {
-            'generations': len(manifests), 'manifest_bytes': sum(path.stat().st_size for path in manifests),
-            'generation_bytes': size, 'prune_seconds': seconds, 'prune_median_seconds': median(seconds),
-            'survivors': len(list(cache.root.glob('*/*/manifest.json')))}
 
     def report(self):
         for scenario in self.args.scenarios:
@@ -400,10 +373,6 @@ class Bench:
                 print(f'{data["deck"]}, batch size {data["batch_size"]}: wall {data["wall_seconds"]:.1f} s, child CPU '
                       f'{"n/a" if cpu is None else f"{cpu:.1f} s"}, SlideMage CPU {data["own_cpu_seconds"]:.1f} s, '
                       f'{data["refreshed"]} refreshed, {data["failed"]} failed' + (f' ({data["error"]})' if data['error'] else ''))
-            else:
-                print(f'{data["generations"]} generations ({data["generation_bytes"] / 1e6:.1f} MB each, manifests '
-                      f'{data["manifest_bytes"] / 1e6:.1f} MB): prune() median {data["prune_median_seconds"] * 1000:.0f} ms '
-                      f'over {len(data["prune_seconds"])} runs; {data["survivors"]} generations left')
 
 
 def run(args):

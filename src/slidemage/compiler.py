@@ -47,8 +47,8 @@ from typing import Callable, Optional
 PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
-from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_snapshot, slide_templates
-from . import citations, diagnostics, slide_versioning, themes
+from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_templates
+from . import citations, diagnostics, render_evidence, slide_versioning, themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -329,9 +329,8 @@ class CancelToken:
     """Cross-thread stop signal for a batch of jobs, created fresh per
     compile run. The GUI's "Stop creation" button calls request_stop();
     run_jobs() checks is_set() between jobs to skip whatever's still queued,
-    and run_job() registers its live Popen here so request_stop() can kill
-    it immediately rather than waiting for the current job to finish on its
-    own. Killing the registered process alone (proc.kill()) would only kill
+    and each run registers its live Popen here so request_stop() can kill
+    every process immediately rather than waiting for running jobs to finish. Killing the registered process alone (proc.kill()) would only kill
     latexmk's own launcher -- it shells out to perl, which shells out to
     lualatex/biber in turn -- so request_stop() uses `taskkill /T` to kill
     the whole process tree instead, the same way CREATE_NO_WINDOW elsewhere
@@ -341,47 +340,55 @@ class CancelToken:
     def __init__(self) -> None:
         self._event = threading.Event()
         self._lock = threading.Lock()
-        self._proc: Optional[subprocess.Popen] = None
+        self._processes: set[subprocess.Popen] = set()
         self._job_killed = False
         self._skipped: set[str] = set()
         # Background renders run their process at below-normal priority (set right after it starts, so
         # what it launches inherits it).
         self.low_priority = False
+        self.preview_focus = None
+        self.preview_evidence = None      # a spare replaces the request's start and input inventory
 
     def is_set(self) -> bool:
         return self._event.is_set()
 
-    def _set_process(self, proc: Optional[subprocess.Popen]) -> None:
+    def _set_process(self, proc: subprocess.Popen) -> None:
         with self._lock:
-            self._proc = proc
+            self._processes.add(proc)
             stopped = self._event.is_set()
-        if proc is not None and self.low_priority:
+        if self.low_priority:
             lower_priority(proc)
         if stopped:
             self._kill(proc)
 
+    def _remove_process(self, proc: subprocess.Popen) -> None:
+        with self._lock:
+            self._processes.discard(proc)
+
     def request_stop(self, *, wait: bool = True) -> None:
-        """Stop the whole run: kill the job being compiled, skip the rest. `wait=False` sets the stop at once and
+        """Stop the whole run: kill all running jobs, skip the rest. `wait=False` sets the stop at once and
         kills the process tree on a thread of its own: taskkill takes a few tenths of a second, and the GUI stopping
         ten background renders one after the other froze for seconds (v8.52.5)."""
         self._event.set()
         with self._lock:
-            proc = self._proc
-        if wait:
-            self._kill(proc)
-        elif proc is not None and proc.poll() is None:
-            threading.Thread(target=self._kill, args=(proc,), daemon=True, name="stop-render").start()
+            processes = tuple(self._processes)
+        for proc in processes:
+            if wait:
+                self._kill(proc)
+            elif proc.poll() is None:
+                threading.Thread(target=self._kill, args=(proc,), daemon=True, name="stop-render").start()
 
     def stop_current(self) -> None:
-        """Stop only the job being compiled (job_stopped() tells its runner);
+        """Stop only the running jobs (job_stopped() tells their runner);
         the queue goes on with the next job. Nothing happens while no
         compile process runs."""
         with self._lock:
-            proc = self._proc
-            if proc is None or proc.poll() is not None:
+            processes = [proc for proc in self._processes if proc.poll() is None]
+            if not processes:
                 return
             self._job_killed = True
-        self._kill(proc)
+        for proc in processes:
+            self._kill(proc)
 
     def job_stopped(self) -> bool:
         """Whether the job that just ended was stopped, by stop_current() or
@@ -400,8 +407,8 @@ class CancelToken:
             return jobname in self._skipped
 
     @staticmethod
-    def _kill(proc: Optional[subprocess.Popen]) -> None:
-        if proc is None or proc.poll() is not None:
+    def _kill(proc: subprocess.Popen) -> None:
+        if proc.poll() is not None:
             return
         if os.name == "nt":
             subprocess.run(
@@ -422,7 +429,7 @@ class CancelToken:
 
 
 def run_streamed(
-    cmd: list[str], *, cwd: Path, env: dict, log: LogCallback,
+    cmd: list[str] | str, *, cwd: Path, env: dict, log: LogCallback,
     cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
     errors: Optional[str] = None, bufsize: int = 1,
 ) -> int:
@@ -432,12 +439,13 @@ def run_streamed(
     """
     if cancel is not None and cancel.is_set():
         return -1
-    diagnostics.event(_log, "process started", cmd=" ".join(str(part) for part in cmd), cwd=cwd)
+    diagnostics.event(_log, "process started", cmd=cmd if isinstance(cmd, str) else " ".join(str(part) for part in cmd), cwd=cwd)
     started = time.monotonic()
     returncode = None
+    proc = None
     try:
         proc = subprocess.Popen(
-            cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            cmd, shell=isinstance(cmd, str), cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, errors=errors, bufsize=bufsize,
             **no_console_kwargs(),
             **({"start_new_session": True} if cancel is not None and os.name != "nt" else {}),
@@ -452,10 +460,10 @@ def run_streamed(
         returncode = proc.wait()
         return returncode
     finally:
-        diagnostics.event(_log, "process ended", program=cmd[0], exit=returncode,
+        diagnostics.event(_log, "process ended", program=cmd if isinstance(cmd, str) else cmd[0], exit=returncode,
                           seconds=round(time.monotonic() - started, 3))
-        if cancel is not None:
-            cancel._set_process(None)
+        if cancel is not None and proc is not None:
+            cancel._remove_process(proc)
 
 
 def latexmk_command(wrapper: Path, jobname: str, outdir: Path, *options: str, cwd: Path, aux: bool = True,
@@ -486,10 +494,10 @@ class Build:
                 and not FATAL_ERROR_RE.search(self.log_text))
 
 
-def run_latexmk(cmd: list[str], *, jobname: str, outdir: Path, cwd: Path, env: dict, log: LogCallback,
+def run_latexmk(cmd: list[str] | str, *, jobname: str, outdir: Path, cwd: Path, env: dict, log: LogCallback,
                 cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
                 errors: Optional[str] = "replace", bufsize: int = 1) -> Build:
-    """run_streamed() for a latexmk command, then the outcome. FileNotFoundError (no latexmk) propagates."""
+    """Stream a latexmk or direct TeX command, then read its outcome. Launch errors propagate."""
     returncode = run_streamed(cmd, cwd=cwd, env=env, log=log, cancel=cancel, on_line=on_line,
                               errors=errors, bufsize=bufsize)
     log_path = outdir / f"{jobname}.log"
@@ -641,7 +649,7 @@ def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_lin
     return lines
 
 
-def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
+def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None) -> str:
     from . import deck_language
     lines = override_lines(ctx, job, appendix_link=job._appendix_applies)
     language = deck_language.language_for_job(job)
@@ -674,7 +682,7 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob) -> str:
         lines.append(preamble)
         lines.append(body_without_end)
         lines.append(appendix_toc.generate_appendix_tex(
-            ctx, resolved_deck, template, job.version or "instructor"))
+            ctx, resolved_deck, template, job.version or "instructor", resolver=resolver, language=language))
         lines.append("\\end{document}")
     elif language_lines or resolved != job.deck.text:
         lines.append(preamble)
@@ -757,10 +765,10 @@ def _relocate_pdf_and_finish(
     log: LogCallback, cancel: Optional["CancelToken"] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
     *, build_dir: Path, destination_key: str, generation: int,
-    record: Optional[tuple[Path, str, float]] = None,
+    record: Optional[tuple[Path, str, float, dict, str]] = None,
 ) -> None:
     """Retry publication of one immutable invocation PDF in the background.
-    `record` (wrapper path, wrapper text, compile start time): once published,
+    `record` (wrapper path, wrapper text, compile start time, inventory, configuration digest): once published,
     the compile is recorded for deck snapshots (compile_records.py)."""
     started = time.monotonic()
     done = threading.Event()
@@ -845,26 +853,10 @@ def _relocate_pdf_and_finish(
         _release_build_dir_after_attempts(build_dir, attempts_drained, remove=False)
         return
 
-    # Recorded before the preview refresh below: a generated appendix shows
-    # the cached previews, and the record must describe what this compile
-    # read -- a refreshed thumbnail then (rightly) counts as a change.
     if record is not None and _is_latest_output_success(destination_key, generation):
-        wrapper_path, wrapper_text, compile_started = record
+        wrapper_path, wrapper_text, compile_started, inventory, configuration = record
         compile_records.write_record(ctx, jobname, build_dir, wrapper_path, wrapper_text,
-                                     dest_pdf, compile_started, log, deck_path=job.deck.path)
-
-    # Refresh slide snapshots only from this invocation's immutable source,
-    # and only if no newer successful compile has replaced it as current.
-    if (job.version in (None, "instructor") and not job.presenter
-            and _is_latest_output_success(destination_key, generation)):
-        try:
-            template = slide_templates.detect_template(job.deck.preamble_text)
-            n = slide_snapshot.capture_deck(ctx, pdf_source, template)
-            if n:
-                log(f"    (refreshed {n} slide preview snapshot(s), "
-                    f"{slide_templates.TEMPLATES[template]})")
-        except Exception as exc:
-            log(f"    (preview snapshots not updated: {exc})")
+                                     dest_pdf, compile_started, inventory, configuration, log, deck_path=job.deck.path)
 
     elapsed = time.monotonic() - started
     suffix = f" (after {elapsed:.0f}s)" if elapsed >= 5 else ""
@@ -903,6 +895,7 @@ def run_job(
     ctx: project.ProjectContext, job: CompileJob, log: LogCallback, cancel: Optional[CancelToken] = None,
     dest_override: Optional[tuple[Path, str]] = None,
     on_relocated: Optional[Callable[[bool, Path], None]] = None,
+    *, resolver=None,
 ) -> bool:
     """Compile one job and background publication of its invocation PDF.
 
@@ -929,7 +922,7 @@ def run_job(
 
     log(compile_log.compiling(job.deck.name, jobname))
     try:
-        wrapper = wrapper_text(ctx, job)
+        wrapper = wrapper_text(ctx, job, resolver=resolver)
         with wrapper_file(wrapper_path, wrapper):
             ctx.build_dir.mkdir(parents=True, exist_ok=True)
             build_dir.mkdir(parents=True, exist_ok=False)
@@ -937,6 +930,13 @@ def run_job(
             # or prior-build fallback that can pass as fresh.
             cmd = latexmk_command(wrapper_path, jobname, build_dir.resolve(), "-f", "-recorder", cwd=ctx.root)
             compile_started = time.time()
+            env = build_env(ctx)
+            try:
+                inventory = render_evidence.search_inventory(ctx.root, env)
+                configuration = render_evidence.digest(render_evidence.configuration_state(ctx.root, env))
+            except (OSError, ValueError) as exc:
+                log(f"    (compile cannot be recorded: {exc})")
+                inventory = None
             passes = 0
 
             def count_passes(line: str) -> None:
@@ -946,7 +946,7 @@ def run_job(
                     passes = max(passes, int(run.group(1)))
 
             try:
-                build = run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=ctx.root, env=build_env(ctx),
+                build = run_latexmk(cmd, jobname=jobname, outdir=build_dir, cwd=ctx.root, env=env,
                                     log=log, cancel=cancel, on_line=count_passes)
             except FileNotFoundError:
                 log("*** latexmk not found on PATH -- is a TeX distribution installed? ***")
@@ -989,8 +989,8 @@ def run_job(
                 "destination_key": destination_key,
                 "generation": generation,
                 # whole-deck compiles only: those are what a snapshot reuses
-                "record": ((wrapper_path, wrapper, compile_started)
-                           if job.chapter is None else None),
+                "record": ((wrapper_path, wrapper, compile_started, inventory, configuration)
+                           if job.chapter is None and inventory is not None else None),
             },
             daemon=True,
         )
@@ -1037,7 +1037,7 @@ def _disambiguated_destinations(
 
 
 def unchanged_jobs(
-    ctx: project.ProjectContext, jobs: list[CompileJob], destinations: dict[str, Path]
+    ctx: project.ProjectContext, jobs: list[CompileJob], destinations: dict[str, Path], *, resolver=None
 ) -> list[tuple[CompileJob, str]]:
     """The whole-deck jobs whose last compile is still current
     (compile_records.py: nothing it read changed, same settings, the PDF
@@ -1049,7 +1049,7 @@ def unchanged_jobs(
     for job in jobs:
         if job.chapter is not None or job.pages or job.jobname not in destinations:
             continue
-        fresh, _why = compile_records.fresh_output(ctx.build_dir, job.jobname, wrapper_text(ctx, job))
+        fresh, _why = compile_records.fresh_output(ctx.build_dir, job.jobname, wrapper_text(ctx, job, resolver=resolver))
         if fresh is not None and (compile_records.norm(fresh.pdf)
                                   == compile_records.norm(destinations[job.jobname])):
             unchanged.append((job, fresh.created))
@@ -1103,7 +1103,8 @@ def build_jobs(deck: Deck, kind: str, pages: Optional[list[int]] = None) -> list
 
 
 def run_jobs(
-    ctx: project.ProjectContext, jobs: list[CompileJob], log: LogCallback, cancel: Optional[CancelToken] = None
+    ctx: project.ProjectContext, jobs: list[CompileJob], log: LogCallback, cancel: Optional[CancelToken] = None,
+    *, resolver=None,
 ) -> dict[str, bool]:
     """Run every job in order; one failure doesn't stop the rest. Returns
     {jobname: success} for a summary. If `cancel` is set partway through
@@ -1122,6 +1123,6 @@ def run_jobs(
             log(compile_log.skipped(job.jobname))
             continue
         results[job.jobname] = run_job(
-            ctx, job, log, cancel=cancel, dest_override=destinations[id(job)]
+            ctx, job, log, cancel=cancel, dest_override=destinations[id(job)], resolver=resolver
         )
     return results

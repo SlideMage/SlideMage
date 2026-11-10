@@ -58,6 +58,7 @@ VERSION_TIP = ("Make the slide as it is now a version: it is frozen, and decks c
 class SourcePane(Surface):
     dirty_changed = Signal(bool)         # some file has edits that cannot be saved (a conflict, read-only, an AI fix running)
     written = Signal(object)             # Path; after every write, autosave included
+    preview_requested = Signal(object)   # Path; after a typing pause
     buffer_changed = Signal(object)      # Path; every text edit, even while already dirty
     file_closed = Signal(object)         # the Path of a file the view no longer holds
     lint_errors_changed = Signal(int)    # errors the static check finds in the file shown
@@ -259,6 +260,7 @@ class SourcePane(Surface):
         file.fix_panel.running_changed.connect(self._on_modified)
         file.saved.connect(lambda p=path: self.saved.emit(p))
         file.written.connect(lambda p=path: self.written.emit(p))
+        file.preview_requested.connect(lambda p=path: self.preview_requested.emit(p))
         self._files[path] = file
         self._stack.addWidget(file)
         return file
