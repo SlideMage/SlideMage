@@ -3882,3 +3882,8 @@ v0.15.7 (2026-11-10, direct report: after a change on the PDF output tab of Deck
 
 NEW: Changing where a deck's PDFs go keeps its slide previews current.
 - The PDF output settings and a deck's tags no longer mark every slide as "Previous render".
+
+v0.15.8 (2026-11-10, direct request: white block titles in the Innsbruck theme, and the first colour role of the theme-editor plan): The framework gets the text colour of block titles as a theme setting: `\SMBlockTitleTextColor` for all block kinds, and `\SMAlertedBlockTitleTextColor`, `\SMExampleBlockTitleTextColor`, `\SMReferenceBlockTitleTextColor` and `\SMInfoBlockTitleTextColor`, which follow it unless a template names them. The defaults are the dark text the blocks always had, so no theme or deck changes (the PDFs of the manual and its sibling deck under the SlideMage and Greyscale templates are pixel-identical, tools/framework_regression.py, 873 pages). A template that fills a title with a dark colour sets the text white with `\renewcommand{\SMInfoBlockTitleTextColor}{c_primary_white}`.
+
+NEW: A theme can set the text colour of its block titles.
+- Five new settings in the framework's theme catalog; nothing changes until a theme uses them.
