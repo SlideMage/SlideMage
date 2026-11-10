@@ -3844,3 +3844,8 @@ NEW: A faster Preview, and one source for every slide picture.
 - Settings → General → Preview performance: "Keep TeX ready for the focused slide" (on by default) can be turned off to save about 250 MB of memory.
 - "Update previews" is now called "Render all previews now".
 - The first start renders the previews again (about 45 minutes in the background on a large project).
+
+v0.15.1 (2026-11-10, direct request: the slides scrolled with the mouse wheel kept the background previews rendering while another program had the focus): A wheel turn over SlideMage's window now stops the background renders, as input in front does, and no new render starts for 3 seconds after the last turn.
+
+NEW: Scrolling the slides with the mouse wheel stops the background previews, even when another program has the focus.
+- No new background preview starts for 3 seconds after the last wheel turn.

@@ -496,6 +496,36 @@ def test_input_in_front_and_a_presentation_stop_background_renders(window, monke
     assert renderer.waiting_because() != idle_gate.PRESENTING
 
 
+def test_a_wheel_turn_behind_another_window_stops_background_renders(window, monkeypatch):
+    from PySide6.QtCore import QEvent
+    from slidemage import idle_gate
+    renderer = window.background.renderer
+    stopped = []
+    monkeypatch.setattr(renderer.scheduler, "interrupt", lambda priority: stopped.append(priority) or 1)
+    renderer.gate.note_focus(False)
+    renderer.user_active()                                      # the mouse over the window behind: nothing stops
+    assert stopped == []
+    renderer.user_active(scroll=True)                           # scrolling the slides from behind: they stop
+    assert stopped == [background_renders.P_IDLE] and renderer.gate.in_use()
+    assert renderer.waiting_because() == idle_gate.IN_USE
+
+    seen = []
+    watcher = window.background._watcher
+    monkeypatch.setattr(watcher, "_on_input", lambda **kwargs: seen.append(kwargs))
+
+    class Wheel:
+        def type(self):
+            return QEvent.Type.Wheel
+    watcher.eventFilter(window.topbar, Wheel())
+    assert seen == [{"scroll": True}]
+    seen.clear()
+    class Key:
+        def type(self):
+            return QEvent.Type.KeyPress
+    watcher.eventFilter(window.topbar, Key())
+    assert seen == [{}]
+
+
 def test_the_chip_says_the_renders_wait_as_soon_as_the_user_is_back_not_a_planner_step_later(window):
     # The chip took its reason from the planner, a step (and a rescan of every deck) late: it said "Preparing
     # previews" for that long after the renders had stopped.

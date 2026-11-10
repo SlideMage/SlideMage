@@ -343,7 +343,12 @@ class _InputWatcher(QObject):
             moved, self._mouse = position != self._mouse, position
             if not event.spontaneous() or not moved:
                 return False
-        self._on_input()
+        # A wheel turn reaches SlideMage's windows even while another program has the focus: scrolling the slides
+        # counts as using them, so it stops the renders like input in front does.
+        if kind == QEvent.Type.Wheel:
+            self._on_input(scroll=True)
+        else:
+            self._on_input()
         return False
 
 
