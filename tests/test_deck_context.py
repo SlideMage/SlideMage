@@ -15,7 +15,7 @@ from slidemage import deck_context, deck_scan, partial_compile, preview_target, 
     ("\\tableofcontents[hideallsubsections]", ("contents",)),
     ("\\SMDeckAgenda \\tableofcontents", ("contents",)),
     ("\\SMChapterAgenda[0.8\\linewidth]", ("contents",)),
-    ("\\begin{sectionframe}{A}{B}\\end{sectionframe}", ("section",)),
+    ("\\begin{sectionframe}{A}{B}\\end{sectionframe}", ()),       # its title is its argument
     ("Section: \\insertsection, \\insertsectionhead", ("section",)),
     ("\\insertframenumber of \\inserttotalframenumber", ("numbers",)),
     ("see slide \\ref{x} and \\hyperlink{abc}{there}", ("references",)),
