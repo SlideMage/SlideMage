@@ -320,9 +320,12 @@
 % alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
 % reference_block_title_text, info_block_title_text, standout_text. A mode's line replaces the macro; without one it stays what
 % the template made it.
-\definecolor{c_true_black}{HTML}{000000}
-\definecolor{c_true_white}{HTML}{FFFFFF}
 \makeatletter
+% (the two helpers keep the palette reader of the app, which reads plain \definecolor and \colorlet lines, to the palette above)
+\newcommand{\SM@hexcolor}[2]{\definecolor{#1}{HTML}{#2}}
+\newcommand{\SM@letcolor}[2]{\colorlet{#1}{#2}}
+\SM@hexcolor{c_true_black}{000000}
+\SM@hexcolor{c_true_white}{FFFFFF}
 \newcommand{\SM@palettelines}{}
 \newcommand{\SM@basemode}{}
 \newcommand{\SMDeclareMode}[2]{%
@@ -343,7 +346,7 @@
 \colorlet{c_canvas}{white}
 \colorlet{c_card}{white}
 \colorlet{c_line}{c_primary_dark}
-\colorlet{c_text_muted}{c_primary_gray}
+\SM@letcolor{c_text_muted}{c_primary_gray}
 \colorlet{c_text_on_accent}{c_primary_dark}
 \colorlet{c_link}{c_custom_gray}
 % Colours of parts of a slide (roles without a colour name for slides; v0.15.10): the framework reads these names.
@@ -384,9 +387,9 @@
 		c_custom_green,c_custom_brown,SMLightOrange,SMLightGreen,SMDeepYellowOrange,SMAnthracite}%
 		\do{\SM@togray\SM@n}}
 \newcommand{\SM@preset@colorblind}{%
-	\definecolor{c_secondary_blue}{HTML}{0072B2}\definecolor{c_secondary_green}{HTML}{009E73}%
-	\definecolor{c_secondary_red}{HTML}{D55E00}\definecolor{c_secondary_orange}{HTML}{E69F00}%
-	\definecolor{c_secondary_yellow}{HTML}{F0E442}\definecolor{c_secondary_violet}{HTML}{CC79A7}%
+	\SM@hexcolor{c_secondary_blue}{0072B2}\SM@hexcolor{c_secondary_green}{009E73}%
+	\SM@hexcolor{c_secondary_red}{D55E00}\SM@hexcolor{c_secondary_orange}{E69F00}%
+	\SM@hexcolor{c_secondary_yellow}{F0E442}\SM@hexcolor{c_secondary_violet}{CC79A7}%
 	\@for\SM@n:={blue,green,red,orange,yellow,violet}\do{%
 		\colorlet{c_tertiary_\SM@n}{c_secondary_\SM@n!50!white}}}
 % \SM@rolecolour{<role>}{<colour name>}{<base source>}

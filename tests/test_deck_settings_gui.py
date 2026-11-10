@@ -35,7 +35,9 @@ def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
 
 
 def make_sheet(tmp_path, monkeypatch, text=DECK_TEXT, tab=GENERAL, **fields):
-    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage dark mode: true\n")
+    template = tmp_path / "SlideMage_template_acme.tex"
+    if not template.exists():
+        template.write_text("% SlideMage dark mode: true\n")
     return DeckSettingsSheet(None, make_deck(tmp_path, text=text, **fields), TEMPLATES, tab=tab)
 
 
@@ -191,22 +193,22 @@ def test_footer_changes_render_the_visible_preview_after_reloading(tmp_path, qap
 
 def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_path, monkeypatch, qapp):
     sheet = make_sheet(tmp_path, monkeypatch)
-    assert sheet.dark_mode_check.isEnabled() and not sheet.dark_mode_check.isChecked()
-    sheet.dark_mode_check.setChecked(True)
+    assert sheet.mode_combo.isEnabled() and sheet.mode_combo.currentData() == "light"
+    pick_mode(sheet, "dark")
     assert sheet.dirty()
     sheet.save_button.click()
     assert sheet.action == SAVE and sheet.result_settings().dark_mode
     saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, sheet.result_settings())
     reopened = make_sheet(tmp_path, monkeypatch, text=saved)
-    assert reopened.dark_mode_check.isChecked() and not reopened.dirty()
-    reopened.dark_mode_check.setChecked(False)
+    assert reopened.mode_combo.currentData() == "dark" and not reopened.dirty()
+    pick_mode(reopened, "light")
     assert reopened.dirty()
     reopened.save_button.click()
     assert deck_settings.apply_settings(saved, reopened.original, reopened.result_settings()) == DECK_TEXT
 
     other = make_sheet(tmp_path, monkeypatch, text=saved)
     other.template_combo.setCurrentIndex(other.template_combo.findData("slidemage"))
-    assert not other.dark_mode_check.isEnabled()
+    assert not other.mode_combo.isEnabled()
     other.save_button.click()
     assert not other.result_settings().dark_mode
     changed = deck_settings.apply_settings(saved, other.original, other.result_settings())
@@ -216,7 +218,37 @@ def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_
 def test_dark_slides_work_for_a_renamed_template(tmp_path, monkeypatch, qapp):
     (tmp_path / "SlideMage_template_custom-college.tex").write_text("% SlideMage dark mode: true\n")
     sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("acme", "custom-college"))
-    assert sheet.dark_mode_check.isEnabled()
-    sheet.dark_mode_check.setChecked(True)
+    assert sheet.mode_combo.isEnabled()
+    pick_mode(sheet, "dark")
     sheet.save_button.click()
     assert sheet.result_settings().dark_mode
+
+
+def pick_mode(sheet, mode_id):
+    sheet.mode_combo.setCurrentIndex(sheet.mode_combo.findData(mode_id))
+
+
+def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_path, monkeypatch, qapp):
+    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark, grey=Greyscale\n")
+    sheet = make_sheet(tmp_path, monkeypatch)
+    assert [sheet.mode_combo.itemData(i) for i in range(sheet.mode_combo.count())] == ["light", "dark", "grey"]
+    pick_mode(sheet, "grey")
+    sheet.save_button.click()
+    result = sheet.result_settings()
+    assert result.mode == "grey" and not result.dark_mode
+    saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, result)
+    assert "\\newcommand{\\SMModeOverride}{grey}" in saved
+    reopened = make_sheet(tmp_path, monkeypatch, text=saved)
+    assert reopened.mode_combo.currentData() == "grey" and not reopened.dirty()
+    pick_mode(reopened, "dark")
+    reopened.save_button.click()
+    assert reopened.result_settings().dark_mode and reopened.result_settings().mode == ""
+
+    from dataclasses import replace
+    versioned = DeckSettingsSheet(None, replace(make_deck(tmp_path), supports_version=True), TEMPLATES)
+    view = versioned.view_combos["instructor"]
+    view.setCurrentIndex(view.findData("acme"))
+    modes = versioned.view_mode["instructor"]
+    assert modes.isEnabled() and [modes.itemData(i) for i in range(modes.count())] == ["", "dark", "grey"]
+    modes.setCurrentIndex(modes.findData("grey"))
+    assert versioned._view_theme_entries() == {"instructor": ("acme", "grey")}

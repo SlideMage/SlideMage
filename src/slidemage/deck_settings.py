@@ -33,6 +33,11 @@ TEMPLATE_INPUT_RE = re.compile(r"\\input\{SlideMage_template_([^}\s]+)\}")
 DARK_MODE_RE = re.compile(
     r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMDarkMode\}|\\SMDarkMode\b)"
     r"|def\s*\\SMDarkMode\b)\s*\{[^{}]*\}")
+# Any other colour mode than dark (which has the switch above): \newcommand{\SMModeOverride}{grey}, also before the
+# template (latex/SlideMage_setup.tex, "Colour modes and role colours"). Group 1 is the mode id.
+MODE_RE = re.compile(
+    r"\\(?:(?:(?:re)?newcommand|providecommand)\*?\s*(?:\{\\SMModeOverride\}|\\SMModeOverride\b)"
+    r"|def\s*\\SMModeOverride\b)\s*\{([A-Za-z0-9_]*)\}")
 # \decklanguage[en] -- a literal code; "\decklanguage[\decklanguageoverride]"
 # (the boilerplate's other branch) is left alone.
 LANGUAGE_RE = re.compile(r"\\decklanguage\s*\[([^\]]*)\]")
@@ -62,6 +67,8 @@ class DeckSettings:
     # block, deck = "instructor deck" etc.)
     footer_hide: tuple[str, ...] = ()
     dark_mode: bool = False
+    # a colour mode of the template other than dark ("" for none): \SMModeOverride before the template
+    mode: str = ""
     # themes per view (view_themes): {view: (template key, mode)}; a view without an entry uses the deck's own
     view_themes: dict[str, tuple[str, str]] = field(default_factory=dict)
 
@@ -133,7 +140,7 @@ def _clean_path(path: str) -> str:
 def from_form(
     original: DeckSettings, *, template: str, language: str, footer_text: str,
     output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
-    footer_hide: tuple[str, ...] = (), dark_mode: bool = False,
+    footer_hide: tuple[str, ...] = (), dark_mode: bool = False, mode: str = "",
     view_themes: dict[str, tuple[str, str]] | None = None,
 ) -> DeckSettings:
     """The settings a form of the sheet holds, checked: an output path may not hold LaTeX specials. A path left as it was in
@@ -148,20 +155,58 @@ def from_form(
         template=template, language=language, footer_text=footer_text,
         output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
         footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide),
-        dark_mode=dark_mode,
+        dark_mode=dark_mode, mode=mode,
         view_themes=dict(original.view_themes if view_themes is None else view_themes))
 
 
-def template_supports_dark_mode(root: Path, key: str) -> bool:
-    """Templates opt in with `% SlideMage dark mode: true` in their header."""
+_MODES_LINE_RE = re.compile(r"^%+\s*SlideMage modes:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_MODE_ID_RE = re.compile(r"[A-Za-z0-9_]+")
+
+
+def template_modes(root: Path, key: str) -> list[tuple[str, str]]:
+    """[(mode id, label)] a template offers, the first being its base mode: `% SlideMage modes: light, dark=Dark slides, grey`
+    in its first 30 lines (a label after "="; without one the id, capitalised). The older `% SlideMage dark mode: true`
+    means light and dark. [] when the template has no modes. A template declares the same modes to the framework with
+    \\SMDeclareMode (latex/SlideMage_setup.tex)."""
     from . import slide_templates
 
     try:
         text = slide_templates.preamble_file(key, root).read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return False
+        return []
     head = "\n".join(text.splitlines()[:30])
-    return bool(re.search(r"^%+\s*SlideMage dark mode:\s*true\s*$", head, re.MULTILINE | re.IGNORECASE))
+    found = _MODES_LINE_RE.search(head)
+    if found:
+        modes: list[tuple[str, str]] = []
+        for item in found.group(1).split(","):
+            mode_id, _, label = item.strip().partition("=")
+            mode_id, label = mode_id.strip(), label.strip()
+            if _MODE_ID_RE.fullmatch(mode_id) and all(mode_id != known for known, _ in modes):
+                modes.append((mode_id, label or mode_id.capitalize()))
+        return modes
+    if re.search(r"^%+\s*SlideMage dark mode:\s*true\s*$", head, re.MULTILINE | re.IGNORECASE):
+        return [("light", "Light"), ("dark", "Dark")]
+    return []
+
+
+def template_supports_dark_mode(root: Path, key: str) -> bool:
+    """Whether the template has a dark mode (see template_modes)."""
+    return any(mode_id == "dark" for mode_id, _ in template_modes(root, key))
+
+
+def mode_to_settings(modes: list[tuple[str, str]], choice: str) -> tuple[bool, str]:
+    """(dark_mode, mode) that write the mode `choice` of a template with `modes`: the base mode is neither, dark has its
+    switch, any other mode is \\SMModeOverride."""
+    if not choice or (modes and choice == modes[0][0]):
+        return False, ""
+    return (True, "") if choice == "dark" else (False, choice)
+
+
+def settings_mode(modes: list[tuple[str, str]], dark_mode: bool, mode: str) -> str:
+    """The mode id the settings `dark_mode` and `mode` stand for ("" when the template has no modes)."""
+    if dark_mode:
+        return "dark"
+    return mode or (modes[0][0] if modes else "")
 
 
 def template_choices(root: Path) -> list[tuple[str, str]]:
@@ -183,6 +228,10 @@ def read_settings(text: str) -> DeckSettings:
     settings.view_themes = view_themes.parse(text)
     settings.dark_mode = any(
         not template or m.end() <= template[0].start() for m in _live(text, DARK_MODE_RE))
+    for match in _live(text, MODE_RE):
+        if not template or match.end() <= template[0].start():
+            settings.mode = match.group(1)
+            break
     for match in _live(text, LANGUAGE_RE):
         code = match.group(1).strip()
         if code and not code.startswith("\\"):
@@ -238,6 +287,31 @@ def set_dark_mode(text: str, on: bool) -> str:
         at = start
     newline = deck_editor.eol(text)
     return text[:at] + "\\newcommand{\\SMDarkMode}{}" + newline + text[at:]
+
+
+def set_mode(text: str, mode: str) -> str:
+    """Set the colour mode other than dark (`\\SMModeOverride`) before the template input; "" removes it. Other commands on its
+    line stay."""
+    mode = mode.strip()
+    if mode and not re.fullmatch(r"[A-Za-z0-9_]+", mode):
+        raise ValueError(f"'{mode}' is not a mode name.")
+    templates = _live(text, TEMPLATE_INPUT_RE)
+    if mode and not templates:
+        raise ValueError("This deck has no institution template input for a colour mode.")
+    live = _live(text, MODE_RE)
+    if mode and len(live) == 1 and live[0].group(1) == mode and live[0].end() <= templates[0].start():
+        return text
+    for match in reversed(live):
+        text = _remove(text, match)
+    if not mode:
+        return text
+    template = _live(text, TEMPLATE_INPUT_RE)[0]
+    at = template.start()
+    start, _ = _line_bounds(text, at)
+    if not text[start:at].strip():
+        at = start
+    newline = deck_editor.eol(text)
+    return text[:at] + "\\newcommand{\\SMModeOverride}{" + mode + "}" + newline + text[at:]
 
 
 def set_language(text: str, code: str) -> str:
@@ -314,6 +388,8 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
         text = set_template(text, new.template)
     if new.dark_mode != old.dark_mode:
         text = set_dark_mode(text, new.dark_mode)
+    if new.mode != old.mode:
+        text = set_mode(text, new.mode)
     if new.view_themes != old.view_themes:
         from . import view_themes
         text = view_themes.set_entries(text, new.view_themes)

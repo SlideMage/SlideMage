@@ -23,7 +23,7 @@ REMOVED = {"SMFootlineHeight", "SMFootlineDepth", "SMRightFooterPadding"}
 RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep": "SMSideFootnoteTitleBlockSep"}
 # v0.16.0: the colour-mode layer (setup layer, section "Colour modes and role colours"): its internals, and the data lines a
 # theme writes (declared, not hooks a template reads).
-MODE_LAYER = {"SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
+MODE_LAYER = {"SM@hexcolor", "SM@letcolor", "SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
               "SM@preset@grey", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
               "SMDeclareMode", "SMSetColor", "SMSetRole"}
 NOT_HOOKS = ({"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)

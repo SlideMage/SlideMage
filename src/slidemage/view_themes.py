@@ -12,9 +12,10 @@ Only the app uses the line: `preamble_for_view` returns the preamble as that vie
 place that renders or compiles for a view calls it, so the template, the render key and the equivalence of renders
 follow without any further bookkeeping (a render's key holds the effective preamble and template).
 
-The one mode that exists today is `dark` (the deck's `\newcommand{\SMDarkMode}{}` switch); an entry fully describes its
-view, so `theme` without a mode means the theme's base colours even when the deck's default is dark. Other mode ids are
-kept in the line and have no effect until the themes declare modes (docs/plans/theme-editor.md, section 3.8).
+The mode `dark` is the deck's `\newcommand{\SMDarkMode}{}` switch; any other mode id is `\newcommand{\SMModeOverride}{<id>}`
+before the template, which the framework resolves for the modes a theme declares (docs/plans/theme-editor.md, section 3.8).
+An entry fully describes its view, so `theme` without a mode means the theme's base colours even when the deck's default
+is dark or another mode.
 """
 from __future__ import annotations
 
@@ -86,7 +87,8 @@ def preamble_for_view(preamble_text: str | None, view: str | None) -> str | None
     key, mode = entry
     text = deck_settings.set_template(preamble_text, key)
     try:
-        return deck_settings.set_dark_mode(text, mode == DARK)
+        text = deck_settings.set_dark_mode(text, mode == DARK)
+        return deck_settings.set_mode(text, "" if mode == DARK else mode)
     except ValueError:
         return text
 

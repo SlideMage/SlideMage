@@ -492,6 +492,8 @@ hard-coded names; each is a decision about which role it is).
 
 **Built: CR slice F3 (v0.15.12, branch `feat/color-roles-framework-3`).** The framework's remaining hard-coded colours are roles: `highlight_fill`, `standout_fill`, `standout_text`, `quote_attribution`, `table_rule` (inside a block: `block_body_text`), `image_border`, `marker` (SMHighlight, SMDottedHighlight, warning sign), `citation`, `strip_fill` (its text is `c_text_on_accent`). What is left in the framework's code is the white text of a button and the red of the DRAFT watermark. Base mode identical: 873 pages of the manual set, 292 of the manual under Uni Graz, light and with \SMDarkMode. This ends the framework-only slices of CR; what follows needs the app: the wrapper writing \SMModeOverride and the mode drop-down, the `% SlideMage modes:` header, then the slide migration and the BREAKING cut.
 
+**Built: CR app side, step 1 (v0.15.13, branch `feat/color-modes-app`).** `deck_settings.template_modes` reads `% SlideMage modes: light, dark, grey=Greyscale` from a template's header (first = base mode; the older `dark mode: true` = light and dark); `DeckSettings.mode` and `set_mode` write \SMModeOverride before the template (`dark` keeps \SMDarkMode); `view_themes.preamble_for_view` gives a view any mode; Deck settings has a Colours drop-down in place of the Dark slides check box and a mode drop-down per view. Not done: the shipped templates declare no modes (they must not before slides are migrated to roles, or a dark deck shows invisible ink); the Compile-menu one-off mode; the toolbar colour list and `theme_colors` reading roles; the Presenter app.
+
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |
