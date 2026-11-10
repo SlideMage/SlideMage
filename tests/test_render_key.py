@@ -92,6 +92,20 @@ def test_the_key_follows_slide_text_preamble_view_language_and_engine(ctx, resol
     assert resolver.fast_key(unit) != key
 
 
+
+def test_the_key_ignores_the_preamble_lines_only_slidemage_reads(ctx, resolver):
+    """A deck's PDF output folders, tags and open-PDF choice do not change what TeX typesets: renders stay current."""
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "\\begin{frame}A\\end{frame}")
+    plain = "\\documentclass{beamer}\n\\input{SlideMage_template_acme}\n\\begin{document}"
+    key = resolver.fast_key(unit_for(ctx, preamble=plain))
+    settings = ("\\documentclass{beamer}\n%% SlideMage open PDF: instructor\n\\input{SlideMage_template_acme}\n"
+                "\\deckoutputfolder{../pdf}\n  \\deckoutputfolder[after-course]{../out} \n\\decktags{course}\n"
+                "\\begin{document}")
+    assert resolver.fast_key(unit_for(ctx, preamble=settings)) == key
+    assert resolver.fast_key(unit_for(ctx, preamble=plain.replace("acme", "other"))) != key
+    shared = "\\documentclass{beamer}\n\\input{SlideMage_template_acme}\\deckoutputfolder{../pdf}\n\\begin{document}"
+    assert resolver.fast_key(unit_for(ctx, preamble=shared)) != key      # a line with TeX on it is kept whole
+
 def test_a_just_saved_slide_has_a_key_without_a_hash_shortcut(ctx, resolver, store):
     unit = unit_for(ctx)
     write(unit.source_path, "slide\n", mtime=time.time())
