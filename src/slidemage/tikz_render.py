@@ -33,11 +33,9 @@ from PIL import Image, ImageChops
 from . import alt_blocks, alt_images, compile_log, project
 from .slide_preview import compile_and_extract, default_preamble
 
-# Gitignored, like pdf_render_cache/ (media_render.py): nothing here is ever authored, it
-# is entirely derived from a slide's own current tikz source. Moved under
-# previews/ 2026-09-18, then .previews/ the same day (was a project-root
-# folder before that; dot-prefixed since nothing here is ever something
-# the user needs to interact with).
+# In the user's cache folder (ctx.tikz_previews_dir), same regeneratable-cache reasoning as
+# pdf_render_cache/ (media_render.py) -- nothing here is ever authored, it
+# is entirely derived from a slide's own current tikz source.
 
 # Same reasoning as media_render.py's own _ZOOM: enough detail for a vision
 # model to read fine text/labels inside the diagram, without an oversized

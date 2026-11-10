@@ -467,9 +467,9 @@ class _Collected:
 
 def classify_input(path: Path, *, project_root: Path, framework_dir: Optional[Path],
                    build_dirs: Iterable[Path], roots: Iterable[Path]) -> str:
-    """"build" (the compile's own aux/output), "framework", "project", "tex"
-    (the TeX distribution) or "external" (anything else -- not allowed)."""
-    if any(is_within(path, b) for b in build_dirs):
+    """"build" (the compile's own aux/output and derived caches),
+    "framework", "project", "tex" (the TeX distribution) or "external" (anything else -- not allowed)."""
+    if any(is_within(path, b) for b in build_dirs) or is_within(path, project.previews_cache_dir(project_root)):
         return "build"
     if framework_dir is not None and is_within(path, framework_dir):
         return "framework"

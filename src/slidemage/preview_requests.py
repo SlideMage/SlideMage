@@ -419,6 +419,7 @@ class RenderService:
                     with renderer._working_lock:
                         if renderer._current is None or store_key in renderer._current.keys:
                             renderer._failure_keys.add(store_key)
+                            renderer._failure_slides.setdefault(store_key, set()).add((unit.deck, unit.id_slug))
                 raise
 
         def finished():

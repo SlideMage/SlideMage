@@ -3,7 +3,7 @@
 """The tools that refresh the cached previews (the PNG snapshots the Preview, the slide list's pages and
 the appendix show without compiling anything): one slide, or every slide of one deck (v8.11.0).
 
-They write only preview caches under `.previews/`, and never deck sources. They run beside an open
+They write only preview caches in the user cache folder (ctx.previews_dir), and never deck sources. They run beside an open
 window: a slide renders through the same locked, reusable preview build as the Preview pane
 (preview_build.py), a deck through the window's own compile slot (the same run as "Rerender all
 previews for this deck", Workspace.refresh_deck_previews), so neither can race the GUI's compiles.

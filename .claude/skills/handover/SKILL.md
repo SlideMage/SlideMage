@@ -34,7 +34,7 @@ The page has two buttons. **Update** sends only the changed notes (a comment sta
 note into the task's description**: rewrite its `desc` in the TASKS block of `docs/handover.md` and its text between its task
 markers (and its section, where it fits) so the note is part of the task and does not stay a separate note; the `notes` field of
 the block line then stays empty (clear it if it holds anything). Leave the picker pane open; answer in one line.
-**Start tasks** sends the picks (steps 0 to 6 below). A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
+The page also lets the user **pin** a task to the top or bottom of the list ("Pin top" / "Pin bottom" under each task); a pin change makes Update available and is sent with Update and with Start tasks as a list of `- <title> [id]: pin top|pin bottom|unpinned`. **Write each pin into that task's line in the TASKS block**: `"pin":"top"` or `"pin":"bottom"`, or delete the field for unpinned (the script orders the page: top pins, then the rest in file order, then bottom pins). A pin-only update starts nothing. **Start tasks** sends the picks (steps 0 to 6 below). A republish alone starts no turn. The page therefore also sends the picks to this session as a comment ("Send to Claude",
 editors only; the user may be asked to allow it once), which wakes the session with the picks in the comment text. If the page
 says it could not notify Claude, the user tells you in chat. Either way, then:
 
@@ -63,7 +63,7 @@ says it could not notify Claude, the user tells you in chat. Either way, then:
 
 ## 3. Keeping the list useful
 
-- New work the user names: add a line to the TASKS block (stable `id`, never reused) and wrap its text in task markers before
+- New work the user names: add a line to the TASKS block (at the end of the block, **without** a `pin`: the script then places it between the pinned tasks; stable `id`, never reused) and wrap its text in task markers before
   starting it. **Also set the line's `run` recommendation** (mode, model, effort; see the rules at the top of handover.md) so the page
   preselects a sensible choice: the user can change it before clicking Start tasks.
 - Finished sections move to `docs/handover-archive.md`, unedited; ask the user first.

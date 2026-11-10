@@ -68,9 +68,8 @@ BLG_SOURCE_RE = re.compile(r"Found BibTeX data source '([^']+)'")
 BIBER_NEEDED_RE = re.compile(r"Package biblatex Warning: Please \(re\)run Biber")
 # Derived caches the engine may rewrite at any time -- never part of a hash.
 _SKIPPED_INPUT_PARTS = ("luatex-cache",)
-# Files derived from the deck's own slides (the slide previews a generated
-# appendix shows): copied into the record (DERIVED_DIRNAME) as read, not
-# compared -- they change with every compile of a slide that shows a time.
+# Derived images (appendix thumbnails, TikZ pictures and PDF media pages):
+# copied into the record (DERIVED_DIRNAME) as read, never compared for freshness.
 DERIVED_DIRNAME = "derived"
 
 
@@ -262,9 +261,8 @@ def write_record(
             seen.add(key)
             if any(part in key for part in _SKIPPED_INPUT_PARTS) or not path.is_file():
                 continue
-            if is_within(path, ctx.build_dir / "appendix-thumbs"):
-                # A slide preview (the generated appendix's thumbnails): kept as
-                # this compile read it, never a reason to call the PDF stale.
+            if is_within(path, ctx.build_dir / "appendix-thumbs") or is_within(path, ctx.previews_dir):
+                # Keep the image as read, never a reason to call the PDF stale.
                 copy = Path(DERIVED_DIRNAME) / f"{len(entries)}-{path.name}"
                 (aux / copy).parent.mkdir(exist_ok=True)
                 shutil.copy2(path, aux / copy)

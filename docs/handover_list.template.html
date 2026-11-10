@@ -55,6 +55,17 @@ const EFFORTS=[["low","Low"],["medium","Medium"],["high","High"],["xhigh","Extra
 const $=(s,r=document)=>r.querySelector(s);
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function changed(){return STATE.tasks.filter(t=>(STATE.notes[t.id]||"")!==(STATE.savedNotes[t.id]||"")).map(t=>t.id)}
+function zone(t){return t.pin==="top"?0:t.pin==="bottom"?2:1}
+function pinsChanged(){STATE.savedPin=STATE.savedPin||{};return STATE.tasks.filter(t=>(t.pin||"")!==(STATE.savedPin[t.id]||"")).map(t=>t.id)}
+function pinWord(t){return t.pin==="top"?"pin top":t.pin==="bottom"?"pin bottom":"unpinned"}
+function pinLines(ids){return ids.map(id=>"- "+title(id)+" ["+id+"]: "+pinWord(STATE.tasks.find(t=>t.id===id))).join("\n")}
+const PINMSG="Set the `pin` field of each of these tasks' lines in the TASKS block of docs/handover.md to \"top\" or \"bottom\" as given, or remove the field for unpinned (pinned tasks stay at the top or bottom of the picker, new tasks land between them):\n";
+function statusText(){const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length,a=changed().length,b=pinsChanged().length;return n+" selected"+(a?", "+a+" changed note(s)":"")+(b?", "+b+" changed pin(s)":"")}
+function pinMap(){const m={};STATE.tasks.forEach(t=>{if(t.pin)m[t.id]=t.pin});return m}
+function setPin(id,v){const i=STATE.tasks.findIndex(t=>t.id===id);if(i<0)return;const[t]=STATE.tasks.splice(i,1);const was=t.pin||"";if(v)t.pin=v;else delete t.pin;
+  let at;if(v==="top")at=STATE.tasks.filter(x=>zone(x)===0).length;else if(v==="bottom")at=STATE.tasks.length-STATE.tasks.filter(x=>zone(x)===2).length;
+  else if(was==="top")at=STATE.tasks.filter(x=>zone(x)===0).length;else at=STATE.tasks.length-STATE.tasks.filter(x=>zone(x)===2).length;
+  STATE.tasks.splice(at,0,t);render()}
 function title(id){return STATE.tasks.find(t=>t.id===id).title}
 function run(id){return STATE.run[id]||(STATE.run[id]={mode:"",model:"sonnet",effort:"medium"})}
 function runText(id){const r=run(id);return r.mode?" ("+(r.mode==="session"?"subsession":"subagent")+", "+r.model+", "+r.effort+")":""}
@@ -63,11 +74,11 @@ function render(){
   const app=$("#app");let h='<h1>Handover Next Tasks</h1><p class="sub">Tick what to start, and drag the handle (or use the arrows) to set the order: ticked tasks are started top to bottom. Use Modify to write notes for a task and Update to send them without starting anything. Source: SlideMage/docs/handover.md.</p>';
   if(STATE.updated){h+='<div class="note"><b>Update sent</b> for '+STATE.updated.ids.length+' task(s)'+(STATE.updated.wake?', and Claude was notified.':'. Claude could not be notified automatically: tell the session in chat that you sent an update.')+'</div>'}
   if(STATE.sent){h+='<div class="note"><b>Sent.</b> '+STATE.sent.ids.length+' task(s) handed to Claude'+(STATE.sent.wake?', and Claude was notified.':'. Claude could not be notified automatically: tell the session in chat that you sent the picks.')+' Pick again and resend to change it.</div>'}
-  const dirty=changed();
+  const dirty=changed(),pch=pinsChanged();
   STATE.tasks.forEach((t,i)=>{
     const on=!!STATE.sel[t.id],open=!!STATE.open[t.id],mod=!!STATE.mod[t.id],dn=dirty.indexOf(t.id)>=0,hasNote=!!(STATE.notes[t.id]||"").trim(),r=run(t.id);
-    h+='<div class="task'+(on?' on':'')+'" data-card="'+t.id+'"><div class="row"><div class="grip" draggable="true" data-grip="'+t.id+'" title="Drag to reorder">⋮⋮<span class="rk">'+(i+1)+'</span></div><input type="checkbox" id="c-'+t.id+'" data-id="'+t.id+'"'+(on?' checked':'')+'><label for="c-'+t.id+'"><div class="t">'+esc(t.title)+'</div><div class="d">'+esc(t.desc)+'</div><div class="tag">'+esc(t.grp+' · '+t.src)+'</div></label><div class="mv"><button class="mb" data-m="'+t.id+'" data-d="-1" aria-label="Move up">▲</button><button class="mb" data-m="'+t.id+'" data-d="1" aria-label="Move down">▼</button></div></div>';
-    h+='<div class="opts"><button class="lnk" data-det="'+t.id+'" aria-expanded="'+open+'">'+(open?'Hide details':'Details')+'</button><button class="lnk" data-mod="'+t.id+'" aria-expanded="'+mod+'">'+(mod?'Hide modify':'Modify')+(hasNote&&!mod?' <span class="dot" title="Has a note">●</span>':'')+'</button>';
+    h+='<div class="task'+(on?' on':'')+'" data-card="'+t.id+'"><div class="row"><div class="grip" draggable="true" data-grip="'+t.id+'" title="Drag to reorder">⋮⋮<span class="rk">'+(i+1)+'</span></div><input type="checkbox" id="c-'+t.id+'" data-id="'+t.id+'"'+(on?' checked':'')+'><label for="c-'+t.id+'"><div class="t">'+esc(t.title)+'</div><div class="d">'+esc(t.desc)+'</div><div class="tag">'+esc(t.grp+' · '+t.src+(t.pin?' · pinned '+t.pin:''))+'</div></label><div class="mv"><button class="mb" data-m="'+t.id+'" data-d="-1" aria-label="Move up">▲</button><button class="mb" data-m="'+t.id+'" data-d="1" aria-label="Move down">▼</button></div></div>';
+    h+='<div class="opts"><button class="lnk" data-det="'+t.id+'" aria-expanded="'+open+'">'+(open?'Hide details':'Details')+'</button><button class="lnk" data-mod="'+t.id+'" aria-expanded="'+mod+'">'+(mod?'Hide modify':'Modify')+(hasNote&&!mod?' <span class="dot" title="Has a note">●</span>':'')+'</button><button class="lnk" data-pin="'+t.id+'" data-v="top" aria-pressed="'+(t.pin==="top")+'">'+(t.pin==="top"?'Unpin top':'Pin top')+'</button><button class="lnk" data-pin="'+t.id+'" data-v="bottom" aria-pressed="'+(t.pin==="bottom")+'">'+(t.pin==="bottom"?'Unpin bottom':'Pin bottom')+'</button>';
     if(r.mode!=="agent")h+='<label class="ck"><input type="checkbox" data-mode="session" data-rid="'+t.id+'"'+(r.mode==="session"?' checked':'')+'>Subsession</label>';
     if(r.mode!=="session")h+='<label class="ck"><input type="checkbox" data-mode="agent" data-rid="'+t.id+'"'+(r.mode==="agent"?' checked':'')+'>Subagent</label>';
     if(r.mode)h+='<label class="ck">Model <select data-run="model" data-rid="'+t.id+'" aria-label="Model for '+esc(t.title)+'">'+opts(MODELS,r.model)+'</select></label><label class="ck">Effort <select data-run="effort" data-rid="'+t.id+'" aria-label="Effort for '+esc(t.title)+'">'+opts(EFFORTS,r.effort)+'</select></label>';
@@ -77,7 +88,7 @@ function render(){
     h+='</div>';
   });
   const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length;
-  h+='<div class="bar"><span id="cnt">'+n+' selected'+(dirty.length?', '+dirty.length+' changed note(s)':'')+'</span><div class="btns"><button id="upd" class="sec"'+(dirty.length?'':' disabled')+'>Update</button><button id="go"'+(n?'':' disabled')+'>Start tasks</button></div></div>';
+  h+='<div class="bar"><span id="cnt">'+statusText()+'</span><div class="btns"><button id="upd" class="sec"'+(dirty.length||pch.length?'':' disabled')+'>Update</button><button id="go"'+(n?'':' disabled')+'>Start tasks</button></div></div>';
   app.innerHTML=h;
 }
 document.addEventListener("change",e=>{
@@ -86,7 +97,7 @@ document.addEventListener("change",e=>{
   else if(d.mode){const r=run(d.rid);r.mode=t.checked?d.mode:"";render()}
   else if(d.run){run(d.rid)[d.run]=t.value}
 });
-document.addEventListener("input",e=>{const id=e.target.dataset&&e.target.dataset.note;if(id){STATE.notes[id]=e.target.value;const d=changed(),u=$("#upd"),c=$("#cnt");if(u)u.disabled=!d.length;e.target.classList.toggle("dirty",d.indexOf(id)>=0);if(c){const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length;c.textContent=n+" selected"+(d.length?", "+d.length+" changed note(s)":"")}}});
+document.addEventListener("input",e=>{const id=e.target.dataset&&e.target.dataset.note;if(id){STATE.notes[id]=e.target.value;const d=changed(),u=$("#upd"),c=$("#cnt");if(u)u.disabled=!(d.length||pinsChanged().length);e.target.classList.toggle("dirty",d.indexOf(id)>=0);if(c)c.textContent=statusText()}});
 const RESET=':root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}';
 function noteLines(ids){return ids.map(id=>"- "+title(id)+" ["+id+"]: "+((STATE.notes[id]||"").trim()||"(note cleared)")).join("\n")}
 function clip(msg){return new TextEncoder().encode(msg).length>3900?msg.slice(0,1500)+"\n... (cut; read the page's STATE for the rest)":msg}
@@ -119,23 +130,27 @@ document.addEventListener("click",async e=>{
     const ch=changed().filter(id=>ids.indexOf(id)<0);
     let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort. Integrate each note into its task's description in handover.md (desc and marked text), then clear the task's `notes` field.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
     if(ch.length)msg+="\n\nAlso integrate these notes into those tasks' descriptions, as for an update (do not start these tasks):\n"+noteLines(ch);
+    const pc0=pinsChanged();if(pc0.length)msg+="\n\nAlso, pin changes (do not start these tasks): "+PINMSG+pinLines(pc0);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
     ns.sent={ids:ids,wake:wk,at:new Date().toISOString(),picked:ids.map(id=>({rank:STATE.tasks.findIndex(t=>t.id===id)+1,id:id,task:title(id),note:STATE.notes[id]||"",run:JSON.parse(JSON.stringify(run(id)))}))};
     ns.savedNotes=JSON.parse(JSON.stringify(STATE.notes));
+    ns.savedPin=pinMap();
     await save(btn,ns);
   }else if(btn.id==="upd"){
-    const ids=changed();if(!ids.length)return;
+    const ids=changed(),pids=pinsChanged();if(!ids.length&&!pids.length)return;
     btn.disabled=true;btn.textContent="Sending…";
-    const msg="UPDATE ONLY, do not start any task. Integrate each note into that task's description: rewrite its `desc` in the TASKS block of docs/handover.md and its text between its task markers, so the note is not kept separately, then clear the task's `notes` field and reply with one line:\n"+noteLines(ids);
+    let msg="UPDATE ONLY, do not start any task."+(ids.length?" Integrate each note into that task's description: rewrite its `desc` in the TASKS block of docs/handover.md and its text between its task markers, so the note is not kept separately, then clear the task's `notes` field and reply with one line:\n"+noteLines(ids):"");
+    if(pids.length)msg+=(ids.length?"\n\n":" ")+PINMSG+pinLines(pids);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
-    ns.updated={ids:ids,wake:wk,at:new Date().toISOString()};
+    ns.updated={ids:ids.concat(pids.filter(i=>ids.indexOf(i)<0)),wake:wk,at:new Date().toISOString()};
     ns.savedNotes=JSON.parse(JSON.stringify(STATE.notes));
+    ns.savedPin=pinMap();
     await save(btn,ns);
   }
 });
-function moveTo(id,j){const i=STATE.tasks.findIndex(t=>t.id===id);if(i<0||j<0||j>=STATE.tasks.length||i===j)return;const[t]=STATE.tasks.splice(i,1);STATE.tasks.splice(j,0,t);render()}
+function moveTo(id,j){const i=STATE.tasks.findIndex(t=>t.id===id);if(i<0)return;const z=zone(STATE.tasks[i]),idx=STATE.tasks.map((t,k)=>zone(t)===z?k:-1).filter(k=>k>=0);j=Math.max(idx[0],Math.min(idx[idx.length-1],j));if(i===j)return;const[t]=STATE.tasks.splice(i,1);STATE.tasks.splice(j,0,t);render()}
 let dragId=null;
 document.addEventListener("dragstart",e=>{const g=e.target.closest&&e.target.closest("[data-grip]");if(!g)return;dragId=g.dataset.grip;e.dataTransfer.setData("text/plain",dragId);e.dataTransfer.effectAllowed="move";const c=g.closest(".task");if(c)setTimeout(()=>c.classList.add("drag"),0)});
 document.addEventListener("dragover",e=>{if(!dragId)return;const c=e.target.closest(".task");if(!c)return;e.preventDefault();document.querySelectorAll(".task.over").forEach(x=>x.classList.remove("over"));c.classList.add("over")});
@@ -144,6 +159,8 @@ document.addEventListener("dragend",()=>{dragId=null;document.querySelectorAll("
 document.addEventListener("click",e=>{
   const d=e.target.closest&&e.target.closest("[data-det]");
   if(d){const id=d.dataset.det;STATE.open[id]=!STATE.open[id];render();return}
+  const pb=e.target.closest&&e.target.closest("[data-pin]");
+  if(pb){const id=pb.dataset.pin,v=pb.dataset.v,t=STATE.tasks.find(x=>x.id===id);setPin(id,t&&t.pin===v?"":v);return}
   const m=e.target.closest&&e.target.closest("[data-mod]");
   if(m){const id=m.dataset.mod;STATE.mod[id]=!STATE.mod[id];render();if(STATE.mod[id]){const ta=$('[data-note="'+id+'"]');if(ta)ta.focus()}return}
   const b=e.target.closest&&e.target.closest("[data-m]");if(!b)return;

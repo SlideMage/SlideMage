@@ -146,6 +146,9 @@ def test_flat_snapshots_are_removed_and_the_notice_is_shown_only_on_first_start(
     folder = root / ".previews" / "slide_previews"
     folder.mkdir(parents=True)
     (folder / "abc-EN-UniGraz-1920-1080.png").write_bytes(b"old PNG")
+    cached = project.previews_cache_dir(root) / "slide_previews"
+    cached.mkdir(parents=True)
+    (cached / "abc-EN-UniGraz-1920-1080.png").write_bytes(b"moved PNG")
     win = window(root, monkeypatch, compat.CHANGES, project_compat.NOT_NOW, [])
     monkeypatch.setattr(version_mod, "VERSION_NUMBER", "v0.15.0")
     shown = []
@@ -157,7 +160,7 @@ def test_flat_snapshots_are_removed_and_the_notice_is_shown_only_on_first_start(
 
     monkeypatch.setattr(maintenance, "ProjectUpdatedSheet", notice)
     assert cli.check_project_format(root, "v0.15.0")
-    assert not folder.exists()
+    assert not folder.exists() and not cached.exists()
     assert project.read_project_json(root)["flat_snapshots_removed"] is True
     assert not (root / ".slidemage" / "backups").exists()
     maintenance.check_project_compat(win)

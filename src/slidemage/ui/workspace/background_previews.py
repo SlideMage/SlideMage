@@ -633,5 +633,8 @@ class BackgroundPreviews(QObject):
         QMessageBox.information(self.window, "Slides that cannot be rendered", "\n".join(lines) or "None.")
 
     def retry_failed(self) -> None:
+        count = self.renderer.failed_slide_count()      # before they are forgotten
         self.store.forget_failure()
         self.renderer.replan()
+        QMessageBox.information(self.window, "Try failed slides again", f"{count} failed slides added to the render queue.",
+                                QMessageBox.StandardButton.Ok)
