@@ -240,6 +240,14 @@
 \newcommand{\SMStandoutTextColor}{}                    % text of a [standout] frame (on \SMTitleBoxColor); empty: the theme's pale yellow fffff0
 \newcommand{\SMAlertTextColor}{SMLightOrange}          % \alert{} text; the theme's orange EB811B
 \newcommand{\SMProgressBarColor}{SMDeepYellowOrange}   % the optional progress bar (below); the theme's yellow FFCC00
+% Block title text: one role for all five kinds, and one per kind that follows it unless a template names it (the
+% default is the dark text the blocks always had). The fill of each kind stays its c_secondary_* colour; a template
+% that fills a title with a dark colour sets the text white, e.g. \renewcommand{\SMBlockTitleTextColor}{c_primary_white}.
+\newcommand{\SMBlockTitleTextColor}{c_primary_dark}           % title text of block (and of every kind below)
+\newcommand{\SMAlertedBlockTitleTextColor}{\SMBlockTitleTextColor}    % alertblock
+\newcommand{\SMExampleBlockTitleTextColor}{\SMBlockTitleTextColor}    % exampleblock
+\newcommand{\SMReferenceBlockTitleTextColor}{\SMBlockTitleTextColor}  % referenceblock
+\newcommand{\SMInfoBlockTitleTextColor}{\SMBlockTitleTextColor}       % infoblock
 
 % Optional colors a template may define; SlideMage_base derives each one from
 % the palette when the template leaves it undefined:
