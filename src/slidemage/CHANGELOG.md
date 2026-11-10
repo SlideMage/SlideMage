@@ -3860,3 +3860,15 @@ v0.15.3 (2026-11-10, direct request: stage C0 of the theme editor plan, docs/pla
 NEW: One deck, a theme for each view.
 - Deck settings -> General -> "Theme per view": pick a theme and Dark for each view.
 - The Preview, the PDFs and the colour menu follow the view's theme.
+
+v0.15.4 (2026-11-10, direct report: while typing in the source, the Preview went blank and said "No preview"): A buffer that differs from the saved file has no stored render, and the render store's lookup says so (missing). Since v0.15.0 the Preview then showed nothing. It now keeps the last page of the slide in this view and language (the latest buffer render, else the page held for display) with a "Source changed" label on its top-right corner (PageView.badge) and the same words in the status line with Render; before v0.15.0 it said "Older than the editor buffer" in the status line only.
+
+NEW: The Preview stays visible while you type.
+- The last page stays, labelled "Source changed", until the new one is rendered.
+
+v0.15.5 (2026-11-10, direct report and Windows test of develop v0.15.2: the Preview flickered every few seconds, the step bar's "step 3 of 3" turned into "Counting…", and a slide that needs its deck had its steps rendered again every 5-10 seconds, also as a neighbour of the slide on show, holding up previews and the deck compile): Since v0.15.0 the 5-second re-check emptied the saved step lists. It now asks the store again while the list stays on show, replaces it only when the pages differ and drops it only when the pages came from the store and are no longer current there; steps rendered in this session stay (a slide that needs its deck never has standalone steps stored, which made the loop). A saved step list follows the file's mtime again, so a saved edit counts the steps anew. A sectionframe no longer counts as needing its deck (deck_context, the "section" reason): it takes its title from its argument and reads no section data, yet every section slide showed "Rendered without the deck" and was typeset in the deck's context.
+
+NEW: A steadier step bar.
+- The step bar and the page of the picked step no longer flicker every few seconds.
+- Slides that need their deck no longer have their steps rendered again and again in the background.
+- Section slides no longer say "Rendered without the deck".
