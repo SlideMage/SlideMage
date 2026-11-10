@@ -3854,3 +3854,9 @@ v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking
 
 NEW: A steadier Preview.
 - The Preview no longer flickers to "Checking…" every few seconds while a slide is open.
+
+v0.15.3 (2026-11-10, direct request: stage C0 of the theme editor plan, docs/plans/theme-editor.md section 3.7): A deck can use another theme, and dark or not, for each of its views, for example dark for the instructor view and light for the handouts. Deck settings -> General has a "Theme per view" table (instructor, during course, after course; "Same as the deck" by default); it is written into the deck as one comment line, `% SlideMage view themes: instructor=uni-graz:dark, after-course=uni-graz`, which only SlideMage reads, so the deck stays valid TeX and a compile outside the app uses the deck's own template. The compile wrapper inlines the preamble of the view, and the Preview, the background renders and the batch renders use the template and the dark switch of their view; their keys hold them, so views with different themes never share a render. Installing or editing a theme re-renders the decks that use it in any view. The toolbar colours follow the view shown. A deck without the line, and a view without an entry, behave exactly as before.
+
+NEW: One deck, a theme for each view.
+- Deck settings -> General -> "Theme per view": pick a theme and Dark for each view.
+- The Preview, the PDFs and the colour menu follow the view's theme.

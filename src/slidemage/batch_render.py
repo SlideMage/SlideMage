@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import busy, deck_context, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates
+from . import busy, deck_context, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates, view_themes
 from .deck_editor import VIEWS
 from .preview_requests import PrebuiltRender, PreviewRequest, PreviewResult, RenderOptions, SourceRevision
 
@@ -62,7 +62,7 @@ def build(service, batch: list, cancel=None, log=None) -> dict:
     slides = [(spec.target.id_slug, spec.revision.text, spec.target.frame_number, None if spec.options.all_steps else spec.target.steps, spec.target.version,
                spec.target.macro in ('omitslide', 'omitslideversion'), spec.target.macro == 'slidefinal' and not spec.options.all_steps)
               for _key, spec in batch]
-    pdf = slide_preview.render_slide_texts_to_pdf(ctx, slides, first.view, first.language.lower(), target.preamble_text,
+    pdf = slide_preview.render_slide_texts_to_pdf(ctx, slides, first.view, first.language.lower(), view_themes.preamble_for_view(target.preamble_text, first.view),
                                                   log=log, cancel=cancel, all_steps=first.options.all_steps,
                                                   workspace=renderer.store.work_dir if getattr(cancel, 'low_priority', False) else None)
     folders, built = [], {}
@@ -70,7 +70,7 @@ def build(service, batch: list, cancel=None, log=None) -> dict:
         texts = preview_raster_client.read_document(pdf, 'pdf', 1, ALL_PAGES)['texts']
         runs = slide_snapshot.batch_runs(texts, [spec.target.bare_id for _key, spec in batch])
         inputs = [Path(name) for name in json.loads(pdf.with_suffix('.inputs.json').read_text())]
-        captured = {spec.target.source_path: spec.revision.text + (spec.target.preamble_text or "")
+        captured = {spec.target.source_path: spec.revision.text + (spec.unit.preamble_text or "")
                     for _key, spec in batch}
         for (key, spec), pages in zip(batch, runs):
             preview_build.check_cancel(cancel)
