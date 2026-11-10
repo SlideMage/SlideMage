@@ -65,6 +65,12 @@ def discard_spare(root: Path, cache: Path | None = None) -> None:
             spare['output'].close()
 
 
+def _direct_env(env, recorded):
+    return {**{key: value for key, value in env.items()
+               if not re.match(r'^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)|'
+                               r'^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$', key)}, **recorded}
+
+
 def _start_spare(ctx, outdir, env, cancel):
     with _SPARE_LOCK:
         state = _FOCUSED.get(ctx.root)
@@ -77,12 +83,12 @@ def _start_spare(ctx, outdir, env, cancel):
             invocation = json.loads(direct.read_text(encoding='utf-8'))
         except (OSError, ValueError, StopIteration):
             return
-        # Keep latexmk's expanded command, replacing only its final source argument.
-        wait = r'\directlua{token.set_macro("smnext", io.read("l"))}\input{\smnext}'
-        quoted = subprocess.list2cmdline([wait]) if os.name == 'nt' else shlex.quote(wait)
-        command = re.sub(r'(?:"[^"]*"|[^\s]+)\s*$', lambda _: quoted, invocation['command'])
-        shell = ([os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/s', '/c'] if os.name == 'nt'
-                 else ['/bin/sh', '-c'])
+        source = re.search(r'(?:^|\s)("[^"]*"|[^\s]+)\s*$', invocation['command'])
+        if source is None or source[1] != invocation.get('source'):
+            return
+        wait = r"\directlua{token.set_macro('smnext', io.read('l'))}\input{\smnext}"
+        quoted = '"' + wait + '"' if os.name == 'nt' else shlex.quote(wait)
+        command = invocation['command'][:source.start(1)] + quoted
         try:
             output = tempfile.TemporaryFile(mode='w+t', encoding='utf-8', errors='replace')
         except OSError:
@@ -91,7 +97,8 @@ def _start_spare(ctx, outdir, env, cancel):
         try:
             inventory = search_inventory(ctx.root, compiler.build_env(ctx))
             proc = subprocess.Popen(
-                [*shell, command], cwd=invocation['cwd'], env=dict(env, **invocation['env']),
+                command if os.name == 'nt' else ['/bin/sh', '-c', command], shell=os.name == 'nt',
+                cwd=invocation['cwd'], env=_direct_env(env, invocation['env']),
                 stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT, text=True,
                 encoding='utf-8', errors='replace', **no_console_kwargs(),
                 **({'start_new_session': True} if os.name != 'nt' else {}))
@@ -347,8 +354,10 @@ push @{$hooks{'before_xlatex'}}, sub {
         my %env = map { $_ => $ENV{$_} } grep {
             /^(?:TEX|BIB|LUA|MIKTEX|FONTCONFIG)/ || /^(?:PATH|OSFONTDIR|VARTEXFONTS|SOURCE_DATE_EPOCH)$/
         } keys %ENV;
+        my $source = $quote.($Psource ? $$Psource : $texfile_name).$quote;
+        $source =~ s(/)(\\)g if ($^O eq 'MSWin32') && $MSWin_back_slash;
         if (open my $fh, '>', "${aux_dir1}${root_filename}.direct.json") {
-            print $fh JSON::PP->new->utf8->encode({command => $_[0], cwd => $cwd, env => \%env});
+            print $fh JSON::PP->new->utf8->encode({command => $_[0], source => $source, cwd => $cwd, env => \%env});
             close $fh;
         }
         return (0, 0);
@@ -628,8 +637,6 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
             auxiliaries = [outdir / (jobname + ext) for ext in
                            ('.aux', '.nav', '.toc', '.bbl', '.bcf', '.out', '.snm', '.ovl', '.top')]
             before = [path.read_bytes() if path.is_file() else None for path in auxiliaries]
-            shell = ([os.environ.get('COMSPEC', 'cmd.exe'), '/d', '/s', '/c'] if os.name == 'nt'
-                     else ['/bin/sh', '-c'])
             log('    (direct LuaLaTeX pass)')
             with stage('lualatex'):
                 try:
@@ -637,8 +644,9 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
                     if build is None:
                         discard_spare(ctx.root, outdir)
                         build = compiler.run_latexmk(
-                            [*shell, invocation['command']], jobname=jobname, outdir=outdir,
-                            cwd=Path(invocation['cwd']), env=dict(env, **invocation['env']), log=log,
+                            invocation['command'] if os.name == 'nt' else ['/bin/sh', '-c', invocation['command']],
+                            jobname=jobname, outdir=outdir,
+                            cwd=Path(invocation['cwd']), env=_direct_env(env, invocation['env']), log=log,
                             on_line=on_line, bufsize=-1, cancel=cancel)
                 except OSError:
                     build = None

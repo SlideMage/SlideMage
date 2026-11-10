@@ -429,7 +429,7 @@ class CancelToken:
 
 
 def run_streamed(
-    cmd: list[str], *, cwd: Path, env: dict, log: LogCallback,
+    cmd: list[str] | str, *, cwd: Path, env: dict, log: LogCallback,
     cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
     errors: Optional[str] = None, bufsize: int = 1,
 ) -> int:
@@ -439,13 +439,13 @@ def run_streamed(
     """
     if cancel is not None and cancel.is_set():
         return -1
-    diagnostics.event(_log, "process started", cmd=" ".join(str(part) for part in cmd), cwd=cwd)
+    diagnostics.event(_log, "process started", cmd=cmd if isinstance(cmd, str) else " ".join(str(part) for part in cmd), cwd=cwd)
     started = time.monotonic()
     returncode = None
     proc = None
     try:
         proc = subprocess.Popen(
-            cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            cmd, shell=isinstance(cmd, str), cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, errors=errors, bufsize=bufsize,
             **no_console_kwargs(),
             **({"start_new_session": True} if cancel is not None and os.name != "nt" else {}),
@@ -460,7 +460,7 @@ def run_streamed(
         returncode = proc.wait()
         return returncode
     finally:
-        diagnostics.event(_log, "process ended", program=cmd[0], exit=returncode,
+        diagnostics.event(_log, "process ended", program=cmd if isinstance(cmd, str) else cmd[0], exit=returncode,
                           seconds=round(time.monotonic() - started, 3))
         if cancel is not None and proc is not None:
             cancel._remove_process(proc)
@@ -494,7 +494,7 @@ class Build:
                 and not FATAL_ERROR_RE.search(self.log_text))
 
 
-def run_latexmk(cmd: list[str], *, jobname: str, outdir: Path, cwd: Path, env: dict, log: LogCallback,
+def run_latexmk(cmd: list[str] | str, *, jobname: str, outdir: Path, cwd: Path, env: dict, log: LogCallback,
                 cancel: Optional[CancelToken] = None, on_line: Optional[LogCallback] = None,
                 errors: Optional[str] = "replace", bufsize: int = 1) -> Build:
     """Stream a latexmk or direct TeX command, then read its outcome. Launch errors propagate."""

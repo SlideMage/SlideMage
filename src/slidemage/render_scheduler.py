@@ -89,8 +89,9 @@ class RenderScheduler:
                 if priority >= running.priority:
                     return running                      # already on its way, at least as urgent
                 # Never wait for a worse job, not even for the same key: stop it, run this one.
-                running.cancelled_for_requeue = True
-                running.cancel.request_stop()
+                if not running.cancel.is_set():
+                    running.cancelled_for_requeue = True
+                    running.cancel.request_stop()
                 job = Job(key, payload, priority, rank, group, next(self._seq))
                 self._queue[key] = job
                 self._cond.notify_all()
@@ -105,7 +106,7 @@ class RenderScheduler:
             else:
                 job = self._queue[key] = Job(key, payload, priority, rank, group, next(self._seq))
             for other in list(self._running.values()):
-                if priority < other.priority and not other.cancelled_for_requeue:
+                if priority < other.priority and not other.cancel.is_set():
                     other.cancelled_for_requeue = True
                     other.cancel.request_stop()
             self._cond.notify_all()
@@ -132,7 +133,7 @@ class RenderScheduler:
         stopped = 0
         with self._cond:
             for job in self._running.values():
-                if job.priority == priority and not job.cancelled_for_requeue:
+                if job.priority == priority and not job.cancel.is_set():
                     job.cancelled_for_requeue = True
                     # Not waiting for the kill: the caller is the GUI (focus, input), and this holds the queue's lock.
                     job.cancel.request_stop(wait=False)

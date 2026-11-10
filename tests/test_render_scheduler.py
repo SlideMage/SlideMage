@@ -110,6 +110,19 @@ def test_cancel_group_drops_queued_and_stops_running_jobs():
     assert [k for k, _ in s.ran] == ["other"]
 
 
+def test_interrupt_does_not_requeue_a_cancelled_group():
+    s = make()
+
+    def cancel_then_interrupt(job):
+        s.cancel_group(job.group)
+        assert s.interrupt(P_IDLE) == 0
+
+    s.box["during"] = {"obsolete": cancel_then_interrupt}
+    s.submit("obsolete", None, P_IDLE, group="other-views")
+    assert s.run_next()
+    assert s.pending() == 0 and not s.run_next() and not s.errors
+
+
 def test_a_failing_job_is_reported_once_and_not_repeated():
     s = make()
     s.box["fail"] = {"bad"}

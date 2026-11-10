@@ -637,8 +637,7 @@ class PreviewPane(Surface):
         if renderer is not None:
             renderer.scheduler.cancel_group(f"other:{path.resolve()}")
         if self._target is not None and path == self._target.source_path:
-            if self._batch_cancel is None:
-                self._batch_status = ''
+            self._invalidate()
             self._buffer_notice.start()
 
     def _poll_selection(self):

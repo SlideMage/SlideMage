@@ -576,6 +576,11 @@ def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, 
     assert ran == [one, two, one]
 
 
+def test_direct_environment_keeps_latexmk_deletions():
+    env = dict(TEXINPUTS='shadow', PATH='inherited', HOME='home')
+    assert preview_build._direct_env(env, dict(PATH='recorded')) == dict(PATH='recorded', HOME='home')
+
+
 def test_a_changed_aux_falls_back_to_latexmk(tmp_path, monkeypatch):
     monkeypatch.setattr(preview_build, 'DIRECT_LUALATEX', True)
     commands = []
@@ -620,7 +625,7 @@ def test_a_spare_is_used_once_and_a_preamble_change_discards_it(tmp_path, monkey
         pdf.write_bytes(b'%PDF fresh')
         log.write_text('Success')
         (outdir / (jobname + '.direct.json')).write_text(json.dumps(dict(
-            command=f'lualatex "{command[-1]}"', cwd=str(cwd), env=env)))
+            command=f'lualatex "{command[-1]}"', source=f'"{command[-1]}"', cwd=str(cwd), env=env)))
         return compiler.Build(0, pdf, log, 'Success', False)
 
     def popen(command, **kwargs):
