@@ -240,6 +240,14 @@
 \newcommand{\SMStandoutTextColor}{}                    % text of a [standout] frame (on \SMTitleBoxColor); empty: the theme's pale yellow fffff0
 \newcommand{\SMAlertTextColor}{SMLightOrange}          % \alert{} text; the theme's orange EB811B
 \newcommand{\SMProgressBarColor}{SMDeepYellowOrange}   % the optional progress bar (below); the theme's yellow FFCC00
+% Block title text: one role for all five kinds, and one per kind that follows it unless a template names it (the
+% default is the dark text the blocks always had). The fill of each kind stays its c_secondary_* colour; a template
+% that fills a title with a dark colour sets the text white, e.g. \renewcommand{\SMBlockTitleTextColor}{c_primary_white}.
+\newcommand{\SMBlockTitleTextColor}{c_primary_dark}           % title text of block (and of every kind below)
+\newcommand{\SMAlertedBlockTitleTextColor}{\SMBlockTitleTextColor}    % alertblock
+\newcommand{\SMExampleBlockTitleTextColor}{\SMBlockTitleTextColor}    % exampleblock
+\newcommand{\SMReferenceBlockTitleTextColor}{\SMBlockTitleTextColor}  % referenceblock
+\newcommand{\SMInfoBlockTitleTextColor}{\SMBlockTitleTextColor}       % infoblock
 
 % Optional colors a template may define; SlideMage_base derives each one from
 % the palette when the template leaves it undefined:
@@ -251,6 +259,184 @@
 %   SMCodeCommentColor     \SMCodeFile comments              (c_primary_gray)
 %   SMCodeBackgroundColor  \SMCodeFile panel                 (c_tertiary_gray)
 %   SMCodeTextColor        \SMCodeFile text                  (c_primary_dark)
+
+% ---------------------------------------------------------------------------
+% Colour modes and role colours (v0.16.0; docs/plans/theme-editor.md, section 3.8)
+% ---------------------------------------------------------------------------
+% A MODE is a colour scheme of a theme: other values for palette colours and for roles, and
+% nothing else (fonts, margins, bullets and footnote markers are the theme's design). The
+% framework knows no mode name. A theme declares its modes, the first being the base mode (the
+% colours the template sets directly), and may add data lines for the others:
+%
+%   \SMDeclareMode{light}{}                 % the base mode: first declared, no derivation
+%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | grey | colorblind | empty
+%   \SMDeclareMode{grey}{grey}
+%   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{colour}
+%   \SMSetColor{c_secondary_blue}{grey}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
+%
+% A line of another mode than the active one does nothing, so the lines need no \if. The
+% active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
+% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for a view's `theme:mode`);
+% `dark` when the deck defines \SMDarkMode; else the base mode. A mode that is not the base
+% starts from its derive preset, then the palette lines, then the role lines, so an explicit
+% line always wins:
+%   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
+%               link white, text on an accent fill black
+%   grey        every palette colour converted to its grey
+%   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
+% Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
+% sees the template's palette. In the base mode every role resolves to what it was before
+% modes existed: the PDFs do not change.
+%
+% PALETTE: c_true_black and c_true_white are physical colours the framework defines; no mode
+% changes them. A palette name keeps one meaning, a colour.
+%
+% ROLES: a colour name a slide uses to follow the theme and the mode (a palette name means
+% "this exact colour"). Role, colour name, and what it is in the base mode:
+%   text            c_text            c_primary_dark     body text, rules and lines on the canvas
+%   canvas          c_canvas          SMCanvasColor      the slide background (white unless the template sets it)
+%   card            c_card            SMCardBackgroundColor   fill of an SMCard
+%   line            c_line            SMCardBorderColor  border of an SMCard
+%   text_muted      c_text_muted      c_primary_gray     secondary text
+%   text_on_accent  c_text_on_accent  c_primary_dark     text on a coloured fill
+%   link            c_link            c_custom_gray      hyperlinks, buttons
+% Roles for parts of a slide (a colour the framework reads; no colour name for slides), role and what it is in the base mode:
+%   block_title_fill, alerted_block_title_fill, example_block_title_fill, reference_block_title_fill,
+%   info_block_title_fill    the five block kinds' title fills     c_secondary_violet, _red, _green, _orange, _blue
+%   block_body_fill          the fill of a block body (and SMProcess)   c_tertiary_gray
+%   block_body_text          text and bullets in a block body, SMProcess text   c_primary_dark
+%   link_underline           the rule under a link                  c_secondary_blue
+%   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
+% Roles that set a hook of the catalog above (no colour name for slides): title_fill
+% (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
+% alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
+% reference_block_title_text, info_block_title_text. A mode's line replaces the macro; without one it stays what
+% the template made it.
+\definecolor{c_true_black}{HTML}{000000}
+\definecolor{c_true_white}{HTML}{FFFFFF}
+\makeatletter
+\newcommand{\SM@palettelines}{}
+\newcommand{\SM@basemode}{}
+\newcommand{\SMDeclareMode}[2]{%
+	\ifx\SM@basemode\@empty\gdef\SM@basemode{#1}\fi
+	\expandafter\gdef\csname SM@modederive@#1\endcsname{#2}}
+\newcommand{\SM@activemode}{%
+	\ifdefined\SMModeOverride\SMModeOverride
+	\else\ifdefined\SMDarkMode dark\else\SM@basemode\fi\fi}
+% \SM@ifmode{<id>}{<true>}{<false>}: whether <id> is the active mode.
+\newcommand{\SM@ifmode}[3]{%
+	\edef\SM@tmpa{\SM@activemode}\edef\SM@tmpb{#1}%
+	\ifx\SM@tmpa\SM@tmpb #2\else #3\fi}
+\newcommand{\SMSetRole}[3]{\SM@ifmode{#2}{\expandafter\gdef\csname SM@role@#1\endcsname{#3}}{}}
+\newcommand{\SMSetColor}[4]{\SM@ifmode{#2}{\g@addto@macro\SM@palettelines{\definecolor{#1}{#3}{#4}}}{}}
+% The colours the roles resolve into, defined now so the names exist before the template and the
+% base resolve them for the active mode (\SM@applymode, called by \SMApplyColorRoles).
+\colorlet{c_text}{c_primary_dark}
+\colorlet{c_canvas}{white}
+\colorlet{c_card}{white}
+\colorlet{c_line}{c_primary_dark}
+\colorlet{c_text_muted}{c_primary_gray}
+\colorlet{c_text_on_accent}{c_primary_dark}
+\colorlet{c_link}{c_custom_gray}
+% Colours of parts of a slide (roles without a colour name for slides; v0.15.10): the framework reads these names.
+\colorlet{SMBlockTitleFill}{c_secondary_violet}
+\colorlet{SMAlertedBlockTitleFill}{c_secondary_red}
+\colorlet{SMExampleBlockTitleFill}{c_secondary_green}
+\colorlet{SMReferenceBlockTitleFill}{c_secondary_orange}
+\colorlet{SMInfoBlockTitleFill}{c_secondary_blue}
+\colorlet{SMBlockBodyFill}{c_tertiary_gray}
+\colorlet{SMBlockBodyText}{c_primary_dark}
+\colorlet{SMProcessFill}{c_tertiary_gray}
+\colorlet{SMLinkUnderline}{c_secondary_blue}
+% Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
+% then the roles (an explicit line, else the derived value, else the base mode's source).
+\newcommand{\SM@togray}[1]{%
+	\convertcolorspec{named}{#1}{gray}\SM@gray
+	\definecolor{#1}{gray}{\SM@gray}}
+\newcommand{\SM@preset@dark}{%
+	\gdef\SM@derived@canvas{c_primary_dark!83!white}%
+	\gdef\SM@derived@card{c_primary_dark!77!white}%
+	\gdef\SM@derived@line{c_true_white}%
+	\gdef\SM@derived@text{c_true_white}%
+	\expandafter\gdef\csname SM@derived@text_muted\endcsname{c_primary_gray!60!white}%
+	\expandafter\gdef\csname SM@derived@text_on_accent\endcsname{c_true_black}%
+	\gdef\SM@derived@link{c_true_white}}
+\newcommand{\SM@preset@grey}{%
+	\@for\SM@n:={c_primary_dark,c_primary_highlight,c_primary_gray,%
+		c_secondary_violet,c_tertiary_violet,c_secondary_blue,c_tertiary_blue,c_secondary_green,%
+		c_tertiary_green,c_secondary_red,c_tertiary_red,c_secondary_orange,c_tertiary_orange,%
+		c_secondary_yellow,c_tertiary_yellow,c_tertiary_gray,c_custom_gray,c_custom_red,%
+		c_custom_green,c_custom_brown,SMLightOrange,SMLightGreen,SMDeepYellowOrange,SMAnthracite}%
+		\do{\SM@togray\SM@n}}
+\newcommand{\SM@preset@colorblind}{%
+	\definecolor{c_secondary_blue}{HTML}{0072B2}\definecolor{c_secondary_green}{HTML}{009E73}%
+	\definecolor{c_secondary_red}{HTML}{D55E00}\definecolor{c_secondary_orange}{HTML}{E69F00}%
+	\definecolor{c_secondary_yellow}{HTML}{F0E442}\definecolor{c_secondary_violet}{HTML}{CC79A7}%
+	\@for\SM@n:={blue,green,red,orange,yellow,violet}\do{%
+		\colorlet{c_tertiary_\SM@n}{c_secondary_\SM@n!50!white}}}
+% \SM@rolecolour{<role>}{<colour name>}{<base source>}
+\newcommand{\SM@rolecolour}[3]{%
+	\ifcsname SM@role@#1\endcsname
+		\edef\SM@tmpa{\csname SM@role@#1\endcsname}%
+	\else\ifcsname SM@derived@#1\endcsname
+		\edef\SM@tmpa{\csname SM@derived@#1\endcsname}%
+	\else
+		\edef\SM@tmpa{#3}%
+	\fi\fi
+	\colorlet{#2}{\SM@tmpa}}
+% \SM@rolehook{<role>}{<hook macro>}: replaced by the mode's explicit line, otherwise untouched.
+\newcommand{\SM@rolehook}[2]{%
+	\ifcsname SM@role@#1\endcsname
+		\edef\SM@tmpa{\noexpand\renewcommand\noexpand#2{\csname SM@role@#1\endcsname}}\SM@tmpa
+	\fi}
+\newcommand{\SM@applymode}{%
+	\@ifundefinedcolor{SMCanvasColor}{\colorlet{SMCanvasColor}{white}}{}%
+	\@ifundefinedcolor{SMCardBackgroundColor}{\colorlet{SMCardBackgroundColor}{white}}{}%
+	\@ifundefinedcolor{SMCardBorderColor}{\colorlet{SMCardBorderColor}{c_primary_dark}}{}%
+	\SM@ifmode{\SM@basemode}{}{%
+		\edef\SM@tmpa{\SM@activemode}%
+		\ifcsname SM@modederive@\SM@tmpa\endcsname
+			\edef\SM@tmpa{\csname SM@modederive@\SM@tmpa\endcsname}%
+			\ifcsname SM@preset@\SM@tmpa\endcsname\csname SM@preset@\SM@tmpa\endcsname\fi
+		\fi}%
+	\SM@palettelines
+	\SM@rolecolour{text}{c_text}{c_primary_dark}%
+	\SM@rolecolour{canvas}{c_canvas}{SMCanvasColor}\colorlet{SMCanvasColor}{c_canvas}%
+	\SM@rolecolour{card}{c_card}{SMCardBackgroundColor}\colorlet{SMCardBackgroundColor}{c_card}%
+	\SM@rolecolour{line}{c_line}{SMCardBorderColor}\colorlet{SMCardBorderColor}{c_line}%
+	\SM@rolecolour{text_muted}{c_text_muted}{c_primary_gray}%
+	\SM@rolecolour{text_on_accent}{c_text_on_accent}{c_primary_dark}%
+	\SM@rolecolour{link}{c_link}{c_custom_gray}%
+	\SM@rolecolour{block_title_fill}{SMBlockTitleFill}{c_secondary_violet}%
+	\SM@rolecolour{alerted_block_title_fill}{SMAlertedBlockTitleFill}{c_secondary_red}%
+	\SM@rolecolour{example_block_title_fill}{SMExampleBlockTitleFill}{c_secondary_green}%
+	\SM@rolecolour{reference_block_title_fill}{SMReferenceBlockTitleFill}{c_secondary_orange}%
+	\SM@rolecolour{info_block_title_fill}{SMInfoBlockTitleFill}{c_secondary_blue}%
+	\SM@rolecolour{block_body_fill}{SMBlockBodyFill}{c_tertiary_gray}%
+	\SM@rolecolour{block_body_text}{SMBlockBodyText}{c_primary_dark}%
+	\SM@rolecolour{block_body_fill}{SMProcessFill}{c_tertiary_gray}%
+	\SM@rolecolour{link_underline}{SMLinkUnderline}{c_secondary_blue}%
+	\@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}%
+	\@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}%
+	\@ifundefinedcolor{SMCodeBackgroundColor}{\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}}{}%
+	\@ifundefinedcolor{SMCodeTextColor}{\colorlet{SMCodeTextColor}{c_primary_dark}}{}%
+	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
+	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
+	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
+	\SM@rolecolour{code_text}{SMCodeTextColor}{SMCodeTextColor}%
+	\SM@rolehook{title_fill}\SMTitleBoxColor
+	\SM@rolehook{title_text}\SMTitleTextColor
+	\SM@rolehook{footer_fill}\SMFooterBoxColorDefault
+	\SM@rolehook{footer_text}\SMFooterTextColor
+	\SM@rolehook{bullet}\SMBulletColor
+	\SM@rolehook{alert}\SMAlertTextColor
+	\SM@rolehook{progress}\SMProgressBarColor
+	\SM@rolehook{block_title_text}\SMBlockTitleTextColor
+	\SM@rolehook{alerted_block_title_text}\SMAlertedBlockTitleTextColor
+	\SM@rolehook{example_block_title_text}\SMExampleBlockTitleTextColor
+	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
+	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor}
+\makeatother
 
 % ---------------------------------------------------------------------------
 % Card headings (SlideMage v10.17.0)
