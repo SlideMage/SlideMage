@@ -3892,3 +3892,8 @@ v0.15.9 (2026-11-10, direct request: colour roles, first slice, the framework si
 
 NEW: A theme can have colour modes (dark, grey, colour-blind safe) described by data lines.
 - Not visible in the app yet: choosing a mode, and the migration of existing slides, are the next steps.
+
+v0.15.10 (2026-11-10, direct request: colour roles, second framework slice): More roles for the colour modes of v0.15.9. A theme can set, per mode, the fill of each of the five block kinds' titles (`block_title_fill`, `alerted_block_title_fill`, `example_block_title_fill`, `reference_block_title_fill`, `info_block_title_fill`), the fill of block bodies and SMProcess boxes (`block_body_fill`), the text and bullets in them (`block_body_text`), the rule under a link (`link_underline`), the four code colours (`code_keyword`, `code_comment`, `code_panel`, `code_text`) and the text colour of each block kind's title (`alerted_block_title_text`, `example_block_title_text`, `reference_block_title_text`, `info_block_title_text`). The framework now reads these (and `c_text` for the ink each frame starts with) where it used palette names, with the base mode's values equal to what they were: the PDFs of the manual and its sibling deck under the SlideMage and Greyscale templates are pixel-identical (tools/framework_regression.py, 873 pages), as is the manual under the Uni Graz theme. Still no change to what any deck looks like.
+
+NEW: More parts of a slide can have their own colour per mode.
+- Not visible in the app yet.

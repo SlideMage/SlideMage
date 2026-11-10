@@ -482,6 +482,14 @@ resolved by `\SMApplyColorRoles` (which calls `\SM@applymode`) and is read by th
   with `compat.py`; removing `\SMDarkMode` and the flip of `c_primary_dark`; the themes' releases. In a non-base mode a slide that
   uses `c_primary_dark` as ink does not turn light until it is migrated to `c_text`.
 
+**Built: CR slice F2 (v0.15.10, branch `feat/color-roles-framework-2`, on top of F1).** More roles, same rules (additive, base
+mode identical: 873 pages of the manual set, 292 of the manual under Uni Graz, light and with `\SMDarkMode`): the five block title
+fills (`block_title_fill`, `alerted_`, `example_`, `reference_`, `info_block_title_fill`), `block_body_fill` (also SMProcess),
+`block_body_text` (text and bullets in a block, SMProcess text), `link_underline`, `code_keyword`, `code_comment`, `code_panel`,
+`code_text`, and the per-kind title text hooks. The framework's frame-start ink is `c_text`. Left for F3: highlightframe and
+standout fills, the quote box, table rules and the other `c_primary_dark` uses inside the framework (they are unmapped
+hard-coded names; each is a decision about which role it is).
+
 ## 4. Staging and what each stage needs
 
 | Stage | Contents | Depends on |

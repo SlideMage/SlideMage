@@ -300,9 +300,17 @@
 %   text_muted      c_text_muted      c_primary_gray     secondary text
 %   text_on_accent  c_text_on_accent  c_primary_dark     text on a coloured fill
 %   link            c_link            c_custom_gray      hyperlinks, buttons
+% Roles for parts of a slide (a colour the framework reads; no colour name for slides), role and what it is in the base mode:
+%   block_title_fill, alerted_block_title_fill, example_block_title_fill, reference_block_title_fill,
+%   info_block_title_fill    the five block kinds' title fills     c_secondary_violet, _red, _green, _orange, _blue
+%   block_body_fill          the fill of a block body (and SMProcess)   c_tertiary_gray
+%   block_body_text          text and bullets in a block body, SMProcess text   c_primary_dark
+%   link_underline           the rule under a link                  c_secondary_blue
+%   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
 % Roles that set a hook of the catalog above (no colour name for slides): title_fill
 % (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
-% alert, progress, block_title_text. A mode's line replaces the macro; without one it stays what
+% alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
+% reference_block_title_text, info_block_title_text. A mode's line replaces the macro; without one it stays what
 % the template made it.
 \definecolor{c_true_black}{HTML}{000000}
 \definecolor{c_true_white}{HTML}{FFFFFF}
@@ -330,6 +338,16 @@
 \colorlet{c_text_muted}{c_primary_gray}
 \colorlet{c_text_on_accent}{c_primary_dark}
 \colorlet{c_link}{c_custom_gray}
+% Colours of parts of a slide (roles without a colour name for slides; v0.15.10): the framework reads these names.
+\colorlet{SMBlockTitleFill}{c_secondary_violet}
+\colorlet{SMAlertedBlockTitleFill}{c_secondary_red}
+\colorlet{SMExampleBlockTitleFill}{c_secondary_green}
+\colorlet{SMReferenceBlockTitleFill}{c_secondary_orange}
+\colorlet{SMInfoBlockTitleFill}{c_secondary_blue}
+\colorlet{SMBlockBodyFill}{c_tertiary_gray}
+\colorlet{SMBlockBodyText}{c_primary_dark}
+\colorlet{SMProcessFill}{c_tertiary_gray}
+\colorlet{SMLinkUnderline}{c_secondary_blue}
 % Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
 % then the roles (an explicit line, else the derived value, else the base mode's source).
 \newcommand{\SM@togray}[1]{%
@@ -389,6 +407,23 @@
 	\SM@rolecolour{text_muted}{c_text_muted}{c_primary_gray}%
 	\SM@rolecolour{text_on_accent}{c_text_on_accent}{c_primary_dark}%
 	\SM@rolecolour{link}{c_link}{c_custom_gray}%
+	\SM@rolecolour{block_title_fill}{SMBlockTitleFill}{c_secondary_violet}%
+	\SM@rolecolour{alerted_block_title_fill}{SMAlertedBlockTitleFill}{c_secondary_red}%
+	\SM@rolecolour{example_block_title_fill}{SMExampleBlockTitleFill}{c_secondary_green}%
+	\SM@rolecolour{reference_block_title_fill}{SMReferenceBlockTitleFill}{c_secondary_orange}%
+	\SM@rolecolour{info_block_title_fill}{SMInfoBlockTitleFill}{c_secondary_blue}%
+	\SM@rolecolour{block_body_fill}{SMBlockBodyFill}{c_tertiary_gray}%
+	\SM@rolecolour{block_body_text}{SMBlockBodyText}{c_primary_dark}%
+	\SM@rolecolour{block_body_fill}{SMProcessFill}{c_tertiary_gray}%
+	\SM@rolecolour{link_underline}{SMLinkUnderline}{c_secondary_blue}%
+	\@ifundefinedcolor{SMCodeKeywordColor}{\colorlet{SMCodeKeywordColor}{c_primary_highlight}}{}%
+	\@ifundefinedcolor{SMCodeCommentColor}{\colorlet{SMCodeCommentColor}{c_primary_gray}}{}%
+	\@ifundefinedcolor{SMCodeBackgroundColor}{\colorlet{SMCodeBackgroundColor}{c_tertiary_gray}}{}%
+	\@ifundefinedcolor{SMCodeTextColor}{\colorlet{SMCodeTextColor}{c_primary_dark}}{}%
+	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
+	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
+	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
+	\SM@rolecolour{code_text}{SMCodeTextColor}{SMCodeTextColor}%
 	\SM@rolehook{title_fill}\SMTitleBoxColor
 	\SM@rolehook{title_text}\SMTitleTextColor
 	\SM@rolehook{footer_fill}\SMFooterBoxColorDefault
@@ -396,7 +431,11 @@
 	\SM@rolehook{bullet}\SMBulletColor
 	\SM@rolehook{alert}\SMAlertTextColor
 	\SM@rolehook{progress}\SMProgressBarColor
-	\SM@rolehook{block_title_text}\SMBlockTitleTextColor}
+	\SM@rolehook{block_title_text}\SMBlockTitleTextColor
+	\SM@rolehook{alerted_block_title_text}\SMAlertedBlockTitleTextColor
+	\SM@rolehook{example_block_title_text}\SMExampleBlockTitleTextColor
+	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
+	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor}
 \makeatother
 
 % ---------------------------------------------------------------------------

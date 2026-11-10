@@ -25,6 +25,8 @@ TEMPLATE = r"""\input{SlideMage_setup}
 \SMDeclareMode{mine}{dark}
 \SMSetRole{canvas}{mine}{c_secondary_violet!30!black}
 \SMSetRole{text}{mine}{c_secondary_yellow}
+\SMSetRole{block_body_fill}{mine}{red}
+\SMSetRole{alerted_block_title_fill}{mine}{blue}
 \input{SlideMage_base}
 """
 DECK = r"""\documentclass[aspectratio=169]{beamer}
@@ -93,3 +95,13 @@ def test_the_grey_preset_leaves_no_colour(tmp_path):
 def test_the_colorblind_preset_changes_the_alert_block(tmp_path):
     base, cb = compile_mode(tmp_path, None), compile_mode(tmp_path, "cb")
     assert base.samples != cb.samples
+
+
+def count(pix, rgb) -> int:
+    return sum(1 for x in range(0, pix.width, 3) for y in range(0, pix.height, 3) if pix.pixel(x, y)[:3] == rgb)
+
+
+def test_block_roles_set_the_fill_of_a_block_body_and_title(tmp_path):
+    mine, dark = compile_mode(tmp_path, "mine"), compile_mode(tmp_path, "dark")
+    assert count(mine, (255, 0, 0)) > 50 and count(dark, (255, 0, 0)) == 0   # block_body_fill
+    assert count(mine, (0, 0, 255)) > 50 and count(dark, (0, 0, 255)) == 0   # alerted_block_title_fill

@@ -223,19 +223,19 @@
     \__SM_apply_color_roles:
   }
 
-\setbeamercolor{block~title}{ bg=c_secondary_violet, fg=\SMBlockTitleTextColor }
-\setbeamercolor{block~body}{ bg=c_tertiary_gray, fg=c_primary_dark }
+\setbeamercolor{block~title}{ bg=SMBlockTitleFill, fg=\SMBlockTitleTextColor }
+\setbeamercolor{block~body}{ bg=SMBlockBodyFill, fg=SMBlockBodyText }
 \setbeamercolor{alerted~text}{
   fg=SMColorAlert
 }
-\setbeamercolor{block~title~alerted}{ bg=c_secondary_red, fg=\SMAlertedBlockTitleTextColor }
-\setbeamercolor{block~body~alerted}{ bg=c_tertiary_gray, fg=c_primary_dark }
-\setbeamercolor{block~title~example}{ bg=c_secondary_green, fg=\SMExampleBlockTitleTextColor }
-\setbeamercolor{block~body~example}{ bg=c_tertiary_gray, fg=c_primary_dark }
-\setbeamercolor{block~title~reference}{ bg=c_secondary_orange, fg=\SMReferenceBlockTitleTextColor }
-\setbeamercolor{block~body~reference}{ bg=c_tertiary_gray, fg=c_primary_dark }
-\setbeamercolor{block~title~info}{ bg=c_secondary_blue, fg=\SMInfoBlockTitleTextColor }
-\setbeamercolor{block~body~info}{ bg=c_tertiary_gray, fg=c_primary_dark }
+\setbeamercolor{block~title~alerted}{ bg=SMAlertedBlockTitleFill, fg=\SMAlertedBlockTitleTextColor }
+\setbeamercolor{block~body~alerted}{ bg=SMBlockBodyFill, fg=SMBlockBodyText }
+\setbeamercolor{block~title~example}{ bg=SMExampleBlockTitleFill, fg=\SMExampleBlockTitleTextColor }
+\setbeamercolor{block~body~example}{ bg=SMBlockBodyFill, fg=SMBlockBodyText }
+\setbeamercolor{block~title~reference}{ bg=SMReferenceBlockTitleFill, fg=\SMReferenceBlockTitleTextColor }
+\setbeamercolor{block~body~reference}{ bg=SMBlockBodyFill, fg=SMBlockBodyText }
+\setbeamercolor{block~title~info}{ bg=SMInfoBlockTitleFill, fg=\SMInfoBlockTitleTextColor }
+\setbeamercolor{block~body~info}{ bg=SMBlockBodyFill, fg=SMBlockBodyText }
 
 \setbeamercolor{structure}{use=normal~text, fg=normal~text.fg}
 \setbeamercolor{titlelike}{use=normal~text, parent=normal~text}
@@ -2350,7 +2350,7 @@ fg=normal~text.fg
 % the frame's ordinary itemize bullets outside the block), so calling this
 % once per block-begin template is enough -- no matching "reset" call is
 % needed at block-end.
-\newcommand{\SMBulletDotBlack}{\SMBulletSymbol{c_primary_dark}}
+\newcommand{\SMBulletDotBlack}{\SMBulletSymbol{SMBlockBodyText}}
 \newcommand{\SMSetBlockBullets}{%
 	\setbeamertemplate{itemize item}{\SMBulletDotBlack}%
 	\setbeamertemplate{itemize subitem}{\SMBulletDotBlack}%
