@@ -1012,3 +1012,24 @@ def test_a_scoped_render_stays_temporary(pane, tmp_path, monkeypatch, qapp):
     assert renderer.store.count() == 0 and view._record is None
     assert view._page.pixmap is not None and view._adhoc_spec.options.mode == 'region'
     assert job.pdf is None
+
+
+def test_the_poll_recheck_of_an_unchanged_slide_keeps_its_page_and_note(pane, qapp):
+    from PySide6.QtGui import QPixmap
+
+    view, target, path = pane
+    view._remember((target.key, view.state.view, view.language), QPixmap(8, 8), None,
+                   preview_view._mtime(path), 'BODY')
+
+    def settled():
+        view._image(target)
+        deadline = time.monotonic() + 10
+        while 'page' in view._lookups and time.monotonic() < deadline:
+            qapp.processEvents()
+        return view._image(target)[2]
+
+    view.show()
+    note = settled()
+    assert note.startswith('Temporary preview')
+    view._poll_selection()
+    assert view._image(target)[2] == note

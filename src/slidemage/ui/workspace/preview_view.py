@@ -690,7 +690,7 @@ class PreviewPane(Surface):
                 return state, record, hashlib.sha256(data).hexdigest() if data else None, image, (pages, step, step_image)
 
             self._look_up('page', ident, select, lambda found: self._page_found(ident, keep, found))
-        if self._stored is not None and self._stored[0] == ident and not self._checking():
+        if self._stored is not None and self._stored[0] == ident:
             _, pixmap, _, state, record = self._stored
             if (state != 'current' and adhoc_here and self._adhoc_text == text
                     and (pixmap is None or (self._adhoc_spec is not None and self._adhoc_spec.target.needs_context))):
