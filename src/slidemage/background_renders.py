@@ -321,11 +321,14 @@ class BackgroundRenderer:
             return IN_USE
         return self.progress.paused_because
 
-    def user_active(self) -> None:
+    def user_active(self, scroll: bool = False) -> None:
         """The user did something: no new background job starts for a while. In front of the window (the only place
-        input reaches) the running ones stop too, so the app answers at once."""
+        input reaches) the running ones stop too, so the app answers at once. A wheel turn (scroll) also stops them
+        when another program has the focus."""
         self.gate.note_input()
-        if self.gate.in_front and not self.gate.forced():
+        if scroll:
+            self.gate.note_scroll()
+        if (self.gate.in_front or scroll) and not self.gate.forced():
             stopped = self.scheduler.interrupt(P_IDLE)
             if stopped:
                 self.trace(f"input: stopped {stopped}")

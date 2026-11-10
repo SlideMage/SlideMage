@@ -58,6 +58,7 @@ class IdleGate:
         self.in_front: Optional[bool] = None    # the window has the focus; None: not reported (no window)
         self.presenting: Callable[[], bool] = lambda: False
         self.left_at = clock()
+        self.last_scroll: Optional[float] = None    # the last wheel turn over the window (note_scroll)
 
     def note_focus(self, active: bool) -> None:
         """SlideMage's window got (True) or lost (False) the focus."""
@@ -70,9 +71,13 @@ class IdleGate:
     def in_use(self) -> bool:
         """The window is in front and was used in the last IN_FRONT_IDLE seconds, or lost the focus a moment ago
         (no "Render now" in effect)."""
-        if self.in_front is None or self.forced():
+        if self.forced():
             return False
         now = self._clock()
+        if self.last_scroll is not None and now - self.last_scroll < LEAVE_GRACE:
+            return True                          # scrolling the slides from behind another program's window
+        if self.in_front is None:
+            return False
         if self.in_front:
             return now - self.last_input < IN_FRONT_IDLE
         return now - self.left_at < LEAVE_GRACE
@@ -83,6 +88,10 @@ class IdleGate:
 
     def note_input(self) -> None:
         self.last_input = self._clock()
+
+    def note_scroll(self) -> None:
+        """A wheel turn over the window while another program has the focus: no job starts for LEAVE_GRACE."""
+        self.last_scroll = self._clock()
 
     def sweeping(self) -> bool:
         """Rendering is under way: a job started less than SWEEP_SECONDS ago."""
