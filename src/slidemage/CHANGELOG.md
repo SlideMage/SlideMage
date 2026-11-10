@@ -3854,3 +3854,8 @@ v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking
 
 NEW: A steadier Preview.
 - The Preview no longer flickers to "Checking…" every few seconds while a slide is open.
+
+v0.15.3 (2026-11-10, direct report: while typing in the source, the Preview went blank and said "No preview"): A buffer that differs from the saved file has no stored render, and the render store's lookup says so (missing). Since v0.15.0 the Preview then showed nothing. It now keeps the last page of the slide in this view and language (the latest buffer render, else the page held for display) with a "Source changed" label on its top-right corner (PageView.badge) and the same words in the status line with Render; before v0.15.0 it said "Older than the editor buffer" in the status line only.
+
+NEW: The Preview stays visible while you type.
+- The last page stays, labelled "Source changed", until the new one is rendered.

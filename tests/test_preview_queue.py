@@ -1033,3 +1033,21 @@ def test_the_poll_recheck_of_an_unchanged_slide_keeps_its_page_and_note(pane, qa
     assert note.startswith('Temporary preview')
     view._poll_selection()
     assert view._image(target)[2] == note
+
+
+def test_typing_keeps_the_last_page_marked_as_older(pane, qapp):
+    from PySide6.QtGui import QPixmap
+
+    view, target, path = pane
+    page = QPixmap(8, 8)
+    view._pixmaps.put((target.key, view.state.view, view.language), page, preview_view._mtime(path),
+                      preview_view.text_sha256('BODY'), 'digest')
+    view.buffer[0] = 'BODY typed'
+    view._image(target)
+    deadline = time.monotonic() + 10
+    while 'page' in view._lookups and time.monotonic() < deadline:
+        qapp.processEvents()
+    shown, current, note = view._image(target)
+    assert shown.cacheKey() == page.cacheKey() and not current and note == preview_view.SOURCE_CHANGED
+    view._refresh()
+    assert view._page.badge == preview_view.SOURCE_CHANGED

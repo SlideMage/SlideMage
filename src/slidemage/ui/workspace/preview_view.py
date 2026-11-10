@@ -36,7 +36,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRectF, QSize, Qt, Signal, QTimer
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QLabel, QMessageBox, QVBoxLayout, QWidget
 
@@ -79,6 +79,7 @@ PRELOAD_PAUSE = 0.01     # seconds the read-ahead worker rests before each store
 PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is asked again
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
 LOADING = "Loading…"
+SOURCE_CHANGED = "Source changed"   # the page shows an older text: said on the page and in the status
 SCOPES = (("slide", "Whole slide"), ("region", "Selection as frame"), ("element", "Selection as element"))
 # Menu keys.
 BUFFER, OVERLAY, PRESENTER, TRANSCRIPT, OPEN_PDF = "buffer", "overlay", "presenter", "transcript", "open_pdf"
@@ -321,12 +322,13 @@ class PageView(QWidget):
         self._scaled: Optional[tuple[QSize, QPixmap]] = None    # the pixmap at the page's size: not rescaled per paint
         self.message = ""
         self.dimmed = False     # the page of the slide shown before, kept faint while the new one loads
+        self.badge = ""         # a short note drawn on the page's top-right corner
         self.setMinimumSize(320, 180)
         self.render_button = Button("Render now", "primary", self)
         self.render_button.hide()
 
-    def show_image(self, pixmap: QPixmap) -> None:
-        self.pixmap, self.message, self._scaled, self.dimmed = pixmap, "", None, False
+    def show_image(self, pixmap: QPixmap, badge: str = "") -> None:
+        self.pixmap, self.message, self._scaled, self.dimmed, self.badge = pixmap, "", None, False, badge
         self.render_button.hide()
         self.update()
 
@@ -396,6 +398,14 @@ class PageView(QWidget):
                 painter.setOpacity(0.35)
             painter.drawPixmap(page, scaled, QRectF(scaled.rect()))
             painter.setOpacity(1.0)
+            if self.badge:
+                metrics = painter.fontMetrics()
+                box = QRectF(0, 0, metrics.horizontalAdvance(self.badge) + 16, metrics.height() + 8)
+                box.moveTopRight(page.topRight() + QPointF(-8, 8))
+                painter.setBrush(QColor(tokens.warning_solid))
+                painter.drawRoundedRect(box, RADIUS_SM, RADIUS_SM)
+                painter.setPen(QColor(tokens.on_solid))
+                painter.drawText(box, Qt.AlignmentFlag.AlignCenter, self.badge)
         elif self.message:
             painter.setPen(QColor(tokens.text))
             painter.drawText(page.adjusted(24, 24, -24, -24).translated(0, -18),
@@ -700,7 +710,10 @@ class PreviewPane(Surface):
                 note = {'current': '', 'previous': 'Previous render; render to verify current source and settings.',
                         'reference': 'Instructor reference; not verified for this deck, view or reveal steps.'}[state]
                 return pixmap, state == 'current', note
-            return None
+            # Nothing stored shows this text (typing): keep the last page of this slide, marked as older
+            held = self._pixmaps.get(key)
+            older = self._adhoc[1] if adhoc_here else held.pixmap if held is not None else None
+            return (older, False, SOURCE_CHANGED) if older is not None else None
         held = self._pixmaps.get(key)
         if held is not None and (held.mtime, held.content_hash) == (mtime, text_hash):
             return held.pixmap, False, CHECKING
@@ -1024,7 +1037,7 @@ class PreviewPane(Surface):
                 if not busy_here:
                     self._render_context_slide(target)
             else:
-                self._page.show_image(found[0])
+                self._page.show_image(found[0], SOURCE_CHANGED if found[2] == SOURCE_CHANGED else "")
                 if found[2]:
                     status, tone, icon, can_render = found[2], "info" if found[1] else "warning", "edit_note", not found[1]
                 elif not found[1]:
