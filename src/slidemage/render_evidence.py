@@ -137,6 +137,16 @@ def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:
     return tuple(dict.fromkeys(path.absolute() for path in roots))
 
 
+BUNDLED = '<bundled framework>'
+
+
+def _label(folder) -> str:
+    """A search folder as evidence. SlideMage's own framework is named, not located: a one-file build unpacks it into
+    a new temporary folder at every start, and a moved install would otherwise make every render stale."""
+    bundled = project.template_dir('latex')
+    return BUNDLED if bundled is not None and Path(folder).absolute() == bundled.absolute() else str(folder)
+
+
 def search_state(project_root: Path, env: dict) -> dict:
     """Inventory search candidates for the precompiled format."""
     inventories = {}
@@ -178,7 +188,8 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
     conservative, stems = {}, {}
     project_root = project_root.absolute()
     for root in search_roots(project_root, env):
-        names = conservative[str(root)] = []
+        label = _label(root)
+        names = conservative[label] = []
         pending = [root]
         while pending:
             directory = pending.pop()
@@ -187,7 +198,7 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             except FileNotFoundError:
                 if directory != root:
                     raise
-                conservative[str(root)] = None
+                conservative[label] = None
                 continue
             with _INVENTORY_LOCK:
                 known = _INVENTORY_DIRS.get(directory)
@@ -214,7 +225,7 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
                         and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}):
                     stems.setdefault(path.stem, set()).add(str(path))
                 else:
-                    names.append(str(path))
+                    names.append(path.relative_to(root).as_posix())
         names.sort()
     return {'conservative': digest(conservative),
             'stems': {stem: sorted(paths) for stem, paths in stems.items()}}
@@ -248,6 +259,8 @@ def configuration_state(project_root: Path, env: dict) -> dict:
         ('TEX', 'LUA', 'BIB', 'BST', 'FONTCONFIG', 'LATEXMK', 'MIKTEX')) or name in
         ('SLIDEMAGE_LATEX', 'SOURCE_DATE_EPOCH', 'FORCE_SOURCE_DATE', 'OSFONTDIR',
          'VARTEXFONTS', 'SLIDEMAGE_PREVIEW_FORMAT')}
+    if 'SLIDEMAGE_LATEX' in relevant:
+        relevant['SLIDEMAGE_LATEX'] = _label(relevant['SLIDEMAGE_LATEX'])
     return {'environment': relevant, 'tools': tools, 'rc': input_state(rc)}
 
 

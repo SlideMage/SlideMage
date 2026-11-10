@@ -48,7 +48,7 @@ PDF_MOVE_RETRY_INTERVAL_SECONDS = 10.0
 PDF_MOVE_RETRY_TOTAL_SECONDS = 15 * 60.0
 
 from . import app_settings, appendix_toc, compile_log, compile_passes, compile_records, languages, project, slide_templates
-from . import citations, diagnostics, render_evidence, slide_versioning, themes
+from . import citations, diagnostics, render_evidence, slide_versioning, themes, view_themes
 from .deck_editor import VIEWS
 from .deck_groups import DEFAULT_GROUPS, DeckGroup, switcher_order
 from .deck_scan import DOCUMENT_END_RE, Chapter, Deck
@@ -657,6 +657,10 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None)
                                    if job.resolve_translations else (job.deck, []))
     resolved = resolved_deck.text
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
+    # Themes per view (view_themes): this view's template and mode, which need the inlined preamble.
+    view_preamble = view_themes.preamble_for_view(preamble, job.version or "instructor")
+    themed = view_preamble != preamble
+    preamble = view_preamble
     language_lines = deck_language.language_lines(ctx, language if job.language else None, deck=language)
     if language_lines and preamble:
         preamble += "\n" + language_lines
@@ -678,13 +682,13 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None)
         body = resolved[job.deck.preamble_end :]
         end_match = DOCUMENT_END_RE.search(body)
         body_without_end = body[: end_match.start()] if end_match else body
-        template = slide_templates.detect_template(job.deck.preamble_text)
+        template = slide_templates.detect_template(preamble)
         lines.append(preamble)
         lines.append(body_without_end)
         lines.append(appendix_toc.generate_appendix_tex(
             ctx, resolved_deck, template, job.version or "instructor", resolver=resolver, language=language))
         lines.append("\\end{document}")
-    elif language_lines or resolved != job.deck.text:
+    elif language_lines or themed or resolved != job.deck.text:
         lines.append(preamble)
         lines.append(resolved[job.deck.preamble_end:])
     else:

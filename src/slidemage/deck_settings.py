@@ -62,6 +62,8 @@ class DeckSettings:
     # block, deck = "instructor deck" etc.)
     footer_hide: tuple[str, ...] = ()
     dark_mode: bool = False
+    # themes per view (view_themes): {view: (template key, mode)}; a view without an entry uses the deck's own
+    view_themes: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def set_open_pdf(text: str, choice: str) -> str:
@@ -132,6 +134,7 @@ def from_form(
     original: DeckSettings, *, template: str, language: str, footer_text: str,
     output_folders: dict[str | None, str], appendix_toc: bool, open_pdf: str,
     footer_hide: tuple[str, ...] = (), dark_mode: bool = False,
+    view_themes: dict[str, tuple[str, str]] | None = None,
 ) -> DeckSettings:
     """The settings a form of the sheet holds, checked: an output path may not hold LaTeX specials. A path left as it was in
     `original` stays byte for byte, whatever its slashes; an empty one is no entry."""
@@ -145,7 +148,8 @@ def from_form(
         template=template, language=language, footer_text=footer_text,
         output_folders=folders, appendix_toc=appendix_toc, open_pdf=open_pdf,
         footer_hide=tuple(e for e in FOOTER_ELEMENTS if e in footer_hide),
-        dark_mode=dark_mode)
+        dark_mode=dark_mode,
+        view_themes=dict(original.view_themes if view_themes is None else view_themes))
 
 
 def template_supports_dark_mode(root: Path, key: str) -> bool:
@@ -175,6 +179,8 @@ def read_settings(text: str) -> DeckSettings:
     template = _live(text, TEMPLATE_INPUT_RE)
     if template:
         settings.template = template[0].group(1)
+    from . import view_themes
+    settings.view_themes = view_themes.parse(text)
     settings.dark_mode = any(
         not template or m.end() <= template[0].start() for m in _live(text, DARK_MODE_RE))
     for match in _live(text, LANGUAGE_RE):
@@ -308,6 +314,9 @@ def apply_settings(text: str, old: DeckSettings, new: DeckSettings, deck_name: s
         text = set_template(text, new.template)
     if new.dark_mode != old.dark_mode:
         text = set_dark_mode(text, new.dark_mode)
+    if new.view_themes != old.view_themes:
+        from . import view_themes
+        text = view_themes.set_entries(text, new.view_themes)
     if new.language != old.language:
         text = set_language(text, new.language)
     if new.footer_text != old.footer_text:

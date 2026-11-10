@@ -1080,3 +1080,28 @@ def test_saving_the_captured_text_is_a_store_hit_without_tex(project, store, ras
     assert saved.metrics['cache_hit'] and len(builds) == 1
     assert render_unit(r, unit) == key
     r.stop()
+
+
+def test_a_render_stays_current_when_the_bundled_framework_moves(project, store, raster, tmp_path, monkeypatch):
+    # a one-file build unpacks the framework into a new temporary folder at every start
+    from slidemage import project as projects
+
+    monkeypatch.delenv("SLIDEMAGE_LATEX")
+    first, second = tmp_path / "_MEI1" / "latex", tmp_path / "_MEI2" / "latex"
+    shutil.copytree(projects.template_dir("latex"), first)
+    monkeypatch.setattr(projects, "template_dir", lambda name: first)
+
+    class TeX(FakeTeX):
+        def __call__(self, unit, cancel):
+            pdf = super().__call__(unit, cancel)
+            pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path),
+                                                                   str(first / "SlideMage_base.tex")]))
+            return pdf
+
+    r = make(project, store, raster, tex=TeX(project))
+    unit = batch_units(project, r, 1)[0]
+    render_unit(r, unit)
+    shutil.move(first, second)
+    monkeypatch.setattr(projects, "template_dir", lambda name: second)
+    assert r.resolver.lookup(unit, strict=True).usable
+

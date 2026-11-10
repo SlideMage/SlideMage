@@ -3855,7 +3855,30 @@ v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking
 NEW: A steadier Preview.
 - The Preview no longer flickers to "Checking…" every few seconds while a slide is open.
 
-v0.15.6 (2026-11-10, direct report: after a change on the PDF output tab of Deck settings, every slide of the deck said "Previous render"): The render key and the Preview's target key hashed the deck's preamble as it is written, and that tab writes \deckoutputfolder lines and the "%% SlideMage open PDF:" comment into it. Both keys now hash it without the lines only SlideMage reads (preview_target.preamble_sha): live \deckoutputfolder and \decktags calls, which the framework defines as no-ops, and the open-PDF comment; a line that also has TeX on it is kept whole. A deck that already had such lines has its slides rendered once more.
+v0.15.3 (2026-11-10, direct request: stage C0 of the theme editor plan, docs/plans/theme-editor.md section 3.7): A deck can use another theme, and dark or not, for each of its views, for example dark for the instructor view and light for the handouts. Deck settings -> General has a "Theme per view" table (instructor, during course, after course; "Same as the deck" by default); it is written into the deck as one comment line, `% SlideMage view themes: instructor=uni-graz:dark, after-course=uni-graz`, which only SlideMage reads, so the deck stays valid TeX and a compile outside the app uses the deck's own template. The compile wrapper inlines the preamble of the view, and the Preview, the background renders and the batch renders use the template and the dark switch of their view; their keys hold them, so views with different themes never share a render. Installing or editing a theme re-renders the decks that use it in any view. The toolbar colours follow the view shown. A deck without the line, and a view without an entry, behave exactly as before.
+
+NEW: One deck, a theme for each view.
+- Deck settings -> General -> "Theme per view": pick a theme and Dark for each view.
+- The Preview, the PDFs and the colour menu follow the view's theme.
+
+v0.15.4 (2026-11-10, direct report: while typing in the source, the Preview went blank and said "No preview"): A buffer that differs from the saved file has no stored render, and the render store's lookup says so (missing). Since v0.15.0 the Preview then showed nothing. It now keeps the last page of the slide in this view and language (the latest buffer render, else the page held for display) with a "Source changed" label on its top-right corner (PageView.badge) and the same words in the status line with Render; before v0.15.0 it said "Older than the editor buffer" in the status line only.
+
+NEW: The Preview stays visible while you type.
+- The last page stays, labelled "Source changed", until the new one is rendered.
+
+v0.15.5 (2026-11-10, direct report and Windows test of develop v0.15.2: the Preview flickered every few seconds, the step bar's "step 3 of 3" turned into "Counting…", and a slide that needs its deck had its steps rendered again every 5-10 seconds, also as a neighbour of the slide on show, holding up previews and the deck compile): Since v0.15.0 the 5-second re-check emptied the saved step lists. It now asks the store again while the list stays on show, replaces it only when the pages differ and drops it only when the pages came from the store and are no longer current there; steps rendered in this session stay (a slide that needs its deck never has standalone steps stored, which made the loop). A saved step list follows the file's mtime again, so a saved edit counts the steps anew. A sectionframe no longer counts as needing its deck (deck_context, the "section" reason): it takes its title from its argument and reads no section data, yet every section slide showed "Rendered without the deck" and was typeset in the deck's context.
+
+NEW: A steadier step bar.
+- The step bar and the page of the picked step no longer flicker every few seconds.
+- Slides that need their deck no longer have their steps rendered again and again in the background.
+- Section slides no longer say "Rendered without the deck".
+
+v0.15.6 (2026-11-10, every slide rendered again after SlideMage started from another folder): A render's evidence named the framework SlideMage bundles by its absolute path: $SLIDEMAGE_LATEX in the configuration of the fast key, and the search inventory's folder and file names. A one-file build unpacks that framework into a new temporary folder (_MEI...) at every start, and an install or update may move it, so every stored render went stale although no file had changed. The bundled framework is now named "<bundled framework>" in the configuration and the inventory (render_evidence._label), and the inventory lists each search folder's files relative to that folder. Its files themselves were already recorded by their path inside the framework. Stored renders from v0.15.4 and before are rendered once more; v0.15 is not released yet, and its first start renders everything anyway.
+
+NEW: Slide previews stay current when SlideMage starts from another folder.
+- The one-file build no longer renders every slide again at each start.
+
+v0.15.7 (2026-11-10, direct report: after a change on the PDF output tab of Deck settings, every slide of the deck said "Previous render"): The render key and the Preview's target key hashed the deck's preamble as it is written, and that tab writes \deckoutputfolder lines and the "%% SlideMage open PDF:" comment into it. Both keys now hash it without the lines only SlideMage reads (preview_target.preamble_sha): live \deckoutputfolder and \decktags calls, which the framework defines as no-ops, and the open-PDF comment; a line that also has TeX on it is kept whole. A deck that already had such lines has its slides rendered once more.
 
 NEW: Changing where a deck's PDFs go keeps its slide previews current.
 - The PDF output settings and a deck's tags no longer mark every slide as "Previous render".
