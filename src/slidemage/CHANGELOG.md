@@ -3902,3 +3902,8 @@ v0.15.11 (2026-11-10, the log of a test session: 26 times "AttributeError: 'None
 
 NEW: Fewer errors in the log when you click the slide list.
 - A click while the slide list is being refreshed no longer logs an error.
+
+v0.15.12 (2026-11-10, direct request: colour roles, third framework slice): The rest of the framework's own hard-coded colours become roles a theme can set per mode: `highlight_fill` (highlightframe's title bar and footer), `standout_fill` and `standout_text` (a [standout] frame), `quote_attribution`, `table_rule` (the rules of an SMTable outside a block; inside one they follow `block_body_text`), `image_border`, `marker` (SMHighlight, SMDottedHighlight and the warning sign), `citation` and `strip_fill` (the progress strip, whose text is `c_text_on_accent`). With the roles of v0.15.9 and v0.15.10 the framework now names every colour it draws in a role or a palette colour the template sets; what is left in its code is the white text of a button and the red of the DRAFT watermark. Base-mode values equal what they were: the PDFs of the manual and its sibling deck under the SlideMage and Greyscale templates, and of the manual under Uni Graz (light and with the dark switch), are pixel-identical (tools/framework_regression.py).
+
+NEW: Every part of a slide the framework draws can have its own colour per mode.
+- Not visible in the app yet.
