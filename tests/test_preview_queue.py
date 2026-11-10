@@ -1051,3 +1051,52 @@ def test_typing_keeps_the_last_page_marked_as_older(pane, qapp):
     assert shown.cacheKey() == page.cacheKey() and not current and note == preview_view.SOURCE_CHANGED
     view._refresh()
     assert view._page.badge == preview_view.SOURCE_CHANGED
+
+
+def test_the_poll_recheck_keeps_the_step_list_until_the_store_answers(pane, qapp):
+    from PySide6.QtGui import QPixmap
+
+    view, target, _ = pane
+    key = view._current_steps(target)[0]
+    pages = [b'step 1', b'step 2', b'step 3']
+    view._steps_found(key, (pages, 2, None))                              # read from the store
+    view._step_choice[target.source_path] = 2
+    view._step_pixmap = shown = (key, 2, QPixmap(8, 8))
+    view.show()
+    view._poll_selection()
+    assert view._step_pages[key] is pages and key in view._step_recheck    # still shown while the store is asked
+    view._steps_found(key, (list(pages), 2, None))
+    assert view._step_pixmap is shown and not view._step_recheck          # same pages: nothing redrawn
+    view._poll_selection()
+    view._steps_found(key, None)
+    assert key not in view._step_pages                                    # no longer stored: counted again
+
+
+def test_steps_rendered_here_survive_the_poll_when_the_store_has_none(pane, qapp, monkeypatch):
+    """A slide that needs its deck never has standalone steps stored: dropping them re-rendered it every 5 s."""
+    view, target, _ = pane
+    key = view._current_steps(target)[0]
+    view._on_steps_ready(key, [b'step 1', b'step 2'], '')
+    view.show()
+    view._poll_selection()
+    view._steps_found(key, None)
+    assert view._step_pages[key] == [b'step 1', b'step 2']
+    asked = []
+    monkeypatch.setattr(view, '_request_steps', lambda *a: asked.append(a[1]))
+    monkeypatch.setattr(view, 'neighbours', lambda: [(target, None)])
+    view._poll_selection()
+    view._probe_steps()
+    assert asked == []
+    del view._step_pages[key]
+    view._probe_steps()
+    assert asked == [key, key]                                            # the slide and its neighbour (itself here)
+
+
+def test_saving_the_slide_gives_its_steps_a_new_key(pane):
+    import os
+
+    view, target, path = pane
+    before = view._current_steps(target)[0]
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+    assert view._current_steps(target)[0] != before
