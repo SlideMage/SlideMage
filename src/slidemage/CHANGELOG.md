@@ -3882,3 +3882,8 @@ v0.15.7 (2026-11-10, direct report: after a change on the PDF output tab of Deck
 
 NEW: Changing where a deck's PDFs go keeps its slide previews current.
 - The PDF output settings and a deck's tags no longer mark every slide as "Previous render".
+
+v0.15.8 (2026-11-10, the log of a test session: 26 times "AttributeError: 'NoneType' object has no attribute 'parent'" in slide_tree._on_clicked): Qt reports a click with no item when the slide list was rebuilt between the press and the release, which background previews do often while they refresh. The click is now ignored.
+
+NEW: Fewer errors in the log when you click the slide list.
+- A click while the slide list is being refreshed no longer logs an error.

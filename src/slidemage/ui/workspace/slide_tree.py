@@ -417,9 +417,10 @@ class SlideTree(QTreeWidget):
             event.modifiers() & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier))
         super().mousePressEvent(event)
 
-    def _on_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        """A click on a section heading opens or closes it (not when it extends a selection)."""
-        if item.parent() is None and not self._extends_selection:
+    def _on_clicked(self, item: Optional[QTreeWidgetItem], _column: int) -> None:
+        """A click on a section heading opens or closes it (not when it extends a selection). `item` is None when the
+        list was rebuilt between the press and the release (background previews refresh it)."""
+        if item is not None and item.parent() is None and not self._extends_selection:
             self.toggle_section(item)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
