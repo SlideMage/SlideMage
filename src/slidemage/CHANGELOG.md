@@ -3854,3 +3854,8 @@ v0.15.2 (2026-11-10, Windows test of PR #146: the Preview flickered to "Checking
 
 NEW: A steadier Preview.
 - The Preview no longer flickers to "Checking…" every few seconds while a slide is open.
+
+v0.15.6 (2026-11-10, direct report: after a change on the PDF output tab of Deck settings, every slide of the deck said "Previous render"): The render key and the Preview's target key hashed the deck's preamble as it is written, and that tab writes \deckoutputfolder lines and the "%% SlideMage open PDF:" comment into it. Both keys now hash it without the lines only SlideMage reads (preview_target.preamble_sha): live \deckoutputfolder and \decktags calls, which the framework defines as no-ops, and the open-PDF comment; a line that also has TeX on it is kept whole. A deck that already had such lines has its slides rendered once more.
+
+NEW: Changing where a deck's PDFs go keeps its slide previews current.
+- The PDF output settings and a deck's tags no longer mark every slide as "Previous render".

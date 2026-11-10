@@ -30,7 +30,7 @@ from typing import Callable, Optional
 from . import citations, compiler, compile_records, deck_language, render_evidence, slide_templates
 from .dep_hash import HashCache, norm
 from .fileio import text_sha256
-from .preview_target import PreviewTarget
+from .preview_target import PreviewTarget, preamble_sha
 from .project import ProjectContext
 
 # Bump when the wrapper logic (slide_preview) or this key changes what a render looks like. A test
@@ -181,7 +181,7 @@ class Resolver:
             "schema": RENDER_SCHEMA, "slide": slide_sha,
             "call": [unit.macro, unit.id_slug, unit.version, list(unit.conditions)],
             "view": unit.view, "language": unit.language, "template": unit.template,
-            "preamble": text_sha256(unit.preamble_text or ""),
+            "preamble": preamble_sha(unit.preamble_text),
             "engine": self.engine_fp, "configuration": configuration,
             **({"context": unit.context} if unit.context else {}),
             # What the wrapper tells TeX about the project's languages.
