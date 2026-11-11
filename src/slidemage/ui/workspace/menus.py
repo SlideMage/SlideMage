@@ -125,7 +125,7 @@ def build_compile_menu(parent: QWidget, ctx: Context) -> PopoverMenu:
     deck at once. Entries a deck cannot use are disabled instead of hidden."""
     menu = PopoverMenu(parent, min_width=300)
     add_commands(menu, ctx, [f"compile:{view}" for view in VIEWS] + [
-        "compile:all", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
+        "compile:all", "compile:mode", "compile:chapters", "compile:presenter", "compile:slides", "compile:pages",
         "compile:several", "compile:everything"], "PDF")
     add_commands(menu, ctx, [f"transcript:{version}" for version in STUDENT_VERSIONS],
                  "Accessible transcript")
@@ -163,7 +163,7 @@ MENU_BAR = (
                ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "log")),
                ("Tabs", ("tab:*",)), ("", ("render_buffer", "preview:*")))),
     ("&Build", (("", ("compile:current",)),
-                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:chapters", "compile:presenter",
+                ("PDF", (*(f"compile:{view}" for view in VIEWS), "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
                          "compile:slides", "compile:pages", "compile:several", "compile:everything")),
                 ("Accessible transcript", ("transcript:*",)),
                 ("", ("stop", "build_options")))),

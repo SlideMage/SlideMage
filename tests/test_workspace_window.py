@@ -417,13 +417,13 @@ def test_selected_pages_compile_the_current_view(window, monkeypatch):
 def test_compile_menu_offers_only_what_the_deck_can_do(qapp):
     full = items(build_compile_menu(None, command_context(COURSE)))
     assert list(full) == [
-        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all",
+        "compile:instructor", "compile:during-course", "compile:after-course", "compile:all", "compile:mode",
         "compile:chapters", "compile:presenter", "compile:slides", "compile:pages", "compile:several",
         "compile:everything", "transcript:during-course", "transcript:after-course", "present", "present_here", "stop", "build_options"]
     assert full["compile:chapters"] and not full["stop"] and not full["compile:slides"]   # no slide selected
     assert items(build_compile_menu(None, command_context(COURSE, selected=('aaa', 'bbb'))))["compile:slides"]
     plain = items(build_compile_menu(None, command_context(make_deck("plain", versions=False))))
-    assert list(plain) == ["compile:instructor", "compile:all", "compile:chapters", "compile:presenter",
+    assert list(plain) == ["compile:instructor", "compile:all", "compile:mode", "compile:chapters", "compile:presenter",
                            "compile:slides", "compile:pages", "compile:several", "compile:everything",
                            "present", "present_here", "stop", "build_options"]
     assert not plain["compile:chapters"]                              # no \section chapters

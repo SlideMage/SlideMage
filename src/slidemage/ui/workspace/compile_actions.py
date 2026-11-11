@@ -66,15 +66,47 @@ def stop_now(window) -> None:
 
 # -- the Compile menu --------------------------------------------------------------------
 
-def compile_current(window, kind: str, pages: Optional[list[int]] = None) -> None:
+def compile_current(window, kind: str, pages: Optional[list[int]] = None, mode: Optional[str] = None) -> None:
     """A Compile menu entry for the current deck: `kind` is a view,
-    "chapters" or "presenter" (compiler.build_jobs)."""
+    "chapters" or "presenter" (compiler.build_jobs); `mode` a one-off colour mode (CompileJob.mode)."""
     deck = window.state.deck
     if deck is not None:
         jobs = compiler.build_jobs(deck, kind, pages)
         for job in jobs:
             job.language = window.state.language
+            job.mode = mode
         compile_jobs(window, jobs)
+
+
+def shown_view(window) -> Optional[str]:
+    """The view a current-view compile builds: the one shown, the instructor one where the deck has no versions."""
+    deck = window.state.deck
+    return window.state.view if deck is not None and deck.supports_version else "instructor"
+
+
+def other_modes(window) -> list[tuple[str, str]]:
+    """The colour modes the current view's template offers besides the one the view compiles in."""
+    deck = window.state.deck
+    project = getattr(window, "project", None)
+    return compiler.other_modes(project, deck, shown_view(window)) if deck is not None and project else []
+
+
+def compile_in_mode(window) -> None:
+    """Compile -> "Current view in another colour mode" (v0.16.4): the same view once in another mode of its
+    template, for instance a light handout of a dark projection, into its own PDF ("<deck>-<view>-<mode>.pdf");
+    the deck and its views keep their modes. With one other mode it is used at once; with several, asked."""
+    modes = other_modes(window)
+    if not modes:
+        return
+    mode_id = modes[0][0]
+    if len(modes) > 1:
+        labels = [label for _, label in modes]
+        label, ok = QInputDialog.getItem(window, "Compile in another colour mode",
+                                         "Colour mode for this PDF (the deck keeps its own):", labels, 0, False)
+        if not ok:
+            return
+        mode_id = modes[labels.index(label)][0]
+    compile_current(window, shown_view(window), mode=mode_id)
 
 
 def compile_several(window) -> None:

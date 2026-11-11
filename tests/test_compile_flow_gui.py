@@ -354,3 +354,31 @@ def test_a_deck_switch_rebuilds_the_slide_list_once_and_so_does_a_rescan_of_the_
     window.state.deck = make_deck("gone")                            # its file has vanished: a real switch
     window.reload_decks()
     assert window.state.deck.name != "gone" and len(count) == 1
+
+
+def test_the_current_view_compiles_once_in_another_colour_mode(env, monkeypatch):
+    """v0.16.4: with one other mode the command names it and compiles at once; with several it asks."""
+    from dataclasses import replace as dc_replace
+    from PySide6.QtWidgets import QInputDialog
+
+    window = env.window
+    deck = dc_replace(COURSE, text="\\documentclass{beamer}\n\\input{SlideMage_template_slidemage}\n\\begin{document}\n")
+    window.state.set_deck(deck)
+    window.state.set_view("after-course")
+    command = window.commands["compile:mode"]
+    assert command.title(window) == "Current view in Dark slides" and command.enabled(window)
+    captured = []
+    monkeypatch.setattr(compile_actions, "compile_jobs", lambda window, jobs: captured.extend(jobs))
+    window.commands.run("compile:mode", window)
+    assert [(job.version, job.mode, job.jobname) for job in captured] == [
+        ("after-course", "dark", "course-after-course-dark")]
+
+    (window.project.root / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, grey\n")
+    window.state.set_deck(dc_replace(deck, text=deck.text.replace("slidemage}", "acme}")))
+    assert command.title(window) == "Current view in another colour mode…"
+    monkeypatch.setattr(QInputDialog, "getItem", lambda *a, **k: ("Grey", True))
+    captured.clear()
+    print("DBG", compile_actions.other_modes(window), window.commands.run("compile:mode", window))
+    assert [job.mode for job in captured] == ["grey"]
+    (window.project.root / "SlideMage_template_acme.tex").write_text("\\input{SlideMage_setup}\n")      # no modes: disabled
+    assert not command.enabled(window)

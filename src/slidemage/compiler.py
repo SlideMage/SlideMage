@@ -179,7 +179,7 @@ def resolve_output_location(ctx: project.ProjectContext, job: "CompileJob") -> t
     path = Path(raw)
     resolved = path if path.is_absolute() else ctx.root / path
     if resolved.suffix:
-        return resolved.parent, resolved.stem
+        return resolved.parent, resolved.stem + (f"-{job.mode}" if job.mode else "")
     return resolved, job.jobname
 
 
@@ -203,6 +203,8 @@ def job_label(job: CompileJob) -> str:
         label += f", chapter {job.chapter.order}: {job.chapter.title}"
     if job.language:
         label += f" · {job.language.upper()}"
+    if job.mode:
+        label += f" · {job.mode} colours"
     return label
 
 
@@ -231,6 +233,7 @@ def deck_pdfs(ctx: project.ProjectContext, deck: Deck) -> list[DeckPdf]:
     jobs: list[CompileJob] = []
     for version in versions:
         jobs.append(CompileJob(deck, version, None))
+        jobs += [CompileJob(deck, version, None, mode=mode_id) for mode_id, _ in other_modes(ctx, deck, version)]
     presenter_version = "instructor" if deck.supports_version else None
     jobs.append(CompileJob(deck, presenter_version, None, presenter=True))
     chapter_version = "after-course" if deck.supports_version else None
@@ -556,6 +559,11 @@ class CompileJob:
     # change in between, from later ones. None: not stamped.
     run_id: Optional[str] = None
     language: Optional[str] = None   # EN/DE override; None uses the deck's setting
+    # A one-off colour mode for this build (v0.16.4, the Compile menu's "Current view in another colour mode"):
+    # a mode id of the view's template, written as \SMModeOverride instead of the deck's and the view's own (the
+    # template's base mode removes it). The PDF gets the mode as a suffix, so the view's usual PDF stays. None: the
+    # deck's and the view's mode.
+    mode: Optional[str] = None
     resolve_translations: bool = True   # False for a maintenance deck rendering each file independently
 
     @property
@@ -578,6 +586,8 @@ class CompileJob:
             from .deck_settings import read_settings
             if self.language.lower() != read_settings(self.deck.text).language.lower():
                 parts.append(self.language.lower())
+        if self.mode:
+            parts.append(self.mode)
         # No "-appendix" suffix (2026-10-03, direct instruction; it used to
         # mark a compile with the generated appendix): with or without the
         # appendix a job writes the same file.
@@ -649,6 +659,25 @@ def override_lines(ctx: project.ProjectContext, job: CompileJob, *, appendix_lin
     return lines
 
 
+def with_mode(ctx: project.ProjectContext, preamble: str, mode: str) -> str:
+    """`preamble` in colour mode `mode` of its template: \\SMModeOverride written, or removed for the template's base
+    mode; unchanged when the preamble has no template line."""
+    from . import deck_settings
+    modes = deck_settings.template_modes(ctx.root, slide_templates.detect_template(preamble))
+    try:
+        return deck_settings.set_mode(preamble, deck_settings.mode_to_settings(modes, mode))
+    except ValueError:
+        return preamble
+
+
+def other_modes(ctx: project.ProjectContext, deck: Deck, view: Optional[str]) -> list[tuple[str, str]]:
+    """[(mode id, label)] of the template `view` uses, without the mode that view already compiles in."""
+    from . import deck_settings
+    modes = deck_settings.template_modes(ctx.root, view_themes.template_for(deck.text, view))
+    current = deck_settings.settings_mode(modes, view_themes.mode_for(deck.text, view))
+    return [(mode_id, label) for mode_id, label in modes if mode_id != current]
+
+
 def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None) -> str:
     from . import deck_language
     lines = override_lines(ctx, job, appendix_link=job._appendix_applies)
@@ -659,6 +688,8 @@ def wrapper_text(ctx: project.ProjectContext, job: CompileJob, *, resolver=None)
     preamble = job.deck.preamble_text if job.deck.preamble_end is not None else ""
     # Themes per view (view_themes): this view's template and mode, which need the inlined preamble.
     view_preamble = view_themes.preamble_for_view(preamble, job.version or "instructor")
+    if job.mode is not None and view_preamble:
+        view_preamble = with_mode(ctx, view_preamble, job.mode)
     themed = view_preamble != preamble
     preamble = view_preamble
     language_lines = deck_language.language_lines(ctx, language if job.language else None, deck=language)
