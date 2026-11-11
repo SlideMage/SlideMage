@@ -2619,6 +2619,12 @@ mode use the role colours `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_mute
 every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` header were
 removed in v0.16.0.)
 
+Both shipped templates (SlideMage and Greyscale) offer light and dark. Their dark mode is the
+preset plus a few role lines: bullets, `\alert`, table rules, image borders and markers move to
+lighter tints that keep at least 4.3:1 on the dark canvas, and Greyscale's title bar turns dark
+with white text. Slide text written in a palette colour (`c_primary_highlight`, `c_custom_red`)
+keeps that colour, so pick a role or a lighter accent for text that must read in both modes.
+
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
 (`\textcolor{c_secondary_blue}{...}`, `fill=c_secondary_blue`
