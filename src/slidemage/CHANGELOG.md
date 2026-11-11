@@ -3935,3 +3935,9 @@ v0.16.2 (2026-11-11, direct request: colour roles, the shipped templates' modes)
 
 NEW: Dark slides for the built-in templates.
 - Under Colours in Deck settings, the SlideMage and Greyscale templates now offer Dark slides.
+
+v0.16.3 (2026-11-11, direct request: colour roles, the toolbar reads roles): The source editor's Color menu follows the colour mode. theme_colors.py reads a template's \SMDeclareMode, \SMSetColor and \SMSetRole lines and xcolor mixes (c_secondary_blue!60!white) and resolves a mode in the framework's order: the mode's preset, its palette lines, then each role from its own line, else the preset's value, else the base colour. The menu leads with the role colours c_text, c_text_muted, c_text_on_accent, c_link, c_canvas, c_card and c_line (each with what it is for), then the palette, all in the mode of the open deck and the view shown (view_themes.mode_for). A TeX test compares every swatch with the colour LuaLaTeX gives the name, in each mode.
+
+NEW: The Color menu offers the theme's role colours.
+- c_text, c_link and the other role colours lead the menu; slides that use them follow light and dark mode.
+- The swatches show the colours of the deck's current mode, so a dark deck shows its dark colours.

@@ -2625,6 +2625,12 @@ lighter tints that keep at least 4.3:1 on the dark canvas, and Greyscale's title
 with white text. Slide text written in a palette colour (`c_primary_highlight`, `c_custom_red`)
 keeps that colour, so pick a role or a lighter accent for text that must read in both modes.
 
+The source editor's **Color** menu lists the role colours first, each with what it is for, then the
+palette. Its swatches show the colours of the deck's theme in the mode of the view shown (a
+view's own `theme:mode` included), read from the template's lines the way the framework resolves
+them, so switching a deck to dark turns the `c_text` swatch white and leaves `c_primary_highlight`
+as it is.
+
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
 (`\textcolor{c_secondary_blue}{...}`, `fill=c_secondary_blue`

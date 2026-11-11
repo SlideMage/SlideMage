@@ -596,5 +596,42 @@ def test_shipped_templates_give_every_menu_name_from_their_own_files(ctx):
     from slidemage import theme_colors
 
     for key in ("slidemage", "greyscale"):
-        read = theme_colors.theme_colors(key, ctx.root)
-        assert set(theme_colors.swatches(key, ctx.root)) == set(read) and len(read) >= 21
+        for mode in ("", "dark"):
+            read = theme_colors.theme_colors(key, ctx.root, mode)
+            menu = theme_colors.swatches(key, ctx.root, mode)
+            assert set(menu) <= set(read) and len(menu) >= 28        # 7 roles and the 21 palette names
+            assert all(menu[name] == read[name] for name in menu)
+
+
+def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx, monkeypatch):
+    """v0.16.3: the role colours come first, with what each is for, in the colour mode of the deck and the view."""
+    from types import SimpleNamespace
+    from slidemage.ui.kit.widgets import PopoverMenu
+
+    text = ("\\documentclass{beamer}\n\\newcommand{\\SMModeOverride}{dark}\n\\input{SlideMage_template_slidemage}\n"
+            "% SlideMage view themes: after-course=slidemage:light\n\\begin{document}\n\\end{document}\n")
+    pane.app_for_test.state = SimpleNamespace(deck=SimpleNamespace(text=text), view="instructor")
+    shown = []
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_color_menu()
+    entries = shown[0]._entries
+    assert entries[0] == ("header", "Follows the colour mode")
+    items = [e for e in entries if e[0] == "item"]
+    assert [e[1] for e in items[:7]] == ["c_text", "c_text_muted", "c_text_on_accent", "c_link", "c_canvas",
+                                          "c_card", "c_line"]
+    assert items[0][3] == "body text, lines" and items[7][3] == ""
+    assert ("header", "Palette") in entries
+    dark = {e[1]: e[7] for e in items}
+    assert dark["c_text"] == "#ffffff" and dark["c_canvas"] == "#444444"
+    assert dark["c_primary_highlight"] == "#0066cc"                     # a palette name keeps its colour
+
+    pane.app_for_test.state.view = "after-course"                       # this view is light
+    light = _color_menu(pane, monkeypatch)
+    assert light["c_text"] == "#1e1e1e" and light["c_canvas"] == "#ffffff"
+    choose = []
+    monkeypatch.setattr(pane, "_wrap", choose.append)
+    shown.clear()
+    monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
+    pane._open_color_menu()
+    shown[0].triggered.emit("c_text")
+    assert choose == ["textcolor{c_text}"]

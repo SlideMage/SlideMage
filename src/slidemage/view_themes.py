@@ -94,6 +94,11 @@ def template_for(preamble_text: str, view: str | None = None) -> str:
     return slide_templates.detect_template(preamble_for_view(preamble_text, view) or "")
 
 
+def mode_for(preamble_text: str, view: str | None = None) -> str:
+    """The colour mode the deck uses in `view` ("" for the template's base mode)."""
+    return deck_settings.read_settings(preamble_for_view(preamble_text, view) or "").mode
+
+
 def templates_used(preamble_text: str) -> set[str]:
     """Every template key any view of the deck uses."""
     return {template_for(preamble_text, view) for view in VIEWS} | {slide_templates.detect_template(preamble_text)}
