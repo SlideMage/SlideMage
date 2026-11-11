@@ -170,14 +170,14 @@ def save_deck_settings(window, deck: Deck, old: DeckSettings, new: DeckSettings)
         QMessageBox.critical(window, "Deck settings failed", str(exc))
         return
     changed = [name for name in ("template", "language", "footer_text",
-                                 "output_folders", "appendix_toc", "open_pdf", "footer_hide", "dark_mode", "mode", "view_themes")
+                                 "output_folders", "appendix_toc", "open_pdf", "footer_hide", "mode", "view_themes")
                if getattr(new, name) != getattr(old, name)]
     window.log(f"Updated settings of {deck.name}: " + ", ".join(
         name.replace("_", " ") for name in changed))
     window.refresh_open_deck_editors()
     window.reload_decks()
     if (old.footer_hide != new.footer_hide or old.footer_text != new.footer_text
-            or old.dark_mode != new.dark_mode or old.mode != new.mode or old.view_themes != new.view_themes) and (
+            or old.mode != new.mode or old.view_themes != new.view_themes) and (
             window.state.deck is not None and window.state.deck.path == deck.path
             and window.state.mode in ("preview", "split")):
         # reload_decks refreshes the target with the saved preamble first.

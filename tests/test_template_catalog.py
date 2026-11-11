@@ -25,6 +25,7 @@ RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep
 # theme writes (declared, not hooks a template reads).
 MODE_LAYER = {"SM@hexcolor", "SM@letcolor", "SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
               "SM@preset@grey", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
+              "SM@processline", "SM@inlinecode",   # set by the roles process_line and inline_code, not by a template
               "SMDeclareMode", "SMSetColor", "SMSetRole"}
 NOT_HOOKS = ({"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)
              | MODE_LAYER)
@@ -120,7 +121,7 @@ def test_every_catalog_hook_is_used_by_the_base_or_the_theme():
 def test_templates_set_catalog_names_only_and_define_none_of_their_own(template):
     before = settings_before_base(template)
     # a template defines no length, macro or switch of its own before the base: it sets what the catalog has
-    allowed_new = {"SMLayoutProfile", "SMDarkMode"}
+    allowed_new = {"SMLayoutProfile", "SMModeOverride"}
     new = defined(before, ("newlength", "newcommand", "newif", "newcounter", "newbox", "providecommand"))
     assert new <= allowed_new, f"{template.name} defines names of its own: {sorted(new - allowed_new)}"
     # a color of the template's own (a palette extra, say c_true_black) is not a setting; the catalog names are

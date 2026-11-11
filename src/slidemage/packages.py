@@ -46,6 +46,9 @@ class PackageKind:
     key_re: re.Pattern
     tex_file: Callable[[str], str]
     contents_name: str                # theme / package (file and checksum messages)
+    # A rule on the files' contents that a newer SlideMage made (folder, key) -> problem, "" when fine: a package that
+    # breaks it is not installed, not put on TeX's path and shown as needing an update.
+    check_contents: Callable[[Path, str], str] | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,7 @@ class InstalledPackage:
     folder: Path
     manifest: PackageManifest | None  # unreadable manifests stay listed, so the folder can still be removed
     problem: str = ""
+    needs_update: bool = False        # the problem is one a newer version of the package fixes (check_contents)
 
 
 def read_manifest(kind: PackageKind, folder: Path) -> PackageManifest:
@@ -88,6 +92,10 @@ def check_folder(kind: PackageKind, folder: Path, app_version: str = VERSION_NUM
     manifest = read_manifest(kind, folder)
     kind.check_names(folder_names(kind, folder, skip_hidden), manifest)
     kind.check_manifest(manifest, app_version)
+    if kind.check_contents is not None:
+        problem = kind.check_contents(folder, manifest.id)
+        if problem:
+            raise kind.error(problem)
     return manifest
 
 
@@ -130,7 +138,8 @@ def installed(kind: PackageKind) -> list[InstalledPackage]:
             found.append(InstalledPackage(folder.name, folder, None, str(e)))
             continue
         problem = "" if manifest.id == folder.name else f"its {kind.manifest_name} names the key {manifest.id!r}"
-        found.append(InstalledPackage(folder.name, folder, manifest, problem))
+        outdated = "" if problem or kind.check_contents is None else kind.check_contents(folder, folder.name)
+        found.append(InstalledPackage(folder.name, folder, manifest, problem or outdated, bool(outdated)))
     return found
 
 
@@ -142,7 +151,8 @@ def installed_dirs(kind: PackageKind) -> list[Path]:
         folders = sorted(p for p in base.iterdir() if not p.name.startswith(".") and kind.key_re.match(p.name))
     except OSError:
         return []
-    return [folder for folder in folders if (folder / kind.tex_file(folder.name)).is_file()]
+    return [folder for folder in folders if (folder / kind.tex_file(folder.name)).is_file()
+            and (kind.check_contents is None or not kind.check_contents(folder, folder.name))]
 
 
 def texinputs(kind: PackageKind, env: dict | None = None) -> str | None:

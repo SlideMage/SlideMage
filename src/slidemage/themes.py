@@ -188,13 +188,43 @@ def check_manifest(manifest: ThemeManifest, app_version: str = VERSION_NUMBER) -
         raise ThemeError(f"The theme needs SlideMage {manifest.requires_slidemage}; this is {app_version}.")
 
 
+# v0.16.0 removed the dark switch \SMDarkMode: a theme reads its mode from \SMDeclareMode and \SMSetRole lines instead
+# (latex/SlideMage_setup.tex). A template that still tests the switch was made for an older SlideMage.
+_OLD_DARK_SWITCH = re.compile(r"\\SMDarkMode(?![A-Za-z@])")
+OUTDATED_PROBLEM = ("it was made for SlideMage before v0.16.0 (it still uses \\SMDarkMode, which is gone); "
+                    "install a newer version of the theme")
+_contents_cache: dict[Path, tuple[int, str]] = {}
+
+
+def check_contents(folder: Path, key: str) -> str:
+    """The problem of a theme's template that this SlideMage cannot use, "" when there is none. Cached by the file's
+    modification time, since installed_dirs() asks for every compile."""
+    from .tex_source import is_commented
+
+    path = folder / template_file(key)
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return ""
+    cached = _contents_cache.get(path)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    problem = OUTDATED_PROBLEM if any(not is_commented(text, m.start()) for m in _OLD_DARK_SWITCH.finditer(text)) else ""
+    _contents_cache[path] = (stamp, problem)
+    return problem
+
+
 # Keep the public package API here; callers and package tools need no knowledge of the shared store.
 KIND = packages.PackageKind(
     name="theme", folder=lambda: themes_dir(), manifest_name=MANIFEST_NAME, suffix=PACKAGE_SUFFIX,
     error=ThemeError, parse_manifest=lambda text: parse_manifest(text),
     check_names=lambda names, manifest: check_names(names, manifest),
     check_manifest=lambda manifest, app_version: check_manifest(manifest, app_version),
-    key_re=KEY_RE, tex_file=template_file, contents_name="theme")
+    key_re=KEY_RE, tex_file=template_file, contents_name="theme", check_contents=check_contents)
 
 InstalledTheme = packages.InstalledPackage
 read_manifest = partial(packages.read_manifest, KIND)

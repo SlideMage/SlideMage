@@ -394,11 +394,11 @@
 \@ifundefinedcolor{SMCardBackgroundColor}{\colorlet{SMCardBackgroundColor}{white}}{}
 \@ifundefinedcolor{SMCardBorderColor}{\colorlet{SMCardBorderColor}{c_primary_dark}}{}
 \@ifundefinedcolor{SMProcessBorderColor}{\colorlet{SMProcessBorderColor}{c_tertiary_gray}}{}
-\makeatother
 \tikzset{
 	SMCard/.style={draw=SMCardBorderColor, fill=SMCardBackgroundColor, text=c_text},
-	SMProcess/.style={draw=none, fill=SMProcessFill, text=SMBlockBodyText},
+	SMProcess/.style={draw=\SM@processline, fill=SMProcessFill, text=SMBlockBodyText},
 }
+\makeatother
 
 % The theme's divider frames for \part, \section, \subsection and \subsubsection
 % (\SMDividerFrames in beamerthemeSlideMage.sty) are off, so \section{} (used
@@ -5812,7 +5812,7 @@
 		      inner xsep=\SMFrametitleLeftPadding, inner ysep=1.5pt, text height=6.2pt, text depth=2pt,
 		      minimum height=11.19pt,
 		      text width=\dimexpr\paperwidth-2\SMFrametitleLeftPadding\relax,
-		      align=left, text=c_text_on_accent, font=\fontsize{6.3}{7.5}\selectfont]
+		      align=left, text=SMStripText, font=\fontsize{6.3}{7.5}\selectfont]
 			at ($(current page.north west)+(0,-\SMTitleBarBottomAlign)$)
 			{\foreach \SMStepName [count=\SMStepIndex] in {#1}{%
 				\ifnum\SMStepIndex>1\ $\rightarrow$\ \fi
@@ -5888,7 +5888,13 @@
 % typeset, so write \_ \{ \} \# as in any text. The transcript shows both as
 % `code`. Ligatures=TeXOff: code shows -- and `` as typed, not as an en dash
 % and a curly quote (fontspec's default for \newfontfamily).
-\newcommand{\SMInlineCodeStyle}{}
+% The role inline_code (SlideMage_setup.tex) colours it, but only in body text: text that has another
+% colour (a title bar, a block title, \textcolor) keeps it. Without the role this does nothing.
+\makeatletter
+\begingroup\color{c_text}\global\let\SM@bodycolorspec\current@color\endgroup
+\newcommand{\SMInlineCodeStyle}{%
+	\ifx\SM@inlinecode\@empty\else\ifx\current@color\SM@bodycolorspec\color{\SM@inlinecode}\fi\fi}
+\makeatother
 \newcommand{\SMCode}[1]{{\SMInlineCodeFont\SMInlineCodeStyle #1}}
 \newcommand{\SMCmd}[1]{{\SMInlineCodeFont\SMInlineCodeStyle\textbackslash #1}}
 

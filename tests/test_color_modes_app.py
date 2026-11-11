@@ -9,7 +9,7 @@ from slidemage import view_themes  # first: deck_editor must load before deck_se
 from slidemage import deck_settings
 
 MODE = "\\newcommand{\\SMModeOverride}{grey}"
-DARK = "\\newcommand{\\SMDarkMode}{}"
+DARK = "\\newcommand{\\SMModeOverride}{dark}"
 DECK = "\\documentclass{beamer}\n\\input{SlideMage_template_acme}\n\\begin{document}\n\\end{document}\n"
 
 
@@ -18,8 +18,8 @@ def test_a_template_declares_its_modes_in_its_header(tmp_path):
     template.write_text("% SlideMage modes: light, dark=Dark slides, grey, bad id, dark\n\\input{SlideMage_setup}\n")
     assert deck_settings.template_modes(tmp_path, "acme") == [("light", "Light"), ("dark", "Dark slides"), ("grey", "Grey")]
     assert deck_settings.template_supports_dark_mode(tmp_path, "acme")
-    template.write_text("% SlideMage dark mode: true\n")
-    assert deck_settings.template_modes(tmp_path, "acme") == [("light", "Light"), ("dark", "Dark")]
+    template.write_text("% SlideMage dark mode: true\n")                     # removed in v0.16.0
+    assert deck_settings.template_modes(tmp_path, "acme") == []
     template.write_text("% SlideMage modes: light, grey\n")
     assert not deck_settings.template_supports_dark_mode(tmp_path, "acme")
     template.write_text("nothing declared\n")
@@ -27,16 +27,18 @@ def test_a_template_declares_its_modes_in_its_header(tmp_path):
     assert deck_settings.template_modes(tmp_path, "missing") == []
 
 
-def test_a_mode_choice_becomes_the_dark_switch_or_the_override():
+def test_a_mode_choice_becomes_the_override_and_the_base_mode_none():
     modes = [("light", "Light"), ("dark", "Dark"), ("grey", "Grey")]
-    assert deck_settings.mode_to_settings(modes, "light") == (False, "")
-    assert deck_settings.mode_to_settings(modes, "dark") == (True, "")
-    assert deck_settings.mode_to_settings(modes, "grey") == (False, "grey")
-    assert deck_settings.mode_to_settings(modes, "") == (False, "")
-    assert deck_settings.settings_mode(modes, False, "") == "light"
-    assert deck_settings.settings_mode(modes, True, "") == "dark"
-    assert deck_settings.settings_mode(modes, False, "grey") == "grey"
-    assert deck_settings.settings_mode([], False, "") == ""
+    assert deck_settings.mode_to_settings(modes, "light") == ""
+    assert deck_settings.mode_to_settings(modes, "dark") == "dark"
+    assert deck_settings.mode_to_settings(modes, "grey") == "grey"
+    assert deck_settings.mode_to_settings(modes, "") == ""
+    assert deck_settings.settings_mode(modes, "") == "light"
+    assert deck_settings.settings_mode(modes, "dark") == "dark"
+    assert deck_settings.settings_mode(modes, "grey") == "grey"
+    assert deck_settings.settings_mode([], "") == ""
+    written = deck_settings.set_mode(DECK, "dark")
+    assert DARK in written and "SMDarkMode" not in written
 
 
 def test_the_mode_line_is_read_written_and_removed():
@@ -75,7 +77,7 @@ def test_a_view_can_have_any_mode_of_its_theme():
     instructor = view_themes.preamble_for_view(text, "instructor")
     assert MODE in instructor and "SMDarkMode" not in instructor
     after = view_themes.preamble_for_view(text, "after-course")
-    assert DARK in after and "SMModeOverride" not in after
+    assert DARK in after and MODE not in after and "SMDarkMode" not in after
     assert view_themes.preamble_for_view(instructor, "instructor") == instructor      # idempotent
     # no entry: the deck's own; an entry without a mode turns a deck default off
     base = DECK.replace("\\input", MODE + "\n\\input").replace(

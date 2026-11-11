@@ -14,8 +14,8 @@
 %   ... additions only: dark-mode beamer colors, citation format, project macros
 %
 % Rules for a template:
-%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMDarkMode
-%      (written into the deck by SlideMage). Both decide what this file computes.
+%   1. Before this file: only \SMLayoutProfile (below; fira unless set) and \SMModeOverride
+%      (the colour mode, written into the deck by SlideMage). Both decide what this file computes.
 %   2. Between this file and SlideMage_base: \setlength, \renewcommand,
 %      \definecolor and \colorlet on the names in this catalog. Every name
 %      exists already, so a misspelt \renewcommand is an error instead of a
@@ -276,8 +276,9 @@
 %
 % A line of another mode than the active one does nothing, so the lines need no \if. The
 % active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
-% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for a view's `theme:mode`);
-% `dark` when the deck defines \SMDarkMode; else the base mode. A mode that is not the base
+% file (\newcommand{\SMModeOverride}{dark}; SlideMage writes it for the deck's mode and a view's
+% `theme:mode`); else the base mode. The older switch \SMDarkMode was removed in v0.16.0 and
+% stops the compile with a message. A mode that is not the base
 % starts from its derive preset, then the palette lines, then the role lines, so an explicit
 % line always wins:
 %   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
@@ -313,8 +314,13 @@
 %   image_border             the border SMImageBorder draws          c_primary_highlight
 %   marker                   SMHighlight, SMDottedHighlight and the warning sign   c_custom_red
 %   citation                 the colour of a citation mark          black
-%   strip_fill               the \progressstrip's fill (its text is c_text_on_accent)   c_tertiary_yellow
+%   strip_fill               the \progressstrip's fill   c_tertiary_yellow
+%   strip_text               the \progressstrip's text   c_text_on_accent
 %   code_keyword, code_comment, code_panel, code_text   the \SMCodeFile colours (the optional colours above)
+%   button_text              the text of \beamergotobutton and its relatives   white
+% Roles that are off unless a mode sets them (v0.16.0): process_line (a border around SMProcess
+% boxes; none in the base) and inline_code (the colour of \SMCode and \SMCmd in body text; text
+% in another colour, on a title bar or a block title, keeps its colour).
 % Roles that set a hook of the catalog above (no colour name for slides): title_fill
 % (\SMTitleBoxColor), title_text, footer_fill (\SMFooterBoxColorDefault), footer_text, bullet,
 % alert, progress, block_title_text and, per kind, alerted_block_title_text, example_block_title_text,
@@ -332,8 +338,13 @@
 	\ifx\SM@basemode\@empty\gdef\SM@basemode{#1}\fi
 	\expandafter\gdef\csname SM@modederive@#1\endcsname{#2}}
 \newcommand{\SM@activemode}{%
-	\ifdefined\SMModeOverride\SMModeOverride
-	\else\ifdefined\SMDarkMode dark\else\SM@basemode\fi\fi}
+	\ifdefined\SMModeOverride\SMModeOverride\else\SM@basemode\fi}
+\ifdefined\SMDarkMode
+	\PackageError{SlideMage}{\string\SMDarkMode\space was removed in SlideMage v0.16.0}{%
+		Write \string\newcommand{\string\SMModeOverride}{dark} before the template instead
+		(Update project in SlideMage does it), and use a version of the theme made for v0.16.0
+		or later: it declares its modes with \string\SMDeclareMode.}
+\fi
 % \SM@ifmode{<id>}{<true>}{<false>}: whether <id> is the active mode.
 \newcommand{\SM@ifmode}[3]{%
 	\edef\SM@tmpa{\SM@activemode}\edef\SM@tmpb{#1}%
@@ -366,6 +377,7 @@
 \colorlet{SMMarkerColor}{c_custom_red}
 \colorlet{SMCitationColor}{black}
 \colorlet{SMStripFill}{c_tertiary_yellow}
+\colorlet{SMStripText}{c_text_on_accent}
 % Resolution, in this order: derived values (a non-base mode's preset), then the palette lines,
 % then the roles (an explicit line, else the derived value, else the base mode's source).
 \newcommand{\SM@togray}[1]{%
@@ -444,6 +456,7 @@
 	\SM@rolecolour{marker}{SMMarkerColor}{c_custom_red}%
 	\SM@rolecolour{citation}{SMCitationColor}{black}%
 	\SM@rolecolour{strip_fill}{SMStripFill}{c_tertiary_yellow}%
+	\SM@rolecolour{strip_text}{SMStripText}{c_text_on_accent}%
 	\SM@rolecolour{code_keyword}{SMCodeKeywordColor}{SMCodeKeywordColor}%
 	\SM@rolecolour{code_comment}{SMCodeCommentColor}{SMCodeCommentColor}%
 	\SM@rolecolour{code_panel}{SMCodeBackgroundColor}{SMCodeBackgroundColor}%
@@ -461,7 +474,13 @@
 	\SM@rolehook{reference_block_title_text}\SMReferenceBlockTitleTextColor
 	\SM@rolehook{info_block_title_text}\SMInfoBlockTitleTextColor
 	\SM@rolehook{standout_text}\SMStandoutTextColor
-	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}}
+	\SM@rolecolour{standout_fill}{SMStandoutFill}{\SMTitleBoxColor}%
+	\SM@rolecolour{button_text}{SMButtonText}{white}%
+	\SM@rolehook{process_line}\SM@processline
+	\SM@rolehook{inline_code}\SM@inlinecode}
+% process_line and inline_code: empty (off) unless the active mode sets them.
+\newcommand{\SM@processline}{none}
+\newcommand{\SM@inlinecode}{}
 \makeatother
 
 % ---------------------------------------------------------------------------

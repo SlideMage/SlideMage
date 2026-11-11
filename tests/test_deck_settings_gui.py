@@ -37,7 +37,7 @@ def make_deck(tmp_path, tags=(), text=DECK_TEXT, **fields) -> Deck:
 def make_sheet(tmp_path, monkeypatch, text=DECK_TEXT, tab=GENERAL, **fields):
     template = tmp_path / "SlideMage_template_acme.tex"
     if not template.exists():
-        template.write_text("% SlideMage dark mode: true\n")
+        template.write_text("% SlideMage modes: light, dark\n")
     return DeckSettingsSheet(None, make_deck(tmp_path, text=text, **fields), TEMPLATES, tab=tab)
 
 
@@ -167,7 +167,7 @@ def test_settings_action_refuses_while_the_deck_source_has_edits_that_could_not_
     assert told and deck.path.read_text(encoding="utf-8") == DECK_TEXT
 
 
-@pytest.mark.parametrize("field,value", [("footer_hide", ("id", "deck")), ("footer_text", "New footer"), ("dark_mode", True)])
+@pytest.mark.parametrize("field,value", [("footer_hide", ("id", "deck")), ("footer_text", "New footer"), ("mode", "dark")])
 @pytest.mark.parametrize("mode", ["preview", "split", "source"])
 def test_footer_changes_render_the_visible_preview_after_reloading(tmp_path, qapp, field, value, mode):
     deck = make_deck(tmp_path)
@@ -197,7 +197,7 @@ def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_
     pick_mode(sheet, "dark")
     assert sheet.dirty()
     sheet.save_button.click()
-    assert sheet.action == SAVE and sheet.result_settings().dark_mode
+    assert sheet.action == SAVE and sheet.result_settings().mode == "dark"
     saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, sheet.result_settings())
     reopened = make_sheet(tmp_path, monkeypatch, text=saved)
     assert reopened.mode_combo.currentData() == "dark" and not reopened.dirty()
@@ -210,18 +210,18 @@ def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_
     other.template_combo.setCurrentIndex(other.template_combo.findData("slidemage"))
     assert not other.mode_combo.isEnabled()
     other.save_button.click()
-    assert not other.result_settings().dark_mode
+    assert other.result_settings().mode == ""
     changed = deck_settings.apply_settings(saved, other.original, other.result_settings())
-    assert r"\SMDarkMode" not in changed
+    assert r"\SMModeOverride" not in changed and r"\SMDarkMode" not in changed
 
 
 def test_dark_slides_work_for_a_renamed_template(tmp_path, monkeypatch, qapp):
-    (tmp_path / "SlideMage_template_custom-college.tex").write_text("% SlideMage dark mode: true\n")
+    (tmp_path / "SlideMage_template_custom-college.tex").write_text("% SlideMage modes: light, dark\n")
     sheet = make_sheet(tmp_path, monkeypatch, text=DECK_TEXT.replace("acme", "custom-college"))
     assert sheet.mode_combo.isEnabled()
     pick_mode(sheet, "dark")
     sheet.save_button.click()
-    assert sheet.result_settings().dark_mode
+    assert sheet.result_settings().mode == "dark"
 
 
 def pick_mode(sheet, mode_id):
@@ -235,14 +235,14 @@ def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_p
     pick_mode(sheet, "grey")
     sheet.save_button.click()
     result = sheet.result_settings()
-    assert result.mode == "grey" and not result.dark_mode
+    assert result.mode == "grey"
     saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, result)
     assert "\\newcommand{\\SMModeOverride}{grey}" in saved
     reopened = make_sheet(tmp_path, monkeypatch, text=saved)
     assert reopened.mode_combo.currentData() == "grey" and not reopened.dirty()
     pick_mode(reopened, "dark")
     reopened.save_button.click()
-    assert reopened.result_settings().dark_mode and reopened.result_settings().mode == ""
+    assert reopened.result_settings().mode == "dark"
 
     from dataclasses import replace
     versioned = DeckSettingsSheet(None, replace(make_deck(tmp_path), supports_version=True), TEMPLATES)

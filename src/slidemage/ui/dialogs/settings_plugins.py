@@ -470,7 +470,7 @@ class ThemeRow(_ListRow):
         self.check_error_label: QLabel | None = None
         self.update_button: Button | None = None
         buttons: list[QWidget] = []
-        if self.source is not None and manifest is not None and not theme.problem:
+        if self.source is not None and manifest is not None and (not theme.problem or theme.needs_update):
             self.update_button = Button("Check for update", compact=True)
             self.update_button.clicked.connect(partial(tab.check_theme_update, theme.key))
             buttons.append(self.update_button)

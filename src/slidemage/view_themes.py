@@ -6,14 +6,13 @@ A deck says it with one comment line in its preamble, for example
 
     % SlideMage view themes: instructor=uni-graz:dark, after-course=uni-graz
 
-Each entry is `<view>=<template key>[:<mode>]`. The deck's own \input{SlideMage_template_...} line (and its dark
-switch) stays the default for a view without an entry and for a compile outside the app, so the deck stays valid TeX.
+Each entry is `<view>=<template key>[:<mode>]`. The deck's own \input{SlideMage_template_...} line (and its mode
+line) stays the default for a view without an entry and for a compile outside the app, so the deck stays valid TeX.
 Only the app uses the line: `preamble_for_view` returns the preamble as that view's compile or render sees it, and every
 place that renders or compiles for a view calls it, so the template, the render key and the equivalence of renders
 follow without any further bookkeeping (a render's key holds the effective preamble and template).
 
-The mode `dark` is the deck's `\newcommand{\SMDarkMode}{}` switch; any other mode id is `\newcommand{\SMModeOverride}{<id>}`
-before the template, which the framework resolves for the modes a theme declares (docs/plans/theme-editor.md, section 3.8).
+A mode is `\newcommand{\SMModeOverride}{<id>}` before the template (dark too, since v0.16.0 removed `\SMDarkMode`), which the framework resolves for the modes a theme declares (docs/plans/theme-editor.md, section 3.8).
 An entry fully describes its view, so `theme` without a mode means the theme's base colours even when the deck's default
 is dark or another mode.
 """
@@ -28,8 +27,6 @@ from .deck_scan import DOCUMENT_BEGIN_LINE_RE
 LINE_RE = re.compile(r"^[ \t]*%+[ \t]*SlideMage view themes:[ \t]*(.*?)[ \t]*$", re.MULTILINE | re.IGNORECASE)
 _KEY_RE = re.compile(r"[A-Za-z0-9_-]+")
 _MODE_RE = re.compile(r"[A-Za-z0-9_]+")
-
-DARK = "dark"
 
 
 def _preamble(text: str) -> tuple[int, int]:
@@ -78,7 +75,7 @@ def set_entries(text: str, entries: dict[str, tuple[str, str]]) -> str:
 
 
 def preamble_for_view(preamble_text: str | None, view: str | None) -> str | None:
-    """The preamble as `view` sees it: the template key and the dark switch of that view's entry, else unchanged."""
+    """The preamble as `view` sees it: the template key and the mode of that view's entry, else unchanged."""
     if not preamble_text or not view:
         return preamble_text
     entry = parse(preamble_text).get(view)
@@ -87,8 +84,7 @@ def preamble_for_view(preamble_text: str | None, view: str | None) -> str | None
     key, mode = entry
     text = deck_settings.set_template(preamble_text, key)
     try:
-        text = deck_settings.set_dark_mode(text, mode == DARK)
-        return deck_settings.set_mode(text, "" if mode == DARK else mode)
+        return deck_settings.set_mode(text, mode)
     except ValueError:
         return text
 
