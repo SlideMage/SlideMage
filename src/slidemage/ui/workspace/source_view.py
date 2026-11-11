@@ -563,21 +563,33 @@ class SourcePane(Surface):
         menu.popup_below(anchor)
 
     def _deck_swatches(self) -> dict[str, str]:
-        """The Color menu's colours under the open deck's theme (the project's render template with no deck), read
-        when the menu opens, so a switched deck or a changed theme shows at once."""
+        """The Color menu's colours under the open deck's theme and colour mode in the view shown (the project's
+        render template in its base mode with no deck), read when the menu opens, so a switched deck, view, mode or
+        theme shows at once."""
         state = getattr(self.app, "state", None)
         deck = getattr(state, "deck", None)
         project = self.app.project
+        mode = ""
         if deck is not None:
-            template = view_themes.template_for(deck.text, getattr(state, "view", None))
+            view = getattr(state, "view", None)
+            template = view_themes.template_for(deck.text, view)
+            mode = view_themes.mode_for(deck.text, view)
         else:
             template = slide_templates.render_template(project)
-        return theme_colors.swatches(template, project.root)
+        return theme_colors.swatches(template, project.root, mode)
 
     def _open_color_menu(self) -> None:
-        menu = PopoverMenu(self, min_width=220)
-        for name, swatch in self._deck_swatches().items():
-            menu.add_item(name, name, swatch=swatch)
+        menu = PopoverMenu(self, min_width=300)
+        swatches = self._deck_swatches()
+        roles = [name for name in swatches if theme_colors.role_hint(name)]
+        if roles:
+            menu.add_header("Follows the colour mode")
+            for name in roles:
+                menu.add_item(name, name, meta=theme_colors.role_hint(name), swatch=swatches[name])
+            menu.add_header("Palette")
+        for name, swatch in swatches.items():
+            if name not in roles:
+                menu.add_item(name, name, swatch=swatch)
         menu.triggered.connect(lambda name: self._wrap(f"textcolor{{{name}}}"))
         self._popup(menu, self._color_button)
 
