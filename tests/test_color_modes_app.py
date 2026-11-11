@@ -98,3 +98,27 @@ def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
     assert re.findall(r"^\\SMDeclareMode\{(\w+)\}\{(\w*)\}", text, re.MULTILINE) == [("light", ""), ("dark", "dark")]
     lines = re.findall(r"^\\SMSet(?:Role|Color)\{\w+\}\{(\w+)\}", text, re.MULTILINE)
     assert lines and set(lines) == {"dark"}
+
+
+@pytest.mark.parametrize("key", ["slidemage", "greyscale"])
+def test_the_text_accents_of_the_shipped_templates_read_on_the_dark_canvas(key, tmp_path):
+    """v0.16.5: the palette colours slides write as text keep at least 4.4:1 on the dark canvas (they were 1.0:1 to
+    2.2:1 before the templates gave them dark-mode values); in light mode they are the template's own."""
+    from slidemage import theme_colors
+
+    def luminance(value):
+        channels = [int(value[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b = (c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    def contrast(a, b):
+        high, low = sorted((luminance(a), luminance(b)), reverse=True)
+        return (high + 0.05) / (low + 0.05)
+
+    dark = theme_colors.theme_colors(key, tmp_path, "dark")
+    light = theme_colors.theme_colors(key, tmp_path, "")
+    accents = ["c_primary_highlight", "c_custom_red", "c_custom_green", "c_custom_brown", "c_text", "c_link"]
+    low = {name: round(contrast(dark[name], dark["c_canvas"]), 2) for name in accents
+           if contrast(dark[name], dark["c_canvas"]) < 4.4}
+    assert not low, low
+    assert all(light[name] != dark[name] for name in accents[:4])

@@ -623,7 +623,8 @@ def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx
     assert ("header", "Palette") in entries
     dark = {e[1]: e[7] for e in items}
     assert dark["c_text"] == "#ffffff" and dark["c_canvas"] == "#444444"
-    assert dark["c_primary_highlight"] == "#0066cc"                     # a palette name keeps its colour
+    assert dark["c_primary_highlight"] == "#8bbcec"                     # v0.16.5: the template's dark value
+    assert dark["c_secondary_blue"] == "#3d8fe0"                        # a colour the mode leaves alone
 
     pane.app_for_test.state.view = "after-course"                       # this view is light
     light = _color_menu(pane, monkeypatch)

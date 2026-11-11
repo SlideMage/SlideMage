@@ -3946,3 +3946,8 @@ v0.16.4 (2026-11-11, direct request: colour roles, the Compile menu's one-off mo
 
 NEW: Compile one PDF in another colour mode.
 - Compile -> Current view in Dark slides makes a dark (or light) copy of the view shown, in its own file; the deck's settings stay as they are.
+
+v0.16.5 (2026-11-11, direct request: colour roles, accents as text in dark mode): In dark mode the SlideMage and Greyscale templates give the palette colours that slides write as text and lines, and that were too dark on the dark canvas, lighter values (\SMSetColor): SlideMage c_primary_highlight 8BBCEC, c_custom_red FF9090, c_custom_green 7FD07F, c_custom_brown E0B060; Greyscale its accent and custom greys. Each is at least 4.4:1 on the canvas; bullets, rules, image borders and markers follow. No slide is rewritten: \textcolor{c_custom_red} simply reads in both modes. The manual's two callout nodes write their number in c_canvas (white in light mode). The framework's dark preset now makes button text black (buttons were white on white in the shipped templates' dark mode) and the quote attribution muted. Light mode is unchanged.
+
+NEW: Coloured text stays readable in dark mode.
+- In the built-in templates' dark mode, highlighted and red, green or brown text uses lighter shades; buttons are readable too.
