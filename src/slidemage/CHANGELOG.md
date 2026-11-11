@@ -3925,3 +3925,8 @@ BREAKING: A deck with \newcommand{\SMDarkMode}{} no longer compiles until Update
 NEW: Dark slides are one of the theme's colour modes.
 - Choose the mode under Colours in Deck settings; Update project converts decks that used the old dark switch.
 - Themes made for an older SlideMage must be updated before decks can use them again.
+
+v0.16.1 (2026-11-11, slide-list thumbnails disappear after file writes): Rebuilding the same deck, view and language carries each row's thumbnail path, verification, stale state and note over by occurrence key until the background pass revalidates it. Freshly resolved source metadata still replaces the old metadata; changing deck, view or language starts with fresh image state.
+
+NEW:
+- Slide-list thumbnails stay visible after saving a slide or accepting an AI draft while their images are checked in the background.
