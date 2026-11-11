@@ -1,8 +1,10 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **draft for the user's review, nothing of Part C built.** Parts A and B (list personal themes in Settings →
-Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the project) are in v0.14.62
-(PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0); stage C0 built (v0.15.3).
+Status: **C0 and CR built and merged; the form is being built, C1a (reader and writer, no window) done.** Parts A and B
+(list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
+project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
+stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
+2026-11-09/10 and is kept for the record.
 
 ## 0. Where this stands (read this first; written 2026-11-09 evening for the next session)
 
@@ -279,8 +281,11 @@ and what contrast it has). A form that regenerates the file would destroy that. 
   `\ifdefined\SMDarkMode`) make the reader say "this part is beyond the form" instead of guessing.
 * **Beyond the form is kept and counted.** Lines the form cannot model (Graz's inline-code style, `\tikzset`,
   `\setbeamercolor` lines) stay byte for byte; the form says how many there are and opens the source tab on them.
-* **Acceptance test, Graz.** The Graz file is the golden fixture (copied into `tests/fixtures/`, the TeX file only: it
-  is LPPL, the logo is not). (1) Read it and write it back with nothing changed: **byte-identical**. (2) Change
+* **Acceptance test, Graz.** The Graz file is the golden fixture. *(Changed when built, C1a: the file is NOT copied into
+  `tests/fixtures/`. Its TeX is LPPL, but the theme's LICENSE says the University's corporate design it reproduces, its
+  palette among it, is not covered and the theme must not be published; this repository is public. The tests run on a
+  test theme of the same shape with made-up colours, `tests/fixtures/theme_files/`, and on the real Graz, uni-ibk and
+  MCI files when `SLIDEMAGE_REAL_THEMES` names them.)* (1) Read it and write it back with nothing changed: **byte-identical**. (2) Change
   `c_primary_highlight`: **exactly one line differs**. (3) Change the dark canvas: one line differs, inside the dark
   block. (4) Add a setting Graz does not have (the body size): it lands in the marked block, nothing else moves. (5) The
   Graz field values equal what `theme_colors.py` reads for the same file. The same four checks run on Greyscale and
@@ -532,6 +537,34 @@ hard-coded names; each is a decision about which role it is).
 | C2 | Layout profile, sizes, margins, title bar, footer, bullets, citation format; route B (theme source folder) for installed themes | C1's editing core |
 | C3 | "Advanced": tier 3 fields, optional features; a "derive dark mode from the light palette" helper; the framework hooks that remove Graz's raw dark-mode TeX (block title text, inline code, standout) | the framework gaps above |
 | C4 | `.smtheme` export | C1 |
+
+The user split C1 (2026-11-11): **C1a** the reader and writer with the field list and the round-trip tests, no window;
+**C1b** the form tab beside the source tab (identity, palette with own colours and contrast badges, roles per mode, code
+colours, logo, footnote marker); **C1c** "New theme…", the theme sample deck, the live render and the slide pictures of
+section 3.3.
+
+**Built: C1a (v0.16.6, branch `feat/theme-form-core`).** `src/slidemage/theme_file.py`: `ThemeFile(text)` reads every
+setting at the top level (not inside another command's argument) with its kind, mode, value span, line, place (before
+the setup file, the settings, after the base) and whether it sits in a conditional; `editable` = in the settings part
+and outside `\if ... \fi` (the layout profile: before the setup file; the two header lines always). `find`/`value`
+(a HTML colour as "#rrggbb"), `modes()`, `own_colours()`, `beyond()` (0-based lines of live code the form does not edit),
+`set(key, value, mode)` and `remove(key, mode)`. Keys: a hook's name, a colour's name, `role:<id>` and `mode:<id>`,
+`header:name`, `header:modes`; a `\SMSetColor` line is its colour's name with the mode. In place means only the value:
+`{HTML}{..}` of a colour (upper-case hex stays upper case), the braced argument otherwise; `#rrggbb` on a `\colorlet` or
+an expression on a `\definecolor` rewrites that command and keeps the comment. New lines: the header after SPDX and
+header lines; the layout profile right before `\input{SlideMage_setup}`; a mode line after the theme's last mode line
+(a declaration after its last declaration); everything else in the marked block before `\input{SlideMage_base}`, sorted
+by the catalog's order with declarations and then mode lines last. Removing the block's last line removes the block. The
+file's line ends stay ("\r\n" or "\n"). `src/slidemage/theme_fields.py`: `FIELDS`, one `Field(name, group, kind,
+label, tier, hook, args, choices)` per catalog setting (151 fields for the 162 catalog names, 43 of them roles: the 13
+hook macros that are a role's base value are covered by that role's field, which names the macro in `hook`; plus the
+two header lines); `catalog(setup_text)` reads defaults, help texts and the roles' base sources from the setup file;
+`order()`. Tests: `tests/test_theme_fields.py` (the field list against the catalog and against
+`test_template_catalog.py`'s own reading), `tests/test_theme_file.py` (the five acceptance checks above on the shipped
+templates, the stress template and the two shape fixtures; line ends; a TeX compile of an edited template with
+`SLIDEMAGE_TEX_TESTS=1`). Run with `SLIDEMAGE_REAL_THEMES` on Graz 1.2.1, uni-ibk and MCI: all pass. Not done: the
+old scope-aware reader for `\ifdefined\SMDarkMode` files (v0.16.0 refuses them, so the form never sees one); the
+footnote marker's two forms (`\SMSetFootnoteMarkers`, `\SMFootnoteMark`) are two fields, merged into one in the form.
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.
