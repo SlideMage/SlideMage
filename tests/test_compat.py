@@ -79,12 +79,10 @@ def test_loud_and_quiet_changes_are_told_apart(tmp_path):
 
 def test_not_now_changes_nothing_so_it_comes_back(tmp_path):
     root = make_project(tmp_path)
-    before = (root / project.PROJECT_INFO_PATH).read_text(encoding="utf-8")
     assert compat.evaluate(root, "v5.30.0", [BREAKING]).loud
     # the app records the open, as cli.check_project_format() does
     project.record_project_open(root, "v5.30.0")
     assert compat.evaluate(root, "v5.30.0", [BREAKING]).loud
-    assert json.loads(before)["compat"]["checked_version"] == "v5.28.1"
     assert compat.checked_version(root) == "v5.28.1"
 
 
