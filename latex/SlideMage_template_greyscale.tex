@@ -53,6 +53,10 @@
 \definecolor{c_custom_brown}{HTML}{5a5a5a}
 % Code comments: a little darker than c_primary_gray, for 4.5:1 on the code panel.
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
+% Code commands in the accent grey (6.4:1 on the panel), copied here, before the colour modes: the
+% framework's default would take c_primary_highlight after the mode's palette line, which in dark mode
+% is a light grey on the light code panel (1.4:1; the theme form's contrast check, v0.16.8).
+\colorlet{SMCodeKeywordColor}{c_primary_highlight}
 
 % ---------------------------------------------------------------------------
 % Roles: a light title bar with dark text (the SlideMage template's is dark with white
