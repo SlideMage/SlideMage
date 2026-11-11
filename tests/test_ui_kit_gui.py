@@ -3,8 +3,9 @@
 """UI kit (slidemage.ui.kit): fonts, tokens, widgets and the debug gallery in
 light and dark mode. No golden screenshots: the checks are structural
 (non-empty render, fonts registered, icon ligatures draw a glyph)."""
-from conftest import pause
 from __future__ import annotations
+
+from conftest import pause
 
 import re
 import sys

@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The debug log's tools for finding a freeze: the stall monitor, the call-stack lines and the timing spans."""
-from conftest import pause
 from __future__ import annotations
+
+from conftest import pause
 
 import logging
 import threading

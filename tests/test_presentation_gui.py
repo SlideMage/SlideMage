@@ -3,8 +3,9 @@
 """The presentation windows and their controls, offscreen (docs/plans/presentation-mode.md). Two screens are
 made up from the one real offscreen screen, so the plan's placement logic runs; real monitors are for the
 manual checklist in the plan."""
-from conftest import pause
 from __future__ import annotations
+
+from conftest import pause
 
 import time
 

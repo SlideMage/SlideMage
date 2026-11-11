@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The centre column: which view shows what for the focused slide, the Preview's
 states and renders (the renderer is faked), and unsaved edits across slides."""
-from conftest import pause
 from __future__ import annotations
+
+from conftest import pause
 
 import time
 from types import SimpleNamespace
