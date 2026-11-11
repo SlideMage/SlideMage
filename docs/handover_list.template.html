@@ -88,7 +88,7 @@ function render(){
     h+='</div>';
   });
   const n=Object.keys(STATE.sel).filter(k=>STATE.sel[k]).length;
-  h+='<div class="bar"><span id="cnt">'+statusText()+'</span><div class="btns"><button id="upd" class="sec"'+(dirty.length||pch.length?'':' disabled')+'>Update</button><button id="go"'+(n?'':' disabled')+'>Start tasks</button></div></div>';
+  h+='<div class="bar"><span id="cnt">'+statusText()+'</span><div class="btns"><button id="upd" class="sec"'+(dirty.length||pch.length?'':' disabled')+'>Update</button><button id="cp" class="sec"'+(n?'':' disabled')+' title="Copy the picks as text to paste into the chat if Start tasks does not wake Claude">Copy picks</button><button id="go"'+(n?'':' disabled')+'>Start tasks</button></div></div>';
   app.innerHTML=h;
 }
 document.addEventListener("change",e=>{
@@ -122,15 +122,25 @@ async function save(btn,ns){
   const doc='<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>'+RESET+'</style></head><body>'+head+'</body></html>';
   try{await art.publish(doc)}catch(err){btn.disabled=false;btn.textContent=(err&&err.code==="conflict")?"Reloaded, try again":"Could not send"}
 }
+function startMsg(ids){
+  const ch=changed().filter(id=>ids.indexOf(id)<0);
+  let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort. Integrate each note into its task's description in handover.md (desc and marked text), then clear the task's `notes` field.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
+  if(ch.length)msg+="\n\nAlso integrate these notes into those tasks' descriptions, as for an update (do not start these tasks):\n"+noteLines(ch);
+  const pc0=pinsChanged();if(pc0.length)msg+="\n\nAlso, pin changes (do not start these tasks): "+PINMSG+pinLines(pc0);
+  return msg}
 document.addEventListener("click",async e=>{
   const btn=e.target;
+  if(btn.id==="cp"){
+    const ids=STATE.tasks.filter(t=>STATE.sel[t.id]).map(t=>t.id);if(!ids.length)return;
+    const msg="/handover picks:\n"+startMsg(ids);
+    let ok=false;try{await navigator.clipboard.writeText(msg);ok=true}catch(_){}
+    if(!ok){const ta=document.createElement("textarea");ta.value=msg;ta.style.cssText="position:fixed;left:0;top:0;width:90%;height:8em;z-index:9";document.body.appendChild(ta);ta.select();try{ok=document.execCommand("copy")}catch(_){}if(ok)ta.remove()}
+    btn.textContent=ok?"Copied. Paste into the chat":"Copy failed: copy the text shown";setTimeout(()=>{btn.textContent="Copy picks"},4000);return}
   if(btn.id==="go"){
     const ids=STATE.tasks.filter(t=>STATE.sel[t.id]).map(t=>t.id);if(!ids.length)return;
     btn.disabled=true;btn.textContent="Sending…";
     const ch=changed().filter(id=>ids.indexOf(id)<0);
-    let msg="Start these tasks now, in this order (the full picks, with the run choice for each, are also in this page's STATE.sent). A subsession or subagent choice is the user's instruction: use that mode, model and effort. Integrate each note into its task's description in handover.md (desc and marked text), then clear the task's `notes` field.\n"+ids.map((id,i)=>(i+1)+". "+title(id)+" ["+id+"]"+runText(id)+((STATE.notes[id]||"").trim()?" - note: "+STATE.notes[id].trim():"")).join("\n");
-    if(ch.length)msg+="\n\nAlso integrate these notes into those tasks' descriptions, as for an update (do not start these tasks):\n"+noteLines(ch);
-    const pc0=pinsChanged();if(pc0.length)msg+="\n\nAlso, pin changes (do not start these tasks): "+PINMSG+pinLines(pc0);
+    const msg=startMsg(ids);
     const wk=await wake(btn,msg);
     const ns=JSON.parse(JSON.stringify(STATE));
     ns.sent={ids:ids,wake:wk,at:new Date().toISOString(),picked:ids.map(id=>({rank:STATE.tasks.findIndex(t=>t.id===id)+1,id:id,task:title(id),note:STATE.notes[id]||"",run:JSON.parse(JSON.stringify(run(id)))}))};
