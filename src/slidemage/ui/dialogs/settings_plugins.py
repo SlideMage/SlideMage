@@ -33,15 +33,18 @@ for the user, and anything else a worker raises is shown the same way.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+                               QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
 from ... import citation_sources, citations, open_path, packages, slide_templates, theme_sources, themes
@@ -621,7 +624,12 @@ class PluginsTab(Page):
         self.theme_file_button.clicked.connect(self.add_theme_file_from_dialog)
         self.github_button = Button("Add from GitHub…", compact=True)
         self.github_button.clicked.connect(self.add_theme_from_dialog)
-        layout.addWidget(row(self._heading("Themes"), self.theme_file_button, self.github_button))
+        self.new_theme_button = Button("New theme…", compact=True)
+        self.new_theme_button.setToolTip("Make a theme of your own in this project from one SlideMage ships, and open "
+                                         "it with the theme form")
+        self.new_theme_button.clicked.connect(self.new_theme_from_dialog)
+        layout.addWidget(row(self._heading("Themes"), self.new_theme_button, self.theme_file_button,
+                             self.github_button))
         self._themes_box = QVBoxLayout()
         self._themes_box.setSpacing(LIST_GAP)
         layout.addLayout(self._themes_box)
@@ -753,6 +761,61 @@ class PluginsTab(Page):
             self._leave(action)
         else:
             action()
+
+    def new_theme_from_dialog(self) -> None:
+        """Ask for a key, a name and a starting point, then make the theme and open it (the sheet closes first)."""
+        values = self.ask_new_theme()
+        maker = getattr(self.app, "new_theme", None)
+        if values is None or maker is None:
+            return
+        action = partial(maker, *values)
+        if self._leave is not None:
+            self._leave(action)
+        else:
+            action()
+
+    def ask_new_theme(self) -> Optional[tuple[str, str, str]]:
+        """(key, name, start) from a small dialog that checks the key as it is typed; None when cancelled."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("New theme")
+        form = QFormLayout(dialog)
+        name = QLineEdit()
+        name.setMaxLength(40)
+        name.setPlaceholderText("My University")
+        key = QLineEdit()
+        key.setMaxLength(32)
+        key.setPlaceholderText("my-university")
+        start = QComboBox()
+        for value, label in themes.SHIPPED_STARTS:
+            start.addItem(label, value)
+        problem = caption("", "error")
+        form.addRow("Name", name)
+        form.addRow("Key (file name)", key)
+        form.addRow("Start from", start)
+        form.addRow(problem)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        typed = {"key": False}
+
+        def name_changed(text: str) -> None:
+            if not typed["key"]:
+                key.setText(re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:32])
+
+        def check() -> None:
+            why = themes.check_new_key(key.text().strip(), self.app.project.root) if key.text().strip() else ""
+            problem.setText(why)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(key.text().strip()) and not why)
+
+        name.textEdited.connect(name_changed)
+        key.textEdited.connect(lambda _t: typed.__setitem__("key", True))
+        key.textChanged.connect(lambda _t: check())
+        check()
+        self._new_theme_dialog = dialog         # for tests
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return key.text().strip(), name.text().strip(), start.currentData()
 
     def copy_theme_to_project(self, key: str) -> None:
         """Copy the installed theme into the project folder and open the copy in a tab (the sheet closes first)."""
