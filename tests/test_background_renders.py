@@ -102,8 +102,8 @@ def render_unit(renderer, unit):
         raise
     stored = renderer.store.find(renderer.resolver.fast_key(unit, spec.revision.text))
     if stored is not None:
-        renderer.store.link_decks(stored['name'], [unit.deck])
-        return stored['name']
+        renderer.store.link_decks(stored['key'], [unit.deck])
+        return stored['key']
     return None
 
 
@@ -491,7 +491,7 @@ def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_dep
     assert r.ingest_compile(job, pdf, _record(pdf, job, units, project)) >= 1
     unit = units[0]
     found = r.resolver.lookup(unit)
-    assert found.usable and found.record["origin"] == render_store.ORIGIN_COMPILE
+    assert found.usable
     assert store.page(found.record, 1) is not None and found.record["pages"] == 2
     assert found.final                          # a plain \slide call: the compile already has every one of its steps
     # another slide changing does not change this slide's page ...
@@ -888,7 +888,7 @@ def _edit(path, text="\n% edited\n"):
 
 
 def _keys_of(store, label):
-    return sorted(row[0] for row in store.db.execute("SELECT fast_key FROM renders WHERE unit=?", (label,)))
+    return sorted(row[0] for row in store.db.execute("SELECT key FROM renders WHERE unit=?", (label,)))
 
 
 def _png():
@@ -898,11 +898,11 @@ def _png():
 def _leftover(store, label, deck, key):
     """A render stored long ago under `key` (a key no deck uses now)."""
     meta = dict(unit=label, rendered_at=time.time() - 3600, manifest=[], tex_digest="", frame_number=1, unstable=False)
-    pdf = store.local_dir / "leftover.pdf"
+    pdf = store.root / "leftover.pdf"
     with pymupdf.open() as doc:
         doc.new_page()
         doc.save(pdf)
-    return store.put(key, render_store.ORIGIN_BACKGROUND, pdf, [_png()], meta, decks=[deck] if deck else [])
+    return store.put(key, pdf, [_png()], meta, decks=[deck] if deck else [])
 
 
 def _call_twice(project, slide="1cx-EN-Slide-IDs"):

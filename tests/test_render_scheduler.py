@@ -6,7 +6,7 @@ from __future__ import annotations
 import threading
 import time
 
-from slidemage.render_scheduler import P_FOREGROUND, P_IDLE, P_NEIGHBOURS, RenderScheduler
+from slidemage.render_scheduler import P_FOREGROUND, P_IDLE, RenderScheduler
 
 
 class Cancelled(RuntimeError):
@@ -42,8 +42,8 @@ def test_classes_run_in_order_and_ranks_inside_a_class():
     s = make()
     s.submit("idle-b", None, P_IDLE, (2,))
     s.submit("idle-a", None, P_IDLE, (1,))
-    s.submit("slider", None, P_NEIGHBOURS, (0,))
-    s.submit("user", None, P_FOREGROUND, (0,))
+    s.submit("slider", None, P_FOREGROUND, (0,))
+    s.submit("user", None, P_FOREGROUND, (-1,))
     drain(s)
     assert [k for k, _ in s.ran] == ["user", "slider", "idle-a", "idle-b"]
 
@@ -52,7 +52,7 @@ def test_idle_jobs_wait_for_the_gate_but_the_others_do_not():
     gate = {"open": False}
     s = make(can_start=lambda job: gate["open"])
     s.submit("idle", None, P_IDLE)
-    s.submit("slider", None, P_NEIGHBOURS)
+    s.submit("slider", None, P_FOREGROUND)
     drain(s)
     assert [k for k, _ in s.ran] == ["slider"] and s.pending(P_IDLE) == 1
     gate["open"] = True
@@ -62,7 +62,7 @@ def test_idle_jobs_wait_for_the_gate_but_the_others_do_not():
 
 def test_a_better_class_cancels_the_running_idle_job_which_is_put_back():
     s = make()
-    s.box["during"] = {"idle-1": lambda job: s.box["during"].pop("idle-1") and None or s.submit("slider-1", None, P_NEIGHBOURS)}
+    s.box["during"] = {"idle-1": lambda job: s.box["during"].pop("idle-1") and None or s.submit("slider-1", None, P_FOREGROUND)}
     s.submit("idle-1", None, P_IDLE)
     s.submit("idle-2", None, P_IDLE, (5,))
     assert s.run_next()                         # idle-1 starts, the slider asks for a slot, idle-1 is cancelled
@@ -73,10 +73,10 @@ def test_a_better_class_cancels_the_running_idle_job_which_is_put_back():
 
 def test_the_slider_does_not_wait_for_an_idle_job_of_the_same_key():
     s = make()
-    s.box["during"] = {"unit": lambda job: s.submit("unit", None, P_NEIGHBOURS) if job.priority == P_IDLE else None}
+    s.box["during"] = {"unit": lambda job: s.submit("unit", None, P_FOREGROUND) if job.priority == P_IDLE else None}
     s.submit("unit", None, P_IDLE)
     drain(s)
-    assert s.ran == [("unit", P_IDLE), ("unit", P_NEIGHBOURS)]
+    assert s.ran == [("unit", P_IDLE), ("unit", P_FOREGROUND)]
     assert s.pending() == 0
 
 
@@ -86,18 +86,6 @@ def test_a_request_as_urgent_as_the_running_job_joins_it():
     s.submit("unit", None, P_IDLE)
     drain(s)
     assert s.ran == [("unit", P_IDLE)]
-
-
-def test_user_input_never_stops_a_running_idle_job():
-    now = {"t": 100.0}
-    s = make(grace=20, clock=lambda: now["t"])
-    s.box["during"] = {"young": lambda job: (now.__setitem__("t", 110.0), s.user_active()),
-                       "old": lambda job: (now.__setitem__("t", 250.0), s.user_active())}
-    s.submit("young", None, P_IDLE, (1,))
-    s.submit("old", None, P_IDLE, (2,))
-    s.run_next()
-    s.run_next()
-    assert s.completed == 2 and s.pending() == 0     # however long they ran, both finished
 
 
 def test_cancel_group_drops_queued_and_stops_running_jobs():
@@ -128,11 +116,11 @@ def test_a_failing_job_is_reported_once_and_not_repeated():
 def test_resubmitting_a_queued_job_improves_it_instead_of_duplicating():
     s = make()
     s.submit("x", None, P_IDLE, (5,))
-    s.submit("x", None, P_NEIGHBOURS, (0,))
+    s.submit("x", None, P_FOREGROUND, (0,))
     s.submit("y", None, P_IDLE, (1,))
-    assert s.queued_keys() == ["x", "y"] and s.pending() == 2
+    assert s.pending() == 2
     drain(s)
-    assert s.ran[0] == ("x", P_NEIGHBOURS)
+    assert s.ran[0] == ("x", P_FOREGROUND)
 
 
 def test_the_worker_rests_after_idle_jobs_only():
@@ -141,7 +129,7 @@ def test_the_worker_rests_after_idle_jobs_only():
     s.submit("idle", None, P_IDLE)
     s.run_next()
     assert rests == [1.0]
-    s.submit("slider", None, P_NEIGHBOURS)
+    s.submit("slider", None, P_FOREGROUND)
     s.run_next()
     assert rests == [1.0]
 
@@ -169,10 +157,10 @@ def run_in_threads(scheduler, count):
 
     def hold(_job):
         with lock:
-            peak["n"] = max(peak["n"], len(scheduler.running_keys()))
+            peak["n"] = max(peak["n"], len(scheduler.running_jobs()))
         release.wait(2)
 
-    scheduler.box["during"] = {key: hold for key in scheduler.queued_keys()}
+    scheduler.box["during"] = {job.key: hold for job in scheduler.jobs(P_IDLE)}
     threads = [threading.Thread(target=lambda: drain(scheduler)) for _ in range(count)]
     for thread in threads:
         thread.start()
@@ -250,12 +238,12 @@ def test_idle_renders_stand_back_while_a_batch_waits_but_the_users_own_does_not(
 def test_interrupting_a_class_puts_its_running_jobs_back_and_leaves_the_others_running():
     s = make()
     s.box["during"] = {"idle-1": lambda job: s.box["during"].pop("idle-1") and None or s.box.__setitem__(
-        "stopped", (s.interrupt(P_IDLE), s.interrupt(P_NEIGHBOURS)))}
+        "stopped", (s.interrupt(P_IDLE), s.interrupt(P_FOREGROUND)))}
     s.submit("idle-1", None, P_IDLE)
     assert s.run_next()                         # the window comes to the front while idle-1 renders
     assert s.box["stopped"] == (1, 0)
     assert s.failed == 0 and not s.errors and s.completed == 0
-    assert s.queued_keys() == ["idle-1"]        # put back, it renders again later
+    assert [job.key for job in s.jobs(P_IDLE)] == ["idle-1"]        # put back, it renders again later
     drain(s)
     assert [k for k, _ in s.ran] == ["idle-1", "idle-1"] and s.completed == 1
 

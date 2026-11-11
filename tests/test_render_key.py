@@ -140,9 +140,9 @@ def make_record(resolver, unit, inputs):
     return key, meta
 
 
-def store_render(store, key, meta, origin="background", pages=2, decks=("deck1",)):
-    pdf = write(store.local_dir / f"{origin}.pdf", "%PDF")
-    return store.put(key, origin, pdf, [real_png()] * pages, meta, decks=decks)
+def store_render(store, key, meta, pages=2, decks=("deck1",)):
+    pdf = write(store.root / "render.pdf", "%PDF")
+    return store.put(key, pdf, [real_png()] * pages, meta, decks=decks)
 
 
 def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
@@ -197,14 +197,14 @@ def test_two_producers_replace_one_object_of_a_key(ctx, resolver, store):
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     layer = write(ctx.root / "SlideMage_template_acme.tex", "v1")
-    for origin, pages in (("reveal", 2), ("background", 3), ("reveal", 1)):
+    for pages in (2, 3, 1):
         if pages == 1:
             write(layer, "v2 longer")
             assert resolver.lookup(unit).state is Freshness.STALE
         key, meta = make_record(resolver, unit, [unit.source_path, layer])
-        assert store_render(store, key, meta, origin=origin, pages=pages) == key
+        assert store_render(store, key, meta, pages=pages) == key
         found = resolver.lookup(unit)
-        assert found.final and found.record["origin"] == origin and found.record["pages"] == pages
+        assert found.final and found.record["pages"] == pages
         assert store.count() == 1 and store.find(key) is not None
         assert [p.name for p in (store.root / "objects" / key[:2]).iterdir()] == [key]
         assert not store.page(found.record, pages + 1)
@@ -236,7 +236,7 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
     store.db.execute("UPDATE filehash SET sha256='old raw-byte hash'")
     store.db.execute("PRAGMA user_version=0")
     store.db.commit()
-    again = render_store.RenderStore(ctx, store.local_dir)
+    again = render_store.RenderStore(ctx, store.root)
     try:
         hashes = dep_hash.HashCache(again.db, again.lock)
         current = render_key.Resolver(ctx, hashes, again, engine_fp=lambda: "LuaHBTeX 1.22|Windows")
@@ -249,12 +249,41 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
         again.close()
 
 
+def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
+    unit = unit_for(ctx)
+    write(unit.source_path, "slide")
+    key, meta = make_record(resolver, unit, [unit.source_path])
+    store_render(store, key, meta)
+    before = store.find(key)
+    store.db.executescript("""
+        ALTER TABLE renders RENAME TO new_renders;
+        CREATE TABLE renders (
+            name TEXT PRIMARY KEY, fast_key TEXT NOT NULL, origin TEXT NOT NULL, unit TEXT NOT NULL,
+            bytes INTEGER NOT NULL, rendered_at REAL NOT NULL, last_used REAL NOT NULL,
+            decks TEXT NOT NULL, meta TEXT NOT NULL);
+        INSERT INTO renders SELECT key, key, 'background', unit, bytes, rendered_at, last_used, decks, meta FROM new_renders;
+        DROP TABLE new_renders;
+        CREATE INDEX renders_key ON renders(fast_key);
+        ALTER TABLE failures DROP COLUMN last_try;
+        CREATE TABLE last_tries (fast_key TEXT PRIMARY KEY, tried_at REAL NOT NULL);
+    """)
+    folder = store.root
+    upgraded = render_store.RenderStore(ctx, folder)
+    try:
+        assert upgraded.count() == 1 and upgraded.find(key) == before
+        assert upgraded.pages(upgraded.find(key)) == [real_png()] * 2
+        store_render(upgraded, key, meta, pages=1)
+        assert upgraded.find(key)["pages"] == 1
+    finally:
+        upgraded.close()
+
+
 def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx)
     key, meta = make_record(resolver, unit, [unit.source_path])
     store_render(store, key, meta)
-    local = store.local_dir
+    local = store.root
     store.close()
     (local / "index.sqlite").unlink()
     again_store = render_store.RenderStore(ctx, local)
@@ -281,7 +310,7 @@ def test_the_store_creates_nothing_in_the_project_and_removes_old_caches(ctx, tm
     store = render_store.RenderStore(ctx, local)
     try:
         pdf = write(tmp_path / "x.pdf", "%PDF")
-        store.put("k" * 64, "background", pdf, [real_png()], dict(unit="u", manifest=[], rendered_at=1.0), decks=["d"])
+        store.put("k" * 64, pdf, [real_png()], dict(unit="u", manifest=[], rendered_at=1.0), decks=["d"])
         store.touch_deck("d", opened=True)
         store.rescan()
         assert store.root == local and (local / "objects").is_dir() and store.work_dir == local / "work"
@@ -361,7 +390,7 @@ def test_legacy_failures_are_retried_once_without_discarding_renders(ctx, tmp_pa
     folder = tmp_path / "legacy-store"
     with_store = render_store.RenderStore(ctx, folder)
     try:
-        store_render(with_store, "good", {"unit": "deck:slide:instructor:EN"}, origin="reveal")
+        store_render(with_store, "good", {"unit": "deck:slide:instructor:EN"})
         with_store.record_failure("bad", render_store.DETERMINISTIC, "missing setup", [])
         with_store.note_last_try("bad")
         with_store.db.execute("DELETE FROM store_flags WHERE name=?", (render_store.FAILURE_INPUTS_TRACKED,))

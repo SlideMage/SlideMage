@@ -387,10 +387,8 @@ class RenderService:
                             pages = renderer._rasterise(pdf, cancel)
                         if not pages:
                             raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
-                        from .render_store import ORIGIN_BACKGROUND, ORIGIN_REVEAL
                         renderer._store_render(
-                            unit, ORIGIN_BACKGROUND if background else ORIGIN_REVEAL,
-                            pdf, pages, manifest, evidence)
+                            unit, pdf, pages, manifest, evidence)
                     except Exception as exc:
                         if background:
                             exc.preview_inputs = dependencies

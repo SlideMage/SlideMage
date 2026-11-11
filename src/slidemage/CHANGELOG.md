@@ -3979,3 +3979,8 @@ v0.16.10 (2026-11-11, direct request: render store fixes, docs/plans/render-stor
 
 NEW: Background previews check what changed faster.
 - The debug log says why slide previews are being prepared again.
+
+v0.16.11 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 2): A smaller render store with the same behaviour. The index has one name per render (`renders.key`; `name`, `fast_key` and its index go), no `origin` (nobody read it: the column, the meta field, the three ORIGIN_* constants and the parameter of put and _store_render), and a failure's last try is a column of `failures` instead of the `last_tries` table. An index of an earlier version is migrated once when the store opens, keeping every render (STORE_FORMAT stays 2). RenderStore has one attribute each for its folder (`root`) and its lock (`lock`), and one private _remove for "delete the folder and the row"; put commits once. BackgroundRenderer._drop_stale goes: put already deletes the unit's other keys. Unused names go: BackgroundRenderer._outstanding, RenderScheduler.user_active, grace, queued_keys, running_keys, PRIORITY_NAMES, P_NEIGHBOURS, the second ALL_PAGES.
+
+NEW: A tidier preview store, with nothing to do for you.
+- Previews made before this version are kept.
