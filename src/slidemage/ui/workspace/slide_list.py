@@ -419,6 +419,10 @@ class SlideList(QWidget):
         self._thumbnail_full_requested = False
         path = deck.path if deck else None
         same_deck = path == self._deck_path
+        previous_rows = {row.key: row for row in self.rows()} if (
+            same_deck and self._resolved is not None
+            and (self._resolved.view, self._resolved.language) == (self.state.view, self.state.language)
+        ) else {}
         selected = {r.key for r in self.tree.selected_rows()} if same_deck else set()
         current = self.tree.data_of(self.tree.currentItem())
         current_key = current.key if same_deck and isinstance(current, SlideRow) else None
@@ -435,6 +439,13 @@ class SlideList(QWidget):
                               if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
+        # Keep the images on show while the background pass revalidates them.
+        if previous_rows:
+            self._set_outline([replace(section, rows=[
+                replace(row, thumbnail=old.thumbnail, thumbnail_verified=old.thumbnail_verified,
+                        stale_preview=old.stale_preview, thumbnail_note=old.thumbnail_note)
+                if (old := previous_rows.get(row.key)) is not None else row
+                for row in section.rows]) for section in self._outline])
         if deck and not self._background_thumbnails:
             with timing.span("slide_list.preview_images"):
                 self._set_outline(self._preview_images(self._outline))

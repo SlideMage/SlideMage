@@ -206,7 +206,7 @@ def test_dark_slides_setting_saves_reopens_and_disables_for_other_templates(tmp_
     reopened.save_button.click()
     assert deck_settings.apply_settings(saved, reopened.original, reopened.result_settings()) == DECK_TEXT
 
-    shipped = make_sheet(tmp_path, monkeypatch, text=saved)      # v0.16.1: the shipped templates offer dark too
+    shipped = make_sheet(tmp_path, monkeypatch, text=saved)      # v0.16.2: the shipped templates offer dark too
     shipped.template_combo.setCurrentIndex(shipped.template_combo.findData("slidemage"))
     assert shipped.mode_combo.isEnabled() and shipped.mode_combo.currentData() == "dark"
 

@@ -88,7 +88,7 @@ def test_a_view_can_have_any_mode_of_its_theme():
 
 @pytest.mark.parametrize("key", ["slidemage", "greyscale"])
 def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
-    """v0.16.1: both templates in latex/ declare light (the base) and dark, in the header the app reads and to the
+    """v0.16.2: both templates in latex/ declare light (the base) and dark, in the header the app reads and to the
     framework; every data line is for dark, so the light PDFs do not change."""
     import re
     from pathlib import Path
