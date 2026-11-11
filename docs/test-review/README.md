@@ -33,3 +33,23 @@ keep 2683, review-overlap 641, rewrite 37, ASK-drop 11, merge 4, drop-candidate 
 
 ## Not covered
 `tools/` regression configs (`framework_regression_repo.json`, `tools/preview_benchmark`) were not inventoried per test; they are not pytest tests apart from `test_framework_regression.py`.
+
+---
+## Update 2026-11-11 (after the user's go)
+Done on this branch (commits 0a09d9d1, 5a98f0db): removed the preview benchmark tests, `test_module_imports`, and the compat tests of changes
+before v0.14 (whole files `test_compat_names/own_theme/setup/project_macros/bibliography`, 9 per-change tests in `test_compat.py`; the
+`compat_*` src modules now have no tests); Opus rewrote the 37 slow/flaky tests and merged the four catalogue tests (`rewrite-report.md`:
+about 105 s saved serially; the main finding is that real-TeX tests rebuilt the preamble format per test because the config dir is part of the
+cache key, now shared per module via `conftest.same_tex_configuration`; also `QTest.qWait` starves worker threads, so other tests that wait
+for a thread with it are probably load-flaky too).
+Still open from the earlier user list: ~190 other tests named legacy/migrat (languages, citations, ...) were NOT removed: they need a
+case-by-case version check.
+
+Read by Haiku (all test bodies, in full): every test file at HEAD except those only skimmed (see `haiku-keep-read.md`): reports
+`haiku-overlap.md` (641 overlap rows), `haiku-slice-0..5.md`, `haiku-list-3.md`, `haiku-list-5.md` (slices 0/1 and 4/5 overlap: lists were
+numbered differently, so lists 0 and 4 were read twice, then 3 and 5 re-run). Proposals only, nothing removed. Totals: ~14 drops
+(e.g. `test_ai_routes::test_registry_starts_empty`, `test_citations::test_the_fixture_folder_passes`, `test_themes::test_the_fixture_theme_passes_every_check`,
+`test_source_view_gui::test_the_toolbar_has_no_revert_button` (asserts an attribute absent from src), two `test_translation_languages` prompt tests,
+`test_palette_gui` outside-deck test), ~20 merges (catalogue, plugin_installer, plugin_credentials owner-only, deck_snapshot real tests, images_page_gui),
+~50 rewrites (tests that cannot fail: `or True`, no assertion, `pytest.fail` inside a Qt slot which PySide6 swallows).
+Haiku's findings are one model's reading: check each in its table before acting.
