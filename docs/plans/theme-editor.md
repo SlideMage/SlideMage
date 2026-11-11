@@ -310,6 +310,22 @@ choice (profile, bullet, footnote marker), text (name), file (logo), switch (fea
   length would put the Top Margin above the title bar" (Top Margin >= the bar's derived bottom edge; the
   `tools/check_layout.py` rules that read margins from the PDF).
 
+* **Slide pictures that show what a field changes (user's requirement, 2026-11-10).** Next to every group of fields the
+  form shows a picture of a slide, so nobody has to guess what a setting is: while a field has the focus, or the
+  mouse is over it, the picture marks the element or the margin it changes (the title bar, the Top Margin, the text
+  margins, the footer box, a block title, the bullet, the footnote area, the logo) and the picture is the real
+  render of the sample deck with the theme as edited, so the change shows as it is made. Design notes:
+  one render per page of the sample deck (title bar and footer; a block of each kind; list and footnote; a code
+  panel; a quote frame; a table) so each field group points at the page that shows its element; the marks are
+  overlays drawn over the rendered page from geometry (the hooks' values for margins and paddings, which
+  `tests/test_hook_geometry.py` already measures against the PDF; boxes of the other elements read from the PDF's
+  drawing operations or from a pass of the sample deck that writes the boxes of its elements to a file), never
+  baked into the render, so they follow the values as they change and need no second compile; a margin field shows
+  its measure as a dimension line with the value; for a colour field the picture dims everything but the
+  elements that use the role (the role table of section 3.8 says which); in a mode column the page is rendered in
+  that mode. A static, annotated picture per field is the fallback where a live mark is not possible. Stage: the
+  picture of the colour roles belongs to C1, the margins and layout fields to C2; the overlay mechanism is built in C1.
+
 ### 3.4 New theme from the shipped one
 
 `New theme…` asks for key and name (key rules from `themes.py`, not a shipped key, not a file that exists), then copies
