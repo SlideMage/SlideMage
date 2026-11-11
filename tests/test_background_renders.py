@@ -15,7 +15,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE
-from slidemage import background_renders, compile_records, compiler, deck_scan, render_evidence, render_store, slide_preview, slide_versioning
+from slidemage import background_renders, compile_records, compiler, deck_outline, deck_scan, render_evidence, render_store, slide_preview, slide_versioning
 from slidemage.background_renders import BackgroundRenderer
 from slidemage.compiler import CancelToken
 from slidemage.deck_editor import VIEWS
@@ -125,6 +125,13 @@ def test_units_of_a_deck_follow_deck_order_and_start_at_the_last_slide(project, 
     bare = middle.split("-")[0]
     wrapped = background_renders.deck_units(project, deck, "instructor", "EN", bare)
     assert wrapped[0].id_slug == middle and [u.id_slug for u in wrapped] == [u.id_slug for u in units[10:] + units[:10]]
+    for view in VIEWS:
+        units = background_renders.deck_units(project, deck, view, "EN", context_ready=lambda: True)
+        rows = deck_outline.outline_rows(project, deck, view, "EN")
+        visible = [row for row in rows if not row.hidden and (project.slides_dir / row.call.source_filename).is_file()]
+        assert [(u.id_slug, u.frame_number) for u in units] == [(row.call.id_slug, row.frame_number) for row in visible]
+        # The manual repeats \slidestep calls, with hidden steps between the visible ones.
+        assert any(row.frame_number != row.position for row in visible)
 
 
 def test_a_view_that_does_not_typeset_a_call_has_no_unit(project, store, raster):
@@ -191,18 +198,62 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
     assert not again.final
 
 
-def test_a_page_number_that_moved_is_refreshed_last(project, store, raster):
-    tex = FakeTeX(project)
+def test_inserting_a_slide_plans_only_the_new_units(project, store, raster, caplog):
+    deck = next(d for d in deck_scan.scan_decks(project) if d.name == "slidemage-manual")
+    body = "\\slide{1jh-EN-Title-Slide}\n\\slide{1cx-EN-Slide-IDs}\n\\end{document}\n"
+    deck.path.write_text(deck.preamble_text + "\n" + body, encoding="utf-8")
+    tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)
-    deck = deck_named(r, "slidemage-manual")
-    units = background_renders.deck_units(project, deck, "instructor", "EN")
-    render_unit(r, units[3])
-    from dataclasses import replace
-    moved = replace(units[3], frame_number=units[3].frame_number + 1)
+    r.test_decks[:] = [deck_named(r, "slidemage-manual")]
+    deck = r.test_decks[0]
+    for _, unit in r.scan():
+        render_unit(r, unit)
+    assert r.scan() == [] and r.progress.fresh == 6
+
+    inserted = "zzz-EN-Inserted"
+    (project.slides_dir / f"{inserted}-current.tex").write_text("\\begin{frame}New\\end{frame}\n", encoding="utf-8")
+    deck.path.write_text(deck.preamble_text + f"\n\\slide{{{inserted}}}\n" + body, encoding="utf-8")
+    r.test_decks[:] = [deck_scan.read_deck(deck.path)]
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        plan = r.scan()
+    assert len(plan) == 3 and {u.id_slug for _, u in plan} == {inserted}
+    assert r.progress.total == 9 and r.progress.fresh == 6 and r.progress.left == 3
+    lines = [rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("scan:")]
+    assert len(lines) == 1 and "9 units, 6 fresh, 0 failed; reasons: no render: 3" in lines[0]
+    moved = next(u for u in background_renders.deck_units(project, r.test_decks[0], "instructor", "EN")
+                 if u.id_slug == "1cx-EN-Slide-IDs")
     assert r.resolver.lookup(moved).state is Freshness.FRESH_NUMBERING_DIFFERS
     render_unit(r, moved)
-    assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 2
-    assert store.count() == 1
+    assert r.resolver.lookup(moved).state is Freshness.FRESH and len(tex.calls) == 7
+    assert store.count() == 6
+
+
+@pytest.mark.parametrize(("name", "stale"), [
+    ("sources/paper.pdf", False),
+    ("decks/NewDeck.tex", False),
+    ("decks/archive/Old.tex", False),
+    ("notes.txt", False),
+    ("sources/SlideMage_project_macros.tex", False),
+    ("SlideMage_project_macros.tex", True),
+    ("decks/SlideMage_project_macros.tex", True),
+    ("references.bib", True),
+    ("decks/references.bib", True),
+    ("sources/picture.pdf", True),
+    ("picture.pdf", True),
+])
+def test_new_project_names_only_stale_renders_they_can_affect(project, store, raster, name, stale):
+    picture = project.root / "sources/picture.png"
+    picture.parent.mkdir()
+    picture.write_bytes(b"picture")
+    tex = FakeTeX(project, pages=1, inputs=[picture])
+    r = make(project, store, raster, tex=tex)
+    unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
+    render_unit(r, unit)
+    assert r.resolver.lookup(unit).state is Freshness.FRESH
+    added = project.root / name
+    added.parent.mkdir(parents=True, exist_ok=True)
+    added.write_text("new candidate", encoding="utf-8")
+    assert r.resolver.lookup(unit, strict=True).state is (Freshness.STALE if stale else Freshness.FRESH)
 
 
 def test_a_failing_slide_is_remembered_and_not_planned_again_until_it_changes(project, store, raster):

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_language, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
+from . import app_settings, deck_outline, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, batch_render, power_status, preview_requests, preview_target, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -94,16 +94,17 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
     if deck.preamble_end is None:
         return []
     links = slide_language.links_for(ctx)
-    slots = deck_language._slots(deck_language.active_calls(deck), language, links)
+    slots = deck_outline.resolve_slots(ctx, deck, view, language, links=links)
     units: list[render_key.Unit] = []
     start_index = None
-    for position, slot in enumerate(slots, start=1):
+    for row in slots:
+        slot = row.slot
         call = slot.call
         if start_at and start_index is None and slot.matches(start_at):
             start_index = len(units)
         if not call.included_in(view) or not (ctx.slides_dir / call.source_filename).is_file():
             continue
-        target = preview_target.for_call(ctx, deck, call, position)
+        target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number)
         if target.needs_context and not (context_ready is not None and context_ready()):
             continue        # no deck compile to typeset it in: the Preview renders it on its own when it is shown
         units.append(render_key.unit_for(target, view, language, deck.name))
@@ -423,11 +424,9 @@ class BackgroundRenderer:
 
     def scan(self) -> list:
         """Everything outstanding, in the order it is rendered: [(sort key, unit)], and the progress counts.
-        Units that are only out of step in their page number come after all the others, unless another unit has the
-        same key: a slide called twice in one deck with one key keeps one render, with whichever page number it has
-        (docs/plans/render-store-cleanup.md, D3); refreshing it would make the other call's render out of step, and so
-        on for ever. A slide that failed and is not tried again by itself is tried once more, on its own, when nothing
-        else is outstanding.
+        Usable renders count as finished even when their footer page number differs; a deck compile or a
+        forced render stores the requested number. A slide that failed and is not tried again by itself is
+        tried once more, on its own, when nothing else is outstanding.
 
         It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
         longer use (docs/plans/render-store-cleanup.md, step 2)."""
@@ -441,9 +440,7 @@ class BackgroundRenderer:
         rendered: dict[str, bool] = {}      # label -> each of its units has a render of its own current key
         scopes: set[tuple] = set()          # (deck, view, language) read
         decks_progress: list[DeckProgress] = []
-        first: list = []
-        numbering: list = []
-        key_count: dict[str, int] = {}      # how many units of the scan have each key
+        plan: list = []
         last: list = []                     # failed, not tried after the others yet: (rank, unit, progress, view)
         single: set[str] = set()
         counted: set[str] = set()
@@ -490,11 +487,9 @@ class BackgroundRenderer:
                                                          strict=False)
                         if found.why:
                             reasons[found.why] += 1
-                        if found.key is not None:
-                            key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable
                         deck_clean = self._note_key(unit, found.key, own, keys_now, rendered) and deck_clean
-                        if found.final and found.state is not render_key.Freshness.FAILED:
+                        if found.usable:
                             progress.fresh += 1
                             progress.count(view, 1)
                             counted.add(unit.label)
@@ -502,20 +497,15 @@ class BackgroundRenderer:
                             failure_keys.add(found.key)
                             failure_slides.setdefault(found.key, set()).add((unit.deck, unit.id_slug))
                             if found.failure and self.store.may_retry(found.failure):
-                                first.append(((deck_rank, language_rank, view_rank, order), unit))
+                                plan.append(((deck_rank, language_rank, view_rank, order), unit))
                                 single.add(unit.label)          # a batch holding it would fail again
                             elif not self.store.tried_last(found.key):
                                 last.append(((deck_rank, language_rank, view_rank, order), unit, progress, view))
                             else:
                                 progress.failed += 1
                                 progress.count(view, 2)
-                        elif found.usable:
-                            progress.fresh += 1                  # right, apart from its page number: refreshed last
-                            progress.count(view, 1)
-                            counted.add(unit.label)
-                            numbering.append(((deck_rank, language_rank, view_rank, order), unit, found.key))
                         else:
-                            first.append(((deck_rank, language_rank, view_rank, order), unit))
+                            plan.append(((deck_rank, language_rank, view_rank, order), unit))
             if deck_clean:
                 clean_decks.add(deck.name)
         self._clear_stale(_CurrentKeys(frozenset(keys_now), frozenset(clean_decks),
@@ -524,7 +514,6 @@ class BackgroundRenderer:
         off = self.decks_off()
         decks_progress += [DeckProgress(d.name, off=True) for d in self._decks()
                            if not d.archived and not d.is_test_deck and d.name in off]
-        plan = first + [((1000 + k[0],) + k[1:], u) for k, u, key in numbering if key_count.get(key) == 1]
         last_try: set[str] = set()
         for rank, unit, progress, view in last:
             if plan:                        # the others first: until then it counts as failed
