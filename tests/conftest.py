@@ -457,6 +457,22 @@ def server():
     srv.close()
 
 
+def pause(milliseconds):
+    """Wait a fixed time while Qt events and background threads keep running.
+
+    Use this instead of QTest.qWait(): qWait holds the GIL while it waits, so a worker thread the test waits for
+    gets it only between two waits and can take seconds under load (the cause of several load-flaky tests).
+    """
+    from PySide6.QtWidgets import QApplication
+
+    end = time.monotonic() + milliseconds / 1000
+    while True:
+        QApplication.processEvents()
+        if time.monotonic() >= end:
+            break
+        time.sleep(0.005)
+
+
 def wait_until(condition, seconds=5.0):
     """Wait for background work while keeping Qt signals and events moving."""
     from PySide6.QtWidgets import QApplication

@@ -3,6 +3,7 @@
 """The presentation windows and their controls, offscreen (docs/plans/presentation-mode.md). Two screens are
 made up from the one real offscreen screen, so the plan's placement logic runs; real monitors are for the
 manual checklist in the plan."""
+from conftest import pause
 from __future__ import annotations
 
 import time
@@ -296,7 +297,7 @@ def test_a_drawing_lands_on_the_same_spot_of_the_slide_on_screens_of_different_s
     controller = make(settings=settings)
     controller.presenter.resize(900, 640)
     controller.audience.resize(1000, 800)               # taller than 16:9: the slide is letterboxed top and bottom
-    qapp_events = QTest.qWait
+    qapp_events = pause
     qapp_events(10)
     current = canvases(controller.presenter, CurrentView)[0]
     audience = canvases(controller.audience, AudienceView)[0]
@@ -561,7 +562,7 @@ def hover(canvas, fraction, until, seconds=5.0):
         if until():
             return
         assert time.monotonic() < deadline, f"the mouse did not get to {fraction}"
-        QTest.qWait(10)
+        pause(10)
 
 
 def hovering_at(canvas, fraction):

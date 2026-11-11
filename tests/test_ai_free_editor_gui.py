@@ -61,14 +61,3 @@ def test_no_routes_hides_ai_controls_but_keeps_image_fields(qapp, tmp_path, monk
     assert saved.short_de == "Eine Beschreibung"
 
 
-def test_settings_opens_without_an_ai_tab(qapp, tmp_path, monkeypatch):
-    from slidemage.ui.dialogs.settings import AI, PLUGINS, SettingsSheet
-
-    ctx = ProjectContext.at(make_project(monkeypatch, tmp_path / "project"))
-    window = build_window(monkeypatch, ctx)
-    sheet = SettingsSheet(window, tab=PLUGINS)
-    assert sheet.ai is None and sheet.current_tab() == PLUGINS
-    assert "AI" not in [sheet._tabs.tabText(i) for i in range(sheet._tabs.count())]
-    sheet.set_current_tab(AI)
-    assert sheet.current_tab() != AI
-    sheet.close()

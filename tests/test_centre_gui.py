@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The centre column: which view shows what for the focused slide, the Preview's
 states and renders (the renderer is faked), and unsaved edits across slides."""
+from conftest import pause
 from __future__ import annotations
 
 import time
@@ -131,7 +132,7 @@ def wait_idle(centre):
     deadline = time.monotonic() + 5
     recorded = False
     while time.monotonic() < deadline:
-        QTest.qWait(10)
+        pause(10)
         recorded = recorded or recording()
         if not (preview._busy or bool(preview._lookups) or recording()):
             break
@@ -607,7 +608,7 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     centre.state.set_focused_slide('aaa')
     centre.state.set_mode('split')
     centre.source.current.editor.insertPlainText('% a draft, never saved\n')
-    QTest.qWait(300)
+    pause(300)
     wait_idle(centre)
     preview = centre.preview
     assert 'Unsaved edits' in preview._status_chip.text()
@@ -621,7 +622,7 @@ def test_an_unsaved_draft_offers_to_render_the_buffer_not_the_saved_file(held_au
     assert len(renders) == 1 and 'a draft, never saved' in str(renders[0])
     assert centre.source.current.dirty
     centre.source.current.editor.insertPlainText('% a second edit while still dirty\n')
-    QTest.qWait(200)
+    pause(200)
     wait_idle(centre)
     assert preview._status_draft
     assert len(renders) == 1  # status refresh never compiles on a keystroke

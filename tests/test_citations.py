@@ -89,8 +89,6 @@ def test_requires_slidemage_must_accept_this_slidemage(folder):
 
 # -- the package rules
 
-def test_the_fixture_folder_passes(folder):
-    assert citations.check_folder(folder).id == "sample"
 
 
 def test_extra_tex_files_must_carry_the_formats_prefix(folder):

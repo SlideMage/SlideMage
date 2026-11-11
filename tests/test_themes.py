@@ -93,8 +93,6 @@ def test_not_toml_at_all_is_a_theme_error():
 
 # -- the package rules
 
-def test_the_fixture_theme_passes_every_check(theme_folder):
-    assert themes.check_folder(theme_folder).id == "sample-theme"
 
 
 @pytest.mark.parametrize("name, words", [

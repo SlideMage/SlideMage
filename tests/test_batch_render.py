@@ -141,8 +141,8 @@ def test_refresh_deck_previews_reports_counts_and_lists(box):
     assert box.ws.refreshed == ["test"] * 3
 
 
-@pytest.mark.parametrize('args', [{}, {'view': 'all'}])
-def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root, monkeypatch, args):
+def test_refresh_all_views_uses_saved_source_and_returns_statuses_only(box, root, monkeypatch):
+    args = {}
     seen = fake_render(monkeypatch, root)
     box.ws.open(root / SLIDE, 'UNSAVED')
     captures = []

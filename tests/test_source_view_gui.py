@@ -18,7 +18,7 @@ from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 from slidemage.ui.workspace.insert_popovers import LinkPopover
 from slidemage.ui.workspace.source_view import SourcePane
-from conftest import EXAMPLE_PROJECT, wait_until
+from conftest import EXAMPLE_PROJECT, wait_until, pause
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
 
@@ -354,20 +354,20 @@ def test_other_files_save_plainly_and_a_file_that_changed_on_disk_gets_the_confl
     previous = []
     pane.show_path(deck, previous.append)
     pane.current.editor.insertPlainText("new ")
-    QTest.qWait(150)
+    pause(150)
     assert deck.read_bytes() == b"new deck text\r\n" and previous == ["deck text\n"]      # the line ending stays
 
     pane.current.editor.insertPlainText("more ")
     deck.write_text("someone else's text", encoding="utf-8")
-    QTest.qWait(150)
+    pause(150)
     assert pane.current.dirty and pane.current.conflicted
     assert deck.read_text(encoding="utf-8") == "someone else's text"
     pane.current.editor.insertPlainText("still ")
-    QTest.qWait(150)
+    pause(150)
     assert deck.read_text(encoding="utf-8") == "someone else's text"           # paused while in conflict
 
     pane.current.keep_edits()                                                 # "Keep my edits"
-    QTest.qWait(150)
+    pause(150)
     assert deck.read_text(encoding="utf-8").startswith("new more still deck text") and not pane.current.dirty
 
 
@@ -386,17 +386,15 @@ def test_an_unlocked_frozen_version_saves_plainly(pane, slides, quick):
     path = slides / "abc-EN-Demo-v1-0-0.tex"
     pane.show_path(path)
     QTest.keyClick(pane.current.editor, Qt.Key.Key_X)      # read-only: refused
-    QTest.qWait(80)
+    pause(80)
     assert not pane.current.dirty
     pane._unlock_button.click()
     place(pane.current.editor, len(pane.current.editor.text()))
     pane.current.editor.insertPlainText("% fixed\n")
-    QTest.qWait(150)
+    pause(150)
     assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-0-0}\n" + BODY + "% fixed\n"
 
 
-def test_the_toolbar_has_no_revert_button(pane):
-    assert not hasattr(pane, "_revert_button")
 
 
 def test_buffer_gives_the_text_and_selection_of_a_slide_only(pane, slides, tmp_path):

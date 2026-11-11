@@ -10,14 +10,13 @@ from threading import Thread as WorkerThread
 
 import pymupdf
 import pytest
-from PySide6.QtTest import QTest
 
 from slidemage import preview_target, slide_snapshot
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
 from slidemage.ui.workspace.state import WorkspaceState
 from slidemage.project import ProjectContext
-from conftest import preview_png
+from conftest import preview_png, pause
 
 
 @pytest.fixture(autouse=True)
@@ -96,14 +95,14 @@ def test_a_focused_render_prepares_other_views_for_a_store_hit_until_the_next_ed
     text = view.buffer[0]
     monkeypatch.setattr(background_renders, 'RENDER_OTHER_VIEWS', False)
     view.render_after_save()
-    QTest.qWait(20)
+    pause(20)
     view._run(*view.launched[-1])
     assert view._last_request.done.wait(10)
     assert not renderer.scheduler.pending()
 
     monkeypatch.setattr(background_renders, 'RENDER_OTHER_VIEWS', True)
     view.render_after_save()
-    QTest.qWait(20)
+    pause(20)
     view._run(*view.launched[-1])
     assert renderer.scheduler.pending(P_IDLE) == 2
     renderer.gate.paused = True
@@ -116,7 +115,7 @@ def test_a_focused_render_prepares_other_views_for_a_store_hit_until_the_next_ed
     view._settled()
     deadline = time.monotonic() + 10
     while view._record is None and time.monotonic() < deadline:
-        QTest.qWait(10)
+        pause(10)
     assert view._record is not None and len(compiled) == 2
     assert view._record['pages'] == 1
     assert renderer.scheduler.pending(P_IDLE) == 1
@@ -277,12 +276,12 @@ def test_repeated_automatic_requests_are_debounced_and_can_be_invalidated(
     view._start(work, view._job(target), debounce=True)
     assert not view.launched
     # Saves already follow the editor's typing debounce. Only coalesce notifications from this turn.
-    QTest.qWait(20)
+    pause(20)
     assert len(view.launched) == 1
     view._start(work, view._job(target), debounce=True)
     view.state.set_language("DE")
     view._run(*view.launched[0])
-    QTest.qWait(350)
+    pause(350)
     assert len(view.launched) == 1 and not view._busy
 
 
@@ -416,11 +415,11 @@ def test_real_worker_leaves_qt_event_loop_responsive(qapp, pane, tmp_path, monke
     job = view._job(target)
     view._start(work, job)
     assert started.wait(1)
-    QTest.qWait(20)
+    pause(20)
     assert view._busy and view._record is None
     release.set()
     for _ in range(100):
-        QTest.qWait(10)
+        pause(10)
         if not view._busy:
             break
     assert not view._busy and job.error is None

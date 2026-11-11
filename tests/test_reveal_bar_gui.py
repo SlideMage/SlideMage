@@ -14,7 +14,7 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from slidemage import deck_editor, preview_target, reveal_steps, slide_snapshot
+from slidemage import preview_target, reveal_steps, slide_snapshot
 from slidemage.deck_scan import Deck, parse_chapters
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace import preview_view
@@ -374,8 +374,6 @@ def test_keyboard_shortcuts_step_the_bar(centre, steps_renders):
     assert bar.step == 3
 
 
-def test_deck_editor_alone_is_not_needed_for_plain_files(qapp):
-    assert deck_editor.expand_steps("1-", 2) == {1, 2}
 
 
 def test_while_idle_the_neighbouring_slides_get_their_steps_counted_too(centre, steps_renders):

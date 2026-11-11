@@ -30,7 +30,7 @@ from slidemage.ui.workspace.menus import (
 )
 from slidemage.ui.workspace.palette import command_entries
 
-from conftest import EXAMPLE_PROJECT, build_window, command_context, filled_menu, menu_actions, qapp as qapp
+from conftest import EXAMPLE_PROJECT, build_window, command_context, filled_menu, menu_actions, qapp as qapp, pause
 from slidemage.project import ProjectContext
 
 
@@ -499,7 +499,7 @@ def test_a_slide_editor_opens_in_the_centre_and_only_edits_that_cannot_be_saved_
     file.editor.insertPlainText("x")
     assert window.topbar._save.text() == "Saved" and not window.state.dirty    # an autosave is pending
     assert file.write_now() and redraws == []                     # no rebuild per write while typing
-    QTest.qWait(200)
+    pause(200)
     assert len(redraws) == 1                                      # one, after a pause
     path.write_text("someone else's\n", encoding="utf-8")
     file.editor.insertPlainText("y")
@@ -569,7 +569,7 @@ def test_a_typing_pause_renders_once_and_autosave_hits_the_store(qapp, tmp_path,
     monkeypatch.setattr(pane._renders, "request", capture)
     file = window.centre.source.current
     file.editor.moveCursor(file.editor.textCursor().MoveOperation.End)
-    # Wait with processEvents() and time.sleep(), not QTest.qWait(): qWait keeps the GIL while it waits, and the
+    # Wait with processEvents() and time.sleep(), not pause(): qWait keeps the GIL while it waits, and the
     # render thread then got it only between two waits -- its lookup of the TeX tools alone took over 10 s.
     def pump(seconds):
         end = time.monotonic() + seconds

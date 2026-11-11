@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The debug log's tools for finding a freeze: the stall monitor, the call-stack lines and the timing spans."""
+from conftest import pause
 from __future__ import annotations
 
 import logging
@@ -8,7 +9,6 @@ import threading
 import time
 
 from PySide6.QtCore import QObject
-from PySide6.QtTest import QTest
 
 from slidemage import stall_monitor, timing
 
@@ -37,9 +37,9 @@ def test_a_blocked_gui_thread_is_logged_with_where_every_thread_was(qapp):
     worker.start()
     try:
         monitor = stall_monitor.StallMonitor(parent)
-        QTest.qWait(120)
+        pause(120)
         time.sleep(0.5)                                # the GUI thread is busy and cannot beat
-        QTest.qWait(150)
+        pause(150)
         stalls = [m for m in handler.messages if m.startswith("stall ")]
         assert stalls, handler.messages
         assert "late=0.4" in stalls[0] or "late=0.5" in stalls[0]

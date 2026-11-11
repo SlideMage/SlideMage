@@ -3,6 +3,7 @@
 """UI kit (slidemage.ui.kit): fonts, tokens, widgets and the debug gallery in
 light and dark mode. No golden screenshots: the checks are structural
 (non-empty render, fonts registered, icon ligatures draw a glyph)."""
+from conftest import pause
 from __future__ import annotations
 
 import re
@@ -320,7 +321,7 @@ def test_toast_actions_and_auto_hide(theme):
     toast.findChild(QPushButton, kit_qss.TOAST_ACTION).click()
     assert seen == ["undo"] and not toast.isVisible()
     toast.show_message("Saved", timeout_ms=20)
-    QTest.qWait(120)
+    pause(120)
     assert not toast.isVisible()
 
 
