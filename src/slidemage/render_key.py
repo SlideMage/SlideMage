@@ -264,10 +264,10 @@ class Resolver:
         manifest.tex_digest = _json_hash(tex) if tex else ""
         return manifest
 
-    def _resolve(self, kind: str, rel: str) -> Optional[Path]:
+    def _resolve(self, kind: str, rel: str, frameworks=None) -> Optional[Path]:
         if kind in (KIND_PROJECT, KIND_ALT_TEXT):
             return self.ctx.root / rel
-        for folder in slide_templates.framework_dirs(self.ctx.root):
+        for folder in slide_templates.framework_dirs(self.ctx.root) if frameworks is None else frameworks:
             if (folder / rel).is_file():
                 return folder / rel
         return None
@@ -279,21 +279,22 @@ class Resolver:
         state = [[str(path), self.hashes.hash(path)] for path in sorted(paths)]
         return [KIND_MISSING_INPUT, name, _json_hash(state)]
 
-    def manifest_current(self, entries: list, *, strict=False) -> bool:
+    def manifest_current(self, entries: list, *, strict=False, frameworks=None) -> Optional[str]:
+        """The first changed manifest path, or None when every entry is current."""
         for kind, rel, sha in entries:
             if kind == KIND_MISSING_INPUT:
                 if self.missing_input_entry(rel)[2] != sha:
-                    return False
+                    return rel
                 continue
-            path = self._resolve(kind, rel)
+            path = self._resolve(kind, rel, frameworks)
             if path is None:
-                return False
+                return rel
             if kind == KIND_ALT_TEXT:
                 if self._alt_digest(path, entries, strict=strict) != sha:
-                    return False
+                    return rel
             elif self.hashes.hash(path, verify=strict) != sha:
-                return False
-        return True
+                return rel
+        return None
 
     # -- the alt-text files ----------------------------------------------------------
 
@@ -359,29 +360,40 @@ class Resolver:
         validation = validation or render_evidence.ValidationPass()
         key = self.fast_key(unit, strict=strict, validation=validation) if key is None else key
         if key is None:
-            return Lookup(Freshness.MISSING, None, None)
+            return Lookup(Freshness.MISSING, None, None, why="no render")
+        frameworks = validation.framework_dirs(self.ctx.root)
         record = self.store.find(key)
+        why = "inventory" if record is not None else "no render"
         if record is not None and record.get("inventory") is not None:
             env = validation.build_env(self.ctx)
             if strict:
-                inputs = [unit.source_path, *[self._resolve(kind, rel) for kind, rel, _sha in record["manifest"]],
+                inputs = [unit.source_path, *[self._resolve(kind, rel, frameworks) for kind, rel, _sha in record["manifest"]],
                           *[Path(path) for path, _state in self.store.tex_files(record.get("tex_digest", "")) or []]]
                 current = render_evidence.search_inventory(self.ctx.root, env, inputs=[path for path in inputs if path is not None])
             else:
                 current = validation.inventory(self.ctx.root, env)
             paths = [unit.source_path, *[rel for _kind, rel, _sha in record["manifest"]]]
             # The key already covers the requested source text, which can be an unsaved buffer.
-            entries = [entry for entry in record["manifest"] if self._resolve(*entry[:2]) != unit.source_path]
-            if (render_evidence.inventory_state(current, paths) == record["inventory"]
-                    and self.manifest_current(entries, strict=strict) and self.tex_current(record, validation)):
-                same = record.get("frame_number") == unit.frame_number
-                return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
+            entries = [entry for entry in record["manifest"] if self._resolve(*entry[:2], frameworks) != unit.source_path]
+            if render_evidence.inventory_state(current, paths) == record["inventory"]:
+                changed = self.manifest_current(entries, strict=strict, frameworks=frameworks)
+                if changed is not None:
+                    why = f"file {changed}"
+                elif not self.tex_current(record, validation):
+                    why = "tex files"
+                else:
+                    same = record.get("frame_number") == unit.frame_number
+                    return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
         failure = self.store.failure(key)
-        if failure is not None and self.manifest_current(failure["manifest"], strict=strict):
-            return Lookup(Freshness.FAILED, None, key, failure)
+        if failure is not None:
+            changed = self.manifest_current(failure["manifest"], strict=strict, frameworks=frameworks)
+            if changed is None:
+                return Lookup(Freshness.FAILED, None, key, failure)
+            if record is None:
+                why = f"file {changed}"
         # An older render of the same unit under another key (the slide changed): shown as outdated.
         previous = self.store.latest_for_unit(unit.label)
-        return Lookup(Freshness.STALE if previous else Freshness.MISSING, previous, key)
+        return Lookup(Freshness.STALE if previous else Freshness.MISSING, previous, key, why=why)
 
 
 @dataclass
@@ -390,6 +402,7 @@ class Lookup:
     record: Optional[dict]
     key: Optional[str]
     failure: Optional[dict] = None
+    why: str = ""
 
     @property
     def usable(self) -> bool:

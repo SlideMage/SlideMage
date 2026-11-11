@@ -276,6 +276,7 @@ class ValidationPass:
         self.tex = {}
         self._configuration = {}
         self._inventories = {}
+        self._frameworks = {}
         self.hashed_bytes = 0
         self.dependency_seconds = 0.0
         self.configuration_seconds = 0.0
@@ -286,6 +287,13 @@ class ValidationPass:
         if ctx.root not in self._env:
             self._env[ctx.root] = compiler.build_env(ctx)
         return self._env[ctx.root]
+
+    def framework_dirs(self, root):
+        from . import slide_templates
+
+        if root not in self._frameworks:
+            self._frameworks[root] = slide_templates.framework_dirs(root)
+        return self._frameworks[root]
 
     def inputs(self, paths, states=None):
         states = states or file_state

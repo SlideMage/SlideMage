@@ -3951,3 +3951,8 @@ v0.16.5 (2026-11-11, direct request: colour roles, accents as text in dark mode)
 
 NEW: Coloured text stays readable in dark mode.
 - In the built-in templates' dark mode, highlighted and red, green or brown text uses lighter shades; buttons are readable too.
+
+v0.16.6 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 1): The background scan says why slides need rendering, and costs less. Resolver.lookup reports which check failed (Lookup.why: "inventory", "file <path>" for the first changed manifest entry, "tex files" or "no render"; manifest_current returns that path instead of a bool), and BackgroundRenderer.scan() logs one INFO line on slidemage.background when its counts change: the seconds it took, units, fresh, failed and the five most frequent reasons. A validation pass now looks up the framework folders once (ValidationPass.framework_dirs) instead of once per manifest entry: 27,810 calls to 2 per scan, and 12.9 s to 5.2 s for a scan of 1,815 units on a copy of a real project. A background job validates its units in one pass. Nothing else changes in what is rendered.
+
+NEW: Background previews check what changed faster.
+- The debug log says why slide previews are being prepared again.
