@@ -152,6 +152,9 @@ class SourceFile(Surface):
             from ... import theme_fields
             self.theme_form = ThemeForm(self.editor, path, app.project.root, theme_fields.setup_file(app.project.root))
             self.theme_sample = ThemeSampleView(self.editor, theme_key(path), app.project)
+            # A colour field in focus (or under the mouse) lights up where that colour is used on the sample slides.
+            self.theme_form.on_usage = self.theme_sample.show_usage
+            self.theme_form.on_usage_cleared = self.theme_sample.clear_usage
             self.theme_side = QSplitter(Qt.Orientation.Vertical)
             self.theme_side.setChildrenCollapsible(False)
             self.theme_side.addWidget(self.theme_sample)
