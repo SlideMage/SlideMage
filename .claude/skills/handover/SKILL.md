@@ -20,8 +20,12 @@ machine-readable **Task list** block. Do not read the whole file: it is thousand
    From a worktree whose branch lacks the script, call the script of the main checkout. It prints the number of tasks and
    their ids, and the ids that have no "Details" text (add `<!-- task:ID -->` markers around that task's text in handover.md; the
    page's Details button shows what stands between them). A "missing key" or "duplicate id" error means the block needs fixing first: fix that line, then rerun.
-3. Publish the file with the `Artifact` tool: `icon: "checklist"`, `capabilities: {"artifact": {}, "comments": {}}` (artifact stores the picks, comments is what wakes this session), a one-sentence
-   `description`. **Do not edit the HTML by hand**; change the task block or the template and rerun the script. Keep the page's
+3. Publish the file. With an `Artifact` tool: `icon: "checklist"`, `capabilities: {"artifact": {}, "comments": {}}` (artifact stores the picks, comments is what wakes this session), a one-sentence
+   `description`. **Without it** (only the `claude-artifacts` tools): `publish_files` (`as: "index.html"`, `icon: "checklist"`), then
+   `declare_capabilities` with `{"artifact":{},"comments":{}}` (base_version from the publish), then `publish_files` again with the new
+   version, and check with `read_declaration` that both are listed. Never hand over a page without them. To read the picks later,
+   `read_artifact` output is large: save it and grep `"sent"` (the `Bash` tool). The page also has a **Copy picks** button: if
+   Start tasks does not wake this session, the user pastes the copied text into the chat (no polling). **Do not edit the HTML by hand**; change the task block or the template and rerun the script. Keep the page's
    URL (same file path) for later publishes in this conversation.
 4. Open the page for the user with the `Artifact` tool, `action: "open"` and the URL (publishing does not always open it). Do not
    also call `show_pane`. Give the user the link in one or two lines. Say the page lets them tick tasks, drag them into order, add notes, and click
