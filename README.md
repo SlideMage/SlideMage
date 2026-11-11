@@ -1120,6 +1120,11 @@ it is moved, copied or archived:
   `\newcommand{\SMModeOverride}{<mode>}` before the template and applied to its
   previews and compiled PDFs. **Theme per view** can give a view its own theme
   and mode, for example dark for the instructor deck and light for print.
+  For one PDF in another mode without changing the deck, **Compile → Current
+  view in Dark slides** (or *in another colour mode…* when the template has
+  several) builds the view shown into its own file, `<deck>-<view>-<mode>.pdf`
+  (a fixed `\deckoutputfolder` file name gets `-<mode>` too), so the view's
+  usual PDF stays; Open PDF lists it as "· dark colours".
 - **Footer text**: `\FooterText`, the left part of the footer.
 - **Course link** (CampusOnline plugin): a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.

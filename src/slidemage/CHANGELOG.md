@@ -3941,3 +3941,8 @@ v0.16.3 (2026-11-11, direct request: colour roles, the toolbar reads roles): The
 NEW: The Color menu offers the theme's role colours.
 - c_text, c_link and the other role colours lead the menu; slides that use them follow light and dark mode.
 - The swatches show the colours of the deck's current mode, so a dark deck shows its dark colours.
+
+v0.16.4 (2026-11-11, direct request: colour roles, the Compile menu's one-off mode): Compile -> "Current view in Dark slides" ("in another colour mode…" with a choice when the template has several) builds the view shown once in another colour mode of its template, for instance a light handout of a dark projection. The mode goes into the build's wrapper only (CompileJob.mode, compiler.with_mode: \SMModeOverride, or none for the base mode), the deck keeps its own, and the PDF is <deck>-<view>-<mode>.pdf (a fixed \deckoutputfolder file name gets -<mode>), so the view's usual PDF stays. Open PDF lists it as "· <mode> colours".
+
+NEW: Compile one PDF in another colour mode.
+- Compile -> Current view in Dark slides makes a dark (or light) copy of the view shown, in its own file; the deck's settings stay as they are.
