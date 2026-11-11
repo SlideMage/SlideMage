@@ -3963,3 +3963,8 @@ NEW: A form for a theme's colours.
 - A theme opened for editing shows a form beside its source: its colours, colour modes, logo and footnote markers as fields, one column per mode (light, dark ...).
 - Contrast checks show which text would be hard to read, in every mode.
 - Each change is one line of the theme's source and can be undone with Ctrl+Z.
+
+v0.16.8 (2026-11-11, direct request: fix what the theme form's contrast check found): In the Greyscale template's dark mode the commands of a code panel (\SMCodeFile) were light grey on the light panel, C7C7C7 on EBEBEB (1.4:1): the template set no SMCodeKeywordColor, so the framework made it from c_primary_highlight after the dark mode's palette line. The template now copies the accent grey with \colorlet{SMCodeKeywordColor}{c_primary_highlight} before its modes, as the SlideMage template does: 555555 on EBEBEB (6.4:1) in both modes. Light mode is unchanged (it was 555555 before; LuaLaTeX gives the same colours).
+
+NEW: Readable code in Greyscale's dark mode.
+- Code panels in the Greyscale template's dark slides show their commands in dark grey again, readable on the light panel.
