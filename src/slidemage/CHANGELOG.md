@@ -3956,3 +3956,10 @@ v0.16.6 (2026-11-11, direct request: theme form, stage C1a): The core of the the
 
 NEW: Groundwork for editing themes in a form.
 - Nothing visible changes yet: SlideMage can now read a theme's settings and change one line of it at a time, which the coming theme form builds on.
+
+v0.16.7 (2026-11-11, direct request: theme form, stage C1b): A theme's source tab (Settings -> Extensions -> a personal theme's Edit, or any SlideMage_template_<key>.tex opened in a tab) shows the theme form beside it, one column per colour mode: name and colour modes (add one, starting from the dark, grey or colour-blind preset, or remove one with all its lines), the contrast checks the catalog asks for (body text, links and the link underline on the slide, title and footer text, standout and highlight frames, the five block titles, block bodies, code panels), the palette with the theme's own colours, the colour roles (slide colours, title bar and footer, blocks, lists, links and marks), the code panel colours, the logo (copied into schemes/scheme_<key>/) with its height and padding, and the footnote markers. Form and source are one buffer: a change in the form is one line of the source and one undo step, saved like typing; typing in the source shows in the form after a pause. An empty field follows, and its grey text says what it takes (the framework's default, the mode's preset, the base mode). "Hide form" on the source tab's status line hides it (remembered). theme_form_model.ThemeModel resolves each value in each mode in the framework's order (\SM@applymode), hook macros included; theme_colors.theme_colors_for_text reads an unsaved buffer.
+
+NEW: A form for a theme's colours.
+- A theme opened for editing shows a form beside its source: its colours, colour modes, logo and footnote markers as fields, one column per mode (light, dark ...).
+- Contrast checks show which text would be hard to read, in every mode.
+- Each change is one line of the theme's source and can be undone with Ctrl+Z.

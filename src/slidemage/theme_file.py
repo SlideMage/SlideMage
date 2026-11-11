@@ -93,6 +93,15 @@ class ThemeFile:
     # --- reading ---------------------------------------------------------------------------------------------------
 
     @property
+    def has_setup(self) -> bool:
+        """Whether the theme \\inputs SlideMage_setup (a catalog theme the form can read)."""
+        return self._setup_pos >= 0
+
+    @property
+    def has_base(self) -> bool:
+        return self._base_pos >= 0
+
+    @property
     def newline(self) -> str:
         return "\r\n" if "\r\n" in self.text else "\n"
 
