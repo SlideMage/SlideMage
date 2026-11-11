@@ -3974,3 +3974,8 @@ v0.16.9 (2026-11-11, direct request: theme form, stage C1c, first part): The the
 NEW: See a theme's slides while you edit it, and start a new theme.
 - The theme form shows sample slides of the theme as it is being edited, in light or dark mode, updated a moment after each change.
 - Settings -> Extensions -> Themes -> New theme… makes a theme of your own from the SlideMage or the Greyscale template and opens it in the form.
+
+v0.16.10 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 1): The background scan says why slides need rendering, and costs less. Resolver.lookup reports which check failed (Lookup.why: "inventory", "file <path>" for the first changed manifest entry, "tex files" or "no render"; manifest_current returns that path instead of a bool), and BackgroundRenderer.scan() logs one INFO line on slidemage.background when its counts change: the seconds it took, units, fresh, failed and the five most frequent reasons. A validation pass now looks up the framework folders once (ValidationPass.framework_dirs) instead of once per manifest entry: 27,810 calls to 2 per scan, and 12.9 s to 5.2 s for a scan of 1,815 units on a copy of a real project. A background job validates its units in one pass. Nothing else changes in what is rendered.
+
+NEW: Background previews check what changed faster.
+- The debug log says why slide previews are being prepared again.

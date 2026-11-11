@@ -158,6 +158,7 @@ def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
     write(image, "other image")
     result = resolver.lookup(unit)
     assert result.state is Freshness.STALE and result.record is not None       # shown as outdated, never as fresh
+    assert result.why == "file media/pic.png"
     write(image, "img")
     assert resolver.lookup(unit).state is Freshness.FRESH
 
@@ -409,17 +410,17 @@ def test_a_render_depends_only_on_the_alt_texts_of_the_pictures_it_read(ctx, res
     picture = write(ctx.root / "media" / "a.png", "png")
     entries = resolver.build_manifest([str(p) for p in (slide, picture, csv_path, json_path)]).entries
     assert {kind for kind, rel, _sha in entries if "alt-text" in rel} == {render_key.KIND_ALT_TEXT}
-    assert resolver.manifest_current(entries)
+    assert resolver.manifest_current(entries) is None
     write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\nmedia/b.png,informative,auto,B changed,,auto,,\n"
           "media/c.png,informative,auto,C new,,auto,,\n", OLD + 10)
     write(json_path, json.dumps({"version": 2, "images": {"media/a.png": {"short": "A"},
                                                          "media/c.png": {"short": "C"}}}), OLD + 10)
-    assert resolver.manifest_current(entries)                 # another picture's alt text: still current
+    assert resolver.manifest_current(entries) is None         # another picture's alt text: still current
     write(csv_path, header + "media/a.png,informative,auto,A changed,,auto,,\n", OLD + 20)
-    assert not resolver.manifest_current(entries)             # its own picture's alt text: out of date
+    assert resolver.manifest_current(entries) is not None     # its own picture's alt text: out of date
     write(csv_path, header + "media/a.png,informative,auto,A,,auto,,\n", OLD + 30)
     write(json_path, json.dumps({"version": 2, "images": {"MEDIA/A.PNG": {"short": "A, longer"}}}), OLD + 30)
-    assert not resolver.manifest_current(entries)             # matched by file name, whatever the case and folder
+    assert resolver.manifest_current(entries) is not None     # matched by file name, whatever the case and folder
 
 
 # -- the small copy of the last page (2026-10-30, direct request) -------------------------

@@ -227,6 +227,7 @@ class BackgroundRenderer:
         self._plan: list = []
         self._plan_lock = threading.RLock()
         self._planned_at = 0.0
+        self._scan_counts = None
         self._replan = threading.Event()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -433,6 +434,8 @@ class BackgroundRenderer:
 
         It also notes the key of every unit of the decks it could read in full, and removes the renders those decks no
         longer use (_drop_stale; docs/plans/render-store-cleanup.md, step 2)."""
+        scan_started = time.perf_counter()
+        reasons = Counter()
         started = time.time()               # the renders' own clock (meta "rendered_at"), not the injected one
         validation = render_evidence.ValidationPass()
         validation.inventory(self.ctx.root, validation.build_env(self.ctx), force=True)
@@ -488,6 +491,8 @@ class BackgroundRenderer:
                             self.store.forget_failure(found.key)       # it failed only for want of the template
                             found = render_lookup.select(dict(resolver=self.resolver, unit=unit, validation=validation, state_only=True),
                                                          strict=False)
+                        if found.why:
+                            reasons[found.why] += 1
                         if found.key is not None:
                             key_count[found.key] = key_count.get(found.key, 0) + 1
                         own = found.usable and found.record is not None and found.record.get("key") == found.key
@@ -545,6 +550,13 @@ class BackgroundRenderer:
             # the chip said "Preparing previews" with nothing running (v8.52.4).
             self.progress = Progress(decks_progress, self._working[0] if self._working else None, None,
                                      failures, self._clock(), missing)
+        counts = (sum(p.total for p in decks_progress), sum(p.fresh for p in decks_progress),
+                  sum(p.failed for p in decks_progress), reasons)
+        if counts != self._scan_counts:
+            _trace_log.info("scan: %.3f s, %d units, %d fresh, %d failed; reasons: %s",
+                            time.perf_counter() - scan_started, *counts[:3],
+                            ", ".join(f"{why}: {count}" for why, count in reasons.most_common(5)) or "none")
+            self._scan_counts = counts
         return plan
 
     @staticmethod
@@ -812,9 +824,10 @@ class BackgroundRenderer:
             cancel.low_priority = True
             requests = requests or tuple(self.request_for(unit) for unit in units)
             results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
+            validation = render_evidence.ValidationPass()
             for unit, result in zip(units, results):
                 if result.status in ('rendered', 'cached'):
-                    found = self.resolver.lookup(unit)
+                    found = self.resolver.lookup(unit, validation=validation)
                     if found.state is render_key.Freshness.FRESH:
                         self.store.link_decks(found.record['name'], [unit.deck])
                         self._count_fresh(unit)

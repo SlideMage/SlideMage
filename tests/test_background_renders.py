@@ -51,8 +51,8 @@ class FakeTeX:
     """Stands for slide_preview.render_slide_to_pdf: a PDF of `pages` pages and the recorded inputs, in a folder
     like the real one's; `fail` maps a slide id-slug to the error to raise."""
 
-    def __init__(self, project, pages=3):
-        self.project, self.pages, self.calls, self.fail = project, pages, [], {}
+    def __init__(self, project, pages=3, inputs=()):
+        self.project, self.pages, self.calls, self.fail, self.inputs = project, pages, [], {}, list(inputs)
 
     def __call__(self, unit, cancel):
         self.calls.append((unit.id_slug, unit.view, unit.language))
@@ -65,7 +65,7 @@ class FakeTeX:
             doc.new_page(width=453, height=255).insert_text((20, 40), f"{unit.id_slug} step {number + 1}")
         doc.save(pdf)
         doc.close()
-        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path)]), encoding="utf-8")
+        pdf.with_suffix(".inputs.json").write_text(json.dumps([str(unit.source_path), *map(str, self.inputs)]), encoding="utf-8")
         return pdf
 
 
@@ -383,9 +383,10 @@ def test_a_deck_a_plugin_wants_soon_comes_after_the_open_deck_and_before_the_res
 
 
 
-def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster):
-    tex = FakeTeX(project, pages=1)
-    r = make(project, store, raster, tex=tex)
+def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project, store, raster, caplog):
+    dependency = project.root / "scan-input.tex"
+    dependency.write_text("before", encoding="utf-8")
+    r = make(project, store, raster, tex=FakeTeX(project, pages=1, inputs=[dependency]))
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")
     for unit in units[:5]:
@@ -400,6 +401,17 @@ def test_a_scan_counts_each_deck_by_version_and_lists_the_decks_left_out(project
     assert progress.total == mine.total and progress.fresh == 5 and 0 < progress.percent < 10
     assert progress.decks_up_to_date == 0 and not mine.up_to_date
     assert progress.scanned_at > 0
+    with caplog.at_level(logging.INFO, logger="slidemage.background"):
+        caplog.clear()
+        r.scan()
+        assert not [rec for rec in caplog.records if rec.getMessage().startswith("scan:")]
+        _edit(dependency)
+        r.scan()
+        r.scan()
+    lines = [rec.getMessage() for rec in caplog.records if rec.getMessage().startswith("scan:")]
+    assert len(lines) == 1
+    assert f"{mine.total} units, 0 fresh, 0 failed" in lines[0]
+    assert "file scan-input.tex: 5" in lines[0]
 
 
 @pytest.mark.skipif(shutil.which("latexmk") is None or shutil.which("lualatex") is None, reason="needs a TeX installation")
