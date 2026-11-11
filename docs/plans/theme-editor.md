@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0 and CR built and merged; the form is being built, C1a (reader and writer, no window) done.** Parts A and B
+Status: **C0 and CR built and merged; the form is being built: C1a (reader and writer) merged, C1b (the form tab) built.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -565,6 +565,33 @@ templates, the stress template and the two shape fixtures; line ends; a TeX comp
 `SLIDEMAGE_TEX_TESTS=1`). Run with `SLIDEMAGE_REAL_THEMES` on Graz 1.2.1, uni-ibk and MCI: all pass. Not done: the
 old scope-aware reader for `\ifdefined\SMDarkMode` files (v0.16.0 refuses them, so the form never sees one); the
 footnote marker's two forms (`\SMSetFootnoteMarkers`, `\SMFootnoteMark`) are two fields, merged into one in the form.
+
+**Built: C1b (v0.16.7, branch `feat/theme-form-tab`).** `src/slidemage/theme_form_model.py`: `ThemeModel(text, root,
+key, setup_text)`, no Qt. Columns are the declared modes (one "Colours" column for a theme without modes). Each cell
+has what the theme writes (`palette_written`, `role_written`; None = it follows) and what it comes to (`palette_hex`,
+`resolve("role:<id>", mode)`), resolved like `\SM@applymode`: a mode's line, else its preset (the dark preset's roles
+are read from the setup file's `\SM@derived@...` lines), else the base; a hook role's base value is its macro, followed
+through (`\SMTitleBoxColor`, `\SMBlockTitleTextColor`); a theme's own `\colorlet` of an optional colour (code keyword)
+keeps the base palette's colour in every mode, the framework's default is made after the mode's palette lines. Edits:
+`set_palette`, `set_role` (base + hook: the macro; a mode: `\SMSetRole`; a role without a hook has no base value in a
+theme without modes), `add_mode` (a theme without modes gets `light` first; header and `\SMDeclareMode`),
+`remove_mode` (every line of it), `add_own_colour`, `set_name`, `set_value`, `import_logo` (into
+`schemes/scheme_<key_>/`), `set_footnote_style` (symbols, boxed, dice via `\SMSetFootnoteMarkers`; numbers via
+`\SMFootnoteMark`; a theme's own mark shows as "custom"). `checks(mode)`: 16 WCAG pairs (`CHECKS`), text 4.5:1, the
+link underline 3:1. `theme_colors.theme_colors_for_text` reads an unsaved buffer. `src/slidemage/ui/workspace/theme_form.py`:
+`ThemeForm(editor, path, root, setup_path)`, a scrolling column of cards (intro with the count of lines beyond the
+form and "Show them in the source", name and modes, contrast badges, palette, the four role groups of
+`ROLE_SECTIONS`, code panels, logo, footnote markers); a cell is a swatch (colour picker) plus a field (a drop-down of
+the colour names for roles), an empty field follows and its grey text says what it takes. Every edit runs through
+`apply()`: model edit, then `editor.patch_text` (one undo step, autosave and the conflict bar as for typing); typing
+in the source refreshes the form after 400 ms; the cards are rebuilt only when the modes, own colours, lines beyond
+the form or the footnote style change. `SourceFile` puts it in a splitter beside the editor for any
+`SlideMage_template_<key>.tex` that is not a slide; "Hide form" / "Show form" on its status line, remembered
+(`theme_form_shown`). Tests: `tests/test_theme_form_model.py`, `tests/test_theme_form_gui.py`. **Finding:** the
+check shows Greyscale's dark mode with code commands at 1.4:1 (C7C7C7 on EBEBEB): it sets no `SMCodeKeywordColor`,
+so the framework makes it from `c_primary_highlight` after the dark palette line; the SlideMage template avoids this
+with a `\colorlet` before its modes. Not fixed here (a `latex/` change). Not done (C1c): "New theme…", the sample
+deck and the live render with the slide pictures of 3.3.
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.
