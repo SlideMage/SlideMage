@@ -107,7 +107,7 @@ def test_the_appendix_uses_the_stored_instructor_reference_or_a_box(ctx):
         first, last = BytesIO(), BytesIO()
         Image.new("RGB", (1920, 1080), "red").save(first, format="PNG")
         Image.new("RGB", (1920, 1080), "blue").save(last, format="PNG")
-        store.put("reference", "background", pdf, [first.getvalue(), last.getvalue()],
+        store.put("reference", pdf, [first.getvalue(), last.getvalue()],
                   dict(unit=unit.label, template=unit.template, inventory=[],
                        manifest=[["project", "slides/aaa-EN-Intro-slide-current.tex", text_sha256(source.read_text())]]))
         tex = appendix_toc.generate_appendix_tex(ctx, deck, unit.template, resolver=resolver)

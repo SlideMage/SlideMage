@@ -33,7 +33,7 @@ def test_slide_list_shows_a_just_saved_slides_thumbnail_from_the_store(make_list
         png = BytesIO()
         Image.new('RGB', (1920, 1080), 'blue').save(png, format='PNG')
         key = resolver.fast_key(unit)
-        store.put(key, 'foreground', pdf, [png.getvalue()], meta)
+        store.put(key, pdf, [png.getvalue()], meta)
         listing.preview_source_changed(source)
         listing._refresh_preview_rows()
         shown = listing.tree.data_of(item_of(listing, 'abc'))

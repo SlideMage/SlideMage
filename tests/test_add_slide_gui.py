@@ -195,7 +195,7 @@ def test_an_existing_slide_is_found_by_id_or_title_and_added_live(make, project)
     pdf.write_bytes(b"%PDF reference")
     pixels = BytesIO()
     Image.new("RGB", (1920, 1080), "red").save(pixels, format="PNG")
-    renderer.store.put("reference", "background", pdf, [pixels.getvalue()],
+    renderer.store.put("reference", pdf, [pixels.getvalue()],
                        dict(unit=unit.label, template=unit.template, inventory=[],
                             manifest=[["project", "slides/xyz-EN-Other-current.tex", text_sha256(target.source_path.read_text())]]))
     sheet._fill_list()

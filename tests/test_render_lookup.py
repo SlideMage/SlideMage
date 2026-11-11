@@ -37,7 +37,7 @@ def publish(request, rendered_at=1):
     png = BytesIO()
     Image.new("RGB", (1920, 1080), "red").save(png, format="PNG")
     key = resolver.fast_key(unit)
-    resolver.store.put(key, "background", pdf, [png.getvalue()] * 2, meta)
+    resolver.store.put(key, pdf, [png.getvalue()] * 2, meta)
     return key
 
 

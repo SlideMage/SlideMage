@@ -333,7 +333,7 @@ class Bench:
             renderer = background_renders.BackgroundRenderer(self.ctx, store, gate=gate, decks=lambda: [self.deck])
             renderer.batch_size = lambda size=size: size
             try:
-                renderer.scheduler.submit(warm.label, ((warm,), background_renders.ORIGIN_BACKGROUND), background_renders.P_IDLE)
+                renderer.scheduler.submit(warm.label, ((warm,), ()), background_renders.P_IDLE)
                 renderer.scheduler.run_next()     # warm the format, unreported
                 renderer._plan = [((n,), unit) for n, unit in enumerate(units)]
                 before, own, start = children(), time.process_time(), time.perf_counter()
