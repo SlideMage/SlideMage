@@ -246,6 +246,24 @@ def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
     write(unit.source_path, "slide")
     key, meta = make_record(resolver, unit, [unit.source_path])
     store_render(store, key, meta)
+    # Recreate the PNG publication an older release wrote, including its on-disk and indexed metadata.
+    from PIL import Image
+
+    folder = render_store.object_dir(store.root, key)
+    legacy = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+    for name in list(legacy["files"]):
+        if name.endswith(".webp"):
+            path = folder / name
+            png = path.with_suffix(".png")
+            with Image.open(path) as image:
+                image.save(png, format="PNG")
+            path.unlink()
+            del legacy["files"][name]
+            legacy["files"][png.name] = png.stat().st_size
+    legacy["bytes"] = sum(legacy["files"].values())
+    (folder / "meta.json").write_text(json.dumps(legacy), encoding="utf-8")
+    store.db.execute("UPDATE renders SET bytes=?, meta=? WHERE key=?", (legacy["bytes"], json.dumps(legacy), key))
+    store.db.commit()
     before = store.find(key)
     store.db.executescript("""
         ALTER TABLE renders RENAME TO new_renders;
@@ -263,7 +281,11 @@ def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
     upgraded = render_store.RenderStore(ctx, folder)
     try:
         assert upgraded.count() == 1 and upgraded.find(key) == before
-        assert upgraded.pages(upgraded.find(key)) == [real_png()] * 2
+        record = upgraded.find(key)
+        assert upgraded.page(record, 1) == real_png()
+        assert upgraded.pages(record) == [real_png()] * 2
+        assert upgraded.thumbnail_path(record) == Path(record["dir"]) / "thumb.png"
+        assert upgraded.thumbnail_path(record).read_bytes().startswith(b"\x89PNG")
         store_render(upgraded, key, meta, pages=1)
         assert upgraded.find(key)["pages"] == 1
     finally:
@@ -451,19 +473,33 @@ def real_png() -> bytes:
 
 
 def test_put_writes_a_thumbnail_of_the_last_page_within_the_preview_cache_size_and_lists_it(ctx, resolver, store):
+    from io import BytesIO
     from PIL import Image
     from slidemage.render_evidence import THUMBNAIL_MAX
+
     unit = unit_for(ctx)
     write(unit.source_path, "slide")
     key, meta = make_record(resolver, unit, [unit.source_path])
-    name = store_render(store, key, meta)
-    folder = render_store.object_dir(store.root, name)
-    assert store.thumbnail_path(store.find(key)) == folder / "thumb.png"
-    with Image.open(folder / "thumb.png") as im:
-        assert im.width == THUMBNAIL_MAX[0] and im.height <= THUMBNAIL_MAX[1]
-    meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
-    assert meta["files"]["thumb.png"] == (folder / "thumb.png").stat().st_size
-    assert meta["pages"] == 2 and store.total_bytes() == meta["bytes"] == sum(meta["files"].values())
+    small = BytesIO()
+    Image.new("RGBA", (2, 1), (21, 54, 89, 0)).save(small, format="PNG")
+    originals = [small.getvalue(), real_png()]
+    store.put(key, write(store.root / "render.pdf", "%PDF"), originals, meta)
+    record = store.find(key)
+    folder = Path(record["dir"])
+    assert set(record["files"]) == {"slide.pdf", "p001.webp", "p002.webp", "thumb.webp"}
+    pages = store.pages(record)
+    for number, (png, webp) in enumerate(zip(originals, pages, strict=True), start=1):
+        assert webp[8:12] == b"WEBP" and store.page(record, number) == webp
+        with Image.open(BytesIO(png)) as original, Image.open(BytesIO(webp)) as stored:
+            assert stored.size == original.size
+            assert stored.convert(original.mode).tobytes() == original.tobytes()
+    assert store.thumbnail_path(record) == folder / "thumb.webp"
+    with Image.open(folder / "thumb.webp") as thumbnail, Image.open(BytesIO(originals[-1])) as original:
+        original.thumbnail(THUMBNAIL_MAX, Image.Resampling.LANCZOS)
+        assert thumbnail.format == "WEBP" and thumbnail.size == original.size
+        assert thumbnail.tobytes() == original.tobytes()
+    assert record["files"]["thumb.webp"] == (folder / "thumb.webp").stat().st_size
+    assert record["pages"] == 2 and store.total_bytes() == record["bytes"] == sum(record["files"].values())
 
 
 def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):

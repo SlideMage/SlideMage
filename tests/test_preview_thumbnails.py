@@ -39,6 +39,6 @@ def test_slide_list_shows_a_just_saved_slides_thumbnail_from_the_store(make_list
         shown = listing.tree.data_of(item_of(listing, 'abc'))
         assert shown.thumbnail_verified and not shown.stale_preview
         assert shown.thumbnail == store.thumbnail_path(store.find(key))
-        assert shown.thumbnail.name == 'thumb.png'
+        assert shown.thumbnail.name == 'thumb.webp'
     finally:
         store.close()

@@ -104,21 +104,18 @@ def input_state(paths) -> dict:
     return {str(Path(path).absolute()): file_state(Path(path)) for path in sorted(set(map(str, paths)))}
 
 
-def thumbnail_png(png: bytes) -> bytes | None:
-    """Derive a small, aspect-preserving PNG from the final-page pixels."""
-    try:
-        from PIL import Image
+def webp(image: bytes, size: tuple[int, int] | None = None) -> bytes:
+    """A stored page image as lossless WebP (the rasteriser's exact pixels, about half a PNG's bytes;
+    docs/plans/render-store-fixes.md, D9), shrunk to fit `size` for the thumbnail."""
+    from PIL import Image
 
-        with Image.open(BytesIO(png)) as original:
-            original.load()
-            if original.width <= THUMBNAIL_MAX[0] and original.height <= THUMBNAIL_MAX[1]:
-                return png
-            original.thumbnail(THUMBNAIL_MAX, Image.Resampling.LANCZOS)
-            output = BytesIO()
-            original.save(output, format='PNG')
-            return output.getvalue()
-    except Exception:  # noqa: BLE001 -- malformed image data is a cacheable full-size fallback
-        return None  # Invalid legacy/test pixels keep using the full blob.
+    with Image.open(BytesIO(image)) as picture:
+        picture.load()
+        if size is not None:
+            picture.thumbnail(size, Image.Resampling.LANCZOS)
+        output = BytesIO()
+        picture.save(output, format='WEBP', lossless=True, exact=True)
+        return output.getvalue()
 
 
 def search_roots(project_root: Path, env: dict) -> tuple[Path, ...]:

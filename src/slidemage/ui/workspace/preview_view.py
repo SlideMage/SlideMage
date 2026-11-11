@@ -71,10 +71,10 @@ DISPLAY_WIDTH = slide_snapshot.FULL_SIZE[0]   # a page held for display is at mo
 DISPLAY_ENTRIES = 12     # pages held decoded for display ...
 DISPLAY_BYTES = 64 << 20 # ... and at most this much memory for them (width x height x 4 each)
 CHECKING = "Checking current source and settings…"
-STEP_CACHE = 12          # page lists kept (each is a slide's steps as PNGs)
+STEP_CACHE = 12          # page lists kept (each is a slide's steps as compressed images)
 NEIGHBOURS = 4           # slides around the one on show whose steps are counted while the pane is idle
 PREFETCHED = 20          # stored pages of the nearest slides held decoded, ready for the next slide (about 8 MB each)
-PRELOAD_BYTES = 512 << 20   # stored pages (PNG) of the rest of the deck's view held compressed, decoded when shown
+PRELOAD_BYTES = 512 << 20   # stored page images of the rest of the deck's view held compressed, decoded when shown
 PRELOAD_PAUSE = 0.01     # seconds the read-ahead worker rests before each store lookup, so the GUI thread gets its turn
 PRELOAD_RETRY = 120.0    # seconds before a slide whose store had no page is asked again
 SCROLLING_MS = 300       # slide changes closer than this are scrolling: no checks until the selection rests
@@ -209,7 +209,7 @@ class _Shown:
     pixmap: QPixmap
     mtime: int                      # of the slide's source file
     content_hash: Optional[str]     # of the text rendered (the saved file's)
-    image_hash: str                 # of the PNG the pixels came from: the same image is never decoded twice
+    image_hash: str                 # of the bytes the pixels came from: the same image is never decoded twice
 
 
 class DisplayCache:
@@ -252,8 +252,8 @@ class DisplayCache:
 
 
 def _preload_page(background, target, view: str, language: str, data: Optional[bytes], decode: bool):
-    """(PNG, digest, QImage or None) of the stored whole-slide page, or None. Runs on the read-ahead worker: `data`
-    is the PNG already held (then only decoded), else the store is asked; `decode` decodes it too."""
+    """(bytes, digest, QImage or None) of the stored whole-slide page, or None. Runs on the read-ahead worker: `data`
+    is the image already held (then only decoded), else the store is asked; `decode` decodes it too."""
     if data is None:
         time.sleep(PRELOAD_PAUSE)
         renderer = background.renderer
@@ -422,9 +422,9 @@ class PreviewPane(Surface):
     _finished = Signal(object)    # a _Job, from the worker thread
     _batch_progressed = Signal(object)
     _batch_finished = Signal(object, str)
-    _steps_ready = Signal(object, object, str)   # (key, PNG pages, error), from the step queue's thread
+    _steps_ready = Signal(object, object, str)   # (key, page images, error), from the step queue's thread
     _looked_up = Signal(object, object, object, object)   # (slot, identity, arrive, found), from the display worker
-    _prefetch_done = Signal(object, object, object)        # (context, ident, (PNG, digest, QImage) or None), read ahead
+    _prefetch_done = Signal(object, object, object)        # (context, ident, (bytes, digest, QImage) or None), read ahead
 
     def __init__(self, app, state: WorkspaceState,
                  buffer: Callable[[], Optional[tuple[str, str]]]) -> None:
@@ -447,7 +447,7 @@ class PreviewPane(Surface):
         self._pending = None
         self._lifetime = _Lifetime(self)
         self._renders = RenderService()
-        # The render store's lookups, page reads and PNG decodes run here, not in the selection executor: a lookup
+        # The render store's lookups, page reads and image decodes run here, not in the selection executor: a lookup
         # must not wait behind a long validation. One pending lookup per slot ('page', ('steps', key)); a newer one
         # for the slot replaces it, and a selection change drops them all.
         self._display_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-display')
@@ -457,7 +457,7 @@ class PreviewPane(Surface):
         self._stored_asked = None             # what the page was last looked up for; the poll asks again
         # The stored pages of the deck's view, read ahead on a worker of their own (not behind the selection's lookups),
         # outward from the slide on show: the nearest PREFETCHED decoded (ident -> (QPixmap, digest)), the others as
-        # PNG (ident -> (PNG, digest), at most PRELOAD_BYTES). Keyed with the file's mtime, so they outlive a change of
+        # compressed images (ident -> (bytes, digest), at most PRELOAD_BYTES). Keyed with the file's mtime, so they outlive a change of
         # slide, unlike `_lookups`, and the slide scrolled or clicked to shows at once. One deck, view and language.
         self.deck_targets: Callable[[], list] = lambda: []
         self._prefetch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='preview-prefetch')
@@ -846,7 +846,7 @@ class PreviewPane(Surface):
 
     def _prefetch_neighbours(self) -> None:
         """Read the stored pages of the deck's view ahead, outward from the slide on show: the nearest PREFETCHED are
-        decoded, the others kept as PNG (up to PRELOAD_BYTES), so the slide scrolled or clicked to shows at once. Only
+        decoded, the others kept compressed (up to PRELOAD_BYTES), so the slide scrolled or clicked to shows at once. Only
         what the background renders stored: nothing is compiled. Called once the selection rests; reads queued for
         the order of before are dropped and queued again in the new one."""
         background = getattr(self.app, "background", None)
@@ -909,8 +909,8 @@ class PreviewPane(Surface):
             self._refresh()
 
     def _keep_compressed(self, ident, data: bytes, digest: str) -> None:
-        """Hold the PNG of `ident`; beyond PRELOAD_BYTES the pages farthest from the slide on show give way (or this
-        one, when it is the farthest)."""
+        """Hold the compressed image of `ident`; beyond PRELOAD_BYTES the pages farthest from the slide on show
+        give way (or this one, when it is the farthest)."""
         if ident in self._compressed:
             return
         rank = self._preload_rank.get(ident, len(self._preload_rank))
@@ -923,7 +923,7 @@ class PreviewPane(Surface):
         self._compressed_bytes += len(data)
 
     def _preloaded(self, ident) -> Optional[tuple]:
-        """(QPixmap, digest) of a page read ahead for `ident`: decoded already, or decoded now from its PNG (a few
+        """(QPixmap, digest) of a page read ahead for `ident`: decoded already, or decoded now from its bytes (a few
         milliseconds), or None."""
         if self._preload_context != (self._deck_name(), ident[1], ident[2]):
             return None
@@ -1646,7 +1646,7 @@ class PreviewPane(Surface):
                             job.image = QImage(str(job.png))
                         job.png = None
                         if job.image.isNull():
-                            # Recording continues independently; its PNG is the fallback if the temp file vanished.
+                            # Recording continues independently; its stored image is the fallback if the temp file vanished.
                             job.pdf, job.png, _, _ = job.request.wait(job.cancel)
                     if job.png is not None:
                         job.image = QImage.fromData(job.png)

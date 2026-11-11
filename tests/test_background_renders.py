@@ -170,7 +170,7 @@ def test_rendering_a_unit_stores_every_step_and_then_it_is_fresh(project, store,
     assert name == r.resolver.fast_key(unit)
     found = r.resolver.lookup(unit)
     assert found.state is Freshness.FRESH and found.final and found.record["pages"] == 3
-    assert store.page(found.record, 3).startswith(b"\x89PNG") and store.page(found.record, 4) is None
+    assert store.page(found.record, 3)[8:12] == b"WEBP" and store.page(found.record, 4) is None
     assert not list(Path(tempfile.gettempdir()).glob("slidemage_preview_*"))          # the temp folder is gone
     render_unit(r, unit)
     assert len(tex.calls) == 1                                                        # nothing to do the second time

@@ -6,10 +6,10 @@ Everything lives on this computer, in the user's cache folder (`project.cache_di
 never in the project: projects live in cloud-synced folders and the renders can be gigabytes. The project id is a
 hash of the project's folder, so two projects (or two copies of one) never share a store.
 
-**Objects** are folders, `objects/<ab>/<key>/`, holding `slide.pdf`, one 1920 px `pNNN.png` per
-page (every reveal step), `thumb.png` shrunk from the last page, and `meta.json`, written last with the
-sizes of the other files. Publication replaces the previous object of the key under the store lock.
-An object without a complete `meta.json` is ignored.
+**Objects** are folders, `objects/<ab>/<key>/`, holding `slide.pdf`, one 1920 px `pNNN.webp` per
+page (every reveal step), `thumb.webp` shrunk from the last page, and `meta.json`, written last with the
+sizes of the other files. Older objects keep their PNG files. Publication replaces the previous object of the key
+under the store lock. An object without a complete `meta.json` is ignored.
 
 The **index** is a SQLite file beside them: the records of published objects, the file hashes
 (dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
@@ -32,13 +32,12 @@ from typing import Callable, Iterable, Optional
 
 from . import project
 from .fileio import write_json
-from .render_evidence import thumbnail_png
+from .render_evidence import THUMBNAIL_MAX, webp
 
 STORE_FORMAT = 2
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
 LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of legacy stale renders ran in this store
 FAILURE_INPUTS_TRACKED = "failures track their own inputs"
-THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS renders (
@@ -123,9 +122,10 @@ class RenderStore:
     def put(self, key: str, pdf: Path, pages: list[bytes], meta: dict, *,
             decks: Iterable[str] = ()) -> str:
         """Publish a complete render, replacing the object of this key and obsolete keys of its unit."""
-        small = thumbnail_png(pages[-1]) if pages else None
-        if small is None:
-            raise ValueError("a render needs page images and a thumbnail")
+        if not pages:
+            raise ValueError("a render needs page images")
+        encoded = [webp(page) for page in pages]        # before the lock: about 0.3 s a page
+        small = webp(pages[-1], THUMBNAIL_MAX)
         with self.lock:
             decks = set(decks)
             row = self.db.execute("SELECT decks FROM renders WHERE key=?", (key,)).fetchone()
@@ -137,11 +137,11 @@ class RenderStore:
             try:
                 shutil.copyfile(pdf, tmp / "slide.pdf")
                 sizes = {"slide.pdf": (tmp / "slide.pdf").stat().st_size}
-                for number, data in enumerate(pages, start=1):
-                    (tmp / f"p{number:03d}.png").write_bytes(data)
-                    sizes[f"p{number:03d}.png"] = len(data)
-                (tmp / THUMB_NAME).write_bytes(small)
-                sizes[THUMB_NAME] = len(small)
+                for number, data in enumerate(encoded, start=1):
+                    (tmp / f"p{number:03d}.webp").write_bytes(data)
+                    sizes[f"p{number:03d}.webp"] = len(data)
+                (tmp / "thumb.webp").write_bytes(small)
+                sizes["thumb.webp"] = len(small)
                 meta = dict(meta)
                 tex_files = meta.pop("tex_files", None)
                 meta.update(format=STORE_FORMAT, key=key, pages=len(pages), files=sizes,
@@ -189,12 +189,15 @@ class RenderStore:
         return None
 
     def page(self, record: dict, number: int) -> Optional[bytes]:
-        """The PNG of page `number` (1-based), read under the publication lock."""
+        """The image of page `number` (1-based), read under the publication lock."""
         with self.lock:
             if self.find(record["key"]) != record:
                 return None
+            name = next((name for name in record["files"] if Path(name).stem == f"p{number:03d}"), None)
+            if name is None:
+                return None
             try:
-                data = (Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
+                data = (Path(record["dir"]) / name).read_bytes()
             except OSError:
                 return None
             self.touch(record["key"])
@@ -206,8 +209,9 @@ class RenderStore:
             if self.find(record["key"]) != record:
                 return None
             try:
-                pages = [(Path(record["dir"]) / f"p{number:03d}.png").read_bytes()
-                         for number in range(1, record["pages"] + 1)]
+                pages = [(Path(record["dir"]) / name).read_bytes()
+                         for name in sorted((name for name in record["files"] if name.startswith("p")),
+                                            key=lambda name: int(Path(name).stem[1:]))]
             except OSError:
                 return None
             self.touch(record["key"])
@@ -235,7 +239,10 @@ class RenderStore:
         with self.lock:
             if self.find(record["key"]) != record:
                 return None
-            path = Path(record["dir"]) / THUMB_NAME
+            name = next((name for name in record["files"] if Path(name).stem == "thumb"), None)
+            if name is None:
+                return None
+            path = Path(record["dir"]) / name
             self.touch(record["key"])
             return path if path.is_file() else None
 

@@ -192,7 +192,9 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     assert request.error is None and 'put' in stages
     record = renderer.store.find(renderer.resolver.fast_key(request.spec.unit, 'BODY'))
     assert record['pages'] == 2
-    stored = QImage.fromData(renderer.store.page(record, 2)).convertToFormat(QImage.Format.Format_RGB888)
+    stored_bytes = renderer.store.page(record, 2)
+    assert request.wait()[1] == stored_bytes
+    stored = QImage.fromData(stored_bytes).convertToFormat(QImage.Format.Format_RGB888)
     assert shown == stored
 
 

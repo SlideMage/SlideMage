@@ -196,7 +196,7 @@ class RenderRequest:
         calling wait does not prevent its last active waiter from stopping it.
         `pixels_only` returns as soon as a fresh render's pixels exist, before it is recorded in the store:
         the artifact holds only the image, `preview_result` is not final and no store record exists yet.
-        The raw file may be removed once recording finishes; a caller can then wait for the settled PNG.
+        The raw file may be removed once recording finishes; a caller can then wait for the settled image.
         """
         if pixels_only:
             busy.acquire('foreground preview')
@@ -387,8 +387,10 @@ class RenderService:
                             pages = renderer._rasterise(pdf, cancel)
                         if not pages:
                             raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
-                        renderer._store_render(
-                            unit, pdf, pages, manifest, evidence)
+                        key = renderer._store_render(unit, pdf, pages, manifest, evidence)
+                        stored = renderer.store.find(key) if key is not None else None
+                        if stored is not None:
+                            pages[-1] = renderer.store.page(stored, stored["pages"]) or pages[-1]
                     except Exception as exc:
                         if background:
                             exc.preview_inputs = dependencies
