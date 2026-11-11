@@ -185,7 +185,7 @@ def instrument():
     where another module imported them by name. Functions that no longer exist are skipped."""
     from slidemage import compiler, preview_build, preview_format, render_evidence, render_key, render_store, slide_snapshot
     targets = [(render_evidence, 'configuration_state'), (render_evidence, 'search_state'),
-               (render_evidence, 'file_state'), (render_evidence, 'input_state'), (render_evidence, 'thumbnail_png'),
+               (render_evidence, 'file_state'), (render_evidence, 'input_state'), (render_evidence, 'webp'),
                (render_store.RenderStore, 'put'), (render_store.RenderStore, 'evict'),
                (render_key.Resolver, 'capture'),
                (preview_build, 'configuration_key'), (preview_build, 'prune_unused'), (preview_build, 'publish_preview'),

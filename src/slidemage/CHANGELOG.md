@@ -3995,3 +3995,8 @@ v0.16.13 (2026-11-11, direct request: render store fixes, docs/plans/render-stor
 NEW: Previews use less disk space over time.
 - Build files of background previews are removed after two days, and "Clear" removes them too.
 - Previews of project folders that no longer exist are removed after a month.
+
+v0.16.14 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 5, D9): The render store keeps page images and thumbnails as lossless WebP (pNNN.webp, thumb.webp) instead of PNG: the rasteriser's exact pixels in about half the bytes (82 stored pages of a real project: 17.2 MB to 8.5 MB, every page decoding to the same pixels; about 30 % less per render with its PDF). put encodes before it takes the store lock (render_evidence.webp, the one encoder; thumbnail_png and THUMB_NAME go), and page, pages and thumbnail_path take the file names from the record, so renders stored as PNG before are read as they are and replaced as their slides change: nothing is rendered again for this. After a render, the Preview shows the stored image, as on the next store hit.
+
+NEW: Slide previews take about half the disk space.
+- Previews made before this version stay and are replaced as slides change.
