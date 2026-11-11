@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0 and CR built and merged; the form is being built: C1a and C1b merged, C1c part 1 (New theme, sample slides) built.** Parts A and B
+Status: **C0 and CR built and merged; the form is being built: C1a, C1b and C1c part 1 merged, C1c part 2 (where a colour is used) built.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -612,6 +612,24 @@ start)` (the shipped template through `ThemeFile`, name line set or added); Sett
 "New theme…" asks name, key (filled from the name until edited, checked as typed) and start, closes the sheet, then
 `WorkspaceWindow.new_theme` makes it, opens it with the form and reloads the decks. Tests: `tests/test_theme_sample.py`
 (the deck render in light and dark with `SLIDEMAGE_TEX_TESTS=1`, the panel with a fake render, New theme).
+
+**Built: C1c, second part (v0.16.16, branch `feat/theme-form-marks`).** The colour part of the slide pictures of 3.3,
+done without geometry: `src/slidemage/theme_probe.py` renders the sample deck once more with every colour role (kind
+"role": the 43 roles and the hook `\SMHighlightTitleTextColor`) or every palette colour (kind "palette": the 21 and the
+theme's own) set to a colour of its own (`PROBES`: 60 colours on a 0x10/0x50/0x90/0xD0 grid, no greys), as
+`\SMSetRole` / `\SMSetColor` lines of the mode right before `\input{SlideMage_base}` of a copy of the buffer (a theme
+without modes gets `\SMDeclareMode{probe}{}` first), and `usage_map` reads every pixel within 10 per channel of a probe
+colour (at twice the panel's 110 dpi, folded down, so text strokes count) into a `UsageMap` (one byte per pixel and
+page). `ThemeSampleView.show_usage(kind, name, mode)` switches to the field's mode, makes the map of that kind and mode
+once per text (a thread, about 9 s plus 1 s reading), turns to the first page using the colour, and draws the page
+dimmed (black at 65 %) with the colour's pixels on top, one pixel wider; the line under it says on which pages it is
+used, or that the sample does not use it. The form's palette, role and code cells report focus and hover
+(`ThemeForm.on_usage`, `on_usage_cleared`; the mouse over a cell wins while it is there). Seen: Block title fill lights
+only the block's violet bar on page 3; Body text in dark only the white body text. Tests: `tests/test_theme_probe.py`
+(the real probe with `SLIDEMAGE_TEX_TESTS=1`: block title fill on page 3 only, code panel on page 4 only). Not done
+(C2, as the plan stages it): the dimension lines and marks of margins and paddings, which need the hooks' geometry.
+Limits: a colour a slide writes by palette name directly (`\textcolor{c_primary_highlight}`) shows under the palette
+kind, not the role kind; an image whose pixels happen to have a probe colour would light up too.
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.

@@ -4005,3 +4005,8 @@ v0.16.15 (2026-11-11, direct request: render store fixes, docs/plans/render-stor
 
 NEW: Adding a file, a deck or a slide no longer prepares every slide preview again.
 - After this update, the background previews are prepared once more.
+
+v0.16.16 (2026-11-11, direct request: theme form, stage C1c, second part): While a colour field of the theme form has the focus, or the mouse is over it, the sample slides above the form dim everything but where that colour is used, in that field's colour mode, and turn to a page that uses it; the line under the slide says on which pages it is, or that the sample slides do not use it. No geometry is involved: theme_probe renders the sample deck once more with every colour role (or every palette colour) set to a colour of its own (PROBES, 60 colours far from each other and from greys, added as \SMSetRole / \SMSetColor lines right before \input{SlideMage_base} of a copy of the buffer) and reads which pixels have which probe colour (UsageMap, read at twice the panel's resolution so thin text counts). One probe render per kind and mode, made the first time a field of that kind gets the focus and kept until the text changes.
+
+NEW: See where a colour is used.
+- In the theme form, click or point at a colour: the sample slides light up the parts that use it and dim the rest.

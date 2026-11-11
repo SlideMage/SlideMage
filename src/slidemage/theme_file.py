@@ -102,6 +102,11 @@ class ThemeFile:
         return self._base_pos >= 0
 
     @property
+    def base_line_start(self) -> int:
+        """The offset of the line holding \\input{SlideMage_base} (-1 without one): lines put there run right before it."""
+        return self.text.rfind("\n", 0, self._base_pos) + 1 if self._base_pos >= 0 else -1
+
+    @property
     def newline(self) -> str:
         return "\r\n" if "\r\n" in self.text else "\n"
 

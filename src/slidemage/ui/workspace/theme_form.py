@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout,
@@ -64,9 +64,11 @@ class _Cell(Surface):
 
     def __init__(self, form: "ThemeForm", read: Callable[[], tuple[Optional[str], str, Optional[str]]],
                  write: Callable[[Optional[str]], None], *, choices: list[str] | None = None,
-                 picker: bool = True, enabled: bool = True) -> None:
+                 picker: bool = True, enabled: bool = True,
+                 usage: Optional[tuple[str, str, str]] = None) -> None:
         super().__init__()
         self.form, self.read, self.write = form, read, write
+        self.usage = usage          # (kind, name, mode): what the sample slides light up while this cell is in focus
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(SPACE.xs)
@@ -91,7 +93,28 @@ class _Cell(Surface):
             row.addWidget(self.edit, 1)
             self.edit.setEnabled(enabled)
         self.edit.editingFinished.connect(self._commit)
+        if usage is not None:
+            self.edit.installEventFilter(self)
+            if self.combo is not None:
+                self.combo.installEventFilter(self)
         self.update_value()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.FocusIn:
+            self.form.focus_usage(self.usage)
+        elif event.type() == QEvent.Type.FocusOut:
+            self.form.blur_usage(self.usage)
+        return super().eventFilter(watched, event)
+
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        if self.usage is not None:
+            self.form.hover_usage(self.usage)
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        if self.usage is not None:
+            self.form.hover_usage(None)
 
     def update_value(self) -> None:
         written, follows, colour = self.read()
@@ -133,6 +156,12 @@ class ThemeForm(QScrollArea):
         self._refreshers: list[Callable[[], None]] = []
         self._shape: tuple = ()
         self._pushing = False
+        # The sample slides' "where is this colour used" (theme_sample_view.ThemeSampleView.show_usage / clear_usage):
+        # set by the source tab; the focused cell's colour, overridden while the mouse is over another cell.
+        self.on_usage: Optional[Callable[[str, str, str], None]] = None
+        self.on_usage_cleared: Optional[Callable[[], None]] = None
+        self._focused_usage: Optional[tuple[str, str, str]] = None
+        self._hovered_usage: Optional[tuple[str, str, str]] = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(REFRESH_DELAY_MS)
@@ -182,6 +211,26 @@ class ThemeForm(QScrollArea):
         return (self.model.readable, tuple((m.id, m.label, m.derive) for m in self.model.modes()),
                 tuple(self.model.file.own_colours()), len(self.model.file.beyond()), self.model.footnote_style(),
                 self.editor.is_read_only())
+
+    def focus_usage(self, usage: tuple[str, str, str]) -> None:
+        self._focused_usage = usage
+        self._tell_usage()
+
+    def blur_usage(self, usage: tuple[str, str, str]) -> None:
+        if self._focused_usage == usage:
+            self._focused_usage = None
+            self._tell_usage()
+
+    def hover_usage(self, usage: Optional[tuple[str, str, str]]) -> None:
+        self._hovered_usage = usage
+        self._tell_usage()
+
+    def _tell_usage(self) -> None:
+        usage = self._hovered_usage or self._focused_usage
+        if usage is not None and self.on_usage is not None:
+            self.on_usage(*usage)
+        elif usage is None and self.on_usage_cleared is not None:
+            self.on_usage_cleared()
 
     def refresh(self) -> None:
         for cell in self._cells:
@@ -369,7 +418,8 @@ class ThemeForm(QScrollArea):
             grid.addWidget(label, row, 0)
             for column, mode in enumerate(modes, start=1):
                 cell = _Cell(self, read=lambda n=name, m=mode.id: self._palette_read(n, m),
-                             write=lambda value, n=name, m=mode.id: self.model.set_palette(n, m, value))
+                             write=lambda value, n=name, m=mode.id: self.model.set_palette(n, m, value),
+                             usage=("palette", name, mode.id))
                 self._cells.append(cell)
                 grid.addWidget(cell, row, column)
         add = Button("Add a colour of the theme's own…", "ghost", compact=True)
@@ -413,7 +463,7 @@ class ThemeForm(QScrollArea):
                 cell = _Cell(self, read=lambda r=role, m=mode.id: self._role_read(r, m),
                              write=lambda value, r=role, m=mode.id: self.model.set_role(r, m, value),
                              choices=self.model.colour_names(), picker=False,
-                             enabled=self.model.role_editable(role, mode.id))
+                             enabled=self.model.role_editable(role, mode.id), usage=("role", role, mode.id))
                 self._cells.append(cell)
                 grid.addWidget(cell, row, column)
         return card
@@ -432,11 +482,12 @@ class ThemeForm(QScrollArea):
             for column, mode in enumerate(modes, start=1):
                 if column == 1:
                     cell = _Cell(self, read=lambda n=name, m=mode.id: self._optional_read(n, m),
-                                 write=lambda value, n=name: self.model.set_value(n, value))
+                                 write=lambda value, n=name: self.model.set_value(n, value),
+                                 usage=("role", role, mode.id))
                 else:
                     cell = _Cell(self, read=lambda r=role, m=mode.id: self._role_read(r, m),
                                  write=lambda value, r=role, m=mode.id: self.model.set_role(r, m, value),
-                                 choices=self.model.colour_names(), picker=False)
+                                 choices=self.model.colour_names(), picker=False, usage=("role", role, mode.id))
                 self._cells.append(cell)
                 grid.addWidget(cell, row, column)
         return card

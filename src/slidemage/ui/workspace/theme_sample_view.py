@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
 
-from ... import compiler, theme_sample
+from ... import compiler, theme_fields, theme_probe, theme_sample
 from ...theme_file import ThemeFile
 from ...theme_form_model import parse_modes_header
 from ..kit.tokens import SPACE
@@ -42,8 +42,10 @@ class ThemeSampleView(Surface):
     """`render(project, text, key, mode, cancel=...)` makes the PDF (theme_sample.render; tests pass their own)."""
 
     rendered = Signal(object)       # theme_sample.SampleResult, from the render thread
+    probed = Signal(object, object)     # (the probe's key, theme_probe.UsageMap or None), from the probe thread
 
-    def __init__(self, editor, key: str, project, render: Optional[Callable] = None) -> None:
+    def __init__(self, editor, key: str, project, render: Optional[Callable] = None,
+                 read_usage: Optional[Callable] = None) -> None:
         super().__init__()
         self.editor = editor
         self.key = key
@@ -55,6 +57,11 @@ class ThemeSampleView(Surface):
         self._again = False
         self._stale = True
         self._error = ""
+        # Where a colour is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
+        self._read_usage = read_usage or theme_probe.usage_map
+        self._usage: Optional[tuple[str, str, str]] = None
+        self._maps: dict[tuple[str, str, str], Optional[theme_probe.UsageMap]] = {}
+        self._probing: set[tuple[str, str, str]] = set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.sm)
@@ -82,6 +89,9 @@ class ThemeSampleView(Surface):
         self.image.setMinimumHeight(120)
         self.image.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.image, 1)
+        self.usage_label = caption("")
+        self.usage_label.hide()
+        layout.addWidget(self.usage_label)
         self.status = caption("")
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.status)
@@ -92,6 +102,7 @@ class ThemeSampleView(Surface):
         self._timer.timeout.connect(self.start)
         editor.text_changed.connect(self._on_text_changed)
         self.rendered.connect(self._on_rendered)
+        self.probed.connect(self._on_probed)
         self._update_modes()
         self._show()
 
@@ -103,6 +114,7 @@ class ThemeSampleView(Surface):
 
     def _on_text_changed(self) -> None:
         self._update_modes()
+        self._maps.clear()          # a probe of the old text says nothing about the new one
         self.render_soon()
 
     def render_soon(self, delay: Optional[int] = None) -> None:
@@ -156,6 +168,112 @@ class ThemeSampleView(Surface):
         super().resizeEvent(event)
         self._show_image()
 
+    # --- where a colour is used ------------------------------------------------------------------------------------
+
+    def show_usage(self, kind: str, name: str, mode: str) -> None:
+        """A colour field has the focus: dim the slides but where `name` (a role id or a palette colour) is used, in its
+        column's mode `mode`, on a page that uses it."""
+        if kind not in theme_probe.KINDS:
+            return
+        self._usage = (kind, name, mode)
+        index = self.mode_combo.findData(mode)
+        if index >= 0 and index != self.mode_combo.currentIndex():
+            self.mode_combo.setCurrentIndex(index)
+            self.render_soon(0)
+        self._probe(kind, mode)
+        self._jump_to_usage()
+        self._show()
+
+    def clear_usage(self) -> None:
+        self._usage = None
+        self._show()
+
+    def _map(self):
+        if self._usage is None:
+            return None
+        kind, _name, mode = self._usage
+        return self._maps.get((kind, mode, self.editor.text()))
+
+    def _probe(self, kind: str, mode: str) -> None:
+        """Make the usage map of `kind` in `mode` for the current text, unless it is there or under way."""
+        text = self.editor.text()
+        key = (kind, mode, text)
+        if key in self._maps or key in self._probing or self.project is None:
+            return
+        try:
+            probe_text, mapping = theme_probe.probe_text(text, kind, mode)
+        except ValueError:
+            self._maps[key] = None
+            return
+        self._probing.add(key)
+        render, read = self._render, self._read_usage
+
+        def work() -> None:
+            usage = None
+            try:
+                result = render(self.project, probe_text, f"{self.key}--probe-{kind}", mode,
+                                cancel=compiler.CancelToken())
+                if result.pdf is not None:
+                    usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
+            except Exception:       # no map: the slides stay undimmed, the form still works
+                usage = None
+            self.probed.emit(key, usage)
+
+        threading.Thread(target=work, daemon=True, name="theme-probe").start()
+
+    def _on_probed(self, key, usage) -> None:
+        self._probing.discard(key)
+        if key[2] == self.editor.text():
+            self._maps[key] = usage
+        self._jump_to_usage()
+        self._show()
+
+    def _jump_to_usage(self) -> None:
+        usage = self._map()
+        if usage is None or self._usage is None or not self._images:
+            return
+        pages = usage.pages_using(self._usage[1])
+        if pages and self._page not in pages:
+            self._page = pages[0]
+
+    def _usage_text(self) -> str:
+        if self._usage is None:
+            return ""
+        kind, name, mode = self._usage
+        field = theme_fields.BY_NAME.get(("role:" + name) if kind == "role" else name)
+        label = field.label if field else name
+        key = (kind, mode, self.editor.text())
+        if key in self._probing or (key not in self._maps and self.project is not None):
+            return f"Finding where {label} is used on the sample slides…"
+        usage = self._maps.get(key)
+        if usage is None:
+            return ""
+        pages = usage.pages_using(name)
+        if not pages:
+            return f"{label} is not used on the sample slides."
+        listed = ", ".join(str(p) for p in pages)
+        return f"Lit up: where {label} is used (page{'s' if len(pages) > 1 else ''} {listed})."
+
+    def _composite(self, image: QImage) -> QImage:
+        """`image` dimmed but where the focused colour is used."""
+        usage = self._map()
+        if usage is None or self._usage is None or not usage.width:
+            return image
+        mask_bytes = usage.mask(self._page, self._usage[1])
+        if not any(mask_bytes):
+            return image
+        mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
+        mask = mask.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation)
+        lit = image.convertToFormat(QImage.Format.Format_ARGB32)
+        lit.setAlphaChannel(mask)
+        result = image.convertToFormat(QImage.Format.Format_ARGB32)
+        painter = QPainter(result)
+        painter.fillRect(result.rect(), QColor(0, 0, 0, 165))
+        for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):     # one pixel wider, so thin text shows
+            painter.drawImage(dx, dy, lit)
+        painter.end()
+        return result
+
     # --- showing -----------------------------------------------------------------------------------------------------
 
     def _update_modes(self) -> None:
@@ -192,13 +310,16 @@ class ThemeSampleView(Surface):
             self.status.setText("" if count else ("The sample slides render when the panel is shown."
                                                   if self.project is not None else "No project: nothing to render."))
             self.status.setToolTip("")
+        usage_text = self._usage_text()
+        self.usage_label.setText(usage_text)
+        self.usage_label.setVisible(bool(usage_text))
         self._show_image()
 
     def _show_image(self) -> None:
         if not self._images:
             self.image.clear()
             return
-        image = self._images[self._page - 1]
+        image = self._composite(self._images[self._page - 1])
         size = self.image.size()
         if size.width() < 10 or size.height() < 10:
             return
