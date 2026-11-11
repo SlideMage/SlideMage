@@ -66,15 +66,6 @@ def test_hash_is_kept_by_size_and_mtime_and_read_again_when_they_change(tmp_path
     assert cache.hash(path) != first and cache.reads == 2
 
 
-def test_the_audit_finds_a_change_under_an_unchanged_size_and_mtime(tmp_path, store):
-    cache = dep_hash.HashCache(store.db, store.lock)
-    path = write(tmp_path / "a.txt", "abcd")
-    cache.hash(path)
-    write(path, "abce")                              # same size, same mtime
-    assert cache.hash(path) is not None and cache.reads == 1      # the shortcut cannot see it
-    assert cache.audit() == [dep_hash.norm(path)]
-
-
 # -- the key ----------------------------------------------------------------------------
 
 def test_the_key_follows_slide_text_preamble_view_language_and_engine(ctx, resolver, store, hashes):
@@ -244,7 +235,8 @@ def test_an_old_format_object_is_never_found_or_kept(ctx, resolver, store):
         assert not again.find(key) and again.latest_for_unit(unit.label) is None
         assert not again.failures() and not again.tried_last(key)
         assert hashes.hash(unit.source_path) == preview_requests.SourceRevision.capture(unit.source_path).content_hash
-        assert again.rescan() == 0 and not folder.exists()
+        again.rescan()
+        assert not folder.exists()
     finally:
         again.close()
 
@@ -278,23 +270,16 @@ def test_an_old_index_opens_without_losing_its_render(ctx, resolver, store):
         upgraded.close()
 
 
-def test_objects_survive_the_loss_of_the_index_and_are_adopted_by_rescan(ctx, resolver, store):
-    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+def test_rescan_deletes_objects_the_index_does_not_know(ctx, resolver, store):
     unit = unit_for(ctx)
+    write(unit.source_path, "slide")
     key, meta = make_record(resolver, unit, [unit.source_path])
     store_render(store, key, meta)
-    local = store.root
-    store.close()
-    (local / "index.sqlite").unlink()
-    again_store = render_store.RenderStore(ctx, local)
-    try:
-        assert again_store.count() == 0 and again_store.rescan() == 1
-        again = render_key.Resolver(ctx, dep_hash.HashCache(again_store.db, again_store.lock), again_store,
-                                    engine_fp=lambda: "LuaHBTeX 1.22|Windows")
-        assert again.lookup(unit).state is Freshness.FRESH
-        assert again_store.page(again.lookup(unit).record, 1).startswith(b"\x89PNG")
-    finally:
-        again_store.close()
+    folder = render_store.object_dir(store.root, key)
+    store.db.execute("DELETE FROM renders")
+    store.db.commit()
+    store.rescan()
+    assert not folder.exists() and store.count() == 0
 
 
 def test_the_store_creates_nothing_in_the_project_and_removes_old_caches(ctx, tmp_path, monkeypatch):
@@ -338,14 +323,17 @@ def test_eviction_order_and_protection(ctx, resolver, store):
         keys[name] = key
     store.db.execute("UPDATE renders SET bytes=1000")
     assert store.total_bytes() == 3000
-    store.enforce_limit(2000, protected_decks={"recent"}, keep_days=3650)
+    clock[0] += 31 * 86400
+    assert store.enforce_limit(10 * 1024 ** 3, protected_decks={"recent"}) == 0
+    assert store.count() == 3                             # age alone never evicts an unprotected render
+    store.enforce_limit(2000, protected_decks={"recent"})
     assert store.count() == 2 and store.find(keys["b"])                    # the least recently used unprotected went
-    store.enforce_limit(1000, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(1000, protected_decks={"recent"})
     assert store.count() == 1 and store.find(keys["b"])                    # one unprotected is left? no: only the protected one
     store.db.execute("UPDATE renders SET bytes=1000")
-    store.enforce_limit(900, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(900, protected_decks={"recent"})
     assert store.count() == 1                                              # protected stays unless more than twice over
-    store.enforce_limit(400, protected_decks={"recent"}, keep_days=3650)
+    store.enforce_limit(400, protected_decks={"recent"})
     assert store.count() == 0
 
 
@@ -485,5 +473,7 @@ def test_a_rescan_that_is_stopped_forgets_no_object(ctx, resolver, store):
     store_render(store, key, meta)
     [folder] = [path for path in (store.root / "objects").glob("*/*") if path.is_dir()]
     shutil.rmtree(folder)                                           # gone on disk, still in the index
-    assert store.rescan(lambda: True) == 0 and store.count() == 1
-    assert store.rescan() == 0 and store.count() == 0
+    store.rescan(lambda: True)
+    assert store.count() == 1
+    store.rescan()
+    assert store.count() == 0

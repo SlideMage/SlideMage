@@ -11,7 +11,7 @@ page (every reveal step), `thumb.png` shrunk from the last page, and `meta.json`
 sizes of the other files. Publication replaces the previous object of the key under the store lock.
 An object without a complete `meta.json` is ignored.
 
-The **index** is a SQLite file beside them: a cache of the `meta.json` files (rebuilt by rescan()), the file hashes
+The **index** is a SQLite file beside them: the records of published objects, the file hashes
 (dep_hash), the failures the sweep remembers and the decks' usage. `work/` holds what the renders' LaTeX runs
 need outside the project: their wrapper files, build caches and precompiled preamble formats.
 Free of Qt.
@@ -36,7 +36,6 @@ from .render_evidence import thumbnail_png
 
 STORE_FORMAT = 2
 DEFAULT_LIMIT_BYTES = 2 * 1024 ** 3
-DEFAULT_KEEP_DAYS = 30
 LEFTOVERS_CLEARED = "stale renders cleared"     # the one clearing of legacy stale renders ran in this store
 FAILURE_INPUTS_TRACKED = "failures track their own inputs"
 THUMB_NAME = "thumb.png"        # the last page at THUMBNAIL_MAX, for the slide list (2026-10-30, direct request)
@@ -80,6 +79,7 @@ class RenderStore:
         self.forget_project_copy(ctx)
         shutil.rmtree(project.preview_cache_dir(ctx.root) / "render-results", ignore_errors=True)
         self._clock = clock
+        self._touched: dict[str, float] = {}
         self.lock = threading.RLock()
         self.root.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.root / "index.sqlite"), check_same_thread=False, timeout=30)
@@ -240,8 +240,12 @@ class RenderStore:
 
     def touch(self, key: str) -> None:
         with self.lock:
-            self.db.execute("UPDATE renders SET last_used=? WHERE key=?", (self._clock(), key))
+            now = self._clock()
+            if now - self._touched.get(key, float("-inf")) < 3600:
+                return
+            self.db.execute("UPDATE renders SET last_used=? WHERE key=?", (now, key))
             self.db.commit()
+            self._touched[key] = now
 
     def tex_files(self, digest: str) -> Optional[list]:
         with self.lock:
@@ -315,6 +319,17 @@ class RenderStore:
             self.db.commit()
         return deleted
 
+    def prune_index(self, keep_failures: Iterable[str], before: float) -> None:
+        """Forget old failures no current key uses and TeX file sets no render refers to."""
+        with self.lock:
+            self.db.execute("DELETE FROM failures WHERE first_at < ? "
+                            "AND fast_key NOT IN (SELECT value FROM json_each(?))",
+                            (before, json.dumps(list(keep_failures))))
+            self.db.execute("DELETE FROM texsets WHERE digest NOT IN "
+                            "(SELECT json_extract(meta, '$.tex_digest') FROM renders "
+                            "WHERE json_extract(meta, '$.tex_digest') IS NOT NULL)")
+            self.db.commit()
+
     def flag(self, name: str) -> bool:
         """Whether the one-off task `name` ran in this store (set_flag)."""
         with self.lock:
@@ -340,23 +355,17 @@ class RenderStore:
         with self.lock:
             return self.db.execute("SELECT COUNT(*) FROM renders").fetchone()[0]
 
-    def rescan(self, should_stop: Callable[[], bool] = lambda: False) -> int:
-        """Bring the index in line with the objects on disk: adopt complete objects it does not know (arrived
-        by sync, or the index was lost), forget those that are gone, clear unfinished writes. Returns how
-        many objects were adopted.
+    def rescan(self, should_stop: Callable[[], bool] = lambda: False) -> None:
+        """Clear unfinished writes, incomplete or missing indexed objects, and folders without an index row.
 
-        Made to run on a thread of its own while the app uses the store (2026-10-29, direct request: SlideMage took
-        about a minute to open): the lock is held per shard, not for the whole walk, and every change to the index is
-        checked again under it, so a render stored meanwhile is never lost and an object deleted meanwhile is not
-        brought back. `should_stop()` is asked between two shards; a walk that was stopped forgets nothing, because it
-        did not see every object. Of an object the index knows, meta.json is not read again: the index holds what it
-        said, and the sizes it lists are compared with the folder's listing (os.scandir gives them without one stat
-        call per file)."""
+        Hold the lock per shard so publication can continue between shards. Check the current row under the lock
+        before removing an object, so a render stored during the walk is kept. A stopped walk leaves rows of unseen
+        objects alone. Indexed meta supplies the expected file sizes without reading meta.json again.
+        """
         with self.lock:
             shutil.rmtree(self.root / "tmp", ignore_errors=True)       # under the lock: put() writes there
-            indexed = dict(self.db.execute("SELECT key, meta FROM renders").fetchall())
+            indexed = {row[0] for row in self.db.execute("SELECT key FROM renders")}
         known = set()
-        adopted = 0
         objects = self.root / "objects"
         shards = []
         if objects.is_dir():
@@ -366,42 +375,30 @@ class RenderStore:
             if should_stop():
                 with self.lock:
                     self.db.commit()
-                return adopted
-            fresh: list[tuple[str, dict]] = []
-            try:
-                with os.scandir(shard) as listing:
-                    folders = [e for e in listing if e.is_dir()]
-            except OSError:
-                continue
-            for folder in folders:
-                meta = self._checked_meta(folder.path, indexed.get(folder.name))
-                if meta is None:
-                    with self.lock:
-                        if self._checked_meta(folder.path, None) is None:
-                            self._remove(folder.name)
+                return
+            with self.lock:
+                try:
+                    with os.scandir(shard) as listing:
+                        folders = [e for e in listing if e.is_dir()]
+                except OSError:
                     continue
-                known.add(folder.name)
-                if folder.name not in indexed:
-                    fresh.append((folder.name, meta))
-            if fresh:
-                with self.lock:
-                    for key, meta in fresh:
-                        if self.db.execute("SELECT 1 FROM renders WHERE key=?", (key,)).fetchone() is None and self._exists(key):
-                            self._index(key, meta)
-                            adopted += 1
-        gone = [key for key in indexed if key not in known]
+                for folder in folders:
+                    row = self.db.execute("SELECT meta FROM renders WHERE key=?", (folder.name,)).fetchone()
+                    if row is None or self._checked_meta(folder.path, row[0]) is None:
+                        self._remove(folder.name)
+                    known.add(folder.name)
+        gone = list(indexed - known)
         for start in range(0, len(gone), 500):
             if should_stop():
                 with self.lock:
                     self.db.commit()
-                return adopted
+                return
             with self.lock:
                 for key in gone[start:start + 500]:
                     if not self._exists(key):              # not stored again since the walk began
                         self._remove(key)
         with self.lock:
             self.db.commit()
-        return adopted
 
     @staticmethod
     def _checked_meta(folder: str, indexed: Optional[str]) -> Optional[dict]:
@@ -435,22 +432,18 @@ class RenderStore:
     # -- eviction ----------------------------------------------------------------
 
     def enforce_limit(self, limit_bytes: int, *, protected_decks: Iterable[str] = (),
-                      keep_days: int = DEFAULT_KEEP_DAYS, is_orphan: Callable[[list], bool] = lambda decks: False) -> int:
-        """Delete renders until the store fits `limit_bytes`: renders older than `keep_days`, renders of nothing
-        that exists any more (`is_orphan(decks)`), then the least recently used outside `protected_decks`; the protected ones only when the store is still more
-        than twice over. Returns how many were deleted."""
+                      is_orphan: Callable[[list], bool] = lambda decks: False) -> int:
+        """Delete orphans (`is_orphan(decks)`), then the least recently used outside `protected_decks` while over
+        `limit_bytes`; the protected ones only above twice the limit. Returns how many were deleted."""
         protected = set(protected_decks)
         deleted = 0
         with self.lock:
             rows = self.db.execute("SELECT key, bytes, last_used, decks FROM renders").fetchall()
             total = sum(r[1] for r in rows)
             order: list[tuple] = []
-            cutoff = self._clock() - keep_days * 86400
             for name, size, used, decks in rows:
                 deck_list = json.loads(decks)
-                if used < cutoff and not set(deck_list) & protected:
-                    rank = 1
-                elif is_orphan(deck_list):
+                if is_orphan(deck_list):
                     rank = 2
                 elif not set(deck_list) & protected:
                     rank = 3
@@ -458,7 +451,7 @@ class RenderStore:
                     rank = 4
                 order.append((rank, used, name, size))
             for rank, _used, name, size in sorted(order):
-                if rank <= 2 or total > limit_bytes and (rank == 3 or total > 2 * limit_bytes):
+                if rank == 2 or total > limit_bytes and (rank == 3 or total > 2 * limit_bytes):
                     self._remove(name)
                     total -= size
                     deleted += 1
