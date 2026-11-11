@@ -1,5 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage modes: light, dark=Dark slides
 % Template of the generic SlideMage look (2026-10-03, direct
 % instruction): the look of SlideMage itself rather than of an institution --
 % the SlideMage logo, the app's own colors, dark title and footer boxes with
@@ -29,6 +30,22 @@
 \colorlet{SMCodeKeywordColor}{c_primary_highlight}
 \definecolor{SMCodeCommentColor}{HTML}{5f5f5f}
 \definecolor{SMCodeBackgroundColor}{HTML}{f0f0f0}
+
+% ---------------------------------------------------------------------------
+% Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
+% above, is the base mode; dark starts from the framework's dark preset (canvas #444444 from
+% c_primary_dark, white text). On it the highlight blue and the reds are too dark (1.7:1), so the
+% accents drawn on the canvas move to lighter tints, each at least 4.3:1 there. The palette keeps
+% its colours: a slide that writes c_primary_highlight means that blue. A deck picks the mode in
+% Deck settings -> Colours.
+% ---------------------------------------------------------------------------
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetRole{bullet}{dark}{c_secondary_blue!60!white}        % 8bbcec, 4.9:1
+\SMSetRole{table_rule}{dark}{c_secondary_blue!60!white}
+\SMSetRole{image_border}{dark}{c_secondary_blue!60!white}
+\SMSetRole{alert}{dark}{c_secondary_orange}                % ffb74d, 5.6:1
+\SMSetRole{marker}{dark}{c_secondary_red!60!white}         % f69191, 4.3:1
 
 \input{SlideMage_base}
 

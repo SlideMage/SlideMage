@@ -3930,3 +3930,8 @@ v0.16.1 (2026-11-11, slide-list thumbnails disappear after file writes): Rebuild
 
 NEW:
 - Slide-list thumbnails stay visible after saving a slide or accepting an AI draft while their images are checked in the background.
+
+v0.16.2 (2026-11-11, direct request: colour roles, the shipped templates' modes): The SlideMage and the Greyscale template declare the modes light (the base) and dark, in the header the app reads (`% SlideMage modes: light, dark=Dark slides`) and to the framework (\SMDeclareMode). Dark is the framework's dark preset plus role lines for what sat too dark on its canvas: in the SlideMage template bullets, table rules and image borders c_secondary_blue!60!white, \alert c_secondary_orange, markers c_secondary_red!60!white; in Greyscale a dark title bar with white text (and white standout text), bullets, \alert, rules and borders c_secondary_violet, markers c_tertiary_violet; each at least 4.3:1 on the dark canvas. The palette keeps its colours, so slide text written in c_primary_highlight or c_custom_red stays that colour. Light mode is unchanged: tools/framework_regression.py shows the 873 pages of the manual set identical.
+
+NEW: Dark slides for the built-in templates.
+- Under Colours in Deck settings, the SlideMage and Greyscale templates now offer Dark slides.

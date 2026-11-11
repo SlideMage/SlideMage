@@ -84,3 +84,17 @@ def test_a_view_can_have_any_mode_of_its_theme():
         "\\begin{document}", "% SlideMage view themes: after-course=acme\n\\begin{document}")
     assert "SMModeOverride" not in view_themes.preamble_for_view(base, "after-course")
     assert MODE in view_themes.preamble_for_view(base, "instructor")
+
+
+@pytest.mark.parametrize("key", ["slidemage", "greyscale"])
+def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
+    """v0.16.2: both templates in latex/ declare light (the base) and dark, in the header the app reads and to the
+    framework; every data line is for dark, so the light PDFs do not change."""
+    import re
+    from pathlib import Path
+
+    assert deck_settings.template_modes(tmp_path, key) == [("light", "Light"), ("dark", "Dark slides")]
+    text = (Path(__file__).resolve().parents[1] / "latex" / f"SlideMage_template_{key}.tex").read_text(encoding="utf-8")
+    assert re.findall(r"^\\SMDeclareMode\{(\w+)\}\{(\w*)\}", text, re.MULTILINE) == [("light", ""), ("dark", "dark")]
+    lines = re.findall(r"^\\SMSet(?:Role|Color)\{\w+\}\{(\w+)\}", text, re.MULTILINE)
+    assert lines and set(lines) == {"dark"}

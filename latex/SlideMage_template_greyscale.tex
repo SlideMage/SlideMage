@@ -1,5 +1,6 @@
 % SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 % SPDX-License-Identifier: LPPL-1.3c+
+% SlideMage modes: light, dark=Dark slides
 % SlideMage template name: Greyscale (Latin Modern Roman)
 %
 % A second look that ships with SlideMage (v10.18.0): LaTeX's own serif text face, Latin
@@ -68,6 +69,25 @@
 \renewcommand{\SMStandoutTextColor}{c_primary_dark}
 \renewcommand{\SMAlertTextColor}{c_primary_highlight}
 \renewcommand{\SMProgressBarColor}{c_primary_gray}
+
+% ---------------------------------------------------------------------------
+% Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
+% above, is the base mode; dark starts from the framework's dark preset (canvas #484848 from
+% c_primary_dark, white text). The title bar turns dark with white text, like the footer, and
+% the accents drawn on the canvas (bullets, \alert, rules, borders, markers) move to the light
+% greys, each at least 4.8:1 there; the dark greys of the palette are near the canvas (1.2:1).
+% A deck picks the mode in Deck settings -> Colours.
+% ---------------------------------------------------------------------------
+\SMDeclareMode{light}{}
+\SMDeclareMode{dark}{dark}
+\SMSetRole{title_fill}{dark}{c_primary_dark}
+\SMSetRole{title_text}{dark}{c_true_white}
+\SMSetRole{standout_text}{dark}{c_true_white}
+\SMSetRole{bullet}{dark}{c_secondary_violet}               % bdbdbd, 4.9:1
+\SMSetRole{alert}{dark}{c_secondary_violet}
+\SMSetRole{table_rule}{dark}{c_secondary_violet}
+\SMSetRole{image_border}{dark}{c_secondary_violet}
+\SMSetRole{marker}{dark}{c_tertiary_violet}                % dedede, 6.8:1
 
 % Bullets: an en dash on every level instead of the filled circle. The list indents follow
 % the glyph's width by themselves.
