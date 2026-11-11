@@ -43,6 +43,7 @@ from ..text import plural
 from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
 from .theme_form import ThemeForm, theme_key
+from .theme_sample_view import ThemeSampleView
 
 LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
@@ -144,20 +145,27 @@ class SourceFile(Surface):
         layout.addWidget(self.fix_panel)
         layout.addWidget(self.find_bar)
         layout.addWidget(self.fold_button, 0, Qt.AlignmentFlag.AlignLeft)
-        # A theme (SlideMage_template_<key>.tex) gets the theme form beside its source, both on this buffer.
-        self.theme_form = None
+        # A theme (SlideMage_template_<key>.tex) gets the theme form beside its source, both on this buffer, and the
+        # sample slides rendered with it above the form.
+        self.theme_form = self.theme_sample = self.theme_side = None
         if not self.is_slide and theme_key(path):
             from ... import theme_fields
             self.theme_form = ThemeForm(self.editor, path, app.project.root, theme_fields.setup_file(app.project.root))
+            self.theme_sample = ThemeSampleView(self.editor, theme_key(path), app.project)
+            self.theme_side = QSplitter(Qt.Orientation.Vertical)
+            self.theme_side.setChildrenCollapsible(False)
+            self.theme_side.addWidget(self.theme_sample)
+            self.theme_side.addWidget(self.theme_form)
+            self.theme_side.setSizes([2000, 3000])
             splitter = QSplitter(Qt.Orientation.Horizontal)
             splitter.setChildrenCollapsible(False)
             splitter.addWidget(self.editor)
-            splitter.addWidget(self.theme_form)
+            splitter.addWidget(self.theme_side)
             splitter.setStretchFactor(0, 3)
             splitter.setStretchFactor(1, 2)
             splitter.setSizes([3000, 2000])     # three fifths source, two fifths form, whatever the width
             layout.addWidget(splitter, 1)
-            self.theme_form.setVisible(bool(layout_settings.get(THEME_FORM_KEY, True)))
+            self.theme_side.setVisible(bool(layout_settings.get(THEME_FORM_KEY, True)))
             self._update_form_button()
         else:
             layout.addWidget(self.editor, 1)
@@ -266,18 +274,18 @@ class SourceFile(Surface):
         return self.conflict_bar
 
     def toggle_theme_form(self) -> None:
-        """Show or hide the theme form (a theme file only); remembered for the next theme opened."""
-        if self.theme_form is None:
+        """Show or hide the theme form and its sample slides (a theme file only); remembered for the next theme opened."""
+        if self.theme_side is None:
             return
-        shown = self.theme_form.isHidden()
-        self.theme_form.setVisible(shown)
+        shown = self.theme_side.isHidden()
+        self.theme_side.setVisible(shown)
         layout_settings.set(THEME_FORM_KEY, shown)
         self._update_form_button()
 
     def _update_form_button(self) -> None:
-        if self.theme_form is None:
+        if self.theme_side is None:
             return
-        self.form_button.setText("Hide form" if not self.theme_form.isHidden() else "Show form")
+        self.form_button.setText("Hide form" if not self.theme_side.isHidden() else "Show form")
         self.form_button.show()
 
     def run_lint(self) -> None:

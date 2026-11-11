@@ -121,10 +121,11 @@ def test_a_theme_file_shows_the_form_and_a_deck_does_not(qapp, tmp_path, monkeyp
     deck = tmp_path / "deck.tex"
     deck.write_text("\\documentclass{beamer}\n", encoding="utf-8")
     with_form = SourceFile(app, theme)
-    assert with_form.theme_form is not None and not with_form.theme_form.isHidden()
+    assert with_form.theme_form is not None and not with_form.theme_side.isHidden()
+    assert with_form.theme_sample is not None and with_form.theme_sample.key == "probe"
     assert with_form.form_button.text() == "Hide form"
     with_form.toggle_theme_form()
-    assert with_form.theme_form.isHidden() and shown[source_file.THEME_FORM_KEY] is False
+    assert with_form.theme_side.isHidden() and shown[source_file.THEME_FORM_KEY] is False
     assert with_form.form_button.text() == "Show form"
     assert SourceFile(app, deck).theme_form is None
     assert setup_file(EXAMPLE_PROJECT.root) is not None

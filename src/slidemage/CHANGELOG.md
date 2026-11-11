@@ -3968,3 +3968,9 @@ v0.16.8 (2026-11-11, direct request: fix what the theme form's contrast check fo
 
 NEW: Readable code in Greyscale's dark mode.
 - Code panels in the Greyscale template's dark slides show their commands in dark grey again, readable on the light panel.
+
+v0.16.9 (2026-11-11, direct request: theme form, stage C1c, first part): The theme form shows sample slides above its fields: a theme sample deck (assets/theme_sample/: title frame; title bar, lists, a link, \alert, inline code and a footnote; the five block kinds; a code panel; highlight, standout and quote frames) rendered with the theme as it is in the editor, unsaved edits included, in the colour mode picked above the page, one page at a time. A render starts 1.2 s after the last change (form or typing), runs in a thread in .build/theme-sample/<key>/<mode>/ with the buffer written there first on TEXINPUTS (the project's files are not touched), and a change during a render stops it and starts again; a theme that does not compile says why. Settings -> Extensions -> Themes has "New theme…": a key (checked as it is typed: not shipped, not in the project, not installed), a name and a starting point (the SlideMage or the Greyscale template); the shipped template is copied into the project with the name line, then opened with the form (themes.new_theme, WorkspaceWindow.new_theme). Still to come in C1c: the marks on the sample slides for the field in focus.
+
+NEW: See a theme's slides while you edit it, and start a new theme.
+- The theme form shows sample slides of the theme as it is being edited, in light or dark mode, updated a moment after each change.
+- Settings -> Extensions -> Themes -> New theme… makes a theme of your own from the SlideMage or the Greyscale template and opens it in the form.

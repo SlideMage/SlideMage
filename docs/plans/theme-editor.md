@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0 and CR built and merged; the form is being built: C1a (reader and writer) merged, C1b (the form tab) built.** Parts A and B
+Status: **C0 and CR built and merged; the form is being built: C1a and C1b merged, C1c part 1 (New theme, sample slides) built.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -592,6 +592,26 @@ check shows Greyscale's dark mode with code commands at 1.4:1 (C7C7C7 on EBEBEB)
 so the framework makes it from `c_primary_highlight` after the dark palette line; the SlideMage template avoids this
 with a `\colorlet` before its modes. Not fixed here (a `latex/` change). Not done (C1c): "New theme…", the sample
 deck and the live render with the slide pictures of 3.3.
+
+**Built: C1c, first part (v0.16.9, branch `feat/theme-form-render`).** C1c is done in two parts: (1) "New theme…", the
+sample deck and its live render; (2) the marks on the sample slides for the field in focus (overlays from geometry,
+role dimming) — not built yet. Part 1: `src/slidemage/assets/theme_sample/theme-sample.tex` (+ `snippet.tex`), seven
+pages (`theme_sample.PAGES`: title frame; title bar, lists, link, `\alert`, inline code, footnote, source; the five
+block kinds; code panel; highlight, standout and quote frames); SlideMage fills its `%MODE%` and `%THEME%` lines (the
+`\SMModeOverride` line, `\graphicspath` of the project root, `\input` of the theme). `src/slidemage/theme_sample.py`:
+`render(ctx, text, key, mode, cancel=)` writes the buffer as `SlideMage_template_<key>.tex`, the deck and the snippet
+into `.build/theme-sample/<key>/<mode>/`, puts that folder first on TEXINPUTS (then the project root, the framework,
+what `compiler.build_env` set) and runs latexmk with lualatex (about 8 s from cold); `SampleResult(pdf, log, mode)`.
+`src/slidemage/ui/workspace/theme_sample_view.py`: `ThemeSampleView` above the form in a vertical splitter on the
+right of the source tab (`SourceFile.theme_side`; "Hide form" hides both): mode picker (labels from the header line),
+page arrows, the page scaled to the panel (PyMuPDF at 110 dpi), status line (the TeX error's first line, the rest in
+the tooltip). Renders 1.2 s after a buffer change, in a thread; a change during a render stops it (CancelToken) and
+renders again after; nothing while hidden, catches up on show. "New theme…" (section 3.4): `themes.SHIPPED_STARTS`,
+`themes.check_new_key` (key rules, not shipped, not in the project, not installed), `themes.new_theme(key, name, root,
+start)` (the shipped template through `ThemeFile`, name line set or added); Settings → Extensions → Themes →
+"New theme…" asks name, key (filled from the name until edited, checked as typed) and start, closes the sheet, then
+`WorkspaceWindow.new_theme` makes it, opens it with the form and reloads the decks. Tests: `tests/test_theme_sample.py`
+(the deck render in light and dark with `SLIDEMAGE_TEX_TESTS=1`, the panel with a fake render, New theme).
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.
