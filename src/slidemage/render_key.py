@@ -10,7 +10,8 @@ settings. The **manifest** of a render lists every project file the run read (ta
 render recorded, see preview_build.recorded_inputs) with its SHA-256. A stored render is current iff
 the fast key is the same *and* every manifest file still has its hash; TeX's own files (packages,
 fonts) are covered by the engine line and, for a render made on this machine, their content states. The page number in the footer (`frame_number`) and the time of the render
-are not part of the key: a render that differs only in the page number is FRESH_NUMBERING_DIFFERS.
+are not part of the key: a render that differs only in the page number is FRESH_NUMBERING_DIFFERS and
+counts as finished for the background sweep. A deck compile or a forced render stores the requested number.
 
 Free of Qt; the TeX run itself is in background_renders.py.
 """
@@ -411,5 +412,5 @@ class Lookup:
 
     @property
     def final(self) -> bool:
-        """Nothing more for the background sweep to do, apart from retrying failures when eligible."""
+        """The requested footer number is current, or a failure is recorded."""
         return self.state in (Freshness.FRESH, Freshness.FAILED)

@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Optional framework inputs must be covered even when the recorder never sees them."""
+from fnmatch import fnmatchcase
 from pathlib import Path
 import re
+
+from slidemage.render_evidence import PROJECT_WATCHED
 
 
 def test_framework_probes_are_covered_by_the_inventory():
@@ -34,6 +37,7 @@ def test_framework_probes_are_covered_by_the_inventory():
                     assert definition.startswith(r'{\SMUseBibliography}[1][SlideMage.bib]{'), where
                     assert definition.rstrip().endswith(r'\def\input@path{}'), where
                     assert rest.startswith(r'{#1}{\addbibresource{#1}}{\addbibresource{../#1}}'), where
+                    assert any(fnmatchcase('references.bib', pattern) for pattern in PROJECT_WATCHED), where
                     continue
                 # These two macros expand only the filename, never its search folder.
                 name = name.replace(r'\SMLayoutProfile', 'profile').replace(r'\SMCitationFormat', 'format')
@@ -71,4 +75,5 @@ def test_framework_probes_are_covered_by_the_inventory():
                     continue
                 parts = Path(name).parts
                 assert parts[0] not in {'slides', 'media', 'snippets'} and not skipped.intersection(parts), (where, name)
+                assert len(parts) == 1 and any(fnmatchcase(name, pattern) for pattern in PROJECT_WATCHED), (where, name)
     assert counts == {r'\IfFileExists': 4, r'\InputIfFileExists': 2, 'kpse.find_file': 6, 'io.open': 3}

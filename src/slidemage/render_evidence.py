@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from fnmatch import fnmatchcase
 import hashlib
 from io import BytesIO
 import json
@@ -21,6 +22,8 @@ from .preview_metrics import count
 # (2026-10-30, direct request; was 320x180, three times what any screen used).
 THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
+# Project probes: SlideMage_layout_*, SlideMage_citation_*, SlideMage_project_macros.tex, and the .bib fallback.
+PROJECT_WATCHED = ('SlideMage_*', '*.bib', '.latexmkrc', 'latexmkrc')
 
 
 def digest(value) -> str:
@@ -92,7 +95,7 @@ TOOL_SECONDS = 30
 
 def find_tool(name: str, path: str | None):
     """shutil.which(name, path=path), looked up again at most every TOOL_SECONDS for the same PATH (a scan of
-    PATH is slow on Windows; the preview asks for six tools several times a render)."""
+    PATH is slow on Windows; the preview asks for tools several times a render)."""
     now = time.monotonic()
     known = _TOOLS.get((name, path))
     if known is None or now - known[1] >= TOOL_SECONDS:
@@ -218,8 +221,11 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             for name in known[2]:
                 path = directory / name
                 relative = path.relative_to(project_root) if path.is_relative_to(project_root) else None
-                if (relative is not None and relative.parts[0] in {'slides', 'media', 'snippets'}
-                        and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}):
+                by_stem = relative is not None and relative.parts[0] in {'slides', 'media', 'snippets'}
+                if root == project_root:
+                    by_stem = not (directory in (project_root, project_root / 'decks')
+                                   and any(fnmatchcase(name, pattern) for pattern in PROJECT_WATCHED))
+                if by_stem and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}:
                     stems.setdefault(path.stem, set()).add(str(path))
                 else:
                     names.append(path.relative_to(root).as_posix())
@@ -248,7 +254,7 @@ def configuration_state(project_root: Path, env: dict) -> dict:
         rc.append(Path(env['LATEXMKRCSYS']))
     states = FileStates(search_roots(project_root, env))
     tools = {}
-    for name in ('latexmk', 'lualatex', 'pdflatex', 'xelatex', 'biber', 'bibtex'):
+    for name in ('latexmk', 'lualatex', 'biber'):
         executable = find_tool(name, env.get('PATH'))
         tools[name] = states(Path(executable)) if executable else None
     # Desktop and terminal PATHs differ; resolved tools above cover the relevant changes (2026-11-09).
