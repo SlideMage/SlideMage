@@ -195,6 +195,7 @@ def ensure(preamble: str, key: str, *, project_root: Path, build_dir: Path, env:
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with lock(directory / 'build.lock', shared=True, cancel=cancel):
+            (directory / 'build.lock').touch()    # last use, including attempts of a disabled format
             if (directory / 'format.bad').exists():
                 return None
             if stem(directory).with_suffix('.fmt').is_file() and _fresh(directory / 'format.json', project_root, env):

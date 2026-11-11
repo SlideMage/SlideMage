@@ -3,11 +3,12 @@
 """What "Empty pdf folder" and "Remove temp files" (Housekeeping) would delete, and the deleting.
 
 Free of Qt: the Housekeeping sheet (ui/dialogs/housekeeping.py) shows the counts, the window
-(ui/workspace/maintenance.py) asks and calls the removal.
+(ui/workspace/maintenance.py) asks and calls the removal. Startup also prunes forgotten render stores.
 """
 from __future__ import annotations
 
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,3 +67,24 @@ def remove_temp_files(ctx: ProjectContext, found: TempFiles) -> None:
             else:
                 path.unlink(missing_ok=True)
         delete_files(found.wrappers)
+
+
+def prune_render_stores(ctx: ProjectContext) -> None:
+    """Remove stores unused for 30 days whose project folder no longer exists; keep the open project's store."""
+    stores = project.cache_dir() / "render-store"
+    current = stores / project.project_id(ctx.root)
+    before = time.time() - 30 * 86400
+    for store in stores.glob("*"):
+        if store == current or not store.is_dir() or store.is_symlink():
+            continue
+        try:
+            if (store / "index.sqlite").stat().st_mtime >= before:
+                continue
+            marker = store / "project.txt"
+            if marker.exists():
+                folder = marker.read_text(encoding="utf-8")
+                if folder and Path(folder).is_dir():
+                    continue
+        except (OSError, UnicodeError):
+            continue
+        shutil.rmtree(store, ignore_errors=True)
