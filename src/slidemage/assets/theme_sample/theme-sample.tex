@@ -1,0 +1,89 @@
+% !TeX program = lualatex
+% The theme sample deck (docs/plans/theme-editor.md, section 3.3): the theme form renders it with the theme being
+% edited, one page per group of fields. SlideMage writes the two lines marked below (the colour mode and the theme)
+% and copies snippet.tex next to it; nothing else changes, so a page's number says what it shows (theme_sample.PAGES).
+\documentclass[aspectratio=169]{beamer}
+%MODE%
+%THEME%
+\newcommand{\FooterText}{Theme sample}
+\deckversion[instructor]
+\decklanguage[en]
+
+\begin{document}
+
+% 1: the title frame
+\titleframe{Theme sample}{Title, subtitle and band\\of the title frame}
+
+% 2: title bar, footer, lists, links, \alert, inline code and footnotes
+\begin{standardframe}{Title bar, lists and footnotes}
+	\begin{itemize}
+		\item A first point with a footnote\footnote{A footnote at the foot of the page, above the footer.}
+		\item A point with \alert{alerted text} and \SMCode{inline code}
+		\begin{itemize}
+			\item A second level, and \href{https://ctan.org/pkg/beamer}{a link}
+		\end{itemize}
+		\item Text in the roles' colours: \textcolor{c_text_muted}{secondary text}, \textcolor{c_link}{link colour}
+	\end{itemize}
+	\source{Source: the theme sample deck.}
+\end{standardframe}
+
+% 3: the five block kinds
+\begin{standardframe}{Blocks}
+	\begin{columns}[t,onlytextwidth]
+		\begin{column}{0.31\linewidth}
+			\begin{block}{block}
+				A statement
+			\end{block}
+			\begin{alertblock}{alertblock}
+				A caveat
+			\end{alertblock}
+		\end{column}
+		\begin{column}{0.31\linewidth}
+			\begin{exampleblock}{exampleblock}
+				A worked example
+			\end{exampleblock}
+			\begin{referenceblock}{referenceblock}
+				A reference
+			\end{referenceblock}
+		\end{column}
+		\begin{column}{0.31\linewidth}
+			\begin{infoblock}{infoblock}
+				An aside
+				\begin{itemize}
+					\item with a list
+				\end{itemize}
+			\end{infoblock}
+		\end{column}
+	\end{columns}
+\end{standardframe}
+
+% 4: a code panel and inline code
+\begin{standardframe}{Code}
+	\begin{columns}[T,onlytextwidth]
+		\begin{column}{0.44\linewidth}
+			Inline code: \SMCode{standardframe} and \SMCmd{footnote} in the body text.
+		\end{column}
+		\begin{column}{0.52\linewidth}
+			\SMCodeFile{snippet.tex}
+		\end{column}
+	\end{columns}
+\end{standardframe}
+
+% 5: a highlight frame
+\begin{highlightframe}{A highlight frame}
+	\begin{itemize}
+		\item A poll, an exercise, a break
+	\end{itemize}
+\end{highlightframe}
+
+% 6: a standout frame
+\begin{frame}[standout]
+	One slide, one statement
+\end{frame}
+
+% 7: a quote frame
+\quotesource{Source: A. de Saint-Exup\'ery, Terre des hommes, 1939.}
+\quoteframe{Perfection is attained not when there is nothing more to add, but when there is nothing more to take
+	away.}{Antoine de Saint-Exup\'ery (translated)}
+
+\end{document}
