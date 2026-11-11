@@ -282,7 +282,7 @@
 % starts from its derive preset, then the palette lines, then the role lines, so an explicit
 % line always wins:
 %   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
-%               link white, text on an accent fill black
+%               link white, text on an accent fill and on a button black, quote attribution muted
 %   grey        every palette colour converted to its grey
 %   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
 % Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
@@ -390,7 +390,11 @@
 	\gdef\SM@derived@text{c_true_white}%
 	\expandafter\gdef\csname SM@derived@text_muted\endcsname{c_primary_gray!60!white}%
 	\expandafter\gdef\csname SM@derived@text_on_accent\endcsname{c_true_black}%
-	\gdef\SM@derived@link{c_true_white}}
+	\gdef\SM@derived@link{c_true_white}%
+	% v0.16.5: a button is filled with the link colour, white here, so its text is black; the quote
+	% attribution (c_custom_gray in the base, a dark grey) is muted text
+	\expandafter\gdef\csname SM@derived@button_text\endcsname{c_true_black}%
+	\expandafter\gdef\csname SM@derived@quote_attribution\endcsname{c_primary_gray!60!white}}
 \newcommand{\SM@preset@grey}{%
 	\@for\SM@n:={c_primary_dark,c_primary_highlight,c_primary_gray,%
 		c_secondary_violet,c_tertiary_violet,c_secondary_blue,c_tertiary_blue,c_secondary_green,%

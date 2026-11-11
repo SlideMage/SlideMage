@@ -73,9 +73,10 @@
 % ---------------------------------------------------------------------------
 % Colour modes (SlideMage_setup.tex, 'Colour modes and role colours'): light, the colours
 % above, is the base mode; dark starts from the framework's dark preset (canvas #484848 from
-% c_primary_dark, white text). The title bar turns dark with white text, like the footer, and
-% the accents drawn on the canvas (bullets, \alert, rules, borders, markers) move to the light
-% greys, each at least 4.8:1 there; the dark greys of the palette are near the canvas (1.2:1).
+% c_primary_dark, white text). The title bar turns dark with white text, like the footer. The
+% palette's dark greys are near the canvas (1.0:1 to 1.5:1), so dark mode gives the accent grey
+% and the custom greys, which slides write as text and lines, light values, each at least 4.7:1
+% there (v0.16.5); bullets, \alert, rules, image borders and markers follow, as they are made of them.
 % A deck picks the mode in Deck settings -> Colours.
 % ---------------------------------------------------------------------------
 \SMDeclareMode{light}{}
@@ -83,11 +84,11 @@
 \SMSetRole{title_fill}{dark}{c_primary_dark}
 \SMSetRole{title_text}{dark}{c_true_white}
 \SMSetRole{standout_text}{dark}{c_true_white}
-\SMSetRole{bullet}{dark}{c_secondary_violet}               % bdbdbd, 4.9:1
-\SMSetRole{alert}{dark}{c_secondary_violet}
-\SMSetRole{table_rule}{dark}{c_secondary_violet}
-\SMSetRole{image_border}{dark}{c_secondary_violet}
-\SMSetRole{marker}{dark}{c_tertiary_violet}                % dedede, 6.8:1
+\SMSetColor{c_primary_highlight}{dark}{HTML}{C7C7C7}      % 5.4:1 on the dark canvas
+\SMSetColor{c_custom_gray}{dark}{HTML}{DEDEDE}           % 6.8:1
+\SMSetColor{c_custom_red}{dark}{HTML}{D0D0D0}            % 5.9:1
+\SMSetColor{c_custom_green}{dark}{HTML}{C4C4C4}          % 5.2:1
+\SMSetColor{c_custom_brown}{dark}{HTML}{BABABA}          % 4.7:1
 
 % Bullets: an en dash on every level instead of the filled circle. The list indents follow
 % the glyph's width by themselves.

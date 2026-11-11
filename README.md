@@ -2625,16 +2625,19 @@ every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` head
 removed in v0.16.0.)
 
 Both shipped templates (SlideMage and Greyscale) offer light and dark. Their dark mode is the
-preset plus a few role lines: bullets, `\alert`, table rules, image borders and markers move to
-lighter tints that keep at least 4.3:1 on the dark canvas, and Greyscale's title bar turns dark
-with white text. Slide text written in a palette colour (`c_primary_highlight`, `c_custom_red`)
-keeps that colour, so pick a role or a lighter accent for text that must read in both modes.
+preset plus lighter values for the palette colours slides write as text and lines and that are
+too dark on the dark canvas (`\SMSetColor` lines: the highlight colour and the `c_custom_*`
+colours), each at least 4.4:1 there, so `\textcolor{c_custom_red}{...}` stays readable without
+touching the slide; bullets, rules, image borders and markers follow. Greyscale's title bar turns
+dark with white text. A theme makes its own dark mode readable the same way: give each accent
+that slides use as text a dark-mode value, and keep white text off those colours (a node with
+`fill=c_primary_highlight` writes `text=c_canvas`, white in light mode).
 
 The source editor's **Color** menu lists the role colours first, each with what it is for, then the
 palette. Its swatches show the colours of the deck's theme in the mode of the view shown (a
 view's own `theme:mode` included), read from the template's lines the way the framework resolves
-them, so switching a deck to dark turns the `c_text` swatch white and leaves `c_primary_highlight`
-as it is.
+them, so switching a deck to dark turns the `c_text` swatch white and shows each palette colour
+with the value the theme gives it in dark mode.
 
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected
