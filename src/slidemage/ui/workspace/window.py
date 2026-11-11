@@ -870,6 +870,18 @@ class WorkspaceWindow(QMainWindow):
         self.open_theme_editor(path)
         self.reload_decks()     # the project's template list has a file more
 
+    def new_theme(self, key: str, name: str, start: str = "slidemage") -> None:
+        """Settings → Themes → "New theme…": a shipped template copied into the project under `key` with `name`, then
+        opened with the theme form beside it."""
+        try:
+            path = themes.new_theme(key, name, self.project.root, start)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "New theme", str(exc))
+            return
+        self.log(f"Made the theme {key} from the {start} template: {path.name}")
+        self.open_theme_editor(path)
+        self.reload_decks()     # the project's template list has a file more
+
     def _theme_written(self, path: Path) -> None:
         """A file was written in the Source view: if it is a template of the project folder, its decks render again
         after a pause."""

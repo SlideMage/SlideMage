@@ -1,8 +1,10 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **draft for the user's review, nothing of Part C built.** Parts A and B (list personal themes in Settings →
-Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the project) are in v0.14.62
-(PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0); stage C0 built (v0.15.3).
+Status: **C0 and CR built and merged; the form is being built: C1a and C1b merged, C1c part 1 (New theme, sample slides) built.** Parts A and B
+(list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
+project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
+stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
+2026-11-09/10 and is kept for the record.
 
 ## 0. Where this stands (read this first; written 2026-11-09 evening for the next session)
 
@@ -279,8 +281,11 @@ and what contrast it has). A form that regenerates the file would destroy that. 
   `\ifdefined\SMDarkMode`) make the reader say "this part is beyond the form" instead of guessing.
 * **Beyond the form is kept and counted.** Lines the form cannot model (Graz's inline-code style, `\tikzset`,
   `\setbeamercolor` lines) stay byte for byte; the form says how many there are and opens the source tab on them.
-* **Acceptance test, Graz.** The Graz file is the golden fixture (copied into `tests/fixtures/`, the TeX file only: it
-  is LPPL, the logo is not). (1) Read it and write it back with nothing changed: **byte-identical**. (2) Change
+* **Acceptance test, Graz.** The Graz file is the golden fixture. *(Changed when built, C1a: the file is NOT copied into
+  `tests/fixtures/`. Its TeX is LPPL, but the theme's LICENSE says the University's corporate design it reproduces, its
+  palette among it, is not covered and the theme must not be published; this repository is public. The tests run on a
+  test theme of the same shape with made-up colours, `tests/fixtures/theme_files/`, and on the real Graz, uni-ibk and
+  MCI files when `SLIDEMAGE_REAL_THEMES` names them.)* (1) Read it and write it back with nothing changed: **byte-identical**. (2) Change
   `c_primary_highlight`: **exactly one line differs**. (3) Change the dark canvas: one line differs, inside the dark
   block. (4) Add a setting Graz does not have (the body size): it lands in the marked block, nothing else moves. (5) The
   Graz field values equal what `theme_colors.py` reads for the same file. The same four checks run on Greyscale and
@@ -309,6 +314,22 @@ choice (profile, bullet, footnote marker), text (name), file (logo), switch (fea
 * **Checks as badges**: contrast pairs (section 2, item 2), "the logo is a vector PDF", "the key is free", "this
   length would put the Top Margin above the title bar" (Top Margin >= the bar's derived bottom edge; the
   `tools/check_layout.py` rules that read margins from the PDF).
+
+* **Slide pictures that show what a field changes (user's requirement, 2026-11-10).** Next to every group of fields the
+  form shows a picture of a slide, so nobody has to guess what a setting is: while a field has the focus, or the
+  mouse is over it, the picture marks the element or the margin it changes (the title bar, the Top Margin, the text
+  margins, the footer box, a block title, the bullet, the footnote area, the logo) and the picture is the real
+  render of the sample deck with the theme as edited, so the change shows as it is made. Design notes:
+  one render per page of the sample deck (title bar and footer; a block of each kind; list and footnote; a code
+  panel; a quote frame; a table) so each field group points at the page that shows its element; the marks are
+  overlays drawn over the rendered page from geometry (the hooks' values for margins and paddings, which
+  `tests/test_hook_geometry.py` already measures against the PDF; boxes of the other elements read from the PDF's
+  drawing operations or from a pass of the sample deck that writes the boxes of its elements to a file), never
+  baked into the render, so they follow the values as they change and need no second compile; a margin field shows
+  its measure as a dimension line with the value; for a colour field the picture dims everything but the
+  elements that use the role (the role table of section 3.8 says which); in a mode column the page is rendered in
+  that mode. A static, annotated picture per field is the fallback where a live mark is not possible. Stage: the
+  picture of the colour roles belongs to C1, the margins and layout fields to C2; the overlay mechanism is built in C1.
 
 ### 3.4 New theme from the shipped one
 
@@ -516,6 +537,81 @@ hard-coded names; each is a decision about which role it is).
 | C2 | Layout profile, sizes, margins, title bar, footer, bullets, citation format; route B (theme source folder) for installed themes | C1's editing core |
 | C3 | "Advanced": tier 3 fields, optional features; a "derive dark mode from the light palette" helper; the framework hooks that remove Graz's raw dark-mode TeX (block title text, inline code, standout) | the framework gaps above |
 | C4 | `.smtheme` export | C1 |
+
+The user split C1 (2026-11-11): **C1a** the reader and writer with the field list and the round-trip tests, no window;
+**C1b** the form tab beside the source tab (identity, palette with own colours and contrast badges, roles per mode, code
+colours, logo, footnote marker); **C1c** "New theme…", the theme sample deck, the live render and the slide pictures of
+section 3.3.
+
+**Built: C1a (v0.16.6, branch `feat/theme-form-core`).** `src/slidemage/theme_file.py`: `ThemeFile(text)` reads every
+setting at the top level (not inside another command's argument) with its kind, mode, value span, line, place (before
+the setup file, the settings, after the base) and whether it sits in a conditional; `editable` = in the settings part
+and outside `\if ... \fi` (the layout profile: before the setup file; the two header lines always). `find`/`value`
+(a HTML colour as "#rrggbb"), `modes()`, `own_colours()`, `beyond()` (0-based lines of live code the form does not edit),
+`set(key, value, mode)` and `remove(key, mode)`. Keys: a hook's name, a colour's name, `role:<id>` and `mode:<id>`,
+`header:name`, `header:modes`; a `\SMSetColor` line is its colour's name with the mode. In place means only the value:
+`{HTML}{..}` of a colour (upper-case hex stays upper case), the braced argument otherwise; `#rrggbb` on a `\colorlet` or
+an expression on a `\definecolor` rewrites that command and keeps the comment. New lines: the header after SPDX and
+header lines; the layout profile right before `\input{SlideMage_setup}`; a mode line after the theme's last mode line
+(a declaration after its last declaration); everything else in the marked block before `\input{SlideMage_base}`, sorted
+by the catalog's order with declarations and then mode lines last. Removing the block's last line removes the block. The
+file's line ends stay ("\r\n" or "\n"). `src/slidemage/theme_fields.py`: `FIELDS`, one `Field(name, group, kind,
+label, tier, hook, args, choices)` per catalog setting (151 fields for the 162 catalog names, 43 of them roles: the 13
+hook macros that are a role's base value are covered by that role's field, which names the macro in `hook`; plus the
+two header lines); `catalog(setup_text)` reads defaults, help texts and the roles' base sources from the setup file;
+`order()`. Tests: `tests/test_theme_fields.py` (the field list against the catalog and against
+`test_template_catalog.py`'s own reading), `tests/test_theme_file.py` (the five acceptance checks above on the shipped
+templates, the stress template and the two shape fixtures; line ends; a TeX compile of an edited template with
+`SLIDEMAGE_TEX_TESTS=1`). Run with `SLIDEMAGE_REAL_THEMES` on Graz 1.2.1, uni-ibk and MCI: all pass. Not done: the
+old scope-aware reader for `\ifdefined\SMDarkMode` files (v0.16.0 refuses them, so the form never sees one); the
+footnote marker's two forms (`\SMSetFootnoteMarkers`, `\SMFootnoteMark`) are two fields, merged into one in the form.
+
+**Built: C1b (v0.16.7, branch `feat/theme-form-tab`).** `src/slidemage/theme_form_model.py`: `ThemeModel(text, root,
+key, setup_text)`, no Qt. Columns are the declared modes (one "Colours" column for a theme without modes). Each cell
+has what the theme writes (`palette_written`, `role_written`; None = it follows) and what it comes to (`palette_hex`,
+`resolve("role:<id>", mode)`), resolved like `\SM@applymode`: a mode's line, else its preset (the dark preset's roles
+are read from the setup file's `\SM@derived@...` lines), else the base; a hook role's base value is its macro, followed
+through (`\SMTitleBoxColor`, `\SMBlockTitleTextColor`); a theme's own `\colorlet` of an optional colour (code keyword)
+keeps the base palette's colour in every mode, the framework's default is made after the mode's palette lines. Edits:
+`set_palette`, `set_role` (base + hook: the macro; a mode: `\SMSetRole`; a role without a hook has no base value in a
+theme without modes), `add_mode` (a theme without modes gets `light` first; header and `\SMDeclareMode`),
+`remove_mode` (every line of it), `add_own_colour`, `set_name`, `set_value`, `import_logo` (into
+`schemes/scheme_<key_>/`), `set_footnote_style` (symbols, boxed, dice via `\SMSetFootnoteMarkers`; numbers via
+`\SMFootnoteMark`; a theme's own mark shows as "custom"). `checks(mode)`: 16 WCAG pairs (`CHECKS`), text 4.5:1, the
+link underline 3:1. `theme_colors.theme_colors_for_text` reads an unsaved buffer. `src/slidemage/ui/workspace/theme_form.py`:
+`ThemeForm(editor, path, root, setup_path)`, a scrolling column of cards (intro with the count of lines beyond the
+form and "Show them in the source", name and modes, contrast badges, palette, the four role groups of
+`ROLE_SECTIONS`, code panels, logo, footnote markers); a cell is a swatch (colour picker) plus a field (a drop-down of
+the colour names for roles), an empty field follows and its grey text says what it takes. Every edit runs through
+`apply()`: model edit, then `editor.patch_text` (one undo step, autosave and the conflict bar as for typing); typing
+in the source refreshes the form after 400 ms; the cards are rebuilt only when the modes, own colours, lines beyond
+the form or the footnote style change. `SourceFile` puts it in a splitter beside the editor for any
+`SlideMage_template_<key>.tex` that is not a slide; "Hide form" / "Show form" on its status line, remembered
+(`theme_form_shown`). Tests: `tests/test_theme_form_model.py`, `tests/test_theme_form_gui.py`. **Finding:** the
+check shows Greyscale's dark mode with code commands at 1.4:1 (C7C7C7 on EBEBEB): it sets no `SMCodeKeywordColor`,
+so the framework makes it from `c_primary_highlight` after the dark palette line; the SlideMage template avoids this
+with a `\colorlet` before its modes. Not fixed here (a `latex/` change). Not done (C1c): "New theme…", the sample
+deck and the live render with the slide pictures of 3.3.
+
+**Built: C1c, first part (v0.16.9, branch `feat/theme-form-render`).** C1c is done in two parts: (1) "New theme…", the
+sample deck and its live render; (2) the marks on the sample slides for the field in focus (overlays from geometry,
+role dimming) — not built yet. Part 1: `src/slidemage/assets/theme_sample/theme-sample.tex` (+ `snippet.tex`), seven
+pages (`theme_sample.PAGES`: title frame; title bar, lists, link, `\alert`, inline code, footnote, source; the five
+block kinds; code panel; highlight, standout and quote frames); SlideMage fills its `%MODE%` and `%THEME%` lines (the
+`\SMModeOverride` line, `\graphicspath` of the project root, `\input` of the theme). `src/slidemage/theme_sample.py`:
+`render(ctx, text, key, mode, cancel=)` writes the buffer as `SlideMage_template_<key>.tex`, the deck and the snippet
+into `.build/theme-sample/<key>/<mode>/`, puts that folder first on TEXINPUTS (then the project root, the framework,
+what `compiler.build_env` set) and runs latexmk with lualatex (about 8 s from cold); `SampleResult(pdf, log, mode)`.
+`src/slidemage/ui/workspace/theme_sample_view.py`: `ThemeSampleView` above the form in a vertical splitter on the
+right of the source tab (`SourceFile.theme_side`; "Hide form" hides both): mode picker (labels from the header line),
+page arrows, the page scaled to the panel (PyMuPDF at 110 dpi), status line (the TeX error's first line, the rest in
+the tooltip). Renders 1.2 s after a buffer change, in a thread; a change during a render stops it (CancelToken) and
+renders again after; nothing while hidden, catches up on show. "New theme…" (section 3.4): `themes.SHIPPED_STARTS`,
+`themes.check_new_key` (key rules, not shipped, not in the project, not installed), `themes.new_theme(key, name, root,
+start)` (the shipped template through `ThemeFile`, name line set or added); Settings → Extensions → Themes →
+"New theme…" asks name, key (filled from the name until edited, checked as typed) and start, closes the sheet, then
+`WorkspaceWindow.new_theme` makes it, opens it with the form and reloads the decks. Tests: `tests/test_theme_sample.py`
+(the deck render in light and dark with `SLIDEMAGE_TEX_TESTS=1`, the panel with a fake render, New theme).
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.
