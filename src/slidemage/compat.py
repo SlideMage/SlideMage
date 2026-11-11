@@ -52,8 +52,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import (compat_bibliography, compat_citation_format, compat_hooks, compat_names, compat_own_theme,
-               compat_project_macros, project)
+from . import (compat_bibliography, compat_citation_format, compat_color_roles, compat_hooks, compat_names,
+               compat_own_theme, compat_project_macros, project)
 from .fileio import atomic_write
 from .tex_source import is_commented
 from .updater import parse_version
@@ -394,7 +394,7 @@ CHANGES: list[Change] = [compat_bibliography.CHANGE, Change(
     detect=lambda root: [Finding(".slidemage/project.json", 0, "Flat slide snapshots removed.")]
         if project.read_project_json(root).get("flat_snapshots_removed") else [],
     automatic=True,
-)]
+), compat_color_roles.CHANGE]
 
 # Releases from this one on need a registry entry for every "BREAKING:"
 # paragraph of their version.py history (tests/test_compat.py).
