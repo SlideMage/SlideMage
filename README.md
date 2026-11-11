@@ -1115,10 +1115,11 @@ it is moved, copied or archived:
   (`\input{SlideMage_template_<name>}`), chosen from the templates the
   project can find.
 - **Language**: `\decklanguage[..]`, one of the project's languages (see "Languages").
-- **Dark slides** (supported templates, including the SlideMage template):
-  a charcoal background, white body text,
-  dark cards and gray code panels. Saved in the deck and applied to its previews
-  and compiled PDFs; title and footer bars keep the institution colors.
+- **Colours**: the colour modes the template declares (for example light and
+  dark; enabled when it declares more than one). Saved in the deck as
+  `\newcommand{\SMModeOverride}{<mode>}` before the template and applied to its
+  previews and compiled PDFs. **Theme per view** can give a view its own theme
+  and mode, for example dark for the instructor deck and light for print.
 - **Footer text**: `\FooterText`, the left part of the footer.
 - **Course link** (CampusOnline plugin): a full HTTP or HTTPS URL; **Open** saves the settings and
   opens the page in your default browser. Clear the field to remove the link.
@@ -2607,13 +2608,16 @@ is the untouched source, `-cropped` is what slides actually reference).
 
 ### Color palette
 
-The dark option uses `#2b2b2b` for the canvas and `#3a3a3a` for cards,
-with white text, yellow inline code, and black code listings on `#c6c6c6`.
-These two dark grays are the softened variant used in the chapter-one design
-examples. The shared TikZ styles `SMCard` and `SMProcess` follow the template;
-card headings use `\SMCardHeadingFont`. Light decks retain their existing palette.
-A template advertises dark-mode support with `% SlideMage dark mode: true` in
-its first 30 lines; copied or renamed templates keep the option without app changes.
+A template lists its colour modes in its first 30 lines, `% SlideMage modes: light, dark`
+(the first is the base mode), and declares them to the framework with
+`\SMDeclareMode{light}{}` and `\SMDeclareMode{dark}{dark}`; `\SMSetRole` and `\SMSetColor`
+lines set what a mode changes (`latex/SlideMage_setup.tex`, "Colour modes and role colours").
+The `dark` preset mixes the canvas from `c_primary_dark` with 17 % white and cards with 23 %,
+with white text and links and black text on coloured fills. Slides that should follow the
+mode use the role colours `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_muted`,
+`c_text_on_accent` and `c_link`; a palette name such as `c_primary_dark` is one colour in
+every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` header were
+removed in v0.16.0.)
 
 Every color the preamble defines follows a `c_<tier>_<hue>` naming scheme
 (e.g. `c_secondary_blue`), usable anywhere a color name is expected

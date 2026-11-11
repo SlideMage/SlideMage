@@ -28,6 +28,10 @@ TEMPLATE = r"""\input{SlideMage_setup}
 \SMSetRole{block_body_fill}{mine}{red}
 \SMSetRole{alerted_block_title_fill}{mine}{blue}
 \SMSetRole{standout_fill}{mine}{green}
+\definecolor{tm}{RGB}{255,0,255}\definecolor{tc}{RGB}{0,255,255}\definecolor{ty}{RGB}{255,255,0}\definecolor{tg}{RGB}{0,128,0}
+\SMSetRole{process_line}{mine}{tm}
+\SMSetRole{inline_code}{mine}{tc}
+\SMSetRole{button_text}{mine}{ty}
 \input{SlideMage_base}
 """
 DECK = r"""\documentclass[aspectratio=169]{beamer}
@@ -38,6 +42,13 @@ DECK = r"""\documentclass[aspectratio=169]{beamer}
 \begin{alertblock}{Alert}body\end{alertblock}
 \end{frame}
 \begin{frame}[standout]Standout\end{frame}
+\begin{frame}{Code}\Huge\SMCode{MMMM}
+
+\tikz\node[SMProcess, line width=4pt, minimum width=4cm, minimum height=2cm]{};
+
+\textcolor{tg}{\SMCode{MMMM}}
+
+\beamergotobutton{\Huge MMMM}\end{frame}
 \end{document}
 """
 
@@ -78,8 +89,10 @@ def test_a_dark_preset_mixes_the_dark_colour_with_white(tmp_path):
     assert r == g == b and 60 <= r <= 76  # c_primary_dark (1e1e1e) mixed 17 % with white
 
 
-def test_the_dark_flag_alone_is_the_mode_dark(tmp_path):
-    assert canvas(compile_mode(tmp_path, None, flag=True)) == canvas(compile_mode(tmp_path, "dark"))
+def test_the_old_dark_flag_stops_the_compile_with_a_message(tmp_path):
+    with pytest.raises(AssertionError) as failed:
+        compile_mode(tmp_path, None, flag=True)
+    assert "was removed in SlideMage v0.16.0" in str(failed.value)
 
 
 def test_an_explicit_role_line_wins_over_the_preset(tmp_path):
@@ -112,3 +125,19 @@ def test_block_roles_set_the_fill_of_a_block_body_and_title(tmp_path):
 def test_the_standout_fill_role_sets_a_standout_frames_background(tmp_path):
     mine, dark = compile_mode(tmp_path, "mine", page=1), compile_mode(tmp_path, "dark", page=1)
     assert canvas(mine) == (0, 255, 0) and canvas(dark) != (0, 255, 0)
+
+
+def near(pix, rgb, tolerance=40) -> int:
+    """Pixels within `tolerance` of `rgb` in every channel, at full resolution (text is anti-aliased)."""
+    return sum(1 for x in range(pix.width) for y in range(pix.height)
+               if all(abs(a - b) <= tolerance for a, b in zip(pix.pixel(x, y)[:3], rgb)))
+
+
+def test_process_line_inline_code_and_button_text_are_off_in_the_base_and_set_by_a_mode(tmp_path):
+    mine, base = compile_mode(tmp_path, "mine", page=2), compile_mode(tmp_path, None, page=2)
+    assert near(mine, (255, 0, 255)) > 50 and near(base, (255, 0, 255)) == 0     # process_line
+    assert near(mine, (0, 255, 255)) > 20 and near(base, (0, 255, 255)) == 0     # inline_code in body text
+    assert near(mine, (255, 255, 0)) > 20 and near(base, (255, 255, 0)) == 0     # button_text
+    # inline code inside \textcolor keeps that colour: it is not the inline_code colour
+    green_base, green_mine = near(base, (0, 128, 0)), near(mine, (0, 128, 0))
+    assert green_base > 100 and green_mine > 100                     # not turned cyan

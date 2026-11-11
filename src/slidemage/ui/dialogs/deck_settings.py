@@ -134,7 +134,7 @@ class DeckSettingsSheet(ModalSheet):
             edit.setText(settings.output_folders.get(key, ""))
         for key, check in self.footer_checks.items():
             check.setChecked(key not in settings.footer_hide)
-        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.dark_mode, settings.mode))
+        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.mode))
         self._view_modes = {view: mode for view, (_key, mode) in settings.view_themes.items()}
         for view, combo in self.view_combos.items():
             chosen = settings.view_themes.get(view, ("", ""))[0]
@@ -175,7 +175,7 @@ class DeckSettingsSheet(ModalSheet):
         self.mode_combo.setToolTip(
             "The colour mode of this deck's slides and PDFs, for example a dark background. "
             "Available when the selected template declares more than one mode.")
-        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.dark_mode, settings.mode))
+        self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.mode))
         layout.addWidget(Field("Colours", self.mode_combo))
         layout.addWidget(caption("A template declares its colour modes (light, dark, grey ...); a mode changes colours only."))
         self._build_view_themes(layout, entries)
@@ -278,7 +278,7 @@ class DeckSettingsSheet(ModalSheet):
             appendix_toc=self.appendix_check.isChecked(),
             open_pdf=self.open_pdf_combo.currentData() or "instructor",
             footer_hide=self._footer_hide(),
-            dark_mode=self._mode_settings()[0], mode=self._mode_settings()[1],
+            mode=self._mode_settings(),
             view_themes=self._view_theme_entries() if self.deck.supports_version else None)
 
     def _build_view_themes(self, layout, entries: list[tuple[str, str]]) -> None:
@@ -366,10 +366,10 @@ class DeckSettingsSheet(ModalSheet):
         """The template changed: its modes replace the list; the mode stays when the new template has it."""
         self._fill_mode_combo(self.mode_combo.currentData() or "")
 
-    def _mode_settings(self) -> tuple[bool, str]:
-        """(dark_mode, mode) the drop-down stands for; nothing when the template offers no choice."""
+    def _mode_settings(self) -> str:
+        """The mode setting the drop-down stands for; "" when the template offers no choice."""
         if not self.mode_combo.isEnabled():
-            return False, ""
+            return ""
         return deck_settings.mode_to_settings(self._template_modes(), self.mode_combo.currentData() or "")
 
     def _footer_hide(self) -> tuple[str, ...]:
