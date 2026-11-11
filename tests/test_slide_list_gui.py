@@ -917,6 +917,36 @@ def test_duplicate_occurrence_focus_is_preserved_for_preview_and_tools(make_list
     assert slide_list.tree.data_of(slide_list.tree.currentItem()).key == row.key
 
 
+@pytest.mark.parametrize("change", [None, "deck", "view", "language"])
+def test_rebuild_keeps_thumbnail_state_only_for_the_same_deck_view_and_language(make_list, monkeypatch, tmp_path, change):
+    listing, window, path = make_list('\\slide{abc-EN-One}\n\\slide{def-EN-Two}\n')
+    listing._apply_preview_rows([replace(section, rows=[
+        replace(row, thumbnail=tmp_path / f'{row.call.id}.png', thumbnail_verified=index == 0,
+                stale_preview=index != 0, thumbnail_note=f'Image {index}')
+        for index, row in enumerate(section.rows)]) for section in listing._outline])
+    previous = {row.key: row for row in listing.rows()}
+    listing._background_thumbnails = True
+    queued = Mock()
+    monkeypatch.setattr(listing, '_queue_preview_images', queued)  # no background result has returned
+    window.state.drop_outline()                                # a write invalidates the shared outline
+    if change == 'deck':
+        window.state.set_deck(replace(window.state.deck, path=path.with_name('other.tex')))
+    elif change == 'view':
+        window.state.set_view('during-course')
+    elif change == 'language':
+        window.state.set_language('DE')
+    else:
+        listing.rebuild()
+    queued.assert_called_once()
+    for item in listing.tree.slide_items():
+        row = listing.tree.data_of(item)
+        old = previous[row.key]
+        assert row is window.state.current_outline().row(row.call.id, row.key)
+        assert (row.thumbnail, row.thumbnail_verified, row.stale_preview, row.thumbnail_note) == (
+            (old.thumbnail, old.thumbnail_verified, old.stale_preview, old.thumbnail_note)
+            if change is None else (None, False, False, ''))
+
+
 def test_thumbnail_refresh_keeps_tree_selection_and_updates_view(make_list, monkeypatch):
     calls = []
 
