@@ -115,7 +115,11 @@ def _read(name: str, root: Path, theme: _Theme, seen: set[Path]) -> None:
     if path in seen:
         return
     seen.add(path)
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    _read_text(path.read_text(encoding="utf-8", errors="replace"), root, theme, seen)
+
+
+def _read_text(text: str, root: Path, theme: _Theme, seen: set[Path]) -> None:
+    for line in text.splitlines():
         code = re.split(r"(?<!\\)%", line, maxsplit=1)[0]
         for found in _INPUT_RE.finditer(code):
             _read(found.group(1), root, theme, seen)
@@ -180,6 +184,14 @@ def theme_colors(template: str, root: Path, mode: str = "") -> dict[str, str]:
     """{colour name: "#rrggbb"} the template `template` gives in colour mode `mode` ("" or an undeclared one: its base
     mode), for the project at `root`: the palette and the role colours c_text, c_canvas, ..."""
     return _resolve(_load(template, root), mode)
+
+
+def theme_colors_for_text(text: str, root: Path, mode: str = "") -> dict[str, str]:
+    """theme_colors() of a template's text that may not be saved (the theme form's buffer): the files it \\inputs
+    (SlideMage_setup first) are read from the project at `root` as for a deck."""
+    theme = _Theme()
+    _read_text(text, root, theme, set())
+    return _resolve(theme, mode)
 
 
 def swatches(template: str, root: Path, mode: str = "") -> dict[str, str]:

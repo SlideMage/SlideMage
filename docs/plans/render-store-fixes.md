@@ -4,7 +4,7 @@ Status: **steps 1 to 6 implemented, awaiting the owner's test** (written 2026-11
 v0.16.5). Decisions D1 to D9 in section 2 carry a recommendation; the steps implement the recommendation unless the
 owner changes it. Step 7 is split into 7a and 7b (2026-11-11); each needs its own go.
 
-Steps 1 to 6 are one PR, one commit per step, v0.16.6 to v0.16.11 in step order; the full suite passes on step 6.
+Steps 1 to 6 are one PR, one commit per step, v0.16.10 to v0.16.15 in step order (renumbered when merged after the theme form's v0.16.6 to v0.16.9); the full suite passes on step 6.
 The Claude plugin's follow-up to step 5 (send WebP as `image/webp`) is `slidemage-plugin-claude` v1.0.2. Step 7 is
 issue #170.
 
