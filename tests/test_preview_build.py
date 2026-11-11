@@ -96,11 +96,12 @@ def test_repaired_missing_input_forces_latexmk_to_forget_its_cached_error(tmp_pa
 
 
 def test_unused_preview_wrappers_are_pruned(tmp_path):
-    build = tmp_path / '.build'
+    build = tmp_path / 'build'
     decks = tmp_path / 'decks'
     decks.mkdir()
-    old = time.time() - (preview_build.UNUSED_DAYS + 1) * 86400
-    for key, age in (('fresh', None), ('stale', old), ('nocache', 'none')):
+    old = time.time() - 3 * 86400
+    recent = time.time() - 86400
+    for key, age in (('fresh', recent), ('stale', old), ('nocache', 'none')):
         (decks / f'_slidemage_preview-{key}.tex').write_text('x')
         if age == 'none':
             os.utime(decks / f'_slidemage_preview-{key}.tex', (old, old))
@@ -113,12 +114,28 @@ def test_unused_preview_wrappers_are_pruned(tmp_path):
     (decks / 'deck.tex').write_text('x')
     for key in ('new-unique', 'other'):
         (decks / f'_slidemage_preview-{key}.tex').write_text('job without a cache in this build root')
+    formats = build / 'preview-formats'
+    for key, age in (('fresh', recent), ('stale', old)):
+        lock = formats / key / 'build.lock'
+        lock.parent.mkdir(parents=True)
+        lock.touch()
+        os.utime(lock, (age, age))
+    # The project's default keeps even the three-day-old cache and format.
     preview_build.prune_unused(tmp_path, build)
+    assert (build / 'preview-cache' / 'stale').exists() and (formats / 'stale').exists()
+    preview_build.prune_unused(tmp_path, build, 2)
     assert sorted(p.name for p in decks.iterdir()) == [
         '_slidemage_preview-fresh.tex', '_slidemage_preview-new-unique.tex',
         '_slidemage_preview-other.tex', 'deck.tex',
     ]
     assert (build / 'preview-cache' / 'fresh').exists() and not (build / 'preview-cache' / 'stale').exists()
+    assert (formats / 'fresh').exists() and not (formats / 'stale').exists()
+    with preview_build.active_build(build, decks, root=tmp_path):
+        preview_build.prune_unused(tmp_path, build, 0)
+        assert (build / 'preview-cache' / 'fresh').exists() and (formats / 'fresh').exists()
+    preview_build.prune_unused(tmp_path, build, 0)
+    assert list((build / 'preview-cache').iterdir()) == [] and list(formats.iterdir()) == []
+    assert [p.name for p in decks.iterdir()] == ['deck.tex']
 
 
 def test_wrappers_in_the_build_folder_are_pruned_too(tmp_path):
@@ -398,7 +415,7 @@ def test_a_race_that_persists_fails_as_font_cache_busy_and_keeps_the_format(tmp_
     def busy(*args, **kwargs):
         raise preview_build.FontCacheBusy('Render failed for abc-EN-Test')
     monkeypatch.setattr(preview_build, '_compile_cached', busy)
-    ctx = SimpleNamespace(root=tmp_path, build_dir=tmp_path / '.build')
+    ctx = ProjectContext.at(tmp_path)
     with pytest.raises(preview_build.FontCacheBusy):
         preview_build.compile_cached(r'\documentclass{beamer}\begin{document}x', 'abc-EN-Test', lambda line: None,
                                      ctx=ctx, env={})
@@ -564,7 +581,7 @@ def test_returning_to_a_view_runs_lualatex_once(tmp_path):
 def test_the_wrapper_pass_runs_at_most_once_in_ten_minutes_per_folder(tmp_path, monkeypatch):
     # Every render ran it: the background workers queued behind one another over hundreds of wrappers (v8.52.2).
     ran = []
-    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build: ran.append(root))
+    monkeypatch.setattr(preview_build, "prune_unused", lambda root, build, days: ran.append(root))
     now = {"t": 1000.0}
     clock = lambda: now["t"]
     one, two = tmp_path / "one", tmp_path / "two"

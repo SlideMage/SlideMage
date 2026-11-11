@@ -268,6 +268,7 @@ def schedule_bundled_copies_check(window) -> None:
 @_logged
 def sweep_old_renders(window) -> None:
     threading.Thread(target=slide_preview.sweep_renders, args=(window.project,), daemon=True).start()
+    threading.Thread(target=housekeeping.prune_render_stores, args=(window.project,), daemon=True).start()
 
 
 def bundled_parts(window) -> list:

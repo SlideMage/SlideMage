@@ -180,29 +180,30 @@ _PRUNED: dict[str, float] = {}
 _PRUNED_LOCK = threading.Lock()
 
 
-def maybe_prune_unused(project_root: Path, build_dir: Path, *, clock=time.monotonic) -> bool:
+def maybe_prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS, *, clock=time.monotonic) -> bool:
     """prune_unused, at most once per PRUNE_EVERY for a folder; whether it ran. A render ran it before every compile:
     a pass looks at every wrapper under a lock each (the background workspace holds hundreds, three per slide since
     v8.49.0), so the background workers queued behind one another there, could not stop when told to, and took the
-    time the window needed (v8.52.2). Wrappers become old in UNUSED_DAYS: once in ten minutes loses nothing."""
+    time the window needed (v8.52.2). Once in ten minutes is enough for the age limit in days."""
     key, now = str(project_root), clock()
     with _PRUNED_LOCK:
         last = _PRUNED.get(key)
         if last is not None and now - last < PRUNE_EVERY:
             return False
         _PRUNED[key] = now
-    prune_unused(project_root, build_dir)
+    prune_unused(project_root, build_dir, days)
     return True
 
 
 @measure('prune')
-def prune_unused(project_root: Path, build_dir: Path):
-    """Delete the wrappers (and build caches) of previews not rendered for UNUSED_DAYS, and wrappers whose cache
-    is gone. A cached job keeps its wrapper so latexmk's dependency check keeps working, one per slide and
-    preamble, so without this they pile up. Wrappers are in build_dir/WRAPPER_FOLDER, in a background workspace's
-    decks/, and, from before v8.58.0, in a project's decks/ (remove_legacy_wrappers deletes those at once)."""
+def prune_unused(project_root: Path, build_dir: Path, days=UNUSED_DAYS):
+    """Delete preview wrappers, build caches and formats unused for days, skipping running builds.
+
+    A cached job keeps its wrapper so latexmk's dependency check keeps working, one per slide and preamble.
+    Wrappers are in build_dir/WRAPPER_FOLDER, in a background workspace's decks/, and, from before v8.58.0,
+    in a project's decks/ (remove_legacy_wrappers deletes those at once)."""
     cache_root = build_dir / 'preview-cache'
-    limit = time.time() - UNUSED_DAYS * 86400
+    limit = time.time() - days * 86400
     wrappers = [*(project_root / 'decks').glob(WRAPPER_PREFIX + '*.tex'),
                 *(build_dir / WRAPPER_FOLDER).glob(WRAPPER_PREFIX + '*.tex')]
     for wrapper in wrappers:
@@ -222,6 +223,17 @@ def prune_unused(project_root: Path, build_dir: Path):
             except FileNotFoundError:
                 continue
             shutil.rmtree(cache, ignore_errors=True)
+    for directory in (build_dir / 'preview-formats').glob('*'):
+        with cleanup_guard((directory,), project_root) as permitted:
+            if not permitted or not directory.is_dir():
+                continue
+            lock = directory / 'build.lock'
+            try:
+                if (lock if lock.exists() else directory).stat().st_mtime > limit:
+                    continue
+            except FileNotFoundError:
+                continue
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 _LEGACY_SWEPT: set[str] = set()
@@ -364,27 +376,33 @@ def compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, canc
         # Background renders keep everything of theirs outside the project: the wrapper, the build caches and
         # the precompiled format live in `workspace`; TeX still runs in the project's decks/ folder.
         ctx = dataclasses.replace(ctx, build_dir=workspace / 'build')
-    preamble, marker, body = wrapper_text.partition(r'\begin{document}')
-    format_dir = None
-    if marker:
-        format_dir = preview_format.ensure(
-            preamble, configuration_key(wrapper_text, '', ctx.root, env),
-            project_root=ctx.root, build_dir=ctx.build_dir, env=env, log=log, lock=build_lock, cancel=cancel)
-    if format_dir is not None:
-        try:
-            return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
-                                   key_text=wrapper_text, format_dir=format_dir, cancel=cancel, force=force, workspace=workspace)
-        except FontCacheBusy:
-            raise                       # not the format's fault: keep it
-        except RuntimeError as exc:
-            check_cancel(cancel)
-            log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
-    pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel,
-                          force=force, workspace=workspace)
-    if format_dir is not None:
-        # The slide builds without the format but not with it: stop using it.
-        preview_format.disable(format_dir)
-    return pdf
+    root = workspace if workspace is not None else ctx.root
+    maybe_prune_unused(root, ctx.build_dir, 2 if workspace is not None else UNUSED_DAYS)
+    if workspace is None:
+        remove_legacy_wrappers(ctx)
+    folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
+    with active_build(ctx.build_dir, folder, cancel, root=root):
+        preamble, marker, body = wrapper_text.partition(r'\begin{document}')
+        format_dir = None
+        if marker:
+            format_dir = preview_format.ensure(
+                preamble, configuration_key(wrapper_text, '', ctx.root, env),
+                project_root=ctx.root, build_dir=ctx.build_dir, env=env, log=log, lock=build_lock, cancel=cancel)
+        if format_dir is not None:
+            try:
+                return _compile_cached(marker + body, id_slug, log, ctx=ctx, env=env,
+                                       key_text=wrapper_text, format_dir=format_dir, cancel=cancel, force=force, workspace=workspace)
+            except FontCacheBusy:
+                raise                       # not the format's fault: keep it
+            except RuntimeError as exc:
+                check_cancel(cancel)
+                log(f'    (precompiled preamble run failed: {str(exc).splitlines()[0][:100]}; retrying without it)')
+        pdf = _compile_cached(wrapper_text, id_slug, log, ctx=ctx, env=env, key_text=wrapper_text, format_dir=None, cancel=cancel,
+                              force=force, workspace=workspace)
+        if format_dir is not None:
+            # The slide builds without the format but not with it: stop using it.
+            preview_format.disable(format_dir)
+        return pdf
 
 
 def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key_text, format_dir, cancel=None,
@@ -403,22 +421,17 @@ def _compile_cached(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, key
         if (state is not None and state['spare'] is not None and cancel is not None
                 and state['focus'] == cancel.preview_focus and state['spare']['cache'] != cache):
             discard_spare(ctx.root)
-    root = workspace if workspace is not None else ctx.root
-    maybe_prune_unused(root, ctx.build_dir)
-    if workspace is None:
-        remove_legacy_wrappers(ctx)
     check_cancel(cancel)            # told to stop while waiting: before the build, not after it
     jobname = 'preview-' + key
     folder = workspace / 'decks' if workspace is not None else wrapper_dir(ctx)
     wrapper = folder / ('_slidemage_' + jobname + '.tex')
-    with active_build(cache, wrapper, cancel, root=root):
-        cache.mkdir(parents=True, exist_ok=True)
-        (cache / 'build.lock').touch()
-        wrapper.parent.mkdir(parents=True, exist_ok=True)
-        with build_lock(cache / 'build.lock', cancel=cancel):
-            return _compile_reserved(wrapper_text, id_slug, log, ctx=ctx, env=env,
-                                     cache=cache, wrapper=wrapper, jobname=jobname,
-                                     format_dir=format_dir, cancel=cancel, force=force)
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / 'build.lock').touch()
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    with build_lock(cache / 'build.lock', cancel=cancel):
+        return _compile_reserved(wrapper_text, id_slug, log, ctx=ctx, env=env,
+                                 cache=cache, wrapper=wrapper, jobname=jobname,
+                                 format_dir=format_dir, cancel=cancel, force=force)
 
 
 def _compile_reserved(wrapper_text, id_slug, log, *, ctx: ProjectContext, env, cache, wrapper, jobname, format_dir=None, cancel=None, force=False):

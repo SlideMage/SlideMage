@@ -106,6 +106,7 @@ class RenderStore:
         if not self.flag(FAILURE_INPUTS_TRACKED):
             self.forget_failure()
             self.set_flag(FAILURE_INPUTS_TRACKED)
+        (self.root / "project.txt").write_text(str(ctx.root.resolve()), encoding="utf-8")
 
     @staticmethod
     def forget_project_copy(ctx: project.ProjectContext) -> None:

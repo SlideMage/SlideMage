@@ -272,6 +272,8 @@ class GeneralTab(Page):
                                 "when SlideMage is idle.") != QMessageBox.StandardButton.Yes:
             return
         controller.store.clear()
+        workspace = controller.store.work_dir
+        preview_build.prune_unused(workspace, workspace / "build", 0)
         controller.renderer.replan()
         self._background_size()
 

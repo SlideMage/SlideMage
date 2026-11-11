@@ -3966,3 +3966,9 @@ v0.16.8 (2026-11-11, direct request: render store fixes, docs/plans/render-store
 
 NEW: Slide previews of decks you have not opened for a month are no longer prepared again.
 - A slide that failed in the background but compiled in its deck shows its preview.
+
+v0.16.9 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 4, D6): The render store's work folder and the stores of projects that are gone no longer grow without end. The background workspace's build caches and precompiled formats are deleted after 2 unused days instead of 14 (preview_build.prune_unused takes the age; a project's own previews keep UNUSED_DAYS), formats included, which nothing deleted before (a format's build.lock records its last use); on a real project the folder held 2.5 GB beside 769 MB of renders. The build reservation now also covers preparing the format, so a cleanup never removes one in use. Settings -> "Clear" also empties the workspace, skipping running builds. Each store writes its project's folder to project.txt, and the start-up maintenance deletes other stores whose index is older than 30 days and whose project folder no longer exists (housekeeping.prune_render_stores), never the open project's: one machine held 22 stores, 11 GB.
+
+NEW: Previews use less disk space over time.
+- Build files of background previews are removed after two days, and "Clear" removes them too.
+- Previews of project folders that no longer exist are removed after a month.

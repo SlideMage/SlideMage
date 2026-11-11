@@ -5,12 +5,15 @@ window, and the sheet that offers them in one place."""
 from __future__ import annotations
 
 from pathlib import Path
+import os
+import time
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
 
-from slidemage import housekeeping, unused_content
+from slidemage import housekeeping, project, unused_content
+from slidemage.render_store import RenderStore
 from slidemage.ui.dialogs import housekeeping as sheet_module
 from slidemage.ui.dialogs.housekeeping import ARCHIVE_PAGE, HousekeepingJobs, HousekeepingSheet
 from slidemage.ui.workspace import maintenance
@@ -61,6 +64,30 @@ def test_archive_files_moves_only_what_it_is_given(folders, ctx):
     assert [p.name for p in media] == ["gone.png"] and [p.name for p in slides] == ["abd-EN-Gone-current.tex"]
     assert unused_content.archive_files(ctx, [], slides, lambda _line: None) == (0, 1)
     assert (folders / "media" / "gone.png").is_file() and (folders / "slides" / "archive" / slides[0].name).is_file()
+
+
+def test_forgotten_stores_are_removed_only_after_thirty_days(tmp_path):
+    ctx = project.ProjectContext.at(tmp_path)
+    store = RenderStore(ctx)
+    current = store.root
+    store.close()
+    assert (current / "project.txt").read_text(encoding="utf-8") == str(ctx.root.resolve())
+    (current / "project.txt").unlink()     # even an unmarked old store of the open project stays
+    old = time.time() - 31 * 86400
+    os.utime(current / "index.sqlite", (old, old))
+    for name, age, folder in (("missing-old", old, tmp_path / "missing"),
+                              ("missing-recent", time.time(), tmp_path / "missing"),
+                              ("unmarked-old", old, None),
+                              ("existing-old", old, tmp_path)):
+        sibling = current.parent / name
+        sibling.mkdir()
+        index = sibling / "index.sqlite"
+        index.touch()
+        os.utime(index, (age, age))
+        if folder is not None:
+            (sibling / "project.txt").write_text(str(folder), encoding="utf-8")
+    housekeeping.prune_render_stores(ctx)
+    assert {p.name for p in current.parent.iterdir()} == {current.name, "missing-recent", "existing-old"}
 
 
 # -- the window's actions --------------------------------------------------------------------------
