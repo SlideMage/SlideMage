@@ -50,7 +50,6 @@ LIMIT_GB_KEY = "bg_previews_limit_gb"
 PROFILE_KEY = "bg_previews_profile"
 DECKS_OFF_KEY = "bg_previews_decks_off"
 SECOND_LANGUAGE_KEY = "bg_previews_second_language"
-KEEP_DAYS_KEY = "bg_previews_keep_days"
 BATCH_SIZE_KEY = "bg_previews_batch_size"
 DEFAULT_LIMIT_GB = 2.0
 DEFAULT_BATCH_SIZE = 16         # slides rendered in one document (docs/findings.md, plan 5); 1: one document each
@@ -572,8 +571,8 @@ class BackgroundRenderer:
         and delete the renders the decks read in full no longer use, of every label each of whose units has a render
         of its own current key (until then the old one is the Preview's "outdated" image). Once per store, when every
         deck was read in full, also every render no current key needs of a deck, view and language the scan read: of slides
-        no longer in it, and of every label as above (renders left over from before v0.14.2). Nothing here may stop
-        the scan."""
+        no longer in it, and of every label as above (renders left over from before v0.14.2). A full scan also prunes
+        unused failures and TeX file sets. Nothing here may stop the scan."""
         self._current = current
         with self.store.lock:
             self.store.current_keys = current.keys
@@ -587,6 +586,8 @@ class BackgroundRenderer:
                                                 keep, decks, current.at)
                 self.store.set_flag(render_store.LEFTOVERS_CLEARED)
                 _trace_log.info("render store: %d renders no deck uses any more were deleted", removed)
+            if all_clean:
+                self.store.prune_index(current.keys, current.at)
         except Exception:  # noqa: BLE001 -- a store that cannot be written now is cleaned at a later scan
             _trace_log.debug("render store: stale renders not cleared", exc_info=True)
 
@@ -713,7 +714,6 @@ class BackgroundRenderer:
     def _evict(self) -> None:
         names = {d.name for d in self._decks() if not d.archived}
         self.store.enforce_limit(self.limit_bytes(), protected_decks=self._protected_decks(),
-                                 keep_days=int(setting(self.ctx, KEEP_DAYS_KEY, render_store.DEFAULT_KEEP_DAYS)),
                                  is_orphan=lambda decks: bool(decks) and not set(decks) & names)
 
     # -- foreground helpers ------------------------------------------------------------------
@@ -773,8 +773,8 @@ class BackgroundRenderer:
                 continue                                # a frozen file or metadata-only read cannot vouch for this text
             key = self.resolver.fast_key(unit, text, validation=validation)
             found = self.resolver.lookup(unit, key, validation=validation)
-            if found.final:
-                continue                                # nothing more for the sweep, or this compile, to do for it
+            if found.state is render_key.Freshness.FRESH:
+                continue                                # already current, including its page number
             paths = render_key.unit_inputs(self.ctx, inputs, unit.source_path, {unit.source_path: text})
             try:
                 if any(compile_records.sha256(path) != recorded[norm(path)]["sha256"] for path in paths):

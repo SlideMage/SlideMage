@@ -3984,3 +3984,8 @@ v0.16.11 (2026-11-11, direct request: render store fixes, docs/plans/render-stor
 
 NEW: A tidier preview store, with nothing to do for you.
 - Previews made before this version are kept.
+
+v0.16.12 (2026-11-11, direct request: render store fixes, docs/plans/render-store-fixes.md step 3): Upkeep of the render store no longer undoes the sweep's work. The 30-day rule goes (RenderStore.enforce_limit loses keep_days, with DEFAULT_KEEP_DAYS and the bg_previews_keep_days setting): it deleted every render unused for 30 days outside the protected decks even far under the disk limit, and the planner's lookups never counted as use, so an unopened deck was rendered again every 30 days. Orphans go first, then the least recently used outside the protected decks while over the limit, the protected ones only above twice the limit. Reading a render updates its last use at most once an hour per key (touch committed on every page and thumbnail read). A scan that read every deck in full prunes the index (prune_index): failures no current key uses and TeX file sets no render refers to. A deck compile now replaces a stored failure of a unit (ingest_compile skips only FRESH). rescan no longer adopts objects the index does not know (an adopted object could never be current): it deletes them. HashCache.audit, which nothing called, goes.
+
+NEW: Slide previews of decks you have not opened for a month are no longer prepared again.
+- A slide that failed in the background but compiled in its deck shows its preview.

@@ -274,21 +274,45 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
     assert render_unit(r, unit) is None
 
 
-def test_failure_count_and_details_ignore_obsolete_and_changed_inputs(project, store, raster):
-    tex = FakeTeX(project)
+def test_a_clean_scan_prunes_unused_failures_and_texsets(project, store, raster, tmp_path, monkeypatch):
+    packages = [tmp_path / "old.cls", tmp_path / "current.cls"]
+    for path in packages:
+        path.write_text("package", encoding="utf-8")
+    tex = FakeTeX(project, inputs=[packages[0]])
     r = make(project, store, raster, tex=tex)
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     tex.fail[unit.id_slug] = "Render failed for x:\n! Bad dependency."
+    other = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[1]
+    render_unit(r, other)
+    old_digest = r.resolver.lookup(other).record["tex_digest"]
+    tex.inputs = [packages[1]]
+    _edit(other.source_path)
+    render_unit(r, other)
+    current_digest = r.resolver.lookup(other).record["tex_digest"]
+    assert old_digest != current_digest and store.tex_files(old_digest)
     store.record_failure("obsolete", render_store.DETERMINISTIC, "an old request", [])
     with pytest.raises(RuntimeError):
         render_unit(r, unit)
+    real_units = background_renders.deck_units
+
+    def unreadable(ctx, deck, *args, **kwargs):
+        if deck.name == "slidemage-manual-copy":
+            raise OSError("cannot read this deck now")
+        return real_units(ctx, deck, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(background_renders, "deck_units", unreadable)
+        r.scan()
+    assert store.failure("obsolete") and store.tex_files(old_digest)
     r.scan()
     assert r.progress.failures == 1
     assert [f["key"] for f in r.current_failures()] == [r.resolver.fast_key(unit)]
+    assert store.failure("obsolete") is None
+    assert store.tex_files(old_digest) is None and store.tex_files(current_digest)
     _edit(unit.source_path)
     r.scan()
     assert r.progress.failures == 0 and r.current_failures() == []
-    assert len(store.failures()) == 2                     # historical records do not affect the warning
+    assert store.failures() == []
 
 
 def test_the_planner_feeds_the_scheduler_and_the_progress_goes_down(project, store, raster):
@@ -483,13 +507,19 @@ def _record(pdf, job, units, ctx, paths=None):
 def test_a_deck_compile_gives_the_preview_current_pages_until_what_the_slide_depends_on_changes(project, store, raster, tmp_path):
     from slidemage.compiler import CompileJob
 
-    r = make(project, store, raster)
+    tex = FakeTeX(project)
+    r = make(project, store, raster, tex=tex)
     deck = deck_named(r, "slidemage-manual")
     units = background_renders.deck_units(project, deck, "instructor", "EN")[:6]
+    unit = units[0]
+    tex.fail[unit.id_slug] = "Render failed for x:\n! Undefined control sequence."
+    with pytest.raises(RuntimeError):
+        render_unit(r, unit)
+    assert r.resolver.lookup(unit).state is Freshness.FAILED
     pdf = _compiled_pdf(tmp_path, units)
     job = CompileJob(deck, "instructor", None)
     assert r.ingest_compile(job, pdf, _record(pdf, job, units, project)) >= 1
-    unit = units[0]
+    assert store.failure(r.resolver.fast_key(unit)) is None
     found = r.resolver.lookup(unit)
     assert found.usable
     assert store.page(found.record, 1) is not None and found.record["pages"] == 2
