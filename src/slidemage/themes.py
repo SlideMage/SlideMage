@@ -241,6 +241,48 @@ remove = partial(packages.remove, KIND)
 cleanup = partial(packages.cleanup, KIND)
 
 
+SHIPPED_STARTS = (("slidemage", "SlideMage (the default look)"), ("greyscale", "Greyscale (sets more settings)"))
+
+
+def check_new_key(key: str, root: Path) -> str:
+    """"" when `key` can name a new personal theme in the project at `root`, else why not."""
+    if not KEY_RE.match(key):
+        return "A key is 2 to 32 characters: lower-case letters, digits and -, starting with a letter."
+    if key in {start for start, _ in SHIPPED_STARTS}:
+        return f"{key} is a theme SlideMage ships: pick another key."
+    if (root / template_file(key)).exists():
+        return f"The project has a theme {key} already."
+    if any(folder.name == key for folder in installed_dirs()):
+        return f"An installed theme is called {key}: a personal one of that key would replace it in this project."
+    return ""
+
+
+def new_theme(key: str, name: str, root: Path, start: str = "slidemage") -> Path:
+    """A new personal theme (docs/plans/theme-editor.md, section 3.4): the shipped template `start` copied into the
+    project folder as SlideMage_template_<key>.tex, with `name` as its name line. Raises ThemeError when the key cannot
+    be used or the shipped template is not found."""
+    from . import slide_templates
+    from .theme_file import ThemeFile
+
+    problem = check_new_key(key, root)
+    if problem:
+        raise ThemeError(problem)
+    if start not in {s for s, _ in SHIPPED_STARTS}:
+        raise ThemeError(f"Unknown starting point {start!r}.")
+    source = next((folder / template_file(start) for folder in slide_templates.framework_dirs(root)
+                   if (folder / template_file(start)).is_file()), None)
+    if source is None:
+        raise ThemeError(f"The shipped template {template_file(start)} was not found.")
+    theme = ThemeFile(source.read_bytes().decode("utf-8"))
+    theme.set("header:name", (name.strip() or key)[:40])
+    target = root / template_file(key)
+    try:
+        target.write_bytes(theme.text.encode("utf-8"))
+    except OSError as exc:
+        raise ThemeError(f"Could not write {target.name}: {exc}") from None
+    return target
+
+
 def copy_to_project(key: str, root: Path) -> Path:
     """Copy the installed theme `key` into the project folder `root` so that it can be edited there: its template
     file, its scheme folder (logos and the like) and its own layout profile, each only where the project has no file
