@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QMessageBox
 from conftest import EXAMPLE, wait_until
 from slidemage import batch_render, parallel_runs, preview_requests, preview_target, render_key
 from slidemage.preview_requests import PreviewRequest, RenderOptions, SourceRevision
-from slidemage.project import ProjectContext
+from slidemage.project import ProjectContext, _ignore_template_build_output
 from slidemage.ui.workspace import compile_actions
 from test_agent_tools import SLIDE, box as box, fake_render  # noqa: F401 -- fixture
 from test_workspace_window import window as window  # noqa: F401 -- fixture
@@ -60,7 +60,8 @@ def test_a_failed_batch_falls_back_to_forced_single_renders(tmp_path, monkeypatc
 
 @pytest.mark.skipif(shutil.which('latexmk') is None or shutil.which('lualatex') is None, reason='needs a TeX installation')
 def test_an_ordinary_slide_after_an_omitted_slide_is_stored_without_the_omitted_banner(tmp_path, monkeypatch):
-    shutil.copytree(EXAMPLE, tmp_path / 'project')
+    # Not the example's .build/ (what earlier tests of this worker rendered there): of no use under another root.
+    shutil.copytree(EXAMPLE, tmp_path / 'project', ignore=_ignore_template_build_output)
     ctx = ProjectContext.at(tmp_path / 'project')
     specs = []
     for number, macro in enumerate(('omitslide', 'slide'), 1):

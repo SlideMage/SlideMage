@@ -18,7 +18,7 @@ from slidemage.ui.workspace import source_file
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
 from slidemage.ui.workspace.insert_popovers import LinkPopover
 from slidemage.ui.workspace.source_view import SourcePane
-from conftest import EXAMPLE_PROJECT
+from conftest import EXAMPLE_PROJECT, wait_until
 
 BODY = "\\begin{standardframe}{Demo}\nText\n\\end{standardframe}\n"
 
@@ -331,7 +331,7 @@ def test_a_slide_is_saved_as_you_type_with_its_version_frozen_first_and_the_plus
     place(editor, editor.text().index("Text"))
     assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0}\n" + BODY      # not yet
 
-    QTest.qWait(150)
+    wait_until(lambda: written and not pane.current.dirty, seconds=10)       # the autosave, however late under load
 
     assert path.read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0+}\n" + BODY + "% note\n"
     assert (slides / "abc-EN-Demo-v1-1-0.tex").read_text(encoding="utf-8") == "\\setSlideVersion{1-1-0}\n" + BODY

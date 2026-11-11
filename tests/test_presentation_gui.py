@@ -5,11 +5,13 @@ made up from the one real offscreen screen, so the plan's placement logic runs; 
 manual checklist in the plan."""
 from __future__ import annotations
 
+import time
+
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QColor, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QApplication, QLabel
 
 from presentation_fixtures import JUMP_SPOT, URI_SPOT, make_pdf
 from slidemage.presentation import layout
@@ -532,12 +534,47 @@ def test_the_eraser_size_decides_what_a_press_erases(make):
     assert session.strokes[0] == []
 
 
+def settled(controller, *canvases_, seconds=5.0):
+    """Wait until the windows are shown and the canvases keep their size: under load the windows are laid out a
+    moment after start(), and a spot taken before that is somewhere else on the slide afterwards."""
+    for window in (controller.presenter, controller.audience):
+        if window is not None:
+            assert QTest.qWaitForWindowExposed(window, int(seconds * 1000))
+    deadline = time.monotonic() + seconds
+    sizes, steady = None, 0
+    while steady < 5:
+        QApplication.processEvents()
+        now = [c.size() for c in canvases_]
+        steady = steady + 1 if now == sizes else 0
+        sizes = now
+        assert time.monotonic() < deadline, "the canvases kept changing size"
+        time.sleep(0.005)
+
+
+def hover(canvas, fraction, until, seconds=5.0):
+    """Move the mouse to `fraction` of the canvas's slide until `until()` holds: a move sent while the window is
+    still busy can be lost, so it is sent again rather than raced."""
+    deadline = time.monotonic() + seconds
+    while True:
+        QTest.mouseMove(canvas, spot(canvas, fraction))
+        QApplication.processEvents()
+        if until():
+            return
+        assert time.monotonic() < deadline, f"the mouse did not get to {fraction}"
+        QTest.qWait(10)
+
+
+def hovering_at(canvas, fraction):
+    return lambda: canvas._hover is not None and canvas._hover.toPoint() == spot(canvas, fraction)
+
+
 def test_a_circle_of_the_erasers_size_follows_the_mouse_on_that_canvas_only_while_the_eraser_is_on(make):
     controller = make(settings=PresentationSettings(eraser_size=0.05), two_screens=True)
     current = canvases(controller.presenter, CurrentView)[0]
     audience = canvases(controller.audience, AudienceView)[0]
+    settled(controller, current, audience)
     QTest.mouseMove(current, spot(current, (0.1, 0.1)))               # the first move only enters the widget
-    QTest.mouseMove(current, spot(current, (0.5, 0.5)))
+    hover(current, (0.5, 0.5), hovering_at(current, (0.5, 0.5)))
     assert current._eraser_circle() is None                           # not the eraser
     press_key(controller, Qt.Key.Key_D)
     assert controller.session.tool == TOOL_PEN
@@ -547,14 +584,14 @@ def test_a_circle_of_the_erasers_size_follows_the_mouse_on_that_canvas_only_whil
     circle = current._eraser_circle()
     assert circle is not None and circle.height() == pytest.approx(2 * 0.05 * current.target().height())
     assert circle.center().toPoint() == spot(current, (0.5, 0.5))
-    QTest.mouseMove(current, spot(current, (0.25, 0.5)))
+    hover(current, (0.25, 0.5), hovering_at(current, (0.25, 0.5)))
     assert current._eraser_circle().center().toPoint() == spot(current, (0.25, 0.5))      # it follows
     assert audience._eraser_circle() is None                          # the projector takes no input here
     shown = current.grab().toImage()
     controller.session.set_tool(TOOL_PEN)
     assert shown != current.grab().toImage()                          # the ring is painted only with the eraser
     controller.session.set_tool(TOOL_ERASER)
-    QTest.mouseMove(current, spot(current, (0.5, 0.5)))
+    hover(current, (0.5, 0.5), hovering_at(current, (0.5, 0.5)))
     current.leaveEvent(QEvent(QEvent.Type.Leave))
     assert current._eraser_circle() is None                           # gone when the mouse leaves
 
@@ -562,9 +599,10 @@ def test_a_circle_of_the_erasers_size_follows_the_mouse_on_that_canvas_only_whil
 def test_the_circle_shows_on_the_projector_when_it_takes_the_mouse(make):
     controller = make(two_screens=False)
     audience = canvases(controller.audience, AudienceView)[0]
+    settled(controller, audience)
     press_key(controller, Qt.Key.Key_E)
-    QTest.mouseMove(audience, spot(audience, (0.4, 0.4)))
-    assert audience._eraser_circle() is not None
+    assert controller.session.tool == TOOL_ERASER
+    hover(audience, (0.4, 0.4), lambda: audience._eraser_circle() is not None)
 
 
 def test_the_eraser_size_is_on_the_settings_sheet(qapp):

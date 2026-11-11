@@ -117,9 +117,14 @@ def blocked(_provider=None):
     return step
 
 
-@pytest.mark.parametrize("theme", [None, False, True], ids=["native", "light", "dark"])
-@pytest.mark.parametrize("scope", ["slide", "deck"])
-@pytest.mark.parametrize("lines", [2, 6])
+# Every pair of two of theme, scope and lines once (not all 12 combinations: each case builds a window and
+# restyles it, about a minute under a full parallel run); both scopes at 6 lines, where the slide's suggestions
+# no longer fit and go into the picker.
+@pytest.mark.parametrize("theme, scope, lines", [
+    (None, "slide", 2), (None, "deck", 6),
+    (False, "slide", 6), (False, "deck", 2),
+    (True, "slide", 6), (True, "deck", 2),
+], ids=["native-slide-2", "native-deck-6", "light-slide-6", "light-deck-2", "dark-slide-6", "dark-deck-2"])
 def test_at_640px_every_suggestion_is_reachable_without_scrolling_and_the_controls_fit(env, monkeypatch, theme, scope, lines):
     if theme is not None:
         env.window.theme.set_dark(theme)

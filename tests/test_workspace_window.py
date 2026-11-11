@@ -569,23 +569,34 @@ def test_a_typing_pause_renders_once_and_autosave_hits_the_store(qapp, tmp_path,
     monkeypatch.setattr(pane._renders, "request", capture)
     file = window.centre.source.current
     file.editor.moveCursor(file.editor.textCursor().MoveOperation.End)
+    # Wait with processEvents() and time.sleep(), not QTest.qWait(): qWait keeps the GIL while it waits, and the
+    # render thread then got it only between two waits -- its lookup of the TeX tools alone took over 10 s.
+    def pump(seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            qapp.processEvents()
+            time.sleep(0.005)
+
+    def wait_for(condition, seconds=20):
+        deadline = time.monotonic() + seconds
+        while not condition():
+            assert time.monotonic() < deadline, "timed out"
+            qapp.processEvents()
+            time.sleep(0.005)
+
     monkeypatch.setattr(source_file, "RENDER_ON_TYPING_PAUSE", False)
     QTest.keyClicks(file.editor, "% first")
-    QTest.qWait(source_file.TYPING_PAUSE_MS + 100)
+    pump(source_file.TYPING_PAUSE_MS / 1000 + 0.1)
     assert not requests
     monkeypatch.setattr(source_file, "RENDER_ON_TYPING_PAUSE", True)
     QTest.keyClicks(file.editor, " middle")
-    QTest.qWait(100)
+    pump(0.1)
     QTest.keyClicks(file.editor, " and last")
-    deadline = time.monotonic() + 10
-    while (not requests or not requests[-1].done.is_set() or pane._busy) and time.monotonic() < deadline:
-        QTest.qWait(10)
+    wait_for(lambda: requests and requests[-1].done.is_set() and not pane._busy)
     assert len(compiled) == len(requests) == 1 and requests[0].error is None
     assert path.read_text() == original and file.dirty
     file._autosave_timer.start(0)
-    deadline = time.monotonic() + 10
-    while (file.dirty or len(requests) < 2 or not requests[-1].done.is_set() or pane._busy) and time.monotonic() < deadline:
-        QTest.qWait(10)
+    wait_for(lambda: not file.dirty and len(requests) >= 2 and requests[-1].done.is_set() and not pane._busy)
     assert not file.dirty and len(requests) == 2 and len(compiled) == 1
     assert requests[-1].error is None and requests[-1].metrics['cache_hit']
     assert requests[0].spec.revision.content_hash == text_sha256(path.read_text())
