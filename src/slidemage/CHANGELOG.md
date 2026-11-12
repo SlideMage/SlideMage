@@ -4022,3 +4022,8 @@ NEW: A clearer theme form, for any number of colour modes.
 - A bar at the top picks the colour mode (light, dark, grey, colour-blind ...); the form and the sample slides follow it, and every colour says where it comes from in that mode.
 - Small swatches beside each colour show it in every mode at once.
 - The form has tabs, and the sample slides are shown large; the source is one click away (Split, Source).
+
+v0.16.20 (2026-11-12, direct request: remove the wizard animation): The AI-edit animation is gone: wizard_portal.py (WizardPortal, play_wizard, note_ai_edit, review_snapshot, note_review_updates), its sprite sheet assets/wizard-poses.webp (403 KB) and tests/test_wizard_portal.py. MainWindow no longer takes a review snapshot at start and refresh_ai_review no longer looks for complex AI edits; the Not reviewed labels are unchanged.
+
+NEW: No wizard animation after AI edits.
+- A larger edit by the AI no longer plays the wizard over the window; the download is 0.4 MB smaller.
