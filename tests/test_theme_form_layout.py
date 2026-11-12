@@ -46,22 +46,37 @@ def test_lengths_and_size_pairs():
     assert citation_formats()[0] == "default"
 
 
-def test_a_length_is_checked_and_written(qapp):
+def test_a_length_is_a_number_and_a_unit(qapp):
     editor, form = make_form(SHIPPED)
     box = row_widget(form, "SMTopMargin")
-    edit = box.findChild(QLineEdit)
-    assert edit.placeholderText() == "framework: 41.58bp"
-    edit.setText("45")
-    edit.editingFinished.emit()
-    assert "SMTopMargin" not in editor.text()
-    assert any("no length" in label.text() for label in box.findChildren(QLabel))
-    edit.setText("45bp")
-    edit.editingFinished.emit()
+    number, raw = box.findChildren(QLineEdit)
+    unit = box.findChild(QComboBox)
+    assert number.placeholderText() == "41.58" and unit.currentText() == "bp" and raw.isHidden()
+    number.setText("45")
+    number.editingFinished.emit()
     assert "\\renewcommand{\\SMTopMargin}{45bp}" in editor.text()
-    margin = row_widget(form, "SMTextMarginLeft").findChild(QLineEdit)
-    margin.setText("1cm")
-    margin.editingFinished.emit()
+    unit.setCurrentText("pt")
+    unit.activated.emit(unit.currentIndex())
+    assert "\\renewcommand{\\SMTopMargin}{45pt}" in editor.text()
+    number.setText("4,5")
+    number.editingFinished.emit()
+    assert "{45pt}" in editor.text()
+    assert any("no length" in label.text() for label in box.findChildren(QLabel))
+    number.setText("")
+    number.editingFinished.emit()
+    assert "SMTopMargin" not in editor.text()
+    left_number, _left_raw = row_widget(form, "SMTextMarginLeft").findChildren(QLineEdit)
+    row_widget(form, "SMTextMarginLeft").findChild(QComboBox).setCurrentText("cm")
+    left_number.setText("1")
+    left_number.editingFinished.emit()
     assert "\\setlength{\\SMTextMarginLeft}{1cm}" in editor.text()
+
+
+def test_a_length_of_another_form_shows_as_tex(qapp):
+    editor, form = make_form(SHIPPED)
+    form.apply(lambda: form.model.set_value("SMTextMarginRight", "0.02\\paperwidth"))
+    number, raw = row_widget(form, "SMTextMarginRight").findChildren(QLineEdit)
+    assert number.isHidden() and not raw.isHidden() and raw.text() == "0.02\\paperwidth"
 
 
 def test_a_size_pair_is_two_numbers(qapp):
