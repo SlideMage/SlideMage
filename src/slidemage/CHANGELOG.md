@@ -4033,3 +4033,8 @@ v0.16.20 (2026-11-12, direct request: a Claude Code edit of the shown slide stay
 
 NEW: The Preview follows Claude Code's edits.
 - When Claude Code changes the slide you are looking at, the Preview shows the new version right away, also when the slide is not open in the editor.
+
+v0.16.21 (2026-11-12, direct request: remove the wizard animation): The AI-edit animation is gone: wizard_portal.py (WizardPortal, play_wizard, note_ai_edit, review_snapshot, note_review_updates), its sprite sheet assets/wizard-poses.webp (403 KB) and tests/test_wizard_portal.py. MainWindow no longer takes a review snapshot at start and refresh_ai_review no longer looks for complex AI edits; the Not reviewed labels are unchanged.
+
+NEW: No wizard animation after AI edits.
+- A larger edit by the AI no longer plays the wizard over the window; the download is 0.4 MB smaller.

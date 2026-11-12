@@ -136,8 +136,6 @@ class WorkspaceWindow(QMainWindow):
         super().__init__()
         self.theme = theme
         self.project = project_context
-        from .wizard_portal import review_snapshot
-        self._wizard_review = review_snapshot(self)
         self.compile = CompileController(project_context, self)
         self.readability_known = readability_check.KnownFindings()    # what the readability checks found, per slide text
         self.setWindowTitle(f"SlideMage — {version_mod.VERSION}")
@@ -790,8 +788,6 @@ class WorkspaceWindow(QMainWindow):
             self.log(summary)
 
     def refresh_ai_review(self) -> None:
-        from .wizard_portal import note_review_updates
-        note_review_updates(self)
         self.slide_list.rebuild(preserve_focus=True)
         if self.state.mode == "details":
             self.centre.refresh()
