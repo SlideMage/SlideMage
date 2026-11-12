@@ -4038,3 +4038,8 @@ v0.16.21 (2026-11-12, direct request: remove the wizard animation): The AI-edit 
 
 NEW: No wizard animation after AI edits.
 - A larger edit by the AI no longer plays the wizard over the window; the download is 0.4 MB smaller.
+
+v0.16.22 (2026-11-12, direct request: a render failure did not say its error): A failed slide render's message (preview_build.run_preview) began with the log's last 25 lines, which after an error in nonstop mode are LuaTeX's memory statistics; with -file-line-error the error line (file:N: message) starts with no "!", so the cards' and AI tools' first_error found none either (slide pke: "Missing $ inserted" from an image source with underscores, shown as a build that wrote its PDF). compiler.first_tex_error gives the first error as "! message" with its context up to "l.N"; the message leads with it, then the 25 lines as before.
+
+NEW: A failed preview says what went wrong.
+- When a slide cannot be rendered, the message now starts with the LaTeX error and its line, not with the end of the log.

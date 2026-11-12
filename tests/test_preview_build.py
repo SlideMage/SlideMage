@@ -675,3 +675,27 @@ def test_a_spare_is_used_once_and_a_preamble_change_discards_it(tmp_path, monkey
         assert discarded == [processes[1]] and len(commands) == 2 and len(processes) == 3
     finally:
         preview_build.set_focus(ctx, None)
+
+
+# -- the failure names the first TeX error, not only the log's last lines ---------------------------------------------
+
+FILE_LINE_LOG = ('(./SlideMage_alt.lua)\n/home/user/.cache/slidemage/render-store/x/work/decks/_slidemage_preview-1.t\n'
+                 'ex:42: Missing $ inserted.\n<inserted text> \n                $\nl.42 \\end{figureframe}\n\n'
+                 + 'Here is how much of LuaTeX\'s memory you used:\n' * 30)
+
+
+def test_first_tex_error_reads_file_line_errors_and_classic_ones():
+    assert compiler.first_tex_error(FILE_LINE_LOG) == '! Missing $ inserted.\n<inserted text> \n                $\nl.42 \\end{figureframe}'
+    assert compiler.first_tex_error('x\n! Undefined control sequence.\nl.9 \\foo\nmore').startswith('! Undefined control sequence.\nl.9')
+    assert compiler.first_tex_error('Output written on job.pdf (1 page).') == ''
+
+
+def test_a_failed_render_leads_with_its_first_error(tmp_path, monkeypatch):
+    _runs, call = _latexmk_runs(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(compiler, 'run_latexmk', lambda command, *, jobname, outdir, **kwargs: compiler.Build(
+        1, outdir / f'{jobname}.pdf', outdir / f'{jobname}.log', FILE_LINE_LOG, False))
+    with pytest.raises(RuntimeError) as failure:
+        call()
+    message = str(failure.value)
+    assert message.startswith('Render failed for abc-EN-Test:\n! Missing $ inserted.\n')
+    assert 'l.42 \\end{figureframe}' in message and message.endswith("Here is how much of LuaTeX's memory you used:")

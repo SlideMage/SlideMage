@@ -691,7 +691,10 @@ def run_preview(ctx: ProjectContext, wrapper: Path, jobname: str, id_slug: str, 
                        and 'Maximum runs of' in tail and 'needed too many passes' in tail)
     if not build.ok or (reusable and build.returncode and not rerun_limit):
         error = FontCacheBusy if font_cache_race(build.log_text) else RuntimeError
-        failure = error(f'Render failed for {id_slug}:\n' + '\n'.join(build.log_text.splitlines()[-25:]))
+        # The first error leads: the log's last lines are LuaTeX's statistics, after an error in nonstop mode too.
+        first = compiler.first_tex_error(build.log_text)
+        failure = error(f'Render failed for {id_slug}:\n' + (first + '\n...\n' if first else '')
+                        + '\n'.join(build.log_text.splitlines()[-25:]))
         # Carry this job's dependencies to the background worker. Looking for the newest recorder in a shared
         # build tree can pick another concurrent render, and background jobs build outside the project entirely.
         try:

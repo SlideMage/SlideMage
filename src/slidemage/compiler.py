@@ -301,6 +301,22 @@ def display_path(ctx: project.ProjectContext, path: Path) -> str:
 # -file-line-error) ever produces the classic format instead.
 FATAL_ERROR_RE = re.compile(r"^!|^\S.*:[0-9]+: ", re.MULTILINE)
 
+
+def first_tex_error(log_text: str) -> str:
+    """The first error of a TeX log as "! message" and its context up to the line after "l.N", or "". With
+    -file-line-error the error line is "file:N: message" (its file name can wrap onto the line before)."""
+    match = FATAL_ERROR_RE.search(log_text)
+    if match is None:
+        return ""
+    lines = log_text[match.start():].splitlines()
+    first = re.sub(r"^\S.*?:[0-9]+: ", "", lines[0]) if not lines[0].startswith("!") else lines[0][1:].strip()
+    excerpt = ["! " + first]
+    for line in lines[1:12]:
+        excerpt.append(line)
+        if re.match(r"l\.[0-9]+", line):
+            break
+    return "\n".join(excerpt)
+
 LogCallback = Callable[[str], None]
 
 # Called as listener(ctx, job, pdf) on a thread of its own after every successful whole-deck compile whose PDF is
