@@ -180,9 +180,9 @@ def test_name_logo_and_plain_values(modeshape, tmp_path):
     assert project.value("SMLogoHeight") is None and project.default("SMLogoHeight") == "3ex"
 
 
-@pytest.mark.parametrize("template", ["slidemage", "greyscale"])
+@pytest.mark.parametrize("template", ["slidemage", "grayscale"])
 def test_the_shipped_templates_code_panels_read_in_every_mode(template):
-    """v0.16.8: Greyscale's dark mode put the code commands in the light dark-mode accent on the light panel (1.4:1)."""
+    """v0.16.8: Grayscale's dark mode put the code commands in the light dark-mode accent on the light panel (1.4:1)."""
     theme = model(LATEX / f"SlideMage_template_{template}.tex")
     for mode in theme.modes():
         for check in theme.checks(mode.id):

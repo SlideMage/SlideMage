@@ -436,7 +436,7 @@ def _unwrapped(log: str) -> str:
     return log.replace("\r", "").replace("\n", "")
 
 
-DECK = (BS + "documentclass[aspectratio=169]{beamer}\n" + BS + "input{SlideMage_template_greyscale}\n"
+DECK = (BS + "documentclass[aspectratio=169]{beamer}\n" + BS + "input{SlideMage_template_grayscale}\n"
         + "%s" + BS + "SMUseBibliography\n" + BS + "newcommand{" + BS + "FooterText}{x}\n" + BS + "begin{document}\n" + BS + "begin{frame}x" + BS + "end{frame}\n"
         + BS + "end{document}\n")
 

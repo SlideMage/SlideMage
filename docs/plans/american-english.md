@@ -1,6 +1,6 @@
 # American English in the app's text: inventory
 
-Status: **groups 1 done (2026-11-12): the theme form in v0.16.24, the rest of the app's visible text and the AI's prompts in v0.16.25 (branch `fix/american-english`). Open: the shown name of Greyscale, and group 3 (CHANGELOG history, LaTeX comments, docs).** The table below is kept as the record of what was changed.
+Status: **groups 1 done (2026-11-12): the theme form in v0.16.24, the rest of the app's visible text and the AI's prompts in v0.16.25 (branch `fix/american-english`). Open: the shown name of Grayscale, and group 3 (CHANGELOG history, LaTeX comments, docs).** The table below is kept as the record of what was changed.
 
 The app's default is American English ("color", "center", "canceled", "gray"). An inventory of British spellings in
 the string literals of `src/slidemage/**/*.py` (docstrings and comments left out) found 199 strings; about 50 of them
@@ -48,8 +48,8 @@ visible effect.
 - `"colour-roles-in-slides"` (`compat_color_roles.py:43`): the id of a compat change, recorded in projects.
 - In the theme code: the kinds `"colour"`, `"modecolour"`, `"optional_colour"`, the mode and preset id `grey` (a TeX
   id: `\SMDeclareMode{grey}{grey}`, shown as "gray"), `colorblind`, and the TeX macro `\SM@rolecolour`.
-- The shipped theme **Greyscale** (key `greyscale`, file `SlideMage_template_greyscale.tex`): decks name the key.
-  Showing it as "Grayscale" would be a change of its name line only; to decide.
+- Done in v0.16.26: the shipped theme Greyscale is **Grayscale** throughout (key `grayscale`, file
+  `SlideMage_template_grayscale.tex`); no deck used the old key, so there is no migration.
 - Python names (`own_colours`, `CODE_COLOURS`, `_colour_dialog`, `_neighbours_cache`), docstrings and comments.
 
 ## 3. Other text, not in the inventory's count
@@ -64,4 +64,4 @@ visible effect.
 ## Suggested order
 
 1. Group 1 in one change, with its tests (two assert the text; the "Preview cancelled" message is compared in code).
-2. Decide on "Grayscale" as the shown name, and on the documents of group 3.
+2. Done: Grayscale (v0.16.26). Decided 2026-11-12: British spellings stay in the CHANGELOG and in comments.

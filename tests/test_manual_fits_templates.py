@@ -23,7 +23,7 @@ needs_tex = pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not 
 
 
 def test_the_framework_ships_the_templates_this_check_covers():
-    assert {"slidemage", "greyscale"} <= set(TEMPLATES)
+    assert {"slidemage", "grayscale"} <= set(TEMPLATES)
 
 
 @needs_tex

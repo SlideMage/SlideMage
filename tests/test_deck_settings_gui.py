@@ -235,7 +235,7 @@ def pick_mode(sheet, mode_id):
 
 
 def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_path, monkeypatch, qapp):
-    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark, grey=Greyscale\n")
+    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark, grey=Grayscale\n")
     sheet = make_sheet(tmp_path, monkeypatch)
     assert [sheet.mode_combo.itemData(i) for i in range(sheet.mode_combo.count())] == ["light", "dark", "grey"]
     pick_mode(sheet, "grey")

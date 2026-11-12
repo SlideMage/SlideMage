@@ -26,7 +26,7 @@ LATEX = ROOT / "latex"
 FIXTURES = ROOT / "tests" / "fixtures" / "theme_files"
 MODESHAPE = FIXTURES / "SlideMage_template_modeshape.tex"
 CONDSHAPE = FIXTURES / "SlideMage_template_condshape.tex"
-THEMES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_greyscale.tex",
+THEMES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_grayscale.tex",
           ROOT / "tests" / "fixtures" / "template_stress" / "SlideMage_template_stress-test.tex", MODESHAPE, CONDSHAPE,
           # the shape of an installed theme package: a layout profile before the setup file, an \input after the base
           ROOT / "tests" / "fixtures" / "theme_package" / "sample-theme" / "SlideMage_template_sample-theme.tex"]
@@ -194,7 +194,7 @@ def test_a_conditional_setting_is_kept_and_counted_as_beyond_the_form():
 
 
 def test_what_lies_beyond_the_form():
-    assert ThemeFile(read(LATEX / "SlideMage_template_greyscale.tex")).beyond() == []
+    assert ThemeFile(read(LATEX / "SlideMage_template_grayscale.tex")).beyond() == []
     shape = ThemeFile(read(MODESHAPE))
     assert [shape.text.split("\n")[n] for n in shape.beyond()] == ["\\input{SlideMage_bibliography_default}"]
     assert shape.own_colours() == ["c_test_dark_canvas", "c_test_dark_card"]
@@ -218,15 +218,15 @@ def test_headers_and_the_layout_profile():
     assert lines[3] == "% SlideMage template name: My look"          # after the SPDX and modes lines
     assert lines[lines.index("\\input{SlideMage_setup}") - 1] == "\\newcommand{\\SMLayoutProfile}{lmsans}"
     assert all(tag == "insert" for tag, _, _ in changed_lines(text, edited.text))
-    grey = ThemeFile(read(LATEX / "SlideMage_template_greyscale.tex"))
+    grey = ThemeFile(read(LATEX / "SlideMage_template_grayscale.tex"))
     grey.set("SMLayoutProfile", "fira")
     grey.set("header:name", "Greys")
-    assert [new for _, _, new in changed_lines(read(LATEX / "SlideMage_template_greyscale.tex"), grey.text)] == [
+    assert [new for _, _, new in changed_lines(read(LATEX / "SlideMage_template_grayscale.tex"), grey.text)] == [
         ["% SlideMage template name: Greys"], ["\\newcommand{\\SMLayoutProfile}{fira}"]]
 
 
 def test_macros_with_arguments_and_nested_braces():
-    text = read(LATEX / "SlideMage_template_greyscale.tex")
+    text = read(LATEX / "SlideMage_template_grayscale.tex")
     edited = ThemeFile(text)
     assert edited.value("SMBulletSymbol") == "\\textcolor{#1}{\\textendash}"
     assert edited.value("SMFootnoteMark") == "\\number#1"

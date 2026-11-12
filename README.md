@@ -31,7 +31,7 @@ merged with that fork's history).
 
 | Path | Contents |
 | --- | --- |
-| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the greyscale template `SlideMage_template_greyscale.tex`, the house citation format `SlideMage_citation_default.tex` (and `SlideMage_bibliography_default.tex`, its old name, a one-line loader), `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
+| `latex/` | The framework: the SlideMage beamer theme (`beamerthemeSlideMage.sty`), `SlideMage_setup.tex` (the setup layer and catalog of template settings), the layout profiles `SlideMage_layout_fira.tex`, `SlideMage_layout_lmsans.tex` and `SlideMage_layout_lmroman.tex`, `SlideMage_base.tex`, the SlideMage template `SlideMage_template_slidemage.tex` with its logo, the grayscale template `SlideMage_template_grayscale.tex`, the house citation format `SlideMage_citation_default.tex` (and `SlideMage_bibliography_default.tex`, its old name, a one-line loader), `SlideMage_alt.lua`, `SlideMage_measure.lua`. Institution-independent. |
 | `example/` | A complete SlideMage project: `slides/`, `decks/`, `media/`, `SlideMage.bib`, `.latexmkrc`, and `slide_ids.csv`, which marks a project's root. Also the template for a new project created from SlideMage. |
 | `src/slidemage/` | SlideMage, the PySide6 app, an installable Python package (`pyproject.toml`): the workspace window, its dialogs and pages under `ui/` (`ui/kit/` is the widget kit), the AI layer (providers, agent, tools, MCP server) under `ai/`, and the backend modules beside them. |
 | `packaging/` | The PyInstaller spec for the one-file executable, and a Linux `.desktop` template. |
@@ -609,7 +609,7 @@ version block, `\SMUseBibliography`) and, after `\begin{document}`, the slides, 
 reading `slides/<id-slug>-current.tex` (or a frozen version). A file of the project with a
 framework file's name wins over the framework's (the project folder comes first on the TeX
 search path): a project can ship its own template, layout profile or even its own copy of the
-SlideMage template. **To make a template**, copy `latex/SlideMage_template_greyscale.tex` (a
+SlideMage template. **To make a template**, copy `latex/SlideMage_template_grayscale.tex` (a
 template that sets many catalog settings, each with a comment) or `latex/SlideMage_template_slidemage.tex`
 (which sets almost none) into the project as `SlideMage_template_<key>.tex`, add a `% SlideMage template name: ...` line, and
 set between `\input{SlideMage_setup}` and `\input{SlideMage_base}` what you change from the
@@ -681,7 +681,7 @@ shows them all on.
   Modern Roman, LaTeX's own serif text face (Computer Modern in its OpenType form), with Latin
   Modern Mono for code. The first serif profile and the first written by the tool alone
   (`calibrate_font_profile.py --new`). Beamer sets a frame in its sans family, so a serif
-  profile names its font as `\setsansfont` (and `\setmainfont`). The greyscale template uses it.
+  profile names its font as `\setsansfont` (and `\setmainfont`). The grayscale template uses it.
 - `tests/fixtures/template_stress/` — a **test project**, never offered by the app (it
   is neither in `example/` nor in `latex/`): the template `SlideMage_template_stress-test.tex`,
   which picks `lmsans` and sets every hook of the catalog to a clearly different value,
@@ -748,7 +748,7 @@ shows them all on.
   project's own copy would win). SlideMage keeps its previews apart from
   the institutions' (template name "SlideMage"); the manual,
   `decks/slidemage-manual.tex`, is the demo deck in it.
-- `latex/SlideMage_template_greyscale.tex` — the **greyscale template** (since v10.18.0),
+- `latex/SlideMage_template_grayscale.tex` — the **grayscale template** (since v10.18.0),
   a second look that ships with SlideMage and the starting point to copy for a template of your
   own: Latin Modern Roman (the `lmroman` profile), greys only, en dashes as bullets, numbered
   footnotes, a taller title bar and footer, more room around the SlideMage logo and wider
@@ -2624,11 +2624,11 @@ mode use the role colours `c_text`, `c_canvas`, `c_card`, `c_line`, `c_text_mute
 every mode. (The switch `\SMDarkMode` and the `% SlideMage dark mode: true` header were
 removed in v0.16.0.)
 
-Both shipped templates (SlideMage and Greyscale) offer light and dark. Their dark mode is the
+Both shipped templates (SlideMage and Grayscale) offer light and dark. Their dark mode is the
 preset plus lighter values for the palette colours slides write as text and lines and that are
 too dark on the dark canvas (`\SMSetColor` lines: the highlight colour and the `c_custom_*`
 colours), each at least 4.4:1 there, so `\textcolor{c_custom_red}{...}` stays readable without
-touching the slide; bullets, rules, image borders and markers follow. Greyscale's title bar turns
+touching the slide; bullets, rules, image borders and markers follow. Grayscale's title bar turns
 dark with white text. A theme makes its own dark mode readable the same way: give each accent
 that slides use as text a dark-mode value, and keep white text off those colours (a node with
 `fill=c_primary_highlight` writes `text=c_canvas`, white in light mode).

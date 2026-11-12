@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LATEX = ROOT / "latex"
 BS = chr(92)
 STRESS = ROOT / "tests" / "fixtures" / "template_stress"
-SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_greyscale.tex"]
+SHIPPED_TEMPLATES = [LATEX / "SlideMage_template_slidemage.tex", LATEX / "SlideMage_template_grayscale.tex"]
 # Names setup defines for its own bookkeeping, not for a template to set.
 # The names that were hooks and are gone (v10.11.0): the setup layer holds an error-raising macro under each. The first three
 # moved nothing; the other two were renamed.
@@ -277,7 +277,7 @@ def test_the_removed_and_renamed_names_are_errors_in_the_setup_layer_and_no_temp
 def test_the_body_size_table_matches_beamers_size_files():
     """\\SMBodyFontSize (v10.19.0): at 10pt, 11pt and 12pt the base's sizes and baseline skips are those of
     size10/11/12.clo (what beamer loads for its class option), except \\tiny at 10pt, which stays the 11pt option's
-    (v10.18.1's greyscale stopgap left it there). The other values follow the rule the setup file documents."""
+    (v10.18.1's grayscale stopgap left it there). The other values follow the rule the setup file documents."""
     base = read(LATEX / "SlideMage_base.tex")
     blocks = re.findall(
         r"\\ifdim\\SMBodyFontSize=(\d+)pt\s*((?:\\def\\SM@b[sl]@[nsfct]\{[\d.]+\}%?\s*)+)", base)

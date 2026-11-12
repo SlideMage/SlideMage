@@ -86,7 +86,7 @@ def test_a_view_can_have_any_mode_of_its_theme():
     assert MODE in view_themes.preamble_for_view(base, "instructor")
 
 
-@pytest.mark.parametrize("key", ["slidemage", "greyscale"])
+@pytest.mark.parametrize("key", ["slidemage", "grayscale"])
 def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
     """v0.16.2: both templates in latex/ declare light (the base) and dark, in the header the app reads and to the
     framework; every data line is for dark, so the light PDFs do not change."""
@@ -100,7 +100,7 @@ def test_the_shipped_templates_offer_light_and_dark(key, tmp_path):
     assert lines and set(lines) == {"dark"}
 
 
-@pytest.mark.parametrize("key", ["slidemage", "greyscale"])
+@pytest.mark.parametrize("key", ["slidemage", "grayscale"])
 def test_the_text_accents_of_the_shipped_templates_read_on_the_dark_canvas(key, tmp_path):
     """v0.16.5: the palette colours slides write as text keep at least 4.4:1 on the dark canvas (they were 1.0:1 to
     2.2:1 before the templates gave them dark-mode values); in light mode they are the template's own."""
