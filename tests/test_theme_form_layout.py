@@ -133,11 +133,11 @@ def test_lengths_show_in_one_unit_and_keep_their_own(qapp, monkeypatch):
 
     assert note("SMTextMarginLeft") == "≈ 10.0 mm"              # written as 1cm: stays 1cm, shown in mm beside it
     assert note("SMFrametitleTopPadding") == "≈ 5.6 mm"          # written as 3.4ex: its rendered size
-    assert "\setlength{\SMTextMarginLeft}{1cm}" in editor.text()
+    assert r"\setlength{\SMTextMarginLeft}{1cm}" in editor.text()
     form.set_display_unit("pt")
     assert stored["theme_display_unit"] == "pt" and form.display_unit == "pt"
     form.geometry = lambda: {"page_width": 453.54, "page_height": 255.12, "SMFrametitleTopPadding": 15.99,
                              "SMTextMarginLeft": 28.35}
     form.refresh()
     assert note("SMTextMarginLeft") == "≈ 28.5 pt"
-    assert "\setlength{\SMTextMarginLeft}{1cm}" in editor.text()     # switching the unit rewrites nothing
+    assert r"\setlength{\SMTextMarginLeft}{1cm}" in editor.text()     # switching the unit rewrites nothing

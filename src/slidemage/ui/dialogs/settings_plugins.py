@@ -43,11 +43,12 @@ from typing import Optional
 
 from PySide6.QtCore import QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
-from ... import citation_sources, citations, open_path, packages, slide_templates, theme_sources, themes
+from ... import (citation_sources, citations, open_path, packages, slide_templates, theme_source_folder, theme_sources,
+                 themes)
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -484,6 +485,25 @@ class ThemeRow(_ListRow):
                                         "The copy is used instead of the installed theme, which stays as it is.")
             self.copy_button.clicked.connect(partial(tab.copy_theme_to_project, theme.key))
             buttons.append(self.copy_button)
+        # The theme's source folder (its repository), for its author: Edit source opens the template there.
+        self.source_folder = theme_source_folder.folder(theme.key)
+        self.edit_source_button: Button | None = None
+        self.source_folder_button: Button | None = None
+        self.forget_folder_button: Button | None = None
+        if not theme.problem:
+            if self.source_folder is not None:
+                self.edit_source_button = Button("Edit source", compact=True)
+                self.edit_source_button.setToolTip("Open the theme's template in its source folder, with the theme "
+                                                   "form. Decks keep using the installed theme until you release the "
+                                                   "changed one and update.")
+                self.edit_source_button.clicked.connect(partial(tab.edit_theme_source, theme.key))
+                buttons.append(self.edit_source_button)
+            else:
+                self.source_folder_button = Button("Source folder…", compact=True)
+                self.source_folder_button.setToolTip("For the theme's author: say where its source is kept (its "
+                                                     "repository), to edit it there.")
+                self.source_folder_button.clicked.connect(partial(tab.choose_theme_source_folder, theme.key))
+                buttons.append(self.source_folder_button)
         self.remove_button = Button("Remove", compact=True)
         self.remove_button.clicked.connect(partial(tab.remove_theme, theme.key,
                                                    manifest.name if manifest else theme.key))
@@ -501,6 +521,21 @@ class ThemeRow(_ListRow):
                 self.check_error_label = caption(f"The last update check failed: {self.source.check_error} "
                                                  "The installed version keeps working.", "error")
                 layout.addWidget(self.check_error_label)
+        self.source_folder_label: QLabel | None = None
+        if self.source_folder is not None and not theme.problem:
+            here = theme_source_folder.version(self.source_folder)
+            self.source_folder_label = caption(f"Source folder: {self.source_folder}"
+                                               + (f" (version {here})" if here else ""))
+            change = Button("Change…", "ghost", compact=True)
+            change.clicked.connect(partial(tab.choose_theme_source_folder, theme.key))
+            self.forget_folder_button = Button("Forget", "ghost", compact=True)
+            self.forget_folder_button.setToolTip("Forget the folder; nothing in it is changed.")
+            self.forget_folder_button.clicked.connect(partial(tab.forget_theme_source_folder, theme.key))
+            line = QHBoxLayout()
+            line.addWidget(self.source_folder_label, 1)
+            line.addWidget(change)
+            line.addWidget(self.forget_folder_button)
+            layout.addLayout(line)
         if theme.problem:
             layout.addWidget(caption(_sentence(f"not usable: {theme.problem}"), "error"))
 
@@ -827,6 +862,35 @@ class PluginsTab(Page):
             self._leave(action)
         else:
             action()
+
+    def choose_theme_source_folder(self, key: str) -> None:
+        """Ask for the folder the installed theme `key` has its source in, and remember it (theme_source_folder)."""
+        current = theme_source_folder.folder(key)
+        chosen = QFileDialog.getExistingDirectory(self, f"The source folder of the theme {key}",
+                                                  str(current or Path.home()))
+        if not chosen:
+            return
+        try:
+            theme_source_folder.set_folder(key, Path(chosen))
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Theme source folder", str(exc))
+            return
+        self.refresh_themes()
+
+    def forget_theme_source_folder(self, key: str) -> None:
+        theme_source_folder.set_folder(key, None)
+        self.refresh_themes()
+
+    def edit_theme_source(self, key: str) -> None:
+        """Open the theme's template in its source folder in a tab (the sheet closes first)."""
+        path = theme_source_folder.template(key)
+        if path is None:
+            QMessageBox.warning(self, "Edit the theme's source",
+                                f"{themes.template_file(key)} is not in the source folder any more. Pick the folder "
+                                "again.")
+            self.refresh_themes()
+            return
+        self.edit_personal_theme(path)
 
     def reveal_personal_theme(self, path: Path) -> None:
         try:

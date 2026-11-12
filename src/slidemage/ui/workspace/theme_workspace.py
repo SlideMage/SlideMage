@@ -18,6 +18,7 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSplitter, QVBoxLayout
 
+from ... import theme_source_folder
 from ...theme_form_model import PRESET_LABELS
 from .. import layout_settings
 from ..kit.tokens import SPACE
@@ -89,9 +90,18 @@ class ThemeWorkspace(Surface):
         self.form = ThemeForm(editor, path, project.root, setup_path)
         self.sample = ThemeSampleView(editor, theme_key(path), project)
         self.sample.follow_mode_bar()
+        if self.form.home != project.root:
+            self.sample.home = self.form.home
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
+        # Where an edit is written, when that is not plainly a personal theme of the project (plan section 3.6).
+        self.place = theme_source_folder.place(path, project.root)
+        self.place_label = caption(self.place.line, "error" if self.place.warning else "")
+        self.place_label.setWordWrap(True)
+        self.place_label.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, 0)
+        self.place_label.setVisible(bool(self.place.line))
+        column.addWidget(self.place_label)
         top = Surface()
         row = QHBoxLayout(top)
         row.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, SPACE.sm)

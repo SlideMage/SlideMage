@@ -52,6 +52,7 @@ class ThemeSampleView(Surface):
         self.key = key
         self.project = project
         self._render = render or theme_sample.render
+        self.home = None        # the theme file's folder when it is not the project (theme_source_folder.home)
         self._images: list[QImage] = []
         self._page = 2                          # the title bar, lists and footnotes: the page most fields change
         self._cancel: Optional[compiler.CancelToken] = None
@@ -131,6 +132,10 @@ class ThemeSampleView(Surface):
         self._stale = True
         self._timer.start(RENDER_DELAY_MS if delay is None else delay)
 
+    def _home_args(self) -> dict:
+        """`home=` for the render, only when the theme is not the project's (a test's render need not take it)."""
+        return {"home": self.home} if self.home is not None else {}
+
     def start(self) -> None:
         """Render now (or once the running render has stopped); nothing while the panel is not on show."""
         if self.project is None or not self.isVisible():
@@ -146,7 +151,7 @@ class ThemeSampleView(Surface):
 
         def work() -> None:
             try:
-                result = self._render(self.project, text, self.key, mode, cancel=cancel)
+                result = self._render(self.project, text, self.key, mode, cancel=cancel, **self._home_args())
             except Exception as exc:        # a failed render must not end the thread silently
                 result = theme_sample.SampleResult(None, f"The sample slides could not be rendered: {exc}", mode)
             self.rendered.emit(result)
@@ -291,7 +296,7 @@ class ThemeSampleView(Surface):
             usage = None
             try:
                 result = render(self.project, probe_text, f"{self.key}--probe-{kind}", mode,
-                                cancel=compiler.CancelToken())
+                                cancel=compiler.CancelToken(), **self._home_args())
                 if result.pdf is not None:
                     usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
             except Exception:       # no map: the slides stay undimmed, the form still works

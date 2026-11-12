@@ -118,8 +118,9 @@ def format_modes_header(modes: list[tuple[str, str]]) -> str:
 class ThemeModel:
     """The theme form's model of one theme's text. `text` is the current text after every edit."""
 
-    def __init__(self, text: str, root: Path, key: str, setup_text: str) -> None:
+    def __init__(self, text: str, root: Path, key: str, setup_text: str, home: Optional[Path] = None) -> None:
         self.root = root
+        self.home = home or root     # the theme file's folder: the project, or the theme's source folder
         self.key = key
         self.catalog = theme_fields.catalog(setup_text)
         self.preset_dark = {role: value for role, value in _DERIVED_RE.findall(setup_text)}
@@ -445,16 +446,17 @@ class ThemeModel:
             self.file.set(key, value.strip())
 
     def import_logo(self, source: Path) -> str:
-        """Copy a logo file into the project's scheme folder of this theme (schemes/scheme_<key>/) and point the theme
-        at it. A file of that name there is replaced only when it is the same file. Returns the path the theme writes."""
-        folder = self.root / "schemes" / f"scheme_{self.key.replace('-', '_')}"
+        """Copy a logo file into this theme's scheme folder (schemes/scheme_<key>/ beside the theme file: in the
+        project, or in the theme's source folder) and point the theme at it. A file of that name there is replaced only
+        when it is the same file. Returns the path the theme writes."""
+        folder = self.home / "schemes" / f"scheme_{self.key.replace('-', '_')}"
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / source.name
         if source.resolve() != target.resolve():
             if target.exists() and target.read_bytes() != source.read_bytes():
-                raise ValueError(f"{target.relative_to(self.root).as_posix()} exists and is another file.")
+                raise ValueError(f"{target.relative_to(self.home).as_posix()} exists and is another file.")
             shutil.copyfile(source, target)
-        relative = target.relative_to(self.root).as_posix()
+        relative = target.relative_to(self.home).as_posix()
         self.file.set("SMInstituteLogoPath", relative)
         return relative
 
@@ -537,13 +539,13 @@ def format_size_pair(size: str, skip: str) -> str:
     return f"\\fontsize{{{size.strip()}}}{{{skip.strip()}}}\\selectfont"
 
 
-def layout_profiles(root: Path) -> list[str]:
-    """The layout profiles a theme of the project at `root` can pick: the bundled ones, then the project's own
-    (SlideMage_layout_<name>.tex next to its templates)."""
+def layout_profiles(root: Path, home: Optional[Path] = None) -> list[str]:
+    """The layout profiles a theme of the project at `root` can pick: the bundled ones, then the ones beside the theme
+    file (`home`, when that is not the project) and the project's own (SlideMage_layout_<name>.tex)."""
     from . import slide_templates, themes
 
     found = list(themes.BUNDLED_PROFILES)
-    for folder in [root, *slide_templates.framework_dirs(root)]:
+    for folder in [*([home] if home and home != root else []), root, *slide_templates.framework_dirs(root)]:
         for path in sorted(folder.glob(f"{themes.LAYOUT_PREFIX}*.tex")):
             name = path.stem[len(themes.LAYOUT_PREFIX):]
             if name not in found:

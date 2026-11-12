@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QScrollArea, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
 
-from ... import slide_templates, theme_fields, theme_measures
+from ... import slide_templates, theme_fields, theme_measures, theme_source_folder
 from .. import layout_settings
 from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
@@ -212,7 +212,8 @@ class ThemeForm(QWidget):
         self.root = root
         self.setMinimumWidth(360)
         setup_text = setup_path.read_text(encoding="utf-8") if setup_path and setup_path.is_file() else ""
-        self.model = ThemeModel(editor.text(), root, theme_key(path), setup_text) if setup_text else None
+        self.home = theme_source_folder.home(path, root)    # where the theme's logos and layout profile live
+        self.model = ThemeModel(editor.text(), root, theme_key(path), setup_text, self.home) if setup_text else None
         self.mode = self.model.base if self.model is not None else ""
         self._cells: list[_Cell] = []
         self._refreshers: list[Callable[[], None]] = []
@@ -752,7 +753,9 @@ class ThemeForm(QWidget):
             if shown and not shown.lower().endswith(".pdf"):
                 problem = "The logo should be a vector PDF: other files look blurred when the slides are zoomed."
             elif shown and not (self.root / shown).is_file() and not (self.path.parent / shown).is_file():
-                problem = "No such file in the project folder (it may be on the TeX search path elsewhere)."
+                problem = ("No such file in the project folder (it may be on the TeX search path elsewhere)."
+                           if self.home == self.root else
+                           "No such file in the theme's folder (it may be on the TeX search path elsewhere).")
             warning.setText(problem)
             warning.setVisible(bool(problem))
             for key, edit in fields.items():
@@ -764,7 +767,7 @@ class ThemeForm(QWidget):
         return card
 
     def _choose_logo(self) -> None:
-        chosen, _ = QFileDialog.getOpenFileName(self, "Choose the logo", str(self.root), "PDF (*.pdf);;All files (*)")
+        chosen, _ = QFileDialog.getOpenFileName(self, "Choose the logo", str(self.home), "PDF (*.pdf);;All files (*)")
         if chosen:
             self.apply(lambda: self.model.import_logo(Path(chosen)))
 
@@ -805,7 +808,7 @@ class ThemeForm(QWidget):
         field = theme_fields.BY_NAME[key]
         default = self.model.default(key)
         if key == "SMLayoutProfile":
-            return self._choice_field(key, layout_profiles(self.root), default or "fira")
+            return self._choice_field(key, layout_profiles(self.root, self.home), default or "fira")
         if key == "SMCitationFormat":
             return self._choice_field(key, citation_formats(), default or "default")
         if key == "SMBulletSymbol":
