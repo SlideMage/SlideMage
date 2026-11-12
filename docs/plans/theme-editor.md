@@ -649,6 +649,24 @@ like; a bad value is not written and the field says why), size pairs as two numb
 by key. Tests: `tests/test_theme_form_layout.py`. Not done: a check that the Top Margin lies below the title bar
 (needs the derived geometry: C2b).
 
+**The form's look (v0.16.18, branch `feat/theme-form-look`).** The look was no stage of the plan; the user asked for
+a mockup (2026-11-12, a Design canvas: https://claude.ai/artifact/6e2dFeq4NqZ6VYfdFSFfmT) and, after asking how an
+open list of modes fits ("Proposed: any number of modes"), chose it. Built: `src/slidemage/ui/workspace/theme_workspace.py`,
+`ThemeWorkspace` (the theme part of `SourceFile`, `SourceFile.theme_side`): `ModeBar` (one button per declared mode
+with "base" or "<preset> preset · n set", "+ Add mode…"), a Form / Split / Source `SegmentedControl` (remembered as
+`theme_view`), one splitter with the editor, the sample slides and the form, shown per view. `ThemeForm` is a `QWidget`
+with a `QTabBar` and five scrolling pages (Identity, Colours, Layout, Logo & notes, Advanced; Advanced says C3 is to
+come), shows `form.mode` only (`set_mode`; `on_structure` tells the workspace), and on Colours: the mode's heading, a
+contrast `Chip` for that mode (details on "Show all 16"; "Other modes: n below" picks the first such mode), the palette
+filtered by `ThemeModel.palette_matters` ("Show all 21"), folding groups for the four role sections and the code panels
+(a count of what is set; "Title bar and footer" open at first). `_Cell` gained the provenance tag
+(`ThemeModel.provenance`: set here / set in the theme / dark, grey or colour-blind preset / from <base> / framework
+default), Reset, and the per-mode strip (`ThemeModel.strip`, the picked mode ringed). Lengths are a number and a unit
+(`split_length`, `UNITS`; another form stays raw TeX). `ThemeSampleView` follows the mode bar (`follow_mode_bar`,
+`set_mode`) and has a page-thumbnail strip with a dot under the pages using the focused colour. The Top Margin's
+dimension line and the "below the title bar" check of the mockup's Layout screen are C2b.
+
+
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.
 

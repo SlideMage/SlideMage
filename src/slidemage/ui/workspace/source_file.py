@@ -23,7 +23,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QSplitter, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout
 
 from ...ai import routes
 from ... import app_settings, timing
@@ -42,8 +42,7 @@ from ..kit.widgets import Button, Chip, PopoverMenu, Surface
 from ..text import plural
 from .ai_fix import AiFixPanel
 from .source_editor import FindBar, LatexPlainTextEdit
-from .theme_form import ThemeForm, theme_key
-from .theme_sample_view import ThemeSampleView
+from .theme_form import theme_key
 
 LINT_DELAY_MS = 300     # after the last keystroke
 AUTOSAVE_DELAY_MS = 1500    # after the last keystroke
@@ -52,7 +51,6 @@ RENDER_ON_TYPING_PAUSE = True
 LINT_LIST_LIMIT = 25    # issues shown in the status line's list
 SAME, RELOADED, CONFLICT = "same", "reloaded", "conflict"    # what disk_changed() found
 AUTOSAVE_KEY = "autosave"   # this user's choice (layout_settings), on unless switched off
-THEME_FORM_KEY = "theme_form_shown"     # whether a theme's source shows the theme form beside it (layout_settings)
 
 
 def autosave_on() -> bool:
@@ -150,26 +148,12 @@ class SourceFile(Surface):
         self.theme_form = self.theme_sample = self.theme_side = None
         if not self.is_slide and theme_key(path):
             from ... import theme_fields
-            self.theme_form = ThemeForm(self.editor, path, app.project.root, theme_fields.setup_file(app.project.root))
-            self.theme_sample = ThemeSampleView(self.editor, theme_key(path), app.project)
-            # A colour field in focus (or under the mouse) lights up where that colour is used on the sample slides.
-            self.theme_form.on_usage = self.theme_sample.show_usage
-            self.theme_form.on_usage_cleared = self.theme_sample.clear_usage
-            self.theme_side = QSplitter(Qt.Orientation.Vertical)
-            self.theme_side.setChildrenCollapsible(False)
-            self.theme_side.addWidget(self.theme_sample)
-            self.theme_side.addWidget(self.theme_form)
-            self.theme_side.setSizes([2000, 3000])
-            splitter = QSplitter(Qt.Orientation.Horizontal)
-            splitter.setChildrenCollapsible(False)
-            splitter.addWidget(self.editor)
-            splitter.addWidget(self.theme_side)
-            splitter.setStretchFactor(0, 3)
-            splitter.setStretchFactor(1, 2)
-            splitter.setSizes([3000, 2000])     # three fifths source, two fifths form, whatever the width
-            layout.addWidget(splitter, 1)
-            self.theme_side.setVisible(bool(layout_settings.get(THEME_FORM_KEY, True)))
-            self._update_form_button()
+            from .theme_workspace import ThemeWorkspace
+            # The theme tab: mode bar, Form / Split / Source, the sample slides and the form (theme_workspace).
+            self.theme_side = ThemeWorkspace(self.editor, path, app.project,
+                                             theme_fields.setup_file(app.project.root))
+            self.theme_form, self.theme_sample = self.theme_side.form, self.theme_side.sample
+            layout.addWidget(self.theme_side, 1)
         else:
             layout.addWidget(self.editor, 1)
         self._update_fold_button()
@@ -238,12 +222,6 @@ class SourceFile(Surface):
         self.lint_chip.clicked.connect(self._show_issues)
         row.addWidget(self.lint_chip)
         row.addStretch(1)
-        self.form_button = Button("", "ghost", compact=True)
-        self.form_button.setToolTip("Show or hide the theme form beside the source: the theme's colours, modes, logo "
-                                    "and footnote markers as fields, written into this file as you change them.")
-        self.form_button.clicked.connect(self.toggle_theme_form)
-        self.form_button.hide()     # shown for a theme (never setVisible(True) before the line has a parent)
-        row.addWidget(self.form_button)
         self.ask_ai_button = Button("Ask AI to fix", "ghost", compact=True)
         self.ask_ai_button.setToolTip(
             "Let a language model look for syntax problems in the buffer and propose fixes you can "
@@ -275,21 +253,6 @@ class SourceFile(Surface):
         row.addWidget(keep_button)
         self.conflict_bar.hide()
         return self.conflict_bar
-
-    def toggle_theme_form(self) -> None:
-        """Show or hide the theme form and its sample slides (a theme file only); remembered for the next theme opened."""
-        if self.theme_side is None:
-            return
-        shown = self.theme_side.isHidden()
-        self.theme_side.setVisible(shown)
-        layout_settings.set(THEME_FORM_KEY, shown)
-        self._update_form_button()
-
-    def _update_form_button(self) -> None:
-        if self.theme_side is None:
-            return
-        self.form_button.setText("Hide form" if not self.theme_side.isHidden() else "Show form")
-        self.form_button.show()
 
     def run_lint(self) -> None:
         """Check the buffer now (a .bib is not LaTeX and is not checked)."""

@@ -16,6 +16,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from . import theme_colors, theme_fields
 from .theme_file import ThemeFile
@@ -24,6 +25,7 @@ from .theme_file import ThemeFile
 # when no template names one: the theme's pale yellow.
 FRAMEWORK_COLOURS = {"SMLightOrange": "#eb811b", "SMDeepYellowOrange": "#ffcc00", "": "#fffff0"}
 DERIVES = ("dark", "grey", "colorblind", "")
+PRESET_LABELS = {"dark": "dark", "grey": "grey", "colorblind": "colour-blind"}
 MODE_ID_RE = re.compile(r"[a-z][a-z0-9_]{0,23}")
 OWN_COLOUR_RE = re.compile(r"c_[a-z][a-z0-9_]{0,40}")
 
@@ -345,6 +347,78 @@ class ThemeModel:
             found.append(Check(label, mode, ratio, minimum))
         return found
 
+    # --- one mode at a time (the form's look, 2026-11-12) ---------------------------------------------------------------
+
+    def mode_label(self, mode: str) -> str:
+        return next((m.label for m in self.modes() if m.id == mode), mode or "Colours")
+
+    def set_count(self, mode: str) -> int:
+        """How many values the mode `mode` (not the base) sets itself: its \\SMSetColor and \\SMSetRole lines."""
+        return sum(1 for s in self.file.settings if s.mode == mode and s.editable and s.kind in ("role", "modecolour"))
+
+    def _derive(self, mode: str) -> str:
+        return next((m.derive for m in self.modes() if m.id == mode), "")
+
+    def _preset_changes_palette(self, derive: str, name: str) -> bool:
+        if derive == "grey":
+            return name in theme_colors._GREY_NAMES
+        if derive == "colorblind":
+            return name.startswith(("c_secondary_", "c_tertiary_")) and name.split("_")[-1] in theme_colors._COLORBLIND
+        return False
+
+    def provenance(self, kind: str, name: str, mode: str) -> tuple[str, str]:
+        """Where the value of a palette colour (`kind` "palette"), a role ("role") or an optional colour ("optional")
+        in `mode` comes from, and a tone for its tag: ("set here", "warning"), ("dark preset", "info"),
+        ("from Light", "muted"), ("framework default", "muted"), ("set", "neutral")."""
+        base = self.base
+        if mode == base:
+            if kind == "palette":
+                written = self.file.value(name)
+            elif kind == "optional":
+                written = self.file.value(name)
+            else:
+                written = self.role_written(name, mode)
+            return ("set in the theme", "neutral") if written is not None else ("framework default", "muted")
+        derive = self._derive(mode)
+        base_label = self.mode_label(base)
+        if kind == "palette":
+            if self.file.value(name, mode) is not None:
+                return "set here", "warning"
+            if self._preset_changes_palette(derive, name):
+                return f"{PRESET_LABELS.get(derive, derive)} preset", "info"
+            return f"from {base_label}", "muted"
+        if self.file.value("role:" + name, mode) is not None:
+            return "set here", "warning"
+        if derive == "dark" and name in self.preset_dark:
+            return "dark preset", "info"
+        return f"from {base_label}", "muted"
+
+    def strip(self, kind: str, name: str) -> list[tuple[str, str, Optional[str]]]:
+        """[(mode id, mode label, "#rrggbb" or None)] of a palette colour or a role in every mode, for the row's strip."""
+        found = []
+        for mode in self.modes():
+            if kind == "palette":
+                value = self.palette_hex(name, mode.id)
+            else:
+                value = self.resolve("role:" + name, mode.id)
+            found.append((mode.id, mode.label, value))
+        return found
+
+    def palette_matters(self, name: str) -> bool:
+        """Whether the palette colour is worth a row when the form shows only what matters: the theme sets it in some
+        mode, or it is one of its own colours, or it differs between modes."""
+        if name not in theme_fields.BY_NAME:
+            return True
+        if any(s.key == name and s.editable for s in self.file.settings):
+            return True
+        values = {value for _m, _l, value in self.strip("palette", name)}
+        return len(values) > 1
+
+    def role_set_counts(self, roles, mode: str) -> tuple[int, int]:
+        """(how many of `roles` the theme sets itself in `mode`, how many there are)."""
+        set_here = sum(1 for role in roles if self.provenance("role", role, mode)[0] in ("set here", "set in the theme"))
+        return set_here, len(roles)
+
     # --- identity, logo, footnotes ---------------------------------------------------------------------------------
 
     def name(self) -> str:
@@ -425,6 +499,14 @@ LAYOUT_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 _UNITS = "pt|bp|cm|mm|in|ex|em|pc|dd|cc|sp"
 LENGTH_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)\s*(" + _UNITS + r")$")
+UNITS = tuple(_UNITS.split("|"))
+_SPLIT_RE = re.compile(r"^\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*(" + _UNITS + r")\s*$")
+
+
+def split_length(value: str) -> tuple[str, str] | None:
+    """(number, unit) of a plain length ("0.45cm" -> ("0.45", "cm")), None for anything else (0.8\\paperheight)."""
+    found = _SPLIT_RE.match(value or "")
+    return (found.group(1), found.group(2)) if found else None
 RELATIVE_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)?\s*\\(paperheight|paperwidth|linewidth|textwidth|textheight)$")
 SIZE_PAIR_RE = re.compile(r"^\s*\\fontsize\s*\{\s*([\d.]+)\s*\}\s*\{\s*([\d.]+)\s*\}\s*\\selectfont\s*$")
 BULLETS: tuple[tuple[str, str], ...] = (

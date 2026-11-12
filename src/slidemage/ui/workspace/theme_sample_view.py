@@ -12,9 +12,9 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout
 
 from ... import compiler, theme_fields, theme_probe, theme_sample
 from ...theme_file import ThemeFile
@@ -57,6 +57,7 @@ class ThemeSampleView(Surface):
         self._again = False
         self._stale = True
         self._error = ""
+        self._external_mode = False
         # Where a colour is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
         self._read_usage = read_usage or theme_probe.usage_map
         self._usage: Optional[tuple[str, str, str]] = None
@@ -89,6 +90,11 @@ class ThemeSampleView(Surface):
         self.image.setMinimumHeight(120)
         self.image.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.image, 1)
+        # One small picture per page: a click shows it; a dot under the pages that use the focused colour.
+        self.thumbs = QHBoxLayout()
+        self.thumbs.setSpacing(SPACE.sm)
+        self._thumb_buttons: list[QToolButton] = []
+        layout.addLayout(self.thumbs)
         self.usage_label = caption("")
         self.usage_label.hide()
         layout.addWidget(self.usage_label)
@@ -288,7 +294,47 @@ class ThemeSampleView(Surface):
                 self.mode_combo.addItem(text, data)
             index = self.mode_combo.findData(keep)
             self.mode_combo.setCurrentIndex(max(index, 0))
-        self.mode_combo.setVisible(len(wanted) > 1)
+        self.mode_combo.setVisible(len(wanted) > 1 and not self._external_mode)
+
+    def follow_mode_bar(self) -> None:
+        """The theme tab's mode bar picks the mode (set_mode): the panel's own picker goes."""
+        self._external_mode = True
+        self.mode_combo.hide()
+
+    def set_mode(self, mode: str) -> None:
+        """Render in `mode` from now on (the mode bar's pick)."""
+        self._update_modes()
+        index = self.mode_combo.findData(mode)
+        if index >= 0 and index != self.mode_combo.currentIndex():
+            self.mode_combo.setCurrentIndex(index)
+            self._images = []
+            self.render_soon(0)
+
+    def _update_thumbs(self) -> None:
+        count = len(self._images)
+        while len(self._thumb_buttons) < count:
+            button = QToolButton()
+            button.setAutoRaise(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            number = len(self._thumb_buttons) + 1
+            button.clicked.connect(lambda _=False, n=number: self.show_page(n))
+            self.thumbs.addWidget(button)
+            self._thumb_buttons.append(button)
+        usage = self._map()
+        used = set(usage.pages_using(self._usage[1])) if usage is not None and self._usage is not None else set()
+        names = dict(theme_sample.PAGES)
+        for number, button in enumerate(self._thumb_buttons, start=1):
+            if number > count:
+                button.hide()
+                continue
+            image = self._images[number - 1]
+            button.setIcon(QPixmap.fromImage(image.scaledToWidth(84, Qt.TransformationMode.SmoothTransformation)))
+            button.setIconSize(QSize(84, 48))
+            button.setText(f"{number} \u25cf" if number in used else str(number))
+            button.setToolTip(names.get(number, "") + (" · uses the focused colour" if number in used else ""))
+            button.setDown(number == self._page)
+            button.show()
 
     def show_page(self, page: int) -> None:
         if self._images:
@@ -313,6 +359,7 @@ class ThemeSampleView(Surface):
         usage_text = self._usage_text()
         self.usage_label.setText(usage_text)
         self.usage_label.setVisible(bool(usage_text))
+        self._update_thumbs()
         self._show_image()
 
     def _show_image(self) -> None:

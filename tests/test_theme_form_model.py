@@ -188,3 +188,20 @@ def test_the_shipped_templates_code_panels_read_in_every_mode(template):
         for check in theme.checks(mode.id):
             if check.label.startswith("Code"):
                 assert check.ok, (template, mode.id, check)
+
+
+def test_where_a_value_comes_from_in_each_mode(shipped):
+    shipped.add_mode("cb", "colorblind", "Colour-blind")
+    assert shipped.set_count("dark") == 5 and shipped.set_count("cb") == 0
+    assert shipped.provenance("palette", "c_primary_highlight", "light") == ("framework default", "muted")
+    assert shipped.provenance("palette", "c_primary_highlight", "dark") == ("set here", "warning")
+    assert shipped.provenance("palette", "c_primary_highlight", "cb") == ("from Light", "muted")
+    assert shipped.provenance("palette", "c_secondary_blue", "cb") == ("colour-blind preset", "info")
+    assert shipped.provenance("role", "canvas", "dark") == ("dark preset", "info")
+    assert shipped.provenance("role", "alert", "dark") == ("set here", "warning")
+    assert shipped.provenance("optional", "SMCodeCommentColor", "light") == ("set in the theme", "neutral")
+    strip = shipped.strip("palette", "c_secondary_blue")
+    assert [mode for mode, _label, _value in strip] == ["light", "dark", "cb"]
+    assert strip[0][2] == strip[1][2] != strip[2][2] == "#0072b2"
+    assert shipped.palette_matters("c_primary_highlight") and not shipped.palette_matters("c_primary_dark")
+    assert shipped.role_set_counts(("alert", "bullet"), "dark") == (1, 2)

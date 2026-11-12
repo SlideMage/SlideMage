@@ -162,6 +162,7 @@ def test_the_form_tells_which_colour_has_the_focus(qapp):
     form.on_usage = lambda *usage: told.append(usage)
     form.on_usage_cleared = lambda: told.append(None)
     palette = next(c for c in form._cells if c.usage == ("palette", "c_primary_highlight", "light"))
+    form.set_mode("dark")
     role = next(c for c in form._cells if c.usage == ("role", "title_fill", "dark"))
     form.focus_usage(palette.usage)
     form.hover_usage(role.usage)                  # the mouse over another cell wins while it is there
@@ -169,5 +170,8 @@ def test_the_form_tells_which_colour_has_the_focus(qapp):
     form.blur_usage(palette.usage)
     assert told == [("palette", "c_primary_highlight", "light"), ("role", "title_fill", "dark"),
                     ("palette", "c_primary_highlight", "light"), None]
+    form._toggle_group("Code panels")
     code = [c.usage for c in form._cells if c.usage and c.usage[1] == "code_keyword"]
-    assert code == [("role", "code_keyword", "light"), ("role", "code_keyword", "dark")]
+    form.set_mode("light")
+    code += [c.usage for c in form._cells if c.usage and c.usage[1] == "code_keyword"]
+    assert code == [("role", "code_keyword", "dark"), ("role", "code_keyword", "light")]

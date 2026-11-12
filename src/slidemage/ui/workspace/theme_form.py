@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-r"""The theme form beside a theme's source (docs/plans/theme-editor.md, stage C1b): identity and colour modes, the
-palette with the theme's own colours, the colour roles, code colours, logo, footnote markers and the contrast checks,
-one column per colour mode.
+r"""The theme form (docs/plans/theme-editor.md, stages C1 and C2; its look: the mockup of 2026-11-12): five tabs
+(Identity, Colours, Layout, Logo & notes, Advanced) for one colour mode at a time, the mode picked in the theme tab's
+mode bar (theme_workspace). A colour row says where its value comes from in that mode (set here, a preset, the base
+mode, the framework) and ends in a strip of small swatches, one per mode.
 
 Form and source are two views of one buffer: an edit here goes into the editor as one undo step
 (LatexPlainTextEdit.patch_text, through theme_form_model / theme_file, which change one line), so autosave, the conflict
@@ -16,15 +17,16 @@ from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QScrollArea, QVBoxLayout, QWidget,
+    QLineEdit, QMessageBox, QScrollArea, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
 
 from ... import slide_templates, theme_fields
-from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, ROLE_SECTIONS,
-                                 ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
-                                 parse_size_pair)
+from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
+                                 ROLE_SECTIONS,
+                                 UNITS, ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
+                                 parse_size_pair, split_length)
 from ..kit.tokens import SPACE
-from ..kit.widgets import Badge, Button, Card, ColorSwatchButton, Surface, caption, text_label
+from ..kit.widgets import Badge, Button, Card, Chip, ColorSwatchButton, Surface, caption, text_label
 
 REFRESH_DELAY_MS = 400      # after the last keystroke in the source
 
@@ -61,16 +63,20 @@ class _Swatch(ColorSwatchButton):
 
 
 class _Cell(Surface):
-    """One value in one mode: a swatch with what it comes to, and the field with what the theme writes (empty: it
-    follows, and the field's grey text says what)."""
+    """One colour value in the picked mode: a swatch with what it comes to, the field with what the theme writes (empty:
+    it follows, and the field's grey text says what), a tag saying where the value comes from, Reset when the mode sets
+    it itself, and a strip of small swatches, one per mode, so differences between the modes show at a glance."""
 
     def __init__(self, form: "ThemeForm", read: Callable[[], tuple[Optional[str], str, Optional[str]]],
                  write: Callable[[Optional[str]], None], *, choices: list[str] | None = None,
                  picker: bool = True, enabled: bool = True,
-                 usage: Optional[tuple[str, str, str]] = None) -> None:
+                 usage: Optional[tuple[str, str, str]] = None,
+                 source: Optional[tuple[str, str]] = None, strip_role: str = "") -> None:
         super().__init__()
         self.form, self.read, self.write = form, read, write
         self.usage = usage          # (kind, name, mode): what the sample slides light up while this cell is in focus
+        self.source = source        # (kind, name) for the provenance tag: "palette", "role" or "optional"
+        self.strip_role = strip_role
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(SPACE.xs)
@@ -82,19 +88,34 @@ class _Cell(Surface):
             self.combo = QComboBox()
             self.combo.setEditable(True)
             self.combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-            self.combo.setMinimumContentsLength(6)
+            self.combo.setMinimumContentsLength(10)
             self.combo.addItems([""] + choices)
             self.combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             self.edit = self.combo.lineEdit()
             self.combo.activated.connect(lambda _i: self._commit())
-            row.addWidget(self.combo, 1)
+            self.combo.setMaximumWidth(200)
+            row.addWidget(self.combo)
             self.combo.setEnabled(enabled)
         else:
             self.combo = None
             self.edit = QLineEdit()
-            row.addWidget(self.edit, 1)
+            self.edit.setMinimumWidth(90)
+            self.edit.setMaximumWidth(130)
+            row.addWidget(self.edit)
             self.edit.setEnabled(enabled)
         self.edit.editingFinished.connect(self._commit)
+        self.tag = Chip("", "muted")
+        row.addWidget(self.tag)
+        self.reset = Button("Reset", "ghost", compact=True)
+        self.reset.setToolTip("Take this mode's own value out: it follows again")
+        self.reset.clicked.connect(lambda: self.form.apply(lambda: self.write(None)))
+        self.reset.setEnabled(enabled)
+        row.addWidget(self.reset)
+        self.strip = QHBoxLayout()
+        self.strip.setSpacing(3)
+        self._dots: list[QLabel] = []
+        row.addLayout(self.strip)
+        row.addStretch(1)
         if usage is not None:
             self.edit.installEventFilter(self)
             if self.combo is not None:
@@ -125,6 +146,39 @@ class _Cell(Surface):
             self.edit.setText(written or "")
         self.edit.setPlaceholderText(follows)
         self.edit.setToolTip(f"Follows: {follows}" if not written else f"Written in the theme: {written}")
+        model = self.form.model
+        mode = self.usage[2] if self.usage else ""
+        if self.source is None or model is None:
+            self.tag.hide()
+            self.reset.hide()
+            return
+        kind, name = self.source
+        text, tone = model.provenance(kind, name, mode)
+        self.tag.set_text(text)
+        self.tag.set_tone(tone)
+        self.tag.setVisible(bool(mode) or kind != "palette" or written is not None)
+        self.reset.setVisible(written is not None and text in ("set here", "set in the theme"))
+        strip_kind, strip_name = ("role", self.strip_role) if self.strip_role else (kind, name)
+        if strip_kind == "optional":
+            values = []
+        else:
+            values = model.strip(strip_kind, strip_name)
+        if len(values) < 2:
+            values = []
+        while len(self._dots) < len(values):
+            dot = QLabel()
+            dot.setFixedSize(16, 16)
+            self.strip.addWidget(dot)
+            self._dots.append(dot)
+        for index, dot in enumerate(self._dots):
+            if index >= len(values):
+                dot.hide()
+                continue
+            mode_id, label, value = values[index]
+            ring = "2px solid palette(highlight)" if mode_id == mode else "1px solid rgba(128,128,128,0.6)"
+            dot.setStyleSheet(f"background: {value or 'transparent'}; border: {ring}; border-radius: 4px;")
+            dot.setToolTip(f"{label}: {value or 'no colour of its own'}")
+            dot.show()
 
     def _commit(self) -> None:
         text = self.edit.text().strip()
@@ -140,30 +194,53 @@ class _Cell(Surface):
             self.form.apply(lambda: self.write(chosen.name()))
 
 
-class ThemeForm(QScrollArea):
-    """The form of one theme file, editing `editor`'s buffer. `root` is the project; `setup_path` the framework's
-    SlideMage_setup.tex (its catalog gives defaults and the roles)."""
+class ThemeForm(QWidget):
+    """The form of one theme file, editing `editor`'s buffer, one colour mode at a time (`mode`, picked in the theme
+    tab's mode bar: theme_workspace). `root` is the project; `setup_path` the framework's SlideMage_setup.tex (its
+    catalog gives defaults and the roles). Five tabs: Identity, Colours, Layout, Logo & notes, Advanced."""
+
+    TABS = ("Identity", "Colours", "Layout", "Logo & notes", "Advanced")
 
     def __init__(self, editor, path: Path, root: Path, setup_path: Optional[Path]) -> None:
         super().__init__()
         self.editor = editor
         self.path = path
         self.root = root
-        self.setWidgetResizable(True)
-        self.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.setMinimumWidth(320)
+        self.setMinimumWidth(360)
         setup_text = setup_path.read_text(encoding="utf-8") if setup_path and setup_path.is_file() else ""
         self.model = ThemeModel(editor.text(), root, theme_key(path), setup_text) if setup_text else None
+        self.mode = self.model.base if self.model is not None else ""
         self._cells: list[_Cell] = []
         self._refreshers: list[Callable[[], None]] = []
+        self.layout_fields: dict[str, QWidget] = {}
         self._shape: tuple = ()
         self._pushing = False
+        self._tab = 1                                   # Colours: what most edits are about
+        self._show_all_palette = False
+        self._show_checks = False
+        self._open_groups: set[str] = {"Title bar and footer"}
+        # Told when the modes (or the picked one) change, so the mode bar and the sample slides follow (theme_workspace).
+        self.on_structure: Optional[Callable[[], None]] = None
         # The sample slides' "where is this colour used" (theme_sample_view.ThemeSampleView.show_usage / clear_usage):
         # set by the source tab; the focused cell's colour, overridden while the mouse is over another cell.
         self.on_usage: Optional[Callable[[str, str, str], None]] = None
         self.on_usage_cleared: Optional[Callable[[], None]] = None
         self._focused_usage: Optional[tuple[str, str, str]] = None
         self._hovered_usage: Optional[tuple[str, str, str]] = None
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.tab_bar = QTabBar()
+        self.tab_bar.setExpanding(False)
+        self.tab_bar.setDrawBase(False)
+        for name in self.TABS:
+            self.tab_bar.addTab(name.replace("&", "&&"))     # "&" alone would be a shortcut mark
+        self.tab_bar.currentChanged.connect(self._on_tab)
+        outer.addWidget(self.tab_bar)
+        self.pages = QStackedWidget()
+        outer.addWidget(self.pages, 1)
+
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(REFRESH_DELAY_MS)
@@ -207,12 +284,29 @@ class ThemeForm(QScrollArea):
             self.refresh()
 
     def _structure(self) -> tuple:
-        """What the form's rows and columns depend on: rebuilt when it changes, else only the values are."""
+        """What the form's rows depend on: rebuilt when it changes, else only the values are."""
         if self.model is None:
             return ()
-        return (self.model.readable, tuple((m.id, m.label, m.derive) for m in self.model.modes()),
-                tuple(self.model.file.own_colours()), len(self.model.file.beyond()), self.model.footnote_style(),
-                self.editor.is_read_only())
+        modes = tuple((m.id, m.label, m.derive) for m in self.model.modes())
+        if self.mode not in [m[0] for m in modes]:
+            self.mode = modes[0][0]
+        palette = tuple(n for n in self.model.palette_names() if self._show_all_palette or self.model.palette_matters(n))
+        return (self.model.readable, modes, self.mode, palette, len(self.model.file.beyond()),
+                self.model.footnote_style(), self.editor.is_read_only(), self._show_all_palette, self._show_checks,
+                tuple(sorted(self._open_groups)))
+
+    def set_mode(self, mode: str) -> None:
+        """Show the colour mode `mode` (the mode bar's pick)."""
+        if mode != self.mode:
+            self.mode = mode
+            self.rebuild()
+
+    def show_tab(self, name: str) -> None:
+        self.tab_bar.setCurrentIndex(self.TABS.index(name))
+
+    def _on_tab(self, index: int) -> None:
+        self._tab = index
+        self.pages.setCurrentIndex(index)
 
     def focus_usage(self, usage: tuple[str, str, str]) -> None:
         self._focused_usage = usage
@@ -243,36 +337,58 @@ class ThemeForm(QScrollArea):
     # --- building ----------------------------------------------------------------------------------------------------
 
     def rebuild(self) -> None:
-        scroll = self.verticalScrollBar().value()
+        scrolls = [self.pages.widget(i).verticalScrollBar().value() for i in range(self.pages.count())]
+        while self.pages.count():
+            page = self.pages.widget(0)
+            self.pages.removeWidget(page)
+            page.deleteLater()
         self._cells, self._refreshers = [], []
-        self.layout_fields: dict[str, QWidget] = {}     # the layout settings' widgets by key (C2a)
-        body = Surface()
-        column = QVBoxLayout(body)
-        column.setContentsMargins(SPACE.lg, SPACE.lg, SPACE.lg, SPACE.lg)
-        column.setSpacing(SPACE.lg)
+        self.layout_fields = {}
         self._shape = self._structure()
-        if self.model is None:
-            column.addWidget(caption("The framework's SlideMage_setup.tex was not found, so the form has no catalog "
-                                     "to show. Edit the theme in the source."))
-        elif not self.model.readable:
-            column.addWidget(caption("This file does not \\input SlideMage_setup and then SlideMage_base, so it is no "
-                                     "theme the form can read. Edit it in the source."))
-        else:
-            column.addWidget(self._intro())
-            column.addWidget(self._identity())
-            column.addWidget(self._checks())
-            column.addWidget(self._palette())
-            for title, roles in ROLE_SECTIONS:
-                column.addWidget(self._roles(title, roles))
-            column.addWidget(self._code())
-            column.addWidget(self._logo())
-            column.addWidget(self._footnotes())
-            for title, note, keys in LAYOUT_SECTIONS:
-                column.addWidget(self._layout_card(title, note, keys))
-        column.addStretch(1)
-        body.setEnabled(not self.editor.is_read_only())
-        self.setWidget(body)
-        QTimer.singleShot(0, self, lambda: self.verticalScrollBar().setValue(scroll))    # dies with the form
+        readable = self.model is not None and self.model.readable
+        for index, name in enumerate(self.TABS):
+            body = Surface()
+            column = QVBoxLayout(body)
+            column.setContentsMargins(SPACE.lg, SPACE.lg, SPACE.lg, SPACE.lg)
+            column.setSpacing(SPACE.lg)
+            if self.model is None:
+                column.addWidget(caption("The framework's SlideMage_setup.tex was not found, so the form has no "
+                                         "catalog to show. Edit the theme in the source."))
+            elif not readable:
+                column.addWidget(caption("This file does not \\input SlideMage_setup and then SlideMage_base, so it "
+                                         "is no theme the form can read. Edit it in the source."))
+            else:
+                for widget in self._page(name):
+                    column.addWidget(widget)
+            column.addStretch(1)
+            body.setEnabled(not self.editor.is_read_only())
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setWidget(body)
+            self.pages.addWidget(scroll)
+            if index < len(scrolls):
+                QTimer.singleShot(0, scroll, lambda s=scroll, v=scrolls[index]: s.verticalScrollBar().setValue(v))
+        self.tab_bar.setCurrentIndex(self._tab)
+        self.pages.setCurrentIndex(self._tab)
+        if self.on_structure is not None:
+            self.on_structure()
+
+    def _page(self, name: str) -> list[QWidget]:
+        if name == "Identity":
+            return [self._intro(), self._identity()]
+        if name == "Colours":
+            widgets = [self._mode_heading(), self._checks(), self._palette()]
+            widgets += [self._roles(title, roles) for title, roles in ROLE_SECTIONS]
+            return widgets + [self._code()]
+        if name == "Layout":
+            return [self._layout_card(title, note, keys) for title, note, keys in LAYOUT_SECTIONS]
+        if name == "Logo & notes":
+            return [self._logo(), self._footnotes()]
+        return [caption("Frame types, fine list spacing, drawing helpers and the optional features (mini frames, "
+                        "progress bar, divider frames, watermark) come here in a later step (C3). Until then they are "
+                        "edited in the source: switch to Split or Source above.")]
 
     def _card(self, title: str, note: str = "") -> tuple[Card, QVBoxLayout]:
         card = Card()
@@ -286,9 +402,8 @@ class ThemeForm(QScrollArea):
         box = Surface()
         layout = QVBoxLayout(box)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(text_label("Theme form", "title"))
         beyond = self.model.file.beyond()
-        note = ("Each change goes into the source beside it, one line at a time, and is saved like typing. "
+        note = ("Each change is one line of the theme's source, saved like typing; Ctrl+Z in the source takes it back. "
                 "An empty field follows: its grey text says what it takes.")
         if beyond:
             note += (f" {len(beyond)} line{'s' if len(beyond) != 1 else ''} of the theme "
@@ -300,22 +415,6 @@ class ThemeForm(QScrollArea):
             show.clicked.connect(lambda: self.editor.go_to_line(beyond[0] + 1))
             layout.addWidget(show, 0, Qt.AlignmentFlag.AlignLeft)
         return box
-
-    def _mode_grid(self, layout: QVBoxLayout) -> QGridLayout:
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(SPACE.md)
-        grid.setVerticalSpacing(SPACE.xs)
-        modes = self.model.modes()
-        if len(modes) > 1 or modes[0].id:
-            for column, mode in enumerate(modes, start=1):
-                head = text_label(mode.label, "secondary")
-                head.setToolTip(f"Mode {mode.id}" + (" (the base: the colours the theme sets directly)" if column == 1
-                                                     else f", derived from the {mode.derive} preset" if mode.derive else ""))
-                grid.addWidget(head, 0, column)
-        for column in range(1, len(modes) + 1):
-            grid.setColumnStretch(column, 1)
-        layout.addLayout(grid)
-        return grid
 
     def _identity(self) -> QWidget:
         card, layout = self._card("Name and colour modes")
@@ -332,8 +431,9 @@ class ThemeForm(QScrollArea):
         if modes[0].id:
             for index, mode in enumerate(modes):
                 line = QHBoxLayout()
-                what = "the base mode" if index == 0 else (f"from the {mode.derive} preset" if mode.derive
-                                                           else "no preset")
+                what = "the base mode" if index == 0 else (
+                    f"starts from the {PRESET_LABELS.get(mode.derive, mode.derive)} preset" if mode.derive
+                    else "starts from the base mode")
                 line.addWidget(text_label(f"{mode.label}  ·  {mode.id}, {what}"), 1)
                 if index:
                     remove = Button("Remove", "ghost", compact=True)
@@ -343,35 +443,41 @@ class ThemeForm(QScrollArea):
                 layout.addLayout(line)
         else:
             layout.addWidget(caption("The theme has no colour modes: one set of colours. Add one to give decks a dark "
-                                     "(or another) version of it."))
+                                     "(or a grey, colour-blind, projector...) version of it."))
         mismatch = self.model.header_mismatch()
         if mismatch:
             layout.addWidget(caption(mismatch, "error"))
         add = Button("Add a colour mode…", "secondary", compact=True)
-        add.clicked.connect(self._add_mode)
+        add.clicked.connect(self.add_mode)
         layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
         return card
 
-    def _add_mode(self) -> None:
+    def add_mode(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Add a colour mode")
         form = QFormLayout(dialog)
-        mode_id = QLineEdit("dark" if "dark" not in [m.id for m in self.model.modes()] else "")
+        taken = [m.id for m in self.model.modes()]
+        mode_id = QLineEdit("dark" if "dark" not in taken else "")
         label = QLineEdit("Dark slides" if mode_id.text() else "")
         derive = QComboBox()
-        names = {"dark": "Dark: derived from the palette", "grey": "Grey: every colour in grey",
-                 "colorblind": "Colour-blind safe accents", "": "None: only what you set"}
+        names = {"dark": "The dark preset: derived from the palette", "grey": "The grey preset: every colour in grey",
+                 "colorblind": "The colour-blind preset: Okabe–Ito accents", "": "Nothing: the base mode's colours"}
         for value in DERIVES:
             derive.addItem(names[value], value)
         form.addRow("Name (id)", mode_id)
-        form.addRow("Label in SlideMage", label)
+        form.addRow("Shown in SlideMage as", label)
         form.addRow("Start from", derive)
+        form.addRow(caption("A mode changes colours only (and the logo); fonts, margins and bullets stay the theme's. "
+                            "Name it for what it is for: projector, print, high contrast..."))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.apply(lambda: self.model.add_mode(mode_id.text().strip(), derive.currentData(), label.text()))
+            new = mode_id.text().strip()
+            self.apply(lambda: self.model.add_mode(new, derive.currentData(), label.text()))
+            if new in [m.id for m in self.model.modes()]:
+                self.set_mode(new)
 
     def _remove_mode(self, mode_id: str) -> None:
         answer = QMessageBox.question(self, "Remove a colour mode",
@@ -380,57 +486,133 @@ class ThemeForm(QScrollArea):
         if answer == QMessageBox.StandardButton.Yes:
             self.apply(lambda: self.model.remove_mode(mode_id))
 
+    def _mode_heading(self) -> QWidget:
+        """Which mode the Colours tab shows, and what it starts from."""
+        mode = next((m for m in self.model.modes() if m.id == self.mode), self.model.modes()[0])
+        if not mode.id:
+            text = "The theme's colours (it has no colour modes; add one under Identity)."
+        elif mode.id == self.model.base:
+            text = f"{mode.label}: the base mode. Every other mode starts from these colours."
+        else:
+            start = (f"the {PRESET_LABELS.get(mode.derive, mode.derive)} preset" if mode.derive else "the base mode")
+            text = (f"{mode.label}: starts from {start}; {self.model.set_count(mode.id)} value"
+                    f"{'s' if self.model.set_count(mode.id) != 1 else ''} set here. An empty field follows.")
+        return caption(text)
+
     def _checks(self) -> QWidget:
-        card, layout = self._card("Contrast", "WCAG contrast of what the catalog asks to stay readable: 4.5:1 for "
-                                              "text, 3:1 for the link underline.")
-        grid = self._mode_grid(layout)
-        modes = self.model.modes()
-        badges: list[list[Badge]] = []
-        for row, check in enumerate(self.model.checks(modes[0].id), start=1):
-            grid.addWidget(text_label(check.label, "body"), row, 0)
-            badges.append([])
-            for column in range(1, len(modes) + 1):
+        """The contrast checks of the picked mode as one line, the details on request, and the other modes' count."""
+        box = Surface()
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE.sm)
+        line = QHBoxLayout()
+        chip = Chip("", "ok", elide=True)
+        line.addWidget(chip, 1)
+        toggle = Button("", "ghost", compact=True)
+        toggle.clicked.connect(lambda: self._toggle_checks())
+        line.addWidget(toggle)
+        others = Button("", "ghost", compact=True)
+        line.addWidget(others)
+        layout.addLayout(line)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE.md)
+        grid.setVerticalSpacing(SPACE.xs)
+        badges: list[Badge] = []
+        if self._show_checks:
+            for row, check in enumerate(self.model.checks(self.mode)):
+                grid.addWidget(text_label(check.label, "body"), row, 0)
                 badge = Badge("")
-                grid.addWidget(badge, row, column, Qt.AlignmentFlag.AlignLeft)
-                badges[-1].append(badge)
+                grid.addWidget(badge, row, 1, Qt.AlignmentFlag.AlignLeft)
+                badges.append(badge)
+        layout.addLayout(grid)
+        self._other_mode_target: Optional[str] = None
+        others.clicked.connect(lambda: self._other_mode_target and self._pick_mode(self._other_mode_target))
 
         def refresh() -> None:
-            for column, mode in enumerate(self.model.modes()):
-                for row, check in enumerate(self.model.checks(mode.id)):
-                    if row >= len(badges) or column >= len(badges[row]):
-                        continue
-                    badge = badges[row][column]
-                    if check.ratio is None:
-                        badge.set_text("?")
-                        badge.set_tone("neutral")
-                        badge.setToolTip("A colour of this pair could not be worked out.")
-                    else:
-                        badge.set_text(f"{check.ratio:.1f}:1" + ("" if check.ok else f" < {check.minimum:g}"))
-                        badge.set_tone("neutral" if check.ok else "error")
-                        badge.setToolTip(f"{check.label}: {check.ratio:.2f}:1, at least {check.minimum:g}:1 asked")
+            checks = self.model.checks(self.mode)
+            failing = [c for c in checks if not c.ok]
+            label = self.model.mode_label(self.mode)
+            if failing:
+                first = failing[0]
+                chip.set_text(f"Contrast in {label}: {len(failing)} below the minimum. {first.label}: "
+                              f"{first.ratio:.1f}:1, {first.minimum:g}:1 asked.")
+                chip.set_tone("error")
+                chip.setToolTip("\n".join(f"{c.label}: {c.ratio:.1f}:1, {c.minimum:g}:1 asked"
+                                          for c in failing if c.ratio))
+            else:
+                chip.set_text(f"Contrast in {label}: all {len(checks)} checks pass.")
+                chip.set_tone("ok")
+            toggle.setText("Hide the checks" if self._show_checks else f"Show all {len(checks)}")
+            other_failing = [(m.id, sum(1 for c in self.model.checks(m.id) if not c.ok))
+                             for m in self.model.modes() if m.id != self.mode]
+            other_failing = [(m, n) for m, n in other_failing if n]
+            others.setVisible(bool(other_failing))
+            if other_failing:
+                total = sum(n for _m, n in other_failing)
+                self._other_mode_target = other_failing[0][0]
+                others.setText(f"Other modes: {total} below")
+                others.setToolTip("Show " + ", ".join(f"{self.model.mode_label(m)} ({n})" for m, n in other_failing))
+            for badge, check in zip(badges, checks):
+                if check.ratio is None:
+                    badge.set_text("?")
+                    badge.set_tone("neutral")
+                else:
+                    badge.set_text(f"{check.ratio:.1f}:1" + ("" if check.ok else f" < {check.minimum:g}"))
+                    badge.set_tone("neutral" if check.ok else "error")
+                    badge.setToolTip(f"{check.label}: {check.ratio:.2f}:1, at least {check.minimum:g}:1 asked")
         refresh()
         self._refreshers.append(refresh)
-        return card
+        return box
+
+    def _toggle_checks(self) -> None:
+        self._show_checks = not self._show_checks
+        self.rebuild()
+
+    def _pick_mode(self, mode: str) -> None:
+        """Switch the picked mode (a link in the form); the mode bar follows through on_structure."""
+        self.set_mode(mode)
+
+    def _row_grid(self, layout: QVBoxLayout) -> QGridLayout:
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE.md)
+        grid.setVerticalSpacing(SPACE.xs)
+        grid.setColumnStretch(1, 1)
+        layout.addLayout(grid)
+        return grid
 
     def _palette(self) -> QWidget:
-        card, layout = self._card("Palette", "The theme's colours (\\definecolor). In another mode an empty field "
-                                             "keeps the base colour, or what the mode's preset makes of it.")
-        grid = self._mode_grid(layout)
-        modes = self.model.modes()
-        for row, name in enumerate(self.model.palette_names(), start=1):
+        names = self.model.palette_names()
+        shown = [n for n in names if self._show_all_palette or self.model.palette_matters(n)]
+        card, layout = self._card("Palette", "The theme's colours. Shown: what the theme sets or what differs between "
+                                             "modes; the swatches at the right are the colour in every mode.")
+        grid = self._row_grid(layout)
+        for row, name in enumerate(shown):
             label = text_label(_label(name), "body")
             label.setToolTip(name)
             grid.addWidget(label, row, 0)
-            for column, mode in enumerate(modes, start=1):
-                cell = _Cell(self, read=lambda n=name, m=mode.id: self._palette_read(n, m),
-                             write=lambda value, n=name, m=mode.id: self.model.set_palette(n, m, value),
-                             usage=("palette", name, mode.id))
-                self._cells.append(cell)
-                grid.addWidget(cell, row, column)
+            cell = _Cell(self, read=lambda n=name, m=self.mode: self._palette_read(n, m),
+                         write=lambda value, n=name, m=self.mode: self.model.set_palette(n, m, value),
+                         usage=("palette", name, self.mode), source=("palette", name))
+            self._cells.append(cell)
+            grid.addWidget(cell, row, 1)
+        if not shown:
+            layout.addWidget(caption("The theme sets no palette colour and none differs between its modes: it uses "
+                                     "the framework's palette."))
+        buttons = QHBoxLayout()
+        more = Button("Show only what matters" if self._show_all_palette else f"Show all {len(names)}", "ghost",
+                      compact=True)
+        more.clicked.connect(self._toggle_palette)
+        buttons.addWidget(more)
         add = Button("Add a colour of the theme's own…", "ghost", compact=True)
         add.clicked.connect(self._add_own_colour)
-        layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
+        buttons.addWidget(add)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
         return card
+
+    def _toggle_palette(self) -> None:
+        self._show_all_palette = not self._show_all_palette
+        self.rebuild()
 
     def _palette_read(self, name: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:
         written = self.model.palette_written(name, mode)
@@ -457,45 +639,71 @@ class ThemeForm(QScrollArea):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.apply(lambda: self.model.add_own_colour(name.text().strip(), value.text().strip()))
 
+    def _group(self, title: str, summary: str) -> tuple[QWidget, Optional[QVBoxLayout]]:
+        """A folding group: its header (a button with the title and `summary`) and, when open, its body's layout."""
+        box = Surface()
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACE.sm)
+        is_open = title in self._open_groups
+        header = Button(f"{'▾' if is_open else '▸'}  {title}    ·  {summary}", "secondary")
+        header.setStyleSheet("text-align: left;")
+        header.clicked.connect(lambda: self._toggle_group(title))
+        column.addWidget(header)
+        if not is_open:
+            return box, None
+        card = Card()
+        column.addWidget(card)
+        return box, card.layout()
+
+    def _toggle_group(self, title: str) -> None:
+        self._open_groups ^= {title}
+        self.rebuild()
+
     def _roles(self, title: str, roles: tuple[str, ...]) -> QWidget:
-        card, layout = self._card(title)
-        grid = self._mode_grid(layout)
-        for row, role in enumerate(roles, start=1):
+        set_here, total = self.model.role_set_counts(roles, self.mode)
+        summary = f"{total} roles · " + (f"{set_here} set" if set_here else "all follow")
+        box, layout = self._group(title, summary)
+        if layout is None:
+            return box
+        grid = self._row_grid(layout)
+        for row, role in enumerate(roles):
             label = text_label(_label("role:" + role), "body")
             label.setToolTip(f"role {role}" + (f" (\\{self.model.hook(role)})" if self.model.hook(role) else ""))
             grid.addWidget(label, row, 0)
-            for column, mode in enumerate(self.model.modes(), start=1):
-                cell = _Cell(self, read=lambda r=role, m=mode.id: self._role_read(r, m),
-                             write=lambda value, r=role, m=mode.id: self.model.set_role(r, m, value),
-                             choices=self.model.colour_names(), picker=False,
-                             enabled=self.model.role_editable(role, mode.id), usage=("role", role, mode.id))
-                self._cells.append(cell)
-                grid.addWidget(cell, row, column)
-        return card
+            cell = _Cell(self, read=lambda r=role, m=self.mode: self._role_read(r, m),
+                         write=lambda value, r=role, m=self.mode: self.model.set_role(r, m, value),
+                         choices=self.model.colour_names(), picker=False,
+                         enabled=self.model.role_editable(role, self.mode), usage=("role", role, self.mode),
+                         source=("role", role))
+            self._cells.append(cell)
+            grid.addWidget(cell, row, 1)
+        return box
 
     def _role_read(self, role: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:
         return (self.model.role_written(role, mode), self.model.role_follows(role, mode),
                 self.model.resolve("role:" + role, mode))
 
     def _code(self) -> QWidget:
-        card, layout = self._card("Code panels", "The colours of \\SMCodeFile. The base column is the theme's colour; "
-                                                 "another mode's sets the code role of that mode.")
-        grid = self._mode_grid(layout)
-        modes = self.model.modes()
-        for row, (name, role) in enumerate(CODE_COLOURS, start=1):
+        box, layout = self._group("Code panels", "4 colours of \\SMCodeFile")
+        if layout is None:
+            return box
+        grid = self._row_grid(layout)
+        base = self.mode == self.model.base
+        for row, (name, role) in enumerate(CODE_COLOURS):
             grid.addWidget(text_label(_label(name), "body"), row, 0)
-            for column, mode in enumerate(modes, start=1):
-                if column == 1:
-                    cell = _Cell(self, read=lambda n=name, m=mode.id: self._optional_read(n, m),
-                                 write=lambda value, n=name: self.model.set_value(n, value),
-                                 usage=("role", role, mode.id))
-                else:
-                    cell = _Cell(self, read=lambda r=role, m=mode.id: self._role_read(r, m),
-                                 write=lambda value, r=role, m=mode.id: self.model.set_role(r, m, value),
-                                 choices=self.model.colour_names(), picker=False, usage=("role", role, mode.id))
-                self._cells.append(cell)
-                grid.addWidget(cell, row, column)
-        return card
+            if base:
+                cell = _Cell(self, read=lambda n=name, m=self.mode: self._optional_read(n, m),
+                             write=lambda value, n=name: self.model.set_value(n, value),
+                             usage=("role", role, self.mode), source=("optional", name), strip_role=role)
+            else:
+                cell = _Cell(self, read=lambda r=role, m=self.mode: self._role_read(r, m),
+                             write=lambda value, r=role, m=self.mode: self.model.set_role(r, m, value),
+                             choices=self.model.colour_names(), picker=False, usage=("role", role, self.mode),
+                             source=("role", role))
+            self._cells.append(cell)
+            grid.addWidget(cell, row, 1)
+        return box
 
     def _optional_read(self, name: str, mode: str) -> tuple[Optional[str], str, Optional[str]]:
         return self.model.value(name), f"framework: {self.model.default(name)}", self.model.resolve(name, mode)
@@ -596,6 +804,8 @@ class ThemeForm(QScrollArea):
         return self._text_field(key, default, length=field.kind == "length")
 
     def _text_field(self, key: str, default: str, *, length: bool) -> tuple[QWidget, Callable[[], None]]:
+        if length:
+            return self._length_field(key, default)
         box = Surface()
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
@@ -623,6 +833,68 @@ class ThemeForm(QScrollArea):
         def refresh() -> None:
             if not edit.hasFocus():
                 edit.setText(self.model.value(key) or "")
+        refresh()
+        return box, refresh
+
+    def _length_field(self, key: str, default: str) -> tuple[QWidget, Callable[[], None]]:
+        """A number and a unit (the mockup's look); a length of another form (0.8\\paperheight) shows as raw TeX."""
+        box = Surface()
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        row = QHBoxLayout()
+        row.setSpacing(SPACE.xs)
+        number = QLineEdit()
+        number.setMaximumWidth(110)
+        unit = QComboBox()
+        unit.addItems(list(UNITS))
+        raw = QLineEdit()
+        raw.setPlaceholderText(f"framework: {default}")
+        note = caption("")
+        row.addWidget(number)
+        row.addWidget(unit)
+        row.addWidget(raw, 1)
+        row.addWidget(note, 1)
+        column.addLayout(row)
+        problem = caption("", "error")
+        problem.hide()
+        column.addWidget(problem)
+        fallback = split_length(default)
+        number.setPlaceholderText(fallback[0] if fallback else default)
+
+        def write(text: str) -> None:
+            if text == (self.model.value(key) or ""):
+                problem.hide()
+                return
+            why = check_length(text)
+            problem.setText(why)
+            problem.setVisible(bool(why))
+            if not why:
+                self.apply(lambda: self.model.set_value(key, text or None))
+
+        def commit_split() -> None:
+            text = number.text().strip()
+            write(f"{text}{unit.currentText()}" if text else "")
+
+        number.editingFinished.connect(commit_split)
+        unit.activated.connect(lambda _i: number.text().strip() and commit_split())
+        raw.editingFinished.connect(lambda: write(raw.text().strip()))
+
+        def refresh() -> None:
+            value = self.model.value(key)
+            parts = split_length(value) if value else (None, (fallback[1] if fallback else "pt"))
+            split = parts is not None
+            number.setVisible(split)
+            unit.setVisible(split)
+            note.setVisible(split)
+            raw.setVisible(not split)
+            if split:
+                if not number.hasFocus():
+                    number.setText(parts[0] or "")
+                unit.setCurrentText(parts[1])
+                note.setText("" if value else "framework")
+            elif not raw.hasFocus():
+                raw.setText(value or "")
         refresh()
         return box, refresh
 
