@@ -4022,3 +4022,8 @@ NEW: A clearer theme form, for any number of colour modes.
 - A bar at the top picks the colour mode (light, dark, grey, colour-blind ...); the form and the sample slides follow it, and every colour says where it comes from in that mode.
 - Small swatches beside each colour show it in every mode at once.
 - The form has tabs, and the sample slides are shown large; the source is one click away (Split, Source).
+
+v0.16.19 (2026-11-12, direct request: a Claude Code edit of the shown slide stayed "Older" until Render now): When Claude Code in the terminal writes the slide the Preview shows and the Source view does not have it open, the Preview renders it at once, as after an edit by the chat (DiskSync._apply calls centre.file_written; it only said the picture was older).
+
+NEW: The Preview follows Claude Code's edits.
+- When Claude Code changes the slide you are looking at, the Preview shows the new version right away, also when the slide is not open in the editor.

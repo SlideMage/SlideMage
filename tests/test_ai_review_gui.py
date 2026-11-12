@@ -189,3 +189,22 @@ def test_claude_syntax_fix_marks_the_buffer_but_local_fix_does_not(window):
     file.fix_panel._on_applied(SimpleNamespace(line=1))
     assert ai_review.is_unreviewed(window.project, file.path)
     assert "Claude fix" not in slide_source.read_slide_source(file.path)[0]
+
+
+def test_an_outside_edit_of_the_previewed_slide_renders_it(window, monkeypatch):
+    """Claude Code writes the slide the Preview shows, which is not open in the Source view: it renders now, as after a
+    chat edit, instead of only saying the picture is older."""
+    window.state.set_mode("preview")
+    window.slide_list.tree.setCurrentItem(item(window, "abd"))
+    path = window.project.root / "slides/abd-EN-Second-current.tex"
+    assert window.centre.path == path and window.centre.source.file_for(path) is None
+    render = Mock()
+    monkeypatch.setattr(window.centre.preview, "render_after_save", render)
+    sync = DiskSync(window, window.project.root)
+    sync.start()
+    try:
+        path.write_text(path.read_text(encoding="utf-8") + "% Claude edit\n", encoding="utf-8")
+        sync.poll()
+        render.assert_called_once_with()
+    finally:
+        sync.stop(last_look=False)
