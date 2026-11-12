@@ -211,3 +211,26 @@ def test_settings_new_theme_closes_the_sheet_then_makes_the_theme(qapp, tmp_path
     monkeypatch.setattr(tab, "ask_new_theme", lambda: None)
     tab.new_theme_from_dialog()
     assert app.made == [("my-look", "My Look", "grayscale")]
+
+
+@TEX
+def test_the_progress_bars_track_follows_the_slide_background():
+    """v0.16.30: the track behind a progress bar was mixed into white, a light band on a dark slide; it is mixed into
+    the canvas now (the same in a light mode)."""
+    text = (ROOT / "latex" / "SlideMage_template_slidemage.tex").read_text(encoding="utf-8")
+    text = text.replace("\input{SlideMage_base}", "\SMProgressBarPosition{foot}\n\input{SlideMage_base}", 1)
+    tracks = {}
+    for mode in ("", "dark"):
+        result = theme_sample.render(EXAMPLE_PROJECT, text, "track", mode)
+        assert result.pdf, result.log
+        with pymupdf.open(result.pdf) as doc:
+            pix = doc[1].get_pixmap(dpi=72)
+            canvas = pix.pixel(int(pix.width * 0.5), int(pix.height * 0.6))
+            column = [pix.pixel(int(pix.width * 0.9), y) for y in range(pix.height - 12, pix.height)]
+            # the track is the coloured (not grey) row at the bottom, right of the bar
+            track = next(p for p in reversed(column) if max(p) - min(p) > 12)
+            tracks[mode] = (canvas, track)
+    (light_canvas, light_track), (dark_canvas, dark_track) = tracks[""], tracks["dark"]
+    brightness = lambda p: sum(p) / 3
+    assert brightness(light_track) > 180                                  # a light track on the white slide
+    assert abs(brightness(dark_track) - brightness(dark_canvas)) < 40      # a dark track on the dark slide

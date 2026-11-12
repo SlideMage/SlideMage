@@ -246,7 +246,9 @@
 \setbeamercolor{progress~bar}{
   use=alerted~text,
   fg=SMColorProgBar,
-  bg=alerted~text.fg!50!black!30
+  % the track: 30 % of the bar's alert mix, the rest the slide background (white in a light mode, so it is as
+  % before; v0.16.30: it was mixed into white, a light band on a dark slide)
+  bg=alerted~text.fg!50!black!30!c_canvas
 }
 \setbeamercolor{frametitle}{
   use=primary~palette,
