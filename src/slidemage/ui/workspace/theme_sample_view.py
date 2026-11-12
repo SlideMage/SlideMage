@@ -61,6 +61,7 @@ class ThemeSampleView(Surface):
         self._external_mode = False
         self.geometry: dict = {}        # of the last render: the hooks' lengths and the page's size, in bp
         self._measure: Optional[tuple[str, Optional[float]]] = None     # (key, value in bp or None) of a layout field
+        self.display_unit = theme_measures.DEFAULT_DISPLAY_UNIT        # the form's, for the marks' labels
         # Where a colour is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
         self._read_usage = read_usage or theme_probe.usage_map
         self._usage: Optional[tuple[str, str, str]] = None
@@ -212,7 +213,7 @@ class ThemeSampleView(Surface):
         """`image` with the focused layout field's marks drawn over it (never into the render)."""
         if self._measure is None or theme_sample.PAGE_WIDTH not in self.geometry:
             return image
-        found = theme_measures.marks(self._measure[0], self._measure[1], self.geometry)
+        found = theme_measures.marks(self._measure[0], self._measure[1], self.geometry, self.display_unit)
         if not found:
             return image
         result = image.convertToFormat(QImage.Format.Format_ARGB32)
@@ -238,7 +239,10 @@ class ThemeSampleView(Surface):
                     painter.drawLine(x, 0, x, int(at))
                     painter.drawLine(x - 5, int(at) - 7, x, int(at))
                     painter.drawLine(x + 5, int(at) - 7, x, int(at))
-                self._label(painter, mark, int(result.width() * 0.58) + 8, int(at) - 6, result)
+                # the focused mark's label by its arrow, a context mark's (the title bar's edge) at the left
+                x = int(result.width() * 0.58) + 8 if mark.focus or mark.arrow else int(result.width() * 0.04)
+                self._label(painter, mark, x, int(at) - 6 if mark.focus else int(at) + painter.fontMetrics().height() + 6,
+                            result)
             elif mark.kind == "v":
                 painter.drawLine(int(at), 0, int(at), result.height())
                 self._label(painter, mark, int(at) + 6, int(result.height() * 0.5), result)

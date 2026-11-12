@@ -683,6 +683,16 @@ Tests: `tests/test_theme_measures.py` (with `SLIDEMAGE_TEX_TESTS=1` a real rende
 the block side margin and the footnote spacing (the geometry has them, but no element of the sample deck is placed
 by them alone); size pairs (font sizes) get no mark.
 
+**Built: a display unit (v0.16.23, branch `feat/theme-display-unit`).** The user asked whether everything should be in millimetres or
+pixels for a common unit (2026-11-12). Decided: not in the theme file (ex and em follow the font on purpose; bp is the
+PDF's and the Top Margin's unit; pixels depend on the screen), but in the form: "Show lengths in mm | pt" on the
+Layout tab (`ThemeForm.display_unit`, remembered as `theme_display_unit`, mm by default). A length written in another
+unit shows its equivalent beside it ("≈ 10.0 mm", from the last render for ex and em, following the typed value); a
+length the theme does not set shows the framework's value in the display unit and is typed and written in it; marks
+and the Top Margin check speak the unit (`theme_measures.show`, `number_in`, `from_bp`, `DISPLAY_UNITS`;
+`ThemeSampleView.display_unit`). `SMBodyFontSize` (a font size, `FONT_SIZE_KEYS`) stays in pt. Switching the unit
+rewrites nothing.
+
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.

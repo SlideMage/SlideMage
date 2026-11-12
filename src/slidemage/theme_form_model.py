@@ -484,8 +484,8 @@ class ThemeModel:
 LAYOUT_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("Font and text sizes", "The layout profile picks the fonts; the body size sets \\normalsize, and the smaller sizes "
      "follow it.", ("SMLayoutProfile", "SMBodyFontSize", "SMCodeSize")),
-    ("Margins", "Where the first line of a frame starts (the Top Margin, in bp from the top of the page) and the text's "
-     "side margins.", ("SMTopMargin", "SMTextMarginLeft", "SMTextMarginRight", "SMBlockSideMargin")),
+    ("Margins", "Where the first line of a frame starts (the Top Margin, measured from the top of the page) and the "
+     "text's side margins.", ("SMTopMargin", "SMTextMarginLeft", "SMTextMarginRight", "SMBlockSideMargin")),
     ("Title bar", "The bar ends at the logo's lower edge (derived from the top padding, the title font and the logo "
      "height); the bottom padding is where the frame body begins.",
      ("SMFrametitleTopPadding", "SMFrametitleBottomPadding", "SMFrametitleLeftPadding", "SMFrameSubtitleSep",

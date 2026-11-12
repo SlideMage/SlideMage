@@ -51,10 +51,11 @@ def test_a_length_is_a_number_and_a_unit(qapp):
     box = row_widget(form, "SMTopMargin")
     number, raw = box.findChildren(QLineEdit)
     unit = box.findChild(QComboBox)
-    assert number.placeholderText() == "41.58" and unit.currentText() == "bp" and raw.isHidden()
+    # unset: shown and typed in the display unit, mm (41.58bp = 14.67mm)
+    assert number.placeholderText() == "14.67" and unit.currentText() == "mm" and raw.isHidden()
     number.setText("45")
     number.editingFinished.emit()
-    assert "\\renewcommand{\\SMTopMargin}{45bp}" in editor.text()
+    assert "\\renewcommand{\\SMTopMargin}{45mm}" in editor.text()
     unit.setCurrentText("pt")
     unit.activated.emit(unit.currentIndex())
     assert "\\renewcommand{\\SMTopMargin}{45pt}" in editor.text()
@@ -114,3 +115,29 @@ def test_profile_bullet_and_citation(qapp):
     citation.setCurrentText("default")
     citation.activated.emit(0)
     assert "\\renewcommand{\\SMCitationFormat}{default}" in editor.text()
+
+
+def test_lengths_show_in_one_unit_and_keep_their_own(qapp, monkeypatch):
+    from slidemage.ui.workspace import theme_form
+    stored = {}
+    monkeypatch.setattr(theme_form.layout_settings, "get", lambda key, default=None: stored.get(key, default))
+    monkeypatch.setattr(theme_form.layout_settings, "set", lambda key, value: stored.__setitem__(key, value))
+    editor, form = make_form(GREYSCALE)
+    form.geometry = lambda: {"page_width": 453.54, "page_height": 255.12, "SMFrametitleTopPadding": 15.99,
+                             "SMTextMarginLeft": 28.35}
+    form.refresh()
+    assert form.display_unit == "mm"
+
+    def note(key):
+        return [label.text() for label in row_widget(form, key).findChildren(QLabel) if label.text()][0]
+
+    assert note("SMTextMarginLeft") == "≈ 10.0 mm"              # written as 1cm: stays 1cm, shown in mm beside it
+    assert note("SMFrametitleTopPadding") == "≈ 5.6 mm"          # written as 3.4ex: its rendered size
+    assert "\setlength{\SMTextMarginLeft}{1cm}" in editor.text()
+    form.set_display_unit("pt")
+    assert stored["theme_display_unit"] == "pt" and form.display_unit == "pt"
+    form.geometry = lambda: {"page_width": 453.54, "page_height": 255.12, "SMFrametitleTopPadding": 15.99,
+                             "SMTextMarginLeft": 28.35}
+    form.refresh()
+    assert note("SMTextMarginLeft") == "≈ 28.5 pt"
+    assert "\setlength{\SMTextMarginLeft}{1cm}" in editor.text()     # switching the unit rewrites nothing
