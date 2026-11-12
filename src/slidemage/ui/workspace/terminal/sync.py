@@ -89,15 +89,15 @@ class DiskSync(ExternalEditWatch):
         review_changed = window.project.ai_review_path in (*changes.added, *changes.modified, *changes.removed)
         if review_changed:
             window.refresh_ai_review()
-        edited_decks, refresh, shown = [], False, False
+        edited_decks, refresh = [], False
         for path in (*changes.modified, *changes.added):
             if path == window.project.ai_review_path:
                 continue
             outcome = window.centre.disk_changed(path)
             if outcome == SAME:
                 continue
-            if outcome is None and path == window.centre.path:
-                shown = True                    # the Preview shows this slide and must say it is older now
+            if outcome is None:
+                window.centre.file_written(path)    # the Preview renders the shown slide, as after a chat edit
             deck = decks.get(path)
             if deck is None:
                 refresh = True
@@ -112,5 +112,3 @@ class DiskSync(ExternalEditWatch):
         elif refresh:
             window.slide_list.rebuild()
             window.side_panels.refresh()
-        if shown:
-            window.centre.refresh()

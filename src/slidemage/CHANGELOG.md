@@ -4028,3 +4028,8 @@ v0.16.19 (2026-11-12, direct request: theme form, stage C2b): While a length of 
 NEW: See margins and paddings on the slides while you set them.
 - In the theme form's Layout tab, the sample slide marks the Top Margin, the text margins, the footer and the title bar while you type their values.
 - The Top Margin says whether the first line starts below the title bar.
+
+v0.16.20 (2026-11-12, direct request: a Claude Code edit of the shown slide stayed "Older" until Render now): When Claude Code in the terminal writes the slide the Preview shows and the Source view does not have it open, the Preview renders it at once, as after an edit by the chat (DiskSync._apply calls centre.file_written; it only said the picture was older).
+
+NEW: The Preview follows Claude Code's edits.
+- When Claude Code changes the slide you are looking at, the Preview shows the new version right away, also when the slide is not open in the editor.
