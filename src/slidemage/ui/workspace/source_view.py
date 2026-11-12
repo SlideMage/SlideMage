@@ -583,7 +583,7 @@ class SourcePane(Surface):
         swatches = self._deck_swatches()
         roles = [name for name in swatches if theme_colors.role_hint(name)]
         if roles:
-            menu.add_header("Follows the colour mode")
+            menu.add_header("Follows the color mode")
             for name in roles:
                 menu.add_item(name, name, meta=theme_colors.role_hint(name), swatch=swatches[name])
             menu.add_header("Palette")

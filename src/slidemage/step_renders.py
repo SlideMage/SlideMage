@@ -129,7 +129,7 @@ class StepRenderQueue:
             try:
                 pdf = job.pdf(job.cancel)
                 if job.cancel.is_set():
-                    raise RuntimeError("Preview cancelled")
+                    raise RuntimeError("Preview canceled")
                 pages = self._read_pages(pdf)
                 if not pages:
                     error = "the render has no pages"

@@ -77,7 +77,7 @@ TRANSLATE = Task("translate", (
 
 _EDIT_LIST = (
     "Answer with an edit list. `before` is a piece of the source copied character for character, tabs and "
-    "spaces included, that occurs exactly once in it (add neighbouring text to make it unique); the pieces of "
+    "spaces included, that occurs exactly once in it (add neighboring text to make it unique); the pieces of "
     "different edits must not overlap; `after` replaces it. ")
 _TEXT = (
     "Change only the text the audience reads (frame titles, list items, table cells, footnotes, source "
@@ -168,7 +168,7 @@ PROOFREAD_SELECTION = Task("proofread_selection", (
     "grammar, punctuation and capitalization mistakes in the selection, and nothing else: no rewording, no "
     "restyling, the meaning stays. " + _SELECTION + _TEXT + "Where there is nothing to fix, answer with an empty "
     "edit list. Answer with an edit list. `before` is a piece of the selection copied character for character, tabs "
-    "and spaces included, that occurs exactly once in the selection (add neighbouring text to make it unique; "
+    "and spaces included, that occurs exactly once in the selection (add neighboring text to make it unique; "
     "the context is not part of it); the pieces of different edits must not overlap; `after` replaces it. "
     "Answer with the JSON result only."), _EDITS)
 

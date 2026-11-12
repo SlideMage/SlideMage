@@ -101,8 +101,8 @@ def compile_in_mode(window) -> None:
     mode_id = modes[0][0]
     if len(modes) > 1:
         labels = [label for _, label in modes]
-        label, ok = QInputDialog.getItem(window, "Compile in another colour mode",
-                                         "Colour mode for this PDF (the deck keeps its own):", labels, 0, False)
+        label, ok = QInputDialog.getItem(window, "Compile in another color mode",
+                                         "Color mode for this PDF (the deck keeps its own):", labels, 0, False)
         if not ok:
             return
         mode_id = modes[labels.index(label)][0]

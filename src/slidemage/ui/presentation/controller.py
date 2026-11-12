@@ -251,13 +251,13 @@ class PresentationController(QObject):
             session.set_tool(TOOL_PEN)
             self._pen_menu(pen).popup(pen.mapToGlobal(pen.rect().bottomLeft()))
 
-        pen = button("Pen", "Draw (D); opens the pen's colour and width for this presentation",
+        pen = button("Pen", "Draw (D); opens the pen's color and width for this presentation",
                      pen_clicked, lambda: session.tool == TOOL_PEN)
         def laser_clicked() -> None:
             self._laser_menu(laser).popup(laser.mapToGlobal(laser.rect().bottomLeft()))
 
         laser = button("Laser", "The laser pointer shows while you hold Ctrl and the left mouse button on the current "
-                       "slide; this opens its colour and size for this presentation", laser_clicked)
+                       "slide; this opens its color and size for this presentation", laser_clicked)
         def eraser_clicked() -> None:
             session.set_tool(TOOL_ERASER)
             self._eraser_menu(eraser).popup(eraser.mapToGlobal(eraser.rect().bottomLeft()))
@@ -294,7 +294,7 @@ class PresentationController(QObject):
         panel = QWidget()
         column = QHBoxLayout(panel)
         column.addWidget(QLabel(name))
-        swatch = ColorSwatchButton("Colour") if color_key is not None else None
+        swatch = ColorSwatchButton("Color") if color_key is not None else None
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(*steps)
         slider.setValue(round(getattr(self.settings, size_key) * 1000))
@@ -313,7 +313,7 @@ class PresentationController(QObject):
 
         def pick() -> None:
             menu.close()
-            self.choose_colour(f"{name} colour", QColor(getattr(self.settings, color_key)), alpha, apply)
+            self.choose_colour(f"{name} color", QColor(getattr(self.settings, color_key)), alpha, apply)
 
         def resize(value: int) -> None:
             setattr(self.settings, size_key, value / 1000)

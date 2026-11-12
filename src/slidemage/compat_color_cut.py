@@ -136,13 +136,13 @@ CHANGE = Change(
     id=CHANGE_ID,
     since="v0.16.0",
     severity=BREAKS,
-    title="Dark slides are a colour mode: \\SMDarkMode is gone",
+    title="Dark slides are a color mode: \\SMDarkMode is gone",
     description=(
-        "A theme declares its colour modes (light, dark, grey, ...) and a deck chooses one with "
+        "A theme declares its color modes (light, dark, gray, ...) and a deck chooses one with "
         "\\newcommand{\\SMModeOverride}{dark} before the template. The old switch \\newcommand{\\SMDarkMode}{} stops the "
         "compile with a message, a template's `% SlideMage dark mode: true` line and \\ifdefined\\SMDarkMode block do "
         "nothing any more, and c_primary_dark stays dark in every mode: slides that use it as ink need the role "
-        "colours (the change \"colour-roles-in-slides\", which Update project runs too). Installed themes made for "
+        "colors (the change \"colour-roles-in-slides\", which Update project runs too). Installed themes made for "
         "an older SlideMage are not used until they are updated."),
     fix=(
         "In each deck, replace \\newcommand{\\SMDarkMode}{} by \\newcommand{\\SMModeOverride}{dark} (Update project "

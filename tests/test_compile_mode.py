@@ -46,7 +46,7 @@ def test_a_one_off_mode_gets_its_own_pdf_name_and_label(tmp_path):
     ctx = ProjectContext.at(tmp_path)
     job = compiler.CompileJob(deck, "instructor", None, mode="dark")
     assert job.jobname == "course-instructor-dark"
-    assert compiler.job_label(job) == "Instructor · dark colours"
+    assert compiler.job_label(job) == "Instructor · dark colors"
     assert compiler.resolve_output_location(ctx, job) == (ctx.pdf_dir, "course-instructor-dark")
     named = _deck(tmp_path, DOC.replace("\\begin{document}", "\\deckoutputfolder{D:/Out/Handout.pdf}\n\\begin{document}"))
     folder, stem = compiler.resolve_output_location(ctx, compiler.CompileJob(named, "instructor", None, mode="dark"))
@@ -72,4 +72,4 @@ def test_the_decks_pdf_list_finds_a_one_off_mode_pdf(tmp_path):
         name = compiler.CompileJob(deck, version, None, mode=mode).jobname
         (ctx.pdf_dir / f"{name}.pdf").write_bytes(b"%PDF-1.4\n")
     labels = {pdf.label for pdf in compiler.deck_pdfs(ctx, deck)}
-    assert labels == {"Instructor", "Instructor · dark colours"}
+    assert labels == {"Instructor", "Instructor · dark colors"}

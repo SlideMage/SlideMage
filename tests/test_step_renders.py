@@ -108,7 +108,7 @@ def test_preempting_stops_a_running_background_job_and_runs_it_again_later():
             deadline = time.monotonic() + 5
             while not cancel.is_set() and time.monotonic() < deadline:
                 time.sleep(0.01)
-            raise RuntimeError("Preview cancelled")
+            raise RuntimeError("Preview canceled")
         return Path("again.pdf")
 
     recorder.queue.submit(("bg",), BACKGROUND, work)

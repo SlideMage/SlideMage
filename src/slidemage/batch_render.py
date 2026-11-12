@@ -137,7 +137,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
                 if spec.target.hidden and not spec.options.presenter:
                     result = PreviewResult(spec, status='hidden')
                 elif cancel is not None and cancel.is_set():
-                    result = PreviewResult(spec, status='cancelled', error='Preview cancelled')
+                    result = PreviewResult(spec, status='cancelled', error='Preview canceled')
                 elif spec.capture_error is not None:
                     result = PreviewResult(spec, status='failed', error=spec.capture_error)
                 else:
@@ -195,7 +195,7 @@ def render_batch(service, requests, *, cancel=None, progress=None, publish=None,
         parallel_runs.run_all(tasks, may_add=parallel_runs.cpu_has_room, cancel=cancel)
     for index, original in enumerate(requests, 1):          # a unit that never started (cancelled first)
         if results[index - 1] is None:
-            results[index - 1] = PreviewResult(original, status='cancelled', error='Preview cancelled')
+            results[index - 1] = PreviewResult(original, status='cancelled', error='Preview canceled')
     return tuple(results)
 
 

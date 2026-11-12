@@ -4054,3 +4054,8 @@ v0.16.24 (2026-11-12, theme editor stage C2c: an installed theme's source folder
 NEW: Edit an installed theme in its source folder.
 - If you maintain a theme, tell SlideMage where its source is (Settings → Extensions → the theme → "Source folder…"), then "Edit source" opens it there with the theme form. The top of the tab always says where your changes are written.
 - The theme form writes "color" and "gray", like the rest of the app.
+
+v0.16.25 (2026-11-12, direct request: American English in the app's text): The British spellings in the text the user reads are American now (group 1 of docs/plans/american-english.md): "color mode" and "Colors" in the deck settings, the Compile menu and its dialog, the Color menu's header; "Center" in the View menu; "Color", "Pen color", "Laser pointer color" and "Timer behavior" in the presenter and its settings; "Preview canceled", "Download canceled.", "1 canceled" and "… are canceled, not moved…"; the contrast finding's "text color"; the Update project notes; the job label "· dark colors"; and the AI's prompts and tool descriptions (centers, neighboring, labeled). The command search finds "colors" and "colours". Ids stay as they are: the status "cancelled", the centre column's id "centre", the change id "colour-roles-in-slides", the mode id grey.
+
+NEW: American spelling throughout.
+- Menus, settings and messages now write "color", "center" and "canceled" everywhere.

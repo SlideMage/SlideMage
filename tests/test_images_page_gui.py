@@ -548,7 +548,7 @@ def test_closing_the_window_stops_a_running_job_and_gives_the_slot_back(make_pag
     job.position = (3, 5)
     [work] = page.running_work()                       # what the AI switch's busy popover lists
     assert (work.text, work.route, work.local) == ("Drafting · 2 of 5 done", "offline-test", True)
-    assert "cancelled, not moved" in work.line and work.stop == page._abort_job
+    assert "canceled, not moved" in work.line and work.stop == page._abort_job
     page.shutdown()
     assert page.running_work() == []
     assert aborted == [True] and page._job is None

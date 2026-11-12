@@ -1,6 +1,6 @@
 # American English in the app's text: inventory
 
-Status: **inventory only (2026-11-12). The theme form is done (v0.16.24); the rest is listed here and not changed.**
+Status: **groups 1 done (2026-11-12): the theme form in v0.16.24, the rest of the app's visible text and the AI's prompts in v0.16.25 (branch `fix/american-english`). Open: the shown name of Greyscale, and group 3 (CHANGELOG history, LaTeX comments, docs).** The table below is kept as the record of what was changed.
 
 The app's default is American English ("color", "center", "canceled", "gray"). An inventory of British spellings in
 the string literals of `src/slidemage/**/*.py` (docstrings and comments left out) found 199 strings; about 50 of them

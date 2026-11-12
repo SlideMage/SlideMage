@@ -807,7 +807,7 @@ class BackgroundRenderer:
                 elif result.status == 'failed':
                     self._failed(unit, RuntimeError(result.error))
             if cancel.is_set():
-                raise Cancelled('Preview cancelled')
+                raise Cancelled('Preview canceled')
         finally:
             self._set_working(job.key, False)
             self.trace(f"end {job.key}{' (stopped)' if cancel.is_set() else ''}")
@@ -899,7 +899,7 @@ class BackgroundRenderer:
         start, count = 1, None
         while count is None or start <= count:
             if cancel.is_set():
-                raise Cancelled("Preview cancelled")
+                raise Cancelled("Preview canceled")
             response = raster.read_document(pdf, "pdf_images", start, RASTER_CHUNK, width=STORE_WIDTH)
             count = response["count"]
             pages += response["images"]
