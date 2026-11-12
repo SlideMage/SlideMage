@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0, CR, C1, all of C2 and C3 (the Advanced tab) built; C4 (.smtheme export) next.** Parts A and B
+Status: **all stages built: C0, CR, C1, C2, C3 (the Advanced tab) and C4 (.smtheme export).** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -719,6 +719,18 @@ row: the "derive dark mode" helper (superseded: the dark preset of a mode does i
 Graz's raw dark-mode TeX (done in CR); a font-file check for `SMCardHeadingStyle` (it is a plain TeX field);
 marks on the sample slides for the tier 3 lengths. Tests: `tests/test_theme_form_layout.py` (every tier 3 field
 once; each written, read and removed without another change; the tab's fields in the form).
+
+**Built: C4, export as .smtheme (v0.16.29, branch `feat/theme-export`).** `theme_export` (no Qt): `pack(folder,
+out_dir)` (moved from `tools/make_theme_package.py`, which calls it now), `export(home, key, info, out_dir)` for a
+personal theme: `stage` copies the template, `schemes/scheme_<key>/` and an own layout profile into a temporary
+folder and writes theme.toml (`manifest_text`, `requires_slidemage` = this SlideMage), README.md, CHANGELOG.md and
+LICENSE from an `ExportInfo`; `defaults` takes the name and SPDX licence from the template; `check_info` says the
+first problem in words. Settings → Extensions: `PersonalThemeRow.export_button` ("Export…", the dialog
+`PluginsTab.ask_export`) and, for an installed theme with a source folder, `ThemeRow.export_source_button`
+("Export package…", the folder packed as it is). Tests: `tests/test_theme_export.py` (the exported package
+installs; same bytes twice and from the tool; an own layout profile goes along; quotes stay valid TOML; the
+dialog holds Export back until the fields are valid). Not built: a release on GitHub from the app (the asset is
+attached by hand); writing the generated README, CHANGELOG and LICENSE into a source folder.
 
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next

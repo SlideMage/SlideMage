@@ -4074,3 +4074,8 @@ v0.16.28 (2026-11-12, theme editor stage C3: the Advanced tab): The theme form's
 
 NEW: An Advanced tab in the theme form.
 - Switch on mini frames, a progress bar, divider frames or a watermark, and fine-tune frame types and list spacing, without editing the theme's source.
+
+v0.16.29 (2026-11-12, theme editor stage C4: export as .smtheme): A personal theme's row in Settings → Extensions has "Export…": a dialog asks for the package's name, version, summary, author, homepage and license (name and license start from the template's name and SPDX lines) and a folder, says what is missing as it is typed, and writes <key>-<version>.smtheme and its .sha256 there. The package holds the template, its scheme folder and its own layout profile, with theme.toml, README.md, CHANGELOG.md and LICENSE made from the fields in a staging folder: nothing is written into the project. An installed theme with a source folder has "Export package…", which packs that folder as it is (its own theme.toml and files), the asset a release attaches. Both are checked with the rules of "Add from file…", so what they write installs. theme_export (pack, export, stage, defaults, check_info, manifest_text); tools/make_theme_package.py now calls theme_export.pack, so the tool and the app write the same bytes.
+
+NEW: Export a theme as a package.
+- "Export…" on a personal theme in Settings → Extensions saves it as a .smtheme file that others install with "Add from file…".
