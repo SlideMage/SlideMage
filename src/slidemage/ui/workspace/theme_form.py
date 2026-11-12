@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
 
 from ... import slide_templates, theme_fields, theme_measures, theme_source_folder
 from .. import layout_settings
-from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
+from ...theme_form_model import (ADVANCED_SECTIONS, BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
-                                 UNITS, ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
+                                 UNITS, ThemeModel, check_choice, check_length, check_number, citation_formats, format_size_pair, layout_profiles,
                                  parse_size_pair, split_length)
 from ..kit.tokens import SPACE
 from ..kit.widgets import (Badge, Button, Card, Chip, ColorSwatchButton, SegmentedControl, Surface, caption,
@@ -398,9 +398,9 @@ class ThemeForm(QWidget):
             return [self._unit_switch()] + [self._layout_card(title, note, keys) for title, note, keys in LAYOUT_SECTIONS]
         if name == "Logo & notes":
             return [self._logo(), self._footnotes()]
-        return [caption("Frame types, fine list spacing, drawing helpers and the optional features (mini frames, "
-                        "progress bar, divider frames, watermark) come here in a later step (C3). Until then they are "
-                        "edited in the source: switch to Split or Source above.")]
+        return ([caption("Rarely changed settings. A field left empty follows the framework; an optional feature is "
+                         "off until its first field is set."), self._unit_switch()]
+                + [self._layout_card(title, note, keys) for title, note, keys in ADVANCED_SECTIONS])
 
     def _card(self, title: str, note: str = "") -> tuple[Card, QVBoxLayout]:
         card = Card()
@@ -815,9 +815,18 @@ class ThemeForm(QWidget):
             return self._bullet_field(key)
         if field.kind == "size_pair":
             return self._size_pair_field(key, default)
-        return self._text_field(key, default, length=field.kind == "length")
+        if field.kind == "choice":
+            return self._choice_field(key, list(field.choices), default,
+                                      check=lambda text: check_choice(text, field.choices))
+        if field.kind == "length" and default.isalpha():
+            # a hook whose default is a word ("auto"): a plain field that takes a length or that word
+            return self._text_field(key, default, length=False,
+                                    check=lambda text: "" if not text or text == default else check_length(text))
+        return self._text_field(key, default, length=field.kind == "length",
+                                check=check_number if field.kind == "number" else None)
 
-    def _text_field(self, key: str, default: str, *, length: bool) -> tuple[QWidget, Callable[[], None]]:
+    def _text_field(self, key: str, default: str, *, length: bool,
+                    check: Optional[Callable[[str], str]] = None) -> tuple[QWidget, Callable[[], None]]:
         if length:
             return self._length_field(key, default)
         box = Surface()
@@ -825,7 +834,7 @@ class ThemeForm(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         edit = QLineEdit()
-        edit.setPlaceholderText(f"framework: {default}")
+        edit.setPlaceholderText(f"framework: {default}" if default else "not set")
         problem = caption("", "error")
         problem.hide()
         column.addWidget(edit)
@@ -836,7 +845,7 @@ class ThemeForm(QWidget):
             if text == (self.model.value(key) or ""):
                 problem.hide()
                 return
-            why = check_length(text) if length else ""
+            why = check_length(text) if length else (check(text) if check is not None else "")
             problem.setText(why)
             problem.setVisible(bool(why))
             if not why:
@@ -1007,16 +1016,32 @@ class ThemeForm(QWidget):
         self._filters.append(found)
         return found
 
-    def _choice_field(self, key: str, choices: list[str], default: str) -> tuple[QWidget, Callable[[], None]]:
+    def _choice_field(self, key: str, choices: list[str], default: str,
+                      check: Optional[Callable[[str], str]] = None) -> tuple[QWidget, Callable[[], None]]:
+        """An editable list; with `check`, a text that is none of the choices is not written and the field says why."""
         combo = QComboBox()
         combo.setEditable(True)
         combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         combo.addItems([""] + choices)
-        combo.lineEdit().setPlaceholderText(f"framework: {default}")
+        combo.lineEdit().setPlaceholderText(f"framework: {default}" if default else "not set")
+        problem = caption("", "error")
+        problem.hide()
+        box: QWidget = combo        # without a check the row is the list itself
+        if check is not None:
+            box = Surface()
+            column = QVBoxLayout(box)
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(0)
+            column.addWidget(combo)
+            column.addWidget(problem)
+            box.combo = combo
 
         def commit() -> None:
             text = combo.currentText().strip()
-            if text != (self.model.value(key) or ""):
+            why = check(text) if check is not None else ""
+            problem.setText(why)
+            problem.setVisible(bool(why))
+            if not why and text != (self.model.value(key) or ""):
                 self.apply(lambda: self.model.set_value(key, text or None))
 
         combo.activated.connect(lambda _i: commit())
@@ -1026,7 +1051,7 @@ class ThemeForm(QWidget):
             if not combo.lineEdit().hasFocus():
                 combo.setCurrentText(self.model.value(key) or "")
         refresh()
-        return combo, refresh
+        return box, refresh
 
     def _bullet_field(self, key: str) -> tuple[QWidget, Callable[[], None]]:
         combo = QComboBox()

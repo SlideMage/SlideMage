@@ -4069,3 +4069,8 @@ v0.16.27 (2026-11-12, direct request: gray as the preset's id too): The derive p
 
 NEW: The gray preset of color modes is spelled gray.
 - A theme that declares a mode with the preset "grey" must write "gray" instead (the second argument of \SMDeclareMode). No shipped theme used it.
+
+v0.16.28 (2026-11-12, theme editor stage C3: the Advanced tab): The theme form's Advanced tab has the rarely changed settings (tier 3 of docs/plans/theme-editor.md), in seven cards: Mini frames, Progress bar, Divider frames and watermark (the optional features: a list of the values each command takes, off while not set), Frame types (title, section and quote frame, with the warning that these are measured numbers), Blocks and drawings, List spacing (the ratios of the four levels) and Other fine spacing. Lengths use the Layout tab's number and unit field and its display unit; a ratio takes a plain number, a feature only a value of its list, and a field says why it did not write a value. An empty field takes the line out. theme_form_model.ADVANCED_SECTIONS, check_number, check_choice; a test checks that every tier 3 field is in the tab once (the canvas, card and card border colors are the Colors tab's roles; the process border stays a line of the source) and that each is written, read back and taken out without another change to the file.
+
+NEW: An Advanced tab in the theme form.
+- Switch on mini frames, a progress bar, divider frames or a watermark, and fine-tune frame types and list spacing, without editing the theme's source.

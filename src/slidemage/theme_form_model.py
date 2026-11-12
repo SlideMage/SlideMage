@@ -499,6 +499,54 @@ LAYOUT_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("Citations", "The citation format \\SMUseBibliography loads; a deck may still choose another.",
      ("SMCitationFormat",)),
 )
+# --- advanced fields (stage C3): tier 3 of the plan ---------------------------------------------------------------------
+
+ADVANCED_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("Mini frames", "Optional, off unless a position is set: a row of small marks, one per frame, that shows where "
+     "the talk is.", ("SMMiniFramesPosition", "SMMiniFramesSpreading", "SMMiniFramesSections", "SMMiniFramesCompress")),
+    ("Progress bar", "Optional, off unless a position is set. Its color is the role \"Progress bar\" on the Colors "
+     "tab.", ("SMProgressBarPosition", "SMProgressBarStyle", "SMProgressBarDirection", "SMProgressBarMiniFrames")),
+    ("Divider frames and watermark", "Divider frames: a frame of its own at the start of each part or section named "
+     "here (part, section, subsection, subsubsection; comma-separated). Watermark: a background template on every "
+     "frame.", ("SMDividerFrames", "SMDividerLook", "SMWatermarkDefault", "SMWatermarkTemplate")),
+    ("Frame types", "The title, section and quote frames. These are measured numbers of the shipped design: a wrong "
+     "value gives no error, the frame just looks off. Check the sample slides after a change.",
+     ("SMTitleframeBoxHeight", "SMTitleframeTextSep", "SMTitleframeBandGap", "SMTitleframeBottomPad",
+      "SMSectionframeBoxHeight", "SMSectionframeTitleGap", "SMSectionframeContentDrop", "SMQuoteBoxHeight",
+      "SMQuoteAttributionGap", "SMProgressStripRoom")),
+    ("Blocks and drawings", "The room a block title leaves for its marker, image borders, the warning sign and the "
+     "font switch of a card's heading.",
+     ("SMBlockTitleMarkerWidth", "SMImageBorderWidth", "SMWarningSignPadding", "SMWarningSignBorderWidth",
+      "SMCardHeadingStyle")),
+    ("List spacing", "Spaces between items and around nested lists, each as a share of the line height, for the four "
+     "list levels.",
+     ("SMItemsepRatioI", "SMItemsepRatioII", "SMItemsepRatioIII", "SMItemsepRatioIV",
+      "SMItemizeLevelDropSpaceRatioI", "SMItemizeLevelDropSpaceRatioII", "SMItemizeLevelDropSpaceRatioIII",
+      "SMItemizeLevelDropSpaceRatioIV", "SMItemizeLevelOpenSpaceRatioI", "SMItemizeLevelOpenSpaceRatioII",
+      "SMItemizeLevelOpenSpaceRatioIII", "SMTallItemBaseRatio", "SMLabelItemItemsep", "SMLabelItemGap",
+      "SMEnumerateNestedSlotExtra", "SMEnumerateNestedLabelGap", "SMEnumerateTextExtra")),
+    ("Other fine spacing", "Displayed formulas, figures beside text and the strip of side footnotes.",
+     ("SMTightDisplaySkip", "SMBesideFigureTopGap", "SMSideFootnoteHsize", "SMSideFootnoteTitleBlockSep",
+      "SMSideFootnoteRightInset", "SMSideFootnoteMarkerShift")),
+)
+# Tier 3 fields the Advanced tab leaves out: the Colors tab's roles canvas, card and line set the first three; the
+# process border has no role and stays a line of the source.
+ADVANCED_ELSEWHERE = frozenset({"SMCanvasColor", "SMCardBackgroundColor", "SMCardBorderColor", "SMProcessBorderColor"})
+NUMBER_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)$")
+
+
+def check_number(value: str) -> str:
+    """"" when `value` is a plain number (a ratio hook takes one) or empty, else why not."""
+    value = value.strip()
+    return "" if not value or NUMBER_RE.match(value) else "A number, for example 0.4."
+
+
+def check_choice(value: str, choices: tuple[str, ...]) -> str:
+    """"" when `value` is one of a command's `choices` (or empty: the command is taken out), else which it takes."""
+    value = value.strip()
+    return "" if not value or not choices or value in choices else "One of: " + ", ".join(choices) + "."
+
+
 _UNITS = "pt|bp|cm|mm|in|ex|em|pc|dd|cc|sp"
 LENGTH_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)\s*(" + _UNITS + r")$")
 UNITS = tuple(_UNITS.split("|"))
