@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -30,6 +30,37 @@ class SampleResult:
     pdf: Optional[Path]     # None when the compile failed or was stopped
     log: str                # the TeX log's last lines when it failed, else ""
     mode: str
+    geometry: dict = field(default_factory=dict)    # read_geometry() of the PDF
+
+
+# What a length hook comes to on the page and the page's size, in bp (PDF units): SlideMage_base writes the hooks into
+# the PDF's info dictionary (SMTopMargin, SMTitleBarBottom, SMTextMarginLeft ... as the template set them; ex and em
+# already worked out in their fonts), which tools/check_layout.py and tests/test_hook_geometry.py read too.
+PAGE_WIDTH, PAGE_HEIGHT = "page_width", "page_height"
+
+
+def read_geometry(pdf: Path) -> dict:
+    """{key: bp} of the PDF's SM* info keys, plus the first page's width and height."""
+    import pymupdf
+
+    found: dict = {}
+    try:
+        with pymupdf.open(pdf) as doc:
+            kind, value = doc.xref_get_key(-1, "Info")
+            if kind == "xref":
+                info = int(value.split()[0])
+                for key in doc.xref_get_keys(info):
+                    if key.startswith("SM"):
+                        _kind, text = doc.xref_get_key(info, key)
+                        try:
+                            found[key] = float(text.strip("()"))
+                        except ValueError:
+                            pass
+            if doc.page_count:
+                found[PAGE_WIDTH], found[PAGE_HEIGHT] = doc[0].rect.width, doc[0].rect.height
+    except Exception:       # no geometry: the sample shows without marks
+        return {}
+    return found
 
 
 def work_dir(build_dir: Path, key: str, mode: str) -> Path:
@@ -80,4 +111,4 @@ def render(ctx, theme_text: str, key: str, mode: str, *, cancel: Optional[compil
     if not build.ok:
         tail = "\n".join(line for line in build.log_text.splitlines() if line.startswith("!") or "Error" in line)
         return SampleResult(None, tail[-2000:] or build.log_text[-2000:], mode)
-    return SampleResult(build.pdf, "", mode)
+    return SampleResult(build.pdf, "", mode, read_geometry(build.pdf))

@@ -12,11 +12,11 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtCore import QRect, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout
 
-from ... import compiler, theme_fields, theme_probe, theme_sample
+from ... import compiler, theme_fields, theme_measures, theme_probe, theme_sample
 from ...theme_file import ThemeFile
 from ...theme_form_model import parse_modes_header
 from ..kit.tokens import SPACE
@@ -43,6 +43,7 @@ class ThemeSampleView(Surface):
 
     rendered = Signal(object)       # theme_sample.SampleResult, from the render thread
     probed = Signal(object, object)     # (the probe's key, theme_probe.UsageMap or None), from the probe thread
+    geometry_changed = Signal()         # a render brought the page's geometry (theme_sample.read_geometry)
 
     def __init__(self, editor, key: str, project, render: Optional[Callable] = None,
                  read_usage: Optional[Callable] = None) -> None:
@@ -58,6 +59,8 @@ class ThemeSampleView(Surface):
         self._stale = True
         self._error = ""
         self._external_mode = False
+        self.geometry: dict = {}        # of the last render: the hooks' lengths and the page's size, in bp
+        self._measure: Optional[tuple[str, Optional[float]]] = None     # (key, value in bp or None) of a layout field
         # Where a colour is used (theme_probe): the focused field's (kind, name, mode), the maps by (kind, mode, text).
         self._read_usage = read_usage or theme_probe.usage_map
         self._usage: Optional[tuple[str, str, str]] = None
@@ -156,6 +159,9 @@ class ThemeSampleView(Surface):
             self.start()
             return
         if result.pdf is not None:
+            if getattr(result, "geometry", None):
+                self.geometry = dict(result.geometry)
+                self.geometry_changed.emit()
             try:
                 self._images = pdf_pages(result.pdf)
                 self._error = ""
@@ -189,6 +195,69 @@ class ThemeSampleView(Surface):
         self._probe(kind, mode)
         self._jump_to_usage()
         self._show()
+
+    def show_measure(self, key: str, value_bp: Optional[float]) -> None:
+        """A layout field has the focus: mark what it sets (theme_measures.marks), at `value_bp` (None: as rendered),
+        on a slide with the ordinary title bar and footer."""
+        self._measure = (key, value_bp)
+        if self._page in (1, 6, 7) and len(self._images) >= 2:     # the title, standout and quote frames have neither
+            self._page = 2
+        self._show()
+
+    def clear_measure(self) -> None:
+        self._measure = None
+        self._show()
+
+    def _paint_marks(self, image: QImage) -> QImage:
+        """`image` with the focused layout field's marks drawn over it (never into the render)."""
+        if self._measure is None or theme_sample.PAGE_WIDTH not in self.geometry:
+            return image
+        found = theme_measures.marks(self._measure[0], self._measure[1], self.geometry)
+        if not found:
+            return image
+        result = image.convertToFormat(QImage.Format.Format_ARGB32)
+        scale = result.width() / self.geometry[theme_sample.PAGE_WIDTH]
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font = painter.font()
+        font.setPixelSize(max(11, int(result.height() / 32)))
+        font.setBold(True)
+        painter.setFont(font)
+        strong, thin = QColor("#2563eb"), QColor(37, 99, 235, 140)
+        for mark in found:
+            pen = QPen(strong if mark.focus else thin, 3 if mark.focus else 1.5)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            at = mark.at * scale
+            if mark.kind == "h":
+                painter.drawLine(0, int(at), result.width(), int(at))
+                if mark.arrow:
+                    solid = QPen(strong, 2)
+                    painter.setPen(solid)
+                    x = int(result.width() * 0.58)
+                    painter.drawLine(x, 0, x, int(at))
+                    painter.drawLine(x - 5, int(at) - 7, x, int(at))
+                    painter.drawLine(x + 5, int(at) - 7, x, int(at))
+                self._label(painter, mark, int(result.width() * 0.58) + 8, int(at) - 6, result)
+            elif mark.kind == "v":
+                painter.drawLine(int(at), 0, int(at), result.height())
+                self._label(painter, mark, int(at) + 6, int(result.height() * 0.5), result)
+            else:
+                painter.drawRect(1, int(at), result.width() - 2, int(mark.size * scale) - 1)
+                self._label(painter, mark, 8, int(at) - 6, result)
+        painter.end()
+        return result
+
+    @staticmethod
+    def _label(painter: QPainter, mark, x: int, y: int, image: QImage) -> None:
+        metrics = painter.fontMetrics()
+        width = metrics.horizontalAdvance(mark.label) + 10
+        x = min(max(x, 2), image.width() - width - 2)
+        y = min(max(y, metrics.height() + 2), image.height() - 2)
+        box = QRect(x, y - metrics.height(), width, metrics.height() + 2)
+        painter.fillRect(box, QColor("#2563eb") if mark.focus else QColor(37, 99, 235, 170))
+        painter.setPen(QColor("#ffffff"))
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, mark.label)
 
     def clear_usage(self) -> None:
         self._usage = None
@@ -366,7 +435,7 @@ class ThemeSampleView(Surface):
         if not self._images:
             self.image.clear()
             return
-        image = self._composite(self._images[self._page - 1])
+        image = self._paint_marks(self._composite(self._images[self._page - 1]))
         size = self.image.size()
         if size.width() < 10 or size.height() < 10:
             return
