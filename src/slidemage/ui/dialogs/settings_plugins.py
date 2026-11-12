@@ -47,8 +47,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
                                QScrollArea, QSizePolicy, QVBoxLayout, QWidget)
 
-from ... import (citation_sources, citations, open_path, packages, slide_templates, theme_source_folder, theme_sources,
-                 themes)
+from ... import (citation_sources, citations, open_path, packages, slide_templates, theme_export, theme_source_folder,
+                 theme_sources, themes)
 from ...plugins import catalogue, installer, loader, session, updates
 from ...plugins.catalogue import (Catalogue, CatalogueCitation, CataloguePlugin, CatalogueError, CatalogueTooNew,
                                   CitationRelease, Release)
@@ -488,6 +488,7 @@ class ThemeRow(_ListRow):
         # The theme's source folder (its repository), for its author: Edit source opens the template there.
         self.source_folder = theme_source_folder.folder(theme.key)
         self.edit_source_button: Button | None = None
+        self.export_source_button: Button | None = None
         self.source_folder_button: Button | None = None
         self.forget_folder_button: Button | None = None
         if not theme.problem:
@@ -498,6 +499,11 @@ class ThemeRow(_ListRow):
                                                    "changed one and update.")
                 self.edit_source_button.clicked.connect(partial(tab.edit_theme_source, theme.key))
                 buttons.append(self.edit_source_button)
+                self.export_source_button = Button("Export package…", compact=True)
+                self.export_source_button.setToolTip("Pack the source folder as a .smtheme (with its .sha256), the "
+                                                     "file a release attaches; checked like \"Add from file…\".")
+                self.export_source_button.clicked.connect(partial(tab.export_theme_source, theme.key))
+                buttons.append(self.export_source_button)
             else:
                 self.source_folder_button = Button("Source folder…", compact=True)
                 self.source_folder_button.setToolTip("For the theme's author: say where its source is kept (its "
@@ -555,8 +561,12 @@ class PersonalThemeRow(_ListRow):
         self.edit_button.clicked.connect(partial(tab.edit_personal_theme, theme.path))
         self.reveal_button = Button("Reveal in Explorer", compact=True)
         self.reveal_button.clicked.connect(partial(tab.reveal_personal_theme, theme.path))
+        self.export_button = Button("Export…", compact=True)
+        self.export_button.setToolTip("Save this theme as a .smtheme package, which others install with "
+                                      "\"Add from file…\"")
+        self.export_button.clicked.connect(partial(tab.export_personal_theme, theme.key, theme.path))
         self.add_title_line([title, caption(f"template {theme.key}"), Chip("Personal (project folder)", "info")],
-                            [self.edit_button, self.reveal_button])
+                            [self.edit_button, self.export_button, self.reveal_button])
         self.location_label = caption(str(theme.path))
         layout.addWidget(self.location_label)
         if theme.replaces:
@@ -891,6 +901,95 @@ class PluginsTab(Page):
             self.refresh_themes()
             return
         self.edit_personal_theme(path)
+
+    def export_personal_theme(self, key: str, path: Path) -> None:
+        """Ask for the package's details and a folder, then write <key>-<version>.smtheme there (theme_export)."""
+        values = self.ask_export(key, theme_export.defaults(path.parent, key),
+                                 theme_export.layout_of(path.read_bytes().decode("utf-8", errors="replace")))
+        if values is None:
+            return
+        info, out_dir = values
+        try:
+            asset = theme_export.export(path.parent, key, info, out_dir)
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Export theme", str(exc))
+            return
+        self._exported(asset)
+
+    def export_theme_source(self, key: str) -> None:
+        """Pack the installed theme's source folder as it is (its theme.toml, README, CHANGELOG and LICENSE)."""
+        folder = theme_source_folder.folder(key)
+        if folder is None:
+            return
+        chosen = QFileDialog.getExistingDirectory(self, "Save the package in", str(folder.parent))
+        if not chosen:
+            return
+        try:
+            asset = theme_export.pack(folder, Path(chosen))
+        except themes.ThemeError as exc:
+            QMessageBox.warning(self, "Export package", str(exc))
+            return
+        self._exported(asset)
+
+    def _exported(self, asset: Path) -> None:
+        self.last_export = asset        # for tests
+        QMessageBox.information(self, "Theme exported",
+                                f"Saved {asset.name} and its checksum ({asset.name}.sha256) in {asset.parent}. "
+                                "Others install it with Settings → Extensions → \"Add from file…\".")
+
+    def ask_export(self, key: str, start: theme_export.ExportInfo,
+                   layout: str = "fira") -> Optional[tuple[theme_export.ExportInfo, Path]]:
+        """(info, folder) from a dialog that checks the fields as they are typed; None when cancelled."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Export the theme {key}")
+        form = QFormLayout(dialog)
+        fields = {}
+        for attr, label, hint in (("name", "Name", "My University"), ("version", "Version", "1.0.0"),
+                                  ("summary", "Summary", "One line: what the theme is for"),
+                                  ("author", "Author", "Who made it"),
+                                  ("homepage", "Homepage", "https://…"),
+                                  ("license", "License", theme_export.DEFAULT_LICENSE)):
+            edit = QLineEdit(getattr(start, attr))
+            edit.setPlaceholderText(hint)
+            form.addRow(label, edit)
+            fields[attr] = edit
+        fields["name"].setMaxLength(40)
+        fields["summary"].setMaxLength(120)
+        folder = QLineEdit(str(Path.home()))
+        browse = Button("Choose…", compact=True)
+        browse.clicked.connect(lambda: (chosen := QFileDialog.getExistingDirectory(dialog, "Save the package in",
+                                                                                   folder.text()))
+                               and folder.setText(chosen))
+        form.addRow("Save in", row(folder, browse, stretch=0))
+        form.addRow(caption("The package holds the template, its scheme folder (logos) and its own layout profile, "
+                            "with a theme.toml, README, CHANGELOG and LICENSE made from these fields. Nothing is "
+                            "written into the project."))
+        problem = caption("", "error")
+        form.addRow(problem)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Export")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+
+        def info() -> theme_export.ExportInfo:
+            return theme_export.ExportInfo(**{attr: edit.text().strip() for attr, edit in fields.items()})
+
+        def check() -> None:
+            why = theme_export.check_info(key, info(), layout)
+            if not why and not Path(folder.text().strip() or ".").is_dir():
+                why = "Choose a folder that exists to save the package in."
+            problem.setText(why)
+            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(not why)
+
+        for edit in [*fields.values(), folder]:
+            edit.textChanged.connect(lambda _t: check())
+        check()
+        self._export_dialog = dialog         # for tests
+        self._export_fields = {**fields, "folder": folder}
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return info(), Path(folder.text().strip())
 
     def reveal_personal_theme(self, path: Path) -> None:
         try:
