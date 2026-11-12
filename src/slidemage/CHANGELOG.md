@@ -4022,3 +4022,8 @@ NEW: A clearer theme form, for any number of colour modes.
 - A bar at the top picks the colour mode (light, dark, grey, colour-blind ...); the form and the sample slides follow it, and every colour says where it comes from in that mode.
 - Small swatches beside each colour show it in every mode at once.
 - The form has tabs, and the sample slides are shown large; the source is one click away (Split, Source).
+
+v0.16.21 (2026-11-12, direct request: a render failure did not say its error): A failed slide render's message (preview_build.run_preview) began with the log's last 25 lines, which after an error in nonstop mode are LuaTeX's memory statistics; with -file-line-error the error line (file:N: message) starts with no "!", so the cards' and AI tools' first_error found none either (slide pke: "Missing $ inserted" from an image source with underscores, shown as a build that wrote its PDF). compiler.first_tex_error gives the first error as "! message" with its context up to "l.N"; the message leads with it, then the 25 lines as before.
+
+NEW: A failed preview says what went wrong.
+- When a slide cannot be rendered, the message now starts with the LaTeX error and its line, not with the end of the log.
