@@ -16,6 +16,7 @@ from slidemage.ui.workspace.theme_form import ThemeForm
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = ROOT / "latex" / "SlideMage_template_slidemage.tex"
 GRAYSCALE = ROOT / "latex" / "SlideMage_template_grayscale.tex"
+SETUP = ROOT / "latex" / "SlideMage_setup.tex"
 
 
 def make_form(path: Path):
@@ -141,3 +142,79 @@ def test_lengths_show_in_one_unit_and_keep_their_own(qapp, monkeypatch):
     form.refresh()
     assert note("SMTextMarginLeft") == "≈ 28.5 pt"
     assert r"\setlength{\SMTextMarginLeft}{1cm}" in editor.text()     # switching the unit rewrites nothing
+
+
+# --- the Advanced tab (stage C3) --------------------------------------------------------------------------------------
+
+def test_the_advanced_tab_has_every_tier_3_field_once():
+    from slidemage import theme_fields
+    from slidemage.theme_form_model import ADVANCED_ELSEWHERE, ADVANCED_SECTIONS
+    shown = [key for _title, _note, keys in ADVANCED_SECTIONS for key in keys]
+    assert len(shown) == len(set(shown))
+    tier3 = {field.name for field in theme_fields.FIELDS if field.tier == 3}
+    assert set(shown) | ADVANCED_ELSEWHERE == tier3 and not set(shown) & ADVANCED_ELSEWHERE
+
+
+def test_every_advanced_field_is_written_read_and_taken_out_again():
+    from slidemage import theme_fields
+    from slidemage.theme_form_model import ADVANCED_SECTIONS, ThemeModel
+    text = SHIPPED.read_text(encoding="utf-8").replace("\r\n", "\n")
+    samples = {"length": "7pt", "number": "0.33", "text": "section", "tex": r"\bfseries"}
+    for _title, _note, keys in ADVANCED_SECTIONS:
+        for key in keys:
+            field = theme_fields.BY_NAME[key]
+            value = field.choices[0] if field.choices else samples[field.kind]
+            model = ThemeModel(text, ROOT / "example", "probe", SETUP.read_text(encoding="utf-8"))
+            assert model.value(key) is None, key
+            model.set_value(key, value)
+            assert model.value(key) == value, key
+            again = ThemeModel(model.text, ROOT / "example", "probe", SETUP.read_text(encoding="utf-8"))
+            assert again.value(key) == value, key
+            again.set_value(key, None)
+            assert again.text == text, key
+
+
+def test_checks_of_numbers_and_choices():
+    from slidemage.theme_form_model import check_choice, check_number
+    assert check_number("0.4") == "" and check_number("") == "" and check_number(".5") == ""
+    assert check_number("0,4") and check_number("4pt")
+    assert check_choice("head", ("head", "foot")) == "" and check_choice("", ("head",)) == ""
+    assert "head, foot" in check_choice("top", ("head", "foot"))
+    assert check_choice("anything", ()) == ""
+
+
+def test_the_advanced_tab_writes_features_ratios_and_lengths(qapp):
+    editor, form = make_form(SHIPPED)
+    form.show_tab("Advanced")
+    position = row_widget(form, "SMProgressBarPosition")
+    assert position.combo.lineEdit().placeholderText() == "not set"
+    position.combo.setCurrentText("foot")
+    position.combo.activated.emit(position.combo.currentIndex())
+    assert r"\SMProgressBarPosition{foot}" in editor.text()
+    position.combo.setCurrentText("bottom")
+    position.combo.lineEdit().editingFinished.emit()
+    assert r"\SMProgressBarPosition{foot}" in editor.text()
+    assert any("One of: head" in label.text() for label in position.findChildren(QLabel))
+    position.combo.setCurrentText("")
+    position.combo.lineEdit().editingFinished.emit()
+    assert "SMProgressBarPosition" not in editor.text()
+    ratio = row_widget(form, "SMItemsepRatioI").findChild(QLineEdit)
+    assert ratio.placeholderText() == "framework: 0.4"
+    ratio.setText("0,5")
+    ratio.editingFinished.emit()
+    assert "SMItemsepRatioI" not in editor.text()
+    ratio.setText("0.5")
+    ratio.editingFinished.emit()
+    assert r"\renewcommand{\SMItemsepRatioI}{0.5}" in editor.text()
+    number, _raw = row_widget(form, "SMImageBorderWidth").findChildren(QLineEdit)
+    number.setText("1")
+    number.editingFinished.emit()
+    assert r"\SMImageBorderWidth}{1mm}" in editor.text()
+    gap = row_widget(form, "SMBesideFigureTopGap").findChild(QLineEdit)
+    assert gap.placeholderText() == "framework: auto"
+    gap.setText("wide")
+    gap.editingFinished.emit()
+    assert "SMBesideFigureTopGap" not in editor.text()
+    gap.setText("3pt")
+    gap.editingFinished.emit()
+    assert r"\SMBesideFigureTopGap}{3pt}" in editor.text()

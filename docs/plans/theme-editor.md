@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0, CR, the form stage C1 and all of C2 (C2a, the form's look, C2b, the display unit, C2c) built; C3 (Advanced) next.** Parts A and B
+Status: **C0, CR, C1, all of C2 and C3 (the Advanced tab) built; C4 (.smtheme export) next.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -707,6 +707,18 @@ deck (decks use the installed theme). Tests: `tests/test_theme_source_folder.py`
 the sample renders with a logo found only in the source folder). Not built: the release steps themselves
 (CHANGELOG line, `make_theme_package.py`, GitHub release) stay by hand; a way to try the source folder's version
 in real decks before a release (packing and installing it locally) is not there.
+
+**Built: C3, the Advanced tab (v0.16.28, branch `feat/theme-form-advanced`).** `theme_form_model.ADVANCED_SECTIONS`:
+seven cards with the tier 3 fields (Mini frames, Progress bar, Divider frames and watermark, Frame types, Blocks
+and drawings, List spacing, Other fine spacing), built by the Layout tab's `_layout_card`. New field kinds in
+`_layout_field`: a feature command is an editable list of its values that refuses another text (`check_choice`),
+a ratio a plain number (`check_number`), `SMBesideFigureTopGap` a length or its word "auto". Left out on purpose
+(`ADVANCED_ELSEWHERE`): `SMCanvasColor`, `SMCardBackgroundColor`, `SMCardBorderColor` (the roles canvas, card and
+line on the Colors tab set them) and `SMProcessBorderColor` (no role; source only). Not built from the plan's C3
+row: the "derive dark mode" helper (superseded: the dark preset of a mode does it) and new framework hooks for
+Graz's raw dark-mode TeX (done in CR); a font-file check for `SMCardHeadingStyle` (it is a plain TeX field);
+marks on the sample slides for the tier 3 lengths. Tests: `tests/test_theme_form_layout.py` (every tier 3 field
+once; each written, read and removed without another change; the tab's fields in the form).
 
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
