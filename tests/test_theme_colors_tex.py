@@ -74,7 +74,7 @@ def close(a: str, b: str) -> bool:
 
 @pytest.mark.parametrize("key,mode", [
     ("acme", ""), ("acme", "light"), ("acme", "dark"), ("acme", "grey"), ("acme", "cb"), ("acme", "mine"),
-    ("acme", "unknown"), ("slidemage", ""), ("slidemage", "dark"), ("greyscale", ""), ("greyscale", "dark")])
+    ("acme", "unknown"), ("slidemage", ""), ("slidemage", "dark"), ("grayscale", ""), ("grayscale", "dark")])
 def test_the_menu_swatches_are_the_colours_tex_resolves(key, mode, tmp_path):
     (tmp_path / "SlideMage_template_acme.tex").write_text(ACME, encoding="utf-8")
     expected = theme_colors.theme_colors(key, tmp_path, mode)       # "unknown": undeclared, no preset, no lines

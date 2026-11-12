@@ -357,7 +357,7 @@ def footer_text_gaps(page: fitz.Page, chrome: cl.Page, number: dict) -> tuple[fl
     dpi = 1152
     x0, x1 = number["bbox"][0] - 0.3, min(number["bbox"][2] + 0.3, chrome.w - 0.3)
     # The clip stays EDGE_INSET inside the box: its edge rows are antialiased against the canvas, and with a
-    # mid-grey box (the greyscale template's, v10.18.0) they differ from the box colour by more than the threshold,
+    # mid-grey box (the grayscale template's, v10.18.0) they differ from the box colour by more than the threshold,
     # which put "ink" on the box's edges and made the check pass whatever the number did.
     clip = fitz.Rect(x0, chrome.footer_top + EDGE_INSET, x1, chrome.h - EDGE_INSET)
     pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=fitz.csRGB, alpha=False)

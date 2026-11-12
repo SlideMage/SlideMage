@@ -57,7 +57,7 @@ Rules (the app and the packing tool apply the same ones; a broken rule is refuse
 - Every field is required and text. `api_version`, `needs` and `network` are refused: they belong to `plugin.toml`,
   and a theme runs no Python.
 - The `id` is the template key, hyphens and all (`uni-graz`), unlike a plugin's package folder.
-- The `id` may not be the key of a template SlideMage ships (today `slidemage` and, since v10.18.0, `greyscale`): a
+- The `id` may not be the key of a template SlideMage ships (today `slidemage` and, since v10.18.0, `grayscale`): a
   theme cannot replace a bundled template.
 - `requires_slidemage` must accept the running SlideMage, or the theme is not installed.
 - The template file `SlideMage_template_<id>.tex`, `README.md`, `CHANGELOG.md` and `LICENSE` must be there, and

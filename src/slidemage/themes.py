@@ -241,7 +241,7 @@ remove = partial(packages.remove, KIND)
 cleanup = partial(packages.cleanup, KIND)
 
 
-SHIPPED_STARTS = (("slidemage", "SlideMage (the default look)"), ("greyscale", "Greyscale (sets more settings)"))
+SHIPPED_STARTS = (("slidemage", "SlideMage (the default look)"), ("grayscale", "Grayscale (sets more settings)"))
 
 
 def check_new_key(key: str, root: Path) -> str:

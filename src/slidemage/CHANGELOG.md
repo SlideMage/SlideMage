@@ -4059,3 +4059,8 @@ v0.16.25 (2026-11-12, direct request: American English in the app's text): The B
 
 NEW: American spelling throughout.
 - Menus, settings and messages now write "color", "center" and "canceled" everywhere.
+
+v0.16.26 (2026-11-12, direct request: Grayscale, in American spelling, throughout): The shipped theme Greyscale is Grayscale: its key is grayscale, its file latex/SlideMage_template_grayscale.tex, its name line "Grayscale (Latin Modern Roman)", and "New theme…" offers "Grayscale (sets more settings)". README, docs, the example slide on making a template, the tools and the tests name it so. No migration: no deck used the old key. A deck that does input SlideMage_template_greyscale needs its line changed to SlideMage_template_grayscale.
+
+NEW: The Greyscale theme is now called Grayscale.
+- If one of your decks uses the template "greyscale", pick "Grayscale" for it in the deck settings.

@@ -15,7 +15,7 @@ from slidemage.ui.workspace.theme_form import ThemeForm
 
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPED = ROOT / "latex" / "SlideMage_template_slidemage.tex"
-GREYSCALE = ROOT / "latex" / "SlideMage_template_greyscale.tex"
+GRAYSCALE = ROOT / "latex" / "SlideMage_template_grayscale.tex"
 
 
 def make_form(path: Path):
@@ -81,7 +81,7 @@ def test_a_length_of_another_form_shows_as_tex(qapp):
 
 
 def test_a_size_pair_is_two_numbers(qapp):
-    editor, form = make_form(GREYSCALE)
+    editor, form = make_form(GRAYSCALE)
     box = row_widget(form, "SMFooterTextSize")
     size, skip, raw = box.findChildren(QLineEdit)
     assert (size.text(), skip.text()) == ("6", "4") and raw.isHidden()
@@ -109,7 +109,7 @@ def test_profile_bullet_and_citation(qapp):
     bullet.setCurrentIndex(0)
     bullet.activated.emit(0)
     assert "SMBulletSymbol" not in editor.text()
-    grey_editor, grey = make_form(GREYSCALE)
+    grey_editor, grey = make_form(GRAYSCALE)
     assert row_widget(grey, "SMBulletSymbol").currentText() == "En dash"
     citation = row_widget(form, "SMCitationFormat")
     citation.setCurrentText("default")
@@ -122,7 +122,7 @@ def test_lengths_show_in_one_unit_and_keep_their_own(qapp, monkeypatch):
     stored = {}
     monkeypatch.setattr(theme_form.layout_settings, "get", lambda key, default=None: stored.get(key, default))
     monkeypatch.setattr(theme_form.layout_settings, "set", lambda key, value: stored.__setitem__(key, value))
-    editor, form = make_form(GREYSCALE)
+    editor, form = make_form(GRAYSCALE)
     form.geometry = lambda: {"page_width": 453.54, "page_height": 255.12, "SMFrametitleTopPadding": 15.99,
                              "SMTextMarginLeft": 28.35}
     form.refresh()

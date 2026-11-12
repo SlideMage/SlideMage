@@ -581,7 +581,7 @@ def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx
 
     pane.app_for_test.state.deck = deck("slidemage")                # another deck
     assert _color_menu(pane, monkeypatch)["c_primary_highlight"] == "#0066cc"
-    pane.app_for_test.state.deck = deck("greyscale")                # the shipped greyscale template
+    pane.app_for_test.state.deck = deck("grayscale")                # the shipped grayscale template
     grey = _color_menu(pane, monkeypatch)
     assert grey["c_primary_highlight"] == "#555555"
     assert all(v[1:3] == v[3:5] == v[5:7] for v in grey.values())
@@ -595,7 +595,7 @@ def test_color_menu_takes_the_decks_theme_colours_and_follows_switches(pane, ctx
 def test_shipped_templates_give_every_menu_name_from_their_own_files(ctx):
     from slidemage import theme_colors
 
-    for key in ("slidemage", "greyscale"):
+    for key in ("slidemage", "grayscale"):
         for mode in ("", "dark"):
             read = theme_colors.theme_colors(key, ctx.root, mode)
             menu = theme_colors.swatches(key, ctx.root, mode)

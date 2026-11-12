@@ -20,7 +20,7 @@ from slidemage.ui.workspace.theme_sample_view import ThemeSampleView, pdf_pages
 from slidemage.ui.workspace.window import WorkspaceWindow
 
 ROOT = Path(__file__).resolve().parents[1]
-GREYSCALE = ROOT / "latex" / "SlideMage_template_greyscale.tex"
+GRAYSCALE = ROOT / "latex" / "SlideMage_template_grayscale.tex"
 TEX = pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("lualatex"),
                          reason="compiles with lualatex: SLIDEMAGE_TEX_TESTS=1")
 
@@ -48,7 +48,7 @@ def test_prepare_writes_the_buffer_as_the_theme_and_puts_it_first(tmp_path):
 
 @TEX
 def test_the_sample_deck_compiles_in_each_mode():
-    text = GREYSCALE.read_text(encoding="utf-8")
+    text = GRAYSCALE.read_text(encoding="utf-8")
     light = theme_sample.render(EXAMPLE_PROJECT, text, "probe", "")
     dark = theme_sample.render(EXAMPLE_PROJECT, text, "probe", "dark")
     assert light.pdf and dark.pdf, (light.log, dark.log)
@@ -74,7 +74,7 @@ def sample_pdf(path: Path, pages: int = 3) -> Path:
 
 def make_view(tmp_path, text=None, render=None):
     editor = LatexPlainTextEdit(ThemeManager())
-    editor.set_text(text if text is not None else GREYSCALE.read_text(encoding="utf-8").replace("\r\n", "\n"))
+    editor.set_text(text if text is not None else GRAYSCALE.read_text(encoding="utf-8").replace("\r\n", "\n"))
     calls = []
 
     def fake(project, text, key, mode, cancel=None):
@@ -155,19 +155,19 @@ def test_check_new_key(tmp_path, monkeypatch):
     monkeypatch.setattr(themes, "installed_dirs", lambda: [tmp_path / "installed" / "uni-x"])
     (tmp_path / "SlideMage_template_mine.tex").write_text("x", encoding="utf-8")
     assert themes.check_new_key("my-look", tmp_path) == ""
-    for bad in ("x", "My-look", "1abc", "slidemage", "greyscale", "mine", "uni-x"):
+    for bad in ("x", "My-look", "1abc", "slidemage", "grayscale", "mine", "uni-x"):
         assert themes.check_new_key(bad, tmp_path), bad
 
 
 def test_new_theme_copies_a_shipped_template_with_its_name(tmp_path, monkeypatch):
     monkeypatch.setattr(themes, "installed_dirs", lambda: [])
     monkeypatch.setattr(slide_templates, "framework_dirs", lambda root: [ROOT / "latex"])
-    path = themes.new_theme("my-look", "My Look", tmp_path, "greyscale")
+    path = themes.new_theme("my-look", "My Look", tmp_path, "grayscale")
     assert path == tmp_path / "SlideMage_template_my-look.tex"
     text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
-    shipped = GREYSCALE.read_text(encoding="utf-8").replace("\r\n", "\n")
+    shipped = GRAYSCALE.read_text(encoding="utf-8").replace("\r\n", "\n")
     assert "% SlideMage template name: My Look\n" in text
-    assert text.replace("My Look", "Greyscale (Latin Modern Roman)") == shipped
+    assert text.replace("My Look", "Grayscale (Latin Modern Roman)") == shipped
     plain = themes.new_theme("plain-look", "", tmp_path)          # the SlideMage template has no name line: one is added
     assert "% SlideMage template name: plain-look" in plain.read_text(encoding="utf-8")
     with pytest.raises(themes.ThemeError):
@@ -205,9 +205,9 @@ def test_settings_new_theme_closes_the_sheet_then_makes_the_theme(qapp, tmp_path
     app, left = App(), []
     tab = PluginsTab(app, leave=lambda action: (left.append("leave"), action()))
     assert tab.new_theme_button.text() == "New theme…"
-    monkeypatch.setattr(tab, "ask_new_theme", lambda: ("my-look", "My Look", "greyscale"))
+    monkeypatch.setattr(tab, "ask_new_theme", lambda: ("my-look", "My Look", "grayscale"))
     tab.new_theme_from_dialog()
-    assert left == ["leave"] and app.made == [("my-look", "My Look", "greyscale")]
+    assert left == ["leave"] and app.made == [("my-look", "My Look", "grayscale")]
     monkeypatch.setattr(tab, "ask_new_theme", lambda: None)
     tab.new_theme_from_dialog()
-    assert app.made == [("my-look", "My Look", "greyscale")]
+    assert app.made == [("my-look", "My Look", "grayscale")]

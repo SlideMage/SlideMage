@@ -1006,7 +1006,7 @@ mix it in.
      profile.
    - **Look:** a taller title box; en dashes as bullet points; arabic numbers as footnote symbols (instead of the
      theme's currency signs, `\g_SM_footnote_symbols_seq`); a taller footer box; a wider logo area (SlideMage's own
-     logo, with more space around it); wider left and right margins; a greyscale colour scheme (palette and role
+     logo, with more space around it); wider left and right margins; a grayscale colour scheme (palette and role
      colours in greys only).
    - **Everything through the catalog.** The template sets only catalog settings and picks its profile, like any
      template. Where one of these wishes has no catalog setting (likely the bullet glyph or the footnote symbols),
@@ -1019,11 +1019,11 @@ mix it in.
      framework fix, to the user.
    - **Keep it:** the template ships with SlideMage for others to use and modify, as an example of a template built
      from the catalog alone (contrast to the SlideMage template): `latex/SlideMage_template_<key>.tex` (key decided
-     at the step, e.g. `classic` or `greyscale`), with its scheme folder if it needs one, no institution content.
+     at the step, e.g. `classic` or `grayscale`), with its scheme folder if it needs one, no institution content.
      Manual slide 1vw "Making a template" and 1pf/hd5 can point at it; the regression's in-repo config gets entries
      for the manual under it, so later framework changes are tested against a second, very different template.
    - **Done 2026-10-31 (v10.18.0):**
-     - **Template** `latex/SlideMage_template_greyscale.tex`, key `greyscale` (it names the one trait every page shows;
+     - **Template** `latex/SlideMage_template_grayscale.tex`, key `grayscale` (it names the one trait every page shows;
        `classic` says nothing a user could check, and no template, theme, profile or test uses either key). Catalog
        settings and the profile choice only, each with a comment, so it is the template to copy: profile `lmroman`;
        palette and roles in greys (each `c_secondary_*` no darker than #898989 for dark text at 4.5:1, the link grey
@@ -1033,7 +1033,7 @@ mix it in.
        coloured (the user's wish).
      - **Profile** `latex/SlideMage_layout_lmroman.tex`, written by `tools/calibrate_font_profile.py --new` (fonts as
        `\setsansfont` and `\setmainfont`: beamer sets frames in the sans family). All checks ok under the SlideMage
-       template and under greyscale. **Where the tool fell short, and what changed:** (1) it could not make a profile,
+       template and under grayscale. **Where the tool fell short, and what changed:** (1) it could not make a profile,
        the recipe said "copy fira by hand": `--new` writes one from the font files and the ascender the base reads;
        (2) the footer-number centring check read the antialiased edge rows of a mid-grey footer box as ink and passed
        whatever the number did (0.06/0.02pt "gaps"): it now scans 0.15bp inside the box (3.53/3.31pt); (3) nothing said
@@ -1049,15 +1049,15 @@ mix it in.
        `\SMProgressBarColor`); the default footnote signs assumed Fira: Latin Modern (lmsans since v10.6.0, lmroman)
        lacks ₹ ₽ ₺ ₴ ₪, so footnotes 3-7 had no visible marker -- the theme now uses only the signs the sans font has
        (Fira has all 14). No length or position assumed Fira or SlideMage's sizes: the calibration deck is clean under
-       greyscale, and every top/bottom finding below is a full slide the room rule keeps where it fits. Images:
+       grayscale, and every top/bottom finding below is a full slide the room rule keeps where it fits. Images:
        `.regression/step17b-images/a-framework-fixes/`.
      - **Findings (c), checker, fixed:** `check_layout.py` dropped a body line wholly inside or under the footer box or
        past the page (step 15's 1gr gap): such a line, larger than the footer's frame number, is now an item (on the
-       greyscale manual 18 more full slides reported, e.g. 1hi, 1cx); a side image's own drawings were judged
+       grayscale manual 18 more full slides reported, e.g. 1hi, 1cx); a side image's own drawings were judged
        against the Right Margin (1vh, visible only with a wider logo padding): drawings inside a flush-right panel are
        not. Images: `.regression/step17b-images/c-checker/`.
      - **Findings (b), the manual's content, for the user** (not changed; one image per slide and the findings in
-       `.regression/step17b-images/b-manual-content/`): the greyscale text area is smaller (taller bar and footer,
+       `.regression/step17b-images/b-manual-content/`): the grayscale text area is smaller (taller bar and footer,
        1cm margins), so 43 full slides overflow: top+bottom (room rule) 1jv 1us 1nk 1hi 1cx 1vn 1kp 1tb 1n6 1iz 1pn 1y3
        1w4 1un 1th 1u4 1x7 1uw 1vw 1r8 2rg 2v9 1wa; bottom 1an 1rv 1d8 1qn 1ub 1ti 1b6 1b2 1cb 1fg 1wk 1gu 1kg 1vd 1ih
        1be 1az 1c9 1a4 1nz 1gr 1td (its "Image source(s)" line under the footer). Fixed-width drawings or tables past
@@ -1065,27 +1065,27 @@ mix it in.
        footnote markers are currency signs and 2rg lists symbols "confirmed in this deck's font" (LM lacks some);
        1gr draws the title bar dark whatever the template; 1td and 1pf show screenshots of the SlideMage look.
      - **check_layout, manual:** SlideMage template 0 findings in all six in-repo PDFs (copy: the known coltop on dkf);
-       greyscale instructor top 23, left 1, right 9, bottom 46, edge 1 (during/after course: bottom 44), all (b).
-       Calibration deck: 0 findings under greyscale, under stress-test (lmsans) and under SlideMage/lmroman.
+       grayscale instructor top 23, left 1, right 9, bottom 46, edge 1 (during/after course: bottom 44), all (b).
+       Calibration deck: 0 findings under grayscale, under stress-test (lmsans) and under SlideMage/lmroman.
      - **Regression:** in-repo (`repo-v1016`, the two old entries): 6 entries, 575 pages, all identical (no
        2v9/1vn shift this time). Private (`private-v1014`): 57 entries, 7160 pages, all identical. After the 1vw edit the in-repo run differs on exactly 1vw
        in each of the six PDFs, and `check_layout.py` stays at the known findings. `tools/framework_regression_repo.json`
-       has `slidemage-manual@greyscale`. Manual slide 1vw names the greyscale template (`1-0-0+`); 1pf/hd5 not
+       has `slidemage-manual@grayscale`. Manual slide 1vw names the grayscale template (`1-0-0+`); 1pf/hd5 not
        changed (they show screenshots; pointing them at it needs a new screenshot).
      - **Tests:** full suite 3938 passed, 73 skipped, 1 failed (`test_settings_gui`'s template list now also holds
-       the bundled `greyscale`; expectation updated, passes). With `SLIDEMAGE_TEX_TESTS=1`: test_hook_geometry,
-       test_calibrate_font_profile (lmroman added, greyscale deck clean), test_template_catalog, test_revealed_footnotes
+       the bundled `grayscale`; expectation updated, passes). With `SLIDEMAGE_TEX_TESTS=1`: test_hook_geometry,
+       test_calibrate_font_profile (lmroman added, grayscale deck clean), test_template_catalog, test_revealed_footnotes
        pass (the last compares footnote tops within 0.02bp now: the stress template's "(n)" markers put two steps'
        rounded tops at 221.07 and 221.08).
 17c. **The manual fits every shipped template** (user request 2026-10-31; after 17b and v10.18.1, before step 18).
-   v10.18.1 set the greyscale template's body text to 10pt as a stopgap (it redefines LaTeX's size commands); with it,
-   7 manual slides still overflow under greyscale, and some describe or draw the SlideMage look as if it were fixed.
+   v10.18.1 set the grayscale template's body text to 10pt as a stopgap (it redefines LaTeX's size commands); with it,
+   7 manual slides still overflow under grayscale, and some describe or draw the SlideMage look as if it were fixed.
    Three parts, in parallel sessions on separate files; one CHANGELOG entry v10.19.0 at the end.
    - **A. A catalog setting for the body text size** (`\SMBodyFontSize` or similar in `SlideMage_setup.tex`, default
      11pt): the base derives `\normalsize` and the size steps below it (`\small`, `\footnotesize`, `\scriptsize`,
-     `\tiny`) from it, so lists, `\shrinklists` and everything set with those commands follow. The greyscale template
+     `\tiny`) from it, so lists, `\shrinklists` and everything set with those commands follow. The grayscale template
      sets 10pt through it instead of redefining the size commands. Render identical everywhere (SlideMage at 11pt,
-     greyscale at 10pt as in v10.18.1).
+     grayscale at 10pt as in v10.18.1).
    - **B. Manual slides that assume the SlideMage look:** fixed-width drawings and tables sized relative to
      `\linewidth` (1ym, 1im, 1bb), drawings of the template placed and coloured from catalog values (1nt's footer
      arrows, 1gr's title bar), too-full slides shortened or split (1rv, 1td, 1w4, 1uw, and any others found), with
