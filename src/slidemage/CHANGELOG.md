@@ -4079,3 +4079,8 @@ v0.16.29 (2026-11-12, theme editor stage C4: export as .smtheme): A personal the
 
 NEW: Export a theme as a package.
 - "Export…" on a personal theme in Settings → Extensions saves it as a .smtheme file that others install with "Add from file…".
+
+v0.16.30 (2026-11-13, direct request: the last hard-coded color found in the color-roles review): The track behind a progress bar (beamer's progress bar background in beamerthemeSlideMage.sty) was the bar's color mixed into white, a light band at the foot of a dark slide; it is mixed into the slide background (c_canvas) now. In a light mode the page is pixel for pixel as before (the sample deck with a foot progress bar compared); in the dark mode the track is a dark tone close to the slide. Test: tests/test_theme_sample.py (with SLIDEMAGE_TEX_TESTS=1). What is left hard-coded in the framework on purpose: the red of the DRAFT watermark.
+
+NEW: Progress bars in dark slides.
+- Fixed: in a dark color mode, the track behind a progress bar was a light band; it now matches the slide.
