@@ -411,8 +411,8 @@ class _PageCheck:
         ratio, limit, worst = min(low, key=lambda entry: entry[0])
         return [self._finding(
             CONTRAST, worst.cls, ERROR, ratio, limit, MIN, ":1", [entry[2].line for entry in low],
-            f"Contrast {ratio:.1f}:1 between the text colour and its background; needs ≥ {limit:g}:1: use a darker "
-            "text colour or a lighter background.", worst.line.text)]
+            f"Contrast {ratio:.1f}:1 between the text color and its background; needs ≥ {limit:g}:1: use a darker "
+            "text color or a lighter background.", worst.line.text)]
 
     def clipping(self) -> list[Finding]:
         page, tolerance = self.page, self.t.clip_tolerance_pct / 100 * self.page.height

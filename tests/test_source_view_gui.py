@@ -615,7 +615,7 @@ def test_color_menu_leads_with_the_roles_in_the_mode_of_the_view_shown(pane, ctx
     monkeypatch.setattr(PopoverMenu, "popup_below", lambda self, anchor, **kw: shown.append(self))
     pane._open_color_menu()
     entries = shown[0]._entries
-    assert entries[0] == ("header", "Follows the colour mode")
+    assert entries[0] == ("header", "Follows the color mode")
     items = [e for e in entries if e[0] == "item"]
     assert [e[1] for e in items[:7]] == ["c_text", "c_text_muted", "c_text_on_accent", "c_link", "c_canvas",
                                           "c_card", "c_line"]

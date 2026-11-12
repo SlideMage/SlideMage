@@ -83,7 +83,7 @@ Images, notes and text helpers.
 
 _LAYOUT = """\
 Layout helpers (prefer these to hand-measured shifts).
-- Content is top-aligned automatically; do not add vertical shifts. [c] centres a frame.
+- Content is top-aligned automatically; do not add vertical shifts. [c] centers a frame.
 - Two columns go inside standardframe: \\begin{columns}[t,onlytextwidth] with column{0.48\\linewidth} x2.
   Do not combine columns with \\pause reveals next to a bulky image; use an overlay or a minipage.
 - Tables: \\begin{SMTable}[gap=12pt]{lcc} with \\toprule \\midrule \\bottomrule.
@@ -105,7 +105,7 @@ def _frames(ctx: ProjectContext) -> str:
     lines.append(
         "\nUse \\source{...} in figureframe/sideimageframe/standardframe for the Source line. highlightframe "
         "is a standardframe with a different title bar for slides the presenter must notice. sectionframe "
-        "opens a part (add \\section{...} before its call in the deck). Pass [c] to centre a frame vertically.")
+        "opens a part (add \\section{...} before its call in the deck). Pass [c] to center a frame vertically.")
     return "\n".join(lines)
 
 

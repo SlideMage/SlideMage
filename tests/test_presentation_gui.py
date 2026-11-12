@@ -650,7 +650,7 @@ def test_settings_swatch_picker_saves_valid_colours_and_cancel_keeps_them(qapp, 
 
     def get_color(start, parent, title, options):
         calls.append(start)
-        assert parent is tab and title == "Colour"
+        assert parent is tab and title == "Color"
         assert bool(options & QColorDialog.ColorDialogOption.ShowAlphaChannel) == (key == "pen_color")
         return chosen
 
@@ -684,7 +684,7 @@ def test_presenter_swatch_live_accept_and_cancel_never_persist(make, tool):
     assert dialog.isVisible() and not dialog.isModal()
     dialog.setCurrentColor(QColor("#55aaff"))
     assert QColor(getattr(controller.settings, key)) == QColor("#55aaff")
-    assert "#55aaff" in swatch.styleSheet() and swatch.text() == "Colour"
+    assert "#55aaff" in swatch.styleSheet() and swatch.text() == "Color"
     assert PresentationSettings.load() == saved
     dialog.reject()
     assert getattr(controller.settings, key) == before

@@ -375,7 +375,7 @@ def test_the_current_view_compiles_once_in_another_colour_mode(env, monkeypatch)
 
     (window.project.root / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, grey\n")
     window.state.set_deck(dc_replace(deck, text=deck.text.replace("slidemage}", "acme}")))
-    assert command.title(window) == "Current view in another colour mode…"
+    assert command.title(window) == "Current view in another color mode…"
     monkeypatch.setattr(QInputDialog, "getItem", lambda *a, **k: ("Grey", True))
     captured.clear()
     print("DBG", compile_actions.other_modes(window), window.commands.run("compile:mode", window))

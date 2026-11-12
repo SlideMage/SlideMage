@@ -241,7 +241,7 @@ def _build(preamble, directory, *, project_root: Path, env, log, cancel=None):
             else:
                 run_streamed(cmd, cwd=cwd, env=run_env, log=lambda _: None, cancel=cancel)
                 if cancel.is_set():
-                    raise RuntimeError('Preview cancelled')
+                    raise RuntimeError('Preview canceled')
         except (OSError, subprocess.TimeoutExpired):
             disable(directory)
             return None

@@ -268,7 +268,7 @@ def test_low_contrast_is_an_error_with_the_wcag_ratio_and_headings_need_less(tmp
     found, = findings(grey, "contrast")
     assert (found.severity, found.threshold, found.needs) == (ERROR, 4.5, readability.MIN)
     assert found.measured == pytest.approx(readability.contrast_ratio(0x9E9E9E, 0xFFFFFF), abs=0.05)
-    assert "darker text colour" in found.suggestion
+    assert "darker text color" in found.suggestion
     assert findings(measure(tmp_path, slide(color=(0.4, 0.4, 0.4))), "contrast") == []        # 5.7:1
 
     def grey_title(page):

@@ -45,7 +45,7 @@ class FakeRequest:
             while not self.release.wait(0.01):
                 if cancel is not None and cancel.is_set():
                     self.cancelled = True
-                    raise RuntimeError("Preview cancelled")
+                    raise RuntimeError("Preview canceled")
         if plan.get("error"):
             raise RuntimeError(plan["error"])
         return Path(f"/render/{self.index}.pdf"), b"", (), b""

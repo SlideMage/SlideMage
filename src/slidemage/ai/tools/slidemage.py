@@ -174,7 +174,7 @@ PREVIEW_VIEW = {"type": "string", "enum": [*VIEWS, "all"],
 
 
 @tool("render_preview",
-      "Typeset a slide and return labelled images for visual inspection: check layout, overflow and overlaps. "
+      "Typeset a slide and return labeled images for visual inspection: check layout, overflow and overlaps. "
       "view may be instructor, during-course, after-course, or all. Omitted view uses the selected workspace "
       "view. Includes unsaved editor source. Hidden views have no image; successful views survive partial "
       "failures. Publishes the current view when still current, without changing slide/view selection.",

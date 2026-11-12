@@ -62,7 +62,7 @@ class ImageRunsMixin:
         single = self.job_card.single
         text = job.title if single else f"{job.title} · {max(job.position[0] - 1, 0)} of {job.position[1]} done"
         return [RunningWork(text, job.route.label, job.provider.is_local, self._abort_job,
-                            "" if single else "Pending images are cancelled, not moved to the other route")]
+                            "" if single else "Pending images are canceled, not moved to the other route")]
 
     def _on_progress(self, job: Job, index: int, total: int, image: str) -> None:
         if job is not self._job:      # stopped meanwhile (its thread may still report)

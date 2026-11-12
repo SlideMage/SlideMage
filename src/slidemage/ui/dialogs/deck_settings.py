@@ -173,11 +173,11 @@ class DeckSettingsSheet(ModalSheet):
 
         self.mode_combo = QComboBox()
         self.mode_combo.setToolTip(
-            "The colour mode of this deck's slides and PDFs, for example a dark background. "
+            "The color mode of this deck's slides and PDFs, for example a dark background. "
             "Available when the selected template declares more than one mode.")
         self._fill_mode_combo(deck_settings.settings_mode(self._template_modes(), settings.mode))
-        layout.addWidget(Field("Colours", self.mode_combo))
-        layout.addWidget(caption("A template declares its colour modes (light, dark, grey ...); a mode changes colours only."))
+        layout.addWidget(Field("Colors", self.mode_combo))
+        layout.addWidget(caption("A template declares its color modes (light, dark, gray ...); a mode changes colors only."))
         self._build_view_themes(layout, entries)
 
         self.footer_edit = QLineEdit(settings.footer_text)

@@ -270,7 +270,7 @@ def test_stopping_the_render_ends_the_card_done_without_a_preview(fake, monkeypa
 
     def cancelled(*_args, **_kwargs):
         gate.wait(5)
-        raise RuntimeError("Preview cancelled")
+        raise RuntimeError("Preview canceled")
 
     monkeypatch.setattr(area(env).workspace, "render_preview", cancelled)
     break_slide(env)

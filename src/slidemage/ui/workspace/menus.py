@@ -159,7 +159,7 @@ MENU_BAR = (
                 ("", ("slide:reviewed", "slides:unreviewed", "slide:compare", "slide:readability")),
                 ("", (Submenu("Section", ("section:*",)),)),
                 ("", ("slide:remove",)))),
-    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Centre", ("mode:*",)),
+    ("&View", (("View as", ("view:*",)), ("Language", ("language:*",)), ("Center", ("mode:*",)),
                ("", ("column:left", "column:right", Submenu("Side panel", ("panel:*",)), "images", "log")),
                ("Tabs", ("tab:*",)), ("", ("render_buffer", "preview:*")))),
     ("&Build", (("", ("compile:current",)),

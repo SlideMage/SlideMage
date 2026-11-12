@@ -24,7 +24,7 @@ def make(**kwargs):
         if step:
             step(job)
         if cancel.is_set():
-            raise Cancelled("Preview cancelled")
+            raise Cancelled("Preview canceled")
         if job.key in box.get("fail", ()):
             raise RuntimeError("boom")
 

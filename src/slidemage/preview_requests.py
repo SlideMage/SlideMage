@@ -207,7 +207,7 @@ class RenderRequest:
         try:
             with self._start_lock:
                 if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
-                    raise RuntimeError('Preview cancelled')
+                    raise RuntimeError('Preview canceled')
                 if not self._started:
                     self._started = True
                     self.cancel.low_priority = getattr(cancel, 'low_priority', False)
@@ -215,13 +215,13 @@ class RenderRequest:
             event = self.delivered if pixels_only else self.done
             while True:
                 if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
-                    raise RuntimeError('Preview cancelled')
+                    raise RuntimeError('Preview canceled')
                 if event.wait(.05):
                     break
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Preview timed out')
             if self.cancel.is_set() or (cancel is not None and cancel.is_set()):
-                raise RuntimeError('Preview cancelled')
+                raise RuntimeError('Preview canceled')
             if self.error is not None:
                 raise self.error
             if pixels_only and self._delivered_artifact is not None and not self.done.is_set():

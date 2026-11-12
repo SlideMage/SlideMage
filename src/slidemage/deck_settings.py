@@ -266,7 +266,7 @@ def set_mode(text: str, mode: str) -> str:
         raise ValueError(f"'{mode}' is not a mode name.")
     templates = _live(text, TEMPLATE_INPUT_RE)
     if mode and not templates:
-        raise ValueError("This deck has no institution template input for a colour mode.")
+        raise ValueError("This deck has no institution template input for a color mode.")
     live = _live(text, MODE_RE)
     if mode and len(live) == 1 and live[0].group(1) == mode and live[0].end() <= templates[0].start():
         return text

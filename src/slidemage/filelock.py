@@ -100,4 +100,4 @@ def _windows_unlock(stream) -> None:
 
 def check_cancel(cancel):
     if cancel is not None and cancel.is_set():
-        raise RuntimeError('Preview cancelled')
+        raise RuntimeError('Preview canceled')

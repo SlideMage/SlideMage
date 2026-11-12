@@ -204,7 +204,7 @@ def job_label(job: CompileJob) -> str:
     if job.language:
         label += f" · {job.language.upper()}"
     if job.mode:
-        label += f" · {job.mode} colours"
+        label += f" · {job.mode} colors"
     return label
 
 

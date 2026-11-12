@@ -590,12 +590,12 @@ class TaskRunner(QObject):
                                 None if writing else self.stop, "A file write that has started finishes" if writing else "")]
         if (batch := self._batch) is not None:
             text, note = (f"{_NAMES[batch.task.name]} · {len(batch.lines)} of {batch.total} done",
-                          "Slides not started are cancelled, not moved to the other route")
+                          "Slides not started are canceled, not moved to the other route")
         else:
             worker = next(iter(self._running))
             if isinstance(worker, _ImageRun):
                 text = f"{_NAMES[worker.capture.task.name]} · {worker.position[0] - 1} of {worker.position[1]} done"
-                note = "Pending images are cancelled, not moved to the other route"
+                note = "Pending images are canceled, not moved to the other route"
             else:
                 text, note = f"{_NAMES[worker.capture.task.name]} · {slide_language.bare_id(worker.capture.id_slug)}", ""
         return [RunningWork(text, self._route.label, self._route.is_local, self.stop, note)]
