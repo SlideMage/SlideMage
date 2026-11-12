@@ -235,17 +235,17 @@ def pick_mode(sheet, mode_id):
 
 
 def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_path, monkeypatch, qapp):
-    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark, grey=Grayscale\n")
+    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark, gray=Grayscale\n")
     sheet = make_sheet(tmp_path, monkeypatch)
-    assert [sheet.mode_combo.itemData(i) for i in range(sheet.mode_combo.count())] == ["light", "dark", "grey"]
-    pick_mode(sheet, "grey")
+    assert [sheet.mode_combo.itemData(i) for i in range(sheet.mode_combo.count())] == ["light", "dark", "gray"]
+    pick_mode(sheet, "gray")
     sheet.save_button.click()
     result = sheet.result_settings()
-    assert result.mode == "grey"
+    assert result.mode == "gray"
     saved = deck_settings.apply_settings(DECK_TEXT, sheet.original, result)
-    assert "\\newcommand{\\SMModeOverride}{grey}" in saved
+    assert "\\newcommand{\\SMModeOverride}{gray}" in saved
     reopened = make_sheet(tmp_path, monkeypatch, text=saved)
-    assert reopened.mode_combo.currentData() == "grey" and not reopened.dirty()
+    assert reopened.mode_combo.currentData() == "gray" and not reopened.dirty()
     pick_mode(reopened, "dark")
     reopened.save_button.click()
     assert reopened.result_settings().mode == "dark"
@@ -255,6 +255,6 @@ def test_a_template_with_more_modes_offers_them_for_the_deck_and_each_view(tmp_p
     view = versioned.view_combos["instructor"]
     view.setCurrentIndex(view.findData("acme"))
     modes = versioned.view_mode["instructor"]
-    assert modes.isEnabled() and [modes.itemData(i) for i in range(modes.count())] == ["", "dark", "grey"]
-    modes.setCurrentIndex(modes.findData("grey"))
-    assert versioned._view_theme_entries() == {"instructor": ("acme", "grey")}
+    assert modes.isEnabled() and [modes.itemData(i) for i in range(modes.count())] == ["", "dark", "gray"]
+    modes.setCurrentIndex(modes.findData("gray"))
+    assert versioned._view_theme_entries() == {"instructor": ("acme", "gray")}

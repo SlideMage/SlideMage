@@ -21,8 +21,8 @@ TEMPLATE = r"\input{SlideMage_template_uni-graz}"
     (r"\def\SMDarkMode{}" + "\r\n" + TEMPLATE + "\r\n", NEW + "\r\n" + TEMPLATE + "\r\n"),
     (r"\providecommand\SMDarkMode{x} \def\x{y}" + "\n" + TEMPLATE, NEW + r" \def\x{y}" + "\n" + TEMPLATE),
     # a mode line was already there and always won: the switch just goes, with its line
-    (r"\newcommand{\SMModeOverride}{grey}" + "\n" + OLD + "\n" + TEMPLATE,
-     r"\newcommand{\SMModeOverride}{grey}" + "\n" + TEMPLATE),
+    (r"\newcommand{\SMModeOverride}{gray}" + "\n" + OLD + "\n" + TEMPLATE,
+     r"\newcommand{\SMModeOverride}{gray}" + "\n" + TEMPLATE),
     # two switches: one mode line
     (OLD + "\n" + OLD + "\n" + TEMPLATE, NEW + "\n" + TEMPLATE),
     # a comment stays as it is

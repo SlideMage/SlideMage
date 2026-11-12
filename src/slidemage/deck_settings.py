@@ -160,7 +160,7 @@ _MODE_ID_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def template_modes(root: Path, key: str) -> list[tuple[str, str]]:
-    """[(mode id, label)] a template offers, the first being its base mode: `% SlideMage modes: light, dark=Dark slides, grey`
+    """[(mode id, label)] a template offers, the first being its base mode: `% SlideMage modes: light, dark=Dark slides, gray`
     in its first 30 lines (a label after "="; without one the id, capitalised). [] when the template has no modes; the
     older `% SlideMage dark mode: true` means nothing since v0.16.0. A template declares the same modes to the framework
     with \\SMDeclareMode (latex/SlideMage_setup.tex)."""

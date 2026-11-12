@@ -127,15 +127,15 @@ def test_a_new_modes_line_goes_after_the_last_mode_line_and_nothing_else_moves()
     edited = ThemeFile(text)
     edited.set("role:title_fill", "c_test_dark_canvas", "dark")
     edited.set("c_custom_brown", "#d09a5c", "dark")
-    edited.set("mode:grey", "grey")
+    edited.set("mode:gray", "gray")
     changes = changed_lines(text, edited.text)
     assert all(tag == "insert" for tag, _, _ in changes)
     lines = edited.text.split("\n")
     last = lines.index("\\SMSetRole{standout_text}{dark}{c_primary_highlight}")
     assert lines[last + 1:last + 3] == ["\\SMSetRole{title_fill}{dark}{c_test_dark_canvas}",
                                         "\\SMSetColor{c_custom_brown}{dark}{HTML}{d09a5c}"]
-    assert lines[lines.index("\\SMDeclareMode{dark}{dark}") + 1] == "\\SMDeclareMode{grey}{grey}"
-    assert edited.modes() == [("light", ""), ("dark", "dark"), ("grey", "grey")]
+    assert lines[lines.index("\\SMDeclareMode{dark}{dark}") + 1] == "\\SMDeclareMode{gray}{gray}"
+    assert edited.modes() == [("light", ""), ("dark", "dark"), ("gray", "gray")]
 
 
 def test_a_theme_without_modes_gets_them_in_the_block_declarations_first():
@@ -218,10 +218,10 @@ def test_headers_and_the_layout_profile():
     assert lines[3] == "% SlideMage template name: My look"          # after the SPDX and modes lines
     assert lines[lines.index("\\input{SlideMage_setup}") - 1] == "\\newcommand{\\SMLayoutProfile}{lmsans}"
     assert all(tag == "insert" for tag, _, _ in changed_lines(text, edited.text))
-    grey = ThemeFile(read(LATEX / "SlideMage_template_grayscale.tex"))
-    grey.set("SMLayoutProfile", "fira")
-    grey.set("header:name", "Greys")
-    assert [new for _, _, new in changed_lines(read(LATEX / "SlideMage_template_grayscale.tex"), grey.text)] == [
+    gray = ThemeFile(read(LATEX / "SlideMage_template_grayscale.tex"))
+    gray.set("SMLayoutProfile", "fira")
+    gray.set("header:name", "Greys")
+    assert [new for _, _, new in changed_lines(read(LATEX / "SlideMage_template_grayscale.tex"), gray.text)] == [
         ["% SlideMage template name: Greys"], ["\\newcommand{\\SMLayoutProfile}{fira}"]]
 
 

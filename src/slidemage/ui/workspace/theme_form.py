@@ -472,7 +472,7 @@ class ThemeForm(QWidget):
         mode_id = QLineEdit("dark" if "dark" not in taken else "")
         label = QLineEdit("Dark slides" if mode_id.text() else "")
         derive = QComboBox()
-        names = {"dark": "The dark preset: derived from the palette", "grey": "The gray preset: every color in gray",
+        names = {"dark": "The dark preset: derived from the palette", "gray": "The gray preset: every color in gray",
                  "colorblind": "The color-blind preset: Okabe–Ito accents", "": "Nothing: the base mode's colors"}
         for value in DERIVES:
             derive.addItem(names[value], value)

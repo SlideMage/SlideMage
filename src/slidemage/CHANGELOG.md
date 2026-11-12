@@ -4064,3 +4064,8 @@ v0.16.26 (2026-11-12, direct request: Grayscale, in American spelling, throughou
 
 NEW: The Greyscale theme is now called Grayscale.
 - If one of your decks uses the template "greyscale", pick "Grayscale" for it in the deck settings.
+
+v0.16.27 (2026-11-12, direct request: gray as the preset's id too): The derive preset that turns every palette color into its gray is called gray, not grey: \SMDeclareMode{gray}{gray} (\SM@preset@gray in SlideMage_setup.tex; theme_form_model.DERIVES, theme_colors). The theme form's "Add mode" writes it so. No compat entry and no migration, by the user's decision (nobody has used the preset yet). For a theme that declares a mode with the derive preset grey: there is no alias, the mode then starts from the base colors without the gray conversion; change the second argument to gray. A mode's own id is the theme's choice and may still be anything; the framework's examples and the tests use gray.
+
+NEW: The gray preset of color modes is spelled gray.
+- A theme that declares a mode with the preset "grey" must write "gray" instead (the second argument of \SMDeclareMode). No shipped theme used it.

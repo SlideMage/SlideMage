@@ -46,8 +46,8 @@ visible effect.
 - `"centre"`: the centre column's id in layout and reload calls (17 places), `"centre_tabs"`, the module
   `ui/workspace/centre.py`.
 - `"colour-roles-in-slides"` (`compat_color_roles.py:43`): the id of a compat change, recorded in projects.
-- In the theme code: the kinds `"colour"`, `"modecolour"`, `"optional_colour"`, the mode and preset id `grey` (a TeX
-  id: `\SMDeclareMode{grey}{grey}`, shown as "gray"), `colorblind`, and the TeX macro `\SM@rolecolour`.
+- In the theme code: the kinds `"colour"`, `"modecolour"`, `"optional_colour"`, (the preset id `grey` became `gray` in v0.16.27, with no alias),
+  `colorblind`, and the TeX macro `\SM@rolecolour`.
 - Done in v0.16.26: the shipped theme Greyscale is **Grayscale** throughout (key `grayscale`, file
   `SlideMage_template_grayscale.tex`); no deck used the old key, so there is no migration.
 - Python names (`own_colours`, `CODE_COLOURS`, `_colour_dialog`, `_neighbours_cache`), docstrings and comments.

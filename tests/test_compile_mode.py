@@ -10,14 +10,14 @@ from slidemage import compiler, deck_scan
 from slidemage.project import ProjectContext
 
 DARK = "\\newcommand{\\SMModeOverride}{dark}"
-GREY = "\\newcommand{\\SMModeOverride}{grey}"
+GREY = "\\newcommand{\\SMModeOverride}{gray}"
 DOC = ("\\documentclass{beamer}\n\\input{SlideMage_template_acme}\n"
        "% SlideMage view themes: after-course=acme:dark\n"
        "\\begin{document}\n\\slide{aaa-EN-One}\n\\end{document}\n")
 
 
 def _deck(tmp_path, text=DOC):
-    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, grey\n")
+    (tmp_path / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, gray\n")
     (tmp_path / "decks").mkdir(exist_ok=True)
     (tmp_path / "slides").mkdir(exist_ok=True)
     path = tmp_path / "decks" / "course.tex"
@@ -36,8 +36,8 @@ def test_the_wrapper_writes_the_one_off_mode_and_the_base_mode_removes_it(tmp_pa
     assert DARK in compiler.wrapper_text(ctx, after)                              # the view's own mode
     light = compiler.wrapper_text(ctx, replace(after, mode="light"))               # the base: no override
     assert "SMModeOverride" not in light and "SlideMage_template_acme" in light
-    grey = compiler.wrapper_text(ctx, replace(after, mode="grey"))
-    assert GREY in grey and DARK not in grey
+    gray = compiler.wrapper_text(ctx, replace(after, mode="gray"))
+    assert GREY in gray and DARK not in gray
     assert deck.path.read_text() == DOC                                            # the deck is not touched
 
 
@@ -57,8 +57,8 @@ def test_a_one_off_mode_gets_its_own_pdf_name_and_label(tmp_path):
 def test_other_modes_leave_out_the_one_the_view_compiles_in(tmp_path):
     deck = _deck(tmp_path)
     ctx = ProjectContext.at(tmp_path)
-    assert compiler.other_modes(ctx, deck, "instructor") == [("dark", "Dark slides"), ("grey", "Grey")]
-    assert compiler.other_modes(ctx, deck, "after-course") == [("light", "Light"), ("grey", "Grey")]
+    assert compiler.other_modes(ctx, deck, "instructor") == [("dark", "Dark slides"), ("gray", "Gray")]
+    assert compiler.other_modes(ctx, deck, "after-course") == [("light", "Light"), ("gray", "Gray")]
     (tmp_path / "SlideMage_template_acme.tex").write_text("\\input{SlideMage_setup}\n")      # declares no modes
     assert compiler.other_modes(ctx, deck, "instructor") == []
 

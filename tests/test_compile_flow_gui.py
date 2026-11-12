@@ -373,12 +373,12 @@ def test_the_current_view_compiles_once_in_another_colour_mode(env, monkeypatch)
     assert [(job.version, job.mode, job.jobname) for job in captured] == [
         ("after-course", "dark", "course-after-course-dark")]
 
-    (window.project.root / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, grey\n")
+    (window.project.root / "SlideMage_template_acme.tex").write_text("% SlideMage modes: light, dark=Dark slides, gray\n")
     window.state.set_deck(dc_replace(deck, text=deck.text.replace("slidemage}", "acme}")))
     assert command.title(window) == "Current view in another color mode…"
-    monkeypatch.setattr(QInputDialog, "getItem", lambda *a, **k: ("Grey", True))
+    monkeypatch.setattr(QInputDialog, "getItem", lambda *a, **k: ("Gray", True))
     captured.clear()
     print("DBG", compile_actions.other_modes(window), window.commands.run("compile:mode", window))
-    assert [job.mode for job in captured] == ["grey"]
+    assert [job.mode for job in captured] == ["gray"]
     (window.project.root / "SlideMage_template_acme.tex").write_text("\\input{SlideMage_setup}\n")      # no modes: disabled
     assert not command.enabled(window)
