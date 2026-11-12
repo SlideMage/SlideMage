@@ -13,14 +13,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtCore import QEvent, QObject, QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QScrollArea, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
 
-from ... import slide_templates, theme_fields
+from ... import slide_templates, theme_fields, theme_measures
 from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
                                  UNITS, ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
@@ -225,6 +225,11 @@ class ThemeForm(QWidget):
         # set by the source tab; the focused cell's colour, overridden while the mouse is over another cell.
         self.on_usage: Optional[Callable[[str, str, str], None]] = None
         self.on_usage_cleared: Optional[Callable[[], None]] = None
+        # The marks of a focused length on the sample slides (C2b) and the geometry of the last render, set by the tab.
+        self.on_measure: Optional[Callable[[str, Optional[float]], None]] = None
+        self.on_measure_cleared: Optional[Callable[[], None]] = None
+        self.geometry: Callable[[], dict] = dict
+        self._filters: list[QObject] = []
         self._focused_usage: Optional[tuple[str, str, str]] = None
         self._hovered_usage: Optional[tuple[str, str, str]] = None
 
@@ -879,6 +884,36 @@ class ThemeForm(QWidget):
         number.editingFinished.connect(commit_split)
         unit.activated.connect(lambda _i: number.text().strip() and commit_split())
         raw.editingFinished.connect(lambda: write(raw.text().strip()))
+        check = caption("")
+        check.hide()
+        column.addWidget(check)
+
+        def typed() -> str:
+            """The length the fields hold now, typed or not yet written ("" when they follow)."""
+            if not raw.isHidden():
+                return raw.text().strip()
+            text = number.text().strip()
+            return f"{text}{unit.currentText()}" if text else ""
+
+        def tell() -> None:
+            """The sample slides mark the length as typed (C2b), and the Top Margin's check follows it."""
+            value = typed()
+            shown = value or self.model.value(key) or default
+            value_bp = theme_measures.to_bp(shown, key, self.geometry(), self.model.value(key) or default)
+            if self.on_measure is not None and key in theme_measures.MEASURED:
+                self.on_measure(key, value_bp)
+            if key == "SMTopMargin":
+                text, ok = theme_measures.title_bar_check(value_bp, self.geometry())
+                check.setText(text)
+                check.setProperty("tone", "" if ok else "error")
+                check.style().unpolish(check)
+                check.style().polish(check)
+                check.setVisible(bool(text))
+
+        for field in (number, raw):
+            field.textEdited.connect(lambda _t: tell())
+            field.installEventFilter(self._measure_filter(tell))
+        unit.currentTextChanged.connect(lambda _t: number.hasFocus() and tell())
 
         def refresh() -> None:
             value = self.model.value(key)
@@ -895,8 +930,26 @@ class ThemeForm(QWidget):
                 note.setText("" if value else "framework")
             elif not raw.hasFocus():
                 raw.setText(value or "")
+            if key == "SMTopMargin":
+                tell()
         refresh()
         return box, refresh
+
+    def _measure_filter(self, tell: Callable[[], None]) -> QObject:
+        """An event filter that marks a length on the sample slides while its field has the focus."""
+        form = self
+
+        class Filter(QObject):
+            def eventFilter(self, watched, event) -> bool:
+                if event.type() == QEvent.Type.FocusIn:
+                    tell()
+                elif event.type() == QEvent.Type.FocusOut and form.on_measure_cleared is not None:
+                    form.on_measure_cleared()
+                return False
+
+        found = Filter(self)
+        self._filters.append(found)
+        return found
 
     def _choice_field(self, key: str, choices: list[str], default: str) -> tuple[QWidget, Callable[[], None]]:
         combo = QComboBox()

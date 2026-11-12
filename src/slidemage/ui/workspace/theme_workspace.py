@@ -117,6 +117,11 @@ class ThemeWorkspace(Surface):
         self.form.on_structure = self._sync
         self.form.on_usage = self.sample.show_usage
         self.form.on_usage_cleared = self.sample.clear_usage
+        # A focused length is marked on the slides; the form's checks read the geometry of the last render.
+        self.form.on_measure = self.sample.show_measure
+        self.form.on_measure_cleared = self.sample.clear_measure
+        self.form.geometry = lambda: self.sample.geometry
+        self.sample.geometry_changed.connect(self.form.refresh)
         self._sync()
         view = layout_settings.get(VIEW_KEY, "form")
         self.set_view(view if view in dict(VIEWS) else "form")

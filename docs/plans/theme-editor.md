@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0, CR and the form stage C1 built and merged; C2a (layout fields) built, C2b and C2c next.** Parts A and B
+Status: **C0, CR, the form stage C1, C2a and the form's look merged; C2b (margin marks) built, C2c next.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -665,6 +665,23 @@ default), Reset, and the per-mode strip (`ThemeModel.strip`, the picked mode rin
 (`split_length`, `UNITS`; another form stays raw TeX). `ThemeSampleView` follows the mode bar (`follow_mode_bar`,
 `set_mode`) and has a page-thumbnail strip with a dot under the pages using the focused colour. The Top Margin's
 dimension line and the "below the title bar" check of the mockup's Layout screen are C2b.
+
+**Built: C2b (v0.16.19, branch `feat/theme-form-measures`).** No new TeX: SlideMage_base already writes the
+geometric hooks into the PDF's info dictionary in bp (for check_layout and test_hook_geometry), so
+`theme_sample.read_geometry(pdf)` gives every hook as rendered (ex and em worked out in their fonts, the derived
+`SMTitleBarBottom`, `SMLeftMargin` = the title's left padding) plus the page size; `SampleResult.geometry`,
+`ThemeSampleView.geometry` and `geometry_changed`. `src/slidemage/theme_measures.py`: `to_bp(value, key, geometry,
+rendered_value)` (absolute units exactly; ex/em scaled from the rendered value in the same unit, else None),
+`marks(key, value_bp, geometry)` -> `Mark`s for `MEASURED` (Top Margin: line + arrow + the title bar's bottom;
+text margins: both lines; footer box: a frame; title bar paddings, logo height and padding: the bar's bottom edge,
+the title's left edge, the logo padding, with "after the next render" where the edge is derived), and
+`title_bar_check(top_bp, geometry)`. `ThemeSampleView.show_measure(key, value_bp)` / `clear_measure()` paints the
+marks over the page (`_paint_marks`, after the colour dimming) and turns from the title, standout and quote frames
+to page 2. The form's length fields report focus and every keystroke (`ThemeForm.on_measure`,
+`on_measure_cleared`, `geometry`), wired in `ThemeWorkspace`; the Top Margin field shows the check under it.
+Tests: `tests/test_theme_measures.py` (with `SLIDEMAGE_TEX_TESTS=1` a real render's geometry). Not done: marks for
+the block side margin and the footnote spacing (the geometry has them, but no element of the sample deck is placed
+by them alone); size pairs (font sizes) get no mark.
 
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
