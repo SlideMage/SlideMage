@@ -4010,3 +4010,8 @@ v0.16.16 (2026-11-11, direct request: theme form, stage C1c, second part): While
 
 NEW: See where a colour is used.
 - In the theme form, click or point at a colour: the sample slides light up the parts that use it and dim the rest.
+
+v0.16.17 (2026-11-12, direct request: theme form, stage C2a): The theme form has the layout settings of the catalog's second tier, in six cards (theme_form_model.LAYOUT_SECTIONS): Font and text sizes (the layout profile, offered from the bundled and the project's own SlideMage_layout_<name>.tex; the body and code sizes), Margins (the Top Margin, the text margins, the block side margin), Title bar (the paddings, the text between title and subtitle, the space under a subtitle), Footer and footnotes (box height, footer, slide id and footnote sizes as two numbers in pt, paddings and gaps), Lists (the bullet: filled circle, en dash, bullet, small square, guillemet, or the theme's own) and Citations (the default and the installed citation formats). A length is checked when the field is left (a number and a unit, or a multiple of \paperheight and the like) and written only when it is one; an empty field takes the line out and the framework's value, shown in grey, applies again. Each change is one line of the theme, as before.
+
+NEW: Fonts, margins and sizes in the theme form.
+- The theme form now also sets the font profile, text sizes, margins, title bar, footer, footnotes, bullet and citation format of a theme.

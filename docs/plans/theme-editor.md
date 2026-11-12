@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0 and CR built and merged; the form is being built: C1a, C1b and C1c part 1 merged, C1c part 2 (where a colour is used) built.** Parts A and B
+Status: **C0, CR and the form stage C1 built and merged; C2a (layout fields) built, C2b and C2c next.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -630,6 +630,24 @@ only the block's violet bar on page 3; Body text in dark only the white body tex
 (C2, as the plan stages it): the dimension lines and marks of margins and paddings, which need the hooks' geometry.
 Limits: a colour a slide writes by palette name directly (`\textcolor{c_primary_highlight}`) shows under the palette
 kind, not the role kind; an image whose pixels happen to have a probe colour would light up too.
+
+C2 is done in three parts: **C2a** the layout fields (tier 2 of section 2), **C2b** the marks of margins and paddings on
+the sample slides (dimension lines from the hooks' geometry), **C2c** route B (a theme's source folder for installed
+themes, section 3.6).
+
+**Built: C2a (v0.16.17, branch `feat/theme-form-layout`).** `theme_form_model.LAYOUT_SECTIONS`: six cards with every
+tier-2 field (a test checks none is missing): Font and text sizes (`SMLayoutProfile`, `SMBodyFontSize`, `SMCodeSize`),
+Margins (`SMTopMargin`, `SMTextMarginLeft/Right`, `SMBlockSideMargin`), Title bar (the three paddings,
+`SMFrameSubtitleSep`, `SMFrameSubtitleStrutEnd`), Footer and footnotes (`SMFooterBoxHeight`, the three size pairs,
+`SMFootlineSidePadding`, `SMFootnoteFooterGap`, `SMFootnoteSep`), Lists (`SMBulletSymbol`), Citations
+(`SMCitationFormat`). Widgets: profile and citation format as editable drop-downs (`layout_profiles(root)`: bundled,
+then the project's and the framework's `SlideMage_layout_*.tex`; `citation_formats()`: bundled and installed), lengths
+as fields checked when left (`check_length`: number plus unit, or a multiple of `\paperheight`, `\linewidth` and the
+like; a bad value is not written and the field says why), size pairs as two numbers in pt (`parse_size_pair`,
+`format_size_pair`; another form shows as raw TeX), the bullet as a choice (`BULLETS`, or "the theme's own"),
+`SMFrameSubtitleSep` as raw TeX. Grey text shows the framework's value. `ThemeForm.layout_fields` keeps the widgets
+by key. Tests: `tests/test_theme_form_layout.py`. Not done: a check that the Top Margin lies below the title bar
+(needs the derived geometry: C2b).
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next
 to "Add from file…" in Settings → Themes.

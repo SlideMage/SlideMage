@@ -403,3 +403,79 @@ class ThemeModel:
             self.file.remove("SMSetFootnoteMarkers")
         else:
             self.file.set("SMSetFootnoteMarkers", style)
+
+
+# --- layout fields (stage C2a) ----------------------------------------------------------------------------------------
+
+LAYOUT_SECTIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("Font and text sizes", "The layout profile picks the fonts; the body size sets \\normalsize, and the smaller sizes "
+     "follow it.", ("SMLayoutProfile", "SMBodyFontSize", "SMCodeSize")),
+    ("Margins", "Where the first line of a frame starts (the Top Margin, in bp from the top of the page) and the text's "
+     "side margins.", ("SMTopMargin", "SMTextMarginLeft", "SMTextMarginRight", "SMBlockSideMargin")),
+    ("Title bar", "The bar ends at the logo's lower edge (derived from the top padding, the title font and the logo "
+     "height); the bottom padding is where the frame body begins.",
+     ("SMFrametitleTopPadding", "SMFrametitleBottomPadding", "SMFrametitleLeftPadding", "SMFrameSubtitleSep",
+      "SMFrameSubtitleStrutEnd")),
+    ("Footer and footnotes", "Footnote text must stay smaller than the footer text.",
+     ("SMFooterBoxHeight", "SMFooterTextSize", "SMFooterIDSize", "SMFootlineSidePadding", "SMFootnoteFooterGap",
+      "SMFootnoteSize", "SMFootnoteSep")),
+    ("Lists", "The bullet of every itemize level; the indent follows its width.", ("SMBulletSymbol",)),
+    ("Citations", "The citation format \\SMUseBibliography loads; a deck may still choose another.",
+     ("SMCitationFormat",)),
+)
+_UNITS = "pt|bp|cm|mm|in|ex|em|pc|dd|cc|sp"
+LENGTH_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)\s*(" + _UNITS + r")$")
+RELATIVE_RE = re.compile(r"^-?(\d+(\.\d*)?|\.\d+)?\s*\\(paperheight|paperwidth|linewidth|textwidth|textheight)$")
+SIZE_PAIR_RE = re.compile(r"^\s*\\fontsize\s*\{\s*([\d.]+)\s*\}\s*\{\s*([\d.]+)\s*\}\s*\\selectfont\s*$")
+BULLETS: tuple[tuple[str, str], ...] = (
+    ("", "Filled circle (the default)"),
+    ("\\textcolor{#1}{\\textendash}", "En dash"),
+    ("\\textcolor{#1}{\\textbullet}", "Bullet"),
+    ("\\tikz[baseline=-0.65ex]{\\fill[#1] (-1.6pt,-1.6pt) rectangle (1.6pt,1.6pt);}", "Small square"),
+    ("\\textcolor{#1}{\\guillemetright}", "Guillemet"),
+)
+
+
+def check_length(value: str) -> str:
+    """"" when `value` is a TeX length a hook takes (a number with a unit, or a multiple of \\paperheight and the
+    like), else why not. ex and em are read in the layout profile's font."""
+    value = value.strip()
+    if not value or LENGTH_RE.match(value) or RELATIVE_RE.match(value):
+        return ""
+    return f"{value!r} is no length: a number and a unit ({_UNITS.replace('|', ', ')}), e.g. 0.45cm or 2.2ex."
+
+
+def parse_size_pair(value: str) -> tuple[str, str] | None:
+    """(font size, baseline skip) in pt of \\fontsize{a}{b}\\selectfont, None for anything else."""
+    found = SIZE_PAIR_RE.match(value or "")
+    return (found.group(1), found.group(2)) if found else None
+
+
+def format_size_pair(size: str, skip: str) -> str:
+    return f"\\fontsize{{{size.strip()}}}{{{skip.strip()}}}\\selectfont"
+
+
+def layout_profiles(root: Path) -> list[str]:
+    """The layout profiles a theme of the project at `root` can pick: the bundled ones, then the project's own
+    (SlideMage_layout_<name>.tex next to its templates)."""
+    from . import slide_templates, themes
+
+    found = list(themes.BUNDLED_PROFILES)
+    for folder in [root, *slide_templates.framework_dirs(root)]:
+        for path in sorted(folder.glob(f"{themes.LAYOUT_PREFIX}*.tex")):
+            name = path.stem[len(themes.LAYOUT_PREFIX):]
+            if name not in found:
+                found.append(name)
+    return found
+
+
+def citation_formats() -> list[str]:
+    """The citation formats SlideMage ships and the ones installed (Settings -> Extensions)."""
+    from . import citations
+
+    keys = set(citations.bundled_keys())
+    try:
+        keys |= {folder.name for folder in citations.citation_dirs()}
+    except OSError:
+        pass
+    return ["default"] + sorted(keys - {"default"})

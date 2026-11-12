@@ -15,12 +15,14 @@ from typing import Callable, Optional
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout,
+    QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QMessageBox, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from ... import slide_templates, theme_fields
-from ...theme_form_model import CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, ROLE_SECTIONS, ThemeModel
+from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, ROLE_SECTIONS,
+                                 ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
+                                 parse_size_pair)
 from ..kit.tokens import SPACE
 from ..kit.widgets import Badge, Button, Card, ColorSwatchButton, Surface, caption, text_label
 
@@ -243,6 +245,7 @@ class ThemeForm(QScrollArea):
     def rebuild(self) -> None:
         scroll = self.verticalScrollBar().value()
         self._cells, self._refreshers = [], []
+        self.layout_fields: dict[str, QWidget] = {}     # the layout settings' widgets by key (C2a)
         body = Surface()
         column = QVBoxLayout(body)
         column.setContentsMargins(SPACE.lg, SPACE.lg, SPACE.lg, SPACE.lg)
@@ -264,6 +267,8 @@ class ThemeForm(QScrollArea):
             column.addWidget(self._code())
             column.addWidget(self._logo())
             column.addWidget(self._footnotes())
+            for title, note, keys in LAYOUT_SECTIONS:
+                column.addWidget(self._layout_card(title, note, keys))
         column.addStretch(1)
         body.setEnabled(not self.editor.is_read_only())
         self.setWidget(body)
@@ -557,3 +562,174 @@ class ThemeForm(QScrollArea):
                                 and self.apply(lambda: self.model.set_footnote_style(combo.currentData())))
         layout.addWidget(combo)
         return card
+
+    # --- layout fields (stage C2a) ----------------------------------------------------------------------------------
+
+    def _layout_card(self, title: str, note: str, keys: tuple[str, ...]) -> QWidget:
+        card, layout = self._card(title, note)
+        form = QFormLayout()
+        for key in keys:
+            widget, refresh = self._layout_field(key)
+            label = QLabel(_label(key))
+            entry = self.model.catalog.get(key)
+            if entry is not None and entry.help:
+                label.setToolTip(entry.help)
+                widget.setToolTip(entry.help)
+            form.addRow(label, widget)
+            self.layout_fields[key] = widget
+            self._refreshers.append(refresh)
+        layout.addLayout(form)
+        return card
+
+    def _layout_field(self, key: str) -> tuple[QWidget, Callable[[], None]]:
+        """The widget of one layout setting and how it shows the theme's value again."""
+        field = theme_fields.BY_NAME[key]
+        default = self.model.default(key)
+        if key == "SMLayoutProfile":
+            return self._choice_field(key, layout_profiles(self.root), default or "fira")
+        if key == "SMCitationFormat":
+            return self._choice_field(key, citation_formats(), default or "default")
+        if key == "SMBulletSymbol":
+            return self._bullet_field(key)
+        if field.kind == "size_pair":
+            return self._size_pair_field(key, default)
+        return self._text_field(key, default, length=field.kind == "length")
+
+    def _text_field(self, key: str, default: str, *, length: bool) -> tuple[QWidget, Callable[[], None]]:
+        box = Surface()
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        edit = QLineEdit()
+        edit.setPlaceholderText(f"framework: {default}")
+        problem = caption("", "error")
+        problem.hide()
+        column.addWidget(edit)
+        column.addWidget(problem)
+
+        def commit() -> None:
+            text = edit.text().strip()
+            if text == (self.model.value(key) or ""):
+                problem.hide()
+                return
+            why = check_length(text) if length else ""
+            problem.setText(why)
+            problem.setVisible(bool(why))
+            if not why:
+                self.apply(lambda: self.model.set_value(key, text or None))
+
+        edit.editingFinished.connect(commit)
+
+        def refresh() -> None:
+            if not edit.hasFocus():
+                edit.setText(self.model.value(key) or "")
+        refresh()
+        return box, refresh
+
+    def _choice_field(self, key: str, choices: list[str], default: str) -> tuple[QWidget, Callable[[], None]]:
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo.addItems([""] + choices)
+        combo.lineEdit().setPlaceholderText(f"framework: {default}")
+
+        def commit() -> None:
+            text = combo.currentText().strip()
+            if text != (self.model.value(key) or ""):
+                self.apply(lambda: self.model.set_value(key, text or None))
+
+        combo.activated.connect(lambda _i: commit())
+        combo.lineEdit().editingFinished.connect(commit)
+
+        def refresh() -> None:
+            if not combo.lineEdit().hasFocus():
+                combo.setCurrentText(self.model.value(key) or "")
+        refresh()
+        return combo, refresh
+
+    def _bullet_field(self, key: str) -> tuple[QWidget, Callable[[], None]]:
+        combo = QComboBox()
+        for value, label in BULLETS:
+            combo.addItem(label, value)
+        custom_index = -1
+
+        def refresh() -> None:
+            nonlocal custom_index
+            value = self.model.value(key) or ""
+            index = combo.findData(value)
+            if index < 0:
+                if custom_index < 0:
+                    combo.addItem("The theme's own (in the source)", value)
+                    custom_index = combo.count() - 1
+                index = custom_index
+            combo.setCurrentIndex(index)
+
+        def commit() -> None:
+            value = combo.currentData()
+            if combo.currentIndex() == custom_index or value == (self.model.value(key) or ""):
+                return
+            self.apply(lambda: self.model.set_value(key, value or None))
+
+        combo.activated.connect(lambda _i: commit())
+        refresh()
+        return combo, refresh
+
+    def _size_pair_field(self, key: str, default: str) -> tuple[QWidget, Callable[[], None]]:
+        """\\fontsize{size}{skip}\\selectfont as two numbers in pt; a value of another form shows as it is."""
+        box = Surface()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACE.xs)
+        size, skip = QLineEdit(), QLineEdit()
+        size.setToolTip("Font size in pt")
+        skip.setToolTip("Baseline skip (line distance) in pt")
+        raw = QLineEdit()
+        fallback = parse_size_pair(default) or ("", "")
+        size.setPlaceholderText(fallback[0])
+        skip.setPlaceholderText(fallback[1])
+        raw.setPlaceholderText(f"framework: {default}")
+        row.addWidget(size)
+        row.addWidget(QLabel("pt on"))
+        row.addWidget(skip)
+        row.addWidget(QLabel("pt"))
+        row.addWidget(raw, 1)
+
+        def commit_pair() -> None:
+            a, b = size.text().strip(), skip.text().strip()
+            if not a and not b:
+                value = None
+            elif a and b and all(part.replace(".", "", 1).isdigit() for part in (a, b)):
+                value = format_size_pair(a, b)
+            else:
+                return              # half typed, or not numbers: wait
+            if (value or "") != (self.model.value(key) or ""):
+                self.apply(lambda: self.model.set_value(key, value))
+
+        def commit_raw() -> None:
+            text = raw.text().strip()
+            if text != (self.model.value(key) or ""):
+                self.apply(lambda: self.model.set_value(key, text or None))
+
+        size.editingFinished.connect(commit_pair)
+        skip.editingFinished.connect(commit_pair)
+        raw.editingFinished.connect(commit_raw)
+
+        def refresh() -> None:
+            value = self.model.value(key)
+            pair = parse_size_pair(value) if value else ("", "")
+            for widget in (size, skip):
+                widget.setVisible(pair is not None)
+            for index in range(row.count()):
+                item = row.itemAt(index).widget()
+                if isinstance(item, QLabel):
+                    item.setVisible(pair is not None)
+            raw.setVisible(pair is None)
+            if pair is not None:
+                if not size.hasFocus():
+                    size.setText(pair[0])
+                if not skip.hasFocus():
+                    skip.setText(pair[1])
+            elif not raw.hasFocus():
+                raw.setText(value or "")
+        refresh()
+        return box, refresh
