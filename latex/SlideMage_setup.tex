@@ -269,10 +269,10 @@
 % colours the template sets directly), and may add data lines for the others:
 %
 %   \SMDeclareMode{light}{}                 % the base mode: first declared, no derivation
-%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | grey | colorblind | empty
-%   \SMDeclareMode{grey}{grey}
+%   \SMDeclareMode{dark}{dark}              % {id}{derive}: derive = dark | gray | colorblind | empty
+%   \SMDeclareMode{gray}{gray}
 %   \SMSetRole{text}{dark}{c_true_white}    % {role}{mode}{colour}
-%   \SMSetColor{c_secondary_blue}{grey}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
+%   \SMSetColor{c_secondary_blue}{gray}{HTML}{8f8f8f}   % {palette colour}{mode}{model}{spec}
 %
 % A line of another mode than the active one does nothing, so the lines need no \if. The
 % active mode is, in this order: \SMModeOverride, when the deck's wrapper defines it before this
@@ -283,7 +283,7 @@
 % line always wins:
 %   dark        canvas and card from c_primary_dark mixed with white (17 % and 23 %), text, line and
 %               link white, text on an accent fill and on a button black, quote attribution muted
-%   grey        every palette colour converted to its grey
+%   gray        every palette colour converted to its grey
 %   colorblind  the accents (c_secondary_*) in the Okabe-Ito set, their tertiary 50 % towards white
 % Nothing applies until SlideMage_base calls \SMApplyColorRoles, after the template, so a role
 % sees the template's palette. In the base mode every role resolves to what it was before
@@ -395,7 +395,7 @@
 	% attribution (c_custom_gray in the base, a dark grey) is muted text
 	\expandafter\gdef\csname SM@derived@button_text\endcsname{c_true_black}%
 	\expandafter\gdef\csname SM@derived@quote_attribution\endcsname{c_primary_gray!60!white}}
-\newcommand{\SM@preset@grey}{%
+\newcommand{\SM@preset@gray}{%
 	\@for\SM@n:={c_primary_dark,c_primary_highlight,c_primary_gray,%
 		c_secondary_violet,c_tertiary_violet,c_secondary_blue,c_tertiary_blue,c_secondary_green,%
 		c_tertiary_green,c_secondary_red,c_tertiary_red,c_secondary_orange,c_tertiary_orange,%

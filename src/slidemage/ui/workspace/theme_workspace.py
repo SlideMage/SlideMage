@@ -7,7 +7,7 @@ Form / Split / Source switch, and one splitter with the source, the sample slide
 * Split: the source beside the form.
 * Source: the source alone, as for any file.
 
-The mode bar lists every colour mode the theme declares (an open list: light, dark, grey, colour-blind, projector...)
+The mode bar lists every colour mode the theme declares (an open list: light, dark, gray, colour-blind, projector...)
 with what it starts from and how many values it sets itself; the mode picked there is the one the form shows and the
 sample slides are rendered in. "+ Add mode..." adds one."""
 from __future__ import annotations

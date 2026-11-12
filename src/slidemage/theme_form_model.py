@@ -8,7 +8,7 @@ theme_file.ThemeFile, so it changes one line (or adds one) and nothing else.
 A cell's value has two parts: what the theme WRITES for it (a line of its own, or None: it follows) and what it COMES
 TO in that mode (the colour a slide gets). The resolution follows latex/SlideMage_setup.tex (\SM@applymode): in a mode
 that is not the base, a role takes the mode's \SMSetRole line, else the mode's derive preset (dark), else its base
-value; a palette colour takes the mode's \SMSetColor line, else the preset's change (grey, colorblind), else its base
+value; a palette colour takes the mode's \SMSetColor line, else the preset's change (gray, colorblind), else its base
 value. theme_colors does the palette part; the roles are resolved here, hook macros (\SMTitleBoxColor ...) included."""
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ from .theme_file import ThemeFile
 # Colours the beamer theme defines, which hook defaults name (beamerthemeSlideMage.sty); "" is a standout frame's text
 # when no template names one: the theme's pale yellow.
 FRAMEWORK_COLOURS = {"SMLightOrange": "#eb811b", "SMDeepYellowOrange": "#ffcc00", "": "#fffff0"}
-DERIVES = ("dark", "grey", "colorblind", "")
-PRESET_LABELS = {"dark": "dark", "grey": "gray", "colorblind": "color-blind"}
+DERIVES = ("dark", "gray", "colorblind", "")
+PRESET_LABELS = {"dark": "dark", "gray": "gray", "colorblind": "color-blind"}
 MODE_ID_RE = re.compile(r"[a-z][a-z0-9_]{0,23}")
 OWN_COLOUR_RE = re.compile(r"c_[a-z][a-z0-9_]{0,40}")
 
@@ -361,7 +361,7 @@ class ThemeModel:
         return next((m.derive for m in self.modes() if m.id == mode), "")
 
     def _preset_changes_palette(self, derive: str, name: str) -> bool:
-        if derive == "grey":
+        if derive == "gray":
             return name in theme_colors._GREY_NAMES
         if derive == "colorblind":
             return name.startswith(("c_secondary_", "c_tertiary_")) and name.split("_")[-1] in theme_colors._COLORBLIND

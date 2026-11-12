@@ -19,14 +19,14 @@ LATEX = ROOT / "latex"
 pytestmark = pytest.mark.skipif(not os.environ.get("SLIDEMAGE_TEX_TESTS") or not shutil.which("lualatex"),
                                 reason="set SLIDEMAGE_TEX_TESTS and install lualatex to compile")
 
-ACME = r"""% SlideMage modes: light, dark, grey, cb, mine
+ACME = r"""% SlideMage modes: light, dark, gray, cb, mine
 \input{SlideMage_setup}
 \definecolor{c_secondary_blue}{HTML}{2266AA}
 \colorlet{c_tertiary_blue}{c_secondary_blue!50!white}
 \definecolor{SMCanvasColor}{HTML}{FAF8F0}
 \SMDeclareMode{light}{}
 \SMDeclareMode{dark}{dark}
-\SMDeclareMode{grey}{grey}
+\SMDeclareMode{gray}{gray}
 \SMDeclareMode{cb}{colorblind}
 \SMDeclareMode{mine}{dark}
 \SMSetRole{link}{light}{c_secondary_blue}
@@ -73,7 +73,7 @@ def close(a: str, b: str) -> bool:
 
 
 @pytest.mark.parametrize("key,mode", [
-    ("acme", ""), ("acme", "light"), ("acme", "dark"), ("acme", "grey"), ("acme", "cb"), ("acme", "mine"),
+    ("acme", ""), ("acme", "light"), ("acme", "dark"), ("acme", "gray"), ("acme", "cb"), ("acme", "mine"),
     ("acme", "unknown"), ("slidemage", ""), ("slidemage", "dark"), ("grayscale", ""), ("grayscale", "dark")])
 def test_the_menu_swatches_are_the_colours_tex_resolves(key, mode, tmp_path):
     (tmp_path / "SlideMage_template_acme.tex").write_text(ACME, encoding="utf-8")

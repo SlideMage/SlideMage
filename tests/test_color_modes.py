@@ -20,7 +20,7 @@ BS = chr(92)
 TEMPLATE = r"""\input{SlideMage_setup}
 \SMDeclareMode{light}{}
 \SMDeclareMode{dark}{dark}
-\SMDeclareMode{grey}{grey}
+\SMDeclareMode{gray}{gray}
 \SMDeclareMode{cb}{colorblind}
 \SMDeclareMode{mine}{dark}
 \SMSetRole{canvas}{mine}{c_secondary_violet!30!black}
@@ -101,7 +101,7 @@ def test_an_explicit_role_line_wins_over_the_preset(tmp_path):
 
 
 def test_the_grey_preset_leaves_no_colour(tmp_path):
-    pix = compile_mode(tmp_path, "grey")
+    pix = compile_mode(tmp_path, "gray")
     stray = [s for s in (pix.pixel(x, y) for x in range(0, pix.width, 7) for y in range(pix.height * 2 // 5, pix.height, 7))  # below the logo, which is an image
              if max(s[:3]) - min(s[:3]) > 3]
     assert not stray

@@ -24,7 +24,7 @@ RENAMED = {"SMProgressStripHeight": "SMProgressStripRoom", "SMSideFootnoteTopSep
 # v0.16.0: the colour-mode layer (setup layer, section "Colour modes and role colours"): its internals, and the data lines a
 # theme writes (declared, not hooks a template reads).
 MODE_LAYER = {"SM@hexcolor", "SM@letcolor", "SM@activemode", "SM@basemode", "SM@ifmode", "SM@palettelines", "SM@preset@colorblind", "SM@preset@dark",
-              "SM@preset@grey", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
+              "SM@preset@gray", "SM@rolecolour", "SM@rolehook", "SM@togray", "SM@applymode",
               "SM@processline", "SM@inlinecode",   # set by the roles process_line and inline_code, not by a template
               "SMDeclareMode", "SMSetColor", "SMSetRole"}
 NOT_HOOKS = ({"SMSetupLoaded", "SM@derivedname", "SM@guardname", "SM@removedname", "SM@renamedname"} | REMOVED | set(RENAMED)

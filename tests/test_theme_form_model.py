@@ -117,13 +117,13 @@ def test_adding_and_removing_modes(condshape):
     assert condshape.file.value("header:modes") == "light, dark=Dark slides" and condshape.header_mismatch() == ""
     condshape.set_role("canvas", "dark", "c_primary_dark")
     condshape.set_palette("c_primary_highlight", "dark", "#ffcc00")
-    condshape.add_mode("grey", "grey", "")
-    assert condshape.file.value("header:modes") == "light, dark=Dark slides, grey"
-    assert condshape.palette_hex("c_secondary_blue", "grey") != condshape.palette_hex("c_secondary_blue", "light")
+    condshape.add_mode("gray", "gray", "")
+    assert condshape.file.value("header:modes") == "light, dark=Dark slides, gray"
+    assert condshape.palette_hex("c_secondary_blue", "gray") != condshape.palette_hex("c_secondary_blue", "light")
     condshape.remove_mode("dark")
-    assert [m.id for m in condshape.modes()] == ["light", "grey"]
+    assert [m.id for m in condshape.modes()] == ["light", "gray"]
     assert "{dark}" not in condshape.text and condshape.header_mismatch() == ""
-    for bad in ("Dark", "grey", "light"):
+    for bad in ("Dark", "gray", "light"):
         with pytest.raises(ValueError):
             condshape.add_mode(bad, "", "")
     with pytest.raises(ValueError):

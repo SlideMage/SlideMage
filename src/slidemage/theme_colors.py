@@ -156,7 +156,7 @@ def _resolve(theme: _Theme, mode: str) -> dict[str, str]:
     derived: dict[str, str] = {}
     if derive == "dark":
         derived = dict(_PRESET_DARK)
-    elif derive == "grey":
+    elif derive == "gray":
         for name in _GREY_NAMES:
             if name in colors:
                 r, g, b = _rgb(colors[name])
