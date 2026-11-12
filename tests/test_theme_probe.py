@@ -40,7 +40,7 @@ def test_probe_colours_are_distinct_and_no_greys():
 def test_probe_lines_go_right_before_the_base_and_name_the_mode():
     text = read(SHIPPED)
     probed, mapping = theme_probe.probe_text(text, "role", "dark")
-    before, _, after = probed.partition("% theme form: where each colour is used (probe render)\n")
+    before, _, after = probed.partition("% theme form: where each color is used (probe render)\n")
     assert before == text[:len(before)] and after.endswith(text[len(before):])
     index = list(mapping.values()).index("text")
     assert f"\\SMSetRole{{text}}{{dark}}{{SMProbe{index}}}" in after

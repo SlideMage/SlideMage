@@ -31,7 +31,7 @@ _CATEGORIES = {"custom": 0, "primary": 1, "secondary": 2, "tertiary": 3}
 ROLES: dict[str, tuple[str, str]] = {
     "text": ("c_primary_dark", "body text, lines"),
     "text_muted": ("c_primary_gray", "secondary text"),
-    "text_on_accent": ("c_primary_dark", "text on a coloured fill"),
+    "text_on_accent": ("c_primary_dark", "text on a colored fill"),
     "link": ("c_custom_gray", "links"),
     "canvas": ("SMCanvasColor", "slide background"),
     "card": ("SMCardBackgroundColor", "card fill"),

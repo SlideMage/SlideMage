@@ -47,7 +47,7 @@ def _f(name, group, kind, label, tier, **extra) -> Field:
 _ROLE_LABELS = {
     # colour roles slides can name (c_text ...), base source in the catalog
     "text": "Body text", "canvas": "Slide background", "card": "Card fill", "line": "Card border",
-    "text_muted": "Secondary text", "text_on_accent": "Text on a coloured fill", "link": "Links",
+    "text_muted": "Secondary text", "text_on_accent": "Text on a colored fill", "link": "Links",
     # parts of a slide
     "block_title_fill": "Block title fill", "alerted_block_title_fill": "Alert block title fill",
     "example_block_title_fill": "Example block title fill", "reference_block_title_fill": "Reference block title fill",
@@ -74,7 +74,7 @@ _ROLE_HOOKS = {
 }
 
 _PALETTE = [
-    ("c_primary_dark", "Primary dark"), ("c_primary_highlight", "Highlight"), ("c_primary_gray", "Primary grey"),
+    ("c_primary_dark", "Primary dark"), ("c_primary_highlight", "Highlight"), ("c_primary_gray", "Primary gray"),
     ("c_primary_white", "Primary white"),
     ("c_secondary_violet", "Violet"), ("c_tertiary_violet", "Violet, light"),
     ("c_secondary_blue", "Blue"), ("c_tertiary_blue", "Blue, light"),
@@ -82,8 +82,8 @@ _PALETTE = [
     ("c_secondary_red", "Red"), ("c_tertiary_red", "Red, light"),
     ("c_secondary_orange", "Orange"), ("c_tertiary_orange", "Orange, light"),
     ("c_secondary_yellow", "Yellow"), ("c_tertiary_yellow", "Yellow, light"),
-    ("c_tertiary_gray", "Grey, light"),
-    ("c_custom_gray", "Supporting grey"), ("c_custom_red", "Supporting red"), ("c_custom_green", "Supporting green"),
+    ("c_tertiary_gray", "Gray, light"),
+    ("c_custom_gray", "Supporting gray"), ("c_custom_red", "Supporting red"), ("c_custom_green", "Supporting green"),
     ("c_custom_brown", "Supporting brown"),
 ]
 
@@ -106,7 +106,7 @@ _FEATURES = [
 FIELDS: tuple[Field, ...] = (
     # --- tier 1: identity, palette, roles, logo, code colours, footnote marker -------------------------------------
     _f("header:name", "identity", "text", "Name", 1),
-    _f("header:modes", "identity", "modes", "Colour modes", 1),
+    _f("header:modes", "identity", "modes", "Color modes", 1),
     _f("SMLayoutProfile", "font", "profile", "Layout profile (fonts)", 2),
     *(_f(name, "palette", "colour", label, 1) for name, label in _PALETTE),
     *(_f("role:" + role, "roles", "palette_name", label, 1, hook=hook) for role, (hook, label) in _ROLE_HOOKS.items()),

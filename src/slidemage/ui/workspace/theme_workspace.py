@@ -51,7 +51,7 @@ class ModeBar(Surface):
         model = form.model
         if model is None or not model.readable:
             return
-        self._row.addWidget(caption("Colour mode"))
+        self._row.addWidget(caption("Color mode"))
         modes = model.modes()
         for index, mode in enumerate(modes):
             if not mode.id:
@@ -75,7 +75,7 @@ class ModeBar(Surface):
             self._row.addWidget(button)
             self.buttons[mode.id] = button
         add = Button("+ Add mode…", "secondary", compact=True)
-        add.setToolTip("Add a colour mode: from the dark, grey or colour-blind preset, or from the base mode")
+        add.setToolTip("Add a color mode: from the dark, gray or color-blind preset, or from the base mode")
         add.clicked.connect(lambda: self.on_add())
         self._row.addWidget(add)
         self._row.addStretch(1)

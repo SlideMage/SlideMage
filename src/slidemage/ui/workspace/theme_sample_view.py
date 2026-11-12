@@ -76,7 +76,7 @@ class ThemeSampleView(Surface):
         head.addWidget(text_label("Sample slides", "heading"))
         head.addStretch(1)
         self.mode_combo = QComboBox()
-        self.mode_combo.setToolTip("The colour mode the sample slides are rendered in")
+        self.mode_combo.setToolTip("The color mode the sample slides are rendered in")
         self.mode_combo.activated.connect(lambda _i: self.render_soon(0))
         head.addWidget(self.mode_combo)
         self.previous = Button("‹", "ghost", compact=True)
@@ -363,7 +363,7 @@ class ThemeSampleView(Surface):
     def _update_modes(self) -> None:
         file = ThemeFile(self.editor.text())
         labels = dict(parse_modes_header(file.value("header:modes") or ""))
-        wanted = [(mode_id, labels.get(mode_id) or mode_id.capitalize()) for mode_id, _ in file.modes()] or [("", "Colours")]
+        wanted = [(mode_id, labels.get(mode_id) or mode_id.capitalize()) for mode_id, _ in file.modes()] or [("", "Colors")]
         current = [(self.mode_combo.itemData(i), self.mode_combo.itemText(i)) for i in range(self.mode_combo.count())]
         if [data for data, _ in current] != [data for data, _ in wanted]:
             keep = self.mode
@@ -410,7 +410,7 @@ class ThemeSampleView(Surface):
             button.setIcon(QPixmap.fromImage(image.scaledToWidth(84, Qt.TransformationMode.SmoothTransformation)))
             button.setIconSize(QSize(84, 48))
             button.setText(f"{number} \u25cf" if number in used else str(number))
-            button.setToolTip(names.get(number, "") + (" · uses the focused colour" if number in used else ""))
+            button.setToolTip(names.get(number, "") + (" · uses the focused color" if number in used else ""))
             button.setDown(number == self._page)
             button.show()
 
