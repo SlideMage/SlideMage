@@ -4023,7 +4023,18 @@ NEW: A clearer theme form, for any number of colour modes.
 - Small swatches beside each colour show it in every mode at once.
 - The form has tabs, and the sample slides are shown large; the source is one click away (Split, Source).
 
-v0.16.20 (2026-11-12, direct request: remove the wizard animation): The AI-edit animation is gone: wizard_portal.py (WizardPortal, play_wizard, note_ai_edit, review_snapshot, note_review_updates), its sprite sheet assets/wizard-poses.webp (403 KB) and tests/test_wizard_portal.py. MainWindow no longer takes a review snapshot at start and refresh_ai_review no longer looks for complex AI edits; the Not reviewed labels are unchanged.
+v0.16.19 (2026-11-12, direct request: theme form, stage C2b): While a length of the theme form's Layout tab has the focus, the sample slides mark what it sets, at the value in the field, moving as it is typed before the slides render again: the Top Margin as a line with a dimension arrow from the page's top and the title bar's bottom edge beside it, the text margins as lines at both sides, the footer box as a frame, the title bar's paddings, logo height and logo padding as the bar's bottom edge, the title's left edge and the logo's padding. The slide shown turns to one with the ordinary title bar and footer. The Top Margin field says how far below the title bar the first line starts, or that it would start inside the bar. Where things are comes from the last render (theme_sample.read_geometry reads the hooks SlideMage_base writes into the PDF's info dictionary, in bp, ex and em worked out in their fonts); a typed value is turned into bp at once in an absolute unit, and from the last render's value in ex or em (theme_measures.to_bp). The marks are drawn over the page, never into it.
+
+NEW: See margins and paddings on the slides while you set them.
+- In the theme form's Layout tab, the sample slide marks the Top Margin, the text margins, the footer and the title bar while you type their values.
+- The Top Margin says whether the first line starts below the title bar.
+
+v0.16.20 (2026-11-12, direct request: a Claude Code edit of the shown slide stayed "Older" until Render now): When Claude Code in the terminal writes the slide the Preview shows and the Source view does not have it open, the Preview renders it at once, as after an edit by the chat (DiskSync._apply calls centre.file_written; it only said the picture was older).
+
+NEW: The Preview follows Claude Code's edits.
+- When Claude Code changes the slide you are looking at, the Preview shows the new version right away, also when the slide is not open in the editor.
+
+v0.16.21 (2026-11-12, direct request: remove the wizard animation): The AI-edit animation is gone: wizard_portal.py (WizardPortal, play_wizard, note_ai_edit, review_snapshot, note_review_updates), its sprite sheet assets/wizard-poses.webp (403 KB) and tests/test_wizard_portal.py. MainWindow no longer takes a review snapshot at start and refresh_ai_review no longer looks for complex AI edits; the Not reviewed labels are unchanged.
 
 NEW: No wizard animation after AI edits.
 - A larger edit by the AI no longer plays the wizard over the window; the download is 0.4 MB smaller.
