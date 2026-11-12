@@ -21,14 +21,18 @@ from PySide6.QtWidgets import (
 )
 
 from ... import slide_templates, theme_fields, theme_measures
+from .. import layout_settings
 from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
                                  UNITS, ThemeModel, check_length, citation_formats, format_size_pair, layout_profiles,
                                  parse_size_pair, split_length)
 from ..kit.tokens import SPACE
-from ..kit.widgets import Badge, Button, Card, Chip, ColorSwatchButton, Surface, caption, text_label
+from ..kit.widgets import (Badge, Button, Card, Chip, ColorSwatchButton, SegmentedControl, Surface, caption,
+                           text_label)
 
 REFRESH_DELAY_MS = 400      # after the last keystroke in the source
+DISPLAY_UNIT_KEY = "theme_display_unit"     # mm or pt: what the theme form shows lengths in (layout_settings)
+FONT_SIZE_KEYS = frozenset({"SMBodyFontSize"})     # lengths that are font sizes: always pt
 
 
 def theme_key(path: Path) -> str:
@@ -229,6 +233,8 @@ class ThemeForm(QWidget):
         self.on_measure: Optional[Callable[[str, Optional[float]], None]] = None
         self.on_measure_cleared: Optional[Callable[[], None]] = None
         self.geometry: Callable[[], dict] = dict
+        unit = layout_settings.get(DISPLAY_UNIT_KEY, theme_measures.DEFAULT_DISPLAY_UNIT)
+        self.display_unit = unit if unit in theme_measures.DISPLAY_UNITS else theme_measures.DEFAULT_DISPLAY_UNIT
         self._filters: list[QObject] = []
         self._focused_usage: Optional[tuple[str, str, str]] = None
         self._hovered_usage: Optional[tuple[str, str, str]] = None
@@ -388,7 +394,7 @@ class ThemeForm(QWidget):
             widgets += [self._roles(title, roles) for title, roles in ROLE_SECTIONS]
             return widgets + [self._code()]
         if name == "Layout":
-            return [self._layout_card(title, note, keys) for title, note, keys in LAYOUT_SECTIONS]
+            return [self._unit_switch()] + [self._layout_card(title, note, keys) for title, note, keys in LAYOUT_SECTIONS]
         if name == "Logo & notes":
             return [self._logo(), self._footnotes()]
         return [caption("Frame types, fine list spacing, drawing helpers and the optional features (mini frames, "
@@ -841,6 +847,34 @@ class ThemeForm(QWidget):
         refresh()
         return box, refresh
 
+    def _unit_switch(self) -> QWidget:
+        """Which unit the Layout tab shows lengths in (remembered). The theme keeps each length in its own unit."""
+        box = Surface()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(caption("Show lengths in"))
+        switch = SegmentedControl([(unit, unit) for unit in theme_measures.DISPLAY_UNITS], current=self.display_unit)
+        switch.changed.connect(self.set_display_unit)
+        row.addWidget(switch)
+        row.addWidget(caption("New values are written in this unit; the theme keeps the units it has (ex and em follow "
+                              "the font)."), 1)
+        return box
+
+    def set_display_unit(self, unit: str) -> None:
+        if unit in theme_measures.DISPLAY_UNITS and unit != self.display_unit:
+            self.display_unit = unit
+            layout_settings.set(DISPLAY_UNIT_KEY, unit)
+            self.rebuild()
+
+    def _length_bp(self, key: str, value: str, default: str) -> Optional[float]:
+        """`value` (or, empty, what the theme comes to) in bp: the last render's, or worked out from its unit."""
+        if not value:
+            rendered = theme_measures.rendered(key, self.geometry())
+            if rendered is not None and (self.model.value(key) or "") == "":
+                return rendered
+            value = self.model.value(key) or default
+        return theme_measures.to_bp(value, key, self.geometry(), self.model.value(key) or default)
+
     def _length_field(self, key: str, default: str) -> tuple[QWidget, Callable[[], None]]:
         """A number and a unit (the mockup's look); a length of another form (0.8\\paperheight) shows as raw TeX."""
         box = Surface()
@@ -866,6 +900,7 @@ class ThemeForm(QWidget):
         column.addWidget(problem)
         fallback = split_length(default)
         number.setPlaceholderText(fallback[0] if fallback else default)
+        font_size = key in FONT_SIZE_KEYS
 
         def write(text: str) -> None:
             if text == (self.model.value(key) or ""):
@@ -898,12 +933,14 @@ class ThemeForm(QWidget):
         def tell() -> None:
             """The sample slides mark the length as typed (C2b), and the Top Margin's check follows it."""
             value = typed()
-            shown = value or self.model.value(key) or default
-            value_bp = theme_measures.to_bp(shown, key, self.geometry(), self.model.value(key) or default)
+            value_bp = self._length_bp(key, value, default)
+            if value and value_bp is not None and not font_size and split_length(value) \
+                    and split_length(value)[1] != self.display_unit:
+                note.setText(f"≈ {theme_measures.show(value_bp, self.display_unit)}")
             if self.on_measure is not None and key in theme_measures.MEASURED:
                 self.on_measure(key, value_bp)
             if key == "SMTopMargin":
-                text, ok = theme_measures.title_bar_check(value_bp, self.geometry())
+                text, ok = theme_measures.title_bar_check(value_bp, self.geometry(), self.display_unit)
                 check.setText(text)
                 check.setProperty("tone", "" if ok else "error")
                 check.style().unpolish(check)
@@ -917,19 +954,35 @@ class ThemeForm(QWidget):
 
         def refresh() -> None:
             value = self.model.value(key)
-            parts = split_length(value) if value else (None, (fallback[1] if fallback else "pt"))
+            # A length the theme does not set is typed in the display unit; one it sets keeps its own unit. A font
+            # size stays in pt (the unit fonts are sized in), with no equivalent beside it.
+            parts = split_length(value) if value else (None, "pt" if font_size else self.display_unit)
             split = parts is not None
             number.setVisible(split)
             unit.setVisible(split)
-            note.setVisible(split)
+            note.setVisible(True)
             raw.setVisible(not split)
+            value_bp = self._length_bp(key, "", default)
+            same = font_size or (parts[1] if split else "") == self.display_unit
             if split:
                 if not number.hasFocus():
                     number.setText(parts[0] or "")
                 unit.setCurrentText(parts[1])
-                note.setText("" if value else "framework")
             elif not raw.hasFocus():
                 raw.setText(value or "")
+            if not value and font_size:
+                number.setPlaceholderText(fallback[0] if fallback else default)
+                note.setText("framework")
+            elif not value:
+                number.setPlaceholderText(theme_measures.number_in(value_bp, self.display_unit) if value_bp is not None
+                                          else (fallback[0] if fallback else default))
+                note.setText("framework" + (f" ({default})" if fallback and fallback[1] != self.display_unit else ""))
+            elif value_bp is not None and not same:
+                note.setText(f"≈ {theme_measures.show(value_bp, self.display_unit)}")
+            else:
+                note.setText("")
+            note.setToolTip("" if value_bp is None else f"{theme_measures.show(value_bp, 'mm')} · "
+                            f"{theme_measures.show(value_bp, 'pt')} · {value_bp:.2f} bp (as the last render had it)")
             if key == "SMTopMargin":
                 tell()
         refresh()

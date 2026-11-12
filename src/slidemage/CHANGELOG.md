@@ -4043,3 +4043,8 @@ v0.16.22 (2026-11-12, direct request: a render failure did not say its error): A
 
 NEW: A failed preview says what went wrong.
 - When a slide cannot be rendered, the message now starts with the LaTeX error and its line, not with the end of the log.
+
+v0.16.23 (2026-11-12, direct request: one unit to compare lengths in): The theme form's Layout tab shows lengths in one display unit, millimetres unless pt is picked ("Show lengths in mm | pt", remembered). The theme file keeps every length in the unit it has: ex and em follow the font on purpose, and a length in cm stays in cm. Beside a length in another unit the form shows its equivalent ("1 cm ≈ 10.0 mm", "3.4 ex ≈ 5.6 mm" as the last render had it, following the value as it is typed); a length the theme does not set shows the framework's value in the display unit, and a value typed there is written in it ("12mm"). The marks on the sample slides and the Top Margin's check speak the same unit. The body text size, a font size, stays in pt. theme_measures.show, number_in, from_bp, DISPLAY_UNITS.
+
+NEW: Lengths in millimetres.
+- The theme form shows lengths in millimetres (or points, if you prefer), so they can be compared at a glance; the theme keeps the units it was written in.

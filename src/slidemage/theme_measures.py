@@ -23,6 +23,10 @@ TITLE_BAR_KEYS = ("SMFrametitleTopPadding", "SMFrametitleBottomPadding", "SMFram
                   "SMFrametitleRightPadding")
 MARGIN_KEYS = ("SMTextMarginLeft", "SMTextMarginRight")
 MEASURED = ("SMTopMargin", "SMFooterBoxHeight", *MARGIN_KEYS, *TITLE_BAR_KEYS)
+# The unit the form shows lengths in (the user's choice, 2026-11-12: one unit to compare them in; mm unless pt is
+# picked). The theme file keeps each length in the unit it was written in: ex and em follow the font on purpose.
+DISPLAY_UNITS = ("mm", "pt")
+DEFAULT_DISPLAY_UNIT = "mm"
 # The info key a hook's rendered value is under, where it is not its own name.
 _INFO_KEY = {"SMFrametitleLeftPadding": "SMLeftMargin", "SMTopMargin": "SMTopMargin"}
 
@@ -35,6 +39,20 @@ class Mark:
     focus: bool = False     # the mark of the field in focus (drawn strong), else context (drawn thin)
     size: float = 0.0       # a box's height (it spans the page's width)
     arrow: bool = False     # a dimension arrow from the page's edge to the line
+
+
+def from_bp(value_bp: float, unit: str) -> float:
+    return value_bp / TO_BP[unit]
+
+
+def show(value_bp: float, unit: str = DEFAULT_DISPLAY_UNIT) -> str:
+    """A length in bp as the form shows it: "15.9 mm", "45.2 pt"."""
+    return f"{from_bp(value_bp, unit):.1f} {unit}"
+
+
+def number_in(value_bp: float, unit: str) -> str:
+    """The number of a length in `unit`, as a field holds it ("4.5", not "4.50")."""
+    return f"{from_bp(value_bp, unit):.2f}".rstrip("0").rstrip(".")
 
 
 def rendered(key: str, geometry: dict) -> Optional[float]:
@@ -57,8 +75,9 @@ def to_bp(value: str, key: str, geometry: dict, rendered_value: str = "") -> Opt
     return None
 
 
-def marks(key: str, value_bp: Optional[float], geometry: dict) -> list[Mark]:
-    """The marks of the field `key` at `value_bp` (None: as rendered) on a slide of the sample deck."""
+def marks(key: str, value_bp: Optional[float], geometry: dict, unit: str = DEFAULT_DISPLAY_UNIT) -> list[Mark]:
+    """The marks of the field `key` at `value_bp` (None: as rendered) on a slide of the sample deck, labelled in
+    `unit`."""
     if PAGE_WIDTH not in geometry:
         return []
     width, height = geometry[PAGE_WIDTH], geometry[PAGE_HEIGHT]
@@ -66,42 +85,43 @@ def marks(key: str, value_bp: Optional[float], geometry: dict) -> list[Mark]:
     title_bottom = geometry.get("SMTitleBarBottom")
     found: list[Mark] = []
     if key == "SMTopMargin" and value is not None:
-        found.append(Mark("h", value, f"Top Margin {value:.1f}bp", True, arrow=True))
+        found.append(Mark("h", value, f"Top Margin {show(value, unit)}", True, arrow=True))
         if title_bottom is not None:
             found.append(Mark("h", title_bottom, "title bar ends"))
     elif key in MARGIN_KEYS:
         left = value if key == "SMTextMarginLeft" and value is not None else geometry.get("SMTextMarginLeft")
         right = value if key == "SMTextMarginRight" and value is not None else geometry.get("SMTextMarginRight")
         if left is not None:
-            found.append(Mark("v", left, f"left margin {left:.1f}bp", key == "SMTextMarginLeft", arrow=True))
+            found.append(Mark("v", left, f"left margin {show(left, unit)}", key == "SMTextMarginLeft", arrow=True))
         if right is not None:
-            found.append(Mark("v", width - right, f"right margin {right:.1f}bp", key == "SMTextMarginRight",
+            found.append(Mark("v", width - right, f"right margin {show(right, unit)}", key == "SMTextMarginRight",
                               arrow=True))
     elif key == "SMFooterBoxHeight" and value is not None:
-        found.append(Mark("box", height - value, f"footer box {value:.1f}bp", True, size=value))
+        found.append(Mark("box", height - value, f"footer box {show(value, unit)}", True, size=value))
     elif key in TITLE_BAR_KEYS:
         if title_bottom is not None:
-            found.append(Mark("h", title_bottom, f"title bar ends at {title_bottom:.1f}bp (after the next render)"
-                              if value_bp is not None and key != "SMFrametitleLeftPadding" else
-                              f"title bar ends at {title_bottom:.1f}bp", key in ("SMFrametitleTopPadding",
+            found.append(Mark("h", title_bottom, f"title bar ends at {show(title_bottom, unit)} (after the next "
+                              "render)" if value_bp is not None and key != "SMFrametitleLeftPadding" else
+                              f"title bar ends at {show(title_bottom, unit)}", key in ("SMFrametitleTopPadding",
                                                                                "SMFrametitleBottomPadding",
                                                                                "SMLogoHeight")))
         left = value if key == "SMFrametitleLeftPadding" and value is not None else geometry.get("SMLeftMargin")
         if left is not None:
-            found.append(Mark("v", left, f"title starts {left:.1f}bp", key == "SMFrametitleLeftPadding"))
+            found.append(Mark("v", left, f"title starts {show(left, unit)}", key == "SMFrametitleLeftPadding"))
         right = value if key == "SMFrametitleRightPadding" and value is not None else \
             geometry.get("SMFrametitleRightPadding")
         if right is not None:
-            found.append(Mark("v", width - right, f"logo padding {right:.1f}bp", key == "SMFrametitleRightPadding"))
+            found.append(Mark("v", width - right, f"logo padding {show(right, unit)}",
+                              key == "SMFrametitleRightPadding"))
     return found
 
 
-def title_bar_check(top_bp: Optional[float], geometry: dict) -> tuple[str, bool]:
+def title_bar_check(top_bp: Optional[float], geometry: dict, unit: str = DEFAULT_DISPLAY_UNIT) -> tuple[str, bool]:
     """("n bp below the title bar", True) or ("n bp above the title bar's bottom edge", False); ("", True) unknown."""
     title_bottom = geometry.get("SMTitleBarBottom")
     if top_bp is None or title_bottom is None:
         return "", True
     gap = top_bp - title_bottom
     if gap >= 0:
-        return f"{gap:.1f}bp below the title bar", True
-    return f"{-gap:.1f}bp above the title bar's bottom edge: the first line would start inside the bar", False
+        return f"{show(gap, unit)} below the title bar", True
+    return f"{show(-gap, unit)} above the title bar's bottom edge: the first line would start inside the bar", False

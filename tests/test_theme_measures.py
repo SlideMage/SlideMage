@@ -41,20 +41,23 @@ def test_a_typed_length_in_bp():
 
 def test_which_marks_a_field_gets():
     top = marks("SMTopMargin", 60.0, GEOMETRY)
-    assert top[0] == Mark("h", 60.0, "Top Margin 60.0bp", True, arrow=True)
+    assert top[0] == Mark("h", 60.0, "Top Margin 21.2 mm", True, arrow=True)       # labelled in the display unit
+    assert marks("SMTopMargin", 60.0, GEOMETRY, "pt")[0].label == "Top Margin 60.2 pt"
     assert top[1].at == 25.23 and not top[1].focus
     assert marks("SMTopMargin", None, GEOMETRY)[0].at == 41.58          # as rendered
     left, right = marks("SMTextMarginRight", 20.0, GEOMETRY)
     assert (left.at, left.focus) == (12.76, False) and (right.at, right.focus) == (pytest.approx(433.54), True)
     footer = marks("SMFooterBoxHeight", 10.0, GEOMETRY)
-    assert footer == [Mark("box", pytest.approx(245.12), "footer box 10.0bp", True, size=10.0)]
+    assert footer == [Mark("box", pytest.approx(245.12), "footer box 3.5 mm", True, size=10.0)]
     bar = marks("SMFrametitleTopPadding", 30.0, GEOMETRY)
     assert bar[0].kind == "h" and "after the next render" in bar[0].label and bar[0].focus
     assert marks("SMBlockSideMargin", 5.0, GEOMETRY) == [] and marks("SMTopMargin", 50.0, {}) == []
 
 
 def test_the_top_margin_against_the_title_bar():
-    assert title_bar_check(41.58, GEOMETRY) == ("16.3bp below the title bar", True)
+    assert title_bar_check(41.58, GEOMETRY) == ("5.8 mm below the title bar", True)
+    assert title_bar_check(41.58, GEOMETRY, "pt") == ("16.4 pt below the title bar", True)
+    assert theme_measures.show(72.0) == "25.4 mm" and theme_measures.number_in(72.0, "mm") == "25.4"
     text, ok = title_bar_check(20.0, GEOMETRY)
     assert not ok and "above the title bar" in text
     assert title_bar_check(None, GEOMETRY) == ("", True)
@@ -119,16 +122,16 @@ def test_the_form_tells_the_slides_the_length_as_typed(qapp):
     form.refresh()
     box = form.layout_fields["SMTopMargin"]
     number = box.findChildren(QLineEdit)[0]
-    number.setText("60")
-    number.textEdited.emit("60")
-    assert told[-1] == ("SMTopMargin", 60.0)
-    assert any(label.text() == "34.8bp below the title bar" for label in box.findChildren(QLabel))
-    number.setText("10")
-    number.textEdited.emit("10")
+    number.setText("20")
+    number.textEdited.emit("20")                      # a new value is typed in the display unit, mm
+    assert told[-1] == ("SMTopMargin", pytest.approx(20 * 72 / 25.4))
+    assert any(label.text() == "11.1 mm below the title bar" for label in box.findChildren(QLabel))
+    number.setText("5")
+    number.textEdited.emit("5")
     assert any("above the title bar" in label.text() for label in box.findChildren(QLabel))
     margin = form.layout_fields["SMTextMarginLeft"].findChildren(QLineEdit)[0]
     margin.setText("1")
     margin.textEdited.emit("1")
-    assert told[-1] == ("SMTextMarginLeft", pytest.approx(72 / 2.54))     # .45cm's unit, cm, stays
+    assert told[-1] == ("SMTextMarginLeft", pytest.approx(72 / 25.4))     # unset: typed in mm
     assert "SMTopMargin" not in editor.text()           # marking writes nothing; leaving the field does
     assert theme_measures.MEASURED[0] == "SMTopMargin"

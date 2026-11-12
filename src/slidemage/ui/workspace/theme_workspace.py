@@ -148,4 +148,5 @@ class ThemeWorkspace(Surface):
 
     def _sync(self) -> None:
         self.mode_bar.show_modes(self.form)
+        self.sample.display_unit = self.form.display_unit
         self.sample.set_mode(self.form.mode)
