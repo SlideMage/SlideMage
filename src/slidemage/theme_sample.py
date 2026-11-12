@@ -67,39 +67,44 @@ def work_dir(build_dir: Path, key: str, mode: str) -> Path:
     return build_dir / "theme-sample" / (key or "theme") / (mode or "base")
 
 
-def deck_text(key: str, mode: str, root: Path) -> str:
-    """The sample deck with its colour mode and theme lines filled in."""
+def deck_text(key: str, mode: str, root: Path, home: Optional[Path] = None) -> str:
+    """The sample deck with its colour mode and theme lines filled in. `home` is the theme file's folder when that is
+    not the project (a theme's source folder): its logos are found there first."""
     text = (SAMPLE_DIR / f"{DECK}.tex").read_text(encoding="utf-8")
     mode_line = f"\\newcommand{{\\SMModeOverride}}{{{mode}}}" if mode else "% (the theme's base mode)"
-    theme_line = (f"\\graphicspath{{{{{root.as_posix()}/}}}}\n"
+    paths = "".join(f"{{{folder.as_posix()}/}}" for folder in ([home] if home and home != root else []) + [root])
+    theme_line = (f"\\graphicspath{{{paths}}}\n"
                   f"\\input{{{slide_templates.TEMPLATE_PREFIX}{key}}}")
     return text.replace("%MODE%", mode_line, 1).replace("%THEME%", theme_line, 1)
 
 
-def prepare(work: Path, theme_text: str, key: str, mode: str, root: Path) -> Path:
+def prepare(work: Path, theme_text: str, key: str, mode: str, root: Path, home: Optional[Path] = None) -> Path:
     """Write the theme's text, the deck and its snippet into `work`; returns the deck's path."""
     work.mkdir(parents=True, exist_ok=True)
     (work / f"{slide_templates.TEMPLATE_PREFIX}{key}.tex").write_text(theme_text, encoding="utf-8")
     shutil.copyfile(SAMPLE_DIR / "snippet.tex", work / "snippet.tex")
     deck = work / f"{DECK}.tex"
-    deck.write_text(deck_text(key, mode, root), encoding="utf-8")
+    deck.write_text(deck_text(key, mode, root, home), encoding="utf-8")
     return deck
 
 
-def texinputs(work: Path, root: Path, env: dict) -> str:
-    """The work folder first (the edited theme wins), then the project root and the framework, then what was set."""
-    folders = [work, root, *slide_templates.framework_dirs(root)]
+def texinputs(work: Path, root: Path, env: dict, home: Optional[Path] = None) -> str:
+    """The work folder first (the edited theme wins), then the theme's own folder when that is not the project (its
+    layout profile and logos, ahead of an installed theme of the key), the project root and the framework, then what
+    was set."""
+    folders = [work, *([home] if home and home != root else []), root, *slide_templates.framework_dirs(root)]
     rest = env.get("TEXINPUTS", "")
     return os.pathsep.join([str(folder) for folder in folders] + [rest])
 
 
 def render(ctx, theme_text: str, key: str, mode: str, *, cancel: Optional[compiler.CancelToken] = None,
-           log: Callable[[str], None] = lambda _line: None) -> SampleResult:
+           log: Callable[[str], None] = lambda _line: None, home: Optional[Path] = None) -> SampleResult:
     """Compile the sample deck with `theme_text` as the theme `key` in colour mode `mode` ("" for the base)."""
-    work = work_dir(ctx.build_dir, key, mode)
-    deck = prepare(work, theme_text, key, mode, ctx.root)
+    # a theme edited in its source folder has a work folder of its own, apart from a project copy of the key
+    work = work_dir(ctx.build_dir, f"{key}@source" if home and home != ctx.root else key, mode)
+    deck = prepare(work, theme_text, key, mode, ctx.root, home)
     env = compiler.build_env(ctx)
-    env["TEXINPUTS"] = texinputs(work, ctx.root, env)
+    env["TEXINPUTS"] = texinputs(work, ctx.root, env, home)
     cmd = compiler.latexmk_command(deck, DECK, work, "-lualatex", "-interaction=nonstopmode", "-halt-on-error",
                                    cwd=work)
     try:

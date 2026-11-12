@@ -63,7 +63,7 @@ def probe_text(text: str, kind: str, mode: str) -> tuple[str, dict[str, str]]:
         else:
             lines.append(f"\\definecolor{{SMProbe{index}}}{{HTML}}{{{probe}}}")
             lines.append(f"\\SMSetRole{{{name}}}{{{target}}}{{SMProbe{index}}}")
-    block = "% theme form: where each colour is used (probe render)\n" + "\n".join(lines) + "\n"
+    block = "% theme form: where each color is used (probe render)\n" + "\n".join(lines) + "\n"
     return text[:at] + block + text[at:], mapping
 
 

@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QScrollArea, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
 
-from ... import slide_templates, theme_fields, theme_measures
+from ... import slide_templates, theme_fields, theme_measures, theme_source_folder
 from .. import layout_settings
 from ...theme_form_model import (BULLETS, CODE_COLOURS, DERIVES, FOOTNOTE_STYLES, LAYOUT_SECTIONS, PRESET_LABELS,
                                  ROLE_SECTIONS,
@@ -63,7 +63,7 @@ class _Swatch(ColorSwatchButton):
         else:           # no colour: a role that is off ("none"), or one that takes the text's colour
             self.setStyleSheet("")
             self.setText("–")
-            self.setToolTip("No colour of its own")
+            self.setToolTip("No color of its own")
 
 
 class _Cell(Surface):
@@ -181,7 +181,7 @@ class _Cell(Surface):
             mode_id, label, value = values[index]
             ring = "2px solid palette(highlight)" if mode_id == mode else "1px solid rgba(128,128,128,0.6)"
             dot.setStyleSheet(f"background: {value or 'transparent'}; border: {ring}; border-radius: 4px;")
-            dot.setToolTip(f"{label}: {value or 'no colour of its own'}")
+            dot.setToolTip(f"{label}: {value or 'no color of its own'}")
             dot.show()
 
     def _commit(self) -> None:
@@ -193,7 +193,7 @@ class _Cell(Surface):
 
     def _pick(self) -> None:
         _, _, colour = self.read()
-        chosen = QColorDialog.getColor(QColor(colour or "#ffffff"), self, "Choose a colour")
+        chosen = QColorDialog.getColor(QColor(colour or "#ffffff"), self, "Choose a color")
         if chosen.isValid():
             self.form.apply(lambda: self.write(chosen.name()))
 
@@ -203,7 +203,7 @@ class ThemeForm(QWidget):
     tab's mode bar: theme_workspace). `root` is the project; `setup_path` the framework's SlideMage_setup.tex (its
     catalog gives defaults and the roles). Five tabs: Identity, Colours, Layout, Logo & notes, Advanced."""
 
-    TABS = ("Identity", "Colours", "Layout", "Logo & notes", "Advanced")
+    TABS = ("Identity", "Colors", "Layout", "Logo & notes", "Advanced")
 
     def __init__(self, editor, path: Path, root: Path, setup_path: Optional[Path]) -> None:
         super().__init__()
@@ -212,7 +212,8 @@ class ThemeForm(QWidget):
         self.root = root
         self.setMinimumWidth(360)
         setup_text = setup_path.read_text(encoding="utf-8") if setup_path and setup_path.is_file() else ""
-        self.model = ThemeModel(editor.text(), root, theme_key(path), setup_text) if setup_text else None
+        self.home = theme_source_folder.home(path, root)    # where the theme's logos and layout profile live
+        self.model = ThemeModel(editor.text(), root, theme_key(path), setup_text, self.home) if setup_text else None
         self.mode = self.model.base if self.model is not None else ""
         self._cells: list[_Cell] = []
         self._refreshers: list[Callable[[], None]] = []
@@ -389,7 +390,7 @@ class ThemeForm(QWidget):
     def _page(self, name: str) -> list[QWidget]:
         if name == "Identity":
             return [self._intro(), self._identity()]
-        if name == "Colours":
+        if name == "Colors":
             widgets = [self._mode_heading(), self._checks(), self._palette()]
             widgets += [self._roles(title, roles) for title, roles in ROLE_SECTIONS]
             return widgets + [self._code()]
@@ -415,7 +416,7 @@ class ThemeForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         beyond = self.model.file.beyond()
         note = ("Each change is one line of the theme's source, saved like typing; Ctrl+Z in the source takes it back. "
-                "An empty field follows: its grey text says what it takes.")
+                "An empty field follows: its gray text says what it takes.")
         if beyond:
             note += (f" {len(beyond)} line{'s' if len(beyond) != 1 else ''} of the theme "
                      f"{'are' if len(beyond) != 1 else 'is'} beyond the form (conditionals, lines after the base, "
@@ -428,7 +429,7 @@ class ThemeForm(QWidget):
         return box
 
     def _identity(self) -> QWidget:
-        card, layout = self._card("Name and colour modes")
+        card, layout = self._card("Name and color modes")
         form = QFormLayout()
         name = QLineEdit(self.model.name())
         name.setMaxLength(40)
@@ -453,32 +454,32 @@ class ThemeForm(QWidget):
                     line.addWidget(remove)
                 layout.addLayout(line)
         else:
-            layout.addWidget(caption("The theme has no colour modes: one set of colours. Add one to give decks a dark "
-                                     "(or a grey, colour-blind, projector...) version of it."))
+            layout.addWidget(caption("The theme has no color modes: one set of colors. Add one to give decks a dark "
+                                     "(or a gray, color-blind, projector...) version of it."))
         mismatch = self.model.header_mismatch()
         if mismatch:
             layout.addWidget(caption(mismatch, "error"))
-        add = Button("Add a colour mode…", "secondary", compact=True)
+        add = Button("Add a color mode…", "secondary", compact=True)
         add.clicked.connect(self.add_mode)
         layout.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
         return card
 
     def add_mode(self) -> None:
         dialog = QDialog(self)
-        dialog.setWindowTitle("Add a colour mode")
+        dialog.setWindowTitle("Add a color mode")
         form = QFormLayout(dialog)
         taken = [m.id for m in self.model.modes()]
         mode_id = QLineEdit("dark" if "dark" not in taken else "")
         label = QLineEdit("Dark slides" if mode_id.text() else "")
         derive = QComboBox()
-        names = {"dark": "The dark preset: derived from the palette", "grey": "The grey preset: every colour in grey",
-                 "colorblind": "The colour-blind preset: Okabe–Ito accents", "": "Nothing: the base mode's colours"}
+        names = {"dark": "The dark preset: derived from the palette", "grey": "The gray preset: every color in gray",
+                 "colorblind": "The color-blind preset: Okabe–Ito accents", "": "Nothing: the base mode's colors"}
         for value in DERIVES:
             derive.addItem(names[value], value)
         form.addRow("Name (id)", mode_id)
         form.addRow("Shown in SlideMage as", label)
         form.addRow("Start from", derive)
-        form.addRow(caption("A mode changes colours only (and the logo); fonts, margins and bullets stay the theme's. "
+        form.addRow(caption("A mode changes colors only (and the logo); fonts, margins and bullets stay the theme's. "
                             "Name it for what it is for: projector, print, high contrast..."))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
@@ -491,7 +492,7 @@ class ThemeForm(QWidget):
                 self.set_mode(new)
 
     def _remove_mode(self, mode_id: str) -> None:
-        answer = QMessageBox.question(self, "Remove a colour mode",
+        answer = QMessageBox.question(self, "Remove a color mode",
                                       f"Take the mode {mode_id} out of the theme, with every line of it? "
                                       "Ctrl+Z in the source brings it back.")
         if answer == QMessageBox.StandardButton.Yes:
@@ -501,9 +502,9 @@ class ThemeForm(QWidget):
         """Which mode the Colours tab shows, and what it starts from."""
         mode = next((m for m in self.model.modes() if m.id == self.mode), self.model.modes()[0])
         if not mode.id:
-            text = "The theme's colours (it has no colour modes; add one under Identity)."
+            text = "The theme's colors (it has no color modes; add one under Identity)."
         elif mode.id == self.model.base:
-            text = f"{mode.label}: the base mode. Every other mode starts from these colours."
+            text = f"{mode.label}: the base mode. Every other mode starts from these colors."
         else:
             start = (f"the {PRESET_LABELS.get(mode.derive, mode.derive)} preset" if mode.derive else "the base mode")
             text = (f"{mode.label}: starts from {start}; {self.model.set_count(mode.id)} value"
@@ -594,8 +595,8 @@ class ThemeForm(QWidget):
     def _palette(self) -> QWidget:
         names = self.model.palette_names()
         shown = [n for n in names if self._show_all_palette or self.model.palette_matters(n)]
-        card, layout = self._card("Palette", "The theme's colours. Shown: what the theme sets or what differs between "
-                                             "modes; the swatches at the right are the colour in every mode.")
+        card, layout = self._card("Palette", "The theme's colors. Shown: what the theme sets or what differs between "
+                                             "modes; the swatches at the right are the color in every mode.")
         grid = self._row_grid(layout)
         for row, name in enumerate(shown):
             label = text_label(_label(name), "body")
@@ -607,14 +608,14 @@ class ThemeForm(QWidget):
             self._cells.append(cell)
             grid.addWidget(cell, row, 1)
         if not shown:
-            layout.addWidget(caption("The theme sets no palette colour and none differs between its modes: it uses "
+            layout.addWidget(caption("The theme sets no palette color and none differs between its modes: it uses "
                                      "the framework's palette."))
         buttons = QHBoxLayout()
         more = Button("Show only what matters" if self._show_all_palette else f"Show all {len(names)}", "ghost",
                       compact=True)
         more.clicked.connect(self._toggle_palette)
         buttons.addWidget(more)
-        add = Button("Add a colour of the theme's own…", "ghost", compact=True)
+        add = Button("Add a color of the theme's own…", "ghost", compact=True)
         add.clicked.connect(self._add_own_colour)
         buttons.addWidget(add)
         buttons.addStretch(1)
@@ -631,17 +632,17 @@ class ThemeForm(QWidget):
         if mode == self.model.base:
             follows = f"framework: {self.model.default(name) or '?'}"
         else:
-            follows = colour or "base colour"
+            follows = colour or "base color"
         return written, follows, colour
 
     def _add_own_colour(self) -> None:
         dialog = QDialog(self)
-        dialog.setWindowTitle("Add a colour of the theme's own")
+        dialog.setWindowTitle("Add a color of the theme's own")
         form = QFormLayout(dialog)
         name = QLineEdit("c_")
         value = QLineEdit("#")
         form.addRow("Name", name)
-        form.addRow("Colour (#rrggbb)", value)
+        form.addRow("Color (#rrggbb)", value)
         form.addRow(caption("The roles can then use it, in any mode: a dark canvas of the theme's own, say."))
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
@@ -696,7 +697,7 @@ class ThemeForm(QWidget):
                 self.model.resolve("role:" + role, mode))
 
     def _code(self) -> QWidget:
-        box, layout = self._group("Code panels", "4 colours of \\SMCodeFile")
+        box, layout = self._group("Code panels", "4 colors of \\SMCodeFile")
         if layout is None:
             return box
         grid = self._row_grid(layout)
@@ -752,7 +753,9 @@ class ThemeForm(QWidget):
             if shown and not shown.lower().endswith(".pdf"):
                 problem = "The logo should be a vector PDF: other files look blurred when the slides are zoomed."
             elif shown and not (self.root / shown).is_file() and not (self.path.parent / shown).is_file():
-                problem = "No such file in the project folder (it may be on the TeX search path elsewhere)."
+                problem = ("No such file in the project folder (it may be on the TeX search path elsewhere)."
+                           if self.home == self.root else
+                           "No such file in the theme's folder (it may be on the TeX search path elsewhere).")
             warning.setText(problem)
             warning.setVisible(bool(problem))
             for key, edit in fields.items():
@@ -764,7 +767,7 @@ class ThemeForm(QWidget):
         return card
 
     def _choose_logo(self) -> None:
-        chosen, _ = QFileDialog.getOpenFileName(self, "Choose the logo", str(self.root), "PDF (*.pdf);;All files (*)")
+        chosen, _ = QFileDialog.getOpenFileName(self, "Choose the logo", str(self.home), "PDF (*.pdf);;All files (*)")
         if chosen:
             self.apply(lambda: self.model.import_logo(Path(chosen)))
 
@@ -805,7 +808,7 @@ class ThemeForm(QWidget):
         field = theme_fields.BY_NAME[key]
         default = self.model.default(key)
         if key == "SMLayoutProfile":
-            return self._choice_field(key, layout_profiles(self.root), default or "fira")
+            return self._choice_field(key, layout_profiles(self.root, self.home), default or "fira")
         if key == "SMCitationFormat":
             return self._choice_field(key, citation_formats(), default or "default")
         if key == "SMBulletSymbol":

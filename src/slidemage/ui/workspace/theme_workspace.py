@@ -18,6 +18,7 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSplitter, QVBoxLayout
 
+from ... import theme_source_folder
 from ...theme_form_model import PRESET_LABELS
 from .. import layout_settings
 from ..kit.tokens import SPACE
@@ -50,7 +51,7 @@ class ModeBar(Surface):
         model = form.model
         if model is None or not model.readable:
             return
-        self._row.addWidget(caption("Colour mode"))
+        self._row.addWidget(caption("Color mode"))
         modes = model.modes()
         for index, mode in enumerate(modes):
             if not mode.id:
@@ -74,7 +75,7 @@ class ModeBar(Surface):
             self._row.addWidget(button)
             self.buttons[mode.id] = button
         add = Button("+ Add mode…", "secondary", compact=True)
-        add.setToolTip("Add a colour mode: from the dark, grey or colour-blind preset, or from the base mode")
+        add.setToolTip("Add a color mode: from the dark, gray or color-blind preset, or from the base mode")
         add.clicked.connect(lambda: self.on_add())
         self._row.addWidget(add)
         self._row.addStretch(1)
@@ -89,9 +90,18 @@ class ThemeWorkspace(Surface):
         self.form = ThemeForm(editor, path, project.root, setup_path)
         self.sample = ThemeSampleView(editor, theme_key(path), project)
         self.sample.follow_mode_bar()
+        if self.form.home != project.root:
+            self.sample.home = self.form.home
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
+        # Where an edit is written, when that is not plainly a personal theme of the project (plan section 3.6).
+        self.place = theme_source_folder.place(path, project.root)
+        self.place_label = caption(self.place.line, "error" if self.place.warning else "")
+        self.place_label.setWordWrap(True)
+        self.place_label.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, 0)
+        self.place_label.setVisible(bool(self.place.line))
+        column.addWidget(self.place_label)
         top = Surface()
         row = QHBoxLayout(top)
         row.setContentsMargins(SPACE.lg, SPACE.sm, SPACE.lg, SPACE.sm)

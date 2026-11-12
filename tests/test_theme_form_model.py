@@ -196,7 +196,7 @@ def test_where_a_value_comes_from_in_each_mode(shipped):
     assert shipped.provenance("palette", "c_primary_highlight", "light") == ("framework default", "muted")
     assert shipped.provenance("palette", "c_primary_highlight", "dark") == ("set here", "warning")
     assert shipped.provenance("palette", "c_primary_highlight", "cb") == ("from Light", "muted")
-    assert shipped.provenance("palette", "c_secondary_blue", "cb") == ("colour-blind preset", "info")
+    assert shipped.provenance("palette", "c_secondary_blue", "cb") == ("color-blind preset", "info")
     assert shipped.provenance("role", "canvas", "dark") == ("dark preset", "info")
     assert shipped.provenance("role", "alert", "dark") == ("set here", "warning")
     assert shipped.provenance("optional", "SMCodeCommentColor", "light") == ("set in the theme", "neutral")

@@ -290,7 +290,7 @@ class ThemeFile:
             hex_value = _hex_value(value)
             if hex_value is None:
                 if setting.kind == "modecolour":
-                    raise ValueError(f"a mode's colour needs a #rrggbb value, not {value!r}")
+                    raise ValueError(f"a mode's color needs a #rrggbb value, not {value!r}")
                 # \definecolor -> \colorlet: the command changes, its comment stays
                 self.text = text[:setting.start] + f"\\colorlet{{{setting.key}}}{{{value.strip()}}}" + text[setting.end:]
                 return
@@ -335,7 +335,7 @@ class ThemeFile:
             hex_value = _hex_value(value)
             if mode:
                 if hex_value is None:
-                    raise ValueError(f"a mode's colour needs a #rrggbb value, not {value!r}")
+                    raise ValueError(f"a mode's color needs a #rrggbb value, not {value!r}")
                 return f"\\SMSetColor{{{key}}}{{{mode}}}{{HTML}}{{{hex_value}}}"
             if hex_value is None:
                 return f"\\colorlet{{{key}}}{{{value.strip()}}}"

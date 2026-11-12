@@ -52,6 +52,7 @@ class ThemeSampleView(Surface):
         self.key = key
         self.project = project
         self._render = render or theme_sample.render
+        self.home = None        # the theme file's folder when it is not the project (theme_source_folder.home)
         self._images: list[QImage] = []
         self._page = 2                          # the title bar, lists and footnotes: the page most fields change
         self._cancel: Optional[compiler.CancelToken] = None
@@ -75,7 +76,7 @@ class ThemeSampleView(Surface):
         head.addWidget(text_label("Sample slides", "heading"))
         head.addStretch(1)
         self.mode_combo = QComboBox()
-        self.mode_combo.setToolTip("The colour mode the sample slides are rendered in")
+        self.mode_combo.setToolTip("The color mode the sample slides are rendered in")
         self.mode_combo.activated.connect(lambda _i: self.render_soon(0))
         head.addWidget(self.mode_combo)
         self.previous = Button("‹", "ghost", compact=True)
@@ -131,6 +132,10 @@ class ThemeSampleView(Surface):
         self._stale = True
         self._timer.start(RENDER_DELAY_MS if delay is None else delay)
 
+    def _home_args(self) -> dict:
+        """`home=` for the render, only when the theme is not the project's (a test's render need not take it)."""
+        return {"home": self.home} if self.home is not None else {}
+
     def start(self) -> None:
         """Render now (or once the running render has stopped); nothing while the panel is not on show."""
         if self.project is None or not self.isVisible():
@@ -146,7 +151,7 @@ class ThemeSampleView(Surface):
 
         def work() -> None:
             try:
-                result = self._render(self.project, text, self.key, mode, cancel=cancel)
+                result = self._render(self.project, text, self.key, mode, cancel=cancel, **self._home_args())
             except Exception as exc:        # a failed render must not end the thread silently
                 result = theme_sample.SampleResult(None, f"The sample slides could not be rendered: {exc}", mode)
             self.rendered.emit(result)
@@ -291,7 +296,7 @@ class ThemeSampleView(Surface):
             usage = None
             try:
                 result = render(self.project, probe_text, f"{self.key}--probe-{kind}", mode,
-                                cancel=compiler.CancelToken())
+                                cancel=compiler.CancelToken(), **self._home_args())
                 if result.pdf is not None:
                     usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
             except Exception:       # no map: the slides stay undimmed, the form still works
@@ -358,7 +363,7 @@ class ThemeSampleView(Surface):
     def _update_modes(self) -> None:
         file = ThemeFile(self.editor.text())
         labels = dict(parse_modes_header(file.value("header:modes") or ""))
-        wanted = [(mode_id, labels.get(mode_id) or mode_id.capitalize()) for mode_id, _ in file.modes()] or [("", "Colours")]
+        wanted = [(mode_id, labels.get(mode_id) or mode_id.capitalize()) for mode_id, _ in file.modes()] or [("", "Colors")]
         current = [(self.mode_combo.itemData(i), self.mode_combo.itemText(i)) for i in range(self.mode_combo.count())]
         if [data for data, _ in current] != [data for data, _ in wanted]:
             keep = self.mode
@@ -405,7 +410,7 @@ class ThemeSampleView(Surface):
             button.setIcon(QPixmap.fromImage(image.scaledToWidth(84, Qt.TransformationMode.SmoothTransformation)))
             button.setIconSize(QSize(84, 48))
             button.setText(f"{number} \u25cf" if number in used else str(number))
-            button.setToolTip(names.get(number, "") + (" · uses the focused colour" if number in used else ""))
+            button.setToolTip(names.get(number, "") + (" · uses the focused color" if number in used else ""))
             button.setDown(number == self._page)
             button.show()
 

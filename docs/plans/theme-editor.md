@@ -1,6 +1,6 @@
 # Plan: a theme editor (Part C of the handover task `personal-themes-extensions`)
 
-Status: **C0, CR, the form stage C1, C2a and the form's look merged; C2b (margin marks) built, C2c next.** Parts A and B
+Status: **C0, CR, the form stage C1 and all of C2 (C2a, the form's look, C2b, the display unit, C2c) built; C3 (Advanced) next.** Parts A and B
 (list personal themes in Settings → Extensions; edit a theme's `.tex` in a centre tab; copy an installed theme into the
 project) are in v0.14.62 (PR SlideMage/SlideMage#145, merged). All nine design questions answered 2026-11-10 (section 0);
 stage C0 built (v0.15.3), stage CR v0.15.9 to v0.16.5, C1a v0.16.6 (section 4). Section 0 below is the state of
@@ -692,6 +692,21 @@ length the theme does not set shows the framework's value in the display unit an
 and the Top Margin check speak the unit (`theme_measures.show`, `number_in`, `from_bp`, `DISPLAY_UNITS`;
 `ThemeSampleView.display_unit`). `SMBodyFontSize` (a font size, `FONT_SIZE_KEYS`) stays in pt. Switching the unit
 rewrites nothing.
+
+**Built: C2c, route B (v0.16.24, branch `feat/theme-route-b`).** `theme_source_folder` (no Qt): the source folder
+of an installed theme per key (`folder`, `set_folder`, `template`; layout setting `theme_source_folders`),
+`check(key, folder)` (refused: no template of the key, a theme.toml of another theme, the installed copy itself,
+so route C stays not offered), `place(path, root)` (project | source | installed | other, with the line the theme
+tab shows at its top: `ThemeWorkspace.place_label`; empty for a plain personal theme) and `home(path, root)`, the
+theme file's own folder. `ThemeModel(home=)`: the logo import writes to `home/schemes/scheme_<key>/`,
+`layout_profiles(root, home)` offers the folder's profile; `theme_sample.render(home=)` puts the folder after the
+buffer and before the project on TEXINPUTS and the graphics path, in a work folder `<key>@source`. Settings →
+Extensions: `ThemeRow` has "Source folder…", then "Edit source", the folder with its version, "Change…" and
+"Forget" (`PluginsTab.choose_theme_source_folder`, `edit_theme_source`). A save in the source folder renders no
+deck (decks use the installed theme). Tests: `tests/test_theme_source_folder.py` (with `SLIDEMAGE_TEX_TESTS=1`
+the sample renders with a logo found only in the source folder). Not built: the release steps themselves
+(CHANGELOG line, `make_theme_package.py`, GitHub release) stay by hand; a way to try the source folder's version
+in real decks before a release (packing and installing it locally) is not there.
 
 
 Where it lives: a tab beside the source tab for a theme file, "Design…" on a personal theme's row, and "New theme…" next

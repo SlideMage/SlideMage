@@ -25,13 +25,13 @@ from .theme_file import ThemeFile
 # when no template names one: the theme's pale yellow.
 FRAMEWORK_COLOURS = {"SMLightOrange": "#eb811b", "SMDeepYellowOrange": "#ffcc00", "": "#fffff0"}
 DERIVES = ("dark", "grey", "colorblind", "")
-PRESET_LABELS = {"dark": "dark", "grey": "grey", "colorblind": "colour-blind"}
+PRESET_LABELS = {"dark": "dark", "grey": "gray", "colorblind": "color-blind"}
 MODE_ID_RE = re.compile(r"[a-z][a-z0-9_]{0,23}")
 OWN_COLOUR_RE = re.compile(r"c_[a-z][a-z0-9_]{0,40}")
 
 # The roles, grouped as the form shows them (code_* go with the code colours).
 ROLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Slide colours", ("text", "text_muted", "canvas", "card", "line", "text_on_accent", "link")),
+    ("Slide colors", ("text", "text_muted", "canvas", "card", "line", "text_on_accent", "link")),
     ("Title bar and footer", ("title_fill", "title_text", "footer_fill", "footer_text", "standout_fill",
                               "standout_text")),
     ("Blocks", ("block_title_fill", "block_title_text", "alerted_block_title_fill", "alerted_block_title_text",
@@ -118,8 +118,9 @@ def format_modes_header(modes: list[tuple[str, str]]) -> str:
 class ThemeModel:
     """The theme form's model of one theme's text. `text` is the current text after every edit."""
 
-    def __init__(self, text: str, root: Path, key: str, setup_text: str) -> None:
+    def __init__(self, text: str, root: Path, key: str, setup_text: str, home: Optional[Path] = None) -> None:
         self.root = root
+        self.home = home or root     # the theme file's folder: the project, or the theme's source folder
         self.key = key
         self.catalog = theme_fields.catalog(setup_text)
         self.preset_dark = {role: value for role, value in _DERIVED_RE.findall(setup_text)}
@@ -147,7 +148,7 @@ class ThemeModel:
     def modes(self) -> list[Mode]:
         declared = self.file.modes()
         if not declared:
-            return [Mode("", "", "Colours")]
+            return [Mode("", "", "Colors")]
         labels = dict(parse_modes_header(self.file.value("header:modes") or ""))
         return [Mode(mode_id, derive, labels.get(mode_id) or mode_id.capitalize()) for mode_id, derive in declared]
 
@@ -231,7 +232,7 @@ class ThemeModel:
     def add_own_colour(self, name: str, value: str) -> None:
         """A palette colour of the theme's own (c_..._canvas), offered to the roles."""
         if not OWN_COLOUR_RE.fullmatch(name):
-            raise ValueError("A colour's name starts with c_ and has lower-case letters, digits and _.")
+            raise ValueError("A color's name starts with c_ and has lower-case letters, digits and _.")
         if name in theme_fields.BY_NAME or name in ("c_true_black", "c_true_white") or self.file.find(name):
             raise ValueError(f"{name} exists already.")
         self.file.set(name, value)
@@ -271,7 +272,7 @@ class ThemeModel:
         if hook:
             return self.catalog[hook].default or "(the theme's default)"
         source = self.catalog["role:" + role].source
-        return {"SM@processline": "none", "SM@inlinecode": "(the text's colour)"}.get(source, source)
+        return {"SM@processline": "none", "SM@inlinecode": "(the text's color)"}.get(source, source)
 
     def role_expression(self, role: str, mode: str) -> str:
         """The colour expression the role comes to in `mode` ("\\SMTitleBoxColor" for one that follows a hook)."""
@@ -299,7 +300,7 @@ class ThemeModel:
             else:
                 self.file.set("role:" + role, value, mode)
         else:
-            raise ValueError("Declare colour modes before giving this role a colour of its own.")
+            raise ValueError("Declare color modes before giving this role a color of its own.")
         self._colours.clear()
 
     def resolve(self, expression: str, mode: str, _depth: int = 0) -> str | None:
@@ -350,7 +351,7 @@ class ThemeModel:
     # --- one mode at a time (the form's look, 2026-11-12) ---------------------------------------------------------------
 
     def mode_label(self, mode: str) -> str:
-        return next((m.label for m in self.modes() if m.id == mode), mode or "Colours")
+        return next((m.label for m in self.modes() if m.id == mode), mode or "Colors")
 
     def set_count(self, mode: str) -> int:
         """How many values the mode `mode` (not the base) sets itself: its \\SMSetColor and \\SMSetRole lines."""
@@ -445,16 +446,17 @@ class ThemeModel:
             self.file.set(key, value.strip())
 
     def import_logo(self, source: Path) -> str:
-        """Copy a logo file into the project's scheme folder of this theme (schemes/scheme_<key>/) and point the theme
-        at it. A file of that name there is replaced only when it is the same file. Returns the path the theme writes."""
-        folder = self.root / "schemes" / f"scheme_{self.key.replace('-', '_')}"
+        """Copy a logo file into this theme's scheme folder (schemes/scheme_<key>/ beside the theme file: in the
+        project, or in the theme's source folder) and point the theme at it. A file of that name there is replaced only
+        when it is the same file. Returns the path the theme writes."""
+        folder = self.home / "schemes" / f"scheme_{self.key.replace('-', '_')}"
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / source.name
         if source.resolve() != target.resolve():
             if target.exists() and target.read_bytes() != source.read_bytes():
-                raise ValueError(f"{target.relative_to(self.root).as_posix()} exists and is another file.")
+                raise ValueError(f"{target.relative_to(self.home).as_posix()} exists and is another file.")
             shutil.copyfile(source, target)
-        relative = target.relative_to(self.root).as_posix()
+        relative = target.relative_to(self.home).as_posix()
         self.file.set("SMInstituteLogoPath", relative)
         return relative
 
@@ -537,13 +539,13 @@ def format_size_pair(size: str, skip: str) -> str:
     return f"\\fontsize{{{size.strip()}}}{{{skip.strip()}}}\\selectfont"
 
 
-def layout_profiles(root: Path) -> list[str]:
-    """The layout profiles a theme of the project at `root` can pick: the bundled ones, then the project's own
-    (SlideMage_layout_<name>.tex next to its templates)."""
+def layout_profiles(root: Path, home: Optional[Path] = None) -> list[str]:
+    """The layout profiles a theme of the project at `root` can pick: the bundled ones, then the ones beside the theme
+    file (`home`, when that is not the project) and the project's own (SlideMage_layout_<name>.tex)."""
     from . import slide_templates, themes
 
     found = list(themes.BUNDLED_PROFILES)
-    for folder in [root, *slide_templates.framework_dirs(root)]:
+    for folder in [*([home] if home and home != root else []), root, *slide_templates.framework_dirs(root)]:
         for path in sorted(folder.glob(f"{themes.LAYOUT_PREFIX}*.tex")):
             name = path.stem[len(themes.LAYOUT_PREFIX):]
             if name not in found:
