@@ -188,9 +188,7 @@ def _issue(code, line, message=None):
             _issue("underscore", 1),
             _issue("optional-arg", 2, "\\item[ label has no closing ] on this line"),
             _issue("caret", 3),
-            _issue("underscore", 3),
-            _issue("underscore", 3),
-            _issue("underscore", 5),
+            _issue("underscore", 3),                 # one per line (v0.16.32), not one per character
             _issue("underscore", 5),
         ],
         id="optional-and-overlay",
@@ -253,20 +251,26 @@ def _issue(code, line, message=None):
         "\\url{a_b^&#} \\textbf{a_b^&#} \\Customcolor{a_b^&#}\n"
         "\\href{a_b^&#}{a_b^&#} a_b _a a_ 10^6\n",
         [
-            _issue("ampersand", 1),
-            _issue("ampersand", 1),
+            _issue("ampersand", 1),                  # one per line (v0.16.32), not one per character
             _issue("caret", 1),
-            _issue("hash", 1),
             _issue("hash", 1),
             _issue("underscore", 1),
             _issue("ampersand", 2),
             _issue("caret", 2),
-            _issue("caret", 2),
             _issue("hash", 2),
-            _issue("underscore", 2),
             _issue("underscore", 2),
         ],
         id="owners",
+    ),
+    pytest.param(
+        "\\colorlet{SMCodeKeywordColor}{c_secondary_blue}\n"
+        "\\definecolor{c_graz_dark}{HTML}{2B2B2B} \\SMSetColor{c_custom_red}{dark}{HTML}{FF6B6B}\n"
+        "\\SMSetRole{text_on_accent}{dark}{c_true_black} \\SMDeclareMode{light_x}{}\n"
+        "\\textcolor{c_custom_red}{a_b}\n",
+        [
+            _issue("underscore", 4),                 # \textcolor's second group is typeset text
+        ],
+        id="name-only-arguments",
     ),
     # A lexical check does not execute \catcode assignments.
     pytest.param(

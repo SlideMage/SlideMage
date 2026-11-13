@@ -1472,21 +1472,29 @@ def tabbed(window, tmp_path, monkeypatch):
     return SimpleNamespace(deck=deck_path, bib=bib, edits=edits)
 
 
-def test_the_mode_switch_shows_preview_split_and_details_disabled_with_a_reason_on_a_file_that_is_no_slide(window, tabbed):
+def test_the_mode_switch_shows_preview_split_and_details_as_the_way_back_on_a_file_that_is_no_slide(window, tabbed):
+    """v0.16.32: the three look unavailable and say why, but a click returns to the slide tab in that view (a segment
+    that did nothing left no visible way back from a deck's source or a theme file)."""
     modes = window.topbar._modes
     assert window.state.mode == "source" and modes.current() == "source"
     for mode in ("preview", "split", "details"):
         button = modes._buttons[mode]
-        assert not button.isEnabled() and "no slide" in button.toolTip() and "slide tab" in button.toolTip()
-        button.click()                                              # a disabled segment does nothing
-    assert window.state.mode == "source" and modes._buttons["source"].isEnabled()
-    window.centre.show_slide_tab()
-    assert all(modes._buttons[m].isEnabled() for m in ("preview", "split", "details"))
+        assert button.property("unavailable") and "no slide" in button.toolTip() and "go back" in button.toolTip()
+    assert window.centre.source_only
+    modes._buttons["split"].click()                                 # the way back: the slide tab, in Split
+    assert not window.centre.source_only and window.state.mode == "split"
+    assert all(modes._buttons[m].isEnabled() and not modes._buttons[m].property("unavailable")
+               for m in ("preview", "split", "details"))
     assert all("no slide" not in modes._buttons[m].toolTip() for m in modes._buttons)
     window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))
-    assert not modes._buttons["preview"].isEnabled()                    # and again for the next file tab
-    window.topbar._apply_density("narrow")                              # relabelling keeps the reason
-    assert not modes._buttons["split"].isEnabled() and "no slide" in modes._buttons["split"].toolTip()
+    assert modes._buttons["preview"].property("unavailable")        # and again for the next file tab
+    modes._buttons["details"].click()
+    assert not window.centre.source_only and window.state.mode == "details"
+    window.centre.tabs.activate(window.centre.tabs.tab_for(tabbed.bib))
+    window.topbar._apply_density("narrow")                          # relabelling keeps the reason
+    assert modes._buttons["split"].property("unavailable") and "no slide" in modes._buttons["split"].toolTip()
+    modes._buttons["source"].click()                                # Source on a source-only tab stays where it is
+    assert window.centre.source_only and window.state.mode == "source"
 
 
 def test_no_command_gets_around_the_source_alone_rule(window, tabbed):

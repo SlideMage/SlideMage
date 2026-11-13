@@ -137,6 +137,12 @@ _NON_TYPESET_OWNERS = {
     "deckoutputfolder", "decktags", "SMCodeFile", "note",  # \note can hold typeset text, but see below
 }
 _NON_TYPESET_OWNERS.discard("note")  # typeset text: an unescaped _ there is a real error
+# Macros whose first N brace groups are all names (colours, colour models and specs, modes, roles), not only the first:
+# \colorlet{SMCodeKeywordColor}{c_secondary_blue} has its _ in the second group (v0.16.32). \textcolor and \colorbox
+# stay at one: their second group is typeset text.
+_NAME_ARGUMENTS = {"colorlet": 2, "definecolor": 3, "providecolor": 3, "fcolorbox": 2, "setbeamercolor": 2,
+                   "SMSetColor": 4, "SMSetRole": 3, "SMDeclareMode": 2}
+_NON_TYPESET_OWNERS |= set(_NAME_ARGUMENTS)
 
 # Macros whose first argument is a URL/target, where & and # are legal.
 _URL_OWNERS = {"href", "url", "nolinkurl", "hyperlink", "hypertarget", "hyperref"}
@@ -206,6 +212,8 @@ class _Lexer:
         self.left_count = self.right_count = 0
         self.left_line = 1
         self.pending: Optional[str] = None     # command whose arguments we may be inside
+        # (command, brace depth before its first group, groups still to come) of a _NAME_ARGUMENTS command
+        self.name_args: Optional[tuple[str, int, int]] = None
         self.opt_depth = 0
         self.code_region = False               # \ExplSyntaxOn / \makeatletter
         # [brace depth at command, groups expected, groups closed, start line, opened]
@@ -213,7 +221,10 @@ class _Lexer:
         self.line = 1
 
     def add(self, code: str, line: int, message: str) -> None:
-        self.issues.append(LintIssue(code, message, line))
+        """Record an issue; the same message on the same line once (two _ in one name are one problem)."""
+        issue = LintIssue(code, message, line)
+        if issue not in self.issues:
+            self.issues.append(issue)
 
     def _check_encoding(self, text: str) -> None:
         for number, raw in enumerate(text.split("\n"), 1):
@@ -302,6 +313,7 @@ class _Lexer:
         if name in _DEF_COMMANDS and _DEF_COMMANDS[name] > 0:
             self.def_stack.append([len(self.brace_stack), _DEF_COMMANDS[name], 0, self.line, 0])
         self.pending = name
+        self.name_args = (name, len(self.brace_stack), _NAME_ARGUMENTS[name]) if name in _NAME_ARGUMENTS else None
 
     def _control_symbol(self, i: int) -> int:
         # control symbol: \{ \} \$ \& \% \# \_ \\ \[ \] \( \) \, ...
@@ -343,6 +355,11 @@ class _Lexer:
                 break
         while self.def_stack and self.def_stack[-1][2] >= self.def_stack[-1][1]:
             self.def_stack.pop()
+        # One of a name-only command's groups closed: the next group, if one follows at once, is a name too.
+        if self.name_args is not None and len(self.brace_stack) == self.name_args[1]:
+            name, depth, left = self.name_args
+            self.name_args = (name, depth, left - 1) if left > 1 else None
+            self.pending = name if left > 1 else None
         return i + 1
 
     def _overlay(self, i: int) -> int:
@@ -367,6 +384,8 @@ class _Lexer:
         c = self.masked[i]
         if self.opt_depth == 0:
             self.pending = None if c not in "<*" else self.pending
+            if self.pending is None and self.name_args is not None and len(self.brace_stack) == self.name_args[1]:
+                self.name_args = None              # text after the command, between its groups: it is over
         if c == "$":
             return self._dollar(i)
         # Only these characters need context checks; running text just clears pending.

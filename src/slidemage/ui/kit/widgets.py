@@ -536,15 +536,19 @@ class SegmentedControl(QFrame):
             self._buttons[key].setAccessibleName(label or self._tooltips.get(key, ""))
             self._fit_button(key)
 
-    def set_unavailable(self, key: str, why: str | None) -> None:
-        """Grey out a segment that cannot be chosen now, with `why` as its tooltip; None makes it available again
-        (and gives back the tooltip set_labels() gave it)."""
+    def set_unavailable(self, key: str, why: str | None, *, clickable: bool = False) -> None:
+        """Mark a segment that cannot be chosen now, with `why` as its tooltip: greyed out and, unless `clickable`,
+        disabled (a clickable one still emits `changed`, for the owner to turn into something else). None makes it
+        available again (and gives back the tooltip set_labels() gave it)."""
         if why:
             self._why_not[key] = why
         else:
             self._why_not.pop(key, None)
         button = self._buttons[key]
-        button.setEnabled(not why)
+        button.setEnabled(not why or clickable)
+        button.setProperty("unavailable", bool(why))
+        button.style().unpolish(button)
+        button.style().polish(button)
         button.setToolTip(why or self._tooltips.get(key, ""))
 
     def _fit_button(self, key: str) -> None:

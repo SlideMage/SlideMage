@@ -47,12 +47,14 @@ SHORT_VIEWS = {"instructor": "Instr.", "during-course": "During", "after-course"
 MODE_LABELS = {mode: mode.capitalize() for mode in MODES}
 SHORT_MODES = {"preview": "Prev.", "split": "Split", "source": "Src.", "details": "Info"}
 SOURCE_ONLY_TIP = ("This tab shows a file that is no slide, so it has only the Source view. "
-                   "Switch to the slide tab for Preview, Split and Details.")
+                   "Click here to go back to the slide tab in this view.")
 
 
 class TopBar(QWidget):
     command = Signal(str)
     mode_clicked = Signal()   # the user clicked Preview / Split / Source / Details (whatever it changed)
+    # the user clicked Preview / Split / Details on a tab that has the Source view alone: the way back to the slide tab
+    leave_source_only = Signal(str)
 
     def __init__(self, window, parent: QWidget | None = None) -> None:
         """`window` is the command context: its `state`, `commands` and `compiling`."""
@@ -121,7 +123,8 @@ class TopBar(QWidget):
         add(self._save)
 
         self._modes = SegmentedControl([(mode, mode.capitalize()) for mode in MODES], current=state.mode, roving=True)
-        self._modes.changed.connect(state.set_mode)
+        self._source_only = False
+        self._modes.changed.connect(self._pick_mode)
         self._modes.changed.connect(lambda _mode: self.mode_clicked.emit())
         add(self._modes)
 
@@ -247,12 +250,22 @@ class TopBar(QWidget):
     def set_dark(self, dark: bool) -> None:
         self._logo.setPixmap(QIcon(str(DARK_LOGO_PATH if dark else LOGO_PATH)).pixmap(LOGO_SIZE, LOGO_SIZE))
 
+    def _pick_mode(self, mode: str) -> None:
+        """A click on a mode. On a tab with the Source view alone, Preview, Split and Details are the way back to the
+        slide tab (the window shows it, then sets the mode); elsewhere it is the mode."""
+        if self._source_only and mode != "source":
+            self.leave_source_only.emit(mode)
+        else:
+            self._state.set_mode(mode)
+
     def set_source_only(self, source_only: bool) -> None:
-        """The tab shown has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone,
-        so Preview, Split and Details are greyed out and say why instead of closing the file."""
+        """The tab shown has a file that is no slide (a deck's source, SlideMage.bib): it has the Source view alone.
+        Preview, Split and Details look unavailable and say why, but stay clickable: a click returns to the slide tab
+        in that view (a segment that did nothing left no visible way back)."""
+        self._source_only = source_only
         for mode in MODES:
             if mode != "source":
-                self._modes.set_unavailable(mode, SOURCE_ONLY_TIP if source_only else None)
+                self._modes.set_unavailable(mode, SOURCE_ONLY_TIP if source_only else None, clickable=True)
 
     def set_images_open(self, is_open: bool) -> None:
         self._images.setVisible(is_open)

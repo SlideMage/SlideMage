@@ -605,9 +605,12 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             color: {t.text};
             background-color: transparent;
         }}
-        QPushButton[kitSegment="true"]:disabled {{
+        QPushButton[kitSegment="true"]:disabled, QPushButton[kitSegment="true"][unavailable="true"] {{
             color: {t.text_4};
             background-color: transparent;
+        }}
+        QPushButton[kitSegment="true"][unavailable="true"]:hover {{
+            color: {t.text_3};
         }}
         QPushButton[kitSegment="true"]:checked {{
             background-color: {t.surface};

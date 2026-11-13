@@ -286,6 +286,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source_only_changed.connect(self.topbar.set_source_only)
+        self.topbar.leave_source_only.connect(self._leave_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
         self.centre.versions_changed.connect(self.side_panels.refresh)
@@ -834,6 +835,12 @@ class WorkspaceWindow(QMainWindow):
         self.log(
             f"==== Header sync: {changed} slide file(s) updated across {n_decks} deck(s) ===="
         )
+
+    def _leave_source_only(self, mode: str) -> None:
+        """A click on Preview, Split or Details in a tab that has the Source view alone: back to the slide tab, in
+        the view that was clicked (the tab keeps the mode it was last shown in until then)."""
+        self.centre.show_slide_tab()
+        self.state.set_mode(mode)
 
     def open_deck_source_editor(self, deck: Deck) -> None:
         """Deck → "Source" ("Edit deck source" until v9.2.0) -- opens the deck's raw .tex file in the same
