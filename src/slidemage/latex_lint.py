@@ -138,7 +138,7 @@ _NON_TYPESET_OWNERS = {
 }
 _NON_TYPESET_OWNERS.discard("note")  # typeset text: an unescaped _ there is a real error
 # Macros whose first N brace groups are all names (colours, colour models and specs, modes, roles), not only the first:
-# \colorlet{SMCodeKeywordColor}{c_secondary_blue} has its _ in the second group (v0.16.31). \textcolor and \colorbox
+# \colorlet{SMCodeKeywordColor}{c_secondary_blue} has its _ in the second group (v0.16.32). \textcolor and \colorbox
 # stay at one: their second group is typeset text.
 _NAME_ARGUMENTS = {"colorlet": 2, "definecolor": 3, "providecolor": 3, "fcolorbox": 2, "setbeamercolor": 2,
                    "SMSetColor": 4, "SMSetRole": 3, "SMDeclareMode": 2}

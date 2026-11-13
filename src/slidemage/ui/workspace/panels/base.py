@@ -170,7 +170,7 @@ class SidePanel(Surface):
     # -- the slide: the focused one, or the slide file tab's on show ----------------------
 
     def _tab(self) -> Optional[tuple]:
-        """(path, row) of the slide file tab on show, None when the panels follow the focused slide."""
+        """(path, row, deck) of the slide file tab on show, None when the panels follow the focused slide."""
         return self.actions.tab_slide()
 
     def _slide_id(self) -> Optional[str]:
@@ -178,13 +178,18 @@ class SidePanel(Surface):
         tab = self._tab()
         return bare_id(tab[0].name) if tab is not None else self.state.focused_slide
 
+    def _deck(self):
+        """The deck the panel's slide is in: the slide file tab's own (docs/plans/tab-contexts.md), else the open deck."""
+        tab = self._tab()
+        return tab[2] if tab is not None and len(tab) > 2 else self.state.deck
+
     def deck_calls(self) -> list[tuple[int, SlideCall]]:
-        """(1-based place, call) of every call of the slide in the open deck."""
-        state, slide = self.state, self._slide_id()
-        if state.deck is None or state.deck.is_test_deck or slide is None:
+        """(1-based place, call) of every call of the slide in its deck."""
+        state, slide, deck = self.state, self._slide_id(), self._deck()
+        if deck is None or deck.is_test_deck or slide is None:
             return []
         return [(r.position, r.deck_call)
-                for r in deck_outline.outline_rows(self.app.project, state.deck, state.view, state.language, outline=state.outline)
+                for r in deck_outline.outline_rows(self.app.project, deck, state.view, state.language, outline=state.outline)
                 if r.matches(slide)]
 
     def _focused_row(self):
@@ -195,10 +200,10 @@ class SidePanel(Surface):
         tab = self._tab()
         if tab is not None:
             return tab[1]
-        state = self.state
-        if state.deck is None or state.deck.is_test_deck or state.focused_slide is None:
+        state, deck = self.state, self._deck()
+        if deck is None or deck.is_test_deck or state.focused_slide is None:
             return None
-        return deck_outline.slide_row(self.app.project, state.deck, state.focused_slide, state.view, state.language,
+        return deck_outline.slide_row(self.app.project, deck, state.focused_slide, state.view, state.language,
                                       occurrence_key=state.focused_occurrence, outline=state.outline)
 
     def id_slug(self) -> str:

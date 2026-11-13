@@ -188,7 +188,7 @@ def _issue(code, line, message=None):
             _issue("underscore", 1),
             _issue("optional-arg", 2, "\\item[ label has no closing ] on this line"),
             _issue("caret", 3),
-            _issue("underscore", 3),                 # one per line (v0.16.31), not one per character
+            _issue("underscore", 3),                 # one per line (v0.16.32), not one per character
             _issue("underscore", 5),
         ],
         id="optional-and-overlay",
@@ -251,7 +251,7 @@ def _issue(code, line, message=None):
         "\\url{a_b^&#} \\textbf{a_b^&#} \\Customcolor{a_b^&#}\n"
         "\\href{a_b^&#}{a_b^&#} a_b _a a_ 10^6\n",
         [
-            _issue("ampersand", 1),                  # one per line (v0.16.31), not one per character
+            _issue("ampersand", 1),                  # one per line (v0.16.32), not one per character
             _issue("caret", 1),
             _issue("hash", 1),
             _issue("underscore", 1),

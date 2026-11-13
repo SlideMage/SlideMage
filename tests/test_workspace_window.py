@@ -1473,7 +1473,7 @@ def tabbed(window, tmp_path, monkeypatch):
 
 
 def test_the_mode_switch_shows_preview_split_and_details_as_the_way_back_on_a_file_that_is_no_slide(window, tabbed):
-    """v0.16.31: the three look unavailable and say why, but a click returns to the slide tab in that view (a segment
+    """v0.16.32: the three look unavailable and say why, but a click returns to the slide tab in that view (a segment
     that did nothing left no visible way back from a deck's source or a theme file)."""
     modes = window.topbar._modes
     assert window.state.mode == "source" and modes.current() == "source"
