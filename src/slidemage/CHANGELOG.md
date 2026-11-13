@@ -4084,3 +4084,9 @@ v0.16.30 (2026-11-13, direct request: the last hard-coded color found in the col
 
 NEW: Progress bars in dark slides.
 - Fixed: in a dark color mode, the track behind a progress bar was a light band; it now matches the slide.
+
+v0.16.31 (2026-11-13, direct request: two things found opening the Innsbruck theme): (1) The LaTeX check no longer warns about the underscore in a colour or mode name that sits in a later argument of a name-only macro: \colorlet{SMCodeKeywordColor}{c_secondary_blue} (second group), \definecolor, \providecolor, \fcolorbox, \setbeamercolor and the template lines \SMSetColor, \SMSetRole and \SMDeclareMode now count all their name groups (latex_lint._NAME_ARGUMENTS; \textcolor and \colorbox keep one, their second group is typeset text). The check also reports one issue per kind per line, not one per character, so a name with two underscores gave the same warning twice. (2) On a tab that has the Source view alone (a deck's source, a theme file, SlideMage.bib) Preview, Split and Details were greyed out and did nothing, with the way back only in a tooltip. They still look unavailable, but a click now returns to the slide tab in that view (TopBar.leave_source_only, SegmentedControl.set_unavailable(clickable=True)); the menu and the shortcuts keep the Source-alone rule.
+
+NEW: A way back from a file's Source view.
+- On a deck's source or a theme file, click Preview, Split or Details to return to the slide tab in that view.
+- Fixed: the LaTeX check warned about underscores in colour names such as c_secondary_blue in a theme, and twice.
