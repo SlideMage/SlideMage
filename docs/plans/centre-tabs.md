@@ -2,6 +2,9 @@
 
 Status: all decisions made by the user 2026-11-01 (section 6). Step 1 is merged (v0.13.14). Step 2 is done (v0.13.16, branch tabs/step2-slides, not merged); steps 3 and 4 next, after the go.
 
+Next (2026-11-13): each tab gets a deck context and the slide list follows the tab on show, starting from D9 to D12:
+see [tab-contexts.md](tab-contexts.md) (a plan for review, nothing built).
+
 Request (2026-11-01): "I liked working in tabs in SlideMage versions up to v5. Draft a plan to open source views, the
 .bib edit view, and slides that the user opens using the search functionality in tabs. When opening a deck source or
 the .bib, in a way SlideMage already does this - at least it returns to the previously viewed slide when closing
