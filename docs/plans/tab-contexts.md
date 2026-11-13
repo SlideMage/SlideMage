@@ -1,6 +1,6 @@
 # Plan: each tab has a context, and the window follows the tab on show
 
-Status: **draft for the user's review (2026-11-13); nothing built.** Decided: E1 to E6 (section 8); E7 (colour-coded tabs) and E8 await the user's answer. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
+Status: **draft for the user's review (2026-11-13); nothing built.** All decisions E1 to E8 made (section 8); the plan awaits the user's go to merge. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
 and D9 to D12 (the side panels follow the tab on show) are where this plan starts.
 
 Request (user, 2026-11-09): separate the contexts of the tabs more cleanly.
@@ -218,13 +218,13 @@ hidden.
 * **E5. The side panels on a `none` file tab: keep the last deck's focused slide, as step 2b decided. Decided 2026-11-13.**
 * **E6. "Open in <deck>" on a slide in no open deck. Decided:** the tab keeps its editor and undo, gets that deck as its
   context and the deck opens in the background.
-* **E7. Strip labels: slide name, deck by colour (proposed 2026-11-13; waits for the user's OK).** Deck plus slide names
+* **E7. Strip labels: slide name, deck by colour (decided 2026-11-13).** Deck plus slide names
   would not fit. A tab shows the slide only (`1y8 - Market efficiency`, elided as now); a working tab with no slide
   chosen shows the deck's name. Each open deck gets a colour from a small palette (about six kit-token hues that work in
   light and dark), shown as a stripe along the top edge of all its tabs; assigned in the order decks are opened, reused
   after six, saved with the tabs (section 6). Not colour alone: the tooltip names deck and slide, the tab's menu gets
   "Show in deck <name>". Tabs with no deck get no stripe. A deck's tabs stay grouped, working tab first.
-* **E8. Ctrl+Tab across decks:** the centre shows each tab at once; the left side and the panels follow when the series
+* **E8. Ctrl+Tab across decks (decided 2026-11-13):** the centre shows each tab at once; the left side and the panels follow when the series
   ends or rests (assumed from the recommendation; not asked).
 
 ## 9. Steps
