@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Where a colour is used on the sample slides (theme_probe; docs/plans/theme-editor.md, section 3.3, stage C1c part 2):
-the probe lines, the pixel map, a real probe render, the sample panel's dimming and page jump, and the theme form telling
+the probe lines, the boxes read from the PDF, a real probe render, the sample panel's dimming and page jump, and the theme form telling
 it which colour field has the focus."""
 import os
 import shutil
@@ -53,22 +53,81 @@ def test_probe_lines_go_right_before_the_base_and_name_the_mode():
         theme_probe.probe_text("\\input{SlideMage_setup}\n", "role", "")
 
 
-def test_the_pixel_map_reads_probe_colours(tmp_path):
+def probe_pdf(tmp_path, draw) -> Path:
     pdf = tmp_path / "probe.pdf"
     doc = pymupdf.open()
-    page = doc.new_page(width=144, height=72)          # 2 x 1 inch: at 72 dpi 144 x 72 pixels
-    first, second = theme_probe.PROBES[0], theme_probe.PROBES[1]
-    rgb = lambda h: tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
-    page.draw_rect(pymupdf.Rect(0, 0, 72, 72), color=None, fill=rgb(first))
-    page.draw_rect(pymupdf.Rect(100, 20, 120, 40), color=None, fill=rgb(second))
-    doc.new_page(width=144, height=72)
+    draw(doc.new_page(width=200, height=100))
+    doc.new_page(width=200, height=100)
     doc.save(pdf)
-    usage = theme_probe.usage_map(pdf, {first: "text", second: "link"}, "role", "", dpi=72)
-    assert (usage.width, usage.height) == (144, 72) and len(usage.pages) == 2
-    assert usage.pages_using("text") == [1] and usage.pages_using("link") == [1] and usage.pages_using("x") == []
-    mask = usage.mask(1, "link")
-    assert mask[30 * 144 + 110] == 255 and mask[30 * 144 + 10] == 0 and sum(mask) // 255 == pytest.approx(400, abs=60)
-    assert not any(usage.mask(2, "text"))
+    doc.close()
+    return pdf
+
+
+def rgb(probe: str) -> tuple:
+    return tuple(int(probe[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+FIRST, SECOND, THIRD = theme_probe.PROBES[0], theme_probe.PROBES[1], theme_probe.PROBES[2]
+
+
+def test_the_boxes_are_the_fills_and_the_text_of_a_probe_colour(tmp_path):
+    def draw(page):
+        page.draw_rect(pymupdf.Rect(0, 0, 200, 20), color=None, fill=rgb(FIRST))          # a title bar
+        page.insert_text((10, 60), "Some words", fontsize=10, color=rgb(SECOND))
+        page.insert_text((10, 90), "other text", fontsize=10, color=(0, 0, 0))
+        page.draw_line((100, 80), (150, 80), color=rgb(THIRD), width=1)
+
+    usage = theme_probe.usage_map(probe_pdf(tmp_path, draw), {FIRST: "title_fill", SECOND: "text", THIRD: "rule",
+                                                             theme_probe.PROBES[3]: "unused"}, "role", "")
+    assert len(usage.pages) == 2
+    assert [usage.pages_using(n) for n in ("title_fill", "text", "rule", "unused", "x")] == [[1], [1], [1], [], []]
+    assert usage.boxes(1, "title_fill") == [theme_probe.Box(0, 0, 1, 0.2, True)]       # the fill's own outline
+    (text,) = usage.boxes(1, "text")                # one box for the line, with a little room, not exact
+    assert not text.exact and text.x0 == pytest.approx(0.05 - theme_probe.PAD_X / 200, abs=0.005)
+    assert 0.25 < text.x1 < 0.5 and 0.4 < text.y0 < 0.55 and 0.6 < text.y1 < 0.7
+    (rule,) = usage.boxes(1, "rule")                # a line has no height of its own: its width and the room
+    assert rule.y1 - rule.y0 == pytest.approx((1 + 2 * theme_probe.PAD_Y) / 100, abs=0.001)
+    assert usage.boxes(2, "text") == [] and usage.boxes(1, "unused") == [] and usage.boxes(9, "text") == []
+
+
+def test_a_rectangle_painted_later_covers_what_is_under_it(tmp_path):
+    def draw(page):
+        page.draw_rect(pymupdf.Rect(0, 0, 200, 100), color=None, fill=rgb(FIRST))         # the canvas
+        page.draw_rect(pymupdf.Rect(0, 0, 200, 20), color=None, fill=rgb(SECOND))         # the title bar over it
+        page.draw_rect(pymupdf.Rect(150, 0, 200, 30), color=None, fill=rgb(FIRST))        # the canvas again, a corner
+        page.draw_rect(pymupdf.Rect(0, 90, 200, 100), color=None, fill=(0.5, 0.5, 0.5))   # a footer of no probe colour
+        page.draw_circle((100, 50), 3, color=None, fill=rgb(THIRD))                        # a bullet: covers nothing
+        page.draw_rect(pymupdf.Rect(20, 40, 60, 60), color=None, fill=rgb(THIRD))
+        page.draw_rect(pymupdf.Rect(20, 40, 60, 60), color=None, fill=rgb(SECOND))        # hides the one before fully
+
+    usage = theme_probe.usage_map(probe_pdf(tmp_path, draw), {FIRST: "canvas", SECOND: "title_fill", THIRD: "bullet"},
+                                  "role", "")
+    title = usage.boxes(1, "title_fill")
+    assert theme_probe.Box(0, 0, 0.75, 0.2, True) in title and theme_probe.Box(0.1, 0.4, 0.3, 0.6, True) in title
+    assert len(title) == 2
+    canvas = usage.boxes(1, "canvas")
+    assert all(b.exact and (b.y0 >= 0.2 - 1e-9 or b.x0 >= 0.75 - 1e-9) for b in canvas)     # not under the title bar
+    assert all(b.y1 <= 0.9 + 1e-9 for b in canvas)                                            # nor under the footer
+    assert not any(b.x0 < 0.2 < b.x1 and b.y0 < 0.5 < b.y1 for b in canvas)                 # nor under the block
+    assert any(b.x0 < 0.5 < b.x1 and b.y0 < 0.5 < b.y1 for b in canvas)                     # but under the bullet
+    (bullet,) = usage.boxes(1, "bullet")            # the hidden rectangle is gone, the circle has its room
+    assert not bullet.exact and bullet.x1 - bullet.x0 == pytest.approx((6 + 2 * theme_probe.PAD_X) / 200, abs=0.002)
+
+
+def test_words_on_one_line_are_one_box_and_another_colour_between_them_splits_it(tmp_path):
+    def draw(page):
+        page.insert_text((10, 30), "one", fontsize=10, color=rgb(FIRST))
+        page.insert_text((10 + pymupdf.get_text_length("one ", fontsize=10), 30), "two", fontsize=10, color=rgb(FIRST))
+        page.insert_text((10, 60), "left", fontsize=10, color=rgb(FIRST))
+        page.insert_text((40, 60), "other", fontsize=10, color=rgb(SECOND))
+        page.insert_text((80, 60), "right", fontsize=10, color=rgb(FIRST))
+
+    usage = theme_probe.usage_map(probe_pdf(tmp_path, draw), {FIRST: "text", SECOND: "alert"}, "role", "")
+    boxes = sorted(usage.boxes(1, "text"), key=lambda b: (round(b.y0, 2), b.x0))
+    assert len(boxes) == 3          # "one two" joined; "left" and "right" apart
+    (alert,) = usage.boxes(1, "alert")
+    room = 2 * theme_probe.PAD_X / 200
+    assert boxes[1].x1 < alert.x0 + room and alert.x1 - room < boxes[2].x0
 
 
 @TEX
@@ -77,10 +136,16 @@ def test_a_real_probe_finds_the_block_titles_and_the_code_panel():
     probed, mapping = theme_probe.probe_text(text, "role", "")
     result = theme_sample.render(EXAMPLE_PROJECT, probed, "probe--role", "")
     assert result.pdf, result.log
-    usage = theme_probe.usage_map(result.pdf, mapping, "role", "", dpi=60)
+    usage = theme_probe.usage_map(result.pdf, mapping, "role", "")
     assert usage.pages_using("block_title_fill") == [3]
     assert usage.pages_using("code_panel") == [4]
     assert 2 in usage.pages_using("text") and 3 in usage.pages_using("info_block_title_fill")
+    (bar,) = usage.boxes(2, "title_fill")           # the title bar, less what the canvas paints over it again
+    assert bar.exact and (bar.x0, bar.y0) == (0, 0) and 0.85 < bar.x1 < 1 and 0.05 < bar.y1 < 0.15
+    footer = usage.boxes(2, "footer_text")
+    assert footer and all(not b.exact and b.y0 > 0.9 for b in footer)
+    assert all(b.y0 > 0.1 for b in usage.boxes(2, "text"))         # no body text colour in the title bar
+    assert not any(b.y0 < 0.05 and b.x0 < 0.5 for b in usage.boxes(2, "canvas"))   # the canvas: not under the bar
 
 
 # --- the panel and the form -------------------------------------------------------------------------------------------
@@ -113,13 +178,12 @@ def make_view(tmp_path, pages_with_role=(3,)):
         renders.append(key)
         return theme_sample.SampleResult(sample_pdf(tmp_path / f"r{len(renders)}.pdf"), "", mode)
 
-    def fake_read(pdf, mapping, kind, mode, dpi):
-        usage = theme_probe.UsageMap(kind, mode, ["block_title_fill", "text"], 16, 9)
+    def fake_read(pdf, mapping, kind, mode):
+        usage = theme_probe.UsageMap(kind, mode, ["block_title_fill", "text", "link"])
         for page in range(1, 4):
-            grid = bytearray(16 * 9)
-            if page in pages_with_role:
-                grid[0:16 * 4] = b"\x01" * (16 * 4)         # the top four rows are the role's
-            usage.pages.append(bytes(grid))
+            top = [theme_probe.Box(0, 0, 1, 4 / 9, True)]            # the top four ninths are the role's
+            word = [theme_probe.Box(0.25, 0.6, 0.75, 0.8, False)]     # and a piece of text lower down is a link
+            usage.pages.append([top, [], word] if page in pages_with_role else [[], [], []])
         return usage
 
     view = ThemeSampleView(editor, "probe", SimpleNamespace(root=tmp_path), fake_render, fake_read)
@@ -139,12 +203,23 @@ def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_
     view.show_usage("role", "block_title_fill", "light")
     assert "Finding where Block title fill is used" in view.usage_label.text()
     assert wait_for(qapp, lambda: view._map() is not None)
-    assert view._page == 3 and "page 3" in view.usage_label.text() and renders[-2:] == ["probe--probe-role", "probe--probe2-role"]
+    assert view._page == 3 and "page 3" in view.usage_label.text() and renders[-1] == "probe--probe-role"
     plain = view._images[2]
     lit = view._composite(plain)
     bottom = lit.pixelColor(80, 240)                      # outside the role: dimmed
     assert bottom.red() < plain.pixelColor(80, 240).red()
     assert lit.pixelColor(80, 5).red() == plain.pixelColor(80, 5).red()     # inside: as it is
+    edge = plain.height() * 4 // 9
+    assert lit.pixelColor(80, edge - 2) == plain.pixelColor(80, edge - 2)   # up to the edge: nothing shaded
+    assert lit.pixelColor(80, edge + 2) == bottom                           # and fully dimmed right below it
+    view.show_usage("role", "link", "light")
+    word = view._composite(plain)                           # a rounded box: its middle and edges lit, its corner not
+    width, height = plain.width(), plain.height()
+    assert word.pixelColor(width // 2, int(height * 0.7)) == plain.pixelColor(width // 2, int(height * 0.7))
+    assert word.pixelColor(int(width * 0.25) + 1, int(height * 0.7)) == plain.pixelColor(0, 0)
+    assert word.pixelColor(int(width * 0.25), int(height * 0.6)).red() < plain.pixelColor(0, 0).red()
+    assert word.pixelColor(80, 5) == bottom
+    view.show_usage("role", "block_title_fill", "light")
     view.show_usage("role", "text", "light")
     assert "not used on the sample slides" in view.usage_label.text()
     view.clear_usage()
@@ -175,16 +250,6 @@ def test_the_form_tells_which_colour_has_the_focus(qapp):
     form.set_mode("light")
     code += [c.usage for c in form._cells if c.usage and c.usage[1] == "code_keyword"]
     assert code == [("role", "code_keyword", "dark"), ("role", "code_keyword", "light")]
-
-
-def test_the_second_probe_uses_other_colours_and_only_agreement_counts():
-    text = read(SHIPPED)
-    _first, one = theme_probe.probe_text(text, "role", "light")
-    _second, two = theme_probe.probe_text(text, "role", "light", variant=1)
-    assert list(one.values()) == list(two.values()) and all(one[p] != two.get(p) for p in one)
-    a = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 1, 2, 0])])
-    b = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 2, 2, 1])])
-    assert theme_probe.agree(a, b).pages == [bytes([1, 0, 2, 0])]
 
 
 def test_the_message_lines_keep_their_space_and_a_spinner_shows_while_a_probe_runs(qapp, tmp_path):

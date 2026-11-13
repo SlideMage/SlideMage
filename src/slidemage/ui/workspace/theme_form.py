@@ -110,11 +110,6 @@ class _Cell(Surface):
         self.edit.editingFinished.connect(self._commit)
         self.tag = Chip("", "muted")
         row.addWidget(self.tag)
-        self.reset = Button("Reset", "ghost", compact=True)
-        self.reset.setToolTip("Take this mode's own value out: it follows again")
-        self.reset.clicked.connect(lambda: self.form.apply(lambda: self.write(None)))
-        self.reset.setEnabled(enabled)
-        row.addWidget(self.reset)
         self.strip = QHBoxLayout()
         self.strip.setSpacing(3)
         self._dots: list[QLabel] = []
@@ -154,14 +149,14 @@ class _Cell(Surface):
         mode = self.usage[2] if self.usage else ""
         if self.source is None or model is None:
             self.tag.hide()
-            self.reset.hide()
             return
         kind, name = self.source
         text, tone = model.provenance(kind, name, mode)
         self.tag.set_text(text)
         self.tag.set_tone(tone)
-        self.tag.setVisible(bool(mode) or kind != "palette" or written is not None)
-        self.reset.setVisible(written is not None and text in ("set here", "set in the theme"))
+        # Where a value comes from matters in the other modes ("from Light", "dark preset"); in the base mode the
+        # field's own look says whether the theme sets it, and clearing the field takes the value out.
+        self.tag.setVisible(bool(mode) and mode != model.base)
         strip_kind, strip_name = ("role", self.strip_role) if self.strip_role else (kind, name)
         if strip_kind == "optional":
             values = []

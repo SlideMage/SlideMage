@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QRect, QRectF, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ... import compiler, theme_fields, theme_measures, theme_probe, theme_sample
@@ -23,10 +23,9 @@ from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Surface, caption, text_label
 
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
-RENDER_DPI = 110            # the colour-usage probe (a pixel grid; cheap)
 DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
-PATCH_CELL, PATCH_FLOOR, PATCH_GAIN = 24, 10, 14      # page width / cell = cells across; of 255: a cell with less marked pixels than this is not lit; the rest is multiplied
-PATCH_LEVELS = bytes(min(255, max(0, (v - PATCH_FLOOR) * PATCH_GAIN)) for v in range(256))
+DIM_ALPHA = 165             # of 255: the black over the page where the focused colour is not
+LIT_RADIUS = 0.004          # of the page width: the corners of the box around lit text
 BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
 
@@ -347,7 +346,6 @@ class ThemeSampleView(Surface):
             return
         try:
             probe_text, mapping = theme_probe.probe_text(text, kind, mode)
-            probe_text2, mapping2 = theme_probe.probe_text(text, kind, mode, variant=1)
         except ValueError:
             self._maps[key] = None
             return
@@ -361,12 +359,7 @@ class ThemeSampleView(Surface):
                 result = render(self.project, probe_text, f"{self.key}--probe-{kind}", mode,
                                 cancel=compiler.CancelToken(), **self._home_args())
                 if result.pdf is not None:
-                    usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
-                    # the same again with other probe colours: only what both agree on is the colour's (theme_probe.agree)
-                    again = render(self.project, probe_text2, f"{self.key}--probe2-{kind}", mode,
-                                   cancel=compiler.CancelToken(), **self._home_args())
-                    if again.pdf is not None and usage is not None:
-                        usage = theme_probe.agree(usage, read(again.pdf, mapping2, kind, mode, dpi=RENDER_DPI))
+                    usage = read(result.pdf, mapping, kind, mode)
             except Exception:       # no map: the slides stay undimmed, the form still works
                 usage = None
             self.probed.emit(key, usage)
@@ -410,35 +403,27 @@ class ThemeSampleView(Surface):
     def _composite(self, image: QImage) -> QImage:
         """`image` dimmed but where the focused colour is used."""
         usage = self._map()
-        if usage is None or self._usage is None or not usage.width:
+        if usage is None or self._usage is None:
             return image
-        mask_bytes = usage.mask(self._page, self._usage[1])
-        if not any(mask_bytes):
+        boxes = usage.boxes(self._page, self._usage[1])
+        if not boxes:
             return image
-        mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
-        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: average
-        # the mask over cells, drop what is below the floor (a stray anti-aliased pixel that happens to match the colour),
-        # multiply the rest up (a stroke reaches full) and show the page through it.
-        small = mask.scaled(max(1, image.width() // PATCH_CELL), max(1, image.height() // PATCH_CELL),
-                            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        small = small.convertToFormat(QImage.Format.Format_Grayscale8)
-        levels = bytearray(small.constBits())
-        small = QImage(bytes(levels.translate(PATCH_LEVELS)), small.width(), small.height(), small.bytesPerLine(),
-                       QImage.Format.Format_Grayscale8).copy()
-        patch = small.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        white = QImage(image.size(), QImage.Format.Format_ARGB32)
-        white.fill(QColor(255, 255, 255))
-        white.setAlphaChannel(patch)
-        layer = white.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        lit = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        painter = QPainter(lit)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-        painter.drawImage(0, 0, layer)
-        painter.end()
+        # The page dimmed, and the page as it is painted back into every box: the outline of a filled rectangle as it
+        # is, a rounded box around text, lines and small shapes. Hard edges, nothing shaded.
+        width, height = image.width(), image.height()
         result = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
         painter = QPainter(result)
-        painter.fillRect(result.rect(), QColor(0, 0, 0, 165))
-        painter.drawImage(0, 0, lit)
+        painter.fillRect(result.rect(), QColor(0, 0, 0, DIM_ALPHA))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(image))
+        radius = width * LIT_RADIUS
+        for box in boxes:
+            rect = QRectF(box.x0 * width, box.y0 * height, (box.x1 - box.x0) * width, (box.y1 - box.y0) * height)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, not box.exact)
+            if box.exact:       # whole pixels: the parts of one fill meet without a seam
+                painter.drawRect(rect.toAlignedRect())
+            else:
+                painter.drawRoundedRect(rect, radius, radius)
         painter.end()
         return result
 

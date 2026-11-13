@@ -62,14 +62,14 @@ def test_a_dark_value_and_follow(qapp):
     editor, form = make_form(MODESHAPE)
     form.set_mode("dark")                 # the form shows one mode at a time: the mode bar's pick
     cell = cell_for(form, "c_custom_red", "dark")
-    assert cell.tag.text() == "set here" and not cell.reset.isHidden()
+    assert cell.tag.text() == "set here" and not cell.tag.isHidden() and not hasattr(cell, "reset")
     assert cell.edit.text() == "#ff6b6b"
     cell.edit.setText("")
     cell._commit()                     # empty: the line goes, the base colour applies
     assert "\\SMSetColor{c_custom_red}" not in editor.text()
     cell.update_value()
     assert cell.edit.text() == "" and cell.edit.placeholderText() == "#b00000"
-    assert cell.tag.text() == "from Light" and cell.reset.isHidden()
+    assert cell.tag.text() == "from Light"
 
 
 def test_role_cells_offer_the_palette_and_write_per_mode(qapp):
