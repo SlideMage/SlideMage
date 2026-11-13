@@ -1,6 +1,6 @@
 # Plan: each tab has a context, and the window follows the tab on show
 
-Status: **draft for the user's review (2026-11-13); nothing built.** Decided: E1 to E4, E6 (section 8); E5, E7, E8 take the recommendations unless the user objects. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
+Status: **draft for the user's review (2026-11-13); nothing built.** Decided: E1 to E6 (section 8); E7 (colour-coded tabs) and E8 await the user's answer. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
 and D9 to D12 (the side panels follow the tab on show) are where this plan starts.
 
 Request (user, 2026-11-09): separate the contexts of the tabs more cleanly.
@@ -120,8 +120,8 @@ costs a deck switch per change of context (section 7, risk R2), which is what th
 | O13 | Restore at start (D7) | file tabs, the last deck | every tab with its context and the working tabs' `DeckWork` (section 6) |
 
 **Strip order** (E7): a deck's tabs stay together, its working tab first; a new tab of deck D goes after D's last tab;
-`none` tabs go at the end. A working tab is labelled with the deck and its slide (`Lecture 3 › 1y8 · Market efficiency`,
-elided; the tooltip names both), so two working tabs can be told apart.
+`none` tabs go at the end. A tab shows its slide only; the deck is told by a colour stripe on all its tabs, the tooltip and the
+tab's menu (E7).
 
 ## 5. Empty and placeholder states, with a stable layout
 
@@ -215,12 +215,15 @@ hidden.
   keeps the whole deck open. Selecting another slide never closes anything.
 * **E3. A `none` tab keeps the last deck in the top bar. Decided:** Compile and the view switch keep working while the .bib is edited.
 * **E4. A placeholder in the same column. Decided:** the window never jumps.
-* **E5. The side panels on a `none` file tab:** keep the last deck's focused slide, as step 2b decided (assumed from the
-  recommendation; not asked).
+* **E5. The side panels on a `none` file tab: keep the last deck's focused slide, as step 2b decided. Decided 2026-11-13.**
 * **E6. "Open in <deck>" on a slide in no open deck. Decided:** the tab keeps its editor and undo, gets that deck as its
   context and the deck opens in the background.
-* **E7. Strip order and labels:** a deck's tabs grouped, working tab first, labelled `Deck > slide` (assumed from the
-  recommendation; not asked).
+* **E7. Strip labels: slide name, deck by colour (proposed 2026-11-13; waits for the user's OK).** Deck plus slide names
+  would not fit. A tab shows the slide only (`1y8 - Market efficiency`, elided as now); a working tab with no slide
+  chosen shows the deck's name. Each open deck gets a colour from a small palette (about six kit-token hues that work in
+  light and dark), shown as a stripe along the top edge of all its tabs; assigned in the order decks are opened, reused
+  after six, saved with the tabs (section 6). Not colour alone: the tooltip names deck and slide, the tab's menu gets
+  "Show in deck <name>". Tabs with no deck get no stripe. A deck's tabs stay grouped, working tab first.
 * **E8. Ctrl+Tab across decks:** the centre shows each tab at once; the left side and the panels follow when the series
   ends or rests (assumed from the recommendation; not asked).
 
