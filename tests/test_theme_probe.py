@@ -139,7 +139,7 @@ def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_
     view.show_usage("role", "block_title_fill", "light")
     assert "Finding where Block title fill is used" in view.usage_label.text()
     assert wait_for(qapp, lambda: view._map() is not None)
-    assert view._page == 3 and "page 3" in view.usage_label.text() and renders[-1] == "probe--probe-role"
+    assert view._page == 3 and "page 3" in view.usage_label.text() and renders[-2:] == ["probe--probe-role", "probe--probe2-role"]
     plain = view._images[2]
     lit = view._composite(plain)
     bottom = lit.pixelColor(80, 240)                      # outside the role: dimmed
@@ -175,3 +175,13 @@ def test_the_form_tells_which_colour_has_the_focus(qapp):
     form.set_mode("light")
     code += [c.usage for c in form._cells if c.usage and c.usage[1] == "code_keyword"]
     assert code == [("role", "code_keyword", "dark"), ("role", "code_keyword", "light")]
+
+
+def test_the_second_probe_uses_other_colours_and_only_agreement_counts():
+    text = read(SHIPPED)
+    _first, one = theme_probe.probe_text(text, "role", "light")
+    _second, two = theme_probe.probe_text(text, "role", "light", variant=1)
+    assert list(one.values()) == list(two.values()) and all(one[p] != two.get(p) for p in one)
+    a = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 1, 2, 0])])
+    b = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 2, 2, 1])])
+    assert theme_probe.agree(a, b).pages == [bytes([1, 0, 2, 0])]

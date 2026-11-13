@@ -35,8 +35,10 @@ def names(kind: str, file: ThemeFile) -> list[str]:
     return palette + list(dict.fromkeys(own))
 
 
-def probe_text(text: str, kind: str, mode: str) -> tuple[str, dict[str, str]]:
-    """The theme's text with the probe lines for `kind` in colour mode `mode` ("" for the base) and {probe hex: name}."""
+def probe_text(text: str, kind: str, mode: str, variant: int = 0) -> tuple[str, dict[str, str]]:
+    """The theme's text with the probe lines for `kind` in colour mode `mode` ("" for the base) and {probe hex: name}.
+    `variant` 1 gives the names other probe colours (the list reversed): see `agree`."""
+    probes = PROBES if variant == 0 else PROBES[::-1]
     file = ThemeFile(text)
     at = file.base_line_start
     if at < 0:
@@ -53,7 +55,7 @@ def probe_text(text: str, kind: str, mode: str) -> tuple[str, dict[str, str]]:
         wanted = wanted[:len(PROBES)]
     mapping: dict[str, str] = {}
     for index, name in enumerate(wanted):
-        probe = PROBES[index]
+        probe = probes[index]
         mapping[probe] = name
         if kind == "palette":
             lines.append(f"\\SMSetColor{{{name}}}{{{target}}}{{HTML}}{{{probe}}}")
@@ -79,6 +81,18 @@ def _lookup(mapping: dict[str, str]) -> tuple[dict[bytes, int], list[str]]:
                 for db in span:
                     table[bytes((r + dr, g + dg, b + db))] = index
     return table, order
+
+
+def agree(first: "UsageMap", second: "UsageMap") -> "UsageMap":
+    """The places both probe renders (variants 0 and 1: every name has another probe colour in each) give to the same
+    name. An anti-aliased edge between two probe colours can come out as a third probe colour by coincidence, but
+    hardly as the same name's colour in both renders, so these false places drop out."""
+    result = UsageMap(first.kind, first.mode, first.names, first.width, first.height)
+    if (first.width, first.height, first.names) != (second.width, second.height, second.names):
+        return first
+    for a, b in zip(first.pages, second.pages):
+        result.pages.append(bytes(x if x == y else 0 for x, y in zip(a, b)))
+    return result
 
 
 @dataclass

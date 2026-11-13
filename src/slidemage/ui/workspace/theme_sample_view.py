@@ -291,6 +291,7 @@ class ThemeSampleView(Surface):
             return
         try:
             probe_text, mapping = theme_probe.probe_text(text, kind, mode)
+            probe_text2, mapping2 = theme_probe.probe_text(text, kind, mode, variant=1)
         except ValueError:
             self._maps[key] = None
             return
@@ -304,6 +305,11 @@ class ThemeSampleView(Surface):
                                 cancel=compiler.CancelToken(), **self._home_args())
                 if result.pdf is not None:
                     usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
+                    # the same again with other probe colours: only what both agree on is the colour's (theme_probe.agree)
+                    again = render(self.project, probe_text2, f"{self.key}--probe2-{kind}", mode,
+                                   cancel=compiler.CancelToken(), **self._home_args())
+                    if again.pdf is not None and usage is not None:
+                        usage = theme_probe.agree(usage, read(again.pdf, mapping2, kind, mode, dpi=RENDER_DPI))
             except Exception:       # no map: the slides stay undimmed, the form still works
                 usage = None
             self.probed.emit(key, usage)
