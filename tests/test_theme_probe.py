@@ -415,3 +415,52 @@ def test_the_slide_background_is_offered_only_where_nothing_else_is(qapp, tmp_pa
     assert [name for _kind, name, _label in view._found((0.15, 0.15))] == ["bullet"]
     assert [name for _kind, name, _label in view._found((0.5, 0.5))] == ["canvas"]
     view.close()
+
+
+def test_the_wheel_over_a_dropdown_of_the_form_does_not_change_it(qapp):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QComboBox
+    editor = LatexPlainTextEdit(ThemeManager())
+    editor.set_text(read(SHIPPED))
+    form = ThemeForm(editor, SHIPPED, ROOT / "example", ROOT / "latex" / "SlideMage_setup.tex")
+    form.resize(700, 500)
+    form.show()
+    combos = [c for c in form.pages.findChildren(QComboBox) if c.count() > 1]
+    assert len(combos) > 3 and form._footnote_style in combos
+    for combo in (form._footnote_style, combos[0]):
+        combo.setFocus()                    # even with the focus, where Qt would turn the entries
+        before = combo.currentIndex()
+        for delta in (-120, 120):
+            event = QWheelEvent(QPointF(5, 5), QPointF(combo.mapToGlobal(QPoint(5, 5))), QPoint(0, 0),
+                                QPoint(0, delta), Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                Qt.ScrollPhase.NoScrollPhase, False)
+            qapp.sendEvent(combo, event)
+            assert combo.currentIndex() == before and not event.isAccepted()
+    form.close()
+
+
+def test_a_click_on_a_footnote_marker_goes_to_the_marker_setting(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import QPoint
+    from slidemage.ui import layout_settings
+    monkeypatch.setattr(layout_settings, "set", lambda key, value: None)
+    geometry = dict(GEOMETRY, footnote_marks=[(2, 100.0, 60.0, 104.0, 65.0)])
+    assert theme_measures.on_footnote_mark(2, 102, 62, geometry) and theme_measures.on_footnote_mark(2, 99, 66, geometry)
+    assert not theme_measures.on_footnote_mark(3, 102, 62, geometry) and not theme_measures.on_footnote_mark(2, 110, 62, geometry)
+    assert not theme_measures.on_footnote_mark(2, 102, 62, GEOMETRY)
+    qapp_ref[0] = qapp
+    editor, view, renders = make_view(tmp_path)
+    view.geometry = geometry
+    picked = []
+    view.picked.connect(lambda kind, name: picked.append((kind, name)))
+    view.show_page(2)
+    for pick in ("layout", "color"):
+        view.set_pick(pick)
+        view.pick_at((102 / 400, 62 / 200), QPoint(0, 0))
+    assert picked == [("footnotes", "SMSetFootnoteMarkers")] * 2
+    view.close()
+    form_editor = LatexPlainTextEdit(ThemeManager())
+    form_editor.set_text(read(SHIPPED))
+    form = ThemeForm(form_editor, SHIPPED, ROOT / "example", ROOT / "latex" / "SlideMage_setup.tex")
+    assert form.reveal("footnotes", "SMSetFootnoteMarkers") and form.TABS[form._tab] == "Logo & notes"
+    assert wait_for(qapp, lambda: form._footnote_style.property("revealed") is True)

@@ -197,6 +197,16 @@ class _Cell(Surface):
             self.form.apply(lambda: self.write(chosen.name()))
 
 
+class _WheelGuard(QObject):
+    """The mouse wheel over a dropdown of the form scrolls the form; it does not change the dropdown's entry."""
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.Wheel and isinstance(watched, QComboBox):
+            event.ignore()      # so the scroll area around it takes the wheel
+            return True
+        return False
+
+
 class ThemeForm(QWidget):
     """The form of one theme file, editing `editor`'s buffer, one colour mode at a time (`mode`, picked in the theme
     tab's mode bar: theme_workspace). `root` is the project; `setup_path` the framework's SlideMage_setup.tex (its
@@ -240,6 +250,8 @@ class ThemeForm(QWidget):
         self._hovered_usage: Optional[tuple[str, str, str]] = None
         self._tells: dict[str, Callable[[], None]] = {}     # per length: mark it on the sample slides (reveal)
         self._logo_path: Optional[QLineEdit] = None         # the logo's file field (reveal)
+        self._footnote_style: Optional[QComboBox] = None    # the footnote marker style (reveal)
+        self._wheel_guard = _WheelGuard(self)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -323,6 +335,12 @@ class ThemeForm(QWidget):
         on the sample slides asks for this. False when the form has no such field."""
         if self.model is None or not self.model.readable:
             return False
+        if kind == "footnotes":
+            self.show_tab("Logo & notes")
+            if self._footnote_style is None or not isValid(self._footnote_style):
+                return False
+            self._go_to(self._footnote_style)
+            return True
         if kind == "logo":
             self.show_tab("Logo & notes")
             if self._logo_path is None or not isValid(self._logo_path):
@@ -361,8 +379,8 @@ class ThemeForm(QWidget):
             scroll = self.pages.currentWidget()
             if isinstance(scroll, QScrollArea):
                 scroll.ensureWidgetVisible(widget, 0, 80)
-            fields = ([widget] if isinstance(widget, QLineEdit) else []) + widget.findChildren(QLineEdit)
-            target = next((f for f in fields if f.isEnabled() and f.isVisibleTo(widget)), None)
+            fields = ([widget] if isinstance(widget, (QLineEdit, QComboBox)) else []) + widget.findChildren(QLineEdit)
+            target = next((f for f in fields if f.isEnabled() and (f is widget or f.isVisibleTo(widget))), None)
             if target is not None:
                 target.setFocus(Qt.FocusReason.OtherFocusReason)
             tint = QWidget(widget)          # over the field, the mouse goes through it
@@ -441,6 +459,7 @@ class ThemeForm(QWidget):
         self.layout_fields = {}
         self._tells = {}
         self._logo_path = None
+        self._footnote_style = None
         self._shape = self._structure()
         readable = self.model is not None and self.model.readable
         for index, name in enumerate(self.TABS):
@@ -467,6 +486,8 @@ class ThemeForm(QWidget):
             self.pages.addWidget(scroll)
             if index < len(scrolls):
                 QTimer.singleShot(0, scroll, lambda s=scroll, v=scrolls[index]: s.verticalScrollBar().setValue(v))
+        for combo in self.pages.findChildren(QComboBox):
+            combo.installEventFilter(self._wheel_guard)
         self.tab_bar.setCurrentIndex(self._tab)
         self.pages.setCurrentIndex(self._tab)
         self._mark_edited()
@@ -859,7 +880,7 @@ class ThemeForm(QWidget):
 
     def _footnotes(self) -> QWidget:
         card, layout = self._card("Footnote markers")
-        combo = QComboBox()
+        combo = self._footnote_style = QComboBox()
         for value, label in FOOTNOTE_STYLES:
             combo.addItem(label, value)
         style = self.model.footnote_style()

@@ -37,10 +37,14 @@ class SampleResult:
 # the PDF's info dictionary (SMTopMargin, SMTitleBarBottom, SMTextMarginLeft ... as the template set them; ex and em
 # already worked out in their fonts), which tools/check_layout.py and tests/test_hook_geometry.py read too.
 PAGE_WIDTH, PAGE_HEIGHT = "page_width", "page_height"
+# Where the footnote markers are: [(page from 1, x0, y0, x1, y1)] in bp from the page's top left. The sample deck
+# makes every marker a link to this address.
+FOOTNOTE_MARKS = "footnote_marks"
+FOOTNOTE_LINK = "slidemage:footnote-marker"
 
 
 def read_geometry(pdf: Path) -> dict:
-    """{key: bp} of the PDF's SM* info keys, plus the first page's width and height."""
+    """{key: bp} of the PDF's SM* info keys, plus the first page's width and height and FOOTNOTE_MARKS."""
     import pymupdf
 
     found: dict = {}
@@ -58,6 +62,8 @@ def read_geometry(pdf: Path) -> dict:
                             pass
             if doc.page_count:
                 found[PAGE_WIDTH], found[PAGE_HEIGHT] = doc[0].rect.width, doc[0].rect.height
+            found[FOOTNOTE_MARKS] = [(number, *link["from"]) for number, page in enumerate(doc, start=1)
+                                     for link in page.get_links() if link.get("uri") == FOOTNOTE_LINK]
     except Exception:       # no geometry: the sample shows without marks
         return {}
     return found

@@ -132,6 +132,12 @@ def on_logo(x: float, y: float, geometry: dict) -> bool:
     return rect is not None and rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
 
 
+def on_footnote_mark(page: int, x: float, y: float, geometry: dict, room: float = 2.0) -> bool:
+    """Is the point (bp from the top left of page `page`, from 1) on a footnote marker? `room`: the markers are small."""
+    return any(number == page and x0 - room <= x <= x1 + room and y0 - room <= y <= y1 + room
+               for number, x0, y0, x1, y1 in geometry.get("footnote_marks", ()))
+
+
 def keys_at(x: float, y: float, geometry: dict) -> list[str]:
     """The layout settings of what is at the point (x, y), in bp from the top left, of a slide with the ordinary title
     bar and footer: the likeliest first. In the footer and the title bar what shapes them; in a margin that margin;

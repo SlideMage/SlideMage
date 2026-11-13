@@ -4126,3 +4126,9 @@ v0.16.38 (2026-11-13, direct request: every task button of a slide or deck as a 
 
 NEW: Every task button writes its prompt for Claude Code.
 - On Cloud · Claude Code the task buttons of a slide and of a deck (fix LaTeX, proofread, shorten, title, speaker note, update a translation, summarise, and more) type a ready prompt into Claude Code's input box. Read it, change it if you like, and press Enter to send it yourself. The image tasks still need Cloud · Anthropic API or Local.
+
+v0.16.39 (2026-11-13, direct request: the theme form's dropdowns and a click on a footnote marker): (1) The mouse wheel over a dropdown of the theme form, such as a colour choice, changed its entry while the user meant to scroll the form. The form's dropdowns now leave the wheel to the form (theme_form._WheelGuard, installed on every QComboBox of the pages in ThemeForm.rebuild). (2) A click on a footnote marker on a theme's sample slides, in the text or at the foot, goes to the Footnote markers setting on the Logo & notes tab, whatever the "Click selects" switch says (kind "footnotes"; ThemeForm.reveal). The sample deck makes every marker a link without border or colour, theme_sample.read_geometry reads the links' places (FOOTNOTE_MARKS) and theme_measures.on_footnote_mark tests a point.
+
+NEW: Click a footnote marker on a theme's sample slides to find its setting.
+- New: click a footnote marker on a sample slide of a theme to go to the footnote marker setting.
+- Fixed: the mouse wheel over a dropdown in the theme form no longer changes its entry; it scrolls the form.
