@@ -43,13 +43,16 @@ def pdf_pages(pdf: Path, dpi: int = DISPLAY_DPI) -> list[QImage]:
 
 
 class _Spinner(QWidget):
-    """A small turning arc over the preview while a render or a probe is under way; the mouse goes through it, so the
-    user keeps working."""
+    """A small turning arc and "Updating preview…" over the preview while a render or a probe is under way; the mouse
+    goes through it, so the user keeps working."""
+
+    LABEL = "Updating preview…"
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setFixedSize(30, 30)
+        self.setFixedHeight(30)
+        self.setFixedWidth(30 + 8 + self.fontMetrics().horizontalAdvance(self.LABEL) + 12)
         self._angle = 0
         self._timer = QTimer(self)
         self._timer.setInterval(50)
@@ -70,13 +73,16 @@ class _Spinner(QWidget):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(0, 0, 0, 120))
+        painter.setBrush(QColor(0, 0, 0, 140))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(self.rect())
+        painter.drawRoundedRect(self.rect(), 15, 15)
         pen = QPen(QColor(255, 255, 255, 230), 3)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawArc(QRectF(7, 7, 16, 16), self._angle * 16, 110 * 16)
+        painter.setPen(QColor(255, 255, 255, 240))
+        painter.drawText(QRect(36, 0, self.width() - 36, self.height()),
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.LABEL)
         painter.end()
 
 
