@@ -1,7 +1,7 @@
 # Plan: each tab has a context, and the window follows the tab on show
 
-Status: **draft for the user's review (2026-11-13); nothing built.** The decisions to make are in section 8 (E1 to E8),
-each with a recommendation. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
+Status: **draft for the user's review (2026-11-13); nothing built.** The decisions are in section 8: E1 decided (one
+deck tab per open deck); E2 to E8 open, each with a recommendation. It continues [centre-tabs.md](centre-tabs.md): steps 1 to 3 and 2b of that plan are built,
 and D9 to D12 (the side panels follow the tab on show) are where this plan starts.
 
 Request (user, 2026-11-09): separate the contexts of the tabs more cleanly.
@@ -207,7 +207,7 @@ hidden.
 
 ## 8. Decisions for the user
 
-* **E1. Opening a deck: a deck tab per open deck** (recommended). Opening B adds B's deck tab and shows it; A's deck
+* **E1. Opening a deck: a deck tab per open deck.** **Decided by the user 2026-11-13: one tab per deck.** Opening B adds B's deck tab and shows it; A's deck
   tab and its tabs stay, and switching back to any of them brings A's list back, where it was. Alternative: one deck
   tab that moves to B, keeping only the tab that was on show as a file tab of A. Fewer tabs, but then showing that
   kept tab would have to move the deck tab back to A, which breaks "the left side shows the active tab's context".
@@ -258,4 +258,4 @@ Each step is a PR into develop with its own version, after the user's go; the fi
    section 2 (the slide tab) updated to point here.
 
 Steps 0 to 2 are useful on their own and fit the current single-deck window; step 3 is where the window starts to hold
-several decks. If E1 goes the other way, step 3 shrinks to 3a plus O9 to O12 without deck tabs.
+several decks.
