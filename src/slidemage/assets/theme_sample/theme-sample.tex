@@ -11,6 +11,13 @@
 % The logo's width for the theme form (theme_measures.logo_rect): a click on the logo goes to its field.
 \makeatletter
 \hypersetup{pdfinfo={SMLogoWidth={\strip@pt\dimexpr\SMLogoWidth*7200/7227\relax}}}
+% Every footnote marker is a link without a border or a colour, so the form finds where the markers are
+% (theme_sample.read_geometry, FOOTNOTE_MARKS): a click on one goes to the footnote marker setting.
+\AtBeginDocument{%
+	\let\SMSampleFootnoteMark\SMFootnoteMark
+	\renewcommand{\SMFootnoteMark}[1]{\leavevmode
+		\pdfextension startlink attr{/Border[0 0 0]} user{/Subtype/Link/A<</S/URI/URI(slidemage:footnote-marker)>>}%
+		\SMSampleFootnoteMark{#1}\pdfextension endlink}}
 \makeatother
 
 \begin{document}

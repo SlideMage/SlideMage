@@ -35,6 +35,7 @@ PICKS = (("color", "Colors"), ("layout", "Layout"))     # what a click on the sl
 PICK_KEY = "theme_sample_pick"      # remembered (layout_settings)
 BACKGROUND = "canvas"       # the slide background's role: offered only where nothing else is
 LOGO = "SMInstituteLogoPath"
+FOOTNOTES = "SMSetFootnoteMarkers"
 PLAIN_PAGES = (1, 6, 7)     # the title, standout and quote frames: no ordinary title bar and footer
 BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
@@ -328,8 +329,12 @@ class ThemeSampleView(Surface):
         return ("role", self.mode, self.editor.text())
 
     def _found(self, fraction: tuple[float, float]) -> list[tuple[str, str, str]]:
-        """What is at a point of the page: (kind, name, label), the likeliest first. The logo is the logo in both
-        modes; the slide's background only where nothing else is."""
+        """What is at a point of the page: (kind, name, label), the likeliest first. The logo and a footnote marker
+        are themselves in both modes; the slide's background only where nothing else is."""
+        if theme_sample.PAGE_WIDTH in self.geometry and theme_measures.on_footnote_mark(
+                self._page, fraction[0] * self.geometry[theme_sample.PAGE_WIDTH],
+                fraction[1] * self.geometry[theme_sample.PAGE_HEIGHT], self.geometry):
+            return [("footnotes", FOOTNOTES, "Footnote markers")]
         if self._page not in PLAIN_PAGES and theme_sample.PAGE_WIDTH in self.geometry and theme_measures.on_logo(
                 fraction[0] * self.geometry[theme_sample.PAGE_WIDTH],
                 fraction[1] * self.geometry[theme_sample.PAGE_HEIGHT], self.geometry):
@@ -368,7 +373,7 @@ class ThemeSampleView(Surface):
             return
         self._pending = None
         found = self._found(fraction)
-        if found and found[0][0] == "logo":     # needs neither the colours nor a layout page
+        if found and found[0][0] in ("logo", "footnotes"):      # needs neither the colours nor a layout page
             self.say("")
             self.picked.emit(found[0][0], found[0][1])
             return
