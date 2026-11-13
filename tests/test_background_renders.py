@@ -201,7 +201,7 @@ def test_editing_the_slide_or_what_it_reads_makes_it_outstanding_again(project, 
 def test_inserting_a_slide_plans_only_the_new_units(project, store, raster, caplog):
     deck = next(d for d in deck_scan.scan_decks(project) if d.name == "slidemage-manual")
     body = "\\slide{1jh-EN-Title-Slide}\n\\slide{1cx-EN-Slide-IDs}\n\\end{document}\n"
-    deck.path.write_text(deck.preamble_text + "\n" + body, encoding="utf-8")
+    deck.path.write_text(deck.preamble_text + "\n" + body, encoding="utf-8", newline="")
     tex = FakeTeX(project, pages=1)
     r = make(project, store, raster, tex=tex)
     r.test_decks[:] = [deck_named(r, "slidemage-manual")]
@@ -212,7 +212,7 @@ def test_inserting_a_slide_plans_only_the_new_units(project, store, raster, capl
 
     inserted = "zzz-EN-Inserted"
     (project.slides_dir / f"{inserted}-current.tex").write_text("\\begin{frame}New\\end{frame}\n", encoding="utf-8")
-    deck.path.write_text(deck.preamble_text + f"\n\\slide{{{inserted}}}\n" + body, encoding="utf-8")
+    deck.path.write_text(deck.preamble_text + f"\n\\slide{{{inserted}}}\n" + body, encoding="utf-8", newline="")
     r.test_decks[:] = [deck_scan.read_deck(deck.path)]
     with caplog.at_level(logging.INFO, logger="slidemage.background"):
         plan = r.scan()
