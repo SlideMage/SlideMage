@@ -44,6 +44,10 @@ Cloud · API only the tasks with an equivalent on a provider run. Each run holds
 Translate (slide_add.translate_body, its answer checked like Claude's) and Make readable (ai/provider_tasks.py: the
 task's rules and schema as JSON on the provider, the same check and one repair round). Every other task is refused
 with "not available on <route>", nothing sent and no other route or model used.
+A route with `task_prompt` (plugin_api.TaskPromptRoute; Cloud · Claude Code) is different: every task button but the
+image tasks types a prepared prompt into the route's input box (`fill_prompt`) and nothing runs, no card opens, nothing
+is sent; a deck bubble (a batch, the summary) is one prompt for the deck. The user reads the prompt and sends it, and a
+box that is not free is only a line in the task row (`_hand_over`).
 Make readable works from the findings of the last readability check of the slide (readability_check.KnownFindings,
 the window's `readability_known`, valid for exactly the text that was measured): the header offers it, and the
 palette and the findings panel start it, only for a slide with such findings, and its request carries the ones the
@@ -120,6 +124,21 @@ def _runner_of(ctx: ProjectContext, route: ai_profile.Route):
     them on the route's provider (provider_tasks)."""
     found = routes.get(route.route)
     return found.task_runner(routes.context(ctx, found.id), route) if found is not None else None
+
+
+def prompt_for(ctx: ProjectContext, task: ai_tasks.Task, route: ai_profile.Route | None = None, slide: Path | None = None,
+               language: str = "", *, instruction: str = "", deck: Path | None = None) -> str | None:
+    """The prompt `route` types into its input box for the user to send instead of running `task` (AiRoute.task_prompt,
+    optional), or None when it runs the task as usual (the image tasks always do): on the `slide`, or, for a deck
+    bubble, on the `deck` (one prompt for all its slides). Without either a route only says whether it takes the
+    task: its text is then not the prompt."""
+    route = route or ai_profile.resolve(ctx, KINDS[task.name])
+    found = routes.get(route.route)
+    offer = getattr(found, "task_prompt", None)
+    if offer is None or not (task in CARD_TASKS or task is ai_tasks.SUMMARISE):
+        return None
+    return offer(routes.context(ctx, found.id), route, task.name, slide, language,
+                 language_name=languages.name(language) if language else "", instruction=instruction, deck_path=deck)
 
 
 WORKERS = 2                            # processes at a time in a batch
@@ -601,9 +620,11 @@ class TaskRunner(QObject):
         return [RunningWork(text, self._route.label, self._route.is_local, self.stop, note)]
 
     def refusal(self, task: ai_tasks.Task, route: ai_profile.Route | None = None) -> str:
-        """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),
-        or "" when it can."""
+        """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready), or ""
+        when it can, or the route takes it as a prompt."""
         route = route or ai_profile.resolve(self._window.project, KINDS[task.name])
+        if prompt_for(self._window.project, task, route) is not None:
+            return ""
         if routes.get(route.route) is None:
             return resolver.problem(self._window.project, route)
         try:
@@ -639,6 +660,9 @@ class TaskRunner(QObject):
             if capture is None:
                 self.status.emit("That no longer fits this slide.", "warning")
                 return
+        if (text := self._prompt(task, route, capture, paths)) is not None:
+            self._hand_over(route, text)
+            return
         if reason := self.refusal(task, route):
             self._refused(capture, route, title, reason, card_model.SETUP)
             return
@@ -680,6 +704,32 @@ class TaskRunner(QObject):
         except BaseException:
             self.shutdown()
             raise
+
+    def _prompt(self, task: ai_tasks.Task, route: ai_profile.Route, capture: _Capture | None, paths: tuple[Path, ...]) -> str | None:
+        """What `route` types for the user instead of running `task` on the captured slide, or, for a deck bubble on
+        `paths`, one prompt for the open deck (it names the bubble's criterion, not the slides), None when it runs it."""
+        window = self._window
+        if paths:
+            first = _capture(window, task, _focus_at(window, paths[0])) if task is ai_tasks.TRANSLATE else None
+            return prompt_for(window.project, task, route, None, first.language if first else "", deck=window.state.deck.path)
+        if capture is None:
+            return None                                     # an image task on a slide
+        language = capture.language
+        if task is ai_tasks.UPDATE_TRANSLATION:
+            language = slide_language.own_language(capture.id_slug, languages.project_languages(window.project).codes) or ""
+        return prompt_for(window.project, task, route, capture.path, language,
+                          instruction=capture.instruction if task is ai_tasks.REWRITE else "")
+
+    def _hand_over(self, route: ai_profile.Route, text: str) -> None:
+        """Show the route's conversation and let it type `text` into its input box. Nothing is sent: the user reads
+        the prompt and sends it; when the surface cannot take it, the task row says so and nothing is queued."""
+        window = self._window
+        window.stack.setCurrentWidget(window.centre)        # the Images page hides the right column
+        self.hide_card()
+        surface = window.assistant.surface_for(route.route)
+        if surface is None or not surface.fill_prompt(text):
+            self.status.emit(f"{routes.get(route.route).service} is busy: wait until its input box is back, then "
+                             "click again.", "warning")
 
     def _refused(self, capture: _Capture | None, route: ai_profile.Route, title: str, reason: str, phase: str) -> None:
         """The task will not start: a task on a slide says so on its card, the others in the task row."""

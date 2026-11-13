@@ -96,8 +96,7 @@ class AssistantArea(Card):
         self.image_results.closed.connect(self.tasks.close_result)
         self.chat.route_changed.connect(self._refresh_route)
         for surface in self.surfaces.values():
-            if hasattr(surface, "setup_changed"):
-                surface.setup_changed.connect(self.header.schedule)
+            self._connect(surface)
         state.ai_route_changed.connect(self._show_body)
         self._show_body()
         self._refresh_route()
@@ -168,6 +167,13 @@ class AssistantArea(Card):
         route = ai_profile.Route(self.state.ai_route, ai_profile.CHAT) if surface is not None else self.chat.route()
         self.header.show_route(route, getattr(surface, "subtitle", ""))
 
+    def _connect(self, surface) -> None:
+        """A surface's signals: its amber card moves the task buttons, its notices go to the task row."""
+        if hasattr(surface, "setup_changed"):
+            surface.setup_changed.connect(self.header.schedule)
+        if hasattr(surface, "notice"):
+            surface.notice.connect(self.tasks.status)
+
     def _route_surface(self, route):
         build = getattr(route, "chat_surface_v2", None)
         if build is None:
@@ -192,8 +198,7 @@ class AssistantArea(Card):
                 if surface is not None:
                     self.surfaces[route.id] = surface
                     self._stack.addWidget(surface)
-                    if hasattr(surface, "setup_changed"):
-                        surface.setup_changed.connect(self.header.schedule)
+                    self._connect(surface)
         for surface in self.surfaces.values():
             if refresh := getattr(surface, "refresh_caption", None):
                 refresh()
