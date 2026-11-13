@@ -221,7 +221,7 @@ class Workspace:
         done (the Stop of the chat ends it through `cancel`). The window overrides this to run
         the jobs through its job panel."""
         return compiler.run_jobs(self.project, compiler.build_jobs(deck, kind), log, cancel,
-                                 resolver=self.preview_service()._renderer(self.project).resolver)
+                                 resolver=self.preview_service().renderer(self.project).resolver)
 
     def refresh_deck_previews(self, deck: Deck, cancel: compiler.CancelToken, *, scope='all') -> batch_render.DeckResult:
         """Rerender the cached previews of every slide of `deck` and no other deck's. Blocks until the

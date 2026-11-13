@@ -264,7 +264,7 @@ class RenderService:
         if self._owns_background:
             self._background.store.close()
 
-    def _renderer(self, ctx):
+    def renderer(self, ctx):
         from .background_renders import BackgroundRenderer
         from .render_store import RenderStore
 
@@ -288,7 +288,7 @@ class RenderService:
         presenter, mode, overlay = options.presenter, options.mode, options.overlay
         if target.hidden and not presenter:
             raise ValueError(f'Slide {target.id_slug} is hidden in {view}')
-        renderer = self._renderer(target.context)
+        renderer = self.renderer(target.context)
         unit = spec.unit
         complete = spec.complete
         key = ((replace(unit, deck=""), spec.revision.content_hash) if complete else
@@ -306,10 +306,8 @@ class RenderService:
             if background and not options.force and store_key is not None and renderer.store.failure(store_key) is not None:
                 found = renderer.resolver.lookup(unit, store_key, strict=True)
                 if found.state is render_key.Freshness.FAILED and not renderer.store.may_retry(found.failure):
-                    if unit.label not in renderer._last_try or renderer.store.tried_last(store_key):
-                        request.preview_result = PreviewResult(spec, status='failed', error=found.failure['error'])
-                        raise RuntimeError(found.failure['error'])
-                    renderer.store.note_last_try(store_key)
+                    request.preview_result = PreviewResult(spec, status='failed', error=found.failure['error'])
+                    raise RuntimeError(found.failure['error'])
             try:
                 if (prebuilt is None and not options.force and publish and store_key is not None
                         and renderer.store.find(store_key) is not None):
@@ -334,10 +332,10 @@ class RenderService:
                 cancel.preview_evidence = evidence
                 if prebuilt is not None:
                     pdf = prebuilt.pdf
-                elif background and renderer._render is not None:
-                    pdf = renderer._render(unit, cancel)
+                elif background and renderer.render_override is not None:
+                    pdf = renderer.render_override(unit, cancel)
                 elif in_deck:
-                    pdf = renderer._render_in_deck(unit, cancel)
+                    pdf = renderer.render_in_deck(unit, cancel)
                 else:
                     pdf = preview_target.render_text(
                         target, text, view, language, log=log,
@@ -384,10 +382,10 @@ class RenderService:
                     manifest.entries.sort()
                     try:
                         with timing.span('preview.pages'):
-                            pages = renderer._rasterise(pdf, cancel)
+                            pages = renderer.rasterise(pdf, cancel)
                         if not pages:
                             raise RuntimeError('Render failed: the render has no pages (the slide is not typeset in this view)')
-                        key = renderer._store_render(unit, pdf, pages, manifest, evidence)
+                        key = renderer.store_render(unit, pdf, pages, manifest, evidence)
                         stored = renderer.store.find(key) if key is not None else None
                         if stored is not None:
                             pages[-1] = renderer.store.page(stored, stored["pages"]) or pages[-1]
@@ -416,10 +414,7 @@ class RenderService:
                     manifest.append([render_key.KIND_PROJECT, source, spec.revision.content_hash])
                     manifest += [renderer.resolver.missing_input_entry(name) for name in set(getattr(exc, 'missing_inputs', ()))]
                     renderer.store.record_failure(store_key, kind, str(exc), manifest)
-                    with renderer._working_lock:
-                        if renderer._current is None or store_key in renderer._current.keys:
-                            renderer._failure_keys.add(store_key)
-                            renderer._failure_slides.setdefault(store_key, set()).add((unit.deck, unit.id_slug))
+                    renderer.note_failure(unit, store_key)
                 raise
 
         def finished():

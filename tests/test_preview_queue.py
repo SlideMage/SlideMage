@@ -90,7 +90,7 @@ def test_a_focused_render_prepares_other_views_for_a_store_hit_until_the_next_ed
         return pdf
 
     monkeypatch.setattr(preview_target, 'render_text', render)
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     renderer.gate.force()
     view.buffer[0] = '\\setSlideVersion{1-0-0+}\nunsaved edit'
     text = view.buffer[0]
@@ -141,7 +141,7 @@ def test_pane_pixels_arrive_before_png_encoding_and_put_and_equal_the_stored_pag
     pdf.with_suffix('.inputs.json').write_text('[]')
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: pdf)
     request = view._renders.request(target, 'BODY', 'instructor', 'EN', view.app.log)
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     encoding, release, pixels = threading.Event(), threading.Event(), threading.Event()
     stages, decoding_threads = [], []
     ask, put, span = preview_raster_client.RasterClient.ask, renderer.store.put, timing.span
@@ -665,7 +665,7 @@ def test_tool_and_pane_share_one_build(pane, tmp_path, monkeypatch, debounce):
     response = box.execute(ToolCall('1', 'render_preview', {}))
     assert not response.is_error
     from slidemage import render_lookup
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     spec = job.request.spec
     state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
     assert state == 'current' and response.images == [renderer.store.page(record, record['pages'])]
@@ -1008,7 +1008,7 @@ def test_a_scoped_render_stays_temporary(pane, tmp_path, monkeypatch, qapp):
     assert job.request.done.wait(10)
     qapp.processEvents()
     view._refresh()
-    renderer = view._renders._renderer(target.context)
+    renderer = view._renders.renderer(target.context)
     assert render_lookup.select(dict(resolver=renderer.resolver, unit=job.request.spec.unit,
                                      spec=job.request.spec), strict=True) == ('missing', None)
     assert renderer.store.count() == 0 and view._record is None

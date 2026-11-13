@@ -223,7 +223,7 @@ def compile_jobs(window, jobs: list[CompileJob]) -> bool:
 
     def work(log: Callable[[str], None], cancel: compiler.CancelToken) -> None:
         results = run_jobs(window.project, jobs, log, cancel=cancel,
-                           resolver=window.centre.preview._renders._renderer(window.project).resolver)
+                           resolver=window.centre.preview._renders.renderer(window.project).resolver)
         passed = sum(1 for ok in results.values() if ok)
         log(f"==== Done: {passed} passed, {len(results) - passed} failed ====")
 
@@ -278,7 +278,7 @@ def _confirm_unchanged_jobs(window, jobs: list[CompileJob], outputs: dict[str, P
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
         unchanged = compiler.unchanged_jobs(
-            window.project, jobs, outputs, resolver=window.centre.preview._renders._renderer(window.project).resolver)
+            window.project, jobs, outputs, resolver=window.centre.preview._renders.renderer(window.project).resolver)
     finally:
         QApplication.restoreOverrideCursor()
     if not unchanged:
@@ -385,7 +385,7 @@ def start_snapshots(
         try:
             results = deck_snapshot.snapshot_decks(
                 decks, options, log, cancel=cancel, delete_old=delete_old, ctx=window.project,
-                resolver=window.centre.preview._renders._renderer(window.project).resolver)
+                resolver=window.centre.preview._renders.renderer(window.project).resolver)
         except Exception as exc:  # noqa: BLE001 -- reported, the slot must still be freed
             log(f"*** Deck snapshots failed: {exc} ***")
             results = [deck_snapshot.SnapshotResult(d.name, ok=False, error=str(exc)) for d in decks]
