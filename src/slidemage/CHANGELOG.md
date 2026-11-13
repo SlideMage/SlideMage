@@ -4084,3 +4084,8 @@ v0.16.30 (2026-11-13, direct request: the last hard-coded color found in the col
 
 NEW: Progress bars in dark slides.
 - Fixed: in a dark color mode, the track behind a progress bar was a light band; it now matches the slide.
+
+v0.16.31 (2026-11-13, tab contexts plan, step 0: one seam for the tab's deck, no behaviour change): A tab has a `context` (CentreTab.context), FOLLOW for every tab for now, meaning "whatever state.deck is"; CentreColumn.tab_deck(tab) answers the deck of a tab, and _tab_row, _context_for, _neighbour_targets and _go_adjacent read it. PanelActions.tab_slide gives (path, row, deck), and the side panels' deck_calls and _focused_row match in that deck. The saved tabs are written in a new format (`v` 2: `active` is an index, every tab has `kind`, `deck` and `mode`, the slide tab included, without `work` yet); the old format is still read. Tests in tests/test_centre_gui.py. See docs/plans/tab-contexts.md section 9.
+
+NEW: Groundwork for tabs that belong to a deck.
+- Changed: nothing you can see yet; the saved tabs of a project are now stored in a new format, and the old one is still read.

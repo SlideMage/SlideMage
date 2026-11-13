@@ -1749,13 +1749,14 @@ def test_the_chat_and_the_tasks_act_on_the_slide_on_show(centre, files):
 def test_tab_slide_is_the_slide_file_tab_on_show_and_none_elsewhere(centre, files):
     assert centre.tab_slide() is None                                          # the slide tab
     centre.open_file(files.ccc, tab=True, occurrence=_row_key(centre, "ccc"))
-    path, row = centre.tab_slide()
+    path, row, deck = centre.tab_slide()
+    assert deck is centre.state.deck
     assert path == files.ccc and row is not None and row.call.id_slug == "ccc-DE-Drei"
     centre.open_file(files.bib)
     assert centre.tab_slide() is None                                          # a file that is no slide
     frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
     centre.open_file(frozen, tab=True)
-    assert centre.tab_slide() == (frozen, None)                               # a frozen version previews alone
+    assert centre.tab_slide() == (frozen, None, centre.state.deck)                               # a frozen version previews alone
 
 
 def test_save_notes_on_a_slide_file_tab_stays_on_that_tab(centre, files):
@@ -1924,9 +1925,11 @@ def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, 
     centre.tabs.activate(centre.tabs.tab_for(files.deck))     # the deck source tab is active when the project closes
     centre.save_tabs()
     saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
-    assert saved == {"tabs": [{"path": "course.tex", "mode": "source"},
-                              {"path": "slides/ccc-DE-Drei-current.tex", "mode": "preview"}],
-                     "active": "course.tex"}
+    deck_rel = deck.path.relative_to(ctx.root).as_posix()
+    assert saved == {"v": 2, "active": 1,
+                     "tabs": [{"kind": "slide", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode},
+                              {"kind": "file", "deck": deck_rel, "mode": "source", "path": "course.tex"},
+                              {"kind": "file", "deck": deck_rel, "mode": "preview", "path": "slides/ccc-DE-Drei-current.tex"}]}
 
     reopened = _reopened(ctx, deck, monkeypatch)
     reopened.restore_tabs()
@@ -1934,6 +1937,42 @@ def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, 
     assert reopened.tabs.tab_for(files.deck).mode == "source"            # a deck source stays Source-only
     assert reopened.tabs.tab_for(files.ccc).mode == "preview"
     assert reopened.tabs.active is reopened.tabs.tab_for(files.deck)
+
+
+def test_the_old_save_format_is_still_restored(centre, files, ctx, deck, monkeypatch):
+    app_settings.set(ctx, CENTRE_TABS_SETTING, {"tabs": [{"path": "course.tex", "mode": "source"},
+                                                         {"path": "slides/ccc-DE-Drei-current.tex", "mode": "preview"}],
+                                                "active": "course.tex"})
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert [t.path for t in reopened.tabs.tabs if t.kind == "file"] == [files.deck, files.ccc]
+    assert reopened.tabs.tab_for(files.ccc).mode == "preview"
+    assert reopened.tabs.active is reopened.tabs.tab_for(files.deck)
+    reopened.save_tabs()                                       # and is written in the new one
+    assert app_settings.get(ctx, CENTRE_TABS_SETTING)["v"] == 2
+
+
+def test_the_new_format_round_trips_with_the_slide_tab_active(centre, files, ctx, deck, monkeypatch):
+    centre.open_file(files.bib)
+    centre.tabs.activate(centre.tabs.slide_tab)
+    centre.save_tabs()
+    assert app_settings.get(ctx, CENTRE_TABS_SETTING)["active"] == 0
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert [t.path for t in reopened.tabs.tabs if t.kind == "file"] == [files.bib]
+    assert reopened.tabs.active is reopened.tabs.slide_tab
+
+
+def test_every_tab_follows_the_open_deck_for_now(centre, files):
+    from slidemage.ui.workspace.centre_tabs import FOLLOW
+    centre.open_file(files.ccc, tab=True)
+    centre.open_file(files.bib)
+    assert all(t.context is FOLLOW for t in centre.tabs.tabs)
+    assert all(centre.tab_deck(t) is centre.state.deck for t in centre.tabs.tabs)
+    from slidemage.ui.workspace.centre_tabs import CentreTab
+    assert centre.tab_deck(CentreTab("file", files.bib, context=None)) is None
+    assert centre.tab_deck(CentreTab("file", files.bib, context=centre.state.deck.path)) is centre.state.deck
+    assert centre.tab_deck(CentreTab("file", files.bib, context=files.bib)) is None
 
 
 def test_restoring_tabs_skips_a_file_that_no_longer_exists(centre, files, ctx, deck, monkeypatch):

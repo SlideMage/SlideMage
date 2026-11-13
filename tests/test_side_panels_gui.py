@@ -1220,7 +1220,7 @@ def test_a_frozen_version_tab_shows_its_own_file(window):
     window.open_slide_editor(frozen, tab=True)
     settle(window)
     notes = window.side_panels.panels["notes"]
-    assert window.centre.tab_slide() == (frozen, None)
+    assert window.centre.tab_slide() == (frozen, None, window.state.deck)
     assert notes.slide_path() == frozen and notes.id_slug() == "abc-EN-Hello" and notes._path == frozen
 
 
@@ -1306,7 +1306,7 @@ def test_language_open_gives_the_other_language_a_tab_only_from_a_slide_file_tab
     buttons(panel, "Open")[0].click()
     assert window.opened == [german]                                           # the slide tab: as before
     row = panel._focused_row()
-    panel.actions = panel.actions._replace(tab_slide=lambda: (slides / "abc-EN-Demo-current.tex", row))
+    panel.actions = panel.actions._replace(tab_slide=lambda: (slides / "abc-EN-Demo-current.tex", row, state.deck))
     panel.refresh()
     buttons(panel, "Open")[0].click()
     assert window.opened[1] == (german, {"tab": True, "occurrence": row.key})
