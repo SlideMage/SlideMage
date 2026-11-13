@@ -2355,6 +2355,21 @@
             "name": "language",
             "kind": "POSITIONAL_OR_KEYWORD",
             "required": true
+          },
+          {
+            "name": "language_name",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "instruction",
+            "kind": "KEYWORD_ONLY",
+            "required": false
+          },
+          {
+            "name": "deck_path",
+            "kind": "KEYWORD_ONLY",
+            "required": false
           }
         ]
       }

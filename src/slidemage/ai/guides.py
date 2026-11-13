@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from .. import slide_add
+from . import translation_style
 from .image_instructions import IMAGE_DESCRIPTION_RULES
 from ..project import ProjectContext
 
@@ -94,6 +95,16 @@ Layout helpers (prefer these to hand-measured shifts).
   the text or split the slide rather than shrinking below \\footnotesize."""
 
 
+def _translation(ctx: ProjectContext) -> str:
+    informal = translation_style.address(ctx) == "informal"
+    lines = ["Translating slides.",
+             f"- Address the audience {'informally' if informal else 'formally'} in every language "
+             f"(German: {translation_style.de_address(ctx)})."]
+    if glossary := translation_style.glossary(ctx).strip():
+        lines += [f"- Use the terms of the project's glossary ({translation_style.GLOSSARY_PATH}):", glossary]
+    return "\n".join(lines)
+
+
 def _frames(ctx: ProjectContext) -> str:
     lines = ["For free-form creation, draft one full frame body and call create_slide once with the open deck name. "
              "It checks, inserts, renders and shows it. add_slide stays for skeletons/translations in place. Frame skeletons:"]
@@ -115,6 +126,7 @@ GUIDES: dict[str, tuple[str, str | Callable[[ProjectContext], str]]] = {
     "layout": ("columns, tables, blocks, figures, spacing", _LAYOUT),
     "reveals": ("\\pause, \\only, \\slidestep, deck versions", _REVEALS),
     "citations": ("SlideMage.bib, \\fullcite, \\textcite", _CITATIONS),
+    "translation": ("the form of address and the glossary for translations", _translation),
     "images_and_text": ("images, notes, code and text helpers, escaping", _NOTES_IMAGES + "\n" + IMAGE_DESCRIPTION_RULES),
 }
 TOPICS = tuple(GUIDES)

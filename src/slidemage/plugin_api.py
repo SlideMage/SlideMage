@@ -565,17 +565,24 @@ class ChatSurfaceRoute(Protocol):
 
 class TaskPromptRoute(Protocol):
     """Optional addition to AiRoute, for a route whose conversation is a terminal the user types into (Claude Code):
-    a task button of a slide types a prepared prompt into the surface's input box instead of running the task. The
-    user reads it and sends it; core never sends it, and it runs no task and opens no task card for it. The surface
-    (chat_surface_v2's widget) provides `fill_prompt(text) -> bool`: True when it takes the text (it reports a box
-    that is not free later, through its own `notice(text, tone)` signal, which core shows in the task row), False
+    a task button types a prepared prompt into the surface's input box instead of running the task. The user reads
+    it and sends it; core never sends it, and it runs no task and opens no task card for it. The prompt is one line
+    of text for one click: a deck bubble (a batch, the summary) is one prompt for the deck, never one per slide. The
+    surface (chat_surface_v2's widget) provides `fill_prompt(text) -> bool`: True when it takes the text (it reports a
+    box that is not free later, through its own `notice(text, tone)` signal, which core shows in the task row), False
     when it cannot (no session); core then says the route is busy. The text must never be sent for the user."""
 
-    def task_prompt(self, ctx: RouteContext, route: Route, task_name: str, slide_path: Path | None,
-                    language: str) -> str | None:
-        """The prompt for the task `task_name` ("translate") on the slide file `slide_path`, into the language code
-        `language`, or None when the route does not take this task as a prompt (core then asks `problem` as ever).
-        With `slide_path` None core only asks whether the route takes the task: return any string, or None."""
+    def task_prompt(self, ctx: RouteContext, route: Route, task_name: str, slide_path: Path | None, language: str, *,
+                    language_name: str = "", instruction: str = "", deck_path: Path | None = None) -> str | None:
+        """The prompt for the task `task_name` ("translate", "update_translation", "fix_latex", "proofread",
+        "concise", "title", "note", "readable", "rewrite", "proofread_selection", "summarise"), or None when the
+        route does not take this task as a prompt (core then asks `problem` as ever; image tasks are never offered).
+        On one slide: `slide_path` is its file, `language` the code (capitals, "DE") and `language_name` the English
+        name ("German") of what a translation goes into or the translation being updated, else "". `instruction` is
+        what a rewrite should do. For a deck bubble `slide_path` is None and `deck_path` the open deck's file:
+        the prompt names the deck and the bubble's criterion, not its slides; `language` and `language_name` as
+        above for the slides to translate. With `slide_path` and `deck_path` both None core only asks whether the
+        route takes the task: return any string, or None."""
         ...
 
 

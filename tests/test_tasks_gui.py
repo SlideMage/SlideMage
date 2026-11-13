@@ -481,18 +481,31 @@ def test_a_route_that_takes_translate_as_a_prompt_gets_the_text_and_nothing_runs
     area = env.window.assistant
     surface = area.surface_for("fake_cloud")
     surface.fill_prompt = lambda text: filled.append(text) or True
-    fake_routes.cloud.task_prompt = lambda ctx, route, name, slide, language: (
-        None if name != "translate" else "" if slide is None else f"{name} @{slide.name} into {language}")
+    fake_routes.cloud.task_prompt = lambda ctx, route, name, slide, language, **kw: (
+        None if name != "translate" else "" if slide is None else f"{name} @{slide.name} into {kw['language_name']} ({language})")
     fake_routes.cloud.problem_text = "The terminal is all there is."
     assert area.tasks.refusal(tasks_module.ai_tasks.TRANSLATE) == ""
     assert area.tasks.refusal(tasks_module.ai_tasks.PROOFREAD)             # other tasks are refused as ever
     click(env, "Translate to German")
-    assert filled == ["translate @abc-EN-Hello-current.tex into DE"]
+    assert filled == ["translate @abc-EN-Hello-current.tex into German (DE)"]
     assert fake.calls() == [] and area.tasks.card is None and not area.tasks.busy
     surface.fill_prompt = lambda text: False                                # no input box: said, not queued
     click(env, "Translate to German")
     assert area.task_row.status.text() == "Fake cloud is busy: wait until its input box is back, then click again."
-    assert filled == ["translate @abc-EN-Hello-current.tex into DE"] and area.tasks.card is None
+    assert filled == ["translate @abc-EN-Hello-current.tex into German (DE)"] and area.tasks.card is None
+
+
+def test_a_deck_bubble_is_one_prompt_for_the_deck_and_nothing_runs(fake, fake_routes):
+    env, filled = fake.env, []
+    area = env.window.assistant
+    area.surface_for("fake_cloud").fill_prompt = lambda text: filled.append(text) or True
+    fake_routes.cloud.task_prompt = lambda ctx, route, name, slide, language, **kw: (
+        "" if slide is None and kw["deck_path"] is None else f"{name} {kw['deck_path'].name} {kw['language_name']}")
+    deck_scope(env)
+    click(env, "Translate missing slides (2)")
+    click(env, "Summarise this deck")
+    assert filled == ["translate test.tex German", "summarise test.tex "]          # one each, not one per slide
+    assert fake.calls() == [] and area.tasks.card is None and not area.tasks.busy
 
 
 def test_a_route_without_a_prompt_runs_translate_as_before(fake):
