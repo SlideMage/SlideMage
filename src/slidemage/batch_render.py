@@ -32,7 +32,7 @@ def groups(service, candidates, size: int) -> list[list]:
             continue
         try:
             if not spec.options.force:
-                resolver = service._renderer(spec.target.context).resolver
+                resolver = service.renderer(spec.target.context).resolver
                 found = resolver.lookup(spec.unit, resolver.fast_key(spec.unit, spec.revision.text), strict=True)
                 if found.final:
                     continue
@@ -57,7 +57,7 @@ def build(service, batch: list, cancel=None, log=None) -> dict:
     pages are not those of its slides."""
     first = batch[0][1]
     ctx, target = first.target.context, first.target
-    renderer = service._renderer(ctx)
+    renderer = service.renderer(ctx)
     evidence = {key: renderer.resolver.capture(spec.unit, spec.revision.text) for key, spec in batch}
     slides = [(spec.target.id_slug, spec.revision.text, spec.target.frame_number, None if spec.options.all_steps else spec.target.steps, spec.target.version,
                spec.target.macro in ('omitslide', 'omitslideversion'), spec.target.macro == 'slidefinal' and not spec.options.all_steps)

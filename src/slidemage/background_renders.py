@@ -20,7 +20,7 @@ import tempfile
 import threading
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -194,7 +194,7 @@ def _template_was_missing(failure: Optional[dict], template: str) -> bool:
 class BackgroundRenderer:
     def __init__(self, ctx: ProjectContext, store: RenderStore, *, gate: Optional[IdleGate] = None,
                  decks: Callable[[], list] = lambda: [], open_deck: Callable[[], Optional[Deck]] = lambda: None,
-                 engine_fp: Optional[Callable[[], str]] = None, renderer: Optional[Callable] = None,
+                 engine_fp: Optional[Callable[[], str]] = None, render_override: Optional[Callable] = None,
                  raster: Optional[RasterClient] = None,
                  renders: Optional[preview_requests.RenderService] = None,
                  on_change: Callable[[], None] = lambda: None,
@@ -210,7 +210,7 @@ class BackgroundRenderer:
             free_bytes=lambda: power_status.free_bytes(store.root), cpu_load=self._cpu.load)
         self._decks, self._open_deck = decks, open_deck
         self.plugin_soon = plugin_soon          # the loaded plugins' rule (plugins.host.plugin_render_priority); settable
-        self._render = renderer
+        self.render_override = render_override
         self.renders = renders or preview_requests.RenderService()
         self.renders._background, self.renders._owns_background = self, False   # the window owns the store
         self._raster = raster
@@ -778,7 +778,7 @@ class BackgroundRenderer:
             with tempfile.TemporaryDirectory(prefix="slidemage_compile_") as folder:
                 own = Path(folder) / "slide.pdf"
                 raster.read_document(pdf, "extract_pages", pages[0] + 1, len(pages), out=own)
-                if self._store_render(unit, own, response["images"], manifest, evidence) is not None:
+                if self.store_render(unit, own, response["images"], manifest, evidence) is not None:
                     stored += 1
         return stored
 
@@ -795,7 +795,7 @@ class BackgroundRenderer:
         self.trace(f"start {job.key}")
         try:
             cancel.low_priority = True
-            requests = requests or tuple(self.request_for(unit) for unit in units)
+            requests = requests or tuple(self._sweep_request(unit) for unit in units)
             results = batch_render.render_batch(self.renders, requests, cancel=cancel, batch_size=self.batch_size())
             validation = render_evidence.ValidationPass()
             for unit, result in zip(units, results):
@@ -864,8 +864,25 @@ class BackgroundRenderer:
         return preview_requests.PreviewRequest(target, revision, unit.view, unit.language,
                                               preview_requests.RenderOptions(saved=True, all_steps=True), error)
 
-    def _store_render(self, unit: render_key.Unit, pdf: Path,
-                      pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
+    def _sweep_request(self, unit: render_key.Unit) -> preview_requests.PreviewRequest:
+        """request_for, as the sweep renders it now: a failed unit in its last try is noted as tried and forced, so the
+        request renders it although its failure is stored."""
+        request = self.request_for(unit)
+        if unit.label not in self._last_try:
+            return request
+        self.store.note_last_try(self.resolver.fast_key(unit, request.revision.text))
+        return replace(request, options=replace(request.options, force=True))
+
+    def note_failure(self, unit: render_key.Unit, key: str) -> None:
+        """A render of `unit` failed and the store holds the failure under `key`: the scan's failure sets list it
+        when the scan found `key` current or has not run yet."""
+        with self._working_lock:
+            if self._current is None or key in self._current.keys:
+                self._failure_keys.add(key)
+                self._failure_slides.setdefault(key, set()).add((unit.deck, unit.id_slug))
+
+    def store_render(self, unit: render_key.Unit, pdf: Path,
+                     pages: list[bytes], manifest: render_key.Manifest, evidence: dict) -> Optional[str]:
         if not pages or not self.resolver.publishable(unit, evidence, manifest):
             return None
         key = evidence["key"]
@@ -883,7 +900,7 @@ class BackgroundRenderer:
         self.progress.failures = self.store_failures_count()
         return self.store.put(key, pdf, pages, meta, decks=[unit.deck] if unit.deck else [])
 
-    def _render_in_deck(self, unit: render_key.Unit, cancel) -> Path:
+    def render_in_deck(self, unit: render_key.Unit, cancel) -> Path:
         """A slide that needs its deck, typeset in the deck's last whole-deck compile (deck_context.render_in_deck)."""
         deck = next((d for d in self._decks() if d.name == unit.context), None)
         pdf = None if deck is None else deck_context.render_in_deck(
@@ -893,7 +910,7 @@ class BackgroundRenderer:
             raise _transient("the deck has no compile to typeset the slide in")
         return pdf
 
-    def _rasterise(self, pdf: Path, cancel) -> list[bytes]:
+    def rasterise(self, pdf: Path, cancel) -> list[bytes]:
         raster = self._raster or self._shared_raster()
         pages: list[bytes] = []
         start, count = 1, None

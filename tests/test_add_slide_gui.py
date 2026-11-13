@@ -188,7 +188,7 @@ def test_an_existing_slide_is_found_by_id_or_title_and_added_live(make, project)
     sheet, window = make(source="existing")
     assert sheet.picker.label.text() == "Slide" and sheet.listbox.count() == 3 and not sheet.ok.isEnabled()
     assert all(sheet.listbox.item(i).icon().isNull() for i in range(sheet.listbox.count()))
-    renderer = window.centre.preview._renders._renderer(window.project)
+    renderer = window.centre.preview._renders.renderer(window.project)
     target = preview_target.for_path(window.project, project.slides / "xyz-EN-Other-current.tex")
     unit = render_key.unit_for(target, "instructor", "EN")
     pdf = project.slides.parent / "reference.pdf"
