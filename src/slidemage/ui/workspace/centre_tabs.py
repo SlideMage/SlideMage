@@ -28,6 +28,7 @@ from ..kit import kit_qss as q
 from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, PopoverMenu, Surface
 
 SLIDE, FILE = "slide", "file"
+FOLLOW = "follow"       # a tab's context (docs/plans/tab-contexts.md): "whatever state.deck is"; a Path would name a deck, None no deck
 TAB_HEIGHT = 34
 TAB_MIN_WIDTH = 96      # narrower than their text they elide; with less room than this they scroll
 TAB_MAX_WIDTH = 260
@@ -41,6 +42,7 @@ class CentreTab:
     on_saved: Optional[Callable[[str], None]] = None    # runs after each save of the file (a deck's after_deck_edit)
     slide: bool = False                             # a file tab of a slide's file (current or a frozen version)
     occurrence: Optional[tuple] = None              # the deck row (SlideRow.key) it was opened from, if any
+    context: object = FOLLOW                        # the deck it belongs to: FOLLOW (every tab for now), a deck's Path, or None
 
     @property
     def closable(self) -> bool:
