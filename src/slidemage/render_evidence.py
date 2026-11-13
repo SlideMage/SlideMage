@@ -22,8 +22,11 @@ from .preview_metrics import count
 # (2026-10-30, direct request; was 320x180, three times what any screen used).
 THUMBNAIL_MAX = (168, 95)
 _SKIP_DIRS = {'.git', '.build', '.previews', '.backups', '.slidemage', '.pytest_cache', '__pycache__', '.venv', 'node_modules'}
-# Project probes: SlideMage_layout_*, SlideMage_citation_*, SlideMage_project_macros.tex, and the .bib fallback.
-PROJECT_WATCHED = ('SlideMage_*', '*.bib', '.latexmkrc', 'latexmkrc')
+# Names whose mere appearance, in any search folder, changes a compile: the framework's optional files, the .bib
+# fallback, latexmk's configuration, hyphenation patterns and image descriptions. Any other name matters only to a
+# render that reads a file of the same stem (search_inventory). tests/test_framework_probes.py audits this list.
+PROBES = ('SlideMage_layout_*', 'SlideMage_citation_*', 'SlideMage_project_macros.tex', '*.bib',
+          '.latexmkrc', 'latexmkrc', 'hyphenation/hyph-*', 'hyph-*', 'media/alt-text.*')
 
 
 def digest(value) -> str:
@@ -147,6 +150,14 @@ def _label(folder) -> str:
     return BUNDLED if bundled is not None and Path(folder).absolute() == bundled.absolute() else str(folder)
 
 
+def _place(path: Path) -> str:
+    """A file's location as evidence, the bundled framework named by _label's rule."""
+    bundled = project.template_dir('latex')
+    if bundled is not None and path.is_relative_to(bundled.absolute()):
+        return f'{BUNDLED}/{path.relative_to(bundled.absolute()).as_posix()}'
+    return str(path)
+
+
 def search_state(project_root: Path, env: dict) -> dict:
     """Inventory search candidates for the precompiled format."""
     inventories = {}
@@ -220,15 +231,11 @@ def search_inventory(project_root: Path, env: dict, *, force=False, inputs=()) -
             pending.extend(directory / name for name in known[1])
             for name in known[2]:
                 path = directory / name
-                relative = path.relative_to(project_root) if path.is_relative_to(project_root) else None
-                by_stem = relative is not None and relative.parts[0] in {'slides', 'media', 'snippets'}
-                if root == project_root:
-                    by_stem = not (directory in (project_root, project_root / 'decks')
-                                   and any(fnmatchcase(name, pattern) for pattern in PROJECT_WATCHED))
-                if by_stem and relative.as_posix() not in {'media/alt-text.csv', 'media/alt-text.json'}:
-                    stems.setdefault(path.stem, set()).add(str(path))
+                found = path.relative_to(root).as_posix()
+                if any(fnmatchcase(found.removeprefix('decks/'), pattern) for pattern in PROBES):
+                    names.append(found)
                 else:
-                    names.append(path.relative_to(root).as_posix())
+                    stems.setdefault(path.stem, set()).add(_place(path))
         names.sort()
     return {'conservative': digest(conservative),
             'stems': {stem: sorted(paths) for stem, paths in stems.items()}}
@@ -239,7 +246,7 @@ def inventory_state(inventory: dict, inputs) -> dict:
     stems = set()
     for name in inputs:
         path = Path(name)
-        if not path.is_absolute() or str(path) in inventory['stems'].get(path.stem, ()):
+        if not path.is_absolute() or _place(path) in inventory['stems'].get(path.stem, ()):
             stems.add(path.stem)
     return {'conservative': inventory['conservative'],
             'stems': {stem: inventory['stems'].get(stem, []) for stem in sorted(stems)}}
