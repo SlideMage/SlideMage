@@ -623,7 +623,7 @@ colour (at twice the panel's 110 dpi, folded down, so text strokes count) into a
 page). `ThemeSampleView.show_usage(kind, name, mode)` switches to the field's mode, makes the map of that kind and mode
 once per text (a thread, about 9 s plus 1 s reading), turns to the first page using the colour, and draws the page
 dimmed (black at 65 %) with the colour's pixels on top, one pixel wider; the line under it says on which pages it is
-used, or that the sample does not use it. The form's palette, role and code cells report focus and hover
+used, or that the sample does not use it. (Since v0.16.33 `usage_map` reads no pixels: it takes the colour of every text span and drawn path from the probe PDF, keeps boxes per page and name, cuts out what a later opaque rectangle covers, and the page is painted back into the boxes with hard edges; one render, about 1 s less. The same boxes answer a click on the slide: `UsageMap.at` gives the roles at a point, `theme_measures.keys_at` the layout settings of that part of the slide, the view's switch "Click selects: Colors | Layout" picks which, and `ThemeForm.reveal` goes to the field.) The form's palette, role and code cells report focus and hover
 (`ThemeForm.on_usage`, `on_usage_cleared`; the mouse over a cell wins while it is there). Seen: Block title fill lights
 only the block's violet bar on page 3; Body text in dark only the white body text. Tests: `tests/test_theme_probe.py`
 (the real probe with `SLIDEMAGE_TEX_TESTS=1`: block title fill on page 3 only, code panel on page 4 only). Not done

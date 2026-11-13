@@ -5,26 +5,37 @@ rendered with the theme as it is in the editor, in the colour mode picked here, 
 
 A render starts a pause after the last change of the buffer (from the form or from typing), runs in a thread, and a
 change during a render stops it and starts again once it has ended. Nothing renders while the panel is hidden; it
-catches up when it is shown."""
+catches up when it is shown.
+
+A click on the slide goes the other way (`picked`): to the field of the colour role that is there, or, with the switch
+on Layout, to the layout setting of that part of the slide; where several are, a small menu asks which."""
 from __future__ import annotations
 
 import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRect, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout
+from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QMenu, QSizePolicy, QToolButton, QVBoxLayout,
+                               QWidget)
 
 from ... import compiler, theme_fields, theme_measures, theme_probe, theme_sample
 from ...theme_file import ThemeFile
 from ...theme_form_model import parse_modes_header
+from .. import layout_settings
 from ..kit.tokens import SPACE
-from ..kit.widgets import Button, Surface, caption, text_label
+from ..kit.widgets import Button, SegmentedControl, Surface, caption, text_label
 
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
-RENDER_DPI = 110            # the colour-usage probe (a pixel grid; cheap)
 DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
+DIM_ALPHA = 165             # of 255: the black over the page where the focused colour is not
+LIT_RADIUS = 0.004          # of the page width: the corners of the box around lit text
+PICKS = (("color", "Colors"), ("layout", "Layout"))     # what a click on the slide looks for
+PICK_KEY = "theme_sample_pick"      # remembered (layout_settings)
+BACKGROUND = "canvas"       # the slide background's role: offered only where nothing else is
+LOGO = "SMInstituteLogoPath"
+PLAIN_PAGES = (1, 6, 7)     # the title, standout and quote frames: no ordinary title bar and footer
 BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
 
@@ -40,12 +51,57 @@ def pdf_pages(pdf: Path, dpi: int = DISPLAY_DPI) -> list[QImage]:
     return images
 
 
+class _Spinner(QWidget):
+    """A small turning arc and "Updating preview…" over the preview while a render or a probe is under way; the mouse
+    goes through it, so the user keeps working."""
+
+    LABEL = "Updating preview…"
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setFixedHeight(30)
+        self.setFixedWidth(30 + 8 + self.fontMetrics().horizontalAdvance(self.LABEL) + 12)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(50)
+        self._timer.timeout.connect(self._turn)
+        self.hide()
+
+    def run(self, on: bool) -> None:
+        if on and not self._timer.isActive():
+            self._timer.start()
+        elif not on:
+            self._timer.stop()
+        self.setVisible(on)
+
+    def _turn(self) -> None:
+        self._angle = (self._angle - 30) % 360
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(0, 0, 0, 140))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(self.rect(), 15, 15)
+        pen = QPen(QColor(255, 255, 255, 230), 3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(QRectF(7, 7, 16, 16), self._angle * 16, 110 * 16)
+        painter.setPen(QColor(255, 255, 255, 240))
+        painter.drawText(QRect(36, 0, self.width() - 36, self.height()),
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.LABEL)
+        painter.end()
+
+
 class ThemeSampleView(Surface):
     """`render(project, text, key, mode, cancel=...)` makes the PDF (theme_sample.render; tests pass their own)."""
 
     rendered = Signal(object)       # theme_sample.SampleResult, from the render thread
     probed = Signal(object, object)     # (the probe's key, theme_probe.UsageMap or None), from the probe thread
     geometry_changed = Signal()         # a render brought the page's geometry (theme_sample.read_geometry)
+    picked = Signal(str, str)           # a click on the slide: ("role", role id) or ("layout", hook key)
 
     def __init__(self, editor, key: str, project, render: Optional[Callable] = None,
                  read_usage: Optional[Callable] = None) -> None:
@@ -70,6 +126,12 @@ class ThemeSampleView(Surface):
         self._usage: Optional[tuple[str, str, str]] = None
         self._maps: dict[tuple[str, str, str], Optional[theme_probe.UsageMap]] = {}
         self._probing: set[tuple[str, str, str]] = set()
+        # A click on the slide: what it looks for, a click that waits for the role map, and what the line under the
+        # slides says about the last click.
+        pick = layout_settings.get(PICK_KEY, "color")
+        self._pick = pick if pick in dict(PICKS) else "color"
+        self._pending: Optional[tuple[int, tuple[float, float], QPoint]] = None
+        self._pick_note = ""
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACE.lg, SPACE.md, SPACE.lg, SPACE.sm)
@@ -77,6 +139,12 @@ class ThemeSampleView(Surface):
         head = QHBoxLayout()
         head.addWidget(text_label("Sample slides", "heading"))
         head.addStretch(1)
+        head.addWidget(caption("Click selects"))
+        self.pick_switch = SegmentedControl(PICKS, current=self._pick)
+        self.pick_switch.setToolTip("A click on the slide goes to the field of what is there: the color role "
+                                    "(Colors) or the layout setting (Layout)")
+        self.pick_switch.changed.connect(self.set_pick)
+        head.addWidget(self.pick_switch)
         self.mode_combo = QComboBox()
         self.mode_combo.setToolTip("The color mode the sample slides are rendered in")
         self.mode_combo.activated.connect(lambda _i: self.render_soon(0))
@@ -96,16 +164,21 @@ class ThemeSampleView(Surface):
         self.image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image.setMinimumHeight(120)
         self.image.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.image.setMouseTracking(True)
+        self.image.installEventFilter(self)
         layout.addWidget(self.image, 1)
+        self.spinner = _Spinner(self.image)
         # One small picture per page: a click shows it; a dot under the pages that use the focused colour.
         self.thumbs = QHBoxLayout()
         self.thumbs.setSpacing(SPACE.sm)
         self._thumb_buttons: list[QToolButton] = []
         layout.addLayout(self.thumbs)
+        # Both lines keep their height empty, so the preview does not jump when a message comes and goes.
         self.usage_label = caption("")
-        self.usage_label.hide()
+        self.usage_label.setMinimumHeight(self.usage_label.fontMetrics().lineSpacing() + 2)
         layout.addWidget(self.usage_label)
         self.status = caption("")
+        self.status.setMinimumHeight(self.status.fontMetrics().lineSpacing() + 2)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.status)
 
@@ -150,6 +223,7 @@ class ThemeSampleView(Surface):
         self._cancel = cancel = compiler.CancelToken()
         text, mode = self.editor.text(), self.mode
         self.status.setText("Rendering the sample slides…")
+        self._update_busy()
 
         def work() -> None:
             try:
@@ -160,8 +234,15 @@ class ThemeSampleView(Surface):
 
         threading.Thread(target=work, daemon=True, name="theme-sample").start()
 
+    def _update_busy(self) -> None:
+        """The spinner turns while the slides render or a colour-usage probe runs; the form stays usable."""
+        self.spinner.run(self._cancel is not None or bool(self._probing))
+        self.spinner.move(self.image.width() - self.spinner.width() - 8, 8)
+        self.spinner.raise_()
+
     def _on_rendered(self, result) -> None:
         self._cancel = None
+        self._update_busy()
         if self._again:
             self._again = False
             self.start()
@@ -187,6 +268,7 @@ class ThemeSampleView(Surface):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._show_image()
+        self._update_busy()
 
     # --- where a colour is used ------------------------------------------------------------------------------------
 
@@ -203,6 +285,124 @@ class ThemeSampleView(Surface):
         self._probe(kind, mode)
         self._jump_to_usage()
         self._show()
+
+    # --- a click on the slide --------------------------------------------------------------------------------------
+
+    def set_pick(self, pick: str) -> None:
+        """What a click on the slide looks for: "color" or "layout"."""
+        if pick in dict(PICKS):
+            self._pick = pick
+            self._pending = None
+            self.pick_switch.set_current(pick)
+            layout_settings.set(PICK_KEY, pick)
+            self.say("")
+
+    def say(self, text: str) -> None:
+        """A line under the slides about the last click (while no colour field has the focus)."""
+        self._pick_note = text
+        self.usage_label.setText(self._usage_text() or text)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.image:
+            kind = event.type()
+            if kind == QEvent.Type.MouseMove:
+                self._hover(self._fraction(event.position()))
+            elif kind == QEvent.Type.Leave:
+                self._hover(None)
+            elif kind == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                self.pick_at(self._fraction(event.position()), event.globalPosition().toPoint())
+        return super().eventFilter(watched, event)
+
+    def _fraction(self, position) -> Optional[tuple[float, float]]:
+        """A point of the picture's label as fractions of the page, None beside the page."""
+        pixmap = self.image.pixmap()
+        if pixmap is None or pixmap.isNull() or not self._images:
+            return None
+        width = pixmap.width() / pixmap.devicePixelRatio()
+        height = pixmap.height() / pixmap.devicePixelRatio()
+        x = (position.x() - (self.image.width() - width) / 2) / width
+        y = (position.y() - (self.image.height() - height) / 2) / height
+        return (x, y) if 0 <= x <= 1 and 0 <= y <= 1 else None
+
+    def _role_key(self) -> tuple[str, str, str]:
+        return ("role", self.mode, self.editor.text())
+
+    def _found(self, fraction: tuple[float, float]) -> list[tuple[str, str, str]]:
+        """What is at a point of the page: (kind, name, label), the likeliest first. The logo is the logo in both
+        modes; the slide's background only where nothing else is."""
+        if self._page not in PLAIN_PAGES and theme_sample.PAGE_WIDTH in self.geometry and theme_measures.on_logo(
+                fraction[0] * self.geometry[theme_sample.PAGE_WIDTH],
+                fraction[1] * self.geometry[theme_sample.PAGE_HEIGHT], self.geometry):
+            return [("logo", LOGO, "Logo")]
+        if self._pick == "layout":
+            if self._page in PLAIN_PAGES or theme_sample.PAGE_WIDTH not in self.geometry:
+                return []
+            keys = theme_measures.keys_at(fraction[0] * self.geometry[theme_sample.PAGE_WIDTH],
+                                          fraction[1] * self.geometry[theme_sample.PAGE_HEIGHT], self.geometry)
+            return [("layout", key, theme_fields.BY_NAME[key].label) for key in keys if key in theme_fields.BY_NAME]
+        usage = self._maps.get(self._role_key())
+        if usage is None:
+            return []
+        found = []
+        for name in usage.at(self._page, *fraction):
+            field = theme_fields.BY_NAME.get("role:" + name) or theme_fields.BY_NAME.get(name)
+            found.append(("role", name, field.label if field else name))
+        if len(found) > 1:      # the background is under everything
+            found = [entry for entry in found if entry[1] != BACKGROUND]
+        return found
+
+    def _hover(self, fraction: Optional[tuple[float, float]]) -> None:
+        """The mouse over the slide: a hand and the names of what a click would go to."""
+        if fraction is not None and self._pick == "color":
+            self._probe("role", self.mode)      # so the map is there when the click comes
+        found = self._found(fraction) if fraction is not None else []
+        if found:
+            self.image.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.image.unsetCursor()
+        self.image.setToolTip(" · ".join(label for _kind, _name, label in found))
+
+    def pick_at(self, fraction: Optional[tuple[float, float]], at: QPoint) -> None:
+        """A click at `fraction` of the page (`at`: where on the screen a menu opens): tell which field it means."""
+        if fraction is None:
+            return
+        self._pending = None
+        found = self._found(fraction)
+        if found and found[0][0] == "logo":     # needs neither the colours nor a layout page
+            self.say("")
+            self.picked.emit(found[0][0], found[0][1])
+            return
+        if self._pick == "color":
+            key = self._role_key()
+            if key not in self._maps:       # the map comes first; the click is answered when it is there
+                self._probe("role", self.mode)
+                if key in self._probing:
+                    self._pending = (self._page, fraction, at)
+                    self.say("Finding the colors on the sample slides…")
+                    return
+            if self._maps.get(key) is None:
+                self.say("The colors on the sample slides could not be found.")
+                return
+        elif self._page in PLAIN_PAGES:
+            self.say("This slide has no ordinary title bar and footer: pick a layout setting on pages 2 to 5.")
+            return
+        if not found:
+            self.say("No color role sets what is here (an image or a fixed color)." if self._pick == "color"
+                     else "No layout setting to show here.")
+            return
+        index = 0 if len(found) == 1 else self._choose([label for _kind, _name, label in found], at)
+        if index is None:
+            return
+        self.say("")
+        self.picked.emit(found[index][0], found[index][1])
+
+    def _choose(self, labels: list[str], at: QPoint) -> Optional[int]:
+        """A small menu at `at` of what lies at the click (the topmost first); the index picked, or None."""
+        menu = QMenu(self)
+        menu.addSection("Here")
+        actions = [menu.addAction(label) for label in labels]
+        chosen = menu.exec(at)
+        return actions.index(chosen) if chosen in actions else None
 
     def show_measure(self, key: str, value_bp: Optional[float]) -> None:
         """A layout field has the focus: mark what it sets (theme_measures.marks), at `value_bp` (None: as rendered),
@@ -293,6 +493,7 @@ class ThemeSampleView(Surface):
             self._maps[key] = None
             return
         self._probing.add(key)
+        self._update_busy()
         render, read = self._render, self._read_usage
 
         def work() -> None:
@@ -301,7 +502,7 @@ class ThemeSampleView(Surface):
                 result = render(self.project, probe_text, f"{self.key}--probe-{kind}", mode,
                                 cancel=compiler.CancelToken(), **self._home_args())
                 if result.pdf is not None:
-                    usage = read(result.pdf, mapping, kind, mode, dpi=RENDER_DPI)
+                    usage = read(result.pdf, mapping, kind, mode)
             except Exception:       # no map: the slides stay undimmed, the form still works
                 usage = None
             self.probed.emit(key, usage)
@@ -310,10 +511,16 @@ class ThemeSampleView(Surface):
 
     def _on_probed(self, key, usage) -> None:
         self._probing.discard(key)
+        self._update_busy()
         if key[2] == self.editor.text():
             self._maps[key] = usage
         self._jump_to_usage()
         self._show()
+        if self._pending is not None and key == self._role_key() and key in self._maps:
+            page, fraction, at = self._pending
+            self._pending = None
+            if page == self._page:
+                self.pick_at(fraction, at)
 
     def _jump_to_usage(self) -> None:
         usage = self._map()
@@ -344,35 +551,27 @@ class ThemeSampleView(Surface):
     def _composite(self, image: QImage) -> QImage:
         """`image` dimmed but where the focused colour is used."""
         usage = self._map()
-        if usage is None or self._usage is None or not usage.width:
+        if usage is None or self._usage is None:
             return image
-        mask_bytes = usage.mask(self._page, self._usage[1])
-        if not any(mask_bytes):
+        boxes = usage.boxes(self._page, self._usage[1])
+        if not boxes:
             return image
-        mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
-        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: blur the
-        # mask, then multiply it up (the blurred value of a stroke reaches full), and show the page through it.
-        small = mask.scaled(max(1, image.width() // 10), max(1, image.height() // 10),
-                            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        patch = small.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        white = QImage(image.size(), QImage.Format.Format_ARGB32)
-        white.fill(QColor(255, 255, 255))
-        white.setAlphaChannel(patch)
-        layer = white.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        painter = QPainter(layer)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
-        for _ in range(3):                                      # x8
-            painter.drawImage(0, 0, layer.copy())
-        painter.end()
-        lit = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        painter = QPainter(lit)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-        painter.drawImage(0, 0, layer)
-        painter.end()
+        # The page dimmed, and the page as it is painted back into every box: the outline of a filled rectangle as it
+        # is, a rounded box around text, lines and small shapes. Hard edges, nothing shaded.
+        width, height = image.width(), image.height()
         result = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
         painter = QPainter(result)
-        painter.fillRect(result.rect(), QColor(0, 0, 0, 165))
-        painter.drawImage(0, 0, lit)
+        painter.fillRect(result.rect(), QColor(0, 0, 0, DIM_ALPHA))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(image))
+        radius = width * LIT_RADIUS
+        for box in boxes:
+            rect = QRectF(box.x0 * width, box.y0 * height, (box.x1 - box.x0) * width, (box.y1 - box.y0) * height)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, not box.exact)
+            if box.exact:       # whole pixels: the parts of one fill meet without a seam
+                painter.drawRect(rect.toAlignedRect())
+            else:
+                painter.drawRoundedRect(rect, radius, radius)
         painter.end()
         return result
 
@@ -433,6 +632,7 @@ class ThemeSampleView(Surface):
             button.show()
 
     def show_page(self, page: int) -> None:
+        self._pick_note = ""
         if self._images:
             self._page = min(max(page, 1), len(self._images))
         self._show()
@@ -452,9 +652,7 @@ class ThemeSampleView(Surface):
             self.status.setText("" if count else ("The sample slides render when the panel is shown."
                                                   if self.project is not None else "No project: nothing to render."))
             self.status.setToolTip("")
-        usage_text = self._usage_text()
-        self.usage_label.setText(usage_text)
-        self.usage_label.setVisible(bool(usage_text))
+        self.usage_label.setText(self._usage_text() or self._pick_note)
         self._update_thumbs()
         self._show_image()
 

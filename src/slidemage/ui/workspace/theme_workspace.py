@@ -136,6 +136,8 @@ class ThemeWorkspace(Surface):
         self.form.on_measure_cleared = self.sample.clear_measure
         self.form.geometry = lambda: self.sample.geometry
         self.sample.geometry_changed.connect(self.form.refresh)
+        # A click on the sample slide goes to the field of what is there.
+        self.sample.picked.connect(self._on_picked)
         self._sync()
         view = layout_settings.get(VIEW_KEY, "form")
         self.set_view(view if view in dict(VIEWS) else "form")
@@ -155,6 +157,10 @@ class ThemeWorkspace(Surface):
         sizes = {"form": [0, 3000, 2000], "split": [3000, 0, 2000], "source": [5000, 0, 0]}[view]
         self.splitter.setSizes(sizes)
         layout_settings.set(VIEW_KEY, view)
+
+    def _on_picked(self, kind: str, name: str) -> None:
+        if not self.form.reveal(kind, name):
+            self.sample.say("The form has no field for this.")
 
     def pick_mode(self, mode: str) -> None:
         self.form.set_mode(mode)
