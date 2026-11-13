@@ -109,6 +109,10 @@ class ThemeWorkspace(Surface):
         self.mode_bar = ModeBar()
         self.mode_bar.on_pick = self.pick_mode
         self.mode_bar.on_add = self.form.add_mode
+        # Source hides the bar; it keeps its space so the switch and the strip look as in Form and Split.
+        keep = self.mode_bar.sizePolicy()
+        keep.setRetainSizeWhenHidden(True)
+        self.mode_bar.setSizePolicy(keep)
         row.addWidget(self.mode_bar, 1)
         self.view_switch = SegmentedControl(VIEWS, current="form")
         self.view_switch.changed.connect(self.set_view)

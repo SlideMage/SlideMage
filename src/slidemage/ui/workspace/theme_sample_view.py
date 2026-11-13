@@ -23,10 +23,12 @@ from ..kit.tokens import SPACE
 from ..kit.widgets import Button, Surface, caption, text_label
 
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
-RENDER_DPI = 110
+RENDER_DPI = 110            # the colour-usage probe (a pixel grid; cheap)
+DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
+BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
 
-def pdf_pages(pdf: Path, dpi: int = RENDER_DPI) -> list[QImage]:
+def pdf_pages(pdf: Path, dpi: int = DISPLAY_DPI) -> list[QImage]:
     """Every page of `pdf` as an image."""
     import pymupdf
 
@@ -223,27 +225,28 @@ class ThemeSampleView(Surface):
             return image
         result = image.convertToFormat(QImage.Format.Format_ARGB32)
         scale = result.width() / self.geometry[theme_sample.PAGE_WIDTH]
+        k = result.width() / BASE_WIDTH
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         font = painter.font()
-        font.setPixelSize(max(11, int(result.height() / 32)))
+        font.setPixelSize(max(11, int(result.height() / 32)))   # grows with the page already
         font.setBold(True)
         painter.setFont(font)
         strong, thin = QColor("#2563eb"), QColor(37, 99, 235, 140)
         for mark in found:
-            pen = QPen(strong if mark.focus else thin, 3 if mark.focus else 1.5)
+            pen = QPen(strong if mark.focus else thin, (3 if mark.focus else 1.5) * k)
             pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
             at = mark.at * scale
             if mark.kind == "h":
                 painter.drawLine(0, int(at), result.width(), int(at))
                 if mark.arrow:
-                    solid = QPen(strong, 2)
+                    solid = QPen(strong, 2 * k)
                     painter.setPen(solid)
                     x = int(result.width() * 0.58)
                     painter.drawLine(x, 0, x, int(at))
-                    painter.drawLine(x - 5, int(at) - 7, x, int(at))
-                    painter.drawLine(x + 5, int(at) - 7, x, int(at))
+                    painter.drawLine(int(x - 5 * k), int(at - 7 * k), x, int(at))
+                    painter.drawLine(int(x + 5 * k), int(at - 7 * k), x, int(at))
                 # the focused mark's label by its arrow, a context mark's (the title bar's edge) at the left
                 x = int(result.width() * 0.58) + 8 if mark.focus or mark.arrow else int(result.width() * 0.04)
                 self._label(painter, mark, x, int(at) - 6 if mark.focus else int(at) + painter.fontMetrics().height() + 6,
@@ -347,14 +350,29 @@ class ThemeSampleView(Surface):
         if not any(mask_bytes):
             return image
         mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
-        mask = mask.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.FastTransformation)
-        lit = image.convertToFormat(QImage.Format.Format_ARGB32)
-        lit.setAlphaChannel(mask)
-        result = image.convertToFormat(QImage.Format.Format_ARGB32)
+        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: blur the
+        # mask, then multiply it up (the blurred value of a stroke reaches full), and show the page through it.
+        small = mask.scaled(max(1, image.width() // 10), max(1, image.height() // 10),
+                            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        patch = small.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        white = QImage(image.size(), QImage.Format.Format_ARGB32)
+        white.fill(QColor(255, 255, 255))
+        white.setAlphaChannel(patch)
+        layer = white.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        painter = QPainter(layer)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        for _ in range(3):                                      # x8
+            painter.drawImage(0, 0, layer.copy())
+        painter.end()
+        lit = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        painter = QPainter(lit)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        painter.drawImage(0, 0, layer)
+        painter.end()
+        result = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
         painter = QPainter(result)
         painter.fillRect(result.rect(), QColor(0, 0, 0, 165))
-        for dx, dy in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):     # one pixel wider, so thin text shows
-            painter.drawImage(dx, dy, lit)
+        painter.drawImage(0, 0, lit)
         painter.end()
         return result
 

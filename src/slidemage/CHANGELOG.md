@@ -4095,3 +4095,8 @@ v0.16.32 (2026-11-13, direct request: two things found opening the Innsbruck the
 NEW: A way back from a file's Source view.
 - On a deck's source or a theme file, click Preview, Split or Details to return to the slide tab in that view.
 - Fixed: the LaTeX check warned about underscores in colour names such as c_secondary_blue in a theme, and twice.
+
+v0.16.33 (2026-11-13, direct request: the theme workspace): (1) In a theme's Source view the Form | Split | Source bar was a wide, low strip because the colour-mode bar beside it was hidden; the hidden bar now keeps its space, so the strip looks as in Form and Split. (2) The sample slides in Form view are rendered at 220 dpi instead of 110 (theme_sample_view.DISPLAY_DPI; the colour-usage probe stays at 110), so they are sharp. The layout marks scale with the page. (3) Hovering a colour lit the places it is used with a blocky mask enlarged without smoothing; the highlight now lights a blurred patch around each place the colour is used (thin text strokes gave a ragged outline) and dims the rest.
+
+NEW: Sharper sample slides in a theme.
+- Fixed: the theme view bar keeps its look in Source view, and the colour highlight on the sample slides lights whole patches, not text outlines.

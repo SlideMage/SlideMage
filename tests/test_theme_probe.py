@@ -142,8 +142,8 @@ def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_
     assert view._page == 3 and "page 3" in view.usage_label.text() and renders[-1] == "probe--probe-role"
     plain = view._images[2]
     lit = view._composite(plain)
-    bottom = lit.pixelColor(80, 80)                       # outside the role: dimmed
-    assert bottom.red() < plain.pixelColor(80, 80).red()
+    bottom = lit.pixelColor(80, 240)                      # outside the role: dimmed
+    assert bottom.red() < plain.pixelColor(80, 240).red()
     assert lit.pixelColor(80, 5).red() == plain.pixelColor(80, 5).red()     # inside: as it is
     view.show_usage("role", "text", "light")
     assert "not used on the sample slides" in view.usage_label.text()
