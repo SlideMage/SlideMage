@@ -116,6 +116,7 @@ class _CtrlWatch(QObject):
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
     duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
+    context_changed = Signal(object)    # the CentreTab now on show: the left column follows its context (None: placeholder)
     source_only_changed = Signal(bool)  # the tab shown has a file that is no slide: the Source view alone
 
     def __init__(self, app, state: WorkspaceState) -> None:
@@ -254,6 +255,7 @@ class CentreColumn(QFrame):
             frozen = slide and self._file_slide(path)[1] is not None
             mode = "source" if line is not None or frozen else self.state.mode
             tab = self.tabs.add_file(path, on_saved, slide=slide, occurrence=occurrence, mode=mode)
+            tab.context = self._file_context(path, slide)
             self.source.hold(path)
         else:
             if on_saved is not None:
@@ -340,6 +342,31 @@ class CentreColumn(QFrame):
             return self.state.deck
         deck = self.state.deck
         return deck if context is not None and deck is not None and deck.path == context else None
+
+    def _shown_deck(self):
+        """The deck of what the Preview shows: a slide file tab's own, else the focused slide's, in `state.deck` (a tab
+        with no deck, a .bib, shows no slide of its own)."""
+        tab = self.tabs.active
+        return self.tab_deck(tab) if tab.slide else self.state.deck
+
+    def _file_context(self, path: Path, slide: bool):
+        """The context of a new file tab (tab-contexts.md O6, O7): a file that is no slide and no deck's source
+        (SlideMage.bib, test-slides.tex, a theme's template) belongs to no deck, so None; any other follows the deck."""
+        project = self.state.project
+        deck = self.state.deck
+        if slide or path.parent in (project.decks_dir, project.archive_dir) or (deck is not None and path == deck.path):
+            return FOLLOW
+        return None
+
+    def list_placeholder(self, tab: Optional[CentreTab] = None) -> Optional[tuple[str, str]]:
+        """(text, button) the slide list shows in place of the list for `tab` (default: the one on show), None when it
+        shows the list: the tab belongs to a deck. The button text names the deck the working tab shows."""
+        tab = tab or self.tabs.active
+        if tab.context is not None:
+            return None
+        deck = self.state.deck
+        text = f"{tab.path.name if tab.path else 'This tab'} has no slide list."
+        return text, (f"Back to {deck.name}" if deck is not None else "")
 
     def tab_slide(self) -> Optional[tuple[Path, Optional[deck_outline.SlideRow], object]]:
         """(path, row, deck) of the slide file tab on show, which the side panels follow (D9); None for the slide tab and
@@ -775,6 +802,7 @@ class CentreColumn(QFrame):
         if not tab.source_only and self.state.mode not in ("source", "split"):
             self.source.show_path(None)         # as for the slide tab in Preview before: no file is "shown"
         self.source_only_changed.emit(tab.source_only)
+        self.context_changed.emit(tab)
         if not self._holding:
             self.refresh()
 
@@ -942,8 +970,10 @@ class CentreColumn(QFrame):
             path = project.root / rel
             if not path.is_file():
                 continue       # skipped silently: gone since this project was last open
-            tab = self.tabs.add_file(path, slide=_is_slide_file(path),
+            slide = _is_slide_file(path)
+            tab = self.tabs.add_file(path, slide=slide,
                                      mode=entry.get("mode") if entry.get("mode") in MODES else "source")
+            tab.context = self._file_context(path, slide)
             self.source.hold(path)
             if (index == active) if new_format else (rel == active):
                 active_tab = tab
@@ -1117,7 +1147,7 @@ class CentreColumn(QFrame):
 
     def _context_for(self, path: Optional[Path], row: Optional[deck_outline.SlideRow]):
         id_slug, version = self._file_slide(path)
-        state, deck = self.state, self.tab_deck(self.tabs.active)
+        state, deck = self.state, self._shown_deck()
         if row is not None and (path is None or (id_slug == row.call.id_slug and version == row.call.version)):
             return for_call(state.project, deck, row.call, row.position, language=state.language, frame_number=row.frame_number,
                             occurrence_key=row.key, hidden=row.hidden, outline=state.outline), row, row.title, None
@@ -1137,7 +1167,7 @@ class CentreColumn(QFrame):
         if self.tabs.active.slide:
             return                  # a slide file tab keeps its slide, and the focus stays where it is
         state, row = self.state, self._focused_row()
-        deck = self.tab_deck(self.tabs.active)
+        deck = self._shown_deck()
         if deck is None or row is None:
             return
         rows = deck_outline.outline_rows(state.project, deck, state.view, state.language, outline=state.outline)
@@ -1178,7 +1208,7 @@ class CentreColumn(QFrame):
         two after, ...) that the view typesets: the Preview counts their reveal steps while it is idle. A slide file tab
         the deck does not use has none."""
         state, row = self.state, self._shown_row()
-        deck = self.tab_deck(self.tabs.active)
+        deck = self._shown_deck()
         if deck is None or row is None:
             return []
         # Kept while the slide, the view and the resolved outline stay: building them reads every slide's language

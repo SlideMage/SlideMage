@@ -286,6 +286,8 @@ class WorkspaceWindow(QMainWindow):
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source_only_changed.connect(self.topbar.set_source_only)
+        self.centre.context_changed.connect(self._on_tab_context)
+        self.slide_list.back_requested.connect(self.centre.show_slide_tab)
         self.topbar.leave_source_only.connect(self._leave_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
@@ -374,6 +376,11 @@ class WorkspaceWindow(QMainWindow):
         self.set_column_widths(left=slide_list.WIDTH if index == 1 else None,
                                right=side_panels.WIDTH if index == 2 else None)
         self._on_splitter_moved(0, index)
+
+    def _on_tab_context(self, tab) -> None:
+        """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
+        placeholder = self.centre.list_placeholder(tab)
+        self.slide_list.show_placeholder(*placeholder) if placeholder else self.slide_list.show_placeholder(None)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         # The Images page hides the columns: not the user's choice.
