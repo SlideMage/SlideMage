@@ -8,7 +8,7 @@ from pathlib import Path
 from .... import plugin_api
 from ....ai import ai_profile, tasks
 from .. import attachments
-from ..task_bubbles import bubbles
+from ..task_bubbles import bubbles, prompt_for
 from ..terminal.sync import DiskSync
 from .gui_workspace import GuiWorkspace
 
@@ -90,6 +90,9 @@ class ChatSurfaceContext:
             return f"{path.name} has a translation already, or is not EN or DE: there is nothing to translate."
         if self._tasks.occupied:
             return "SlideMage is busy with another task; ask the user to try again when its card is done."
+        if prompt_for(self._state.project, bubble.task) is not None:
+            return ("On this route the Translate button only types a prompt for the user to send: translate the slide "
+                    "yourself with add_slide and modify_slide.")
         if reason := self._tasks.refusal(bubble.task):
             return reason
         self._tasks.start(bubble.task, bubble.paths, bubble.label)

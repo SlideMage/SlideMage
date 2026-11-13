@@ -44,6 +44,9 @@ Cloud · API only the tasks with an equivalent on a provider run. Each run holds
 Translate (slide_add.translate_body, its answer checked like Claude's) and Make readable (ai/provider_tasks.py: the
 task's rules and schema as JSON on the provider, the same check and one repair round). Every other task is refused
 with "not available on <route>", nothing sent and no other route or model used.
+A route with `task_prompt` (plugin_api.TaskPromptRoute; Cloud · Claude Code's Translate) is different: the button
+types a prepared prompt into the route's input box (`fill_prompt`) and nothing runs, no card opens, nothing is sent;
+the user reads the prompt and sends it, and a box that is not free is only a line in the task row (`_hand_over`).
 Make readable works from the findings of the last readability check of the slide (readability_check.KnownFindings,
 the window's `readability_known`, valid for exactly the text that was measured): the header offers it, and the
 palette and the findings panel start it, only for a slide with such findings, and its request carries the ones the
@@ -120,6 +123,19 @@ def _runner_of(ctx: ProjectContext, route: ai_profile.Route):
     them on the route's provider (provider_tasks)."""
     found = routes.get(route.route)
     return found.task_runner(routes.context(ctx, found.id), route) if found is not None else None
+
+
+def prompt_for(ctx: ProjectContext, task: ai_tasks.Task, route: ai_profile.Route | None = None, slide: Path | None = None,
+               language: str = "") -> str | None:
+    """The prompt `route` types into its input box for the user to send instead of running the one-slide `task`
+    (AiRoute.task_prompt, optional), or None when it runs the task as usual. Without `slide` a route only says
+    whether it takes the task: its text is then not the prompt."""
+    route = route or ai_profile.resolve(ctx, KINDS[task.name])
+    found = routes.get(route.route)
+    offer = getattr(found, "task_prompt", None)
+    if offer is None or task not in CARD_TASKS:
+        return None
+    return offer(routes.context(ctx, found.id), route, task.name, slide, language)
 
 
 WORKERS = 2                            # processes at a time in a batch
@@ -365,7 +381,7 @@ DECK_TASKS = (*BATCH_TASKS, image_tasks.DESCRIBE, ai_tasks.SUMMARISE)           
 
 def contextual(found: list[Bubble], runner: "TaskRunner", limit: int = 2) -> list[Bubble]:
     """The `limit` most relevant of the tasks `found` that the active route can run (a refused one is not offered)."""
-    runnable = [bubble for bubble in found if not runner.refusal(bubble.task)]
+    runnable = [bubble for bubble in found if not runner.refusal(bubble.task, paths=bubble.paths)]
     return sorted(runnable, key=lambda bubble: PRIORITY.index(bubble.task))[:limit]
 
 
@@ -600,10 +616,12 @@ class TaskRunner(QObject):
                 text, note = f"{_NAMES[worker.capture.task.name]} · {slide_language.bare_id(worker.capture.id_slug)}", ""
         return [RunningWork(text, self._route.label, self._route.is_local, self.stop, note)]
 
-    def refusal(self, task: ai_tasks.Task, route: ai_profile.Route | None = None) -> str:
-        """Why `task` cannot run on the active route (it has no implementation there, or the route is not ready),
-        or "" when it can."""
+    def refusal(self, task: ai_tasks.Task, route: ai_profile.Route | None = None, paths: tuple[Path, ...] = ()) -> str:
+        """Why `task` (on the slides `paths`, for a deck bubble) cannot run on the active route (it has no implementation
+        there, or the route is not ready), or "" when it can, or the route takes it as a prompt."""
         route = route or ai_profile.resolve(self._window.project, KINDS[task.name])
+        if not paths and prompt_for(self._window.project, task, route) is not None:
+            return ""
         if routes.get(route.route) is None:
             return resolver.problem(self._window.project, route)
         try:
@@ -639,7 +657,10 @@ class TaskRunner(QObject):
             if capture is None:
                 self.status.emit("That no longer fits this slide.", "warning")
                 return
-        if reason := self.refusal(task, route):
+        if capture is not None and (text := prompt_for(project, task, route, capture.path, capture.language)) is not None:
+            self._hand_over(route, text)
+            return
+        if reason := self.refusal(task, route, paths):
             self._refused(capture, route, title, reason, card_model.SETUP)
             return
         if not confirm_if_new(self._window, project, route, "the slide text and images this task works on"):
@@ -680,6 +701,17 @@ class TaskRunner(QObject):
         except BaseException:
             self.shutdown()
             raise
+
+    def _hand_over(self, route: ai_profile.Route, text: str) -> None:
+        """Show the route's conversation and let it type `text` into its input box. Nothing is sent: the user reads
+        the prompt and sends it; when the surface cannot take it, the task row says so and nothing is queued."""
+        window = self._window
+        window.stack.setCurrentWidget(window.centre)        # the Images page hides the right column
+        self.hide_card()
+        surface = window.assistant.surface_for(route.route)
+        if surface is None or not surface.fill_prompt(text):
+            self.status.emit(f"{routes.get(route.route).service} is busy: wait until its input box is back, then "
+                             "click again.", "warning")
 
     def _refused(self, capture: _Capture | None, route: ai_profile.Route, title: str, reason: str, phase: str) -> None:
         """The task will not start: a task on a slide says so on its card, the others in the task row."""

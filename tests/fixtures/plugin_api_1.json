@@ -73,6 +73,7 @@
     "TRANSLATE",
     "TYPE_CHECKING",
     "Task",
+    "TaskPromptRoute",
     "TerminalService",
     "TerminalSession",
     "TerminalWidget",
@@ -2320,6 +2321,43 @@
     "StaleFileError": {
       "attributes": [],
       "methods": {}
+    },
+    "TaskPromptRoute": {
+      "attributes": [],
+      "methods": {
+        "task_prompt": [
+          {
+            "name": "self",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "ctx",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "route",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "task_name",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "slide_path",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          },
+          {
+            "name": "language",
+            "kind": "POSITIONAL_OR_KEYWORD",
+            "required": true
+          }
+        ]
+      }
     },
     "TerminalService": {
       "attributes": [],

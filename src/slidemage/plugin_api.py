@@ -563,6 +563,22 @@ class ChatSurfaceRoute(Protocol):
         ...
 
 
+class TaskPromptRoute(Protocol):
+    """Optional addition to AiRoute, for a route whose conversation is a terminal the user types into (Claude Code):
+    a task button of a slide types a prepared prompt into the surface's input box instead of running the task. The
+    user reads it and sends it; core never sends it, and it runs no task and opens no task card for it. The surface
+    (chat_surface_v2's widget) provides `fill_prompt(text) -> bool`: True when it takes the text (it reports a box
+    that is not free later, through its own `notice(text, tone)` signal, which core shows in the task row), False
+    when it cannot (no session); core then says the route is busy. The text must never be sent for the user."""
+
+    def task_prompt(self, ctx: RouteContext, route: Route, task_name: str, slide_path: Path | None,
+                    language: str) -> str | None:
+        """The prompt for the task `task_name` ("translate") on the slide file `slide_path`, into the language code
+        `language`, or None when the route does not take this task as a prompt (core then asks `problem` as ever).
+        With `slide_path` None core only asks whether the route takes the task: return any string, or None."""
+        ...
+
+
 class RouteTaskLease(Protocol):
     """A reservation of one route's long-running work, usable as a context manager."""
 
