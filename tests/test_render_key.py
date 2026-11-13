@@ -154,6 +154,19 @@ def test_a_render_is_fresh_until_a_file_it_read_changes(ctx, resolver, store):
     assert resolver.lookup(unit).state is Freshness.FRESH
 
 
+def test_a_stale_render_names_the_changed_file_even_when_the_inventory_changed_too(ctx, resolver, store):
+    write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
+    image = write(ctx.media_dir / "pic.png", "img")
+    unit = unit_for(ctx)
+    key, meta = make_record(resolver, unit, [unit.source_path, image])
+    store_render(store, key, meta)
+    write(image, "other image")
+    write(ctx.root / "SlideMage_layout_x.tex", "a new layout")
+    assert resolver.lookup(unit).why == "file media/pic.png"
+    write(image, "img")
+    assert resolver.lookup(unit).why == "inventory"
+
+
 def test_a_different_page_number_is_fresh_with_a_note(ctx, resolver, store):
     write(ctx.slides_dir / "aaa-EN-One-current.tex", "slide")
     unit = unit_for(ctx, frame=3)

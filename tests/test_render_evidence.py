@@ -90,3 +90,32 @@ def test_inventory_stays_current_only_when_changed_names_cannot_affect_its_input
     listed.clear()
     assert render_evidence.search_inventory(root, env, force=True) == current
     assert set(listed) == {root, picture.parent, root / 'decks'}
+
+
+def test_an_unused_file_in_any_search_folder_leaves_the_inventory_current_but_a_probe_name_does_not(tmp_path):
+    root, framework, theme = tmp_path / 'project', tmp_path / 'latex', tmp_path / 'theme'
+    for folder in (root / 'media', framework, theme):
+        folder.mkdir(parents=True)
+    picture = root / 'media/fig.png'
+    base = framework / 'SlideMage_base.tex'
+    for path in (picture, base):
+        path.write_bytes(b'read')
+    env = {'SLIDEMAGE_LATEX': str(framework), 'TEXINPUTS': str(theme)}
+    inputs = [picture, base]
+    recorded = render_evidence.inventory_state(render_evidence.search_inventory(root, env, force=True), inputs)
+
+    def current():
+        return render_evidence.inventory_state(render_evidence.search_inventory(root, env, force=True), inputs)
+
+    for unused in (root / 'SlideMage_template_x.tex', framework / 'SlideMage_template_x.tex', theme / 'SlideMage_template_x.tex',
+                   theme / 'logo.pdf'):
+        unused.write_bytes(b'unused')
+        assert current() == recorded
+    for probe in (root / 'SlideMage_layout_x.tex', framework / 'SlideMage_citation_x.tex', theme / 'hyphenation/hyph-xx.pat.txt'):
+        probe.parent.mkdir(exist_ok=True)
+        probe.write_bytes(b'probe')
+        assert current() != recorded
+        probe.unlink()
+        assert current() == recorded
+    (theme / 'SlideMage_base.tex').write_bytes(b'shadow')    # a file with the stem of one that was read
+    assert current() != recorded

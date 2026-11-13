@@ -376,15 +376,14 @@ class Resolver:
             paths = [unit.source_path, *[rel for _kind, rel, _sha in record["manifest"]]]
             # The key already covers the requested source text, which can be an unsaved buffer.
             entries = [entry for entry in record["manifest"] if self._resolve(*entry[:2], frameworks) != unit.source_path]
-            if render_evidence.inventory_state(current, paths) == record["inventory"]:
-                changed = self.manifest_current(entries, strict=strict, frameworks=frameworks)
-                if changed is not None:
-                    why = f"file {changed}"
-                elif not self.tex_current(record, validation):
-                    why = "tex files"
-                else:
-                    same = record.get("frame_number") == unit.frame_number
-                    return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
+            changed = self.manifest_current(entries, strict=strict, frameworks=frameworks)
+            if changed is not None:
+                why = f"file {changed}"
+            elif not self.tex_current(record, validation):
+                why = "tex files"
+            elif render_evidence.inventory_state(current, paths) == record["inventory"]:
+                same = record.get("frame_number") == unit.frame_number
+                return Lookup(Freshness.FRESH if same else Freshness.FRESH_NUMBERING_DIFFERS, record, key)
         failure = self.store.failure(key)
         if failure is not None:
             changed = self.manifest_current(failure["manifest"], strict=strict, frameworks=frameworks)
