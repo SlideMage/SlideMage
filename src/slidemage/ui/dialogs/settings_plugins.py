@@ -1384,7 +1384,12 @@ class PluginsTab(Page):
 
         def finished(result: object, error: Exception | None) -> None:
             self._job = None
-            on_done(result, error)
+            try:
+                on_done(result, error)
+            finally:
+                # A job's handler does not always rebuild the tab (which resets the buttons), and it may have
+                # started the next job: the buttons wait only while one runs.
+                self._set_busy(self._job is not None)
 
         job.done.connect(finished)
         self._set_busy(True)
