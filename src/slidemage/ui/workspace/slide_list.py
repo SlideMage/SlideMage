@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QStackedWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -84,6 +85,7 @@ def remembered_width() -> int:
 
 class SlideList(QWidget):
     _thumbnails_finished = Signal(object)
+    back_requested = Signal()       # the placeholder's button: show the working tab again
 
     def __init__(self, app, state: WorkspaceState, theme: ThemeManager, toast: Toast) -> None:
         """`app` is the window: it rescans after an edit (`after_deck_edit`), opens the
@@ -130,7 +132,11 @@ class SlideList(QWidget):
         self.tree.delegate.renamed.connect(self._rename_section)
         self.tree.delegate.reviewed.connect(
             lambda row: self.mark_reviewed([self.app.project.slides_dir / row.call.source_filename]))
-        layout.addWidget(self.tree, 1)
+        self.placeholder = self._build_placeholder()
+        self.stack = QStackedWidget()           # the list, or the placeholder of a tab with no deck (tab-contexts.md section 5)
+        self.stack.addWidget(self.tree)
+        self.stack.addWidget(self.placeholder)
+        layout.addWidget(self.stack, 1)
 
         self.note = QLabel()
         self.note.setObjectName(q.SLIDES_NOTE)
@@ -177,6 +183,33 @@ class SlideList(QWidget):
         state.languages_changed.connect(lambda _codes: self.rebuild())
         state.focused_slide_changed.connect(self._on_state_focus)
         self.rebuild()
+
+    def _build_placeholder(self) -> QWidget:
+        page = QWidget()
+        column = QVBoxLayout(page)
+        column.setContentsMargins(SPACE.md, SPACE.lg, SPACE.md, SPACE.md)
+        column.setSpacing(SPACE.md)
+        self.placeholder_text = QLabel()
+        self.placeholder_text.setObjectName(q.SLIDES_NOTE)
+        self.placeholder_text.setWordWrap(True)
+        column.addWidget(self.placeholder_text)
+        self.placeholder_back = Button("", "secondary", compact=True)
+        self.placeholder_back.clicked.connect(self.back_requested.emit)
+        column.addWidget(self.placeholder_back)
+        column.addStretch(1)
+        return page
+
+    def show_placeholder(self, text: Optional[str], back: str = "") -> None:
+        """Show `text` in place of the slide list (the tab on show has no deck), with a button `back` that asks for the
+        working tab; None shows the list again. The column keeps its width and its header, which is disabled."""
+        shown = text is not None
+        if shown:
+            self.placeholder_text.setText(text)
+            self.placeholder_back.setText(back)
+            self.placeholder_back.setVisible(bool(back))
+        self.stack.setCurrentWidget(self.placeholder if shown else self.tree)
+        for part in (self.find, self.review_filter, self.bulk_bar, self.add_bar):
+            part.setEnabled(not shown and (part is not self.add_bar or self.deck is not None))
 
     def _build_bulk_bar(self) -> QWidget:
         bar = QWidget()
@@ -477,7 +510,7 @@ class SlideList(QWidget):
         focused = self.state.focused_slide
         if not preserve_focus and (focused is None or focus_in_deck or self._item_of(focused) is not None):
             self._on_current_changed(self.tree.currentItem(), None)
-        self.add_bar.setEnabled(deck is not None)
+        self.add_bar.setEnabled(deck is not None and self.stack.currentWidget() is self.tree)
 
     def _apply_filter(self) -> None:
         words = self.find.text().lower().split()

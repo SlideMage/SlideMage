@@ -1187,3 +1187,22 @@ def test_a_click_on_an_item_the_list_rebuilt_meanwhile_is_ignored(make_list):
     slide_list.tree._extends_selection = False
     slide_list.tree._on_clicked(None, 0)          # Qt passes None for an item deleted between press and release
     assert ids(slide_list) == ["aaa"]
+
+
+def test_the_placeholder_replaces_the_list_in_the_same_column_and_back_is_asked_for(make_list):
+    slide_list, window, _path = make_list("\\section{S}\n\\slide{a}\n")
+    slide_list.resize(300, 500)
+    slide_list.show()
+    before = (slide_list.size(), slide_list.find.geometry(), slide_list.stack.geometry())
+    asked = []
+    slide_list.back_requested.connect(lambda: asked.append(True))
+    slide_list.show_placeholder("SlideMage.bib has no slide list.", "Back to course")
+    assert slide_list.stack.currentWidget() is slide_list.placeholder
+    assert slide_list.placeholder_text.text() == "SlideMage.bib has no slide list."
+    assert not slide_list.find.isEnabled() and not slide_list.add_bar.isEnabled()
+    assert (slide_list.size(), slide_list.find.geometry(), slide_list.stack.geometry()) == before   # nothing jumps
+    slide_list.placeholder_back.click()
+    assert asked == [True]
+    slide_list.show_placeholder(None)
+    assert slide_list.stack.currentWidget() is slide_list.tree
+    assert slide_list.find.isEnabled() and slide_list.add_bar.isEnabled()

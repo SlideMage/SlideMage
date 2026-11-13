@@ -4132,3 +4132,8 @@ v0.16.39 (2026-11-13, direct request: the theme form's dropdowns and a click on 
 NEW: Click a footnote marker on a theme's sample slides to find its setting.
 - New: click a footnote marker on a sample slide of a theme to go to the footnote marker setting.
 - Fixed: the mouse wheel over a dropdown in the theme form no longer changes its entry; it scrolls the form.
+
+v0.16.40 (2026-11-13, tab contexts step 1, docs/plans/tab-contexts.md): A tab of a file that is no slide and no deck's source (SlideMage.bib, test-slides.tex, a theme's template) has no deck now (CentreTab.context None; CentreColumn._file_context, also applied by restore_tabs). While such a tab is on show the slide list column keeps its width and header, which is disabled, and shows a placeholder in place of the list ("SlideMage.bib has no slide list." with a "Back to <deck>" button that shows the slide tab): SlideList.show_placeholder, a QStackedWidget over the tree, signals CentreColumn.context_changed and SlideList.back_requested, wired in the window (_on_tab_context). The side panels are unchanged (E5). Tests in tests/test_centre_gui.py and tests/test_slide_list_gui.py.
+
+NEW: The window no longer jumps when you switch to a .bib tab.
+- New: opening SlideMage.bib or another file that is no slide keeps the left column in place and shows a short note instead of the slide list, with a button back to the deck's slide tab.

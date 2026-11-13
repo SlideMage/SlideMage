@@ -1963,12 +1963,12 @@ def test_the_new_format_round_trips_with_the_slide_tab_active(centre, files, ctx
     assert reopened.tabs.active is reopened.tabs.slide_tab
 
 
-def test_every_tab_follows_the_open_deck_for_now(centre, files):
+def test_tabs_of_the_deck_follow_it_and_a_bib_has_none(centre, files):
     from slidemage.ui.workspace.centre_tabs import FOLLOW
     centre.open_file(files.ccc, tab=True)
     centre.open_file(files.bib)
-    assert all(t.context is FOLLOW for t in centre.tabs.tabs)
-    assert all(centre.tab_deck(t) is centre.state.deck for t in centre.tabs.tabs)
+    assert [t.context is FOLLOW for t in centre.tabs.tabs] == [True, True, False]
+    assert all(centre.tab_deck(t) is centre.state.deck for t in centre.tabs.tabs[:2])
     from slidemage.ui.workspace.centre_tabs import CentreTab
     assert centre.tab_deck(CentreTab("file", files.bib, context=None)) is None
     assert centre.tab_deck(CentreTab("file", files.bib, context=centre.state.deck.path)) is centre.state.deck
@@ -2022,3 +2022,34 @@ def test_a_frozen_tabs_details_show_the_frozen_file_with_its_chip_and_no_changin
     centre.tabs.activate(centre.tabs.tab_for(frozen))
     centre.state.set_mode("details")
     assert "Frozen v1.0.0" in facts()[2]
+
+
+from slidemage.ui.workspace.centre_tabs import FOLLOW  # noqa: E402
+
+
+def test_a_file_that_is_no_slide_and_no_deck_has_no_context_and_the_list_shows_a_placeholder(centre, files):
+    seen = []
+    centre.context_changed.connect(seen.append)
+    centre.open_file(files.bib)
+    bib = centre.tabs.tab_for(files.bib)
+    assert bib.context is None
+    assert centre.tab_deck(bib) is None
+    text, back = centre.list_placeholder()
+    assert "SlideMage.bib" in text and back == "Back to course"
+    assert seen[-1] is bib
+    centre.open_file(files.deck)                                # a deck's source belongs to its deck (O7)
+    assert centre.tabs.tab_for(files.deck).context is FOLLOW and centre.list_placeholder() is None
+    centre.open_file(files.ccc, tab=True)                       # so does a slide
+    assert centre.tabs.tab_for(files.ccc).context is FOLLOW and centre.list_placeholder() is None
+    centre.show_slide_tab()
+    assert centre.list_placeholder() is None
+
+
+def test_a_bib_tab_is_restored_with_no_context(centre, files, ctx, deck, monkeypatch):
+    centre.open_file(files.bib)
+    centre.save_tabs()
+    saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
+    assert saved["tabs"][1]["deck"] is None
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert reopened.tabs.tab_for(files.bib).context is None
