@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Qt
+from shiboken6 import isValid
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
@@ -31,6 +32,7 @@ from ..kit.widgets import (Badge, Button, Card, Chip, ColorSwatchButton, Segment
                            text_label)
 
 REFRESH_DELAY_MS = 400      # after the last keystroke in the source
+REVEAL_MS = 1400            # how long a field a click on the sample slides went to stays tinted
 DISPLAY_UNIT_KEY = "theme_display_unit"     # mm or pt: what the theme form shows lengths in (layout_settings)
 FONT_SIZE_KEYS = frozenset({"SMBodyFontSize"})     # lengths that are font sizes: always pt
 
@@ -180,6 +182,8 @@ class _Cell(Surface):
             dot.show()
 
     def _commit(self) -> None:
+        if not isValid(self.edit):      # the form was rebuilt while the field had the focus
+            return
         text = self.edit.text().strip()
         written, _, _ = self.read()
         if text == (written or ""):
@@ -234,6 +238,8 @@ class ThemeForm(QWidget):
         self._filters: list[QObject] = []
         self._focused_usage: Optional[tuple[str, str, str]] = None
         self._hovered_usage: Optional[tuple[str, str, str]] = None
+        self._tells: dict[str, Callable[[], None]] = {}     # per length: mark it on the sample slides (reveal)
+        self._logo_path: Optional[QLineEdit] = None         # the logo's file field (reveal)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -311,6 +317,71 @@ class ThemeForm(QWidget):
     def show_tab(self, name: str) -> None:
         self.tab_bar.setCurrentIndex(self.TABS.index(name))
 
+    def reveal(self, kind: str, name: str) -> bool:
+        """Go to the field of a colour role (kind "role", in the mode shown) or of a layout setting (kind "layout", a
+        hook's name) or of the logo's file (kind "logo"): its tab, its group opened, the field scrolled into view, focused and lit for a moment. A click
+        on the sample slides asks for this. False when the form has no such field."""
+        if self.model is None or not self.model.readable:
+            return False
+        if kind == "logo":
+            self.show_tab("Logo & notes")
+            if self._logo_path is None or not isValid(self._logo_path):
+                return False
+            self._go_to(self._logo_path)
+            return True
+        if kind == "layout":
+            self.show_tab("Layout")
+            widget = self.layout_fields.get(name)
+            if widget is None:
+                return False
+            self._go_to(widget)
+            if name in self._tells:
+                self._tells[name]()
+            return True
+        title = next((title for title, roles in ROLE_SECTIONS if name in roles), None)
+        if title is None and name in [role for _hook, role in CODE_COLOURS]:
+            title = "Code panels"
+        if title is None:
+            return False
+        self.show_tab("Colors")
+        if title not in self._open_groups:
+            self._open_groups.add(title)
+            self.rebuild()
+        usage = ("role", name, self.mode)
+        cell = next((c for c in self._cells if c.usage == usage), None)
+        if cell is None:
+            return False
+        self._go_to(cell)
+        self.focus_usage(usage)
+        return True
+
+    def _go_to(self, widget: QWidget) -> None:
+        """Scroll to `widget`, give its first field the focus and tint it for a moment."""
+        def go() -> None:
+            scroll = self.pages.currentWidget()
+            if isinstance(scroll, QScrollArea):
+                scroll.ensureWidgetVisible(widget, 0, 80)
+            fields = ([widget] if isinstance(widget, QLineEdit) else []) + widget.findChildren(QLineEdit)
+            target = next((f for f in fields if f.isEnabled() and f.isVisibleTo(widget)), None)
+            if target is not None:
+                target.setFocus(Qt.FocusReason.OtherFocusReason)
+            tint = QWidget(widget)          # over the field, the mouse goes through it
+            tint.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            tint.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            tint.setStyleSheet("background-color: rgba(37, 99, 235, 60); border-radius: 4px;")
+            tint.setGeometry(widget.rect())
+            tint.show()
+            tint.raise_()
+            widget.setProperty("revealed", True)
+
+            def calm() -> None:
+                widget.setProperty("revealed", False)
+                tint.deleteLater()
+
+            QTimer.singleShot(REVEAL_MS, widget, calm)
+
+        QTimer.singleShot(0, widget, go)       # after a rebuild has put its scroll positions back
+
     def _on_tab(self, index: int) -> None:
         self._tab = index
         self.pages.setCurrentIndex(index)
@@ -368,6 +439,8 @@ class ThemeForm(QWidget):
             page.deleteLater()
         self._cells, self._refreshers = [], []
         self.layout_fields = {}
+        self._tells = {}
+        self._logo_path = None
         self._shape = self._structure()
         readable = self.model is not None and self.model.readable
         for index, name in enumerate(self.TABS):
@@ -735,7 +808,7 @@ class ThemeForm(QWidget):
 
     def _logo(self) -> QWidget:
         card, layout = self._card("Logo", "A vector PDF cropped to its ink, at the right end of the title bar.")
-        path = QLineEdit()
+        path = self._logo_path = QLineEdit()
         choose = Button("Choose file…", "secondary", compact=True)
         choose.clicked.connect(self._choose_logo)
         row = QHBoxLayout()
@@ -955,14 +1028,15 @@ class ThemeForm(QWidget):
             text = number.text().strip()
             return f"{text}{unit.currentText()}" if text else ""
 
-        def tell() -> None:
-            """The sample slides mark the length as typed (C2b), and the Top Margin's check follows it."""
+        def tell(mark: bool = True) -> None:
+            """The sample slides mark the length as typed (C2b; not with `mark` False: a refresh of a field that has
+            no focus), and the Top Margin's check follows it."""
             value = typed()
             value_bp = self._length_bp(key, value, default)
             if value and value_bp is not None and not font_size and split_length(value) \
                     and split_length(value)[1] != self.display_unit:
                 note.setText(f"≈ {theme_measures.show(value_bp, self.display_unit)}")
-            if self.on_measure is not None and key in theme_measures.MEASURED:
+            if mark and self.on_measure is not None and key in theme_measures.MEASURED:
                 self.on_measure(key, value_bp)
             if key == "SMTopMargin":
                 text, ok = theme_measures.title_bar_check(value_bp, self.geometry(), self.display_unit)
@@ -972,6 +1046,7 @@ class ThemeForm(QWidget):
                 check.style().polish(check)
                 check.setVisible(bool(text))
 
+        self._tells[key] = tell
         for field in (number, raw):
             field.textEdited.connect(lambda _t: tell())
             field.installEventFilter(self._measure_filter(tell))
@@ -1009,7 +1084,7 @@ class ThemeForm(QWidget):
             note.setToolTip("" if value_bp is None else f"{theme_measures.show(value_bp, 'mm')} · "
                             f"{theme_measures.show(value_bp, 'pt')} · {value_bp:.2f} bp (as the last render had it)")
             if key == "SMTopMargin":
-                tell()
+                tell(number.hasFocus() or raw.hasFocus())
         refresh()
         return box, refresh
 

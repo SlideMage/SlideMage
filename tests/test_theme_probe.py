@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Where a colour is used on the sample slides (theme_probe; docs/plans/theme-editor.md, section 3.3, stage C1c part 2):
 the probe lines, the boxes read from the PDF, a real probe render, the sample panel's dimming and page jump, and the theme form telling
-it which colour field has the focus."""
+it which colour field has the focus; and the way back: a click on the slide that goes to the field of what is
+there (a colour role or a layout setting)."""
 import os
 import shutil
 from pathlib import Path
@@ -12,7 +13,7 @@ import pymupdf
 import pytest
 
 from conftest import EXAMPLE_PROJECT
-from slidemage import theme_probe, theme_sample
+from slidemage import theme_measures, theme_probe, theme_sample
 from slidemage.theme_file import ThemeFile
 from slidemage.ui.kit.theme import ThemeManager
 from slidemage.ui.workspace.source_editor import LatexPlainTextEdit
@@ -102,9 +103,12 @@ def test_a_rectangle_painted_later_covers_what_is_under_it(tmp_path):
 
     usage = theme_probe.usage_map(probe_pdf(tmp_path, draw), {FIRST: "canvas", SECOND: "title_fill", THIRD: "bullet"},
                                   "role", "")
-    title = usage.boxes(1, "title_fill")
-    assert theme_probe.Box(0, 0, 0.75, 0.2, True) in title and theme_probe.Box(0.1, 0.4, 0.3, 0.6, True) in title
-    assert len(title) == 2
+    title = [box[:5] for box in usage.boxes(1, "title_fill")]         # without the place in the painting
+    assert (0, 0, 0.75, 0.2, True) in title and (0.1, 0.4, 0.3, 0.6, True) in title and len(title) == 2
+    # the way back: what is at a point, the topmost first; the hidden rectangle and the covered canvas are not there
+    assert usage.at(1, 0.1, 0.1) == ["title_fill"] and usage.at(1, 0.9, 0.1) == ["canvas"]
+    assert usage.at(1, 0.5, 0.5) == ["bullet", "canvas"] and usage.at(1, 0.2, 0.5) == ["title_fill"]
+    assert usage.at(1, 0.5, 0.95) == [] and usage.at(2, 0.5, 0.5) == [] and usage.at(7, 0.5, 0.5) == []
     canvas = usage.boxes(1, "canvas")
     assert all(b.exact and (b.y0 >= 0.2 - 1e-9 or b.x0 >= 0.75 - 1e-9) for b in canvas)     # not under the title bar
     assert all(b.y1 <= 0.9 + 1e-9 for b in canvas)                                            # nor under the footer
@@ -141,7 +145,7 @@ def test_a_real_probe_finds_the_block_titles_and_the_code_panel():
     assert usage.pages_using("code_panel") == [4]
     assert 2 in usage.pages_using("text") and 3 in usage.pages_using("info_block_title_fill")
     (bar,) = usage.boxes(2, "title_fill")           # the title bar, less what the canvas paints over it again
-    assert bar.exact and (bar.x0, bar.y0) == (0, 0) and 0.85 < bar.x1 < 1 and 0.05 < bar.y1 < 0.15
+    assert bar.exact and bar.x0 < 0.001 and bar.y0 < 0.001 and 0.85 < bar.x1 < 1 and 0.05 < bar.y1 < 0.15
     footer = usage.boxes(2, "footer_text")
     assert footer and all(not b.exact and b.y0 > 0.9 for b in footer)
     assert all(b.y0 > 0.1 for b in usage.boxes(2, "text"))         # no body text colour in the title bar
@@ -179,11 +183,12 @@ def make_view(tmp_path, pages_with_role=(3,)):
         return theme_sample.SampleResult(sample_pdf(tmp_path / f"r{len(renders)}.pdf"), "", mode)
 
     def fake_read(pdf, mapping, kind, mode):
-        usage = theme_probe.UsageMap(kind, mode, ["block_title_fill", "text", "link"])
+        usage = theme_probe.UsageMap(kind, mode, ["block_title_fill", "text", "link", "block_title_text"])
         for page in range(1, 4):
-            top = [theme_probe.Box(0, 0, 1, 4 / 9, True)]            # the top four ninths are the role's
-            word = [theme_probe.Box(0.25, 0.6, 0.75, 0.8, False)]     # and a piece of text lower down is a link
-            usage.pages.append([top, [], word] if page in pages_with_role else [[], [], []])
+            top = [theme_probe.Box(0, 0, 1, 4 / 9, True, 1)]             # the top four ninths are the role's
+            word = [theme_probe.Box(0.25, 0.6, 0.75, 0.8, False, 2)]      # and a piece of text lower down is a link
+            title = [theme_probe.Box(0.1, 0.1, 0.4, 0.3, False, 3)]       # the block's title, on its fill
+            usage.pages.append([top, [], word, title] if page in pages_with_role else [[], [], [], []])
         return usage
 
     view = ThemeSampleView(editor, "probe", SimpleNamespace(root=tmp_path), fake_render, fake_read)
@@ -274,3 +279,139 @@ def test_a_field_with_a_value_of_its_own_looks_edited(qapp):
     assert not cell.edit.property("edited")
     cell.edit.setText("#123456")
     assert cell.edit.property("edited") is True
+
+
+# --- the way back: a click on the slide ---------------------------------------------------------------------------
+
+def test_a_click_on_the_slide_tells_the_role_and_asks_where_several_are(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import QPoint, QPointF
+    from slidemage.ui import layout_settings
+    monkeypatch.setattr(layout_settings, "set", lambda key, value: None)
+    qapp_ref[0] = qapp
+    editor, view, renders = make_view(tmp_path)
+    view.set_pick("color")
+    picked, asked = [], []
+    view.picked.connect(lambda kind, name: picked.append((kind, name)))
+    view._choose = lambda labels, at: asked.append(labels) or 1
+    view.show_page(3)
+    assert renders == ["probe"]                         # no probe before the mouse comes to the slide
+    view.pick_at((0.5, 0.7), QPoint(0, 0))              # the map is not there yet: the click waits for it
+    assert picked == [] and "Finding the colors" in view.usage_label.text()
+    assert wait_for(qapp, lambda: picked)
+    assert picked == [("role", "link")] and asked == [] and view.usage_label.text() == ""      # one thing: no menu
+    view.pick_at((0.2, 0.2), QPoint(0, 0))              # text on a fill: the menu, the topmost first
+    assert asked == [["Block title text", "Block title fill"]] and picked[-1] == ("role", "block_title_fill")
+    view._choose = lambda labels, at: None              # the menu closed without a pick
+    view.pick_at((0.2, 0.2), QPoint(0, 0))
+    assert len(picked) == 2
+    view.pick_at((0.9, 0.95), QPoint(0, 0))             # nothing a role sets
+    assert len(picked) == 2 and "No color role" in view.usage_label.text()
+    view.show_page(2)                                   # the note goes with the page
+    assert view.usage_label.text() == ""
+    view.pick_at(None, QPoint(0, 0))                    # beside the page
+    assert len(picked) == 2
+    # the label's point to the page's fractions: the picture is centred in its label
+    view.show_page(3)
+    pixmap = view.image.pixmap()
+    left = (view.image.width() - pixmap.width()) / 2
+    top = (view.image.height() - pixmap.height()) / 2
+    x, y = view._fraction(QPointF(left + pixmap.width() / 2, top + pixmap.height() * 0.25))
+    assert (x, y) == pytest.approx((0.5, 0.25), abs=0.01)
+    assert view._fraction(QPointF(left + pixmap.width() / 2, top - 3)) is None if top >= 3 else True
+    view._hover((0.5, 0.7))
+    assert view.image.toolTip() == "Links"
+    view._hover(None)
+    assert view.image.toolTip() == ""
+    view.close()
+
+
+GEOMETRY = {"page_width": 400.0, "page_height": 200.0, "SMTitleBarBottom": 30.0, "SMTopMargin": 45.0,
+            "SMFooterBoxHeight": 10.0, "SMTextMarginLeft": 20.0, "SMTextMarginRight": 25.0, "SMLeftMargin": 12.0,
+            "SMFrametitleRightPadding": 8.0, "SMLogoHeight": 14.0, "SMLogoWidth": 40.0}
+
+
+def test_the_layout_settings_of_a_point_of_the_slide():
+    at = lambda x, y: theme_measures.keys_at(x, y, GEOMETRY)
+    assert at(200, 195)[0] == "SMFooterBoxHeight"
+    assert at(5, 10)[0] == "SMFrametitleLeftPadding" and at(390, 10)[:2] == ["SMLogoHeight", "SMFrametitleRightPadding"]
+    assert at(200, 10) == list(theme_measures.TITLE_BAR_KEYS)
+    assert at(200, 40) == ["SMTopMargin"]               # between the title bar and the first line
+    assert at(10, 100) == ["SMTextMarginLeft"] and at(390, 100) == ["SMTextMarginRight"]
+    assert at(30, 180) == ["SMTextMarginLeft", "SMTopMargin", "SMTextMarginRight", "SMBodyFontSize"]   # the nearest first
+    assert theme_measures.keys_at(1, 1, {}) == []
+    assert theme_measures.logo_rect(GEOMETRY) == (352.0, 16.0, 392.0, 30.0)     # at the bar's bottom, the padding away
+    assert theme_measures.on_logo(370, 20, GEOMETRY) and not theme_measures.on_logo(340, 20, GEOMETRY)
+    assert not theme_measures.on_logo(370, 20, {key: value for key, value in GEOMETRY.items() if key != "SMLogoWidth"})
+
+
+def test_a_click_in_layout_mode_tells_the_layout_setting(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import QPoint
+    from slidemage.ui import layout_settings
+    monkeypatch.setattr(layout_settings, "set", lambda key, value: None)
+    qapp_ref[0] = qapp
+    editor, view, renders = make_view(tmp_path)
+    view.geometry = dict(GEOMETRY)
+    view.set_pick("layout")
+    picked, asked = [], []
+    view.picked.connect(lambda kind, name: picked.append((kind, name)))
+    view._choose = lambda labels, at: asked.append(labels) or 0
+    view.show_page(2)
+    view.pick_at((0.5, 0.2), QPoint(0, 0))              # y = 40 bp: the Top Margin alone
+    assert picked == [("layout", "SMTopMargin")] and asked == []
+    view.pick_at((0.5, 0.05), QPoint(0, 0))             # the title bar: what shapes it
+    assert len(asked) == 1 and len(asked[0]) == len(theme_measures.TITLE_BAR_KEYS)
+    assert picked[-1] == ("layout", "SMFrametitleTopPadding")
+    view.show_page(1)                                   # the title slide has neither bar nor footer
+    view.pick_at((0.5, 0.05), QPoint(0, 0))
+    assert len(picked) == 2 and "pages 2 to 5" in view.usage_label.text()
+    assert renders == ["probe"]                         # layout picks need no probe
+    view.show_page(2)                                   # the logo is the logo, whatever a click selects
+    view.pick_at((370 / 400, 20 / 200), QPoint(0, 0))
+    assert picked[-1] == ("logo", "SMInstituteLogoPath") and len(asked) == 1
+    view.set_pick("color")
+    view.pick_at((370 / 400, 20 / 200), QPoint(0, 0))
+    assert picked[-2:] == [("logo", "SMInstituteLogoPath")] * 2 and view.usage_label.text() == ""
+    view._hover((370 / 400, 20 / 200))
+    assert view.image.toolTip() == "Logo"
+    view.close()
+
+
+def test_the_form_goes_to_the_field_a_click_asked_for(qapp):
+    editor = LatexPlainTextEdit(ThemeManager())
+    editor.set_text(read(SHIPPED))
+    form = ThemeForm(editor, SHIPPED, ROOT / "example", ROOT / "latex" / "SlideMage_setup.tex")
+    told, measured = [], []
+    form.on_usage = lambda *usage: told.append(usage)
+    form.on_measure = lambda key, value: measured.append(key)
+    form.show_tab("Layout")
+    assert "Lists, links and marks" not in form._open_groups
+    assert form.reveal("role", "alert")                 # a role in a folded group: opened, its cell there and told
+    assert form.TABS[form._tab] == "Colors" and "Lists, links and marks" in form._open_groups
+    assert any(c.usage == ("role", "alert", form.mode) for c in form._cells)
+    assert told[-1] == ("role", "alert", form.mode)
+    assert form.reveal("role", "code_keyword") and "Code panels" in form._open_groups
+    assert not form.reveal("role", "no_such_role") and not form.reveal("role", "SMHighlightTitleTextColor")
+    assert form.reveal("layout", "SMTopMargin")
+    assert form.TABS[form._tab] == "Layout" and measured[-1] == "SMTopMargin"
+    assert form.reveal("layout", "SMFooterTextSize") and form.reveal("layout", "SMBodyFontSize")
+    assert not form.reveal("layout", "SMNoSuchHook")
+    assert form.reveal("logo", "SMInstituteLogoPath") and form.TABS[form._tab] == "Logo & notes"
+    assert wait_for(qapp, lambda: form._logo_path.property("revealed") is True)
+    assert form.reveal("layout", "SMTopMargin")
+    cell = form.layout_fields["SMTopMargin"]
+    assert wait_for(qapp, lambda: cell.property("revealed") is True)       # tinted for a moment
+
+
+
+def test_the_slide_background_is_offered_only_where_nothing_else_is(qapp, tmp_path, monkeypatch):
+    from slidemage.ui import layout_settings
+    monkeypatch.setattr(layout_settings, "set", lambda key, value: None)
+    qapp_ref[0] = qapp
+    editor, view, renders = make_view(tmp_path)
+    view.set_pick("color")
+    usage = theme_probe.UsageMap("role", view.mode, ["canvas", "bullet"])
+    usage.pages = [[[theme_probe.Box(0, 0, 1, 1, True, 1)], [theme_probe.Box(0.1, 0.1, 0.2, 0.2, False, 2)]]] * 3
+    view._maps[view._role_key()] = usage
+    assert [name for _kind, name, _label in view._found((0.15, 0.15))] == ["bullet"]
+    assert [name for _kind, name, _label in view._found((0.5, 0.5))] == ["canvas"]
+    view.close()

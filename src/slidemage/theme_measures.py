@@ -116,6 +116,54 @@ def marks(key: str, value_bp: Optional[float], geometry: dict, unit: str = DEFAU
     return found
 
 
+def logo_rect(geometry: dict) -> Optional[tuple[float, float, float, float]]:
+    """Where the logo is in the ordinary title bar, (x0, y0, x1, y1) in bp from the top left: its bottom edge is the
+    bar's, its right edge the right padding away from the page's. None when the render did not tell (SMLogoWidth is
+    written by the sample deck)."""
+    width, bottom = geometry.get(PAGE_WIDTH), geometry.get("SMTitleBarBottom")
+    wide, high, pad = (geometry.get(key) for key in ("SMLogoWidth", "SMLogoHeight", "SMFrametitleRightPadding"))
+    if None in (width, bottom, wide, high, pad) or wide <= 0 or high <= 0:
+        return None
+    return (width - pad - wide, bottom - high, width - pad, bottom)
+
+
+def on_logo(x: float, y: float, geometry: dict) -> bool:
+    rect = logo_rect(geometry)
+    return rect is not None and rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
+
+
+def keys_at(x: float, y: float, geometry: dict) -> list[str]:
+    """The layout settings of what is at the point (x, y), in bp from the top left, of a slide with the ordinary title
+    bar and footer: the likeliest first. In the footer and the title bar what shapes them; in a margin that margin;
+    inside the text area the margins, the nearest first, and the body font size."""
+    if PAGE_WIDTH not in geometry:
+        return []
+    width, height = geometry[PAGE_WIDTH], geometry[PAGE_HEIGHT]
+    footer = rendered("SMFooterBoxHeight", geometry)
+    if footer is not None and y >= height - footer:
+        return ["SMFooterBoxHeight", "SMFooterTextSize", "SMFootlineSidePadding"]
+    title_bottom = geometry.get("SMTitleBarBottom")
+    if title_bottom is not None and y <= title_bottom:
+        title_left = geometry.get("SMLeftMargin")
+        if title_left is not None and x <= title_left:
+            first = ["SMFrametitleLeftPadding"]
+        elif x >= 0.85 * width:         # where the logo is
+            first = ["SMLogoHeight", "SMFrametitleRightPadding"]
+        else:
+            first = []
+        return first + [key for key in TITLE_BAR_KEYS if key not in first]
+    top = rendered("SMTopMargin", geometry)
+    left = rendered("SMTextMarginLeft", geometry)
+    right = rendered("SMTextMarginRight", geometry)
+    away = [(max(0.0, y - top), "SMTopMargin")] if top is not None else []
+    away += [(max(0.0, x - left), "SMTextMarginLeft")] if left is not None else []
+    away += [(max(0.0, width - right - x), "SMTextMarginRight")] if right is not None else []
+    inside = [key for distance, key in away if distance == 0]
+    if inside:
+        return inside
+    return [key for _distance, key in sorted(away)] + ["SMBodyFontSize"]
+
+
 def title_bar_check(top_bp: Optional[float], geometry: dict, unit: str = DEFAULT_DISPLAY_UNIT) -> tuple[str, bool]:
     """("n bp below the title bar", True) or ("n bp above the title bar's bottom edge", False); ("", True) unknown."""
     title_bottom = geometry.get("SMTitleBarBottom")

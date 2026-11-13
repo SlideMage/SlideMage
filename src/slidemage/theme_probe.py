@@ -73,12 +73,14 @@ def probe_text(text: str, kind: str, mode: str) -> tuple[str, dict[str, str]]:
 
 class Box(NamedTuple):
     """A rectangle of a page in fractions of its width and height. `exact`: the outline of a filled rectangle (the title
-    bar); else a box with a little room around a piece of text, a line or a small shape."""
+    bar); else a box with a little room around a piece of text, a line or a small shape. `order`: its place in the
+    page's painting (what is painted later lies on top)."""
     x0: float
     y0: float
     x1: float
     y1: float
     exact: bool = False
+    order: int = 0
 
 
 @dataclass
@@ -101,6 +103,17 @@ class UsageMap:
         if name not in self.names or not 1 <= page <= len(self.pages):
             return []
         return self.pages[page - 1][self.names.index(name)]
+
+    def at(self, page: int, x: float, y: float) -> list[str]:
+        """The names that show at the point (x, y), in fractions of page `page` (1-based): the topmost first."""
+        if not 1 <= page <= len(self.pages):
+            return []
+        found: list[tuple[int, str]] = []
+        for name, boxes in zip(self.names, self.pages[page - 1]):
+            orders = [box.order for box in boxes if box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1]
+            if orders:
+                found.append((max(orders), name))
+        return [name for _order, name in sorted(found, key=lambda entry: -entry[0])]
 
 
 def _name_of(colour, by_rgb: dict[tuple, int]) -> int:
@@ -128,7 +141,8 @@ def _minus(a: tuple, b: tuple) -> list[tuple]:
 
 
 def _joined(rects: list[tuple]) -> list[tuple]:
-    """Rectangles on one line that are a word space apart or less become one, so a line of text is one bar."""
+    """Rectangles (x0, y0, x1, y1, order) on one line that are a word space apart or less become one, so a line of
+    text is one bar."""
     rects = list(rects)
     merged = True
     while merged:
@@ -139,7 +153,7 @@ def _joined(rects: list[tuple]) -> list[tuple]:
                 overlap = min(a[3], b[3]) - max(a[1], b[1])
                 gap = max(a[0], b[0]) - min(a[2], b[2])
                 if gap <= JOIN_GAP and overlap >= 0.5 * min(a[3] - a[1], b[3] - b[1]):
-                    rects[i] = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                    rects[i] = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]), max(a[4], b[4]))
                     del rects[j]
                     merged = True
                     break
@@ -191,9 +205,9 @@ def _page_boxes(page, by_rgb: dict[tuple, int], count: int) -> list[list[Box]]:
                 if not parts:
                     break
         if covers:
-            exact[code - 1] += parts
+            exact[code - 1] += [(*p, seqno) for p in parts]
         else:       # text, lines and small shapes: a little room around them
-            soft[code - 1] += [(p[0] - PAD_X, p[1] - PAD_Y, p[2] + PAD_X, p[3] + PAD_Y) for p in parts]
+            soft[code - 1] += [(p[0] - PAD_X, p[1] - PAD_Y, p[2] + PAD_X, p[3] + PAD_Y, seqno) for p in parts]
     result: list[list[Box]] = []
     for index in range(count):
         boxes: list[Box] = []
@@ -201,7 +215,7 @@ def _page_boxes(page, by_rgb: dict[tuple, int], count: int) -> list[list[Box]]:
             for r in rects:
                 x0, y0, x1, y1 = max(r[0], 0.0), max(r[1], 0.0), min(r[2], width), min(r[3], height)
                 if x1 > x0 and y1 > y0:
-                    boxes.append(Box(x0 / width, y0 / height, x1 / width, y1 / height, is_exact))
+                    boxes.append(Box(x0 / width, y0 / height, x1 / width, y1 / height, is_exact, r[4]))
         result.append(boxes)
     return result
 
