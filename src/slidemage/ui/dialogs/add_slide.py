@@ -357,7 +357,7 @@ class AddSlideSheet(ModalSheet):
         keep = self.picked()
         self.listbox.clear()
         ctx = self.app.project
-        resolver = self.app.centre.preview._renders._renderer(ctx).resolver
+        resolver = self.app.centre.preview._renders.renderer(ctx).resolver
         codes = languages.project_languages(ctx).codes
         for slide in self._slides:
             if query and query not in slide.id_slug.lower() and query not in slide.title.lower():

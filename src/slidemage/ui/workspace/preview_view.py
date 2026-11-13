@@ -688,7 +688,7 @@ class PreviewPane(Surface):
         keep = (mtime, text_hash) if not self._is_draft(target) else None
         if not self._defer_checks and self._stored_asked != (self._generation, ident):
             self._stored_asked = (self._generation, ident)
-            renderer = self._renders._renderer(target.context)
+            renderer = self._renders.renderer(target.context)
             choice = self._step_choice.get(target.source_path)
 
             def select():
@@ -1157,7 +1157,7 @@ class PreviewPane(Surface):
     def _queue_steps(self, target: PreviewTarget, key: tuple, text: str, draft: bool, priority: int) -> None:
         view, language = key[3], key[4]
         service, log = self._renders, self.app.log
-        renderer = service._renderer(target.context)
+        renderer = service.renderer(target.context)
 
         def build(cancel):
             request = service.request(target, text, view, language, log, saved=not draft, all_steps=True)
@@ -1530,7 +1530,7 @@ class PreviewPane(Surface):
             target, view, language = self._target, self.state.view, self.language
             buffer = self._buffer()
             text = buffer[0] if buffer is not None else None
-            renderer = self._renders._renderer(target.context)
+            renderer = self._renders.renderer(target.context)
 
             def copy():
                 spec = PreviewRequest(target, SourceRevision.capture(target.source_path, text), view, language)
@@ -1740,7 +1740,7 @@ class PreviewPane(Surface):
             self.rendered.emit()
             if not job.external:
                 if job.request is not None:
-                    self._renders._renderer(job.request.spec.target.context).submit_other_views(job.request.spec)
+                    self._renders.renderer(job.request.spec.target.context).submit_other_views(job.request.spec)
                 self._after_render(job)
             if job.request is None:
                 self.rendered_target.emit(job.source)

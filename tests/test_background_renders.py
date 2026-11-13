@@ -84,13 +84,13 @@ def make(project, store, raster, tex=None, batch=1, **kwargs):
                     clock=lambda: 1000.0, on_battery=lambda: False, cpu_load=lambda: 0.0, is_busy=lambda: [])
     gate.last_input = 0.0
     renderer = BackgroundRenderer(project, store, gate=gate, decks=lambda: decks, open_deck=lambda: open_deck,
-                                  engine_fp=lambda: "LuaHBTeX 1.22|Windows", renderer=tex or FakeTeX(project), raster=raster, **kwargs)
+                                  engine_fp=lambda: "LuaHBTeX 1.22|Windows", render_override=tex or FakeTeX(project), raster=raster, **kwargs)
     renderer.test_decks = decks
     return renderer
 
 
 def render_unit(renderer, unit):
-    spec = renderer.request_for(unit)
+    spec = renderer._sweep_request(unit)          # the request as the sweep builds it
     cancel = CancelToken()
     cancel.low_priority = True
     request = renderer.renders.request(spec.target, spec.revision.text, unit.view, unit.language, lambda _: None, spec=spec)
@@ -281,7 +281,7 @@ def test_failed_background_build_tracks_its_own_inputs_and_retries_after_repair(
     from slidemage import compiler
 
     r = make(project, store, raster)
-    r._render = None
+    r.render_override = None
     monkeypatch.setenv("SLIDEMAGE_PREVIEW_FORMAT", "0")
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     dependency = project.root / "preview-shared.tex"
@@ -442,7 +442,7 @@ def test_archiving_a_deck_removes_its_renders_and_stops_planning_it(project, sto
 
 def test_a_slide_with_no_page_in_the_view_is_a_failure_not_an_empty_render(project, store, raster):
     r = make(project, store, raster, tex=FakeTeX(project, pages=1))
-    r._rasterise = lambda pdf, cancel: []
+    r.rasterise = lambda pdf, cancel: []
     unit = background_renders.deck_units(project, deck_named(r, "slidemage-manual"), "instructor", "EN")[0]
     with pytest.raises(RuntimeError):
         render_unit(r, unit)
@@ -755,7 +755,7 @@ def test_a_dependency_edited_during_the_render_is_never_stored(project, store, r
         return pdf
 
     monkeypatch.setattr(slide_preview, "render_slide_text_to_pdf", compile)
-    r._render = None
+    r.render_override = None
     assert render_unit(r, unit) is None
     assert store.count() == 0 and store.failures() == []
     assert not r.resolver.lookup(unit).usable
@@ -894,7 +894,7 @@ def test_a_slide_that_needs_its_deck_is_typeset_in_the_decks_compile_and_kept(pr
         return FakeTeX(project, pages=1)(unit, cancel) if id_slug == unit.id_slug else None
 
     monkeypatch.setattr(deck_context, "render_in_deck", in_deck)
-    r._render = None
+    r.render_override = None
     assert render_unit(r, unit) is not None
     assert asked == [(deck.name, "instructor", unit.id_slug, True, "EN")] and not tex.calls
     assert r.resolver.lookup(unit).state is Freshness.FRESH

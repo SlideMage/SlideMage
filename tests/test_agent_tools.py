@@ -401,7 +401,7 @@ def test_render_preview_returns_the_image_of_the_buffer(box, root, monkeypatch):
     assert not result.is_error and len(result.images) == 1
     from slidemage import render_lookup
     spec, = box.ws.prepare_preview_batch(root / SLIDE, 'instructor')
-    renderer = box.ws.preview_service()._renderer(box.ws.project)
+    renderer = box.ws.preview_service().renderer(box.ws.project)
     state, record = render_lookup.select(dict(resolver=renderer.resolver, unit=spec.unit, spec=spec), strict=True)
     assert state == 'current' and result.images == [renderer.store.page(record, record['pages'])]
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **k: pytest.fail('a current store hit must not compile'))

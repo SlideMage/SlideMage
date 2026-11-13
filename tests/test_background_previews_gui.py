@@ -615,8 +615,8 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
     started, release = threading.Event(), threading.Event()
     r = window.background.renderer
     service = window.centre.preview._renders
-    assert r.renders is service and service._renderer(window.project) is r
-    assert service._renderer(window.project).store is window.background.store
+    assert r.renders is service and service.renderer(window.project) is r
+    assert service.renderer(window.project).store is window.background.store
     tex = FakeTeX(window.project)
 
     def render(unit, cancel):
@@ -625,7 +625,7 @@ def test_interrupting_the_sweep_keeps_the_build_the_pane_waits_for(window, monke
         assert not cancel.is_set()
         return tex(unit, cancel)
 
-    monkeypatch.setattr(r, '_render', render)
+    monkeypatch.setattr(r, 'render_override', render)
     deck = next(deck for deck in window.decks if deck.name == 'slidemage-manual')
     unit = background_renders.deck_units(window.project, deck, 'instructor', 'EN')[0]
     target = preview_target.PreviewTarget(window.project, unit.macro, unit.id_slug, unit.version, unit.conditions,
@@ -695,7 +695,7 @@ def test_the_pane_shows_the_choosers_current_and_previous_page(window, monkeypat
         pdf.with_suffix('.inputs.json').write_text(json.dumps([str(unit.source_path), str(dependency)]))
         return pdf
 
-    monkeypatch.setattr(renderer, '_render', render)
+    monkeypatch.setattr(renderer, 'render_override', render)
     monkeypatch.setattr(preview_target, 'render_text', lambda *a, **kw: render(unit, kw['cancel']))
     select, calls = render_lookup.select, []
 

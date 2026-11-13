@@ -39,7 +39,7 @@ def test_a_failed_batch_falls_back_to_forced_single_renders(tmp_path, monkeypatc
         raise RuntimeError('Render failed')
     monkeypatch.setattr(batch_render, 'build', fail)
     service = preview_requests.RenderService()
-    renderer = service._renderer(ctx)
+    renderer = service.renderer(ctx)
     tex = FakeTeX(ctx, pages=1)
     for spec in specs:
         renderer.store.record_failure(renderer.resolver.fast_key(spec.unit, spec.revision.text),
@@ -74,7 +74,7 @@ def test_an_ordinary_slide_after_an_omitted_slide_is_stored_without_the_omitted_
     try:
         results = batch_render.render_batch(service, specs, batch_size=2)
         assert [result.status for result in results] == ['rendered', 'rendered']
-        renderer = service._renderer(ctx)
+        renderer = service.renderer(ctx)
         for spec, omitted in zip(specs, (True, False)):
             found = renderer.resolver.lookup(spec.unit)
             assert found.final
