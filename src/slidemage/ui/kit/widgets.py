@@ -1524,7 +1524,14 @@ class ModalSheet(QDialog):
         tallest = max(area.widget().sizeHint().height() for area in self._scrolling)
         chrome = self.sizeHint().height() - max(area.sizeHint().height() for area in self._scrolling)
         limit = int(screen.availableGeometry().height() * self.SCREEN_SHARE)
-        self.resize(self.width(), max(self.minimumSizeHint().height(), min(limit, tallest + chrome)))
+        # Wide enough for the widest tab's rows: the tabs never scroll sideways, so a row of buttons that did not
+        # fit was cut off at the right edge.
+        margins = self._root.contentsMargins()
+        extra = (margins.left() + margins.right() + SCROLL_GAP
+                 + self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent))
+        widest = max(area.widget().minimumSizeHint().width() for area in self._scrolling) + extra
+        width = max(self.width(), min(widest, int(screen.availableGeometry().width() * 0.95)))
+        self.resize(width, max(self.minimumSizeHint().height(), min(limit, tallest + chrome)))
         frame = self.frameGeometry()
         frame.moveCenter(screen.availableGeometry().center())
         self.move(frame.topLeft())
