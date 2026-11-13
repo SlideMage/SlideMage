@@ -12,9 +12,9 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from PySide6.QtCore import QRect, QSize, QTimer, Qt, Signal
+from PySide6.QtCore import QRect, QRectF, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ... import compiler, theme_fields, theme_measures, theme_probe, theme_sample
 from ...theme_file import ThemeFile
@@ -25,7 +25,7 @@ from ..kit.widgets import Button, Surface, caption, text_label
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
 RENDER_DPI = 110            # the colour-usage probe (a pixel grid; cheap)
 DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
-PATCH_FLOOR, PATCH_GAIN = 20, 6      # of 255: a cell with less marked pixels than this is not lit; the rest is multiplied
+PATCH_CELL, PATCH_FLOOR, PATCH_GAIN = 24, 10, 14      # page width / cell = cells across; of 255: a cell with less marked pixels than this is not lit; the rest is multiplied
 PATCH_LEVELS = bytes(min(255, max(0, (v - PATCH_FLOOR) * PATCH_GAIN)) for v in range(256))
 BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
@@ -40,6 +40,44 @@ def pdf_pages(pdf: Path, dpi: int = DISPLAY_DPI) -> list[QImage]:
             pix = page.get_pixmap(dpi=dpi, alpha=False)
             images.append(QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888).copy())
     return images
+
+
+class _Spinner(QWidget):
+    """A small turning arc over the preview while a render or a probe is under way; the mouse goes through it, so the
+    user keeps working."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setFixedSize(30, 30)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(50)
+        self._timer.timeout.connect(self._turn)
+        self.hide()
+
+    def run(self, on: bool) -> None:
+        if on and not self._timer.isActive():
+            self._timer.start()
+        elif not on:
+            self._timer.stop()
+        self.setVisible(on)
+
+    def _turn(self) -> None:
+        self._angle = (self._angle - 30) % 360
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(0, 0, 0, 120))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(self.rect())
+        pen = QPen(QColor(255, 255, 255, 230), 3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(QRectF(7, 7, 16, 16), self._angle * 16, 110 * 16)
+        painter.end()
 
 
 class ThemeSampleView(Surface):
@@ -99,15 +137,18 @@ class ThemeSampleView(Surface):
         self.image.setMinimumHeight(120)
         self.image.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.image, 1)
+        self.spinner = _Spinner(self.image)
         # One small picture per page: a click shows it; a dot under the pages that use the focused colour.
         self.thumbs = QHBoxLayout()
         self.thumbs.setSpacing(SPACE.sm)
         self._thumb_buttons: list[QToolButton] = []
         layout.addLayout(self.thumbs)
+        # Both lines keep their height empty, so the preview does not jump when a message comes and goes.
         self.usage_label = caption("")
-        self.usage_label.hide()
+        self.usage_label.setMinimumHeight(self.usage_label.fontMetrics().lineSpacing() + 2)
         layout.addWidget(self.usage_label)
         self.status = caption("")
+        self.status.setMinimumHeight(self.status.fontMetrics().lineSpacing() + 2)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.status)
 
@@ -152,6 +193,7 @@ class ThemeSampleView(Surface):
         self._cancel = cancel = compiler.CancelToken()
         text, mode = self.editor.text(), self.mode
         self.status.setText("Rendering the sample slides…")
+        self._update_busy()
 
         def work() -> None:
             try:
@@ -162,8 +204,15 @@ class ThemeSampleView(Surface):
 
         threading.Thread(target=work, daemon=True, name="theme-sample").start()
 
+    def _update_busy(self) -> None:
+        """The spinner turns while the slides render or a colour-usage probe runs; the form stays usable."""
+        self.spinner.run(self._cancel is not None or bool(self._probing))
+        self.spinner.move(self.image.width() - self.spinner.width() - 8, 8)
+        self.spinner.raise_()
+
     def _on_rendered(self, result) -> None:
         self._cancel = None
+        self._update_busy()
         if self._again:
             self._again = False
             self.start()
@@ -189,6 +238,7 @@ class ThemeSampleView(Surface):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._show_image()
+        self._update_busy()
 
     # --- where a colour is used ------------------------------------------------------------------------------------
 
@@ -296,6 +346,7 @@ class ThemeSampleView(Surface):
             self._maps[key] = None
             return
         self._probing.add(key)
+        self._update_busy()
         render, read = self._render, self._read_usage
 
         def work() -> None:
@@ -318,6 +369,7 @@ class ThemeSampleView(Surface):
 
     def _on_probed(self, key, usage) -> None:
         self._probing.discard(key)
+        self._update_busy()
         if key[2] == self.editor.text():
             self._maps[key] = usage
         self._jump_to_usage()
@@ -361,7 +413,7 @@ class ThemeSampleView(Surface):
         # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: average
         # the mask over cells, drop what is below the floor (a stray anti-aliased pixel that happens to match the colour),
         # multiply the rest up (a stroke reaches full) and show the page through it.
-        small = mask.scaled(max(1, image.width() // 10), max(1, image.height() // 10),
+        small = mask.scaled(max(1, image.width() // PATCH_CELL), max(1, image.height() // PATCH_CELL),
                             Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
         small = small.convertToFormat(QImage.Format.Format_Grayscale8)
         levels = bytearray(small.constBits())
@@ -462,7 +514,6 @@ class ThemeSampleView(Surface):
             self.status.setToolTip("")
         usage_text = self._usage_text()
         self.usage_label.setText(usage_text)
-        self.usage_label.setVisible(bool(usage_text))
         self._update_thumbs()
         self._show_image()
 

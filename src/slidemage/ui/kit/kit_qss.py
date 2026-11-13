@@ -359,6 +359,10 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
         QDateTimeEdit:focus, QComboBox:focus, QComboBox:on {{
             border-color: {t.info};
         }}
+        QLineEdit[edited="true"] {{
+            border-left: 3px solid {t.info};
+            font-weight: 600;
+        }}
         QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled, QSpinBox:disabled,
         QDoubleSpinBox:disabled, QDateTimeEdit:disabled, QComboBox:disabled {{
             color: {t.text_4};

@@ -345,6 +345,23 @@ class ThemeForm(QWidget):
             cell.update_value()
         for refresher in self._refreshers:
             refresher()
+        self._mark_edited()
+
+    def _mark_edited(self) -> None:
+        """A field with a value of its own (text in it) looks different from one that shows the default as a hint."""
+        for field in self.findChildren(QLineEdit):
+            if not field.property("editedWired"):
+                field.setProperty("editedWired", True)
+                field.textChanged.connect(lambda _text, f=field: self._style_edited(f))
+            self._style_edited(field)
+
+    @staticmethod
+    def _style_edited(field: QLineEdit) -> None:
+        on = bool(field.text().strip())
+        if bool(field.property("edited")) != on:
+            field.setProperty("edited", on)
+            field.style().unpolish(field)
+            field.style().polish(field)
 
     # --- building ----------------------------------------------------------------------------------------------------
 
@@ -384,6 +401,7 @@ class ThemeForm(QWidget):
                 QTimer.singleShot(0, scroll, lambda s=scroll, v=scrolls[index]: s.verticalScrollBar().setValue(v))
         self.tab_bar.setCurrentIndex(self._tab)
         self.pages.setCurrentIndex(self._tab)
+        self._mark_edited()
         if self.on_structure is not None:
             self.on_structure()
 

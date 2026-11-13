@@ -148,7 +148,7 @@ def test_the_panel_lights_up_the_focused_colour_and_jumps_to_its_page(qapp, tmp_
     view.show_usage("role", "text", "light")
     assert "not used on the sample slides" in view.usage_label.text()
     view.clear_usage()
-    assert view.usage_label.isHidden() and view._composite(plain) is plain
+    assert view.usage_label.text() == "" and view._composite(plain) is plain
     editor.patch_text(editor.text() + "% a change\n")       # a new text needs a new probe
     assert view._maps == {}
     view.close()
@@ -185,3 +185,27 @@ def test_the_second_probe_uses_other_colours_and_only_agreement_counts():
     a = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 1, 2, 0])])
     b = theme_probe.UsageMap("role", "light", ["x", "y"], 4, 1, [bytes([1, 2, 2, 1])])
     assert theme_probe.agree(a, b).pages == [bytes([1, 0, 2, 0])]
+
+
+def test_the_message_lines_keep_their_space_and_a_spinner_shows_while_a_probe_runs(qapp, tmp_path):
+    qapp_ref[0] = qapp
+    editor, view, renders = make_view(tmp_path)
+    assert view.usage_label.isVisibleTo(view) and view.usage_label.minimumHeight() > 0
+    assert view.status.isVisibleTo(view) and view.status.minimumHeight() > 0
+    assert not view.spinner.isVisibleTo(view.image)             # nothing under way
+    view.show_usage("role", "block_title_fill", "light")
+    assert view.spinner.isVisibleTo(view.image)                 # the probe runs
+    assert wait_for(qapp, lambda: view._map() is not None)
+    assert wait_for(qapp, lambda: not view.spinner.isVisibleTo(view.image))
+    view.close()
+
+
+def test_a_field_with_a_value_of_its_own_looks_edited(qapp):
+    editor = LatexPlainTextEdit(ThemeManager())
+    editor.set_text(read(SHIPPED))
+    form = ThemeForm(editor, SHIPPED, ROOT / "example", ROOT / "latex" / "SlideMage_setup.tex")
+    cell = next(c for c in form._cells if c.usage == ("palette", "c_primary_highlight", "light"))
+    cell.edit.setText("")
+    assert not cell.edit.property("edited")
+    cell.edit.setText("#123456")
+    assert cell.edit.property("edited") is True
