@@ -350,15 +350,29 @@ class ThemeSampleView(Surface):
         if not any(mask_bytes):
             return image
         mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
-        mask = mask.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        lit = image.convertToFormat(QImage.Format.Format_ARGB32)
-        lit.setAlphaChannel(mask)
-        result = image.convertToFormat(QImage.Format.Format_ARGB32)
+        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: blur the
+        # mask, then multiply it up (the blurred value of a stroke reaches full), and show the page through it.
+        small = mask.scaled(max(1, image.width() // 10), max(1, image.height() // 10),
+                            Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        patch = small.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        white = QImage(image.size(), QImage.Format.Format_ARGB32)
+        white.fill(QColor(255, 255, 255))
+        white.setAlphaChannel(patch)
+        layer = white.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        painter = QPainter(layer)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
+        for _ in range(3):                                      # x8
+            painter.drawImage(0, 0, layer.copy())
+        painter.end()
+        lit = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+        painter = QPainter(lit)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        painter.drawImage(0, 0, layer)
+        painter.end()
+        result = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
         painter = QPainter(result)
         painter.fillRect(result.rect(), QColor(0, 0, 0, 165))
-        step = max(1, round(image.width() / usage.width / 2))       # about half a probe pixel wider, so thin text shows
-        for dx, dy in ((0, 0), (step, 0), (-step, 0), (0, step), (0, -step)):
-            painter.drawImage(dx, dy, lit)
+        painter.drawImage(0, 0, lit)
         painter.end()
         return result
 
