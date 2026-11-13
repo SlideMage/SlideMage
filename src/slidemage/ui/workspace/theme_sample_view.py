@@ -25,6 +25,8 @@ from ..kit.widgets import Button, Surface, caption, text_label
 RENDER_DELAY_MS = 1200      # after the last change of the buffer
 RENDER_DPI = 110            # the colour-usage probe (a pixel grid; cheap)
 DISPLAY_DPI = 220           # the pages as shown: sharp when the panel is large
+PATCH_FLOOR, PATCH_GAIN = 20, 6      # of 255: a cell with less marked pixels than this is not lit; the rest is multiplied
+PATCH_LEVELS = bytes(min(255, max(0, (v - PATCH_FLOOR) * PATCH_GAIN)) for v in range(256))
 BASE_WIDTH = 1100           # the page width the marks' pixel sizes were drawn for (110 dpi)
 
 
@@ -350,20 +352,20 @@ class ThemeSampleView(Surface):
         if not any(mask_bytes):
             return image
         mask = QImage(mask_bytes, usage.width, usage.height, usage.width, QImage.Format.Format_Grayscale8).copy()
-        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: blur the
-        # mask, then multiply it up (the blurred value of a stroke reaches full), and show the page through it.
+        # Thin text strokes make a ragged outline, so light up a patch around each place the colour is used: average
+        # the mask over cells, drop what is below the floor (a stray anti-aliased pixel that happens to match the colour),
+        # multiply the rest up (a stroke reaches full) and show the page through it.
         small = mask.scaled(max(1, image.width() // 10), max(1, image.height() // 10),
                             Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        small = small.convertToFormat(QImage.Format.Format_Grayscale8)
+        levels = bytearray(small.constBits())
+        small = QImage(bytes(levels.translate(PATCH_LEVELS)), small.width(), small.height(), small.bytesPerLine(),
+                       QImage.Format.Format_Grayscale8).copy()
         patch = small.scaled(image.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
         white = QImage(image.size(), QImage.Format.Format_ARGB32)
         white.fill(QColor(255, 255, 255))
         white.setAlphaChannel(patch)
         layer = white.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-        painter = QPainter(layer)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
-        for _ in range(3):                                      # x8
-            painter.drawImage(0, 0, layer.copy())
-        painter.end()
         lit = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
         painter = QPainter(lit)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
