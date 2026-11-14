@@ -52,7 +52,8 @@ from .details_view import DetailsPane
 from .preview_view import PreviewPane
 from .source_file import NEW_SLIDE, OVERWRITE, RELOADED, autosave_on, prompt_version_level
 from .source_view import SourcePane
-from .state import MODES, WorkspaceState
+from ...deck_editor import VIEW_INSTRUCTOR, VIEWS
+from .state import MODES, DeckWork, WorkspaceState
 
 
 # Settings key of the share of the width the Source view gets in the Split view.
@@ -112,6 +113,35 @@ class _CtrlWatch(QObject):
                 Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
             self.released.emit()
         return False
+
+
+def _work_to_json(work) -> dict:
+    """A working tab's DeckWork as the saved tabs hold it (tab-contexts.md section 6)."""
+    return {"focus": work.focused_slide,
+            "occurrence": list(work.focused_occurrence) if work.focused_occurrence is not None else None,
+            "view": work.view, "language": work.language, "scroll": work.list_scroll,
+            "collapsed": list(work.collapsed), "filter": work.list_filter}
+
+
+def _freeze(value):
+    """A saved occurrence key back to the tuple it was (JSON writes tuples as lists)."""
+    return tuple(_freeze(item) for item in value) if isinstance(value, list) else value
+
+
+def _work_from_json(data) -> Optional[DeckWork]:
+    """The DeckWork saved by `_work_to_json`; None when there is none or it does not read."""
+    if not isinstance(data, dict):
+        return None
+    focus, occurrence = data.get("focus"), data.get("occurrence")
+    scroll, collapsed, text = data.get("scroll"), data.get("collapsed"), data.get("filter")
+    return DeckWork(
+        focused_slide=focus if isinstance(focus, str) else None,
+        focused_occurrence=_freeze(occurrence) if isinstance(occurrence, list) else None,
+        view=data["view"] if data.get("view") in VIEWS else VIEW_INSTRUCTOR,
+        language=data["language"] if isinstance(data.get("language"), str) else None,
+        list_scroll=scroll if isinstance(scroll, int) and not isinstance(scroll, bool) else 0,
+        collapsed=tuple(c for c in collapsed if isinstance(c, str)) if isinstance(collapsed, list) else (),
+        list_filter=text if isinstance(text, str) else "")
 
 
 class ListPlaceholder(NamedTuple):
@@ -1199,28 +1229,39 @@ class CentreColumn(QFrame):
 
     def save_tabs(self) -> None:
         """Remember the open tabs for this project (D7 of the plan), in the format of docs/plans/tab-contexts.md section 6:
-        `{"v": 2, "active": index, "tabs": [...]}`, one entry per tab -- the slide tab (`kind` "slide", without `work`
-        yet) and the file tabs (`path`, `mode`) -- each with the `deck` it belongs to (the deck's file, None for none).
+        `{"v": 2, "active": index, "tabs": [...]}`, one entry per tab. A working tab is `{"kind": "deck", "deck", "mode",
+        "colour", "work"}` (the deck's file and what it was left as: focus, view, language, list scroll, closed sections,
+        Find text), a file tab `{"kind": "file", "path", "mode", "deck"}` with the deck it belongs to (None for none).
         They come back when the project opens again. Called when the window closes."""
+        slide_list = getattr(self.app, "slide_list", None)
+        self._keep_work(slide_list.work() if slide_list is not None else None)      # the deck on show, as it is now
         saved, active = [], None
         for tab in self.tabs.tabs:
-            deck = self.tab_deck(tab)
-            entry = {"kind": tab.kind, "deck": self._rel(deck.path) if deck is not None else None, "mode": tab.mode}
+            context = tab.context if isinstance(tab.context, Path) else None
+            entry = {"kind": tab.kind, "deck": self._rel(context), "mode": tab.mode}
             if tab.kind == FILE:
                 rel = self._rel(tab.path)
                 if rel is None:
                     continue       # not under the project (should not happen): nothing to restore it from
                 entry["path"] = rel
+            elif context is None:
+                continue           # a working tab no deck was bound to
+            else:
+                entry["colour"] = self.tabs.deck_colour(context)
+                if tab.work is not None:
+                    entry["work"] = _work_to_json(tab.work)
             if tab is self.tabs.active:
                 active = len(saved)
             saved.append(entry)
         app_settings.set(self.state.project, CENTRE_TABS_SETTING, {"v": 2, "active": active, "tabs": saved})
 
     def restore_tabs(self) -> None:
-        """Reopen the file tabs this project had last time (D7), each in the mode it was shown in; a file that no
-        longer exists is skipped silently. Reads the format of `save_tabs` (`v` 2) and the older one (file tabs only,
-        `active` a path). The slide tab's entry and the decks are not used yet. Called once, after the first deck has
-        opened."""
+        """Reopen the tabs this project had last time (D7, tab-contexts.md O13): a working tab for each deck that is still
+        there, with what it was left as, and the file tabs with the deck each belonged to, each in the mode it was shown
+        in. A file that no longer exists is skipped silently; the tabs of a deck that is gone have no deck. Reads the
+        format of `save_tabs` (`v` 2), the one of the steps before it (a "slide" entry for the last deck only) and the
+        oldest (file tabs only, `active` a path); in the old formats a deck's source belongs to that deck and a slide to the
+        deck on show if it uses it. Called once, after the first deck has opened."""
         project = self.state.project
         remembered = app_settings.get(project, CENTRE_TABS_SETTING, {})
         entries = remembered.get("tabs") if isinstance(remembered, dict) else None
@@ -1228,7 +1269,27 @@ class CentreColumn(QFrame):
             return
         active = remembered.get("active")
         new_format = remembered.get("v", 1) >= 2
-        active_tab = None
+        decks = {d.path: d for d in getattr(self.app, "decks", ())}
+        if self.state.deck is not None:
+            decks[self.state.deck.path] = self.state.deck
+        made: dict[int, CentreTab] = {}
+        onshow = self.state.deck
+        for index, entry in enumerate(entries):                  # the working tabs first: the file tabs belong to them
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("kind") == "slide" and onshow is not None:
+                made[index] = self._working_tab()
+            elif entry.get("kind") == DECK and isinstance(entry.get("deck"), str):
+                deck = decks.get(project.root / entry["deck"])
+                if deck is None:
+                    continue                                    # the deck is gone: its working tab is dropped
+                tab = self._bind_working_tab(deck)
+                if entry.get("mode") in MODES:
+                    tab.mode = entry["mode"]
+                tab.work = _work_from_json(entry.get("work"))
+                if isinstance(entry.get("colour"), int) and not isinstance(entry.get("colour"), bool):
+                    self.tabs.set_deck_colour(deck.path, entry["colour"])
+                made[index] = tab
         for index, entry in enumerate(entries):
             rel = entry.get("path") if isinstance(entry, dict) and entry.get("kind", FILE) == FILE else None
             if not rel:
@@ -1239,14 +1300,42 @@ class CentreColumn(QFrame):
             slide = _is_slide_file(path)
             tab = self.tabs.add_file(path, slide=slide,
                                      mode=entry.get("mode") if entry.get("mode") in MODES else "source")
-            # a slide saved with no deck comes back with none; any other as a new tab of the file would
-            no_deck = new_format and slide and entry.get("deck") is None
-            tab.context = None if no_deck else self._file_context(path, slide)
+            if path in decks and not slide:                     # a deck's source belongs to that deck, whichever is on show
+                self._bind_working_tab(decks[path])
+                tab.context = path
+            elif new_format and isinstance(entry.get("deck"), str) and project.root / entry["deck"] in decks \
+                    and self.tabs.working_tab(project.root / entry["deck"]) is not None:
+                tab.context = project.root / entry["deck"]
+            elif new_format and "deck" in entry:
+                tab.context = None                              # saved with no deck, or its deck is gone
+            else:
+                tab.context = self._file_context(path, slide)   # the old formats had none saved
             self.source.hold(path)
             if (index == active) if new_format else (rel == active):
-                active_tab = tab
+                made[index] = tab
+        self.tabs.order_decks([t.context for index, t in sorted(made.items()) if t.kind == DECK])
+        self._update_strip()
+        if onshow is not None:
+            work = self._work_of(onshow)
+            if work is not None:
+                self._apply_work(work)                          # the deck on show comes back as it was left
+        active_tab = made.get(active) if new_format and isinstance(active, int) else next(
+            (t for t in made.values() if t.kind == FILE and self._rel(t.path) == active), None)
         if active_tab is not None:
-            self.tabs.activate(active_tab)      # refreshes (_on_tab_active)
+            self.tabs.activate(active_tab)      # refreshes (_on_tab_active); another deck's tab brings that deck
+
+    def _apply_work(self, work) -> None:
+        """Put the deck on show back as `work` says (restore at start): view, language, the list's closed sections, Find
+        text and scroll, and the focused slide when it is still in the deck."""
+        state, slide_list = self.state, getattr(self.app, "slide_list", None)
+        if work.view != state.view:
+            state.set_view(work.view)
+        if work.language and work.language != state.language:
+            state.set_language(work.language)
+        if slide_list is not None:
+            slide_list.apply_work(work)
+        elif work.focused_slide is not None:
+            state.set_focused_slide(work.focused_slide, occurrence_key=work.focused_occurrence)
 
     def _ask_save(self, name: str) -> Optional[str]:
         """"save", "discard" or None (Cancel) for the unsaved changes of the file `name`."""
