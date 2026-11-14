@@ -1353,3 +1353,107 @@ def test_about_to_change_context_saves_what_was_typed_in_the_old_context(window)
     window.side_panels.panels["notes"]._new.setPlainText("Typed before the switch")
     assert window.about_to_change_context() is True
     assert "\\note{Typed before the switch}" in abc.read_text(encoding="utf-8")
+
+
+# -- working tabs: one per open deck (tab-contexts.md step 3b) ------------------------------------------------------------
+
+def _second_deck(window, name="second"):
+    """A second deck next to the first (a copy of its text), scanned in."""
+    first = next(d for d in deck_scan.scan_decks(window.project) if d.name == "test")
+    (first.path.parent / f"{name}.tex").write_text(first.text, encoding="utf-8")
+    window.reload_decks()
+    return next(d for d in window.decks if d.name == name)
+
+
+def test_a_second_deck_gets_a_working_tab_and_the_first_decks_list_comes_back_as_it_was(window):
+    centre, state, slide_list = window.centre, window.state, window.slide_list
+    other = _second_deck(window)
+    first = centre.tabs.working_tab(next(d.path for d in window.decks if d.name == "test"))
+    state.set_focused_slide("abd")
+    slide_list.tree.collapsed.add("Part")
+    state.set_deck(other)                                           # O1: from the top bar, the palette, the menu
+    second = centre.tabs.working_tab(other.path)
+    assert centre.tabs.working_tabs == [first, second] and centre.tabs.active is second
+    assert state.deck.name == "second" and state.focused_slide is None and slide_list.tree.collapsed == set()
+    assert first.work.focused_slide == "abd" and first.work.collapsed == ("Part",)      # kept when it was left
+    centre.tabs.activate(first)                                     # a click on its tab: the deck comes back under it
+    assert state.deck.name == "test" and state.focused_slide == "abd" and slide_list.tree.collapsed == {"Part"}
+    assert slide_list.stack.currentWidget() is slide_list.tree
+    centre.tabs.activate(second)
+    assert state.deck.name == "second"
+
+
+def test_switching_decks_saves_what_was_typed_in_the_deck_it_was_typed_in(window):
+    abc = window.root / "slides" / "abc-EN-Hello-current.tex"
+    other = _second_deck(window)
+    window.side_panels.panels["notes"]._new.setPlainText("Typed in the first deck")
+    window.state.set_deck(other)
+    assert chr(92) + "note{Typed in the first deck}" in abc.read_text(encoding="utf-8")
+
+
+def test_the_tabs_of_a_deck_stay_together_with_their_stripe_and_tabs_without_a_deck_come_last(window):
+    centre = window.centre
+    other = _second_deck(window)
+    centre.open_file(window.root / "SlideMage.bib")                 # no deck
+    window.state.set_deck(other)
+    centre.open_file(other.path)                                    # the source of the deck on show
+    centre.tabs.activate(centre.tabs.slide_tab)
+    centre.open_file(window.root / "slides" / "abd-EN-Second-current.tex", tab=True)   # a slide of the first deck
+    contexts = [t.context for t in centre.tabs.tabs]
+    first_path = centre.tabs.slide_tab.context
+    assert contexts == [first_path, first_path, other.path, other.path, None]
+    buttons = centre.tab_strip.tab_buttons()
+    assert [b.property("deckColour") for b in buttons] == ["0", "0", "1", "1", ""]
+    assert buttons[0].close_button.isVisibleTo(buttons[0]) and buttons[2].close_button.isVisibleTo(buttons[2])
+    assert "second" in buttons[3].label.toolTip()
+
+
+def test_closing_a_deck_closes_its_tabs_and_cancel_keeps_the_whole_deck(window, monkeypatch):
+    from slidemage.ui.workspace import centre as centre_module
+    centre, state = window.centre, window.state
+    other = _second_deck(window)
+    first = centre.tabs.slide_tab
+    state.set_deck(other)
+    centre.open_file(other.path)                                    # the deck's source, with edits that are not saved
+    centre.source.current.editor.insertPlainText("% edit\n")
+    monkeypatch.setattr(centre_module, "autosave_on", lambda: False)
+    second = centre.tabs.working_tab(other.path)
+    asked = []
+    monkeypatch.setattr(centre, "_ask_save", lambda name: asked.append(name))      # Cancel
+    assert centre.close_tab(second) is False
+    assert asked == ["second.tex"] and len(centre.tabs.working_tabs) == 2 and centre.tabs.tab_for(other.path) is not None
+    monkeypatch.setattr(centre, "_ask_save", lambda name: "discard")
+    assert centre.close_tab(second) is True
+    assert centre.tabs.working_tabs == [first] and centre.tabs.tab_for(other.path) is None
+    assert state.deck.name == "test" and centre.tabs.active is first and not first.closable
+
+
+def test_a_tab_with_no_deck_keeps_the_last_deck_and_closing_that_deck_moves_the_state_on(window):
+    centre, state = window.centre, window.state
+    other = _second_deck(window)
+    first = centre.tabs.slide_tab
+    state.set_deck(other)
+    centre.open_file(window.root / "SlideMage.bib")
+    assert state.deck.name == "second"                              # E3: Compile and the top bar still name it
+    assert centre.close_tab(centre.tabs.working_tab(other.path)) is True
+    assert state.deck.name == "test" and centre.tabs.tab_for(window.root / "SlideMage.bib") is not None
+    assert centre.tabs.working_tabs == [first]
+
+
+def test_a_rescan_follows_an_archived_deck_and_closes_the_working_tab_of_a_deleted_one(window):
+    centre, state = window.centre, window.state
+    other = _second_deck(window)
+    gone = _second_deck(window, "gone")
+    state.set_deck(other)
+    centre.open_file(other.path)
+    state.set_deck(gone)
+    centre.open_file(gone.path)
+    centre.tabs.activate(centre.tabs.slide_tab)
+    window.project.archive_dir.mkdir(exist_ok=True)
+    moved = other.path.replace(window.project.archive_dir / other.path.name)
+    gone.path.unlink()
+    window.reload_decks()
+    moved_tab = centre.tabs.working_tab(moved)
+    assert moved_tab is not None and all(t.context != other.path for t in centre.tabs.tabs)   # followed by name
+    assert centre.tabs.working_tab(gone.path) is None
+    assert state.deck.name == "test" and len(centre.tabs.working_tabs) == 2

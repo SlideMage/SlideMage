@@ -3,8 +3,10 @@
 """The tabs of the centre column (docs/plans/centre-tabs.md): which of them are open, which one is shown, and the
 order in which they were last used; and the strip that draws them.
 
-`CentreTabs` is the model and needs no window. The first tab is the slide tab, always there and never closed: it
-shows the focused slide, as the centre always did. A file tab holds a file of its own, opened on purpose (a deck's
+`CentreTabs` is the model and needs no window. Each open deck has one working tab (docs/plans/tab-contexts.md, E1): it
+shows that deck's focused slide, as the one slide tab did before; closing it closes the deck (E2), except the last one.
+A deck's tabs stay together, its working tab first, each tab carrying a stripe in the colour of its deck (E7). A file
+tab holds a file of its own, opened on purpose (a deck's
 source, SlideMage.bib, test-slides.tex, or a slide's file), until it is closed. Each tab remembers the mode (Preview,
 Source, ...) it was last shown in; a file tab of a file that is no slide shows the Source view alone, a slide's file
 tab has every mode.
@@ -26,8 +28,11 @@ from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QSizePolicy
 from ..kit.tokens import SPACE
 from ..kit import kit_qss as q
 from ..kit.widgets import ClickFrame, ElidedLabel, IconButton, PopoverMenu, Surface
+from .state import DeckWork
 
-SLIDE, FILE = "slide", "file"
+DECK, FILE = "deck", "file"
+SLIDE = DECK            # the working tab was "the slide tab" before docs/plans/tab-contexts.md step 3b
+DECK_COLOURS = 6        # the stripes of the decks' tabs: one of this many hues, in the order the decks were opened
 FOLLOW = "follow"       # a tab's context (docs/plans/tab-contexts.md): "whatever state.deck is"; a Path would name a deck, None no deck
 TAB_HEIGHT = 34
 TAB_MIN_WIDTH = 96      # narrower than their text they elide; with less room than this they scroll
@@ -36,17 +41,19 @@ TAB_MAX_WIDTH = 260
 
 @dataclass(eq=False)
 class CentreTab:
-    kind: str                                       # SLIDE or FILE
-    path: Optional[Path] = None                     # None for the slide tab, which follows the focused slide
+    kind: str                                       # DECK (a deck's working tab) or FILE
+    path: Optional[Path] = None                     # None for a working tab, which follows its deck's focused slide
     mode: str = "preview"                           # the mode it was last shown in
     on_saved: Optional[Callable[[str], None]] = None    # runs after each save of the file (a deck's after_deck_edit)
     slide: bool = False                             # a file tab of a slide's file (current or a frozen version)
     occurrence: Optional[tuple] = None              # the deck row (SlideRow.key) it was opened from, if any
-    context: object = FOLLOW                        # the deck it belongs to: FOLLOW (every tab for now), a deck's Path, or None
+    context: object = FOLLOW                        # the deck it belongs to: a deck's Path, or None; FOLLOW (the deck on show) only before the window binds it
+    work: Optional[DeckWork] = None                 # a working tab: its deck as it was left (kept when another deck is shown)
+    deck_closable: bool = False                     # a working tab can be closed while another deck is open (set by CentreTabs)
 
     @property
     def closable(self) -> bool:
-        return self.kind == FILE
+        return self.kind == FILE or (self.kind == DECK and self.deck_closable)
 
     @property
     def source_only(self) -> bool:
@@ -62,10 +69,11 @@ class CentreTabs(QObject):
 
     def __init__(self, mode: str = "preview", parent: QObject | None = None) -> None:
         super().__init__(parent)
-        slide = CentreTab(SLIDE, mode=mode)
+        slide = CentreTab(DECK, mode=mode)             # the first deck's working tab, bound to its deck by the window
         self._tabs: list[CentreTab] = [slide]
         self._mru: list[CentreTab] = [slide]            # most recently used first
         self._active = slide
+        self._colours: dict[Path, int] = {}             # a deck's stripe, by the order the decks were opened
         self._cycle: Optional[list[CentreTab]] = None   # the MRU order while Ctrl is held through a Ctrl+Tab series
         self._cycle_at = 0
 
@@ -75,7 +83,66 @@ class CentreTabs(QObject):
 
     @property
     def slide_tab(self) -> CentreTab:
-        return self._tabs[0]
+        """The first working tab (the only one while a single deck is open)."""
+        return next(t for t in self._tabs if t.kind == DECK)
+
+    @property
+    def working_tabs(self) -> list[CentreTab]:
+        return [t for t in self._tabs if t.kind == DECK]
+
+    def working_tab(self, context) -> Optional[CentreTab]:
+        """The working tab of the deck `context` (its Path)."""
+        return next((t for t in self._tabs if t.kind == DECK and t.context == context), None)
+
+    def add_deck(self, context: Path, mode: str = "preview") -> CentreTab:
+        """The working tab of the deck `context`, opened after the last tab of any deck (tab-contexts.md E7) unless it
+        has one; it is not shown yet."""
+        tab = self.working_tab(context)
+        if tab is not None:
+            return tab
+        tab = CentreTab(DECK, mode=mode, context=context)
+        last = max((i for i, t in enumerate(self._tabs) if isinstance(t.context, Path)), default=-1)
+        self._tabs.insert(last + 1, tab)
+        self._mru.append(tab)
+        self._sync_closable()
+        self.tabs_changed.emit()
+        return tab
+
+    def deck_colour(self, context) -> Optional[int]:
+        """The stripe of the deck `context`: 0 to DECK_COLOURS - 1, given in the order the decks are opened and used again
+        after that; None for a tab with no deck."""
+        if not isinstance(context, Path):
+            return None
+        if context not in self._colours:
+            self._colours[context] = len(self._colours) % DECK_COLOURS
+        return self._colours[context]
+
+    def retarget_deck(self, old: Path, new: Path) -> None:
+        """The deck's file was renamed or archived: its tabs and its stripe follow it."""
+        if old == new:
+            return
+        for tab in self._tabs:
+            if tab.context == old:
+                tab.context = new
+        if old in self._colours:
+            self._colours[new] = self._colours.pop(old)
+
+    def regroup(self) -> None:
+        """Put the tabs in the order of E7: each deck's working tab, then the other tabs of that deck in their order, then
+        the tabs of no deck."""
+        ordered: list[CentreTab] = []
+        for work in self.working_tabs:
+            ordered.append(work)
+            ordered += [t for t in self._tabs if t.kind == FILE and isinstance(t.context, Path) and t.context == work.context]
+        ordered += [t for t in self._tabs if t not in ordered]
+        if ordered != self._tabs:
+            self._tabs = ordered
+            self.tabs_changed.emit()
+
+    def _sync_closable(self) -> None:
+        many = len(self.working_tabs) > 1
+        for tab in self._tabs:
+            tab.deck_closable = many
 
     @property
     def active(self) -> CentreTab:
@@ -114,14 +181,15 @@ class CentreTabs(QObject):
         self._set_active(tab, touch=True)
 
     def close(self, tab: CentreTab) -> Optional[CentreTab]:
-        """Close a file tab. When it was the one shown, the most recently used of the others is shown instead and
-        returned; else None."""
+        """Close a file tab, or a working tab while another is open (the window closes the deck's other tabs first). When
+        it was the one shown, the most recently used of the others is shown instead and returned; else None."""
         if not tab.closable or tab not in self._tabs:
             raise ValueError("only an open file tab can be closed")
         self._cycle = None
         was_active = tab is self._active
         self._tabs.remove(tab)
         self._mru.remove(tab)
+        self._sync_closable()
         self.tabs_changed.emit()
         if not was_active:
             return None
@@ -136,12 +204,13 @@ class CentreTabs(QObject):
         return self._active
 
     def close_others(self, tab: CentreTab) -> list[CentreTab]:
-        """The other closable tabs (the tab strip's context menu's Close others), in strip order."""
-        return [t for t in self._tabs if t.closable and t is not tab]
+        """The other file tabs (the tab strip's context menu's Close others), in strip order; a deck is closed from its
+        own working tab."""
+        return [t for t in self._tabs if t.kind == FILE and t is not tab]
 
     def close_right(self, tab: CentreTab) -> list[CentreTab]:
-        """The closable tabs after `tab` in strip order (Close all to the right)."""
-        return [t for t in self._tabs[self._tabs.index(tab) + 1:] if t.closable]
+        """The file tabs after `tab` in strip order (Close all to the right)."""
+        return [t for t in self._tabs[self._tabs.index(tab) + 1:] if t.kind == FILE]
 
     def cycle(self, step: int = 1) -> CentreTab:
         """Ctrl+Tab (`step` 1) and Ctrl+Shift+Tab (-1): show the next (previous) tab in most-recently-used order.
@@ -180,6 +249,7 @@ class _TabButton(ClickFrame):
     close_others_requested = Signal()
     close_right_requested = Signal()
     reveal_requested = Signal()
+    show_in_deck_requested = Signal()
 
     def __init__(self, tab: CentreTab) -> None:
         super().__init__()
@@ -193,18 +263,35 @@ class _TabButton(ClickFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         row = QHBoxLayout(self)
-        row.setContentsMargins(SPACE.xl, 0, SPACE.xs if tab.closable else SPACE.xl, 0)
+        row.setContentsMargins(SPACE.xl, 0, SPACE.xs if tab.kind in (FILE, DECK) else SPACE.xl, 0)
+        self.deck_name = ""
         row.setSpacing(SPACE.s_2xs)
         self.label = ElidedLabel()
         self.label.setObjectName(q.TAB_LABEL)
         self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row.addWidget(self.label, 1)
         self.close_button: Optional[IconButton] = None
-        if tab.closable:
-            # Compact tab actions preserve the tab height and leave room for the filename.
-            self.close_button = IconButton("close", "Close tab", size=14)
+        if tab.kind in (FILE, DECK):
+            # Compact tab actions preserve the tab height and leave room for the filename. A working tab's is there
+            # only while another deck is open (set_closable).
+            self.close_button = IconButton("close", "Close tab" if tab.kind == FILE else "Close deck", size=14)
             self.close_button.clicked.connect(self.close_requested)
             row.addWidget(self.close_button)
+            self.close_button.setVisible(tab.closable)
+
+    def set_closable(self, closable: bool) -> None:
+        if self.close_button is not None and self.close_button.isVisibleTo(self) != closable:
+            self.close_button.setVisible(closable)
+            self.updateGeometry()
+
+    def set_deck(self, colour: Optional[int], name: str = "") -> None:
+        """The stripe of the deck the tab belongs to (None: no stripe) and its name, for the menu."""
+        self.deck_name = name
+        value = "" if colour is None else str(colour)
+        if self.property("deckColour") != value:
+            self.setProperty("deckColour", value)
+            self.style().unpolish(self)
+            self.style().polish(self)
 
     def set_label(self, text: str, tooltip: str) -> None:
         self.label.set_full_text(text)
@@ -224,7 +311,8 @@ class _TabButton(ClickFrame):
         self.label.ensurePolished()
         room = self.label.fontMetrics().horizontalAdvance(self.label.full_text()) + 10
         margins = self.layout().contentsMargins()
-        extra = margins.left() + margins.right() + (self.close_button.width() + 2 if self.close_button else 0)
+        extra = margins.left() + margins.right() + (
+            self.close_button.width() + 2 if self.close_button is not None and self.close_button.isVisibleTo(self) else 0)
         hint.setWidth(min(TAB_MAX_WIDTH, max(TAB_MIN_WIDTH, room + extra)))
         return hint
 
@@ -247,10 +335,12 @@ class _TabButton(ClickFrame):
     def _menu(self) -> PopoverMenu:
         """Close, Close others, Close all to the right, Reveal in Explorer (D5 of the plan)."""
         menu = PopoverMenu(self, min_width=200)
-        menu.add_item("close", "Close", enabled=self.tab.closable)
+        menu.add_item("close", "Close deck" if self.tab.kind == DECK else "Close", enabled=self.tab.closable)
         menu.add_item("close_others", "Close others")
         menu.add_item("close_right", "Close all to the right")
         menu.add_separator()
+        if self.tab.kind == FILE and self.deck_name:
+            menu.add_item("show_in_deck", f"Show in deck {self.deck_name}")
         menu.add_item("reveal", "Reveal in Explorer")
         menu.triggered.connect(self._on_menu_action)
         return menu
@@ -267,6 +357,7 @@ class _TabButton(ClickFrame):
             "close_others": self.close_others_requested,
             "close_right": self.close_right_requested,
             "reveal": self.reveal_requested,
+            "show_in_deck": self.show_in_deck_requested,
         }[key].emit()
 
 
@@ -289,6 +380,7 @@ class TabStrip(Surface):
     close_others_requested = Signal(object)     # its context menu's Close others
     close_right_requested = Signal(object)      # its context menu's Close all to the right
     reveal_requested = Signal(object)           # its context menu's Reveal in Explorer
+    show_in_deck_requested = Signal(object)     # its context menu's Show in deck: the deck's working tab
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -332,8 +424,10 @@ class TabStrip(Surface):
         """The tabs' widgets in strip order (tests, and the centre's labels)."""
         return list(self._buttons.values())
 
-    def set_tabs(self, tabs: list[CentreTab], labels: Callable[[CentreTab], tuple[str, str]]) -> None:
-        """Show exactly `tabs`, in this order; `labels(tab)` is (text, tooltip) for a tab that is new."""
+    def set_tabs(self, tabs: list[CentreTab], labels: Callable[[CentreTab], tuple[str, str]],
+                 decks: Optional[Callable[[CentreTab], Optional[tuple[int, str]]]] = None) -> None:
+        """Show exactly `tabs`, in this order; `labels(tab)` is (text, tooltip) for a tab that is new, `decks(tab)` the
+        (stripe, name) of the deck a tab belongs to, if any."""
         for tab in [t for t in self._buttons if t not in tabs]:
             button = self._buttons.pop(tab)
             self._row.removeWidget(button)
@@ -349,8 +443,17 @@ class TabStrip(Surface):
                 button.close_others_requested.connect(lambda t=tab: self.close_others_requested.emit(t))
                 button.close_right_requested.connect(lambda t=tab: self.close_right_requested.emit(t))
                 button.reveal_requested.connect(lambda t=tab: self.reveal_requested.emit(t))
+                button.show_in_deck_requested.connect(lambda t=tab: self.show_in_deck_requested.emit(t))
                 self._row.insertWidget(index, button)
         self._buttons = {tab: self._buttons[tab] for tab in tabs}
+        for index, tab in enumerate(tabs):
+            button = self._buttons[tab]
+            if self._row.indexOf(button) != index:           # the order changed (a deck's tabs are kept together)
+                self._row.removeWidget(button)
+                self._row.insertWidget(index, button)
+            button.set_closable(tab.closable)
+            deck = decks(tab) if decks is not None else None
+            button.set_deck(*(deck if deck is not None else (None, "")))
         self.set_active(self._active)
         self._settle.start()
 

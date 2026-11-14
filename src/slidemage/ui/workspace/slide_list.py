@@ -515,7 +515,7 @@ class SlideList(QWidget):
         current_index = next((i for i, item in enumerate(self.tree.slide_items())
                               if item is self.tree.currentItem()), 0)
         scroll = self.tree.verticalScrollBar().value()
-        returning = self._returning if not same_deck and deck else None
+        returning = (self._returning or self.state.restoring) if not same_deck and deck else None
         if not same_deck:
             self.tree.collapsed.clear()
             if returning is not None:

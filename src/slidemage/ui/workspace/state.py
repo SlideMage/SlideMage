@@ -84,6 +84,13 @@ class WorkspaceState(QObject):
         # slide tab is on show" (centre-tabs.md, step 3), so a file tab's own mode (D2), shown through `mode` too,
         # is never remembered as the deck's.
         self.remember_mode: Callable[[], bool] = lambda: True
+        # The window's tabs (tab-contexts.md, step 3b): `before_switch` runs just before another deck replaces this one
+        # (the outgoing deck's work is kept, and what was typed is saved while `deck` still names it); `work_of(deck)`
+        # is the work a deck comes back with when it is opened without one; `restoring` is the work being restored while
+        # `deck_changed` and its companions are emitted, for the slide list to read.
+        self.before_switch: Optional[Callable[[], None]] = None
+        self.work_of: Optional[Callable[[Deck], Optional[DeckWork]]] = None
+        self.restoring: Optional[DeckWork] = None
         self.dirty = False   # some source or side panel has unsaved edits
         self._dirty_by: dict[str, bool] = {}
         self.lint_errors = 0   # errors the static check finds in the source being edited
@@ -110,6 +117,10 @@ class WorkspaceState(QObject):
                 self.refresh_languages()
                 self._show_language(self._deck_language(deck))
             return False
+        if self.before_switch is not None and self.deck is not None:
+            self.before_switch()
+        if work is None and deck is not None and self.work_of is not None:
+            work = self.work_of(deck)
         before = (self.focused_slide, self.selection, self.view, self.language, self.mode)
         shown = self.languages()
         self.deck = deck
@@ -129,6 +140,14 @@ class WorkspaceState(QObject):
         if work is not None and work.outline is not None and deck is not None and work.outline.matches(
                 self.project, deck, self.language, self.view):
             self.outline = work.outline         # still the deck's resolution: the list need not resolve it again
+        self.restoring = work if deck is not None else None
+        try:
+            self._announce(deck, before, shown)
+        finally:
+            self.restoring = None
+        return True
+
+    def _announce(self, deck: Optional[Deck], before: tuple, shown: tuple) -> None:
         self.deck_changed.emit(deck)
         if self.languages() != shown:
             self.languages_changed.emit(self.languages())
@@ -142,7 +161,6 @@ class WorkspaceState(QObject):
             self.language_changed.emit(self.language)
         if before[4] != self.mode:
             self.mode_changed.emit(self.mode)
-        return True
 
     def languages(self) -> tuple[str, ...]:
         """The codes of the language switch: the project's languages, main first, and the deck's own after them when
