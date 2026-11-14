@@ -20,6 +20,7 @@ a short look at the translations, kept until the next deck switch.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
@@ -36,6 +37,22 @@ SETTLE_MS = 150   # the focus must rest this long before the side panels and the
 
 # {deck path: {"view": ..., "mode": ...}} in app_settings.json; a "language" from an older version is dropped.
 SETTINGS_KEY = "workspace_decks"
+
+
+@dataclass(frozen=True)
+class DeckWork:
+    """What the window holds for the deck on show, so that coming back to the deck is coming back to where one was
+    (docs/plans/tab-contexts.md, section 2): `WorkspaceState.snapshot()` takes it, `set_deck(deck, work=...)` restores
+    it. The list's own part (scroll, closed sections, Find text) is added by `SlideList.work()`."""
+    focused_slide: Optional[str] = None
+    focused_occurrence: Optional[tuple] = None
+    selection: tuple = ()
+    view: str = VIEW_INSTRUCTOR
+    language: Optional[str] = None
+    outline: Optional[deck_outline.Outline] = None     # valid while the deck's text, view and language stay (Outline.matches)
+    list_scroll: int = 0
+    collapsed: tuple = ()                               # titles of the sections the user closed
+    list_filter: str = ""
 
 
 class WorkspaceState(QObject):
@@ -71,9 +88,18 @@ class WorkspaceState(QObject):
         self._dirty_by: dict[str, bool] = {}
         self.lint_errors = 0   # errors the static check finds in the source being edited
 
-    def set_deck(self, deck: Optional[Deck]) -> bool:
+    def snapshot(self) -> Optional[DeckWork]:
+        """The deck on show as the user has it (focus, selection, view, language, resolved outline); None without a
+        deck. The slide list adds its scroll, closed sections and Find text (`SlideList.work`)."""
+        if self.deck is None:
+            return None
+        return DeckWork(self.focused_slide, self.focused_occurrence, self.selection, self.view, self.language,
+                        self.current_outline())
+
+    def set_deck(self, deck: Optional[Deck], work: Optional[DeckWork] = None) -> bool:
         """Switch decks: the view and language come back from the settings
-        and the focus and selection start empty. A fresh scan of the deck
+        and the focus and selection start empty, or, with `work` (the deck shown again as it was left), come back from
+        it, the same signals emitted. A fresh scan of the deck
         already open (same file) only replaces the stored object, so that
         readers see the new text; it is not a switch and emits nothing.
         Returns whether it was a switch."""
@@ -93,14 +119,23 @@ class WorkspaceState(QObject):
         self.focused_occurrence = None
         self.view = remembered["view"] if remembered.get("view") in VIEWS else VIEW_INSTRUCTOR
         self.language = self._deck_language(deck) or self.languages()[0]
+        if work is not None and deck is not None:
+            self.focused_slide, self.focused_occurrence, self.selection = work.focused_slide, work.focused_occurrence, work.selection
+            if work.view in VIEWS:
+                self.view = work.view
+            if work.language in self.languages():
+                self.language = work.language
         self.mode = remembered["mode"] if remembered.get("mode") in MODES else MODES[0]
+        if work is not None and work.outline is not None and deck is not None and work.outline.matches(
+                self.project, deck, self.language, self.view):
+            self.outline = work.outline         # still the deck's resolution: the list need not resolve it again
         self.deck_changed.emit(deck)
         if self.languages() != shown:
             self.languages_changed.emit(self.languages())
-        if before[0] is not None:
-            self.focused_slide_changed.emit(None)
-        if before[1]:
-            self.selection_changed.emit(())
+        if before[0] != self.focused_slide:
+            self.focused_slide_changed.emit(self.focused_slide)
+        if before[1] != self.selection:
+            self.selection_changed.emit(self.selection)
         if before[2] != self.view:
             self.view_changed.emit(self.view)
         if before[3] != self.language:

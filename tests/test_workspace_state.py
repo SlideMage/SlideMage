@@ -205,3 +205,26 @@ def test_the_selection_falls_back_to_the_focus():
     assert state.selected_or_focused() == ("1ab",)
     state.set_selection(("2cd", "3ef"))
     assert state.selected_or_focused() == ("2cd", "3ef")
+
+
+def test_a_deck_comes_back_as_it_was_left_with_its_work():
+    state = WorkspaceState(EXAMPLE_PROJECT)
+    first, second = make_deck("first"), make_deck("second")
+    assert state.snapshot() is None
+    state.set_deck(first)
+    state.set_view("during-course")
+    state.set_focused_slide("1y8", occurrence_key=("a", 1))
+    state.set_selection(("1y8", "1ym"))
+    work = state.snapshot()
+    assert (work.focused_slide, work.focused_occurrence, work.selection, work.view) == (
+        "1y8", ("a", 1), ("1y8", "1ym"), "during-course")
+    state.set_deck(second)
+    assert state.focused_slide is None and state.selection == ()
+    focus, selection, view = record(state.focused_slide_changed), record(state.selection_changed), record(state.view_changed)
+    assert state.set_deck(first, work=work) is True
+    assert (state.focused_slide, state.focused_occurrence, state.selection, state.view) == (
+        "1y8", ("a", 1), ("1y8", "1ym"), "during-course")
+    assert focus == ["1y8"] and selection == [("1y8", "1ym")] and view == ["during-course"]    # the same signals as a switch
+    state.set_deck(second)
+    state.set_deck(first)                                   # without work it is a fresh switch, as before
+    assert state.focused_slide is None and state.selection == ()
