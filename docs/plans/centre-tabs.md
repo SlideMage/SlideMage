@@ -33,6 +33,10 @@ these views. Modify that so it shows them as tabs instead, so the user can easil
 
 ## 2. What it should do
 
+> **Superseded in part by `docs/plans/tab-contexts.md`** (built in v0.16.41 to v0.16.44): there is no single slide
+> tab any more. Each open deck has its own working tab (closing it closes the deck), a deck's tabs stay together
+> with a colour stripe, and the tabs are restored per deck. Read that plan for the rules; what follows is the first design.
+
 A **tab strip** at the top of the centre column, above Preview / Source / Split / Details:
 
 ```
