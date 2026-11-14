@@ -1328,3 +1328,28 @@ def test_a_slide_outside_every_deck_shows_a_placeholder_and_the_panels_say_so(wi
     window.centre.show_slide_tab()
     settle(window)
     assert window.slide_list.stack.currentWidget() is window.slide_list.tree
+
+
+def test_a_deck_shown_again_comes_back_with_its_list_work(window):
+    first = next(d for d in deck_scan.scan_decks(window.project) if d.name == "test")
+    (first.path.parent / "second.tex").write_text(first.text, encoding="utf-8")
+    decks = {d.name: d for d in deck_scan.scan_decks(window.project)}
+    other = decks["second"]
+    window.slide_list.tree.collapsed.add("Part")
+    window.slide_list.find.setText("a")
+    work = window.slide_list.work()
+    assert work.focused_slide == "abc" and work.collapsed == ("Part",) and work.list_filter == "a"
+    window.slide_list.show_deck(other)
+    assert window.state.deck.name == other.name and window.slide_list.tree.collapsed == set()
+    window.slide_list.find.clear()
+    assert window.slide_list.show_deck(decks["test"], work) is True
+    assert window.state.deck.name == "test" and window.state.focused_slide == "abc"
+    assert window.slide_list.tree.collapsed == {"Part"} and window.slide_list.find.text() == "a"
+    assert window.slide_list.tree.data_of(window.slide_list.tree.currentItem()).call.id == "abc"
+
+
+def test_about_to_change_context_saves_what_was_typed_in_the_old_context(window):
+    abc = window.root / "slides" / "abc-EN-Hello-current.tex"
+    window.side_panels.panels["notes"]._new.setPlainText("Typed before the switch")
+    assert window.about_to_change_context() is True
+    assert "\\note{Typed before the switch}" in abc.read_text(encoding="utf-8")

@@ -378,6 +378,14 @@ class WorkspaceWindow(QMainWindow):
                                right=side_panels.WIDTH if index == 2 else None)
         self._on_splitter_moved(0, index)
 
+    def about_to_change_context(self) -> bool:
+        """Before the deck on show changes under a tab switch (tab-contexts.md R4): everything typed lands in the context
+        it was typed in. The side panels' pending edits are saved, the slide list's inline edit is finished, and the files
+        of the Source view are written. Whether all of it was saved (a file in conflict with the disk is not)."""
+        self.side_panels.flush()
+        self.slide_list.commit_editors()
+        return self.centre.source.flush_all()
+
     def _on_tab_context(self, tab) -> None:
         """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
         placeholder = self.centre.list_placeholder(tab)
