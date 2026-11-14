@@ -288,6 +288,7 @@ class WorkspaceWindow(QMainWindow):
         self.centre.source_only_changed.connect(self.topbar.set_source_only)
         self.centre.context_changed.connect(self._on_tab_context)
         self.slide_list.back_requested.connect(self.centre.show_slide_tab)
+        self.slide_list.open_in_requested.connect(self._open_in_deck)
         self.topbar.leave_source_only.connect(self._leave_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
@@ -381,6 +382,12 @@ class WorkspaceWindow(QMainWindow):
         """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
         placeholder = self.centre.list_placeholder(tab)
         self.slide_list.show_placeholder(*placeholder) if placeholder else self.slide_list.show_placeholder(None)
+
+    def _open_in_deck(self, deck) -> None:
+        """The placeholder's "Open in <deck>": the tab on show gets that deck (CentreColumn.adopt_deck), and the side
+        panels show its slide as that deck calls it."""
+        self.centre.adopt_deck(deck)
+        self.side_panels.refresh()
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         # The Images page hides the columns: not the user's choice.

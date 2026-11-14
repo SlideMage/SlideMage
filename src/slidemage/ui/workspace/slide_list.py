@@ -86,6 +86,7 @@ def remembered_width() -> int:
 class SlideList(QWidget):
     _thumbnails_finished = Signal(object)
     back_requested = Signal()       # the placeholder's button: show the working tab again
+    open_in_requested = Signal(object)     # the placeholder's "Open in <deck>": the Deck to open for the tab on show
 
     def __init__(self, app, state: WorkspaceState, theme: ThemeManager, toast: Toast) -> None:
         """`app` is the window: it rescans after an edit (`after_deck_edit`), opens the
@@ -193,18 +194,41 @@ class SlideList(QWidget):
         self.placeholder_text.setObjectName(q.SLIDES_NOTE)
         self.placeholder_text.setWordWrap(True)
         column.addWidget(self.placeholder_text)
+        self.placeholder_decks = QVBoxLayout()          # one "Open in <deck>" button per deck that uses the slide
+        self.placeholder_decks.setSpacing(SPACE.sm)
+        column.addLayout(self.placeholder_decks)
+        self.placeholder_deck_buttons: list[Button] = []
+        self.placeholder_note = QLabel()
+        self.placeholder_note.setObjectName(q.SLIDES_NOTE)
+        self.placeholder_note.setWordWrap(True)
+        column.addWidget(self.placeholder_note)
         self.placeholder_back = Button("", "secondary", compact=True)
         self.placeholder_back.clicked.connect(self.back_requested.emit)
         column.addWidget(self.placeholder_back)
         column.addStretch(1)
         return page
 
-    def show_placeholder(self, text: Optional[str], back: str = "") -> None:
+    def show_placeholder(self, text: Optional[str], back: str = "", decks: tuple = (), note: str = "") -> None:
         """Show `text` in place of the slide list (the tab on show has no deck), with a button `back` that asks for the
-        working tab; None shows the list again. The column keeps its width and its header, which is disabled."""
+        working tab; None shows the list again. `decks` are the decks that use the tab's slide: each gets a button
+        "Open in <deck>" that asks for it (`open_in_requested`); `note` is a line under them. The column keeps its
+        width and its header, which is disabled."""
         shown = text is not None
         if shown:
             self.placeholder_text.setText(text)
+            for button in self.placeholder_deck_buttons:
+                self.placeholder_decks.removeWidget(button)
+                button.deleteLater()
+            self.placeholder_deck_buttons = []
+            for deck in decks:
+                label = f"Open in {deck.name}" + (" (archived)" if getattr(deck, "archived", False) else "")
+                button = Button(label, "secondary", compact=True)
+                button.setToolTip(f"Open {deck.name} and show this slide as that deck calls it")
+                button.clicked.connect(lambda _checked=False, d=deck: self.open_in_requested.emit(d))
+                self.placeholder_decks.addWidget(button)
+                self.placeholder_deck_buttons.append(button)
+            self.placeholder_note.setText(note)
+            self.placeholder_note.setVisible(bool(note))
             self.placeholder_back.setText(back)
             self.placeholder_back.setVisible(bool(back))
         self.stack.setCurrentWidget(self.placeholder if shown else self.tree)

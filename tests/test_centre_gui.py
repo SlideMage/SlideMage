@@ -1754,6 +1754,7 @@ def test_tab_slide_is_the_slide_file_tab_on_show_and_none_elsewhere(centre, file
     assert path == files.ccc and row is not None and row.call.id_slug == "ccc-DE-Drei"
     centre.open_file(files.bib)
     assert centre.tab_slide() is None                                          # a file that is no slide
+    centre.show_slide_tab()
     frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
     centre.open_file(frozen, tab=True)
     assert centre.tab_slide() == (frozen, None, centre.state.deck)                               # a frozen version previews alone
@@ -2034,8 +2035,8 @@ def test_a_file_that_is_no_slide_and_no_deck_has_no_context_and_the_list_shows_a
     bib = centre.tabs.tab_for(files.bib)
     assert bib.context is None
     assert centre.tab_deck(bib) is None
-    text, back = centre.list_placeholder()
-    assert "SlideMage.bib" in text and back == "Back to course"
+    placeholder = centre.list_placeholder()
+    assert "SlideMage.bib" in placeholder.text and placeholder.back == "Back to course"
     assert seen[-1] is bib
     centre.open_file(files.deck)                                # a deck's source belongs to its deck (O7)
     assert centre.tabs.tab_for(files.deck).context is FOLLOW and centre.list_placeholder() is None
@@ -2053,3 +2054,61 @@ def test_a_bib_tab_is_restored_with_no_context(centre, files, ctx, deck, monkeyp
     reopened = _reopened(ctx, deck, monkeypatch)
     reopened.restore_tabs()
     assert reopened.tabs.tab_for(files.bib).context is None
+
+
+def _other_deck(centre, tmp_path, name, body):
+    text = DECK.replace("\\slide{aaa-EN-One}", body)
+    return Deck(name=name, path=tmp_path / f"{name}.tex", archived=False, text=text, supports_version=True,
+                uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+                chapters=parse_chapters(text), output_folders={})
+
+
+def test_a_slide_outside_the_deck_has_no_context_and_the_placeholder_offers_the_decks_that_use_it(
+        centre, files, project, tmp_path):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    other = _other_deck(centre, tmp_path, "lecture", "\\slide{ddd-EN-Four}")
+    other.path.write_text(other.text, encoding="utf-8")
+    centre.app.decks = [centre.state.deck, other]
+    centre.open_file(files.ccc, tab=True)                    # the deck uses it
+    assert centre.tabs.tab_for(files.ccc).context is FOLLOW and centre.list_placeholder() is None
+    centre.open_file(ddd, tab=True)                          # it does not
+    tab = centre.tabs.tab_for(ddd)
+    assert tab.context is None and centre.tab_slide()[2] is None
+    placeholder = centre.list_placeholder()
+    assert "ddd" in placeholder.text and "not in an open deck" in placeholder.text
+    assert [d.name for d in placeholder.decks] == ["lecture"] and placeholder.note == ""
+    centre.app.decks = [centre.state.deck]
+    assert centre.list_placeholder().note == "No deck uses this slide yet."
+    centre.open_file(files.bib)                              # a frozen version has its opener's context (O8)
+    frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
+    centre.open_file(frozen, tab=True)
+    assert centre.tabs.tab_for(frozen).context is None
+
+
+def test_open_in_deck_gives_the_tab_that_deck_and_keeps_the_tab(centre, files, project, tmp_path):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    other = _other_deck(centre, tmp_path, "lecture", "\\slide{ddd-EN-Four}")
+    other.path.write_text(other.text, encoding="utf-8")
+    centre.app.decks = [centre.state.deck, other]
+    centre.open_file(ddd, tab=True)
+    tab = centre.tabs.active
+    seen = []
+    centre.context_changed.connect(seen.append)
+    centre.adopt_deck(other)
+    assert centre.state.deck.path == other.path
+    assert tab.context == other.path and centre.tabs.active is tab           # the tab stays on show, with its file
+    assert centre.tab_deck(tab) is centre.state.deck and centre.list_placeholder() is None
+    assert seen and seen[-1] is tab
+    assert centre.tab_slide()[1] is not None                                 # it previews as the deck calls the slide
+
+
+def test_a_slide_tab_with_no_deck_is_restored_with_none(centre, files, project, ctx, deck, monkeypatch):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    centre.open_file(ddd, tab=True)
+    centre.save_tabs()
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert reopened.tabs.tab_for(ddd).context is None
