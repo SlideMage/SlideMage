@@ -1310,3 +1310,21 @@ def test_language_open_gives_the_other_language_a_tab_only_from_a_slide_file_tab
     panel.refresh()
     buttons(panel, "Open")[0].click()
     assert window.opened[1] == (german, {"tab": True, "occurrence": row.key})
+
+
+def test_a_slide_outside_every_deck_shows_a_placeholder_and_the_panels_say_so(window):
+    slides = window.root / "slides"
+    extra = slides / "abx-EN-Extra-current.tex"
+    extra.write_text((slides / "abd-EN-Second-current.tex").read_text(encoding="utf-8"), encoding="utf-8")
+    open_tab(window, "abx-EN-Extra-current.tex")
+    assert window.centre.tabs.active.context is None
+    assert window.slide_list.stack.currentWidget() is window.slide_list.placeholder
+    assert "not in an open deck" in window.slide_list.placeholder_text.text()
+    panels = window.side_panels
+    for key in ("visibility", "versions"):
+        panels.set_panel(key)
+        settle(window)
+        assert "This slide is not in an open deck." in texts(panels.panels[key])
+    window.centre.show_slide_tab()
+    settle(window)
+    assert window.slide_list.stack.currentWidget() is window.slide_list.tree

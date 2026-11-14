@@ -1206,3 +1206,17 @@ def test_the_placeholder_replaces_the_list_in_the_same_column_and_back_is_asked_
     slide_list.show_placeholder(None)
     assert slide_list.stack.currentWidget() is slide_list.tree
     assert slide_list.find.isEnabled() and slide_list.add_bar.isEnabled()
+
+
+def test_the_placeholder_offers_open_in_each_deck_that_uses_the_slide(make_list):
+    slide_list, window, _path = make_list("\\section{S}\n\\slide{a}\n")
+    first, second = window.state.deck, replace(window.state.deck, name="lecture")
+    asked = []
+    slide_list.open_in_requested.connect(asked.append)
+    slide_list.show_placeholder("abx is not in an open deck.", "Back to course", (first, second), "")
+    labels = [button.text() for button in slide_list.placeholder_deck_buttons]
+    assert labels == ["Open in course", "Open in lecture"]
+    slide_list.placeholder_deck_buttons[1].click()
+    assert asked == [second]
+    slide_list.show_placeholder("abx is not in an open deck.", "", (), "No deck uses this slide yet.")
+    assert slide_list.placeholder_deck_buttons == [] and slide_list.placeholder_note.text() == "No deck uses this slide yet."

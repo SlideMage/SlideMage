@@ -29,7 +29,7 @@ shown, and counted in WorkspaceState.dirty.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, NamedTuple, Optional
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -113,6 +113,18 @@ class _CtrlWatch(QObject):
         return False
 
 
+class ListPlaceholder(NamedTuple):
+    """What the slide list shows in place of the list (CentreColumn.list_placeholder)."""
+    text: str
+    back: str = ""              # the button that shows the working tab again; "" for none
+    decks: tuple = ()           # the decks that use the slide of a tab with no deck, each offered as "Open in <deck>"
+    note: str = ""              # a second line under the text ("No deck uses this slide yet.")
+
+
+# The most decks a placeholder offers; a slide used in more says how many are left out.
+MAX_PLACEHOLDER_DECKS = 8
+
+
 class CentreColumn(QFrame):
     versions_changed = Signal()   # a slide was restored or frozen as a version
     duplicate_requested = Signal(str)   # the details pane's Duplicate: the id-slug of the slide
@@ -129,6 +141,7 @@ class CentreColumn(QFrame):
         self._switching = False             # a tab is being shown: its mode is set, then the views refresh once
         self.rescanning = False             # a deck rescan is under way: a focus it moves is not the user's, so no tab switch
         self._holding = 0                   # > 0: showing another tab does not refresh, the caller does
+        self._adopting = False              # adopt_deck() is switching the deck under the tab on show, which stays
         self.tabs = CentreTabs(state.mode, self)
         # A file tab's mode (D2) is shown through state.mode too (_on_tab_active), but is never the deck's own:
         # only the slide tab's mode is remembered for it (the bug fix of centre-tabs.md step 3).
@@ -254,8 +267,9 @@ class CentreColumn(QFrame):
         if tab is None:
             frozen = slide and self._file_slide(path)[1] is not None
             mode = "source" if line is not None or frozen else self.state.mode
+            context = self._file_context(path, slide, opened_from=self.tabs.active)
             tab = self.tabs.add_file(path, on_saved, slide=slide, occurrence=occurrence, mode=mode)
-            tab.context = self._file_context(path, slide)
+            tab.context = context
             self.source.hold(path)
         else:
             if on_saved is not None:
@@ -349,24 +363,91 @@ class CentreColumn(QFrame):
         tab = self.tabs.active
         return self.tab_deck(tab) if tab.slide else self.state.deck
 
-    def _file_context(self, path: Path, slide: bool):
-        """The context of a new file tab (tab-contexts.md O6, O7): a file that is no slide and no deck's source
-        (SlideMage.bib, test-slides.tex, a theme's template) belongs to no deck, so None; any other follows the deck."""
+    def _file_context(self, path: Path, slide: bool, opened_from: Optional[CentreTab] = None):
+        """The context of a new file tab (tab-contexts.md O4 to O8). A file that is no slide and no deck's source
+        (SlideMage.bib, test-slides.tex, a theme's template) belongs to no deck: None. A deck's source follows the
+        deck. A slide follows the deck when the deck on show uses it, and has no deck (None) when it does not (Go to
+        slide and text hits outside the deck); a frozen version has the context of the tab it was opened from."""
         project = self.state.project
         deck = self.state.deck
-        if slide or path.parent in (project.decks_dir, project.archive_dir) or (deck is not None and path == deck.path):
-            return FOLLOW
-        return None
+        if not slide:
+            in_decks = path.parent in (project.decks_dir, project.archive_dir) or (deck is not None and path == deck.path)
+            return FOLLOW if in_decks else None
+        id_slug, version = self._file_slide(path)
+        if version is not None and opened_from is not None:
+            return opened_from.context
+        if not id_slug or deck is None or deck.is_test_deck:
+            return FOLLOW                   # no deck to be outside of: as before
+        return FOLLOW if self._deck_uses(deck, bare_id(id_slug)) else None
 
-    def list_placeholder(self, tab: Optional[CentreTab] = None) -> Optional[tuple[str, str]]:
-        """(text, button) the slide list shows in place of the list for `tab` (default: the one on show), None when it
-        shows the list: the tab belongs to a deck. The button text names the deck the working tab shows."""
+    def _deck_uses(self, deck, slide_id: str) -> bool:
+        """Whether `deck` uses the slide `slide_id` (a bare id): a row of it in the view and language on show (which
+        knows the slide's partner in the other language), or a call of it that this view hides."""
+        state = self.state
+        rows = deck_outline.outline_rows(state.project, deck, state.view, state.language,
+                                         outline=state.outline if deck is state.deck else None)
+        if any(row.matches(slide_id) for row in rows):
+            return True
+        return any(bare_id(call.id_slug) == slide_id for call in deck_editor.parse_slide_calls(deck))
+
+    def _has_list(self, tab: CentreTab) -> bool:
+        """Whether the slide list is the tab's: it follows the deck on show, or its own deck is the one on show."""
+        return tab.context is FOLLOW or self.tab_deck(tab) is not None
+
+    def list_placeholder(self, tab: Optional[CentreTab] = None) -> Optional[ListPlaceholder]:
+        """What the slide list shows in place of the list for `tab` (default: the one on show); None when it shows the
+        list, because the tab belongs to the deck on show. A file that is no slide says so; a slide outside the deck
+        names the decks that use it, each of which `adopt_deck` opens for this tab (tab-contexts.md section 5). The
+        back button names the deck the working tab shows."""
         tab = tab or self.tabs.active
-        if tab.context is not None:
+        if self._has_list(tab):
             return None
         deck = self.state.deck
-        text = f"{tab.path.name if tab.path else 'This tab'} has no slide list."
-        return text, (f"Back to {deck.name}" if deck is not None else "")
+        back = f"Back to {deck.name}" if deck is not None else ""
+        if not tab.slide:
+            return ListPlaceholder(f"{tab.path.name if tab.path else 'This tab'} has no slide list.", back)
+        name = self._slide_file_label(tab.path)
+        decks = self.decks_using(tab)
+        note = "" if decks else "No deck uses this slide yet."
+        if len(decks) > MAX_PLACEHOLDER_DECKS:
+            note = f"and {len(decks) - MAX_PLACEHOLDER_DECKS} more: see Used in decks."
+            decks = decks[:MAX_PLACEHOLDER_DECKS]
+        return ListPlaceholder(f"{name} is not in an open deck.", back, tuple(decks), note)
+
+    def decks_using(self, tab: CentreTab) -> list:
+        """The decks that call the slide of the slide file tab `tab` (the current one for a frozen version), in scan
+        order, as the Used in decks panel lists them."""
+        id_slug, _version = self._file_slide(tab.path) if tab.slide else ("", None)
+        if not id_slug:
+            return []
+        decks = getattr(self.app, "decks", None)
+        return [usage.deck for usage in slide_usage.find_usage(self.state.project, id_slug, decks)]
+
+    def adopt_deck(self, deck, tab: Optional[CentreTab] = None) -> None:
+        """The placeholder's "Open in <deck>" (tab-contexts.md E6): `tab` (default: the one on show) gets `deck` as its
+        context and the deck opens underneath it. The tab stays on show with its editor, its undo history and its
+        mode; the slide list shows the deck, and the tab previews as the deck calls its slide."""
+        tab = tab or self.tabs.active
+        if tab.kind != FILE:
+            return
+        tab.context = deck.path
+        mode = tab.mode
+        if self.state.deck is None or self.state.deck.path != deck.path:
+            self._adopting = True
+            try:
+                self.state.set_deck(deck)       # the working tab follows it; this tab stays (_on_deck_changed)
+            finally:
+                self._adopting = False
+            if tab is self.tabs.active:
+                tab.mode = mode
+                self._switching = True
+                try:
+                    self.state.set_mode("source" if tab.source_only else mode)   # the deck's remembered mode is the working tab's
+                finally:
+                    self._switching = False
+        if tab is self.tabs.active:
+            self.context_changed.emit(tab)
+            self.refresh()
 
     def tab_slide(self) -> Optional[tuple[Path, Optional[deck_outline.SlideRow], object]]:
         """(path, row, deck) of the slide file tab on show, which the side panels follow (D9); None for the slide tab and
@@ -761,9 +842,13 @@ class CentreColumn(QFrame):
     def _on_deck_changed(self, _deck) -> None:
         # The new deck's remembered mode is the state's already; the slide tab follows the deck, the file tabs stay.
         self.tabs.slide_tab.mode = self.state.mode
+        if self._adopting:                  # adopt_deck(): the tab on show stays, and refreshes when the switch is done
+            self._set_path(None)
+            return
         self._show_slide_tab()
         self._set_path(None)
         self.refresh()
+        self.context_changed.emit(self.tabs.active)     # a tab of another deck's may be on show no longer
 
     # -- tabs ----------------------------------------------------------------------------
 
@@ -973,7 +1058,9 @@ class CentreColumn(QFrame):
             slide = _is_slide_file(path)
             tab = self.tabs.add_file(path, slide=slide,
                                      mode=entry.get("mode") if entry.get("mode") in MODES else "source")
-            tab.context = self._file_context(path, slide)
+            # a slide saved with no deck comes back with none; any other as a new tab of the file would
+            no_deck = new_format and slide and entry.get("deck") is None
+            tab.context = None if no_deck else self._file_context(path, slide)
             self.source.hold(path)
             if (index == active) if new_format else (rel == active):
                 active_tab = tab
@@ -995,6 +1082,8 @@ class CentreColumn(QFrame):
         """The mode of the tab on show changed. A file that is no slide has the Source view alone (D3 of the plan):
         another mode, asked for by whatever route, is put back."""
         tab = self.tabs.active
+        if self._adopting:                  # the deck's own mode, which is the working tab's (adopt_deck puts this tab's back)
+            return
         if tab.source_only and mode != "source":
             self.state.set_mode("source")
             return
@@ -1005,6 +1094,9 @@ class CentreColumn(QFrame):
         self.refresh()
 
     def _on_focus(self, _slide_id: Optional[str]) -> None:
+        if self._adopting:                  # the new deck's first slide: the working tab's, the tab on show stays
+            self._set_path(self._focused_path())
+            return
         if not self._opening:
             if not self.rescanning:     # the rescan after a save moves the focus off a slide that is gone: stay on the tab
                 self._show_slide_tab()

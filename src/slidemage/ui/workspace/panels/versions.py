@@ -120,7 +120,7 @@ class SlideVersions(SidePanel):
         deck = self.state.deck
         calls = self._pinnable()
         if not self.deck_calls():
-            row.add_text(f"{deck.name if deck else 'The open deck'} does not call this slide.", q.DETAILS_LABEL)
+            row.add_text(self.not_called_text(), q.DETAILS_LABEL)
             return
         if not calls:
             row.add_text(f"{deck.name} always uses the current version of this slide "
