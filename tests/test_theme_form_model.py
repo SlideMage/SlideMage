@@ -205,3 +205,16 @@ def test_where_a_value_comes_from_in_each_mode(shipped):
     assert strip[0][2] == strip[1][2] != strip[2][2] == "#0072b2"
     assert shipped.palette_matters("c_primary_highlight") and not shipped.palette_matters("c_primary_dark")
     assert shipped.role_set_counts(("alert", "bullet"), "dark") == (1, 2)
+
+
+def test_a_hook_role_the_theme_does_not_set_is_written_as_its_macro(condshape):
+    """The title bar set in the form stayed dark gray: the form wrote \\colorlet{SMTitleBoxColor}{..} (v0.16.40)."""
+    for role, hook in (("title_fill", "SMTitleBoxColor"), ("title_text", "SMTitleTextColor"), ("bullet", "SMBulletColor"),
+                       ("footer_fill", "SMFooterBoxColorDefault")):
+        condshape.set_role(role, condshape.base, None)
+        before = condshape.text
+        condshape.set_role(role, condshape.base, "c_secondary_blue")
+        added = [line for line in changes(before, condshape.text) if hook in line]
+        assert added == [f"+ \\renewcommand{{\\{hook}}}{{c_secondary_blue}}"], role
+        assert "\\colorlet{" + hook not in condshape.text
+        assert condshape.role_written(role, condshape.base) == "c_secondary_blue"

@@ -47,6 +47,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 _HEADERS = {"header:name": re.compile(r"^%+[ \t]*SlideMage template name:[ \t]*([^\r\n]*?)[ \t]*\r?$", re.M),
             "header:modes": re.compile(r"^%+[ \t]*SlideMage modes:[ \t]*([^\r\n]*?)[ \t]*\r?$", re.M)}
 _HEADER_LINES = {"header:name": "% SlideMage template name: {}", "header:modes": "% SlideMage modes: {}"}
+_COLOUR_KINDS = ("colour", "colorlet")
 _SETUP_RE = re.compile(r"\\input\s*\{SlideMage_setup(?:\.tex)?\}")
 _BASE_RE = re.compile(r"\\input\s*\{SlideMage_base(?:\.tex)?\}")
 _COND_RE = re.compile(r"\\(newif\s*\\if[A-Za-z@]*|ifthenelse|if[A-Za-z@]*|fi)(?![A-Za-z@])")
@@ -211,8 +212,16 @@ class ThemeFile:
 
     def find(self, key: str, mode: str = "") -> Setting | None:
         """The setting the form edits for `key` in `mode`: the last editable one (in TeX the last line wins)."""
-        hits = [s for s in self.settings if s.key == key and s.mode == mode and s.editable]
+        hits = [s for s in self.settings if s.key == key and s.mode == mode and s.editable
+                and not (key in theme_fields.MACRO_COLOURS and s.kind in _COLOUR_KINDS)]
         return hits[-1] if hits else None
+
+    def _mistaken(self, key: str) -> list[Setting]:
+        """The \\colorlet and \\definecolor lines of a colour-name macro's name (theme_fields.MACRO_COLOURS): they
+        set nothing the framework reads. The form wrote such lines up to v0.16.39."""
+        if key not in theme_fields.MACRO_COLOURS:
+            return []
+        return [s for s in self.settings if s.key == key and s.editable and s.kind in _COLOUR_KINDS]
 
     def value(self, key: str, mode: str = "") -> str | None:
         """The value as written ("#rrggbb" for a HTML colour), or None when the theme does not set it."""
@@ -230,7 +239,7 @@ class ThemeFile:
     def own_colours(self) -> list[str]:
         """Palette colours of the theme's own (c_graz_dark_canvas): \\definecolor of a name the catalog lacks."""
         names = [s.key for s in self.settings if s.kind in ("colour", "colorlet") and s.editable
-                 and s.key not in theme_fields.BY_NAME]
+                 and s.key not in theme_fields.BY_NAME and s.key not in theme_fields.MACRO_COLOURS]
         return list(dict.fromkeys(names))
 
     def beyond(self) -> list[int]:
@@ -258,17 +267,42 @@ class ThemeFile:
         "#rrggbb" (written as \\definecolor{..}{HTML}{..}) or an xcolor expression (\\colorlet); a mode line's
         colour takes "#rrggbb" only."""
         setting = self.find(key, mode)
-        if setting is None:
+        mistaken = self._mistaken(key) if not mode else []
+        if setting is None and mistaken:
+            # a \colorlet of the macro's name becomes the \renewcommand, in its place
+            last = mistaken.pop()
+            self.text = self.text[:last.start] + self._line_for(key, value, mode) + self.text[last.end:]
+            self._parse()
+        elif setting is None:
             self._add(key, value, mode)
         else:
             self._replace(setting, value)
         self._parse()
+        self._drop_mistaken(key, len(mistaken))
+
+    def _drop_mistaken(self, key: str, count: int) -> None:
+        for _ in range(count):
+            found = self._mistaken(key)
+            if not found:
+                return
+            self._cut(found[0])
+            self._parse()
 
     def remove(self, key: str, mode: str = "") -> None:
         """Take the setting out (the catalog's default applies again): its line goes when it holds nothing else."""
+        if not mode:
+            self._drop_mistaken(key, len(self._mistaken(key)))
         setting = self.find(key, mode)
         if setting is None:
+            self._drop_empty_block()
+            self._parse()
             return
+        self._cut(setting)
+        self._drop_empty_block()
+        self._parse()
+
+    def _cut(self, setting: Setting) -> None:
+        """Take the setting's text out: its whole line when the line holds nothing else."""
         text = self.text
         line_start = text.rfind("\n", 0, setting.start) + 1
         line_end = text.find("\n", setting.end)
@@ -279,8 +313,6 @@ class ThemeFile:
             self.text = text[:line_start] + text[line_end:]
         else:
             self.text = text[:setting.start] + text[setting.end:]
-        self._drop_empty_block()
-        self._parse()
 
     def _replace(self, setting: Setting, value: str) -> None:
         text = self.text
@@ -331,6 +363,10 @@ class ThemeFile:
             return f"\\newcommand{{\\SMLayoutProfile}}{{{value}}}"
         if key in theme_fields.COMMANDS:
             return f"\\{key}{{{value}}}"
+        if key in theme_fields.MACRO_COLOURS:       # a macro holding a colour's name, not a colour
+            if mode:
+                raise ValueError(f"{key} has no value per mode")
+            return f"\\renewcommand{{\\{key}}}{{{value.strip()}}}"
         if (field.kind == "colour") if field else (not key.startswith("SM") or key.endswith("Color")):
             hex_value = _hex_value(value)
             if mode:

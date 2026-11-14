@@ -187,6 +187,10 @@ FIELDS: tuple[Field, ...] = (
 BY_NAME: dict[str, Field] = {field.name: field for field in FIELDS}
 # A hook macro that is the base-mode value of a role: the role's field covers it.
 ROLE_OF_HOOK: dict[str, str] = {field.hook: field.name for field in FIELDS if field.hook}
+# Hooks that are macros holding a colour's name (the catalog defines them with \newcommand; a test checks this): a
+# theme sets them with \renewcommand. A \colorlet or \definecolor of such a name makes a colour nothing uses and
+# leaves the macro as it was.
+MACRO_COLOURS: frozenset[str] = frozenset(ROLE_OF_HOOK) | {"SMHighlightTitleTextColor"}
 COMMANDS: frozenset[str] = frozenset(field.name for field in FIELDS if field.group == "features") | {"SMSetFootnoteMarkers"}
 GROUPS = ("identity", "palette", "roles", "code", "logo", "footnotes", "font", "sizes", "margins", "titlebar", "footer",
           "lists", "citation", "blocks", "cards", "frametypes", "spacing", "drawing", "features")
