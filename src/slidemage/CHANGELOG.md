@@ -4155,3 +4155,8 @@ v0.16.44 (2026-11-14, tab contexts step 4, docs/plans/tab-contexts.md): The open
 
 NEW: Every deck you had open comes back in its own tab, as you left it.
 - New: when you reopen a project, each open deck returns with its slide, closed sections, search text and scroll position.
+
+v0.16.45 (2026-11-13, direct request: a title bar set in the theme form stayed dark gray): (1) The theme form wrote \colorlet{SMTitleBoxColor}{c_secondary_blue} when the theme did not yet set the title bar. \SMTitleBoxColor is a macro holding a color's name, so the line made a color nothing uses and the bar kept the default; the form read the line back and showed the blue. The same held for \SMTitleTextColor, \SMBulletColor and the other such macros whose name ends in Color; \SMFooterBoxColorDefault escaped by its name. ThemeFile._line_for now writes \renewcommand{\SMTitleBoxColor}{..} for every macro of theme_fields.MACRO_COLOURS: the hook macros of the roles and \SMHighlightTitleTextColor; a test holds the set against the catalog. (2) A \colorlet or \definecolor of such a name is no longer read as the macro's value (ThemeFile.find), so the form shows what the slides show, and it is not listed as a color of the theme's own. When the form sets the macro, the last such line becomes the \renewcommand in its place and any other goes; following the default again removes them. (3) The syntax check warns about a \colorlet, \definecolor or \providecolor of such a name (macro-color).
+
+NEW: A title bar color set in the theme form takes effect.
+- Fixed: a title bar, title text or bullet color set in the theme form of a theme that did not set it before had no effect on the slides. Open the theme form and set the color again, or follow the new warning of the syntax check.
