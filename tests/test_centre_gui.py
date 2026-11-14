@@ -1934,6 +1934,9 @@ def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, 
     centre.save_tabs()
     saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
     deck_rel = deck.path.relative_to(ctx.root).as_posix()
+    working = saved["tabs"][0]
+    assert {k: working[k] for k in ("kind", "deck", "mode", "colour")} == {"kind": "deck", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode, "colour": 0}
+    saved["tabs"][0] = {"kind": "deck", "deck": deck_rel, "mode": working["mode"]}
     assert saved == {"v": 2, "active": 1,
                      "tabs": [{"kind": "deck", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode},
                               {"kind": "file", "deck": deck_rel, "mode": "source", "path": "course.tex"},

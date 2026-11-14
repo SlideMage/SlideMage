@@ -4150,3 +4150,8 @@ v0.16.43 (2026-11-14, tab contexts step 3b, docs/plans/tab-contexts.md): Each op
 NEW: Open several decks side by side in tabs and move between them without losing your place.
 - New: every deck you open gets its own tab, marked by a coloured stripe; clicking it brings back that deck's slide list, selection and scroll position.
 - New: close a deck with the x on its tab; unsaved edits in its tabs are asked about first.
+
+v0.16.44 (2026-11-14, tab contexts step 4, docs/plans/tab-contexts.md): The open decks come back when the project opens again. The saved tabs now hold one entry per working tab (deck, mode, stripe colour, and what it was left as: focused slide, view, language, list scroll, closed sections, Find text) and each file tab's deck; at start the working tabs return in their order with their decks as left, the file tabs rejoin their decks, and the tab that was on show is shown again (another deck's tab brings that deck). A deck that is gone drops its working tab and its tabs lose the deck; files that are gone are skipped as before. The earlier save formats are read too: the step 0-3 format (a slide entry for the last deck) and the oldest (file tabs only), where a deck's source belongs to that deck and a slide to the deck on show if it uses it. SlideList.apply_work, CentreTabs.order_decks and set_deck_colour. Tests in tests/test_side_panels_gui.py, tests/test_centre_gui.py.
+
+NEW: Every deck you had open comes back in its own tab, as you left it.
+- New: when you reopen a project, each open deck returns with its slide, closed sections, search text and scroll position.

@@ -484,6 +484,19 @@ class SlideList(QWidget):
         finally:
             self._returning = None
 
+    def apply_work(self, work: DeckWork) -> None:
+        """Put the deck on show back as `work` says (restore at start): closed sections and Find text, the focused slide when
+        it is still a row, and the scroll."""
+        self.tree.collapsed.clear()
+        self.tree.collapsed.update(work.collapsed)
+        self.find.blockSignals(True)
+        self.find.setText(work.list_filter)
+        self.find.blockSignals(False)
+        self.rebuild(preserve_focus=True)
+        if work.focused_slide is not None and any(self.tree.data_of(i).matches(work.focused_slide) for i in self.tree.slide_items()):
+            self.state.set_focused_slide(work.focused_slide, occurrence_key=work.focused_occurrence)
+        self.tree.verticalScrollBar().setValue(work.list_scroll)
+
     def commit_editors(self) -> None:
         """Finish an inline edit under way (a section's name) now, so it is made in the deck it was typed in."""
         for editor in self.tree.viewport().findChildren(QLineEdit):

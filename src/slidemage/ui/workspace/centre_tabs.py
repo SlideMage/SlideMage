@@ -117,6 +117,19 @@ class CentreTabs(QObject):
             self._colours[context] = len(self._colours) % DECK_COLOURS
         return self._colours[context]
 
+    def order_decks(self, contexts: list) -> None:
+        """Put the working tabs in the order of `contexts` (the decks' files; restore at start), the others after them in
+        their order, each deck's other tabs with it (regroup)."""
+        rank = {c: i for i, c in enumerate(contexts)}
+        working = sorted(self.working_tabs, key=lambda t: rank.get(t.context, len(rank)))
+        self._tabs = working + [t for t in self._tabs if t.kind != DECK]
+        self.regroup()
+        self.tabs_changed.emit()
+
+    def set_deck_colour(self, context: Path, colour: int) -> None:
+        """A deck's stripe as it was saved (restore at start)."""
+        self._colours[context] = colour % DECK_COLOURS
+
     def retarget_deck(self, old: Path, new: Path) -> None:
         """The deck's file was renamed or archived: its tabs and its stripe follow it."""
         if old == new:

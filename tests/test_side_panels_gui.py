@@ -1457,3 +1457,58 @@ def test_a_rescan_follows_an_archived_deck_and_closes_the_working_tab_of_a_delet
     assert moved_tab is not None and all(t.context != other.path for t in centre.tabs.tabs)   # followed by name
     assert centre.tabs.working_tab(gone.path) is None
     assert state.deck.name == "test" and len(centre.tabs.working_tabs) == 2
+
+
+# -- restore at start with contexts (tab-contexts.md step 4) -------------------------------------------------------------
+
+def _reopen(window, monkeypatch):
+    window.centre.save_tabs()
+    reopened = build_window(monkeypatch, ProjectContext.at(window.root))
+    reopened.show()
+    return reopened
+
+
+def test_the_working_tabs_and_their_decks_come_back_as_they_were_left(window, monkeypatch):
+    centre, state = window.centre, window.state
+    other = _second_deck(window)
+    state.set_focused_slide("abd")
+    window.slide_list.tree.collapsed.add("Part")
+    state.set_deck(other)
+    centre.open_file(window.root / "SlideMage.bib")
+    centre.open_file(other.path)
+    reopened = _reopen(window, monkeypatch)
+    tabs = reopened.centre.tabs
+    assert [t.kind for t in tabs.tabs] == ["deck", "deck", "file", "file"]
+    assert [t.context.stem if t.context else None for t in tabs.tabs] == ["test", "second", "second", None]
+    assert tabs.active.path == other.path and reopened.state.deck.name == "second"
+    first = tabs.working_tab(next(d.path for d in reopened.decks if d.name == "test"))
+    assert first.work.focused_slide == "abd" and first.work.collapsed == ("Part",)
+    tabs.activate(first)
+    assert reopened.state.deck.name == "test" and reopened.state.focused_slide == "abd"
+    assert reopened.slide_list.tree.collapsed == {"Part"}
+
+
+def test_a_deck_that_is_gone_drops_its_working_tab_on_restore(window, monkeypatch):
+    centre, state = window.centre, window.state
+    other = _second_deck(window)
+    state.set_deck(other)
+    centre.open_file(other.path)
+    centre.save_tabs()
+    other.path.unlink()
+    reopened = build_window(monkeypatch, ProjectContext.at(window.root))
+    reopened.show()
+    assert [t.kind for t in reopened.centre.tabs.tabs] == ["deck"] and reopened.state.deck.name == "test"
+
+
+def test_the_save_format_of_the_steps_before_is_restored_with_contexts(window, monkeypatch):
+    other = _second_deck(window)
+    first = window.state.deck.path.relative_to(window.root).as_posix()
+    app_settings.set(window.project, "centre_tabs", {"v": 2, "active": 2, "tabs": [
+        {"kind": "slide", "deck": first, "mode": "preview"},
+        {"kind": "file", "deck": first, "mode": "preview", "path": "slides/abd-EN-Second-current.tex"},
+        {"kind": "file", "deck": None, "mode": "source", "path": other.path.relative_to(window.root).as_posix()}]})
+    reopened = build_window(monkeypatch, ProjectContext.at(window.root))
+    reopened.show()
+    tabs = reopened.centre.tabs
+    assert [t.kind for t in tabs.tabs] == ["deck", "file", "deck", "file"]       # a deck's source brings its working tab
+    assert tabs.tab_for(other.path).context == other.path
