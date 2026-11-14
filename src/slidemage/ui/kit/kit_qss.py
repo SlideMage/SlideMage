@@ -1151,8 +1151,11 @@ def build_kit_qss(t: Tokens, icons: Mapping[str, str]) -> str:
             background-color: transparent;
             border: none;
             border-right: 1px solid {t.line};
+            border-top: 3px solid transparent;
             border-bottom: 2px solid transparent;
         }}
+        /* A deck's tabs carry its stripe along the top edge (tab-contexts.md E7), one of six hues in the order the decks were opened. */
+        {"".join(f'QFrame#{TAB}[deckColour="{i}"] {{ border-top: 3px solid {c}; }}' + chr(10) for i, c in enumerate((*t.steps[1:6], t.warning)))}
         QFrame#{TAB}:hover {{ background-color: {t.hover}; }}
         QFrame#{TAB}:focus {{ border-bottom: 2px solid {t.focus}; }}
         QFrame#{TAB}[active="true"] {{ border-bottom: 2px solid {t.inverse}; }}
