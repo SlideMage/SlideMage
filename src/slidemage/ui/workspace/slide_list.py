@@ -26,11 +26,13 @@ import weakref
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QStackedWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -50,7 +52,7 @@ from ..kit.theme import ThemeManager
 from ..kit.widgets import Button, IconButton, PopoverMenu, Toast
 from .menus import VIEW_LABELS, add_commands
 from .slide_tree import SlideTree, tooltip_text
-from .state import VIEWS, WorkspaceState
+from .state import VIEWS, DeckWork, WorkspaceState
 
 UNDO_LIMIT = 20
 
@@ -84,6 +86,8 @@ def remembered_width() -> int:
 
 class SlideList(QWidget):
     _thumbnails_finished = Signal(object)
+    back_requested = Signal()       # the placeholder's button: show the working tab again
+    open_in_requested = Signal(object)     # the placeholder's "Open in <deck>": the Deck to open for the tab on show
 
     def __init__(self, app, state: WorkspaceState, theme: ThemeManager, toast: Toast) -> None:
         """`app` is the window: it rescans after an edit (`after_deck_edit`), opens the
@@ -96,6 +100,7 @@ class SlideList(QWidget):
         self._outline: list[SectionRow] = []
         self._resolved: Optional[deck_outline.Outline] = None   # what `_outline` was resolved from (state.outline)
         self._deck_path: Optional[Path] = None
+        self._returning: Optional[DeckWork] = None     # show_deck(): the deck's work the next rebuild restores
         self._undo: dict[Path, list[str]] = {}
         self.setMinimumWidth(MIN_WIDTH)
         self.setMaximumWidth(MAX_WIDTH)
@@ -130,7 +135,11 @@ class SlideList(QWidget):
         self.tree.delegate.renamed.connect(self._rename_section)
         self.tree.delegate.reviewed.connect(
             lambda row: self.mark_reviewed([self.app.project.slides_dir / row.call.source_filename]))
-        layout.addWidget(self.tree, 1)
+        self.placeholder = self._build_placeholder()
+        self.stack = QStackedWidget()           # the list, or the placeholder of a tab with no deck (tab-contexts.md section 5)
+        self.stack.addWidget(self.tree)
+        self.stack.addWidget(self.placeholder)
+        layout.addWidget(self.stack, 1)
 
         self.note = QLabel()
         self.note.setObjectName(q.SLIDES_NOTE)
@@ -177,6 +186,56 @@ class SlideList(QWidget):
         state.languages_changed.connect(lambda _codes: self.rebuild())
         state.focused_slide_changed.connect(self._on_state_focus)
         self.rebuild()
+
+    def _build_placeholder(self) -> QWidget:
+        page = QWidget()
+        column = QVBoxLayout(page)
+        column.setContentsMargins(SPACE.md, SPACE.lg, SPACE.md, SPACE.md)
+        column.setSpacing(SPACE.md)
+        self.placeholder_text = QLabel()
+        self.placeholder_text.setObjectName(q.SLIDES_NOTE)
+        self.placeholder_text.setWordWrap(True)
+        column.addWidget(self.placeholder_text)
+        self.placeholder_decks = QVBoxLayout()          # one "Open in <deck>" button per deck that uses the slide
+        self.placeholder_decks.setSpacing(SPACE.sm)
+        column.addLayout(self.placeholder_decks)
+        self.placeholder_deck_buttons: list[Button] = []
+        self.placeholder_note = QLabel()
+        self.placeholder_note.setObjectName(q.SLIDES_NOTE)
+        self.placeholder_note.setWordWrap(True)
+        column.addWidget(self.placeholder_note)
+        self.placeholder_back = Button("", "secondary", compact=True)
+        self.placeholder_back.clicked.connect(self.back_requested.emit)
+        column.addWidget(self.placeholder_back)
+        column.addStretch(1)
+        return page
+
+    def show_placeholder(self, text: Optional[str], back: str = "", decks: tuple = (), note: str = "") -> None:
+        """Show `text` in place of the slide list (the tab on show has no deck), with a button `back` that asks for the
+        working tab; None shows the list again. `decks` are the decks that use the tab's slide: each gets a button
+        "Open in <deck>" that asks for it (`open_in_requested`); `note` is a line under them. The column keeps its
+        width and its header, which is disabled."""
+        shown = text is not None
+        if shown:
+            self.placeholder_text.setText(text)
+            for button in self.placeholder_deck_buttons:
+                self.placeholder_decks.removeWidget(button)
+                button.deleteLater()
+            self.placeholder_deck_buttons = []
+            for deck in decks:
+                label = f"Open in {deck.name}" + (" (archived)" if getattr(deck, "archived", False) else "")
+                button = Button(label, "secondary", compact=True)
+                button.setToolTip(f"Open {deck.name} and show this slide as that deck calls it")
+                button.clicked.connect(lambda _checked=False, d=deck: self.open_in_requested.emit(d))
+                self.placeholder_decks.addWidget(button)
+                self.placeholder_deck_buttons.append(button)
+            self.placeholder_note.setText(note)
+            self.placeholder_note.setVisible(bool(note))
+            self.placeholder_back.setText(back)
+            self.placeholder_back.setVisible(bool(back))
+        self.stack.setCurrentWidget(self.placeholder if shown else self.tree)
+        for part in (self.find, self.review_filter, self.bulk_bar, self.add_bar):
+            part.setEnabled(not shown and (part is not self.add_bar or self.deck is not None))
 
     def _build_bulk_bar(self) -> QWidget:
         bar = QWidget()
@@ -406,6 +465,44 @@ class SlideList(QWidget):
             if self.state.outline is not None:
                 self.state.outline = self._resolved
 
+    def work(self) -> Optional[DeckWork]:
+        """The deck on show as the user has it: the state's snapshot with this list's scroll, closed sections and Find
+        text (tab-contexts.md section 2). None without a deck."""
+        work = self.state.snapshot()
+        if work is None:
+            return None
+        return replace(work, list_scroll=self.tree.verticalScrollBar().value(),
+                       collapsed=tuple(sorted(self.tree.collapsed)), list_filter=self.find.text())
+
+    def show_deck(self, deck: Deck, work: Optional[DeckWork] = None) -> bool:
+        """Open `deck`; with `work` (what `work()` gave when it was left) it comes back as it was: focus, selection, view,
+        language, scroll, closed sections and Find text, the resolved outline used while it is still valid. Whether it
+        was a switch."""
+        self._returning = work
+        try:
+            return self.state.set_deck(deck, work)
+        finally:
+            self._returning = None
+
+    def apply_work(self, work: DeckWork) -> None:
+        """Put the deck on show back as `work` says (restore at start): closed sections and Find text, the focused slide when
+        it is still a row, and the scroll."""
+        self.tree.collapsed.clear()
+        self.tree.collapsed.update(work.collapsed)
+        self.find.blockSignals(True)
+        self.find.setText(work.list_filter)
+        self.find.blockSignals(False)
+        self.rebuild(preserve_focus=True)
+        if work.focused_slide is not None and any(self.tree.data_of(i).matches(work.focused_slide) for i in self.tree.slide_items()):
+            self.state.set_focused_slide(work.focused_slide, occurrence_key=work.focused_occurrence)
+        self.tree.verticalScrollBar().setValue(work.list_scroll)
+
+    def commit_editors(self) -> None:
+        """Finish an inline edit under way (a section's name) now, so it is made in the deck it was typed in."""
+        for editor in self.tree.viewport().findChildren(QLineEdit):
+            self.tree.commitData(editor)
+            self.tree.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+
     def rebuild(self, *, preserve_focus: bool = False) -> None:
         """Redraw from the deck as it is now; keeps the selection and the focus
         (by what a call is, so an edit elsewhere leaves them), and the scroll position."""
@@ -431,12 +528,20 @@ class SlideList(QWidget):
         current_index = next((i for i, item in enumerate(self.tree.slide_items())
                               if item is self.tree.currentItem()), 0)
         scroll = self.tree.verticalScrollBar().value()
+        returning = (self._returning or self.state.restoring) if not same_deck and deck else None
         if not same_deck:
             self.tree.collapsed.clear()
+            if returning is not None:
+                self.tree.collapsed.update(returning.collapsed)
+                self.find.blockSignals(True)
+                self.find.setText(returning.list_filter)
+                self.find.blockSignals(False)
         self._deck_path = path
+        reused = self.state.current_outline() if returning is not None else None
         with timing.span("slide_list.resolve_outline"):
-            self._resolved = (deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
-                              if deck else None)
+            self._resolved = reused if reused is not None else (
+                deck_outline.resolve_outline(self.app.project, deck, self.state.view, self.state.language)
+                if deck else None)
         self.state.outline = self._resolved
         self._outline = self._resolved.sections if self._resolved else []
         # Keep the images on show while the background pass revalidates them.
@@ -465,6 +570,12 @@ class SlideList(QWidget):
         focus = next((i for i in items if self.tree.data_of(i).key == current_key), None)
         if focus is None and current_key is not None and items:
             focus = items[min(current_index, len(items) - 1)]
+        if returning is not None:              # the deck as it was left: its focused slide and selection are the rows
+            wanted = self.state.selection
+            for item in items:
+                item.setSelected(self.tree.data_of(item).call.id in wanted)
+            focus = self._item_of(self.state.focused_slide) or focus
+            scroll = returning.list_scroll
         if focus is not None:
             self.tree.setCurrentItem(focus, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
         self.tree.blockSignals(False)
@@ -477,7 +588,7 @@ class SlideList(QWidget):
         focused = self.state.focused_slide
         if not preserve_focus and (focused is None or focus_in_deck or self._item_of(focused) is not None):
             self._on_current_changed(self.tree.currentItem(), None)
-        self.add_bar.setEnabled(deck is not None)
+        self.add_bar.setEnabled(deck is not None and self.stack.currentWidget() is self.tree)
 
     def _apply_filter(self) -> None:
         words = self.find.text().lower().split()

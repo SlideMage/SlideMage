@@ -1080,7 +1080,7 @@ def test_the_x_of_a_deck_source_goes_back_to_the_slide_and_the_mode_before(centr
     button = centre.tab_strip.tab_buttons()[1]
     button.close_button.click()
     assert state.mode == "preview" and centre.path.name == "aaa-EN-One-current.tex"
-    assert [t.kind for t in centre.tabs.tabs] == ["slide"] and centre.source.file_for(deck.path) is None
+    assert [t.kind for t in centre.tabs.tabs] == ["deck"] and centre.source.file_for(deck.path) is None
 
 
 def test_a_deck_source_has_a_save_button_while_autosave_is_off(centre, project, deck):
@@ -1153,7 +1153,7 @@ def test_a_file_opens_in_a_tab_of_its_own_and_opening_it_again_shows_that_tab(ce
     buttons = centre.tab_strip.tab_buttons()
     assert [b.label.full_text() for b in buttons[1:]] == ["course.tex", "SlideMage.bib"]
     assert buttons[0].label.full_text().startswith("aaa") and "First" in buttons[0].label.full_text()
-    assert buttons[0].close_button is None and buttons[1].close_button is not None      # the slide tab has no "x"
+    assert not buttons[0].close_button.isVisibleTo(buttons[0]) and buttons[1].close_button.isVisibleTo(buttons[1])   # the last working tab has no "x"
     assert [b.property("active") for b in buttons] == [False, True, False]
     assert centre.tabs.active is not slide_tab
 
@@ -1171,7 +1171,7 @@ def test_clicking_a_tab_shows_it_and_the_x_and_the_middle_button_close_it(centre
     QTest.mouseClick(centre.tab_strip.tab_buttons()[0], Qt.MouseButton.MiddleButton)     # the slide tab has no close
     assert len(centre.tabs.tabs) == 2
     QTest.mouseClick(centre.tab_strip.tab_buttons()[1].close_button, Qt.MouseButton.LeftButton)
-    assert [t.kind for t in centre.tabs.tabs] == ["slide"] and centre.source.file_for(files.deck) is None
+    assert [t.kind for t in centre.tabs.tabs] == ["deck"] and centre.source.file_for(files.deck) is None
 
 
 def test_each_tab_remembers_its_mode_and_the_slide_tab_comes_back_in_it(centre, files):
@@ -1375,13 +1375,20 @@ def test_a_tab_whose_file_is_gone_is_closed_without_asking(centre, files, monkey
     assert centre.tabs.active is centre.tabs.slide_tab and centre.path == files.aaa
 
 
-def test_another_deck_shows_the_slide_tab_and_the_file_tabs_stay(centre, files, deck):
+def test_another_deck_gets_a_working_tab_of_its_own_and_the_first_decks_tabs_stay(centre, files, deck):
     from dataclasses import replace
     centre.open_file(files.deck)
+    first = centre.tabs.slide_tab
     other = replace(deck, name="other", path=deck.path.with_name("other.tex"))
-    centre.state.set_deck(other)
-    assert centre.tabs.active is centre.tabs.slide_tab and centre.tabs.tab_for(files.deck) is not None
-    assert centre.source.file_for(files.deck) is not None and centre.path is None
+    centre.app.decks = [deck, other]
+    centre.state.set_deck(other)                                    # O1: opened from anywhere, its working tab is shown
+    second = centre.tabs.working_tab(other.path)
+    assert centre.tabs.active is second and centre.tabs.working_tabs == [first, second]
+    assert centre.tabs.tab_for(files.deck) is not None and centre.source.file_for(files.deck) is not None
+    assert [t.context for t in centre.tabs.tabs] == [deck.path, deck.path, other.path]   # a deck's tabs stay together
+    assert centre.path is None and centre.tabs.slide_tab.closable and second.closable
+    centre.tabs.activate(first)                                     # back to the first deck: it is the one on show again
+    assert centre.state.deck.path == deck.path
 
 
 def test_the_slide_tab_is_named_after_the_slide_and_follows_the_focus(centre, files):
@@ -1390,7 +1397,7 @@ def test_the_slide_tab_is_named_after_the_slide_and_follows_the_focus(centre, fi
     centre.state.set_focused_slide("ccc")
     assert first.label.full_text().startswith("ccc · ") and "Dritte" in first.label.full_text()
     centre.state.set_focused_slide(None)
-    assert first.label.full_text() == "Slide"
+    assert first.label.full_text() == "course"          # no slide chosen: the deck's name (E7)
 
 
 def test_showing_a_file_tab_and_coming_back_is_not_leaving_the_slide(centre, files, asked):
@@ -1754,6 +1761,7 @@ def test_tab_slide_is_the_slide_file_tab_on_show_and_none_elsewhere(centre, file
     assert path == files.ccc and row is not None and row.call.id_slug == "ccc-DE-Drei"
     centre.open_file(files.bib)
     assert centre.tab_slide() is None                                          # a file that is no slide
+    centre.show_slide_tab()
     frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
     centre.open_file(frozen, tab=True)
     assert centre.tab_slide() == (frozen, None, centre.state.deck)                               # a frozen version previews alone
@@ -1926,8 +1934,11 @@ def test_file_tabs_are_saved_and_restored_per_project_in_their_own_mode(centre, 
     centre.save_tabs()
     saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
     deck_rel = deck.path.relative_to(ctx.root).as_posix()
+    working = saved["tabs"][0]
+    assert {k: working[k] for k in ("kind", "deck", "mode", "colour")} == {"kind": "deck", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode, "colour": 0}
+    saved["tabs"][0] = {"kind": "deck", "deck": deck_rel, "mode": working["mode"]}
     assert saved == {"v": 2, "active": 1,
-                     "tabs": [{"kind": "slide", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode},
+                     "tabs": [{"kind": "deck", "deck": deck_rel, "mode": centre.tabs.slide_tab.mode},
                               {"kind": "file", "deck": deck_rel, "mode": "source", "path": "course.tex"},
                               {"kind": "file", "deck": deck_rel, "mode": "preview", "path": "slides/ccc-DE-Drei-current.tex"}]}
 
@@ -1963,12 +1974,12 @@ def test_the_new_format_round_trips_with_the_slide_tab_active(centre, files, ctx
     assert reopened.tabs.active is reopened.tabs.slide_tab
 
 
-def test_every_tab_follows_the_open_deck_for_now(centre, files):
+def test_tabs_of_the_deck_follow_it_and_a_bib_has_none(centre, files):
     from slidemage.ui.workspace.centre_tabs import FOLLOW
     centre.open_file(files.ccc, tab=True)
     centre.open_file(files.bib)
-    assert all(t.context is FOLLOW for t in centre.tabs.tabs)
-    assert all(centre.tab_deck(t) is centre.state.deck for t in centre.tabs.tabs)
+    assert [t.context == centre.state.deck.path for t in centre.tabs.tabs] == [True, True, False]
+    assert all(centre.tab_deck(t) is centre.state.deck for t in centre.tabs.tabs[:2])
     from slidemage.ui.workspace.centre_tabs import CentreTab
     assert centre.tab_deck(CentreTab("file", files.bib, context=None)) is None
     assert centre.tab_deck(CentreTab("file", files.bib, context=centre.state.deck.path)) is centre.state.deck
@@ -2022,3 +2033,92 @@ def test_a_frozen_tabs_details_show_the_frozen_file_with_its_chip_and_no_changin
     centre.tabs.activate(centre.tabs.tab_for(frozen))
     centre.state.set_mode("details")
     assert "Frozen v1.0.0" in facts()[2]
+
+
+from slidemage.ui.workspace.centre_tabs import FOLLOW  # noqa: E402
+
+
+def test_a_file_that_is_no_slide_and_no_deck_has_no_context_and_the_list_shows_a_placeholder(centre, files):
+    seen = []
+    centre.context_changed.connect(seen.append)
+    centre.open_file(files.bib)
+    bib = centre.tabs.tab_for(files.bib)
+    assert bib.context is None
+    assert centre.tab_deck(bib) is None
+    placeholder = centre.list_placeholder()
+    assert "SlideMage.bib" in placeholder.text and placeholder.back == "Back to course"
+    assert seen[-1] is bib
+    centre.open_file(files.deck)                                # a deck's source belongs to its deck (O7)
+    assert centre.tabs.tab_for(files.deck).context == centre.state.deck.path and centre.list_placeholder() is None
+    centre.open_file(files.ccc, tab=True)                       # so does a slide
+    assert centre.tabs.tab_for(files.ccc).context == centre.state.deck.path and centre.list_placeholder() is None
+    centre.show_slide_tab()
+    assert centre.list_placeholder() is None
+
+
+def test_a_bib_tab_is_restored_with_no_context(centre, files, ctx, deck, monkeypatch):
+    centre.open_file(files.bib)
+    centre.save_tabs()
+    saved = app_settings.get(ctx, CENTRE_TABS_SETTING)
+    assert saved["tabs"][1]["deck"] is None
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert reopened.tabs.tab_for(files.bib).context is None
+
+
+def _other_deck(centre, tmp_path, name, body):
+    text = DECK.replace("\\slide{aaa-EN-One}", body)
+    return Deck(name=name, path=tmp_path / f"{name}.tex", archived=False, text=text, supports_version=True,
+                uses_biblatex=False, preamble_end=text.index("\\begin{document}") + len("\\begin{document}"),
+                chapters=parse_chapters(text), output_folders={})
+
+
+def test_a_slide_outside_the_deck_has_no_context_and_the_placeholder_offers_the_decks_that_use_it(
+        centre, files, project, tmp_path):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    other = _other_deck(centre, tmp_path, "lecture", "\\slide{ddd-EN-Four}")
+    other.path.write_text(other.text, encoding="utf-8")
+    centre.app.decks = [centre.state.deck, other]
+    centre.open_file(files.ccc, tab=True)                    # the deck uses it
+    assert centre.tabs.tab_for(files.ccc).context == centre.state.deck.path and centre.list_placeholder() is None
+    centre.open_file(ddd, tab=True)                          # it does not
+    tab = centre.tabs.tab_for(ddd)
+    assert tab.context is None and centre.tab_slide()[2] is None
+    placeholder = centre.list_placeholder()
+    assert "ddd" in placeholder.text and "not in an open deck" in placeholder.text
+    assert [d.name for d in placeholder.decks] == ["lecture"] and placeholder.note == ""
+    centre.app.decks = [centre.state.deck]
+    assert centre.list_placeholder().note == "No deck uses this slide yet."
+    centre.open_file(files.bib)                              # a frozen version has its opener's context (O8)
+    frozen = files.aaa.with_name("bbb-EN-Two-v1-0-0.tex")
+    centre.open_file(frozen, tab=True)
+    assert centre.tabs.tab_for(frozen).context is None
+
+
+def test_open_in_deck_gives_the_tab_that_deck_and_keeps_the_tab(centre, files, project, tmp_path):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    other = _other_deck(centre, tmp_path, "lecture", "\\slide{ddd-EN-Four}")
+    other.path.write_text(other.text, encoding="utf-8")
+    centre.app.decks = [centre.state.deck, other]
+    centre.open_file(ddd, tab=True)
+    tab = centre.tabs.active
+    seen = []
+    centre.context_changed.connect(seen.append)
+    centre.adopt_deck(other)
+    assert centre.state.deck.path == other.path
+    assert tab.context == other.path and centre.tabs.active is tab           # the tab stays on show, with its file
+    assert centre.tab_deck(tab) is centre.state.deck and centre.list_placeholder() is None
+    assert seen and seen[-1] is tab
+    assert centre.tab_slide()[1] is not None                                 # it previews as the deck calls the slide
+
+
+def test_a_slide_tab_with_no_deck_is_restored_with_none(centre, files, project, ctx, deck, monkeypatch):
+    ddd = project / "ddd-EN-Four-current.tex"
+    ddd.write_text(FRAME % "Four", encoding="utf-8")
+    centre.open_file(ddd, tab=True)
+    centre.save_tabs()
+    reopened = _reopened(ctx, deck, monkeypatch)
+    reopened.restore_tabs()
+    assert reopened.tabs.tab_for(ddd).context is None

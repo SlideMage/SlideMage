@@ -312,7 +312,7 @@ def test_the_form_reads_every_catalog_kind_from_the_stress_template():
     assert not missing, missing
 
 
-# --- macros that hold a colour's name (v0.16.40: the form wrote a \colorlet for them) -------------------------------
+# --- macros that hold a colour's name (v0.16.45: the form wrote a \colorlet for them) -------------------------------
 
 def bare(lines: str = "") -> str:
     return "\\input{SlideMage_setup}\n" + BLOCK_BEGIN + "\n" + lines + BLOCK_END + "\n\\input{SlideMage_base}\n"

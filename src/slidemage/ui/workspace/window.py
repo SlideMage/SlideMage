@@ -286,6 +286,10 @@ class WorkspaceWindow(QMainWindow):
         self.centre.preview.rendered_target.connect(self.slide_list.preview_source_changed)
         self.centre.source.file_closed.connect(self._on_source_closed)
         self.centre.source_only_changed.connect(self.topbar.set_source_only)
+        self.centre.context_changed.connect(self._on_tab_context)
+        self.state.before_switch = self._leaving_deck       # the centre keeps the deck's work; the list's part is added here
+        self.slide_list.back_requested.connect(self.centre.show_slide_tab)
+        self.slide_list.open_in_requested.connect(self._open_in_deck)
         self.topbar.leave_source_only.connect(self._leave_source_only)
         self.centre.source.buffer_changed.connect(lambda _path: self.assistant.header.on_typing())
         self.centre.source.buffer_changed.connect(self.slide_list.preview_source_changed)
@@ -375,6 +379,31 @@ class WorkspaceWindow(QMainWindow):
                                right=side_panels.WIDTH if index == 2 else None)
         self._on_splitter_moved(0, index)
 
+    def about_to_change_context(self) -> bool:
+        """Before the deck on show changes under a tab switch (tab-contexts.md R4): everything typed lands in the context
+        it was typed in. The side panels' pending edits are saved, the slide list's inline edit is finished, and the files
+        of the Source view are written. Whether all of it was saved (a file in conflict with the disk is not)."""
+        self.side_panels.flush()
+        self.slide_list.commit_editors()
+        return self.centre.source.flush_all()
+
+    def _leaving_deck(self) -> None:
+        """Another deck is about to replace the deck on show, whichever way it was asked for: what was typed lands in this
+        deck, and its working tab keeps it as it is, the list's scroll, closed sections and Find text included."""
+        self.about_to_change_context()
+        self.centre._keep_work(self.slide_list.work())
+
+    def _on_tab_context(self, tab) -> None:
+        """The tab on show has a deck or none: the left column shows its slide list or a placeholder of the same size."""
+        placeholder = self.centre.list_placeholder(tab)
+        self.slide_list.show_placeholder(*placeholder) if placeholder else self.slide_list.show_placeholder(None)
+
+    def _open_in_deck(self, deck) -> None:
+        """The placeholder's "Open in <deck>": the tab on show gets that deck (CentreColumn.adopt_deck), and the side
+        panels show its slide as that deck calls it."""
+        self.centre.adopt_deck(deck)
+        self.side_panels.refresh()
+
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         # The Images page hides the columns: not the user's choice.
         sizes = self.splitter.sizes()
@@ -400,9 +429,11 @@ class WorkspaceWindow(QMainWindow):
         """Rescans the decks. The current deck stays (a fresh object for the
         same file), follows its file when archived, or falls back to the one
         that was open last time, else the first active deck."""
+        old_names = {deck.path: deck.name for deck in self.decks}
         with timing.span("reload_decks.scan"):
             self.deck_groups = load_deck_groups(self.project)
             self.decks = scan_decks(self.project)
+        self.centre.decks_rescanned(old_names, self.decks)      # each working tab follows its deck, or closes with it
         self.topbar.set_decks(self.decks, self.deck_groups)
         self.body.setCurrentWidget(self.no_decks if not self.decks else self.body.widget(0))
         if not self.decks:

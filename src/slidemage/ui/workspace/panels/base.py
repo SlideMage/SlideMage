@@ -183,6 +183,14 @@ class SidePanel(Surface):
         tab = self._tab()
         return tab[2] if tab is not None and len(tab) > 2 else self.state.deck
 
+    def not_called_text(self) -> str:
+        """What a panel says in place of the slide's deck calls when there are none: the slide file tab on show has no
+        deck (a slide opened from outside the deck), or its deck does not call the slide."""
+        deck = self._deck()
+        if deck is None and self._tab() is not None:
+            return "This slide is not in an open deck."
+        return f"{deck.name if deck is not None else 'The open deck'} does not call this slide."
+
     def deck_calls(self) -> list[tuple[int, SlideCall]]:
         """(1-based place, call) of every call of the slide in its deck."""
         state, slide, deck = self.state, self._slide_id(), self._deck()

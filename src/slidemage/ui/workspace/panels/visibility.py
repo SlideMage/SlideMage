@@ -35,7 +35,7 @@ class Visibility(SidePanel):
     def build(self, id_slug: str) -> None:
         calls = self.deck_calls()
         if not calls:
-            self.body.addWidget(text(f"{self.state.deck.name} does not call this slide.", q.DETAILS_LABEL))
+            self.body.addWidget(text(self.not_called_text(), q.DETAILS_LABEL))
             return
         frame, layout = box()
         row = Row(layout)
