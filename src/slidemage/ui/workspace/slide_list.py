@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from ... import timing
-from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, preview_thumbnails, reveal_steps
+from ... import ai_review, deck_editor, deck_language, deck_outline, deck_scan, preview_thumbnails, reveal_steps, topic_blocks
 from ...deck_editor import BASE_MACROS, StaleFileError, VERSIONED_MACROS
 from ...deck_outline import SectionRow, SlideRow
 from ...deck_scan import Chapter, Deck
@@ -862,7 +862,9 @@ class SlideList(QWidget):
     def _on_menu_chosen(self, key: str) -> None:
         """A registry command, or one of the entries only this list knows (a way to call the
         slide, a section to move to)."""
-        if key in self.app.commands:
+        if key == "make_block":
+            self.run_section(key)
+        elif key in self.app.commands:
             self.app.commands.run(key, self.app)
         else:
             self._run(key, self.targets())
@@ -920,6 +922,9 @@ class SlideList(QWidget):
         menu.add_separator()
         add_commands(menu, self.app, ["section:section_up", "section:section_down"])
         menu.add_separator()
+        section = self.current_section()
+        menu.add_item("make_block", "Make this section a block",
+                      enabled=section is not None and section.chapter is not None)
         add_commands(menu, self.app, ["section:remove_section"])
         return menu
 
@@ -1010,6 +1015,39 @@ class SlideList(QWidget):
             self._step_section(section, -1 if name == "section_up" else 1)
         elif name == "remove_section":
             self._remove_section(section)
+        elif name == "make_block":
+            self._make_block(section)
+
+    def _make_block(self, section: SectionRow) -> None:
+        deck = self.deck
+        try:
+            target, _, _ = topic_blocks.prepare_block(self.app.project, deck, section.chapter, section.title)
+            existing = target.exists()
+            writes = str(deck.path)
+            if existing:
+                detail = f"Link to the existing block {target}?"
+            else:
+                # Approval comes before the title prompt, so name the destination pattern too.
+                writes += f"\n{target.parent}/<slug-of-title>.tex (default: {target.name})"
+                detail = "Choose a block title next; its slug becomes the file name."
+            if QMessageBox.question(
+                    self, "Make this section a block", f"{detail}\n\nWrites:\n{writes}\n\n"
+                    "This action cannot be undone.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Cancel) != QMessageBox.StandardButton.Yes:
+                return
+            title, accepted = QInputDialog.getText(self, "Make this section a block", "Block title:",
+                                                  text=section.title)
+            if not accepted:
+                return
+            target = topic_blocks.make_block(self.app.project, deck, section.chapter, title)
+        except (OSError, StaleFileError, ValueError) as exc:
+            QMessageBox.critical(self, "Make block failed", str(exc))
+            return
+        # Earlier deck snapshots would also undo this conversion, so discard them.
+        self._undo.pop(deck.path, None)
+        self._undo_order = [(owner, path) for owner, path in self._undo_order if path != deck.path]
+        self.app.after_deck_edit(deck.path, f"Linked section {section.title} to block {target.stem}")
 
     def _remove_section(self, section: SectionRow) -> None:
         """Ask whether the heading alone goes, the section with its slides, or every section of the deck."""
