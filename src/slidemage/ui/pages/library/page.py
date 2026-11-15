@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QHBoxLayout, QStackedWidget
 from ....slide_similarity import find_clusters
 from ...background import run_in_background
 from ...kit.tokens import SPACE
-from ...kit.widgets import Card, IconButton, RowButton, Surface, caption, text_label
+from ...kit.widgets import Card, IconButton, RowButton, Surface, text_label
+from .similar import SimilarView
 
 
 class LibraryPage(Surface):
@@ -18,7 +19,6 @@ class LibraryPage(Surface):
     def __init__(self, app) -> None:
         super().__init__()
         self.app = app
-        self._loaded = False
         self._scan = None
         self.clusters = []
 
@@ -43,31 +43,33 @@ class LibraryPage(Surface):
         outer.addWidget(self.rail)
 
         self.views = QStackedWidget()
-        self.similar_view = Card()
-        self.similar_view.layout().addWidget(text_label("Similar slides", "title"))
-        self.status = caption("Finding similar slides…")
-        self.similar_view.layout().addWidget(self.status)
-        self.similar_view.layout().addStretch(1)
+        self.similar_view = SimilarView(app)
+        self.status = self.similar_view.status
+        self.similar_view.count_changed.connect(lambda count: self.similar_row.chip.set_text(str(count)))
         self.views.addWidget(self.similar_view)
         self.similar_row.clicked.connect(lambda: self.views.setCurrentWidget(self.similar_view))
         outer.addWidget(self.views, 1)
 
     def ensure_loaded(self) -> None:
-        """Scan once, off the GUI thread, when the page is first shown."""
-        if not self._loaded:
-            self._loaded = True
-            self._scan = run_in_background(lambda: find_clusters(self.app.project), self._on_loaded, parent=self)
+        """Rescan on every opening: workspace state has no project/slide-changed signal."""
+        if self._scan is not None:
+            self._scan.stop(wait_ms=0)
+        ctx = self.app.project
+        self._scan_project = ctx
+        self.status.setText("Finding similar slides…")
+        self.status.show()
+        self._scan = run_in_background(lambda: find_clusters(ctx), self._on_loaded, parent=self)
 
     def _on_loaded(self, clusters, error) -> None:
         self._scan = None
+        if self._scan_project != self.app.project:
+            self.ensure_loaded()
+            return
         if error is not None:
-            self._loaded = False
             self.status.setText(f"Could not find similar slides: {error}")
             return
         self.clusters = clusters
-        count = sum(cluster.sequence_deck is None for cluster in clusters)
-        self.similar_row.chip.set_text(str(count))
-        self.status.setText(f"{count} similar slide groups")
+        self.similar_view.set_clusters(clusters)
 
     def shutdown(self) -> None:
         if self._scan is not None:
