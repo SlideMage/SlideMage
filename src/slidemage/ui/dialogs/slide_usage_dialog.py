@@ -36,7 +36,7 @@ KEEP = "keep"
 
 
 class SlideUsageDialog(QDialog):
-    """exec() == Accepted: choices() maps deck name -> "current" | "keep"
+    """exec() == Accepted: choices() maps file path -> "current" | "keep"
     (decks without a choice are left out), open_translation() says whether
     to open the first translation afterwards."""
 
@@ -52,22 +52,23 @@ class SlideUsageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Where this slide is used")
         self.setMinimumWidth(640)
-        self._combos: dict[str, QComboBox] = {}
+        self._combos: dict[Path, QComboBox] = {}
         layout = QVBoxLayout(self)
         old = f"v{old_version}" if old_version else None
         intro = QLabel(
             f"<b>{slide_name}</b> is saved as v{new_version}"
             + (f"; the outgoing content is kept as {old}." if old else ".")
-            + "<br>For each deck, choose which version it uses from now on.")
+            + "<br>For each deck or block, choose which version it uses from now on.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
         grid = QGridLayout()
-        grid.addWidget(QLabel("<b>Deck</b>"), 0, 0)
+        grid.addWidget(QLabel("<b>Deck or block</b>"), 0, 0)
         grid.addWidget(QLabel("<b>Uses now</b>"), 0, 1)
         grid.addWidget(QLabel("<b>From now on</b>"), 0, 2)
         for row, usage in enumerate(usages, start=1):
-            name = usage.deck.name + (" (archived)" if usage.deck.archived else "")
+            name = usage.deck.name + (f" (used by {len(usage.decks)} decks)" if usage.block else
+                                      " (archived)" if usage.deck.archived else "")
             grid.addWidget(QLabel(name), row, 0)
             state = QLabel(usage.state_text())
             state.setWordWrap(True)
@@ -83,9 +84,14 @@ class SlideUsageDialog(QDialog):
                 if usage.pinned_versions:
                     combo.addItem("Stay on " + ", ".join(
                         slide_versioning.version_label(v) for v in usage.pinned_versions), KEEP)
-            self._combos[usage.deck.name] = combo
+            self._combos[usage.deck.path] = combo
             grid.addWidget(combo, row, 2)
         layout.addLayout(grid)
+        if any(u.block for u in usages):
+            note = QLabel("A block's choice applies to every deck that uses it. "
+                          "Keep pins the call in the block file. For a per-deck choice, Unlink the block first.")
+            note.setWordWrap(True)
+            layout.addWidget(note)
 
         self._open_translation: Optional[QCheckBox] = None
         if translations:
@@ -109,7 +115,7 @@ class SlideUsageDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def choices(self) -> dict[str, str]:
+    def choices(self) -> dict[Path, str]:
         out = {}
         for name, combo in self._combos.items():
             value = combo.currentData()
@@ -123,7 +129,7 @@ class SlideUsageDialog(QDialog):
 
 @dataclass
 class DeckVersions:
-    choices: dict[str, str]                 # deck name -> CURRENT | KEEP (empty: nothing to choose)
+    choices: dict[Path, str]                 # file path -> CURRENT | KEEP (empty: nothing to choose)
     open_translation: Optional[Path]        # the translation to open after the save, if asked for
 
 
@@ -146,7 +152,7 @@ def ask_deck_versions(
     return DeckVersions(dialog.choices(), translations[0].path if dialog.open_translation() else None)
 
 
-def apply_deck_versions(app, id_slug: str, choices: dict[str, str], frozen: slide_versioning.Version) -> None:
+def apply_deck_versions(app, id_slug: str, choices: dict[Path, str], frozen: slide_versioning.Version) -> None:
     """Rewrite the decks as chosen, once the new version is saved (`frozen`: the version
     that was frozen), log what changed and refresh the open deck."""
     if not choices:

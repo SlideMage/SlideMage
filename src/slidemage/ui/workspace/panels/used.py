@@ -6,7 +6,7 @@ Clicking a row opens that deck at that slide. What a version change means for th
 asked at save time (dialogs/slide_usage_dialog.py) and set per deck in the Slide versions panel."""
 from __future__ import annotations
 
-from .... import deck_outline
+from .... import deck_outline, slide_language
 from ....slide_usage import DeckUsage, call_text, find_usage
 from ...kit import kit_qss as q
 from ..menus import VIEW_LABELS
@@ -21,19 +21,31 @@ class UsedInDecks(SidePanel):
     def build(self, id_slug: str) -> None:
         usages = find_usage(self.app.project, id_slug, self.app.decks, language=self.state.language)
         frame, layout = box()
-        if not usages:
+        if not any(not u.block or u.decks for u in usages):
             empty_row(layout, "No deck calls this slide.")
+        links = slide_language.links_for(self.app.project) if any(u.block for u in usages) else None
         for usage in usages:
+            if usage.block:
+                for deck in usage.decks:
+                    slots = deck_outline.resolve_slots(self.app.project, deck, self.state.view,
+                                                       self.state.language, links=links)
+                    for slot in slots:
+                        if slot.slot.original.source == usage.deck.path and slot.slot.call.id_slug == id_slug:
+                            self._add_call(layout, DeckUsage(deck, total=len(slots)), slot.slot.call,
+                                           slot.position, usage.block)
+                continue
             for call, position in zip(usage.calls, usage.positions):
                 self._add_call(layout, usage, call, position)
         self.place(frame, "Edits to the current version reach every deck that follows it.")
 
-    def _add_call(self, layout, usage: DeckUsage, call, position: int) -> None:
+    def _add_call(self, layout, usage: DeckUsage, call, position: int, block: str | None = None) -> None:
         row = Row(layout)
         row.make_clickable(lambda: self._open(usage, call, position))
         row.setToolTip("Open this deck at this slide")
         row.add_text(usage.deck.name + (" (archived)" if usage.deck.archived else ""), q.PANEL_MONO)
         how = f"{call_text(call)} · slide {position} of {usage.total}"
+        if block:
+            how += f" · via block {block}"
         hidden = [VIEW_LABELS[v] for v in VIEWS if not call.included_in(v)]
         if hidden:
             how += " · hidden in " + ", ".join(hidden)
