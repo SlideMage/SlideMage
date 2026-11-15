@@ -152,23 +152,29 @@ def test_the_decks_already_scanned_are_not_scanned_again_and_one_translation_sca
     assert folder == [] and scans == [1]                               # five decks, one scan of the slides folder
 
 
-def test_block_version_asks_once_for_two_decks_and_pins_the_block(ctx, qapp, monkeypatch):
+@pytest.mark.parametrize("folder", ["blocks", "decks", "."])
+def test_block_version_asks_once_for_two_decks_and_pins_the_block(ctx, qapp, monkeypatch, folder):
     from PySide6.QtWidgets import QComboBox, QDialog, QLabel
     from slidemage import deck_language
     from slidemage.ui.dialogs import slide_usage_dialog as dialogs
 
     ctx.blocks_dir.mkdir()
     ctx.decks_dir.mkdir()
-    block = ctx.blocks_dir / "Literaturrecherche.tex"
+    block = ctx.root / folder / "Literaturrecherche.tex"
     block.write_text("\\slide{abc-EN-Demo}\n", encoding="utf-8")
-    before = "\\documentclass{beamer}\n\\begin{document}\n\\slideblock{Literaturrecherche}\n\\end{document}\n"
+    include = (r"\slideblock{Literaturrecherche}" if folder == "blocks" else
+               r"\input{Literaturrecherche}")
+    before = "\\documentclass{beamer}\n\\begin{document}\n" + include + "\n\\end{document}\n"
     # A deck and a block may have the same stem; only the block holds the call.
-    for name in ("Literaturrecherche", "course"):
+    names = ("Literaturrecherche" if folder == "blocks" else "wrapper", "course")
+    for name in names:
         (ctx.decks_dir / f"{name}.tex").write_text(before, encoding="utf-8")
     usages = slide_usage.find_usage(ctx, "abc-EN-Demo")
     assert len(usages) == 1 and usages[0].deck.path == block
-    assert {d.name for d in usages[0].decks} == {"Literaturrecherche", "course"}
+    assert {d.name for d in usages[0].decks} == set(names)
     assert slide_usage.needs_dialog(usages, [])
+    visible = slide_usage.find_usage(ctx, "abc-EN-Demo", language="EN")
+    assert [(u.deck.path, {d.name for d in u.decks}) for u in visible] == [(block, set(names))]
     deck = usages[0].decks[0]
     with pytest.raises(ValueError, match="source file"):
         slide_usage.set_pin(deck.path, deck.text, deck_language.active_calls(deck), "1-0-0")

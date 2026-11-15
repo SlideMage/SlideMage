@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import app_settings, deck_outline, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
+from . import app_settings, deck_language, deck_outline, deck_settings, languages, render_evidence, render_key, render_lookup, render_store, slide_language
 from . import compile_records, deck_context, parallel_runs, batch_render, power_status, preview_requests, preview_target, slide_snapshot, slide_templates
 from .deck_editor import VIEWS, VIEW_INSTRUCTOR
 from .deck_scan import Deck
@@ -86,7 +86,7 @@ def deck_language_code(ctx: ProjectContext, deck: Deck) -> str:
 
 
 def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_at: Optional[str] = None,
-               context_ready: Optional[Callable[[], bool]] = None) -> list[render_key.Unit]:
+               context_ready: Optional[Callable[[], bool]] = None, *, resolution=None) -> list[render_key.Unit]:
     """The units of `deck` in `view` and `language` in deck order, beginning at the slide `start_at` (a bare id)
     and wrapping round; a call the view does not typeset, and one whose slide file is missing, have none. A slide
     that needs its deck (a contents or agenda slide, a section divider) is typeset in the deck's last compile, so it
@@ -94,7 +94,9 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
     if deck.preamble_end is None:
         return []
     links = slide_language.links_for(ctx)
-    slots = deck_outline.resolve_slots(ctx, deck, view, language, links=links)
+    expanded, _, calls = resolution if resolution is not None else deck_language._resolve_calls(deck)
+    deck_hash = text_sha256(expanded.text)
+    slots = deck_outline.resolve_slots(ctx, deck, view, language, links=links, calls=calls)
     units: list[render_key.Unit] = []
     start_index = None
     for row in slots:
@@ -104,7 +106,7 @@ def deck_units(ctx: ProjectContext, deck: Deck, view: str, language: str, start_
             start_index = len(units)
         if not call.included_in(view) or not (ctx.slides_dir / call.source_filename).is_file():
             continue
-        target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number)
+        target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number, deck_hash=deck_hash)
         if target.needs_context and not (context_ready is not None and context_ready()):
             continue        # no deck compile to typeset it in: the Preview renders it on its own when it is shown
         units.append(render_key.unit_for(target, view, language, deck.name))
@@ -457,12 +459,15 @@ class BackgroundRenderer:
             decks_progress.append(progress)
             start_at = usage.get(deck.name, {}).get("last_slide")
             deck_clean = True
+            resolution = None
             for language_rank, language in enumerate(self.languages_for(deck)):
                 for view_rank, view in enumerate(self.versions_for(deck)):
                     ready = _Once(lambda deck=deck, view=view, language=language:
                                   deck_context.in_deck_ready(self.ctx, deck, view, language))
                     try:
-                        units = deck_units(self.ctx, deck, view, language, start_at, ready)
+                        if resolution is None:
+                            resolution = deck_language._resolve_calls(deck)
+                        units = deck_units(self.ctx, deck, view, language, start_at, ready, resolution=resolution)
                     except Exception:  # noqa: BLE001 -- a deck that cannot be read now is tried again next time
                         deck_clean = False          # and none of its renders is deleted
                         continue

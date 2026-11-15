@@ -20,7 +20,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
-from .... import compiler, deck_editor, deck_language, languages, slide_versioning, timing
+from .... import compiler, deck_language, languages, slide_versioning, timing
 from ....ai.agent_types import EditApplied
 from ....ai.providers import ChatProvider
 from ....ai.tools import undo_edit
@@ -312,7 +312,7 @@ class GuiWorkspace(Workspace):
     def _show_written(self, path: Path) -> None:
         """Bring the views up to date with a file the agent wrote on disk."""
         window = self.window
-        if any(deck.path == path for deck in window.decks):
+        if path.parent == window.project.blocks_dir or any(deck.path == path for deck in window.decks):
             window.centre.sync_source(path)
             window.after_deck_edit(path, f"The chat changed {path.name}")
         else:

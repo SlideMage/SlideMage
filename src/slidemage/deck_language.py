@@ -11,7 +11,7 @@ earliest call into the group.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -99,6 +99,8 @@ class ExpandedCall(SlideCall):
     block: str | None
     index: int | None
     source_line: int
+    source_start: int
+    source_text: str = field(repr=False)
     expanded: SlideCall  # offsets in the expanded text, for compile-only replacements
 
     @property
@@ -113,6 +115,7 @@ class _SourceSpan:
     source: Path
     source_start: int
     source_line: int
+    source_text: str
     placement: tuple[int, int] | None
 
 
@@ -147,13 +150,9 @@ def _resolve_calls(deck: Deck, *, strict_includes: bool = False) -> tuple[Deck, 
             block=span.source.stem if index is not None and span.source.parent.name == "blocks" else None,
             index=index,
             source_line=span.source_line + expanded.text.count("\n", span.start, call.call_start),
+            source_start=offset, source_text=span.source_text,
             expanded=call))
     return expanded, dependencies, result
-
-
-def expanded_calls(ctx: ProjectContext, deck: Deck) -> list[ExpandedCall]:
-    """The deck's executable calls, including every occurrence of a linked block."""
-    return _resolve_calls(deck)[2]
 
 
 def active_calls(deck: Deck) -> list[ExpandedCall]:
@@ -161,22 +160,30 @@ def active_calls(deck: Deck) -> list[ExpandedCall]:
     return _resolve_calls(deck)[2]
 
 
-def source_call(deck: Deck, call: SlideCall) -> SlideCall:
-    """Locate an expanded occurrence in the physical file being edited."""
-    if not isinstance(call, ExpandedCall):
-        return call
-    if call.source != deck.path:
+def call_source(call: SlideCall, deck_path: Path) -> Path:
+    """The physical file owning a call."""
+    return call.source if isinstance(call, ExpandedCall) else deck_path
+
+
+def source_calls(deck: Deck, calls: list[SlideCall]) -> list[SlideCall]:
+    """Verify one source revision, then map its occurrences to physical calls once."""
+    expanded = [c for c in calls if isinstance(c, ExpandedCall)]
+    if any(c.source != deck.path for c in expanded):
         raise ValueError("Edit this call in its source file, not in the deck that links it.")
-    for physical in calls_in(deck.text, deck.chapters):
-        if (deck.text.count("\n", 0, physical.call_start) + 1 == call.source_line
-                and (physical.macro, physical.id_slug) == (call.macro, call.id_slug)):
-            return physical
-    raise ValueError("The slide call changed. Refresh the slide list and try again.")
+    if any(c.source_text != deck.text for c in expanded):
+        raise ValueError("The slide call changed. Refresh the slide list and try again.")
+    physical = {c.call_start: c for c in calls_in(deck.text, deck.chapters)} if expanded else {}
+    return list({c.call_start: c for c in (
+        physical[c.source_start] if isinstance(c, ExpandedCall) else c for c in calls)}.values())
+
+
+def source_call(deck: Deck, call: SlideCall) -> SlideCall:
+    return source_calls(deck, [call])[0]
 
 
 def deck_slots(ctx: ProjectContext, deck: Deck, language: str, *,
                links: slide_language.TranslationLinks | None = None) -> list[SlideSlot]:
-    return slots(ctx, expanded_calls(ctx, deck), language, links=links)
+    return slots(ctx, active_calls(deck), language, links=links)
 
 
 def call_text(call: SlideCall) -> str:
@@ -258,7 +265,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False,
         for start, end, replacement, spans in edits:
             parts.append(text[pos:start])
             origins.append(_SourceSpan(size, size + start - pos, source, pos,
-                                       text.count("\n", 0, pos) + 1, placement))
+                                       text.count("\n", 0, pos) + 1, text, placement))
             size += start - pos
             origins.extend(replace(span, start=span.start + size, end=span.end + size) for span in spans)
             parts.append(replacement)
@@ -266,7 +273,7 @@ def expand_fragments(deck: Deck, *, strict_includes: bool = False,
             pos = end
         parts.append(text[pos:])
         origins.append(_SourceSpan(size, size + len(text) - pos, source, pos,
-                                   text.count("\n", 0, pos) + 1, placement))
+                                   text.count("\n", 0, pos) + 1, text, placement))
         return "".join(parts), origins
 
     expanded, spans = expand(deck.text, deck.path, frozenset({deck.path.resolve()}))

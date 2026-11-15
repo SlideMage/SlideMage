@@ -11,8 +11,9 @@ import threading
 import time
 from pathlib import Path
 
-from . import busy, deck_context, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates, view_themes
+from . import busy, deck_context, deck_language, deck_outline, preview_build, preview_raster_client, preview_target, render_key, slide_language, slide_preview, slide_snapshot, slide_templates, view_themes
 from .deck_editor import VIEWS
+from .fileio import text_sha256
 from .preview_requests import PrebuiltRender, PreviewRequest, PreviewResult, RenderOptions, SourceRevision
 
 ALL_PAGES = 100000
@@ -242,10 +243,11 @@ def plan_project(renderer) -> tuple:
     requests = []
     templates = set(slide_templates.available_templates(renderer.ctx.root))
     for deck in renderer.ordered_decks():
+        resolution = deck_language._resolve_calls(deck)
         for language in renderer.languages_for(deck):
             for view in renderer.versions_for(deck):
                 ready = background_renders._Once(lambda: deck_context.in_deck_ready(renderer.ctx, deck, view, language))
-                units = background_renders.deck_units(renderer.ctx, deck, view, language, context_ready=ready)
+                units = background_renders.deck_units(renderer.ctx, deck, view, language, context_ready=ready, resolution=resolution)
                 requests.extend(renderer.request_for(unit) for unit in units if unit.template in templates)
     return tuple(requests)
 
@@ -259,9 +261,11 @@ def plan_deck(ctx, deck, *, scope='all', selected_view='instructor', language='E
         raise ValueError(f'Unknown course view: {selected_view}')
     views = VIEWS if scope == 'all' else (selected_view,)
     links = slide_language.links_for(ctx)
-    slots = {view: deck_outline.resolve_slots(ctx, deck, view, language, links=links) for view in views}
+    expanded, _, calls = deck_language._resolve_calls(deck)
+    deck_hash = text_sha256(expanded.text)
+    slots = {view: deck_outline.resolve_slots(ctx, deck, view, language, links=links, calls=calls) for view in views}
     instructor_frames = {row.key: row.frame_number for row in
-                         deck_outline.resolve_slots(ctx, deck, 'instructor', language, links=links)}
+                         deck_outline.resolve_slots(ctx, deck, 'instructor', language, links=links, calls=calls)}
     revisions: dict[Path, SourceRevision] = {}
     errors: dict[Path, str] = {}
     requests = []
@@ -272,7 +276,7 @@ def plan_deck(ctx, deck, *, scope='all', selected_view='instructor', language='E
             row = slots[view][index]
             call = row.slot.call  # translated/pinned call chosen for this language
             target = preview_target.for_call(ctx, deck, call, row.position, frame_number=row.frame_number,
-                                             hidden=row.hidden)
+                                             hidden=row.hidden, deck_hash=deck_hash)
             target = replace(target, occurrence_key=row.key, presenter_frame_number=instructor_frames.get(row.key))
             source = target.source_path.resolve()
             if source not in revisions:
@@ -294,12 +298,21 @@ def plan_slide(ctx, deck, path, view, language, *, selected_view="instructor",
     `read_source` may return an editor buffer; pinned calls always use their own source path.
     """
     revisions, capture_errors, result = {}, {}, []
+    resolution = deck_language._resolve_calls(deck) if deck is not None else None
+    deck_hash = text_sha256(resolution[0].text) if resolution else None
+    links = slide_language.links_for(ctx) if deck is not None else None
+    instructor = (deck_outline.resolve_slots(ctx, deck, 'instructor', 'EN', links=links, calls=resolution[2])
+                  if resolution else ())
+    frames = {r.key: r.frame_number for r in instructor}
     for canonical in preview_target.requested_views(view, selected_view):
-        row = (deck_outline.slide_row(ctx, deck, slide_language.bare_id(path.name), canonical, language,
-                                      occurrence_key=occurrence_key) if deck is not None else None)
-        if row is not None and (row.call.source_filename == path.name or '-current.tex' in path.name):
-            target = preview_target.for_call(ctx, deck, row.call, row.position, frame_number=row.frame_number,
-                                             occurrence_key=row.key, hidden=row.hidden)
+        rows = (deck_outline.resolve_slots(ctx, deck, canonical, language, links=links, calls=resolution[2])
+                if resolution else ())
+        matches = [r for r in rows if r.slot.matches(slide_language.bare_id(path.name))]
+        row = next((r for r in matches if r.key == occurrence_key), matches[0] if matches else None)
+        if row is not None and (row.slot.call.source_filename == path.name or '-current.tex' in path.name):
+            target = preview_target.for_call(ctx, deck, row.slot.call, row.position, frame_number=row.frame_number,
+                                             hidden=row.hidden, deck_hash=deck_hash)
+            target = replace(target, occurrence_key=row.key, presenter_frame_number=frames.get(row.key))
         else:
             target = preview_target.for_path(ctx, path)
         if target is None:

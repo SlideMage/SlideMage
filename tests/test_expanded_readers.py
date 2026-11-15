@@ -39,7 +39,7 @@ def linked(request, tmp_path, monkeypatch):
 
 def test_outline_and_frames(linked):
     ctx, deck, inline, repeat = linked
-    calls = deck_language.expanded_calls(ctx, deck)
+    calls = deck_language.active_calls(deck)
     assert len(calls) == 3 * repeat + 1
     assert len({c.identity for c in calls}) == len(calls)
     for occurrence in range(repeat):
@@ -91,3 +91,42 @@ def test_plugin_deck_slides(linked):
         assert [(r.id, r.position, r.hidden, r.section, r.path) for r in refs] == [
             (r.id, r.position, r.hidden, r.section, r.path) for r in expected]
         assert [r.block for r in refs] == ["topic"] * (3 * repeat) + [None]
+
+
+@pytest.mark.parametrize("producer", ["batch", "slide", "background", "thumbnails", "outline", "usage"])
+def test_expansion_is_shared_by_a_target_pass(linked, monkeypatch, producer):
+    from unittest.mock import Mock
+    from slidemage import background_renders, preview_target, preview_thumbnails, slide_usage
+
+    ctx, deck, _, _ = linked
+    (ctx.slides_dir / "abc-EN-Hello-current.tex").write_text(r"\tableofcontents")
+    resolve = Mock(wraps=deck_language.expand_fragments)
+    monkeypatch.setattr(deck_language, "expand_fragments", resolve)
+    if producer == "batch":
+        assert batch_render.plan_deck(ctx, deck)
+    elif producer == "slide":
+        assert batch_render.plan_slide(ctx, deck, ctx.slides_dir / "abc-EN-Hello-current.tex", "all", "EN")
+    elif producer == "background":
+        assert background_renders.deck_units(ctx, deck, "instructor", "EN", context_ready=lambda: True)
+    elif producer == "thumbnails":
+        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN")
+        preview_thumbnails.for_outline(ctx, deck, outline.sections, "instructor", "EN", resolver=Mock(),
+                                       deck_hash=outline.deck_hash)
+    elif producer == "outline":
+        outline = deck_outline.resolve_outline(ctx, deck, "instructor", "EN")
+        for row in outline.rows * 30:
+            target = preview_target.for_call(ctx, deck, row.call, row.position, "EN", outline=outline,
+                                             deck_hash=outline.deck_hash)
+            if row.call.id == "abc":
+                assert target.deck_hash == outline.deck_hash
+    else:
+        slide_usage.call_file_index(ctx, [deck])
+        count = resolve.call_count
+        slide_usage.call_file_index(ctx, [deck])
+        assert resolve.call_count == count
+        block = ctx.blocks_dir / "topic.tex"
+        block.write_text(block.read_text() + "\n% external edit")
+        slide_usage.call_file_index(ctx, [deck])
+        assert resolve.call_count == count + 1
+        return
+    assert resolve.call_count == 1
