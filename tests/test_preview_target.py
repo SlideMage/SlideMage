@@ -215,6 +215,7 @@ def test_for_call_with_the_resolved_outline_builds_the_target_the_resolver_does(
     (ctx.slides_dir / 'ddd-DE-Vier-current.tex').write_text('%% Translation of: aaa-EN-One\nbody')
     deck = make_deck('\\slide{aaa-EN-One}\n\\conditionalslide[instructor]{bbb-EN-Two}\n\\slidestep{ccc-EN-Three}[instructor]{1}\n'
                      '\\slidestep{ccc-EN-Three}[during-course]{1}\n\\slide{ddd-DE-Vier}\n\\slide{aaa-EN-One}\n')
+    deck.path = ctx.decks_dir / "course.tex"
     outline = deck_outline.resolve_outline(ctx, deck, view, language)
     assert any(r.hidden for r in outline.rows)
     for row in outline.rows:

@@ -53,7 +53,7 @@ from typing import Callable, Optional
 from . import compile_log, compile_records, compiler, deck_groups, deck_scan, project
 from .compiler import CancelToken, CompileJob
 from .deck_editor import SlideCall
-from .fileio import replace_with_retry, write_json
+from .fileio import replace_with_retry, text_sha256, write_json
 
 LogCallback = Callable[[str], None]
 
@@ -196,12 +196,6 @@ class PartialPlan:
         return [f for f in self.frames if f not in self.requested]
 
 
-def _deck_calls(ctx: project.ProjectContext, job: CompileJob) -> list[SlideCall]:
-    from . import deck_language
-    deck, _ = deck_language.expand_fragments(job.deck)
-    return [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))]
-
-
 @dataclass
 class _FullCompile:
     """What the last whole-deck compile of a job left: its record and PDF, and
@@ -234,16 +228,27 @@ def _full_compile(ctx: project.ProjectContext, job: CompileJob) -> _FullCompile:
     if compile_records.sha256(full_pdf) != record.get("pdf_sha256"):
         raise PartialError(f"{full_pdf.name} was changed since it was compiled -- compile "
                            "the whole deck.")
+    from . import deck_language
+    deck, dependencies = deck_language.expand_fragments(job.deck)
+    inputs = {compile_records.norm(e["path"]): e["sha256"] for e in record.get("inputs", [])}
+    # Old fragment contents are not kept, so even a comment change needs a full compile.
+    for name in sorted(inputs.keys() | {compile_records.norm(p) for p in dependencies}):
+        path = Path(name)
+        if path.parent == ctx.blocks_dir and (not path.is_file() or compile_records.sha256(path) != inputs.get(name)):
+            raise PartialError(f"{path.name} changed since the last whole-deck compile -- compile the whole deck.")
     deck_key = compile_records.norm(job.deck.path)
     deck_changed_at: Optional[int] = None
     for entry in record.get("inputs", []):
         if compile_records.norm(entry["path"]) == deck_key:
-            if compile_records.sha256(job.deck.path) != entry["sha256"]:
+            changed = (text_sha256(deck.text) != entry["text_sha256"] if "text_sha256" in entry
+                       else compile_records.sha256(job.deck.path) != entry["sha256"])
+            if changed:
                 deck_changed_at = _first_change(aux, job)
             break
 
     groups = frame_groups(page_infos(full_pdf))
-    calls = [c for c in _deck_calls(ctx, job) if c.included_in(job.version)]
+    calls = [s.call for s in deck_language.deck_slots(ctx, deck, deck_language.language_for_job(job))
+             if s.call.included_in(job.version)]
     matched: list[tuple[FrameGroup, SlideCall]] = []
     unmatched: list[FrameGroup] = []
     ptr = 0

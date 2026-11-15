@@ -37,8 +37,9 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QFrame, QHBoxLayout, QMessageBox, QSplitter, QSplitterHandle, QStackedWidget, QVBoxLayout,
     QWidget)
 
-from ... import app_settings, deck_editor, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
+from ... import app_settings, deck_editor, deck_language, deck_outline, languages, open_path, preview_build, slide_branch, slide_language, slide_source, slide_usage, slide_versioning
 from ...ai.tools.slidemage import slide_target
+from ...fileio import text_sha256
 from ...preview_target import PreviewTarget, for_call, for_path
 from ...slide_language import MULT, bare_id, current_path_for_bare_id, own_language
 from ..dialogs.new_slide_version import NewSlideVersionSheet
@@ -1560,7 +1561,9 @@ class CentreColumn(QFrame):
             return cached
         links = slide_language.links_for(state.project)
         slots = deck_outline.resolve_slots(state.project, state.deck, deck_editor.VIEW_INSTRUCTOR, "EN", links=links)
-        cached = deck_outline.Outline(state.project, state.deck.path, state.deck.text, deck_editor.VIEW_INSTRUCTOR, "EN",
+        cached = deck_outline.Outline(state.project, state.deck.path,
+                                      text_sha256(deck_language.expand_fragments(state.deck)[0].text),
+                                      deck_editor.VIEW_INSTRUCTOR, "EN",
                                       [], links, {r.key: r.frame_number for r in slots})
         self._english_frames_cache = cached
         return cached

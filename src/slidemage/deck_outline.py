@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import ai_review, alt_blocks, deck_editor, deck_language, languages, latex_lint, slide_language
+from .fileio import text_sha256
 from .project import ProjectContext
 from .deck_editor import SlideCall
 from .deck_scan import Chapter, Deck
@@ -196,7 +197,7 @@ class Outline:
     workspace drops the outline when a slide file is written (WorkspaceState.drop_outline)."""
     ctx: ProjectContext
     deck_path: Path
-    deck_text: str
+    deck_hash: str
     view: str
     language: str
     sections: list[SectionRow]
@@ -205,8 +206,9 @@ class Outline:
 
     def matches(self, ctx: ProjectContext, deck: Deck, language: str, view: str | None = None) -> bool:
         """Whether this is the outline of `deck` in `language` (and `view`, unless None)."""
-        return (self.ctx == ctx and self.deck_path == deck.path and self.deck_text == deck.text
-                and self.language == language and view in (None, self.view))
+        return (self.ctx == ctx and self.deck_path == deck.path
+                and self.language == language and view in (None, self.view)
+                and self.deck_hash == text_sha256(deck_language.expand_fragments(deck)[0].text))
 
     @property
     def rows(self) -> list[SlideRow]:
@@ -229,7 +231,8 @@ def resolve_outline(ctx: ProjectContext, deck: Deck, view: str, language: str) -
     resolved = resolve_slots(ctx, deck, view, language, links=links)
     instructor = resolved if view == deck_editor.VIEW_INSTRUCTOR else resolve_slots(
         ctx, deck, deck_editor.VIEW_INSTRUCTOR, language, links=links)
-    return Outline(ctx, deck.path, deck.text, view, language, _sections(ctx, deck, view, language, resolved, links), links,
+    return Outline(ctx, deck.path, text_sha256(deck_language.expand_fragments(deck)[0].text), view, language,
+                   _sections(ctx, deck, view, language, resolved, links), links,
                    {r.key: r.frame_number for r in instructor})
 
 

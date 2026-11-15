@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
-from . import deck_context, project, slide_language, slide_preview, slide_templates, view_themes
+from . import deck_context, deck_language, project, slide_language, slide_preview, slide_templates, view_themes
 from .deck_editor import VIEW_INSTRUCTOR, VIEWS, SlideCall
 from .deck_scan import DECKTAGS_RE, OPEN_PDF_RE, OUTPUT_FOLDER_RE, Deck
 from .fileio import text_sha256
@@ -116,7 +116,7 @@ def for_call(ctx: project.ProjectContext, deck: Deck, call: SlideCall, position:
     if not found:
         return target
     return replace(target, needs_context=found,
-                   deck_hash=text_sha256(deck.text))
+                   deck_hash=text_sha256(deck_language.expand_fragments(deck)[0].text))
 
 
 def requested_views(view: str | None, selected_view: str = VIEW_INSTRUCTOR) -> tuple[str, ...]:
